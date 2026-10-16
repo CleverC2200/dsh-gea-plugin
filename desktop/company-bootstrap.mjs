@@ -31,8 +31,13 @@ function validCoreArtifacts(artifacts) {
   );
 }
 
-export function planCompanyCoreRefresh(updates, core) {
-  if (updates === undefined) return undefined;
+export function planCompanyCoreRefresh(updates, core, source) {
+  if (updates === undefined) {
+    if (source === undefined) return undefined;
+    updates = { source, core };
+  } else if (updates.source === undefined && source !== undefined) {
+    updates = { ...updates, source };
+  }
   const previous = updates?.core;
   if (
     !previous ||
@@ -92,7 +97,7 @@ async function verifyCompanyCore(root, core) {
   return { ...core, root, kind: "desktop" };
 }
 
-export async function refreshCompanyCore({ root, seed, home }) {
+export async function refreshCompanyCore({ root, seed, home, apply = true }) {
   const profile = join(home, "profiles/desktop");
   const patch = join(profile, "cordis.patch.yml");
   if (!existsSync(patch)) return { status: "no-update-configuration", changed: false };
@@ -112,26 +117,39 @@ export async function refreshCompanyCore({ root, seed, home }) {
       const index = rows.findIndex(
         (row) => row?.id === "gea-proof" || row?.name === "@cleverc2200/gea-dsh-prototype",
       );
+      if (index === -1) return { status: "no-update-configuration", changed: false };
       const updates = rows[index]?.config?.pluginUpdates;
-      if (updates === undefined) return { status: "no-update-configuration", changed: false };
       const manifest = await json(join(seed, "manifest.json"));
       const core = await verifyCompanyCore(root, manifest.core);
-      const next = planCompanyCoreRefresh(updates, core);
+      if (updates?.source === undefined && manifest.source === undefined)
+        throw Error("GEA_SEED_UPDATE_SOURCE_MISSING");
+      const next = planCompanyCoreRefresh(updates, core, manifest.source);
       if (JSON.stringify(next) === JSON.stringify(updates))
         return { status: "current-core-proof", changed: false };
+      if (!apply) return { status: "ready", changed: false };
       const backup = join(
         profile,
         "gea/bootstrap",
         "before-core-proof-" + digest(original) + ".yml",
       );
       if (!existsSync(backup))
-        await writeFileAtomic(backup, original, { mode: 0o600, dirMode: 0o700 });
-      document.setIn([index, "config", "pluginUpdates", "core"], next.core);
-      for (const key of ["checkTimeoutMs", "pollIntervalMs"])
-        if (updates[key] === undefined)
-          document.setIn([index, "config", "pluginUpdates", key], next[key]);
+        await writeFileAtomic(backup, original, {
+          mode: 0o600,
+          dirMode: 0o700,
+        });
+      if (updates === undefined) document.setIn([index, "config", "pluginUpdates"], next);
+      else {
+        document.setIn([index, "config", "pluginUpdates", "core"], next.core);
+        for (const key of ["source", "checkTimeoutMs", "pollIntervalMs"])
+          if (updates[key] === undefined)
+            document.setIn([index, "config", "pluginUpdates", key], next[key]);
+      }
       await writeFileAtomic(patch, document.toString(), { mode: 0o600 });
-      return { status: "core-proof-refreshed", changed: true, backup };
+      return {
+        status: updates?.source === undefined ? "update-source-configured" : "core-proof-refreshed",
+        changed: true,
+        backup,
+      };
     },
     { waitMs: 120000 },
   );
@@ -408,7 +426,9 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
                   pollIntervalMs: 2000,
                   core,
                 });
-              await writeFileAtomic(patch, document.toString(), { mode: 0o600 });
+              await writeFileAtomic(patch, document.toString(), {
+                mode: 0o600,
+              });
             }
           },
         });

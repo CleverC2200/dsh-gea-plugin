@@ -6,6 +6,7 @@ import { join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { build } from "esbuild";
+import { parse as parseYaml } from "yaml";
 import { projectPluginRelease, companyPackageNames } from "../../../src/shared/plugin-release.mjs";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const repository = fileURLToPath(new URL("../../../", import.meta.url));
@@ -89,7 +90,10 @@ async function createHost(input) {
     input.mountFile,
     `import {mountPluginUpdates} from ${JSON.stringify(pathToFileURL(input.subject).href)};export function apply(ctx){ctx.effect(()=>mountPluginUpdates(ctx,${JSON.stringify(input.config)},${JSON.stringify(input.deployment)}));}`,
   );
-  await ctx.loader.create({ id: "updates", name: pathToFileURL(input.mountFile).href });
+  await ctx.loader.create({
+    id: "updates",
+    name: pathToFileURL(input.mountFile).href,
+  });
   await ctx.loader.await();
   async function route(action, body) {
     const handler = handlers.get(`/api/gea/plugin-updates/${action}`);
@@ -109,7 +113,9 @@ async function createHost(input) {
 async function clientObservations(input, host) {
   const registrations = [];
   const browser = vm.createContext({
-    window: { __ModuleLoader__: { load: (entry) => registrations.push(entry) } },
+    window: {
+      __ModuleLoader__: { load: (entry) => registrations.push(entry) },
+    },
     URL,
     AbortController,
     setTimeout,
@@ -208,7 +214,7 @@ async function observeFresh(input) {
     restoreFetch();
   }
 }
-export async function installedScenario(t, proof, sdk) {
+export async function installedScenario(t, proof, sdk, { customStore = false } = {}) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
   const root = await mkdtemp(join(repository, ".runtime/actual-install-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -265,11 +271,25 @@ export async function installedScenario(t, proof, sdk) {
     join(dir, ".npmrc"),
     "auto-install-peers=false\nstrict-peer-dependencies=false\noffline=true\n",
   );
-  execFileSync(process.execPath, [pnpm, "install", "--offline", "--ignore-scripts"], {
-    cwd: dir,
-    stdio: "pipe",
-    env: { PATH: process.env.PATH, HOME: root },
-  });
+  const initialStore = customStore ? join(root, "company offline cache", "store") : null;
+  execFileSync(
+    process.execPath,
+    [
+      pnpm,
+      "install",
+      "--offline",
+      "--ignore-scripts",
+      ...(initialStore ? ["--store-dir=" + initialStore] : []),
+    ],
+    {
+      cwd: dir,
+      stdio: "pipe",
+      env: { PATH: process.env.PATH, HOME: root },
+    },
+  );
+  const initializedStore = parseYaml(
+    await readFile(join(dir, "node_modules/.modules.yaml"), "utf8"),
+  ).storeDir;
   const objects = [],
     refs = [];
   for (const artifact of [old[0], old[1], target]) {
@@ -277,7 +297,11 @@ export async function installedScenario(t, proof, sdk) {
     objects.push([url, artifact.bytes.toString("base64")]);
     const release = projectPluginRelease({
       manifest: artifact.manifest,
-      artifact: { url, size: artifact.bytes.length, sha256: sha(artifact.bytes) },
+      artifact: {
+        url,
+        size: artifact.bytes.length,
+        sha256: sha(artifact.bytes),
+      },
       supportedCores: [{ head: proof.head, version: proof.version }],
       dataCompatibility: { kind: "preserve" },
       notes: "actual pnpm fixture",
@@ -378,7 +402,10 @@ export async function installedScenario(t, proof, sdk) {
         authenticationRef: "anonymous",
         allowed: [{ origin: "https://fixture.invalid", pathPrefix: "/" }],
         trustedKeys: [
-          { keyId: "fixture", publicKeyPem: publicKey.export({ type: "spki", format: "pem" }) },
+          {
+            keyId: "fixture",
+            publicKeyPem: publicKey.export({ type: "spki", format: "pem" }),
+          },
         ],
       },
       core: proof,
@@ -397,13 +424,17 @@ export async function installedScenario(t, proof, sdk) {
       row = checked.items.find((item) => item.packageName === companyPackageNames[2]);
     assert.equal(row.state, "available", JSON.stringify(checked));
     oldProcess = checked.hostProcessIdentity;
-    await host.route("update", { packageName: row.packageName, planId: row.planId });
+    await host.route("update", {
+      packageName: row.packageName,
+      planId: row.planId,
+    });
     const deadline = Date.now() + 60000;
     do {
       pending = await host.route("status", { pageIdentity: "old-page" });
       if (
         pending.items.find((item) => item.packageName === companyPackageNames[2]).state ===
-        "pending-restart"
+          "pending-restart" ||
+        ["restored", "failed", "unknown"].includes(pending.operation?.stage)
       )
         break;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -411,6 +442,10 @@ export async function installedScenario(t, proof, sdk) {
     const installed = pending.items.find((item) => item.packageName === companyPackageNames[2]);
     assert.equal(installed.state, "pending-restart", JSON.stringify(pending));
     assert.equal(installed.installedVersion, "3.1.0");
+    assert.equal(
+      parseYaml(await readFile(join(dir, "node_modules/.modules.yaml"), "utf8")).storeDir,
+      initializedStore,
+    );
     assert.equal(installed.runningHostVersion, "3.0.0");
   } finally {
     await host.ctx.fiber.dispose();

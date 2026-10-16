@@ -17,9 +17,30 @@ const currentCore = {
   artifacts: [{ path: "package.json", sha256: "a".repeat(64) }],
 };
 
+test("missing update source uses the bundled source without replacing an existing source", () => {
+  const source = {
+    channelUrl: "https://example.test/stable.json",
+    publicKey: "bundled",
+  };
+  assert.deepEqual(planCompanyCoreRefresh(undefined, currentCore, source), {
+    source,
+    core: currentCore,
+    checkTimeoutMs: 60000,
+    pollIntervalMs: 2000,
+  });
+  const existing = {
+    source: { channelUrl: "https://example.test/custom.json" },
+    core: currentCore,
+  };
+  assert.deepEqual(planCompanyCoreRefresh(existing, currentCore, source).source, existing.source);
+});
+
 test("the same admitted desktop Core refresh changes only its proof and supplies absent timing defaults", () => {
   const updates = {
-    source: { channelUrl: "https://example.test/stable.json", publicKey: "keep" },
+    source: {
+      channelUrl: "https://example.test/stable.json",
+      publicKey: "keep",
+    },
     checkTimeoutMs: 45000,
     pollIntervalMs: 1500,
     core: {
@@ -28,7 +49,10 @@ test("the same admitted desktop Core refresh changes only its proof and supplies
       artifacts: [{ path: "package.json", sha256: "b".repeat(64) }],
     },
   };
-  const config = { pluginUpdates: updates, knowledge: { baseUrl: "https://weknora.example.test" } };
+  const config = {
+    pluginUpdates: updates,
+    knowledge: { baseUrl: "https://weknora.example.test" },
+  };
   const before = structuredClone(config);
   const next = planCompanyCoreRefresh(updates, currentCore);
   assert.deepEqual(next, { ...updates, core: currentCore });
@@ -52,12 +76,21 @@ test("a different or unknown Core proof and invalid configured timing cannot be 
     { core: { ...currentCore, kind: "source" } },
     { core: { ...currentCore, unrecognizedAdmission: true } },
     { core: { ...currentCore, artifacts: [] } },
-    { core: { ...currentCore, artifacts: [{ path: "other.js", sha256: "b".repeat(64) }] } },
+    {
+      core: {
+        ...currentCore,
+        artifacts: [{ path: "other.js", sha256: "b".repeat(64) }],
+      },
+    },
     { core: undefined },
     { checkTimeoutMs: 999 },
     { pollIntervalMs: 30001 },
   ]) {
-    const updates = { source: { channelUrl: "keep" }, core: currentCore, ...changed };
+    const updates = {
+      source: { channelUrl: "keep" },
+      core: currentCore,
+      ...changed,
+    };
     const before = structuredClone(updates);
     assert.throws(() => planCompanyCoreRefresh(updates, currentCore), /GEA_CORE_REFRESH_REJECTED/);
     assert.deepEqual(updates, before);
@@ -127,7 +160,12 @@ test("an incomplete owned installation cannot be hidden by four declared depende
     await writeFile(join(profile, "package.json"), manifest);
     await writeFile(record, receipt);
     await assert.rejects(
-      bootstrapCompanyProfile({ root: "unused", support: "unused", seed: "unused", home }),
+      bootstrapCompanyProfile({
+        root: "unused",
+        support: "unused",
+        seed: "unused",
+        home,
+      }),
       /GEA_COMPANY_INSTALL_INCOMPLETE/,
     );
     assert.equal(await readFile(record, "utf8"), receipt);
@@ -198,7 +236,9 @@ test("only an unchanged profile with a known pre-write store rejection can reach
     const record = join(profile, "gea/bootstrap");
     const log = join(profile, ".plugin-manager/logs/operation-known/pnpm.log");
     await mkdir(record, { recursive: true });
-    await mkdir(join(profile, ".plugin-manager/logs/operation-known"), { recursive: true });
+    await mkdir(join(profile, ".plugin-manager/logs/operation-known"), {
+      recursive: true,
+    });
     const dependencies = {
       "@cleverc2200/dsh-agent-workbench": "old",
       "dsh-agent-manage": "old",

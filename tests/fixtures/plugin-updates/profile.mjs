@@ -13,6 +13,9 @@ export async function controllerFixture(t, { mode = "success", sourceFailure } =
   const dir = join(root, "profile"),
     anchor = join(root, "anchor");
   await mkdir(join(dir, "node_modules"), { recursive: true });
+  const store = join(root, "profile-store", "v11");
+  await mkdir(store, { recursive: true });
+  await writeFile(join(dir, "node_modules/.modules.yaml"), JSON.stringify({ storeDir: store }));
   await mkdir(anchor);
   await writeFile(join(anchor, "package.json"), JSON.stringify({ dependencies: {} }));
   const oldVersions = ["1.0.0", "2.0.0", "3.0.0"];

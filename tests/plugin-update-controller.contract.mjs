@@ -36,7 +36,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -69,7 +69,45 @@ const {
   readPluginProfile,
   validateActualProfile,
   parseUpdateClientStatus,
+  pluginProfileStoreDirectory,
 } = await import(pathToFileURL(modulePath));
+test("profile store metadata selects its existing directory and rejects unusable state", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "plugin-update-store-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const modules = join(root, "node_modules");
+  await mkdir(modules);
+  await assert.rejects(pluginProfileStoreDirectory(root), /PROFILE_STORE_UNAVAILABLE/);
+  for (const metadata of ["[invalid", "{}", '{"storeDir":"relative"}']) {
+    await writeFile(join(modules, ".modules.yaml"), metadata);
+    await assert.rejects(pluginProfileStoreDirectory(root), /PROFILE_STORE_INVALID/);
+  }
+  const store = join(root, "arbitrary company cache", "v11");
+  await writeFile(join(modules, ".modules.yaml"), JSON.stringify({ storeDir: store }));
+  await assert.rejects(pluginProfileStoreDirectory(root), /PROFILE_STORE_UNAVAILABLE/);
+  await mkdir(store, { recursive: true });
+  assert.equal(await pluginProfileStoreDirectory(root), store);
+});
+test("missing store metadata stops an update before acceptance or profile mutation", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  await rm(join(f.dir, "node_modules/.modules.yaml"));
+  const before = (await readPluginProfile(f.dir)).sha256;
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller
+    .snapshot()
+    .items.find((item) => item.packageName === "@cleverc2200/gea-dsh-prototype");
+  await assert.rejects(
+    controller.submit({ packageName: row.packageName, planId: row.planId }),
+    /PROFILE_STORE_UNAVAILABLE/,
+  );
+  assert.equal((await readPluginProfile(f.dir)).sha256, before);
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+    code: "ENOENT",
+  });
+});
 test("controller starts with an empty operation and preserves existing profile data", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "plugin-update-profile-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -695,7 +733,10 @@ test("a single-package channel leaves omitted installed packages out of the chec
   );
   for (const row of items.filter((r) => r.packageName !== "@cleverc2200/gea-dsh-prototype")) {
     assert.equal(row.state, "blocked");
-    assert.deepEqual(row.problem, { kind: "policy", code: "release-not-published" });
+    assert.deepEqual(row.problem, {
+      kind: "policy",
+      code: "release-not-published",
+    });
   }
 });
 

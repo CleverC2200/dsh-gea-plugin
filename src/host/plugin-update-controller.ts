@@ -30,6 +30,7 @@ import {
   canonical,
   object,
   optionalFile,
+  pluginProfileStoreDirectory,
   readPluginProfile,
   combinationManifests,
   freezePluginProfile,
@@ -646,6 +647,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             if (result.kind !== "ready") fail("UPDATE_COMBINATION_CHANGED");
             if (await optionalFile(join(options.profile.dir, ".plugin-manager/run.json")))
               fail("PROFILE_WRITER_UNCONFIRMED");
+            const store = await pluginProfileStoreDirectory(options.profile.dir);
             row(plan.release.name, { state: "snapshotting" });
             const id = randomUUID(),
               operationDirectory = join(operations, id);
@@ -714,6 +716,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                 [
                   "add",
                   "file:" + archive,
+                  "--store-dir=" + store,
                   "--save-exact",
                   "--ignore-scripts",
                   "--ignore-pnpmfile",

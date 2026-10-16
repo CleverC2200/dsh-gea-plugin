@@ -126,7 +126,10 @@ test("desktop first-install scope is bound to its own PR and frozen packaging so
   assert.deepEqual(plan.files, [
     "scripts/plugin-update-pr-lane.test.mjs",
     "desktop/company-bootstrap.test.mjs",
-    "desktop/official-branding.test.mjs",
+    "scripts/repair-plugin-store.test.mjs",
+    "tests/plugin-update-controller.contract.mjs",
+    "tests/plugin-update-install.contract.mjs",
+    "scripts/plugin-package-version.test.mjs",
   ]);
   assert.equal(plan.authorization, a);
   assert.equal(plan.browser, false);

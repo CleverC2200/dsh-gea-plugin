@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { resolveBundleDir } from "@deepseek-ai/dsh-app-boot";
 import { createReadStream } from "node:fs";
+import { constants } from "node:fs";
+import { parse as parseYaml } from "yaml";
 import {
+  access,
   cp,
   lstat,
   mkdir,
@@ -14,6 +17,7 @@ import {
   statfs,
   writeFile,
   open,
+  stat,
 } from "node:fs/promises";
 import { isAbsolute, join, relative, dirname } from "node:path";
 import {
@@ -76,6 +80,31 @@ export async function optionalFile(path: string): Promise<Buffer | null> {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
     throw error;
   }
+}
+export async function pluginProfileStoreDirectory(profile: string): Promise<string> {
+  const bytes = await optionalFile(join(profile, "node_modules/.modules.yaml"));
+  if (!bytes) throw Error("PROFILE_STORE_UNAVAILABLE");
+  let modules: unknown;
+  try {
+    modules = parseYaml(bytes.toString("utf8"));
+  } catch {
+    throw Error("PROFILE_STORE_INVALID");
+  }
+  if (
+    modules === null ||
+    typeof modules !== "object" ||
+    !("storeDir" in modules) ||
+    typeof modules.storeDir !== "string" ||
+    !isAbsolute(modules.storeDir)
+  )
+    throw Error("PROFILE_STORE_INVALID");
+  try {
+    if (!(await stat(modules.storeDir)).isDirectory()) throw Error("PROFILE_STORE_UNAVAILABLE");
+    await access(modules.storeDir, constants.R_OK | constants.W_OK | constants.X_OK);
+  } catch {
+    throw Error("PROFILE_STORE_UNAVAILABLE");
+  }
+  return modules.storeDir;
 }
 async function fileHash(path: string): Promise<string> {
   const digest = createHash("sha256");
