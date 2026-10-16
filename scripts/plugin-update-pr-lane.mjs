@@ -16,7 +16,7 @@ export const desktopBootstrapAuthorization = Object.freeze({
   branch: "codex/plugin-update-bootstrap-158-20261016",
   instruction:
     "修复完整包在线更新缓存与已有客户端缺失来源，保留 WeKnora、原配置和回执，不改 Core、不放宽门禁；先发插件，安装包后置，只跑有影响的定向校验。",
-  productHead: "33071879d98b7680c0311fd7a718dc49a29ceaae",
+  productHead: "a9b5000f809ddf079f9bc8de5d9eaf1a803e7fec",
   base: "055aeed6fd5bb2c77b8a3d0a06fd9ebf3e92af8a",
 });
 const supplements = [
