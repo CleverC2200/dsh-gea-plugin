@@ -8,7 +8,6 @@ import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { createBusinessSession, selectBusinessResource } from "./fixtures/business-session.mjs";
 import { requireSourceInputs } from "../scripts/source-profile.mjs";
-import { nativeWebPrompt, withoutNativeWebPrompt } from "./fixtures/native-web-prompt.mjs";
 
 test(
   "safety stock uses the maintained skill in the real assembled prompt, without altering the sales-plan context",
@@ -282,7 +281,6 @@ test(
       }
       return requests.at(-1);
     }
-    const nativeWeb = await nativeWebPrompt(app.origin);
     const stock = await ask("gea-html-inventory-aqkc");
     const system = stock.messages
       .filter((x) => x.role === "system")
@@ -294,7 +292,7 @@ test(
         JSON.parse(maintained["prompt.json"]).persona,
     );
     assert.doesNotMatch(
-      withoutNativeWebPrompt(system, nativeWeb),
+      system,
       /inventory_aqkc_page|name=context|明细既不做交付物|没有任何模型同时具备|HMR receiver|pnpm run dev:web|销售计划汇总例外/,
     );
     assert.ok(stock.tools.some((x) => x.function.name === "mcp__gea-gateway__inspect_cube_model"));
@@ -323,7 +321,7 @@ test(
     assert.match(salesSystem, /实时审批状态/);
     assert.match(salesSystem, /query_business_data/);
     assert.doesNotMatch(
-      withoutNativeWebPrompt(salesSystem, nativeWeb),
+      salesSystem,
       /HMR receiver/,
       "GEA business instructions cannot introduce development-only guidance",
     );
