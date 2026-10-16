@@ -20,9 +20,18 @@ const anchor = join(process.env.GEA_WINDOWS_RUNTIME, "dsh/package.json");
 for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
   test("Windows official installer with native Job: " + mode, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "GEA native windows "));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    let controller;
+    const cleanup = [];
+    t.after(async () => {
+      await controller?.dispose();
+      for (const action of cleanup) await action();
+      await rm(root, { recursive: true, force: true });
+    });
     const fileCommit = await prepareWindowsFileCommit(join(root, "platform"), anchor, "0.2.0-rc.2");
-    const f = await controllerFixture(t, { mode, fileCommit });
+    const f = await controllerFixture(
+      { after: (action) => cleanup.push(action) },
+      { mode, fileCommit },
+    );
     await symlink(
       join(process.env.GEA_WINDOWS_RUNTIME, "dsh/node_modules"),
       join(f.root, "anchor/node_modules"),
@@ -36,8 +45,7 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
     f.options.idleTimeoutMs = mode === "orphan" ? 1500 : 10000;
     f.options.quiescenceWaitMs = 1500;
     const before = await readFile(join(f.dir, "package.json"));
-    const controller = createPluginUpdateController(f.options);
-    t.after(() => controller.dispose());
+    controller = createPluginUpdateController(f.options);
     await controller.initialize();
     await controller.check();
     const item = controller
@@ -57,6 +65,7 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
         : mode === "fail-after-write"
           ? "restored"
           : "unknown",
+      JSON.stringify(result),
     );
     assert(result.processes.some((x) => x.grouped === false && x.sawAlive && x.startIdentity));
     if (mode === "fail-after-write")

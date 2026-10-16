@@ -201,7 +201,7 @@ async function archiveMatches(archive: string, packageDirectory: string, signal?
     signal,
     encoding: "utf8" as const,
   };
-  const files = (await run("tar", ["-tzf", archive], options)).stdout.trim().split("\n");
+  const files = (await run("tar", ["-tzf", archive], options)).stdout.trim().split(/\r?\n/);
   for (const name of files) {
     if (name.endsWith("/")) continue;
     signal?.throwIfAborted();
