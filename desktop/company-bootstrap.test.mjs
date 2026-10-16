@@ -3,7 +3,70 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bootstrapCompanyProfile, readCompanySeed } from "./company-bootstrap.mjs";
+import {
+  bootstrapCompanyProfile,
+  readCompanySeed,
+  planCompanyCoreRefresh,
+} from "./company-bootstrap.mjs";
+
+const currentCore = {
+  kind: "desktop",
+  root: "/Applications/GEA Desktop.app/Contents/Resources/app.asar",
+  head: "639ed015397290b3745d163aafe02ffee4aa3f84",
+  version: "0.2.0-rc.2",
+  artifacts: [{ path: "package.json", sha256: "a".repeat(64) }],
+};
+
+test("the same admitted desktop Core refresh changes only its proof and supplies absent timing defaults", () => {
+  const updates = {
+    source: { channelUrl: "https://example.test/stable.json", publicKey: "keep" },
+    checkTimeoutMs: 45000,
+    pollIntervalMs: 1500,
+    core: {
+      ...currentCore,
+      root: "/Applications/old.app/Contents/Resources/app.asar",
+      artifacts: [{ path: "package.json", sha256: "b".repeat(64) }],
+    },
+  };
+  const config = { pluginUpdates: updates, knowledge: { baseUrl: "https://weknora.example.test" } };
+  const before = structuredClone(config);
+  const next = planCompanyCoreRefresh(updates, currentCore);
+  assert.deepEqual(next, { ...updates, core: currentCore });
+  assert.deepEqual(config, before);
+  assert.deepEqual(
+    planCompanyCoreRefresh({ source: updates.source, core: updates.core }, currentCore),
+    {
+      source: updates.source,
+      core: currentCore,
+      checkTimeoutMs: 60000,
+      pollIntervalMs: 2000,
+    },
+  );
+  assert.equal(planCompanyCoreRefresh(undefined, currentCore), undefined);
+});
+
+test("a different or unknown Core proof and invalid configured timing cannot be refreshed", () => {
+  for (const changed of [
+    { core: { ...currentCore, head: "b".repeat(40) } },
+    { core: { ...currentCore, version: "0.2.1-alpha.1" } },
+    { core: { ...currentCore, kind: "source" } },
+    { core: { ...currentCore, unrecognizedAdmission: true } },
+    { core: { ...currentCore, artifacts: [] } },
+    { core: { ...currentCore, artifacts: [{ path: "other.js", sha256: "b".repeat(64) }] } },
+    { core: undefined },
+    { checkTimeoutMs: 999 },
+    { pollIntervalMs: 30001 },
+  ]) {
+    const updates = { source: { channelUrl: "keep" }, core: currentCore, ...changed };
+    const before = structuredClone(updates);
+    assert.throws(() => planCompanyCoreRefresh(updates, currentCore), /GEA_CORE_REFRESH_REJECTED/);
+    assert.deepEqual(updates, before);
+  }
+  assert.throws(
+    () => planCompanyCoreRefresh({ core: currentCore }, { ...currentCore, head: "b".repeat(40) }),
+    /GEA_CORE_REFRESH_REJECTED/,
+  );
+});
 
 test("an existing company profile retains configuration, disabled bundles, WeKnora and update receipts byte for byte", async () => {
   const home = await mkdtemp(join(tmpdir(), "gea-bootstrap-existing-"));
