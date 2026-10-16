@@ -38,7 +38,7 @@ const bootstrapSupplements = [
 ];
 const desktopCompanions = {
   "dsh-agent-workbench": "59aea218088da1ce0cdbbffb932cfb9cd518cae8",
-  "dsh-agent-manage": "b248d4521e904eccb76535266a7056809a853e80",
+  "dsh-agent-manage": "6c54ba254e391ec34eb91f0cb4f2cec164be2cea",
 };
 const frozenSources = {
   "dsh-agent-workbench": "eda9f6367c35544f45866c5e06e1ebfd1f5b61e0",
