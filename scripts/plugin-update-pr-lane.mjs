@@ -17,6 +17,8 @@ const supplements = [
   "scripts/business-profile-ci.mjs",
   "scripts/run-quality-ci.mjs",
   "docs/ci-core-policy.md",
+  // Synchronizes the release assertion with main's strict Manage peer.
+  "tests/plugin-release.test.mjs",
 ];
 const frozenSources = {
   "dsh-agent-workbench": "29d851d71bdbe4c490a246ab20447c76c19ae957",
