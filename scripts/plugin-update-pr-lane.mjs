@@ -7,7 +7,7 @@ export const pluginUpdateAuthorization = Object.freeze({
   branch: "codex/gea-rc2-brand-update-20261016",
   instruction:
     "只跑这次插件更新必要的定向校验，保留 WeKnora，不改 Core、不跑那181个文件，通过后尽快合并、发布OSS并在当前DSH实测。",
-  productHead: "271e78ac2bce084cd1698760769a4d5c26c7f3d9",
+  productHead: "4afba6a19babab0463f107ba7274dafa766d027e",
   base: "5b8c06b15df6b066c845bbea180ffbc209d72e43",
 });
 const supplements = [
@@ -33,7 +33,8 @@ export function selectPluginUpdateLane(input) {
   const a = pluginUpdateAuthorization;
   if (input.repository !== a.repository) return false;
   if (input.event === "pull_request") {
-    if (input.branch === a.branch && input.pullRequest !== a.pullRequest) throw Error("PLUGIN_UPDATE_SCOPE_REJECTED");
+    if (input.branch === a.branch && input.pullRequest !== a.pullRequest)
+      throw Error("PLUGIN_UPDATE_SCOPE_REJECTED");
     if (input.pullRequest !== a.pullRequest || input.branch !== a.branch) return false;
     if (input.headRepository !== a.repository || !input.matches)
       throw Error("PLUGIN_UPDATE_SCOPE_REJECTED");
