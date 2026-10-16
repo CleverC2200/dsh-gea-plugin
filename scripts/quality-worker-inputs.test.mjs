@@ -39,6 +39,10 @@ function fixture(
     earlyManagePlaywright = "1.58.2",
   } = {},
 ) {
+  const testFiles = [
+    "scripts/fixture.test.mjs",
+    ...(publicQuality && withShards ? ["scripts/second.test.mjs"] : []),
+  ];
   const coreManager = actualPnpmConfig ? "pnpm@11.7.0" : "pnpm@11.11.0";
   const pnpmConfigCli = actualPnpmConfig
     ? (process.env.GEA_TEST_PNPM_CONFIG_CLI ?? join(own, "node_modules/pnpm/bin/pnpm.cjs"))
@@ -109,14 +113,19 @@ function fixture(
     ])
       put("candidate/dsh-gea-plugin/scripts/" + file, readFileSync(join(own, "scripts", file)));
     put("candidate/dsh-gea-plugin/tests/profile.mjs", "export {};\n");
+    if (withShards)
+      put(
+        "candidate/dsh-gea-plugin/scripts/second.test.mjs",
+        "import test from 'node:test'; test('second assigned file', () => {});\n",
+      );
     put(
       "candidate/dsh-gea-plugin/scripts/fixture.test.mjs",
       `import '../tests/profile.mjs';import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync,writeFileSync} from 'node:fs';test('original CLI admitted all five public entries',()=>{const records=JSON.parse(readFileSync(process.env.GEA_TEST_SOURCE_INPUTS));assert.equal(records.length,5);const manage=records.find(x=>x.repo==='dsh-agent-manage');assert.equal(readFileSync(manage.source+'/client/client.js','utf8'),'fixed public client');writeFileSync(${JSON.stringify(join(root, "tests-executed"))},'actual Node test');});`,
     );
     json("candidate/dsh-gea-plugin/scripts/ci-test-policy.json", {
       schemaVersion: 1,
-      required: ["scripts/fixture.test.mjs"],
-      tests: ["scripts/fixture.test.mjs"],
+      required: testFiles,
+      tests: testFiles,
       rules: [],
     });
   }
@@ -339,7 +348,7 @@ function fixture(
   };
   json("candidate-input.json", candidate);
   json("candidate-group.json", { groupId: "fixture" });
-  let plan = { runtime, browser, files: ["scripts/fixture.test.mjs"] };
+  let plan = { runtime, browser, files: testFiles };
   json("quality-test-plan.json", plan);
   const binding = {
     inputSha256: hash(readFileSync(join(root, "candidate-input.json"))),
@@ -629,6 +638,8 @@ cp.spawnSync=(command,args,options={})=>{
       coreSource,
       "--test-file-concurrency",
       String(concurrency),
+      "--test-shards",
+      withShards ? "2" : "1",
       ...extraArgs,
     ]);
   if (publicQuality) {

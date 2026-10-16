@@ -42,6 +42,10 @@ const fixtureSourceFiles = [
   "quality-test-reporter.mjs",
   "quality-test-execution.mjs",
   "quality-shards.mjs",
+  "quality-worker-inputs.mjs",
+  "quality-worker-control.mjs",
+  "quality-prepared-inputs.mjs",
+  "quality-prepared-tar.py",
   "quality-runner-environment.mjs",
   "quality-system-chrome.mjs",
   "fixtures/quality-ci-commands.mjs",
@@ -79,7 +83,7 @@ function fixture(t, { additionalTests = [] } = {}) {
   const gea = join(job, "candidate/dsh-gea-plugin"),
     manage = join(job, "candidate/dsh-agent-manage"),
     workbench = join(job, "source/dsh-agent-workbench"),
-    core = join(job, "core-source");
+    core = join(job, "source/official-core");
   // Copy only this fixture's authored inputs; parallel quality tests own transient scripts directories.
   for (const file of fixtureSourceFiles)
     write(join(gea, "scripts", file), readFileSync(join(sourceRoot, "scripts", file)));
@@ -278,6 +282,78 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
     1,
   );
   assert.equal(commands.filter((entry) => entry.command === "sdk").length, 5);
+});
+
+test("one producer executes the existing tests stage and indexes its original receipt without transport", (t) => {
+  const f = fixture(t);
+  const hosted = {
+    GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+    GITHUB_RUN_ID: "7",
+    GITHUB_RUN_ATTEMPT: "2",
+    FIXTURE_PLATFORM: "linux",
+    QUALITY_STAGE_FIXTURE_ROOT: f.job,
+    NODE_OPTIONS: `--import=${join(f.gea, "scripts/fixtures/quality-ci-commands.mjs")}`,
+  };
+  writeFileSync(
+    join(f.job, "candidate-group.json"),
+    JSON.stringify({ groupId: "producer-fixture" }),
+  );
+  const output = join(f.job, "github-output");
+  const planned = f.run("plan", { ...hosted, GITHUB_OUTPUT: output }, ["--root", f.job]);
+  assert.equal(planned.status, 0, planned.stdout + planned.stderr);
+  assert.equal(readFileSync(output, "utf8"), "browser=false\n");
+  for (const stage of ["prepare", "build", "checks", "tests", "verify-tests"]) {
+    const result = f.run(stage, hosted);
+    assert.equal(result.status, 0, stage + ": " + result.stdout + result.stderr);
+  }
+  const indexFile = join(f.job, "quality-index.json");
+  const invoke = () =>
+    spawnSync(
+      process.execPath,
+      ["scripts/quality-shards.mjs", "--mode", "index", "--root", f.job, "--output", indexFile],
+      { cwd: f.gea, encoding: "utf8", env: { ...process.env, ...hosted } },
+    );
+  const indexed = invoke();
+  assert.equal(indexed.status, 0, indexed.stdout + indexed.stderr);
+  const index = JSON.parse(readFileSync(indexFile));
+  assert.equal(index.execution, "producer");
+  assert.deepEqual(
+    index.receipt,
+    JSON.parse(readFileSync(join(f.job, "quality-test-execution.json"))),
+  );
+  assert.equal(index.binding.worker, undefined);
+  assert.equal(index.bundleArtifactId, undefined);
+  assert.equal(existsSync(join(f.job, "transfer")), false);
+  assert.equal(existsSync(join(f.job, "system-chrome-preparation.json")), false);
+  const result = JSON.parse(readFileSync(join(f.job, "quality-test-execution.json")));
+  for (const change of [
+    (record) => {
+      record.planSha256 = "a".repeat(64);
+    },
+    (record) => {
+      record.buildSha256 = "a".repeat(64);
+    },
+    (record) => {
+      record.results = [];
+    },
+    (record) => {
+      record.results.push(record.results[0]);
+    },
+    (record) => {
+      record.results[0].report.summary.counts.skipped = 1;
+    },
+    (record) => {
+      record.status = "failed";
+    },
+    (record) => {
+      record.terminal = false;
+    },
+  ]) {
+    const broken = structuredClone(result);
+    change(broken);
+    writeFileSync(join(f.job, "quality-test-execution.json"), JSON.stringify(broken));
+    assert.equal(invoke().status, 1);
+  }
 });
 
 test("the public plan stage reports the complete selection before any preparation or runtime writes", (t) => {
