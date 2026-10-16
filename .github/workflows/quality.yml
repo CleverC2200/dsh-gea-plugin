@@ -202,6 +202,12 @@ jobs:
         run: |
           node scripts/run-quality-ci.mjs --phase "$QUALITY_PHASE" --stage plan --root "$GITHUB_WORKSPACE" --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --test-file-concurrency 3 --test-shards auto --test-timings scripts/quality-test-timings.json > "$GITHUB_WORKSPACE/quality-test-execution-plan.json"
           node --input-type=module -e 'import fs from "node:fs"; const plan=JSON.parse(fs.readFileSync(process.env.GITHUB_WORKSPACE+"/quality-test-execution-plan.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT,"shards="+Math.max(1,plan.shards.length)+"\n"); console.log(JSON.stringify({stage:"frozen-plan",planSha256:plan.planSha256,shards:plan.shards.length,...plan.estimates}));'
+          node --input-type=module <<'NODE'
+          import {readFileSync, appendFileSync} from 'node:fs';
+          const plan=JSON.parse(readFileSync(process.env.GITHUB_WORKSPACE+'/quality-test-execution-plan.json'));
+          const e=plan.estimates;
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Preparation-free test plan\n\nSelected ${e.selectedFiles} files; required ${e.requiredFiles}; Profile ${e.profileFiles}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Estimated test execution: ${e.estimatedMs === null ? 'unknown' : e.estimatedMs+' ms'}. This excludes preparation, scheduling and job cleanup.\n\nPlan: ${plan.planSha256}. Full file selection and assignments are in the source artifact.\n`);
+          NODE
       - name: Freeze source-only worker controls
         run: |
           mkdir -p "$GITHUB_WORKSPACE/early-control"
@@ -323,7 +329,6 @@ jobs:
           restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare owned Core source without compiling
         id: sdk-paths
-        if: needs.candidate-scope.outputs.business-lane == 'full'
         env:
           CORE_HEAD: ${{ matrix.core }}
         run: |
@@ -331,7 +336,6 @@ jobs:
           node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
         id: sdk-cache
-        if: needs.candidate-scope.outputs.business-lane == 'full'
         with:
           path: ${{ steps.sdk-paths.outputs.paths }}
           key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ matrix.core }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
@@ -359,9 +363,13 @@ jobs:
             ${{ steps.cache-path.outputs.store }}
           key: ${{ steps.download-cache.outputs.cache-primary-key }}
 
+      - name: Check source before candidate builds and tests
+        id: quality-source
+        run: corepack pnpm quality:fast --source-only
+
       - name: Build frozen candidate packages
         id: quality-build
-        if: steps.quality-prepare.outcome == 'success'
+        if: ${{ success() && steps.quality-prepare.outcome == 'success' && steps.quality-source.outcome == 'success' }}
         env:
           QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
           CORE_HEAD: ${{ matrix.core }}
@@ -372,7 +380,6 @@ jobs:
       - name: Run independent source checks
         id: quality-checks
         if: steps.quality-build.outcome == 'success'
-        continue-on-error: true
         env:
           QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
           CORE_HEAD: ${{ matrix.core }}
@@ -381,14 +388,14 @@ jobs:
         run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage checks
 
       - name: Freeze the actual system Chrome distribution
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' }}
         run: node scripts/quality-shards.mjs --mode prepare-browser --root "$GITHUB_WORKSPACE"
       - name: Freeze worker preparation binding
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' }}
         run: node scripts/quality-shards.mjs --mode binding --root "$GITHUB_WORKSPACE" --output "$GITHUB_WORKSPACE/quality-worker-binding.json"
       - name: Export prepared bytes once for this Core
         id: export
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/transfer"
           node scripts/quality-prepared-inputs.mjs export --root "$GITHUB_WORKSPACE" --binding "$GITHUB_WORKSPACE/quality-worker-binding.json" --manifest "$GITHUB_WORKSPACE/transfer/manifest.json" --bundle "$GITHUB_WORKSPACE/transfer/prepared.tar" > "$GITHUB_WORKSPACE/transport-export.json"
@@ -414,7 +421,7 @@ jobs:
           if-no-files-found: error
 
       - name: Save verified SDK cache within the measured job wall clock
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && needs.candidate-scope.outputs.business-lane == 'full' && steps.sdk-cache.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.sdk-cache.outputs.cache-hit != 'true' }}
         continue-on-error: true
         timeout-minutes: 1
         uses: actions/cache/save@v4
