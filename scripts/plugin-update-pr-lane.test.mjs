@@ -91,7 +91,7 @@ test("every targeted stage requires public hash admission before preparation", (
   }
 });
 
-test("desktop first-install scope is bound to its own PR and frozen packaging source", (t) => {
+test("Windows update scope is bound to its own PR and frozen source", (t) => {
   const a = desktopBootstrapAuthorization;
   const input = {
     event: "pull_request",
@@ -125,8 +125,7 @@ test("desktop first-install scope is bound to its own PR and frozen packaging so
   const plan = pluginUpdatePlanFor([{ repo: "dsh-gea-plugin", path: frozen, head: a.productHead }]);
   assert.deepEqual(plan.files, [
     "scripts/plugin-update-pr-lane.test.mjs",
-    "desktop/company-bootstrap.test.mjs",
-    "scripts/repair-plugin-store.test.mjs",
+    "tests/plugin-release-source.test.mjs",
     "tests/plugin-update-controller.contract.mjs",
     "tests/plugin-update-install.contract.mjs",
     "scripts/plugin-package-version.test.mjs",

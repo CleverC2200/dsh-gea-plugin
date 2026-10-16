@@ -49,12 +49,22 @@ setTimeout(() => {
       process.execPath,
       [
         "-e",
-        "process.on('SIGTERM',()=>{});setInterval(()=>require('node:fs').writeFileSync(process.env.FIXTURE_LATE_FILE,String(Date.now())),20);setTimeout(()=>process.exit(0),10000)",
+        "require('node:fs').writeFileSync(require('node:path').join(process.cwd(),'orphan-ready'),'ready');process.on('SIGTERM',()=>{});setInterval(()=>require('node:fs').writeFileSync(process.env.FIXTURE_LATE_FILE,String(Date.now())),20);setTimeout(()=>process.exit(0),10000)",
       ],
-      { stdio: "inherit", env: process.env },
+      { stdio: "inherit", env: process.env, detached: process.platform === "win32" },
     );
     fs.writeFileSync(path.join(process.cwd(), "orphan-pid"), String(child.pid));
-    process.exit(0);
+    child.on("error", (error) => {
+      console.error(error);
+      process.exit(10);
+    });
+    const ready = setInterval(() => {
+      if (fs.existsSync(path.join(process.cwd(), "orphan-ready"))) {
+        clearInterval(ready);
+        process.exit(0);
+      }
+    }, 10);
+    return;
   }
   process.exit(mode === "fail-after-write" ? 1 : 0);
 }, 150);

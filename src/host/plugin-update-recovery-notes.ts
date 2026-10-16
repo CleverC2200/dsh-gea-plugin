@@ -13,7 +13,7 @@ export async function writePluginRecoveryNotes(directory: string, profileDirecto
     flag: "wx",
   });
   for (const name of ["recovery-status.mjs", "RECOVERY.md"]) {
-    const file = await open(join(directory, name), "r");
+    const file = await open(join(directory, name), process.platform === "win32" ? "r+" : "r");
     try {
       await file.sync();
     } finally {

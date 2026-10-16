@@ -13,6 +13,7 @@ import {
   type PluginManifest,
 } from "../shared/plugin-release.mjs";
 
+import type { PluginUpdateFileCommit } from "./plugin-update-windows.ts";
 const run = promisify(execFile);
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const fail = (code: string): never => {
@@ -50,6 +51,7 @@ export type PluginReleaseSourceDependencies = {
   ) => Promise<Record<string, string>>;
   fetch?: typeof globalThis.fetch;
   trustDirectory: string;
+  fileCommit?: PluginUpdateFileCommit;
   now?: () => number;
 };
 
@@ -157,7 +159,7 @@ export async function inspectPluginArchive(
     encoding: "utf8" as const,
     signal,
   };
-  const entries = (await run("tar", ["-tzf", path], options)).stdout.trim().split("\n");
+  const entries = (await run("tar", ["-tzf", path], options)).stdout.trim().split(/\r?\n/);
   if (
     new Set(entries).size !== entries.length ||
     entries.some(
@@ -170,7 +172,7 @@ export async function inspectPluginArchive(
     )
   )
     return fail("SOURCE_ARCHIVE_INVALID");
-  const listing = (await run("tar", ["-tvzf", path], options)).stdout.trim().split("\n");
+  const listing = (await run("tar", ["-tvzf", path], options)).stdout.trim().split(/\r?\n/);
   if (listing.length !== entries.length || listing.some((line) => !["-", "d"].includes(line[0])))
     return fail("SOURCE_ARCHIVE_LINK_FORBIDDEN");
   if (!entries.includes("package/package.json")) return fail("SOURCE_ARCHIVE_MANIFEST_MISSING");
@@ -306,16 +308,22 @@ export function createPluginReleaseSource(
       } finally {
         await file.close();
       }
-      await rename(partial, receiptPath);
-      const directory = await open(dependencies.trustDirectory, "r");
+      await commitFile(partial, receiptPath);
+      const directory =
+        process.platform === "win32" ? null : await open(dependencies.trustDirectory, "r");
       try {
-        await directory.sync();
+        await directory?.sync();
       } finally {
-        await directory.close();
+        await directory?.close();
       }
     } finally {
       await rm(partial, { force: true });
     }
+  }
+  async function commitFile(from: string, to: string) {
+    if (process.platform !== "win32") return rename(from, to);
+    if (!dependencies.fileCommit) throw Error("UPDATE_WINDOWS_STORAGE_UNAVAILABLE");
+    await dependencies.fileCommit.replace(from, to);
   }
   async function request(url: string, signal?: AbortSignal): Promise<Response> {
     const approved = allowedUrl(url, config);
@@ -501,12 +509,12 @@ export function createPluginReleaseSource(
       }
       await validate(partial);
       signal?.throwIfAborted();
-      await rename(partial, target);
-      const directory = await open(cacheDirectory, "r");
+      await commitFile(partial, target);
+      const directory = process.platform === "win32" ? null : await open(cacheDirectory, "r");
       try {
-        await directory.sync();
+        await directory?.sync();
       } finally {
-        await directory.close();
+        await directory?.close();
       }
       return target;
     } finally {

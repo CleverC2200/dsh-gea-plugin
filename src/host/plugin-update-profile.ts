@@ -1,3 +1,4 @@
+import type { PluginUpdateFileCommit } from "./plugin-update-windows.ts";
 import { createHash } from "node:crypto";
 import { resolveBundleDir } from "@deepseek-ai/dsh-app-boot";
 import { createReadStream } from "node:fs";
@@ -19,7 +20,7 @@ import {
   open,
   stat,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, dirname } from "node:path";
+import { isAbsolute, join, relative, dirname, resolve } from "node:path";
 import {
   companyPackageNames,
   comparePluginVersions,
@@ -170,6 +171,21 @@ async function tree(root: string): Promise<{ entries: TreeEntry[]; bytes: number
   await walk(root, "");
   return { entries, bytes };
 }
+async function profileRealpath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if (
+      process.platform === "win32" &&
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "EPERM" &&
+      (await lstat(path)).isSymbolicLink()
+    )
+      return realpath(resolve(dirname(path), await readlink(path)));
+    throw error;
+  }
+}
 async function externalRoots(
   nodeModules: string,
   entries: TreeEntry[],
@@ -179,10 +195,8 @@ async function externalRoots(
     if (entry.kind !== "symlink") continue;
     let target: string;
     try {
-      target = await realpath(join(nodeModules, entry.path));
+      target = await profileRealpath(join(nodeModules, entry.path));
     } catch (error) {
-      // The physical snapshot already preserves the link. Optional executable
-      // targets may be absent; required package resolution is checked separately.
       if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
       throw error;
     }
@@ -199,7 +213,7 @@ async function packages(root: string): Promise<ProfilePackage[]> {
     seen = new Map<string, ProfilePackage>();
   const profileDirectory = dirname(root);
   async function visitPackage(location: string, rootLevel: boolean) {
-    const dir = await realpath(location),
+    const dir = await profileRealpath(location),
       previous = seen.get(dir);
     if (previous) {
       if (rootLevel) previous.root = true;
@@ -331,7 +345,7 @@ export async function combinationManifests(
         continue;
       }
       try {
-        const resolved = await realpath(
+        const resolved = await profileRealpath(
           resolveBundleDir("dsh", name, join(consumer.dir, "package.json"), profileDirectory),
         );
         if (resolved === selected.dir) affected[name] = range;
@@ -363,7 +377,7 @@ export async function validateActualProfile(
         core.sdk[name] ?? (/^@deepseek-ai\/dsh(?:-|$)/.test(name) ? core.version : undefined);
       let version: string | undefined;
       try {
-        const dir = await realpath(
+        const dir = await profileRealpath(
           resolveBundleDir(
             "dsh",
             name,
@@ -391,7 +405,13 @@ export async function freezePluginProfile(
   profileDirectory: string,
   snapshot: ProfileSnapshot,
   directory: string,
+  commit?: PluginUpdateFileCommit,
 ): Promise<void> {
+  const targetDirectory = directory;
+  if (process.platform === "win32") {
+    if (!commit) throw Error("UPDATE_WINDOWS_STORAGE_UNAVAILABLE");
+    directory += ".preparing";
+  }
   if (!snapshot.files["pnpm-lock.yaml"]) throw Error("PROFILE_FROZEN_LOCK_REQUIRED");
   const capacity = await statfs(profileDirectory);
   if (capacity.bavail * capacity.bsize < snapshot.bytes * 2 + 64 * 1024 * 1024)
@@ -410,7 +430,10 @@ export async function freezePluginProfile(
     verbatimSymlinks: true,
   });
   for (const entry of snapshot.entries.filter((entry) => entry.kind === "file")) {
-    const file = await open(join(directory, "node_modules", entry.path), "r");
+    const file = await open(
+      join(directory, "node_modules", entry.path),
+      process.platform === "win32" ? "r+" : "r",
+    );
     try {
       await file.sync();
     } finally {
@@ -419,7 +442,7 @@ export async function freezePluginProfile(
   }
   for (const [name, bytes] of Object.entries(snapshot.files)) {
     if (!bytes) continue;
-    const file = await open(join(directory, name), "r");
+    const file = await open(join(directory, name), process.platform === "win32" ? "r+" : "r");
     try {
       await file.sync();
     } finally {
@@ -449,11 +472,18 @@ export async function freezePluginProfile(
     ) + "\n",
     { mode: 0o600, flag: "wx" },
   );
-  const snapshotFile = await open(join(directory, "snapshot.json"), "r");
+  const snapshotFile = await open(
+    join(directory, "snapshot.json"),
+    process.platform === "win32" ? "r+" : "r",
+  );
   try {
     await snapshotFile.sync();
   } finally {
     await snapshotFile.close();
+  }
+  if (process.platform === "win32" && commit) {
+    await commit.replace(directory, targetDirectory);
+    return;
   }
   // Sync directory entries after syncing file contents, before the durable acceptance receipt.
   const directories = snapshot.entries
@@ -509,8 +539,14 @@ export function retainsProfileFields(
     ...strings(expected.dependencies),
     [release.name]: "file:" + archivePath,
   };
-  if (canonical(after.manifest) !== canonical(expected)) return false;
-  return true;
+  const current = structuredClone(after.manifest);
+  if (process.platform === "win32") {
+    const dependencies = strings(current.dependencies);
+    if (dependencies[release.name] === "file:" + archivePath.replaceAll("\\", "/"))
+      dependencies[release.name] = "file:" + archivePath;
+    current.dependencies = dependencies;
+  }
+  return canonical(current) === canonical(expected);
 }
 export function retainsUnmanagedManifestFields(
   before: ProfileSnapshot,

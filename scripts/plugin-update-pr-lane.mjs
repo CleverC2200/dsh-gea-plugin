@@ -12,12 +12,12 @@ export const pluginUpdateAuthorization = Object.freeze({
 });
 export const desktopBootstrapAuthorization = Object.freeze({
   repository: "CleverC2200/dsh-gea-plugin",
-  pullRequest: 86,
-  branch: "codex/plugin-update-bootstrap-158-20261016",
+  pullRequest: 87,
+  branch: "codex/windows-plugin-updates-159-20261016",
   instruction:
-    "修复完整包在线更新缓存与已有客户端缺失来源，保留 WeKnora、原配置和回执，不改 Core、不放宽门禁；先发插件，安装包后置，只跑有影响的定向校验。",
-  productHead: "a9b5000f809ddf079f9bc8de5d9eaf1a803e7fec",
-  base: "055aeed6fd5bb2c77b8a3d0a06fd9ebf3e92af8a",
+    "修复 Windows 158 无法获取更新；保留 WeKnora、原配置和回执，不改 Core、不放宽门禁，先发插件，安装包后置，只跑受影响校验。",
+  productHead: "27554b54c376e4cb7d2ed41e5bb9cf65ff973f14",
+  base: "6d88f6b941c80aac1d84e0f68436775907bc0635",
 });
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",
@@ -29,6 +29,7 @@ const supplements = [
   "tests/plugin-release.test.mjs",
 ];
 const bootstrapSupplements = [
+  "scripts/check-windows-plugin-update.mjs",
   "scripts/quality-peer-baseline.json",
   "scripts/plugin-update-pr-lane.mjs",
   "scripts/plugin-update-pr-lane.test.mjs",
@@ -145,12 +146,12 @@ export function pluginUpdatePlanFor(repositories) {
         lane: "plugin-update-pr",
         runtime: false,
         browser: false,
-        acceptance: "targeted plugin store and existing source repair; broad selection not run",
+        acceptance:
+          "targeted Windows plugin update; native Job and storage checked separately; broad selection not run",
         authorization: desktopBootstrapAuthorization,
         files: [
           "scripts/plugin-update-pr-lane.test.mjs",
-          "desktop/company-bootstrap.test.mjs",
-          "scripts/repair-plugin-store.test.mjs",
+          "tests/plugin-release-source.test.mjs",
           "tests/plugin-update-controller.contract.mjs",
           "tests/plugin-update-install.contract.mjs",
           "scripts/plugin-package-version.test.mjs",
