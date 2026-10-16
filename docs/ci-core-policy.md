@@ -53,3 +53,7 @@ The selected tests cover direct structured/text results, historical resource int
 ## Windows ASAR 路径补修
 
 产品固定 `f0fae2cef4234381f0ac1ff69c757567ecfc99de`，仅将封包读取路径转换为本机分隔符。定向执行品牌测试与范围准入测试两个文件；三仓冻结、静态检查、构建、macOS 隔离及最终聚合保持必需。Mac 与插件包内容不变，复用已通过证据；Windows 新输入单独构建验收。
+
+## 正式 Cube 157 配置补修
+
+产品固定 `f75eeab0e5fd4ac0e7d795d2e854f4d6cf1a5cb3`，仅登记用户确认的正式 Cube 来源 `MCP:mcp.cube`，保留测试编码并升版。定向七文件覆盖来源准入与请求路由、WeKnora、包版本及发行声明；三仓冻结、静态检查、构建、macOS 隔离及最终聚合保持必需。没有修改 Core、业务授权或未知来源拒绝规则。在线更新由用户从正式详情页操作，源码定向通过不等于真实业务验收。

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { build } from "esbuild";
+import companyDefaults from "../desktop/company.config.json" with { type: "json" };
 
 const { outputFiles } = await build({
   stdin: {
@@ -56,6 +57,7 @@ const query = {
 };
 async function fixture(options = {}) {
   const sent = [];
+  const sourceCode = options.environment === "production" ? "mcp.cube" : code;
   const raw = JSON.stringify(options.payload ?? payload());
   const hash = createHash("sha256").update(raw).digest("hex");
   const fake = async (url, init) => {
@@ -78,12 +80,12 @@ async function fixture(options = {}) {
             ? [
                 {
                   name: "query_business_data",
-                  _meta: { sourceType: "MCP", sourceCode: code },
+                  _meta: { sourceType: "MCP", sourceCode },
                   inputSchema: { type: "object", properties: {} },
                 },
                 {
                   name: "inspect_cube_model",
-                  _meta: { sourceType: "MCP", sourceCode: code },
+                  _meta: { sourceType: "MCP", sourceCode },
                   inputSchema: { type: "object", properties: {} },
                 },
               ]
@@ -123,7 +125,7 @@ async function fixture(options = {}) {
     controller.signal,
     1000,
     fake,
-    { cubeMcpCode: code },
+    { cubeMcpCode: options.environment ? companyDefaults.cubeMcpCodes[options.environment] : code },
   );
   return {
     module: await openGatewayMcp(transport, controller.signal),
@@ -187,4 +189,19 @@ test("Cube-New cannot publish forged hashes, incomplete pages or mismatched data
     });
     assert.equal(f.sent.filter(({ wire }) => wire.method === "tools/call").length, 1);
   }
+});
+
+test("production defaults publish only the confirmed Cube source and retain its route on inspect and query", async () => {
+  const f = await fixture({ environment: "production" });
+  assert.deepEqual(
+    f.module.tools().map((tool) => tool.name),
+    ["query_business_data", "inspect_cube_model"],
+  );
+  await f.module.call("inspect_cube_model", { limit: 50 }, f.signal);
+  await f.module.call("query_business_data", query, f.signal);
+  for (const { wire } of f.sent.filter(({ wire }) =>
+    ["tools/call", "resources/read"].includes(wire.method),
+  ))
+    assert.equal(wire.params._meta.mcpCode, "mcp.cube");
+  assert.equal(companyDefaults.cubeMcpCodes.test, code);
 });
