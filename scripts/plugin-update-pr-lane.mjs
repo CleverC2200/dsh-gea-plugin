@@ -12,12 +12,12 @@ export const pluginUpdateAuthorization = Object.freeze({
 });
 export const desktopBootstrapAuthorization = Object.freeze({
   repository: "CleverC2200/dsh-gea-plugin",
-  pullRequest: 80,
-  branch: "codex/gea-complete-desktop-20261016",
+  pullRequest: 81,
+  branch: "codex/gea-core-proof-refresh-20261016",
   instruction:
     "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
-  productHead: "28767e17a547110095cffcac181f9940ade74b74",
-  base: "4579bf2485063c9dfbe7ad74b8b46f37c4fffcdb",
+  productHead: "3ead615b946d5a18bdf8be3d1bdfba52a337e920",
+  base: "2b182e25c0562b63c8cedaa6c27ae9cd6cbb8e5e",
 });
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",

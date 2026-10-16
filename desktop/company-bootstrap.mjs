@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, delimiter, join } from "node:path";
+import { basename, delimiter, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const names = [
@@ -13,6 +13,129 @@ const names = [
 ];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const desktopCoreHead = "639ed015397290b3745d163aafe02ffee4aa3f84";
+const desktopCoreVersion = "0.2.0-rc.2";
+
+function validCoreArtifacts(artifacts) {
+  return (
+    Array.isArray(artifacts) &&
+    artifacts.length > 0 &&
+    artifacts.every(
+      (row) =>
+        typeof row?.path === "string" &&
+        !isAbsolute(row.path) &&
+        row.path.split(/[\\/]/).every((part) => part && part !== "." && part !== "..") &&
+        /^[a-f0-9]{64}$/.test(row.sha256),
+    ) &&
+    new Set(artifacts.map((row) => row.path)).size === artifacts.length
+  );
+}
+
+export function planCompanyCoreRefresh(updates, core) {
+  if (updates === undefined) return undefined;
+  const previous = updates?.core;
+  if (
+    !previous ||
+    !core ||
+    [previous, core].some((proof) =>
+      Object.keys(proof).some(
+        (key) => !["kind", "root", "head", "version", "artifacts"].includes(key),
+      ),
+    ) ||
+    previous.kind !== "desktop" ||
+    core.kind !== "desktop" ||
+    previous.head !== desktopCoreHead ||
+    core.head !== desktopCoreHead ||
+    previous.version !== desktopCoreVersion ||
+    core.version !== desktopCoreVersion ||
+    typeof previous.root !== "string" ||
+    !isAbsolute(previous.root) ||
+    typeof core.root !== "string" ||
+    !isAbsolute(core.root) ||
+    !validCoreArtifacts(previous.artifacts) ||
+    !validCoreArtifacts(core.artifacts) ||
+    JSON.stringify(previous.artifacts.map((row) => row.path).sort()) !==
+      JSON.stringify(core.artifacts.map((row) => row.path).sort())
+  )
+    throw Error("GEA_CORE_REFRESH_REJECTED");
+  for (const [key, maximum] of [
+    ["checkTimeoutMs", 120000],
+    ["pollIntervalMs", 30000],
+  ])
+    if (
+      updates[key] !== undefined &&
+      (!Number.isSafeInteger(updates[key]) || updates[key] < 1000 || updates[key] > maximum)
+    )
+      throw Error("GEA_CORE_REFRESH_REJECTED");
+  return {
+    ...updates,
+    core,
+    checkTimeoutMs: updates.checkTimeoutMs ?? 60000,
+    pollIntervalMs: updates.pollIntervalMs ?? 2000,
+  };
+}
+
+async function verifyCompanyCore(root, core) {
+  const app = await json(join(root, "package.json"));
+  if (
+    core?.head !== desktopCoreHead ||
+    core.version !== desktopCoreVersion ||
+    !validCoreArtifacts(core.artifacts) ||
+    app.dshBuildCommit !== core.head ||
+    app.version !== core.version ||
+    app.dshBuildDirty !== false
+  )
+    throw Error("GEA_SEED_CORE_MISMATCH");
+  for (const artifact of core.artifacts)
+    if (digest(await readFile(join(root, artifact.path))) !== artifact.sha256)
+      throw Error("GEA_SEED_CORE_CHANGED");
+  return { ...core, root, kind: "desktop" };
+}
+
+export async function refreshCompanyCore({ root, seed, home }) {
+  const profile = join(home, "profiles/desktop");
+  const patch = join(profile, "cordis.patch.yml");
+  if (!existsSync(patch)) return { status: "no-update-configuration", changed: false };
+  const require = createRequire(join(root, "dsh/package.json"));
+  const YAML = require("yaml");
+  const { withFileLock, writeFileAtomic } = await import(
+    pathToFileURL(require.resolve("@deepseek-ai/dsh-atomic-write"))
+  );
+  return withFileLock(
+    join(profile, "package.json"),
+    async () => {
+      const original = await readFile(patch, "utf8");
+      const document = YAML.parseDocument(original);
+      if (document.errors.length || !Array.isArray(document.toJS()))
+        throw Error("GEA_PROFILE_PATCH_INVALID");
+      const rows = document.toJS();
+      const index = rows.findIndex(
+        (row) => row?.id === "gea-proof" || row?.name === "@cleverc2200/gea-dsh-prototype",
+      );
+      const updates = rows[index]?.config?.pluginUpdates;
+      if (updates === undefined) return { status: "no-update-configuration", changed: false };
+      const manifest = await json(join(seed, "manifest.json"));
+      const core = await verifyCompanyCore(root, manifest.core);
+      const next = planCompanyCoreRefresh(updates, core);
+      if (JSON.stringify(next) === JSON.stringify(updates))
+        return { status: "current-core-proof", changed: false };
+      const backup = join(
+        profile,
+        "gea/bootstrap",
+        "before-core-proof-" + digest(original) + ".yml",
+      );
+      if (!existsSync(backup))
+        await writeFileAtomic(backup, original, { mode: 0o600, dirMode: 0o700 });
+      document.setIn([index, "config", "pluginUpdates", "core"], next.core);
+      for (const key of ["checkTimeoutMs", "pollIntervalMs"])
+        if (updates[key] === undefined)
+          document.setIn([index, "config", "pluginUpdates", key], next[key]);
+      await writeFileAtomic(patch, document.toString(), { mode: 0o600 });
+      return { status: "core-proof-refreshed", changed: true, backup };
+    },
+    { waitMs: 120000 },
+  );
+}
 
 async function assertCompletedInstallation(record) {
   let receipt;
@@ -123,17 +246,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   let missing = names.filter((name) => !current?.dependencies?.[name]);
   if (!missing.length) return { status: "existing-profile-preserved", changed: false };
   const manifest = await readCompanySeed(seed);
-  const app = await json(join(root, "package.json"));
-  if (
-    app.dshBuildCommit !== manifest.core.head ||
-    app.version !== manifest.core.version ||
-    app.dshBuildDirty !== false
-  )
-    throw Error("GEA_SEED_CORE_MISMATCH");
-  for (const artifact of manifest.core.artifacts) {
-    if (digest(await readFile(join(root, artifact.path))) !== artifact.sha256)
-      throw Error("GEA_SEED_CORE_CHANGED");
-  }
+  const core = await verifyCompanyCore(root, manifest.core);
   await mkdir(record, { recursive: true, mode: 0o700 });
   const requireLock = createRequire(join(root, "dsh/package.json"));
   const { withFileLock } = await import(
@@ -223,7 +336,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
                       source: manifest.source,
                       checkTimeoutMs: 60000,
                       pollIntervalMs: 2000,
-                      core: { ...manifest.core, root, kind: "desktop" },
+                      core,
                     },
                   },
                 });
@@ -232,7 +345,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
                   source: manifest.source,
                   checkTimeoutMs: 60000,
                   pollIntervalMs: 2000,
-                  core: { ...manifest.core, root, kind: "desktop" },
+                  core,
                 });
               await writeFileAtomic(patch, document.toString(), { mode: 0o600 });
             }
@@ -266,10 +379,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const { resolveDshHome } = await import(
     pathToFileURL(require.resolve("@deepseek-ai/dsh-home-paths"))
   );
+  const home = resolveDshHome();
   await bootstrapCompanyProfile({
     root,
     support,
     seed,
-    home: resolveDshHome(),
+    home,
   });
+  await refreshCompanyCore({ root, seed, home });
 }
