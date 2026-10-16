@@ -24,6 +24,16 @@
     "scripts/delivery-continuation.test.mjs"
   ],
   "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
+  "browserFixtures": [
+    "scripts/quality-prepared-inputs.test.mjs",
+    "scripts/knowledge-merge-ci.test.mjs",
+    "scripts/plugin-update-pr-lane.test.mjs",
+    "scripts/quality-shards.test.mjs",
+    "scripts/quality-worker-control.test.mjs",
+    "scripts/quality-worker-inputs.test.mjs",
+    "scripts/run-quality-ci-stages.test.mjs",
+    "scripts/run-quality-ci.test.mjs"
+  ],
   "rules": [
     {
       "repo": "dsh-gea-plugin",
