@@ -39,7 +39,6 @@ const context = {
 };
 const rows = [
   proof,
-  context,
   {
     type: "user/message",
     data: { source: { kind: "skill-catalog", form: "catalog", entries } },
@@ -59,7 +58,7 @@ async function storedRows(t, messages) {
   return readSession(runtime, "session-receipt-contract");
 }
 
-test("known catalog and runtime metadata retain exactly one receipt proof", async (t) => {
+test("company catalog metadata retains exactly one receipt proof without runtime snapshots", async (t) => {
   const messages = assertReceiptMessages(await storedRows(t, rows), rc2);
   assert.equal(messages.length, 1);
   assert.equal(messages[0].data.source.kind, "gea-proof");
@@ -112,13 +111,13 @@ test("known snapshot kinds reject undeclared forms, sections and fields", async 
       sections: [...context.data.source.sections, { name: "approval:policy", text: "Duplicate" }],
     },
   ]) {
-    const malformed = await storedRows(t, [proof, { ...context, data: { source } }, rows[2]]);
+    const malformed = await storedRows(t, [proof, { ...context, data: { source } }, rows[1]]);
     assert.throws(() => assertReceiptMessages(malformed, rc2));
   }
 });
 
 test("a receipt cannot substitute metadata for its missing proof or duplicate stable metadata", async (t) => {
-  for (const invalid of [rows.slice(1), [...rows, rows[2]], [...rows, context]]) {
+  for (const invalid of [rows.slice(1), [...rows, rows[1]], [...rows, context]]) {
     const invalidRows = await storedRows(t, invalid);
     assert.throws(() => assertReceiptMessages(invalidRows, rc2));
   }
@@ -126,7 +125,7 @@ test("a receipt cannot substitute metadata for its missing proof or duplicate st
 
 test("catalog metadata retains exact declared entries and never loads or dispatches Skill bodies", async (t) => {
   const changedCatalog = structuredClone(rows);
-  changedCatalog[2].data.source.entries.pop();
+  changedCatalog[1].data.source.entries.pop();
   const body = structuredClone(rows);
   body[0].data.content[0].text = "RECEIPT_SKILL_BODY_MUST_NOT_AUTOLOAD_R39_6d341cbf";
   const dispatch = {
