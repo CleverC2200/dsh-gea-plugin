@@ -53,7 +53,8 @@ export async function repairPluginStore({
       if (
         typeof store !== "string" ||
         !isAbsolute(store) ||
-        /[\r\n\u0000]/.test(store) ||
+        /[\r\n]/.test(store) ||
+        store.includes("\0") ||
         store.includes("${")
       )
         throw Error("PROFILE_STORE_INVALID");
