@@ -27,6 +27,15 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-worker-control\\.mjs$",
+      "tests": [
+        "scripts/quality-worker-control.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs",
+        "scripts/run-quality-ci.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^src/host/(?:cube-gap-ledger|mcp-read-evidence)\\.ts$",
       "tests": [
         "tests/current-mcp-tools.test.mjs",
@@ -43,6 +52,52 @@
       "repo": "dsh-agent-workbench",
       "pattern": "^static/regional/source/index\\.html$",
       "tests": ["tests/page-interaction-workbenches.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-system-chrome\\.mjs$",
+      "tests": [
+        "scripts/quality-system-chrome.test.mjs",
+        "scripts/quality-prepared-inputs.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/fixtures/quality-system-chrome-commands\\.mjs$",
+      "tests": ["scripts/quality-system-chrome.test.mjs", "scripts/quality-worker-inputs.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-runner-environment\\.mjs$",
+      "tests": [
+        "scripts/quality-prepared-inputs.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-test-timings\\.json$",
+      "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/quality-shards.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-worker-inputs\\.mjs$",
+      "tests": ["scripts/quality-worker-inputs.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-test-reporter\\.mjs$",
+      "tests": [
+        "scripts/quality-test-reporter.test.mjs",
+        "scripts/quality-test-execution.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-prepared-tar\\.py$",
+      "tests": ["scripts/quality-prepared-inputs.test.mjs"]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -92,6 +147,11 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/final-group-input\\.contract\\.mjs$",
       "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/fixtures/quality-ci-commands\\.mjs$",
+      "tests": ["scripts/run-quality-ci-stages.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",

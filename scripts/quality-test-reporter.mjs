@@ -12,16 +12,55 @@ import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spec } from "node:test/reporters";
 import { inspect } from "node:util";
+import { executionFile, writeExecutionReceipt } from "./quality-test-execution.mjs";
 
 export default async function* report(source) {
   let skipped = 0;
   const started = performance.now();
   const files = new Map();
+  const observed = new Map();
+  let summary;
+  const root = process.env.QUALITY_TEST_ROOT ?? process.cwd();
+  const args = process.argv.slice(1);
+  const expected = process.env.QUALITY_TEST_FILES
+    ? JSON.parse(process.env.QUALITY_TEST_FILES)
+    : null;
+  const matchingInvocation = () => {
+    if (!expected) return true;
+    try {
+      return (
+        JSON.stringify(args.map((file) => executionFile(root, file)).sort()) ===
+        JSON.stringify([...expected].sort())
+      );
+    } catch {
+      return false;
+    }
+  };
+  // Test fixtures can start their own reporters. Only this invocation owns the machine receipt.
+  const receipt = matchingInvocation() ? process.env.QUALITY_TEST_RECEIPT : undefined;
+  const record = receipt
+    ? {
+        schemaVersion: 1,
+        context: JSON.parse(process.env.QUALITY_TEST_CONTEXT ?? "null"),
+        status: "running",
+        terminal: false,
+        startedAt: new Date().toISOString(),
+      }
+    : undefined;
+  const persist = () => {
+    if (receipt) writeExecutionReceipt(receipt, { ...record, files: [...observed.values()] });
+  };
+  const observation = (entry) => {
+    const file = executionFile(root, entry);
+    if (!observed.has(file))
+      observed.set(file, { file, startCount: 0, completeCount: 0, summaryCount: 0 });
+    return observed.get(file);
+  };
+  persist();
   const running = [];
   const output = new PassThrough();
   // Node consumes its flags before constructing reporter argv. Only an explicit
   // list of real files gives a denominator; discovery and globs stay unknown.
-  const args = process.argv.slice(1);
   const total =
     args.length &&
     args.every((file) => {
@@ -62,10 +101,24 @@ export default async function* report(source) {
         data.line === 1 &&
         data.column === 1;
       if (wrapper && event.type === "test:dequeue") {
+        if (receipt) {
+          const file = observation(entry);
+          file.startCount++;
+          file.startedAt ??= new Date().toISOString();
+          persist();
+        }
         files.set(entry, { complete: false });
         progress(`file start ${entry} ${counts()} elapsed=${elapsed()}ms`);
       }
       if (wrapper && event.type === "test:complete") {
+        if (receipt) {
+          const file = observation(entry);
+          file.completeCount++;
+          file.finishedAt = new Date().toISOString();
+          file.durationMs = data.details.duration_ms;
+          file.passed = data.details.passed;
+          persist();
+        }
         const file = files.get(entry);
         if (file) {
           file.complete = true;
@@ -73,6 +126,15 @@ export default async function* report(source) {
             `file complete ${entry} ${counts()} duration=${Math.round(data.details.duration_ms)}ms result=${data.details.passed ? "passed" : "failed"} elapsed=${elapsed()}ms`,
           );
         }
+      }
+      if (receipt && event.type === "test:summary") {
+        if (data.file) {
+          const file = observation(data.file);
+          file.summaryCount++;
+          file.counts = data.counts;
+          file.success = data.success;
+          persist();
+        } else summary = data;
       }
       if (!wrapper && (event.type === "test:dequeue" || event.type === "test:complete")) {
         // New Node 24 provides process-local testId. Earlier versions need a
@@ -109,6 +171,16 @@ export default async function* report(source) {
   })
     .then(() => {
       clearInterval(timer);
+      if (record) {
+        Object.assign(record, {
+          status: "completed",
+          terminal: Boolean(summary),
+          finishedAt: new Date().toISOString(),
+          durationMs: elapsed(),
+          summary,
+        });
+        persist();
+      }
       progress(`summary ${counts(true)} elapsed=${elapsed()}ms running=${current()}`);
       output.end();
     })

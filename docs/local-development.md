@@ -81,11 +81,31 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 冷 runner 直接调用 `node scripts/run-quality-ci.mjs --input <三仓冻结 JSON> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对 Workbench 源路径> --prepare-sdk --prepare-inputs --core-source <已观察固定 Git 源>`；本地 `pnpm quality:ci --` 传入相同参数。公开 Workbench reader 先核实际三仓 HEAD、包身份、锁和 Core，缺少显式输入或原字节哈希立即拒绝；旧 `--phase input` 不再写历史 peer。普通 push/PR 通过 committed baseline 仅替换 own event，dispatch 必须声明完整三仓 tuple，两类验收回执分别记录。质量阶段保存 fast 与 required-and-affected 状态到 `quality-checks.json`，选择依据保存 `quality-test-plan.json`。GitHub 不再执行全量集合；Profile 准备仅在受影响集合需要时执行。具体规则与缓存拒绝条件见[当前 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。前项红不挡后项，整体仍非零；输入或准备失败立即拒绝。
 
-Linux `quality.yml` 将同一个 CLI 分为 `--stage prepare`、`build`、`checks`、`tests` 和 `summary`。省略 `--stage` 仍完整运行，`--phase` 继续选择原质量 lane。各步骤传入同一组参数，包含 `--prepare-sdk --prepare-inputs --input <冻结 JSON> --core-source <固定 Git 源> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对源路径>`。
+Linux [quality workflow](../.github/workflows/quality.yml) 在 scope 后并行启动 source-plan、producer 与 Mac。source-plan 仅 checkout 同组三仓/Core、写原候选并运行公开 `--stage plan --test-shards auto --test-file-concurrency 3 --test-timings scripts/quality-test-timings.json`，不安装或编译；小 control 只有计划与来源，没有产物或依赖准入权。early planner 收齐每个 required Core 后生成原正式计划的全部非空片，最多14个 worker、`max-parallel: 14`，不填空片。普通入口文件并发仍为2，Linux 各阶段显式3、Mac保持默认2；算法、容量拒绝和历史来源见 [测试执行合同](ci-test-execution.md)。历史样本未知耗时仍为 null，不证明新候选的性能通过。
 
-阶段回执写入本 job 的 `quality-stages.json`，绑定原输入哈希、lane、完整三仓与测试计划，保存阶段起止、耗时和独立检查结果。准备执行 SDK、依赖和私有 Workbench worktree 准备；构建执行候选包、资产与所需浏览器/桌面准备。后续进程重新走公开源码准入、SDK 和现有准备回执检查，并从冻结源码重建 `GEA_TEST_*` 环境，不读取上一 shell 的环境。GEA/Manage 的构建输出另按字节摘要核对；不能仅凭阶段 JSON 证明产物有效。
+每个 required Core 的 producer 只执行一次 `prepare`、`build`、`checks`，用原输入哈希、lane、完整三仓和执行计划形成 `quality-stages.json`。准备安装声明的原锁、SDK及私有 Workbench worktree；构建生成候选包、资产和必要浏览器/桌面输出。GEA/Manage 输出按字节摘要冻结。`checks` 收集 final-group 与 fast；检查失败仍导出已成功构建的准备物并继续测试，最终结果保留该失败。准备或构建失败则不能发布可执行输入。
 
-`checks` 收集 final-group 与 fast；其失败后 `tests` 仍运行原必选与受影响集合，保持并行 2 和拒绝必选 skip。准备或构建失败阻止依赖步骤。汇总拒绝失败、缺失、running、skip 或取消，上传 `quality-stages.json` 与原质量回执。GitHub step summary 是结束时的耗时摘要，不是实时 API。macOS 与最终 `candidate-quality` 继续使用原强制门禁。阶段状态只属于当前 job，不是跨任务状态或未来执行许可。
+producer 将原 candidate、阶段/执行计划、来源回执、binding 原字节及准备物摘要发布为小 index；大 bundle 每 Core 只导出、上传一次，保留1天。worker 在 producer 构建期间以一次活调用准备固定源码和独立的五组锁，保留最多双安装及 Workbench→inventory 顺序。GEA 依赖所需 GenUI 产物留到接收后；没有可重放的 source-ready token 或第二次调用接受旧 modules。新增 source-plan 的四仓 checkout 与小 control 传输都计入真实成本，不假称提前启动必然更快。
+
+[小控制入口](../scripts/quality-worker-control.mjs) 用原 plan、control 原字节 SHA 和实际源码校验早期 matrix。worker 仅有界等待同 repo/run/attempt/head/Core 的唯一成功 producer，核 API artifact 唯一 ID 后用 runner 既有 gh 下载到空私有 inbox，并再次核身份；失败、取消、超时、API 错误、缺失/重复/漂移均拒绝。请求和下载受同一单调时限及原 owned cancellation/drain 约束。接收仍完整核原 manifest/binding/tar，final 收齐原 producer indexes，复核早期 control/allocation 与原 catalog 精确一致，source-plan 也列入 required jobs。产物名包含 run_attempt，拒绝旧 attempt；大产物压缩等级1不变。
+
+包下载缓存仅保留 producer 的 `~/.npm`、`~/.cache/node/corepack` 和固定 Manage pnpm store 恢复/保存，沿原四仓锁 key、恢复前缀和成功 prepare 后的原 `cache-primary-key`。C3i 的 v8 worker restore 加安装未证明净收益，本轮回撤 worker locator/restore；历史观测保留。各 worker 仍按原 manager/锁独立 fresh 安装，缓存不含 `node_modules` 或构建物，也不替代源码/锁/integrity 检查。producer save、所有独立安装和 post 尾部均计入600秒。
+
+[worker 输入入口](../scripts/quality-worker-inputs.mjs) 在同一次活调用中完成提前五锁、有界接收和 GEA 锁安装，保留原配置/源码/锁前后检查。Manage 与 GEA 声明兼容时，可提前用 Manage 自身解析的 `@playwright/test → playwright → playwright-core` 精确 Node bin 运行 Linux `install-deps chromium`；三包完整相对文件字节、模式、内链、bin 在执行前后及 GEA 安装后须相同。只支持当前 Linux 闭包及 Darwin 专用的已知 optional fsevents 声明；版本或已知形状执行前不兼容才明确 deferred 到原晚段，IO/损坏/权限/命令非零/取消或执行后漂移均失败。不会把任意 optional 依赖忽略为通过。
+
+随后仍核 SDK inventory、Workbench 资产和原浏览器门禁。缺物或环境漂移直接拒绝，不回退到编译。原 quality CLI 再走来源、SDK consumer/Web/flock、Workbench/upstream/browser及阶段产物校验，从冻结源码重建 `GEA_TEST_*`；`--stage tests --execution-plan FILE --test-shard ID` 只执行分配的非空片。inputs-ready 不代表质量或测试通过；提前安装与 APT 的净收益仍待 fresh hosted completed。
+
+browser 计划另由 producer 的 `quality-shards --mode prepare-browser --root W` 冻结实际 `/opt/google/chrome` 发行树到 `W/.quality-system-chrome`。快照绑定系统包来源、完整字节/模式/内链清单和真实版本，沿同一 manifest/bundle 运输。 来源root和子目录记录真实普通权限（无特殊位，最多0777），准备物和worker目录统一为0755；sourceRootMode与各目录sourceMode受原摘要绑定，复制中变化仍拒绝。来源root的type/mode/realpath在准备诊断和回执中留证。当前 launch 未启用 setuid sandbox；仅精确 chrome-sandbox 的来源04755记录为准备物0755，其他特殊模式仍拒绝，tar不放宽。worker 先保留原镜像 Chrome 版本观察，再核收到快照并仅在本job新Linux VM只读bind到原系统路径；Chrome channel、严格版本及Chrome/Chromium双launch保持。挂载覆盖测试，job最后 `if: always()` 核快照未改并卸载固定自有挂载；准备、挂载或清理失败均使job失败，无原系统版本或下载fallback。不在开发者本机运行挂载命令。新增发行树体积和准备/下载/挂载/清理墙钟计入下一hosted实测，不能从fixture绿推定600秒通过。
+
+`quality-test-execution-plan.json` 保留完整选择、平台委派、片清单、工具链和输入摘要。tests 与本地默认 full 共用 [执行模块](../scripts/quality-test-execution.mjs)，保存真实 Node reporter 回执并核文件清单严格相等、每个文件只开始/完成一次、case 全通过和 child 退出。结果写 `quality-test-execution.json`，原 reporter JSON 在 `quality-test-results/<executionId>/`。空平台集合明确 not-applicable，不启动 Node 自动发现；重复、缺失、片外文件、失败、取消、skip/todo、signal、非终结或旧输入均拒绝。单片 passed 不能替代完整平台证明。
+
+macOS 对每个 required Core 保留独立原生隔离测试，通过本机 SDK 的 concrete cache roots 恢复准备物并完整校验；不使用 Linux SDK。原测试同样生成真实 Node 机器回执，独立 plan/build 摘要绑定本平台原 candidate、SDK receipt、Node/OS/arch及run/attempt。最终跨平台核同 Core、三仓和锁摘要，保留不同绝对路径形成的各自原输入哈希。
+
+`candidate-quality` 始终汇总小 catalogue 与每片/Mac 回执，不下载大 bundle。它核完整一次执行覆盖，并通过 [hosted budget](../scripts/quality-hosted-budget.mjs) 读取当前 run attempt 的 REST run 和全分页 jobs，分别保存 `coverage.json`、`hosted-budget.json`、`hosted-snapshot.json` 到本轮 `quality-a<attempt>-final` artifact。排队、准备、运输、锁安装、cache save、汇总与上传尾部都属于实际墙钟。门内 in-gate 结果只量到判定时刻，`completedMeasurement:false`；workflow 完成后还须从外部用 completed 模式及原 gateDecision 复核全部 job 和 final 上传尾部，才可声明完整600秒结果。compatibility 使用独立 `compatibility-final` 汇总其原上游状态，不代替 required 验收。
+
+本次仅合入已验证的选择与分片，不新增实验分支的600秒性能硬阻断。原源码准入、静态检查、构建、macOS隔离、逐文件完整覆盖及必需上游状态仍全部阻断；身份或功能状态未知同样拒绝。`hosted-budget.json` 的性能失败或未知保持原样，600秒目标仍待完成，不因功能门禁通过而改记达标。
+
+本地省略 `--stage` 仍完整运行，`--phase` 选择原质量 lane；显式分阶段仍可使用 prepare/build/checks/tests/summary。`--stage verify-tests [--test-results FILE]` 只读核当前执行计划、build摘要和完整平台回执；本地 summary 继续复核实际准备/构建产物。`--test-shards N` 只改变完整集合分组。阶段状态只属于当前 job；本地或 fixture 通过不代表真实 VM、完整 workflow、业务、发布或600秒验收。
 
 `node --test scripts/run-quality-ci-stages.test.mjs` 通过公开 CLI 验证真实临时 Git 输入、跨进程恢复、实际 fixture 测试、失败与取消。独立 checkout 可用 `GEA_FINAL_GROUP_WORKBENCH_SOURCE` 和 `GEA_FINAL_GROUP_MANAGE_SOURCE` 指向本票登记的只读 peer 源码。安装/编译命令使用受控 OS adapter，不安装依赖或构建产品；这些结果不代替远端完整 CI、真实 SDK 编译、Native 或业务验收。
 

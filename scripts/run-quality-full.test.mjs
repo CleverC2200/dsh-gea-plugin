@@ -20,7 +20,11 @@ test("the public contract command rejects a conditionally skipped required fixtu
   writeFileSync(join(root, "package.json"), JSON.stringify({ type: "module", scripts }));
   mkdirSync(join(root, "scripts"));
   mkdirSync(join(root, "tests"));
-  for (const file of ["quality-test-reporter.mjs", "run-quality-full.mjs"])
+  for (const file of [
+    "quality-test-reporter.mjs",
+    "quality-test-execution.mjs",
+    "run-quality-full.mjs",
+  ])
     copyFileSync(join("scripts", file), join(root, "scripts", file));
   const contracts = [
     ...scripts["test:contracts"].match(/\b(?:tests|scripts)\/[\w.-]+\.test\.mjs\b/g),

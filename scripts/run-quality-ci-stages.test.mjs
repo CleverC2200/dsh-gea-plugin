@@ -40,10 +40,14 @@ const fixtureSourceFiles = [
   "supported-cores.mjs",
   "ci-platform-tests.mjs",
   "quality-test-reporter.mjs",
+  "quality-test-execution.mjs",
+  "quality-shards.mjs",
+  "quality-runner-environment.mjs",
+  "quality-system-chrome.mjs",
   "fixtures/quality-ci-commands.mjs",
   "fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
 ];
-function fixture(t) {
+function fixture(t, { additionalTests = [] } = {}) {
   const job = realpathSync(mkdtempSync(join(tmpdir(), "gea-ci-stages-")));
   t.after(() => rmSync(job, { recursive: true, force: true }));
   const write = (file, value) => {
@@ -145,9 +149,14 @@ function fixture(t) {
     [gea, "@cleverc2200/gea-dsh-prototype", "pnpm@11.27.0", "pnpm-lock.yaml"],
   ];
   for (const [root, name, packageManager, lock] of packages) {
-    json(join(root, "package.json"), { name, packageManager, type: "module" });
+    json(join(root, "package.json"), {
+      name,
+      packageManager,
+      type: "module",
+      ...(root === manage ? { exports: { "./client": "./client/client.js" } } : {}),
+    });
     write(join(root, lock), "{}\n");
-    write(join(root, ".gitignore"), "lib/\nnode_modules/\n.runtime/\n");
+    write(join(root, ".gitignore"), "lib/\nclient/\nnode_modules/\n.runtime/\n");
   }
   json(join(workbench, "tsconfig.official.json"), {
     compilerOptions: {
@@ -170,14 +179,19 @@ function fixture(t) {
   json(join(gea, "scripts/quality-peer-baseline.json"), baseline);
   json(join(gea, "scripts/ci-test-policy.json"), {
     schemaVersion: 1,
-    required: ["scripts/stage-fixture.test.mjs"],
-    tests: ["scripts/stage-fixture.test.mjs"],
+    required: ["scripts/stage-fixture.test.mjs", ...additionalTests],
+    tests: ["scripts/stage-fixture.test.mjs", ...additionalTests],
     rules: [],
   });
   write(
     join(gea, "scripts/stage-fixture.test.mjs"),
     `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; import { loadBusinessProfilePolicy } from './business-profile-ci.mjs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.QUALITY_POLICY_WORKBENCH, ${JSON.stringify(workbench)}); const policy = await loadBusinessProfilePolicy(process.env.QUALITY_POLICY_WORKBENCH); assert.equal(policy.matchesProductSource(true, ['scripts/run-quality-ci.mjs']), true); assert.equal(policy.matchesProductSource(true, ['src/host.ts']), false); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_PLUGIN_UPDATE_CANDIDATE_CORE', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
   );
+  for (const file of additionalTests)
+    write(
+      join(gea, file),
+      "import test from 'node:test'; test('selected public file', () => {});\n",
+    );
   const geaHead = commit(gea);
   const manifest = {
     core: coreHead,
@@ -264,6 +278,162 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
     1,
   );
   assert.equal(commands.filter((entry) => entry.command === "sdk").length, 5);
+});
+
+test("the public plan stage reports the complete selection before any preparation or runtime writes", (t) => {
+  const f = fixture(t);
+  const result = f.run("plan");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const plan = JSON.parse(result.stdout);
+  assert.deepEqual(plan.selected, ["scripts/stage-fixture.test.mjs"]);
+  assert.deepEqual(
+    plan.shards.map((shard) => shard.files),
+    [["scripts/stage-fixture.test.mjs"]],
+  );
+  assert.equal(plan.estimates.unknownFiles, 1);
+  assert.equal(plan.shards[0].estimatedMs, null);
+  assert.equal(existsSync(join(f.job, "commands.jsonl")), false);
+  assert.equal(existsSync(f.stageFile), false);
+  assert.equal(existsSync(join(f.job, "official-latest-standard")), false);
+  assert.equal(existsSync(join(f.gea, ".runtime")), false);
+});
+
+test("the public CLI refuses unsupported file concurrency before preparation", (t) => {
+  const f = fixture(t);
+  for (const value of [
+    "0",
+    "1",
+    "5",
+    "03",
+    "3.0",
+    "3e0",
+    " 3",
+    "3 ",
+    "3\n",
+    "04",
+    "4.0",
+    "NaN",
+    "",
+  ]) {
+    const result = f.run("plan", {}, ["--test-file-concurrency", value]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /QUALITY_TEST_CONCURRENCY_REQUIRED/);
+  }
+  assert.equal(existsSync(join(f.job, "commands.jsonl")), false);
+  assert.equal(existsSync(f.stageFile), false);
+});
+
+for (const concurrency of [3, 4])
+  test(`explicit ${concurrency}-file CLI plans bind every stage and reject omitted or changed settings`, (t) => {
+    const f = fixture(t),
+      flag = ["--test-file-concurrency", String(concurrency)];
+    const result = f.run("plan", {}, flag);
+    assert.equal(result.status, 0, result.stderr);
+    const plan = JSON.parse(result.stdout);
+    assert.equal(plan.concurrency, concurrency);
+    assert.equal(plan.estimates.unknownFiles, 1);
+    assert.equal(plan.estimates.estimatedMs, null);
+    const file = join(f.job, "frozen-plan.json");
+    writeFileSync(file, JSON.stringify(plan));
+    const args = [...flag, "--execution-plan", file];
+    for (const stage of ["prepare", "build", "checks", "tests", "summary"]) {
+      const omitted = f.run(stage, {}, ["--execution-plan", file]);
+      assert.equal(omitted.status, 1);
+      assert.match(omitted.stderr, /QUALITY_TEST_PLAN_CHANGED/);
+      const changed = f.run(stage, {}, [
+        "--execution-plan",
+        file,
+        "--test-file-concurrency",
+        concurrency === 3 ? "4" : "2",
+      ]);
+      assert.equal(changed.status, 1);
+      assert.match(changed.stderr, /QUALITY_TEST_PLAN_CHANGED/);
+      const execution = f.run(stage, {}, args);
+      assert.equal(execution.status, 0, stage + execution.stdout + execution.stderr);
+    }
+    const receipt = JSON.parse(readFileSync(join(f.job, "quality-test-execution.json")));
+    assert.equal(receipt.capacity.status, "passed");
+    assert.equal(receipt.capacity.concurrency, concurrency);
+    if (concurrency === 3)
+      assert.deepEqual(receipt.results[0].libuvPool, {
+        status: "declared",
+        size: 4,
+        activeFiles: 1,
+        availableParallelism: receipt.capacity.observed.availableParallelism,
+        source: "capacity.observed.availableParallelism",
+      });
+    else assert.equal(Object.hasOwn(receipt.results[0], "libuvPool"), false);
+    assert.equal(f.read().binding.executionPlan.planSha256, plan.planSha256);
+    assert.equal(
+      f.run("verify-tests", {}, [
+        ...args,
+        "--test-results",
+        join(f.job, "quality-test-execution.json"),
+      ]).status,
+      0,
+    );
+  });
+
+test("the public plan keeps unknown timings and every selected file in nonempty deterministic groups", (t) => {
+  const f = fixture(t, { additionalTests: ["tests/slow.test.mjs", "tests/unknown.test.mjs"] });
+  const timings = join(f.job, "timings.json");
+  writeFileSync(
+    timings,
+    JSON.stringify({
+      source: { runId: "measured-fixture", platform: process.platform, concurrency: 2 },
+      files: [
+        { file: "tests/slow.test.mjs", durationMs: 300 },
+        { file: "scripts/stage-fixture.test.mjs", durationMs: 100 },
+      ],
+    }),
+  );
+  const run = () => f.run("plan", {}, ["--test-timings", timings, "--test-shards", "8"]);
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(result.stdout);
+  assert.equal(plan.shards.length, 3);
+  assert.ok(plan.shards.every((shard) => shard.files.length > 0));
+  assert.deepEqual(plan.shards.flatMap((shard) => shard.files).sort(), plan.selected);
+  assert.equal(plan.estimates.knownFiles, 2);
+  assert.equal(plan.estimates.unknownFiles, 1);
+  assert.equal(plan.estimates.knownSumMs, 400);
+  assert.equal(plan.estimates.estimatedMs, null);
+  assert.equal(
+    plan.shards.find((shard) => shard.files.includes("tests/unknown.test.mjs")).estimatedMs,
+    null,
+  );
+  assert.deepEqual(JSON.parse(run().stdout), plan);
+});
+
+test("the public staged test entry proves every actual file exactly once and rechecks its receipts", (t) => {
+  const f = fixture(t);
+  for (const stage of ["prepare", "build", "checks", "tests"]) {
+    const result = f.run(stage);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  }
+  const receipt = join(f.job, "quality-test-execution.json");
+  const record = JSON.parse(readFileSync(receipt));
+  assert.equal(record.status, "passed");
+  assert.equal(record.results.length, 1);
+  assert.deepEqual(
+    record.results[0].report.files.map((file) => file.file),
+    ["scripts/stage-fixture.test.mjs"],
+  );
+  assert.equal(record.results[0].report.files[0].startCount, 1);
+  const checked = f.run("verify-tests", {}, ["--test-results", receipt]);
+  assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+  assert.equal(JSON.parse(checked.stdout).status, "passed");
+  const oldAttempt = f.run("verify-tests", { GITHUB_RUN_ATTEMPT: "different-attempt" }, [
+    "--test-results",
+    receipt,
+  ]);
+  assert.equal(oldAttempt.status, 1);
+  assert.match(oldAttempt.stderr, /QUALITY_STAGE_INPUT_CHANGED/);
+  record.results[0].report.files[0].startCount = 2;
+  writeFileSync(receipt, JSON.stringify(record));
+  const duplicate = f.run("verify-tests", {}, ["--test-results", receipt]);
+  assert.equal(duplicate.status, 1);
+  assert.match(duplicate.stderr, /QUALITY_TEST_EXECUTION_REJECTED/);
 });
 
 test("checks failure keeps real tests running and the final receipt fails", (t) => {
@@ -416,4 +586,50 @@ test("stage fixtures ignore a concurrent quality fixture disappearing from scrip
     { cwd: probeSource, encoding: "utf8", env },
   );
   assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("a frozen worker executes only its assigned shard and cannot claim complete coverage", (t) => {
+  const f = fixture(t, { additionalTests: ["tests/worker-only.test.mjs"] });
+  const flags = ["--test-shards", "2"];
+  const planned = f.run("plan", {}, flags);
+  assert.equal(planned.status, 0, planned.stderr);
+  const plan = JSON.parse(planned.stdout);
+  const planFile = join(f.job, "worker-plan.json");
+  writeFileSync(planFile, planned.stdout);
+  for (const stage of ["prepare", "build", "checks"])
+    assert.equal(f.run(stage, {}, flags).status, 0, stage);
+  const shard = plan.shards.find((entry) => entry.files.includes("tests/worker-only.test.mjs"));
+  const workerFlags = [...flags, "--execution-plan", planFile, "--test-shard", shard.id];
+  const result = f.run("tests", {}, workerFlags);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(existsSync(join(f.job, "tests-executed")), false, "unassigned file must not run");
+  const receipt = JSON.parse(readFileSync(join(f.job, "quality-test-execution.json")));
+  assert.equal(receipt.scope, "shard");
+  assert.equal(receipt.results.length, 1);
+  assert.equal(receipt.results[0].shardId, shard.id);
+  const incomplete = f.run("verify-tests", {}, [...flags, "--execution-plan", planFile]);
+  assert.equal(incomplete.status, 1);
+  assert.match(incomplete.stderr, /QUALITY_TEST_EXECUTION_REJECTED/);
+});
+
+test("automatic metadata routing freezes one shard before preparation and later stages reject rerouting", (t) => {
+  const f = fixture(t, { additionalTests: ["tests/metadata-only.test.mjs"] }),
+    planned = f.run("plan", {}, ["--test-shards", "auto"]);
+  assert.equal(planned.status, 0, planned.stdout + planned.stderr);
+  const plan = JSON.parse(planned.stdout);
+  assert.equal(plan.shards.length, 1);
+  assert.equal(existsSync(join(f.job, "commands.jsonl")), false);
+  const file = join(f.job, "quality-test-execution-plan.json");
+  writeFileSync(file, planned.stdout);
+  const flags = ["--test-shards", "1", "--execution-plan", file];
+  const prepared = f.run("prepare", {}, flags);
+  assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+  assert.equal(
+    readFileSync(file, "utf8"),
+    planned.stdout,
+    "later stages preserve original plan bytes",
+  );
+  const changed = f.run("build", {}, ["--test-shards", "2", "--execution-plan", file]);
+  assert.equal(changed.status, 1);
+  assert.match(changed.stderr, /QUALITY_TEST_PLAN_CHANGED/);
 });

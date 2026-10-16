@@ -43,6 +43,11 @@ commands.spawnSync = (command, args, options = {}) => {
         return { ...success, status: 1 };
       mkdirSync(resolve(cwd, "lib"), { recursive: true });
       writeFileSync(resolve(cwd, "lib/host.js"), "fixture built output\n");
+      if (cwd === resolve(job, "candidate/dsh-agent-manage")) {
+        mkdirSync(resolve(cwd, "client"), { recursive: true });
+        writeFileSync(resolve(cwd, "client/client.js"), "fixture client output\n");
+        writeFileSync(resolve(cwd, "client/client.js.map"), "fixture client sourcemap\n");
+      }
     }
     if (args.includes("quality:fast") && process.env.FIXTURE_BLOCK)
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);

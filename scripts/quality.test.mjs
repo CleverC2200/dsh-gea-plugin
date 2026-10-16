@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -7,76 +7,81 @@ import {
   rmSync,
   mkdirSync,
   copyFileSync,
-  existsSync,
   appendFileSync,
   readFileSync,
+  realpathSync,
+  symlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
+const fixtureRoots = new WeakMap();
+let toolsDirectory, toolsError;
+after(() => {
+  if (toolsDirectory) rmSync(toolsDirectory, { recursive: true, force: true });
+});
 function fixture(t, content, extension = "mjs") {
-  const directory = mkdtempSync(join(fileURLToPath(root), "scripts/quality-fixture-"));
+  const directory = mkdtempSync(join(baselineFixture(t), "scripts/quality-fixture-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const file = join(directory, "sample." + extension);
   writeFileSync(file, content);
   return file;
 }
-function check(mode, ...files) {
+function check(t, mode, ...files) {
   return spawnSync(process.execPath, ["scripts/quality.mjs", mode, ...files], {
-    cwd: root,
+    cwd: baselineFixture(t),
     encoding: "utf8",
   });
 }
 test("lint accepts valid maintained JavaScript through its CLI", (t) => {
-  const result = check("lint", fixture(t, "export const value = 1;\n"));
+  const result = check(t, "lint", fixture(t, "export const value = 1;\n"));
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
 test("lint refuses debugger in JavaScript with a named rule and nonzero exit", (t) => {
-  const result = check("lint", fixture(t, "debugger;\n"));
+  const result = check(t, "lint", fixture(t, "debugger;\n"));
   assert.equal(result.status, 1);
   assert.match(result.stderr, /no-debugger/);
 });
 
 test("lint refuses invalid TypeScript syntax", (t) => {
-  const result = check("lint", fixture(t, "export const value: = 1;\n", "ts"));
+  const result = check(t, "lint", fixture(t, "export const value: = 1;\n", "ts"));
   assert.equal(result.status, 1);
 });
 
 test("formatter accepts existing style and rejects unformatted JavaScript", (t) => {
-  const good = check("format:check", fixture(t, "export const value = 1;\n"));
+  const good = check(t, "format:check", fixture(t, "export const value = 1;\n"));
   assert.equal(good.status, 0, good.stdout + good.stderr);
-  const bad = check("format:check", fixture(t, "export const value={a:1};\n"));
+  const bad = check(t, "format:check", fixture(t, "export const value={a:1};\n"));
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /unformatted/);
 });
 
 test("formatter checks HTML instead of silently skipping it", (t) => {
-  const bad = check("format:check", fixture(t, "<html><body><p>hello</p></body></html>\n", "html"));
+  const bad = check(
+    t,
+    "format:check",
+    fixture(t, "<html><body><p>hello</p></body></html>\n", "html"),
+  );
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /sample\.html/);
 });
 
-test("missing targets do not pass quality checks", () => {
-  const result = check("lint", "scripts/missing-quality-fixture.mjs");
+test("missing targets do not pass quality checks", (t) => {
+  const result = check(t, "lint", "scripts/missing-quality-fixture.mjs");
   assert.equal(result.status, 1);
   assert.match(result.stderr, /QUALITY_TARGET_MISSING/);
 });
 
 for (const directory of ["src", "scripts", "tests", "desktop", "demos"]) {
   test(`default lint discovers new files under ${directory}`, (t) => {
-    const parent = join(fileURLToPath(root), directory);
-    if (!existsSync(parent)) {
-      mkdirSync(parent);
-      t.after(() => rmSync(parent, { recursive: true, force: true }));
-    }
-    const directoryPath = mkdtempSync(join(fileURLToPath(root), directory, "quality-fixture-"));
+    const directoryPath = mkdtempSync(join(baselineFixture(t), directory, "quality-fixture-"));
     t.after(() => rmSync(directoryPath, { recursive: true, force: true }));
     writeFileSync(join(directoryPath, "bad.mjs"), "debugger;\n");
-    const result = check("lint");
+    const result = check(t, "lint");
     assert.equal(result.status, 1);
     assert.match(result.stderr, /bad\.mjs: eslint\(no-debugger\)/);
   });
@@ -84,6 +89,7 @@ for (const directory of ["src", "scripts", "tests", "desktop", "demos"]) {
 
 test("missing selected file cannot hide behind a valid selected file", (t) => {
   const result = check(
+    t,
     "lint",
     fixture(t, "export const value = 1;\n"),
     "scripts/missing-quality-fixture.mjs",
@@ -93,8 +99,9 @@ test("missing selected file cannot hide behind a valid selected file", (t) => {
 });
 
 function baselineFixture(t) {
+  if (fixtureRoots.has(t)) return fixtureRoots.get(t);
   // Keep installations outside the parent pnpm workspace so they cannot resolve to its root.
-  const directory = mkdtempSync(join(tmpdir(), "gea-quality-baseline-"));
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "gea-quality-baseline-")));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const result = spawnSync(
     "git",
@@ -102,7 +109,8 @@ function baselineFixture(t) {
     { encoding: "utf8" },
   );
   assert.equal(result.status, 0, result.stderr);
-  for (const part of ["scripts", "src"]) mkdirSync(join(directory, part), { recursive: true });
+  for (const part of ["scripts", "src", "tests", "desktop", "demos"])
+    mkdirSync(join(directory, part), { recursive: true });
   for (const file of [
     "scripts/quality.mjs",
     ".oxlintrc.json",
@@ -113,7 +121,7 @@ function baselineFixture(t) {
   ]) {
     copyFileSync(new URL(file, root), join(directory, file));
   }
-  // Each fixture installs its own tools with the original registry lock metadata.
+  // Each fixture declares exact tools with the original registry lock metadata.
   const manifest = JSON.parse(readFileSync(new URL("package.json", root)));
   const tools = { oxfmt: manifest.devDependencies.oxfmt, oxlint: manifest.devDependencies.oxlint };
   writeFileSync(
@@ -141,12 +149,17 @@ function baselineFixture(t) {
       "\n" +
       lock.slice(lock.indexOf("packages:\n")),
   );
-  const installed = spawnSync(
-    process.platform === "win32" ? "corepack.cmd" : "corepack",
-    ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
-    { cwd: directory, encoding: "utf8", shell: process.platform === "win32" },
-  );
-  assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+  // One file-owned tool preparation is read-only to cases. Each case owns its node_modules
+  // directory and runner links, so removing/replacing a runner cannot affect another fixture.
+  const prepared = prepareFixtureTools(directory);
+  mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
+  for (const tool of Object.keys(tools)) {
+    const packageRoot = realpathSync(join(prepared, "node_modules", tool));
+    const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json")));
+    const entry = typeof manifest.bin === "string" ? manifest.bin : manifest.bin[tool];
+    symlinkSync(packageRoot, join(directory, "node_modules", tool), "dir");
+    symlinkSync(resolve(packageRoot, entry), join(directory, "node_modules/.bin", tool), "file");
+  }
   const original = spawnSync(
     "git",
     ["show", "041ef35e16effcf98ffe3b252b64512c704dc29a:src/host.ts"],
@@ -154,7 +167,27 @@ function baselineFixture(t) {
   );
   assert.equal(original.status, 0, original.stderr);
   writeFileSync(join(directory, "src/host.ts"), original.stdout);
+  fixtureRoots.set(t, directory);
   return directory;
+}
+function prepareFixtureTools(seed) {
+  if (toolsError) throw toolsError;
+  if (toolsDirectory) return toolsDirectory;
+  toolsDirectory = mkdtempSync(join(tmpdir(), "gea-quality-tools-"));
+  try {
+    for (const file of ["package.json", "pnpm-lock.yaml"])
+      copyFileSync(join(seed, file), join(toolsDirectory, file));
+    const installed = spawnSync(
+      process.platform === "win32" ? "corepack.cmd" : "corepack",
+      ["pnpm", "install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
+      { cwd: toolsDirectory, encoding: "utf8", shell: process.platform === "win32" },
+    );
+    assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+    return toolsDirectory;
+  } catch (error) {
+    toolsError = error;
+    throw error;
+  }
 }
 function checkFixture(directory, mode) {
   return spawnSync(process.execPath, ["scripts/quality.mjs", mode, "src/host.ts"], {
@@ -201,8 +234,7 @@ test("rebasing a baseline anchor cannot absorb changed files", (t) => {
 });
 
 test("the retained official typecheck command refuses a different official HEAD before tsc", (t) => {
-  mkdirSync(new URL(".runtime/", root), { recursive: true });
-  const directory = mkdtempSync(join(fileURLToPath(root), ".runtime/quality-official-"));
+  const directory = mkdtempSync(join(tmpdir(), "quality-official-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   for (const part of [
     "gea",
