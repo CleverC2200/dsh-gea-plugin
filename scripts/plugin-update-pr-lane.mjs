@@ -12,12 +12,12 @@ export const pluginUpdateAuthorization = Object.freeze({
 });
 export const desktopBootstrapAuthorization = Object.freeze({
   repository: "CleverC2200/dsh-gea-plugin",
-  pullRequest: 85,
-  branch: "codex/gea-windows-store-157-20261016",
+  pullRequest: 86,
+  branch: "codex/plugin-update-bootstrap-158-20261016",
   instruction:
-    "补齐最新三个核心插件、GenUI 和首次安装初始化，重打 Mac/Windows 完整 GEA 包；保留 WeKnora、已有配置与更新回执，不改 Core，只跑必要的定向校验。",
-  productHead: "dd8ceb412afcaac2de8a3a9f57fd32286b648c5f",
-  base: "86f53bf9b0fd7c960eb0d03bf0a94514f7bea297",
+    "修复完整包在线更新缓存与已有客户端缺失来源，保留 WeKnora、原配置和回执，不改 Core、不放宽门禁；先发插件，安装包后置，只跑有影响的定向校验。",
+  productHead: "809d6fe3af7fb5cf85e0ae5100a440e3c4a42a01",
+  base: "055aeed6fd5bb2c77b8a3d0a06fd9ebf3e92af8a",
 });
 const supplements = [
   "scripts/plugin-update-pr-lane.mjs",
@@ -37,8 +37,8 @@ const bootstrapSupplements = [
   "docs/ci-core-policy.md",
 ];
 const desktopCompanions = {
-  "dsh-agent-workbench": "59aea218088da1ce0cdbbffb932cfb9cd518cae8",
-  "dsh-agent-manage": "6c54ba254e391ec34eb91f0cb4f2cec164be2cea",
+  "dsh-agent-workbench": "d173fb751a1dcae87901ac52e49c6a0ed11218fe",
+  "dsh-agent-manage": "05613edf2de878769993fbc5568b9ef1f3880e3d",
 };
 const frozenSources = {
   "dsh-agent-workbench": "eda9f6367c35544f45866c5e06e1ebfd1f5b61e0",
@@ -145,12 +145,15 @@ export function pluginUpdatePlanFor(repositories) {
         lane: "plugin-update-pr",
         runtime: false,
         browser: false,
-        acceptance: "targeted complete desktop bootstrap; broad selection not run",
+        acceptance: "targeted plugin store and existing source repair; broad selection not run",
         authorization: desktopBootstrapAuthorization,
         files: [
           "scripts/plugin-update-pr-lane.test.mjs",
           "desktop/company-bootstrap.test.mjs",
-          "desktop/official-branding.test.mjs",
+          "scripts/repair-plugin-store.test.mjs",
+          "tests/plugin-update-controller.contract.mjs",
+          "tests/plugin-update-install.contract.mjs",
+          "scripts/plugin-package-version.test.mjs",
         ],
       }
     : pluginUpdatePlan;
