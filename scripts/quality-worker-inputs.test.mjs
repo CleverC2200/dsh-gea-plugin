@@ -1419,6 +1419,7 @@ test("the real selector maps only the worker implementation to its public CLI co
   put(ownRepo.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.browserFixtures,
     "scripts/quality-worker-inputs.test.mjs",
     "scripts/quality-prepared-inputs.test.mjs",
     "tests/unrelated.test.mjs",

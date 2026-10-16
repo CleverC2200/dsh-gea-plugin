@@ -19,6 +19,7 @@ test("a dynamic Workbench source-policy change selects the GEA adapter contract"
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.browserFixtures,
     "scripts/run-quality-ci.test.mjs",
     "tests/window-launch-admission.test.mjs",
     "scripts/business-profile-ci.test.mjs",
@@ -89,6 +90,7 @@ function resourceImpactFixture(t, authoredFiles = []) {
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     ...policy.required,
+    ...policy.browserFixtures,
     "scripts/ci-policy-impact.test.mjs",
     "scripts/quality-prepared-inputs.test.mjs",
     "tests/sales-plan-action.test.mjs",
@@ -289,7 +291,12 @@ test("detail contributions select the built browser and actual installer contrac
     "tests/plugin-release-source.test.mjs",
     "tests/plugin-release.test.mjs",
   ])
-    writeFileSync(join(fixture.own.path, file), "export const fixture = true;\n");
+    writeFileSync(
+      join(fixture.own.path, file),
+      file.endsWith(".browser.mjs")
+        ? "import { chromium } from '@playwright/test'; await chromium.launch();"
+        : "export const fixture = true;\n",
+    );
   fixture.change(fixture.own, "src/plugin-detail-updates.tsx", "export const changed = true;\n");
   const plan = fixture.plan();
   assert.ok(plan.files.includes("tests/plugin-update-install.contract.mjs"), JSON.stringify(plan));
@@ -312,6 +319,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.browserFixtures,
     "tests/unrelated.test.mjs",
     "scripts/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
