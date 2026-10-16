@@ -1,3 +1,4 @@
+import { prepareWindowsFileCommit } from "./plugin-update-windows.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-client-modules";
@@ -111,7 +112,16 @@ export function mountPluginUpdates(
           throw Error("UPDATE_SOURCE_AUTHENTICATION_UNSUPPORTED");
         const core = await readPluginUpdateCore(ctx, config.core);
         lifetime.signal.throwIfAborted();
+        const fileCommit =
+          process.platform === "win32"
+            ? await prepareWindowsFileCommit(
+                join(deployment.runtimeDir, "plugin-updates/windows-platform"),
+                ctx.profileContext.installAnchor,
+                core.version,
+              )
+            : undefined;
         const source = createPluginReleaseSource(sourceConfig, {
+          fileCommit,
           trustDirectory: join(deployment.runtimeDir, "plugin-updates/source-trust"),
           resolveAuthentication: async (reference) => {
             if (reference !== "anonymous") throw Error("UPDATE_SOURCE_AUTHENTICATION_UNSUPPORTED");
@@ -123,6 +133,7 @@ export function mountPluginUpdates(
           core,
           source,
           runtimeDirectory: join(deployment.runtimeDir, "plugin-updates"),
+          fileCommit,
           readRuntimeProofs: async () => {
             const proofs = await readHostPluginModules(ctx);
             return proofs.map((proof) => {

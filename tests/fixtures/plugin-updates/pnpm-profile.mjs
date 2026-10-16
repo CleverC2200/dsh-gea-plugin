@@ -17,6 +17,10 @@ export async function installPnpmConsumerLayout(f, range, sdkPeers = {}) {
   const config = join(home, "empty.npmrc");
   await writeFile(config, "");
   const env = {
+    ...(process.env.ELECTRON_RUN_AS_NODE
+      ? { ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE }
+      : {}),
+    ...(process.platform === "win32" ? { SystemRoot: process.env.SystemRoot } : {}),
     PATH: process.env.PATH,
     HOME: home,
     XDG_CONFIG_HOME: home,
