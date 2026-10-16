@@ -171,6 +171,7 @@ function timestamp(value) {
 export function assessHostedBudget({
   snapshot,
   requiredJobs,
+  notApplicableJobs = [],
   finalJobName,
   mode = "completed",
   now = new Date().toISOString(),
@@ -183,6 +184,9 @@ export function assessHostedBudget({
     new Set(requiredJobs).size !== requiredJobs.length ||
     requiredJobs.includes(finalJobName) ||
     !requiredJobs.every((name) => typeof name === "string" && name.length) ||
+    !Array.isArray(notApplicableJobs) ||
+    notApplicableJobs.length > 1 ||
+    notApplicableJobs.some((name) => name !== "test-shards" || requiredJobs.includes(name)) ||
     !finalJobName
   )
     throw Error("HOSTED_BUDGET_INPUT_REQUIRED");
@@ -217,6 +221,14 @@ export function assessHostedBudget({
   const { run, jobs } = snapshot;
   const final = jobs.filter((job) => job.name === finalJobName);
   const functionalReasons = [];
+  for (const name of notApplicableJobs) {
+    const found = jobs.filter((job) => job.name === name);
+    if (
+      found.length > 1 ||
+      (found.length === 1 && (found[0].status !== "completed" || found[0].conclusion !== "skipped"))
+    )
+      functionalReasons.push("HOSTED_NOT_APPLICABLE_JOB: " + name);
+  }
   for (const name of requiredJobs) {
     const found = jobs.filter((job) => job.name === name);
     if (found.length !== 1 || found[0].status !== "completed" || found[0].conclusion !== "success")
@@ -256,38 +268,45 @@ export function assessHostedBudget({
   order(started !== null && decision !== null && started <= decision, "workflow/decision");
   if (mode === "completed" && run.status !== "completed") reasons.push("HOSTED_COMPLETION_PENDING");
   if (mode === "in-gate" && !finalMatches) reasons.push("HOSTED_CURRENT_FINAL_REQUIRED");
-  const walls = jobs.map((job) => {
-    const start = readTime(job.started_at, "job " + job.id + " start");
-    const currentFinal =
-      mode === "in-gate" &&
-      final.length === 1 &&
-      job.id === final[0].id &&
-      job.status === "in_progress";
-    if (!currentFinal && job.status !== "completed")
-      reasons.push("HOSTED_JOB_COMPLETION_REQUIRED: " + job.id);
-    const end = currentFinal ? observed : readTime(job.completed_at, "job " + job.id + " finish");
-    if (currentFinal && job.completed_at !== null)
-      reasons.push("HOSTED_CURRENT_FINAL_COMPLETED_AT");
-    const valid =
-      start !== null &&
-      end !== null &&
-      started !== null &&
-      decision !== null &&
-      started <= start &&
-      start <= end &&
-      end <= decision;
-    order(valid, "job " + job.id);
-    return {
-      id: job.id,
-      name: job.name,
-      status: job.status,
-      startedAt: job.started_at,
-      finishedAt: currentFinal ? null : job.completed_at,
-      durationMs: valid ? end - start : null,
-      measurement: currentFinal ? "running-to-decision" : "completed",
-      start,
-    };
-  });
+  const walls = jobs
+    .filter(
+      (job) =>
+        !notApplicableJobs.includes(job.name) ||
+        job.status !== "completed" ||
+        job.conclusion !== "skipped",
+    )
+    .map((job) => {
+      const start = readTime(job.started_at, "job " + job.id + " start");
+      const currentFinal =
+        mode === "in-gate" &&
+        final.length === 1 &&
+        job.id === final[0].id &&
+        job.status === "in_progress";
+      if (!currentFinal && job.status !== "completed")
+        reasons.push("HOSTED_JOB_COMPLETION_REQUIRED: " + job.id);
+      const end = currentFinal ? observed : readTime(job.completed_at, "job " + job.id + " finish");
+      if (currentFinal && job.completed_at !== null)
+        reasons.push("HOSTED_CURRENT_FINAL_COMPLETED_AT");
+      const valid =
+        start !== null &&
+        end !== null &&
+        started !== null &&
+        decision !== null &&
+        started <= start &&
+        start <= end &&
+        end <= decision;
+      order(valid, "job " + job.id);
+      return {
+        id: job.id,
+        name: job.name,
+        status: job.status,
+        startedAt: job.started_at,
+        finishedAt: currentFinal ? null : job.completed_at,
+        durationMs: valid ? end - start : null,
+        measurement: currentFinal ? "running-to-decision" : "completed",
+        start,
+      };
+    });
   const firstJob =
     jobs.length && walls.every((job) => job.start !== null)
       ? Math.min(...walls.map((job) => job.start))

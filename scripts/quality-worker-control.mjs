@@ -275,6 +275,7 @@ export function createEarlyAllocation({ controls, expected }) {
   const include = ordered.flatMap(({ control, sha256 }) => {
     if (!/^[a-f0-9]{64}$/.test(sha256 ?? "")) reject("original control SHA required");
     verifyWorkerControl(control, expected);
+    if (control.plan.shards.length === 1) return [];
     return control.plan.shards.map((shard) => ({
       core: control.plan.binding.manifest.core,
       shard: shard.id,
@@ -307,12 +308,15 @@ export async function verifyWorkerIndex({ control, index }) {
   };
   const { createShardCatalog } = await import("./quality-shards.mjs");
   createShardCatalog({ indexes: [index], expected });
+  const producer = control.plan.shards.length === 1;
+  const metadata = producer ? index.binding.producer : index.binding.worker;
   if (
+    (index.execution === "producer") !== producer ||
     !equal(control.plan, index.plan) ||
-    !equal(control.metadata.sources, index.binding.worker.sources.slice(0, 4)) ||
-    !equal(control.metadata.tools, index.binding.worker.tools) ||
-    !equal(control.metadata.sdkIdentity, index.binding.worker.sdkIdentity) ||
-    control.runtime !== index.binding.worker.runtime ||
+    !equal(control.metadata.sources, metadata.sources.slice(0, 4)) ||
+    !equal(control.metadata.tools, metadata.tools) ||
+    !equal(control.metadata.sdkIdentity, metadata.sdkIdentity) ||
+    (!producer && control.runtime !== metadata.runtime) ||
     sha(control.candidateBytes) !== index.binding.inputSha256 ||
     index.groupId !== expected.groupId
   )

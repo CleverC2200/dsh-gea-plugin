@@ -1,4 +1,3 @@
-/** Small same-run preparation indexes, a nonempty worker matrix, and exact execution aggregation. */
 import { readFileSync, writeFileSync, readdirSync, statSync, appendFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,14 +67,33 @@ function verifyIndex(index, expected) {
       ["passed", "failed"].includes(stages.stages.checks?.status),
     "preparation stages",
   );
-  requireValue(
-    Number.isSafeInteger(index.bundleBytes) && index.bundleBytes > 0 && hash(index.bundleSha256),
-    "bundle bytes",
-  );
-  requireValue(
-    hash(index.manifestSha256) && /^[1-9][0-9]*$/.test(index.bundleArtifactId),
-    "bundle transport",
-  );
+  if (plan.shards.length === 1) {
+    requireValue(
+      index.execution === "producer" &&
+        binding.producer &&
+        !binding.worker &&
+        stages.stages.tests?.status === "passed" &&
+        index.receipt?.scope === "platform" &&
+        ["bundleBytes", "bundleSha256", "manifestSha256", "bundleArtifactId"].every(
+          (key) => index[key] === undefined,
+        ),
+      "producer execution without transport",
+    );
+    verifyExecutionResults({ plan, receipt: index.receipt, buildSha256: binding.buildSha256 });
+  } else {
+    requireValue(
+      index.execution === undefined || index.execution === "workers",
+      "execution location",
+    );
+    requireValue(
+      Number.isSafeInteger(index.bundleBytes) && index.bundleBytes > 0 && hash(index.bundleSha256),
+      "bundle bytes",
+    );
+    requireValue(
+      hash(index.manifestSha256) && /^[1-9][0-9]*$/.test(index.bundleArtifactId),
+      "bundle transport",
+    );
+  }
   requireValue(index.groupId === expected.groupId, "source group");
   requireValue(
     typeof index.bindingBytes === "string" && equal(JSON.parse(index.bindingBytes), binding),
@@ -117,21 +135,23 @@ export function createShardCatalog({ indexes, expected }) {
     verifyIndex(index, expected);
     return index;
   });
-  const include = ordered.flatMap((index) =>
-    index.plan.shards.map((shard) => ({
-      core: index.core,
-      shard: shard.id,
-      shardCount: index.plan.shards.length,
-      nodeVersion: expected.node,
-      bindingSha256: sha(index.bindingBytes),
-      manifestSha256: index.manifestSha256,
-      bundleArtifactId: index.bundleArtifactId,
-      planSha256: index.plan.planSha256,
-      inputSha256: index.binding.inputSha256,
-      buildSha256: index.binding.buildSha256,
-      phase: index.plan.binding.phase,
-    })),
-  );
+  const include = ordered
+    .filter((index) => index.execution !== "producer")
+    .flatMap((index) =>
+      index.plan.shards.map((shard) => ({
+        core: index.core,
+        shard: shard.id,
+        shardCount: index.plan.shards.length,
+        nodeVersion: expected.node,
+        bindingSha256: sha(index.bindingBytes),
+        manifestSha256: index.manifestSha256,
+        bundleArtifactId: index.bundleArtifactId,
+        planSha256: index.plan.planSha256,
+        inputSha256: index.binding.inputSha256,
+        buildSha256: index.binding.buildSha256,
+        phase: index.plan.binding.phase,
+      })),
+    );
   requireValue(include.length <= 256, "GitHub matrix capacity");
   return {
     schemaVersion: 1,
@@ -139,6 +159,9 @@ export function createShardCatalog({ indexes, expected }) {
     indexes: ordered,
     matrix: { include },
     hasShards: include.length > 0,
+    notApplicableJobs: ordered.every((index) => index.execution === "producer")
+      ? ["test-shards"]
+      : [],
     producerChecks: ordered.every((x) => x.stages.stages.checks.status === "passed")
       ? "passed"
       : "failed",
@@ -147,7 +170,9 @@ export function createShardCatalog({ indexes, expected }) {
       "plan-test-shards",
       ...ordered.flatMap((index) => [
         `prepare-${index.core}`,
-        ...index.plan.shards.map((shard) => `test-${index.core}-${shard.id}`),
+        ...(index.execution === "producer"
+          ? []
+          : index.plan.shards.map((shard) => `test-${index.core}-${shard.id}`)),
         `macos-${index.core}`,
       ]),
     ],
@@ -160,7 +185,11 @@ export function aggregateShardResults({ catalog, workers, macos }) {
   for (const index of catalog.indexes) {
     verifyIndex(index, catalog.expected);
     const matching = workers.filter((x) => x.core === index.core);
-    requireValue(matching.length === index.plan.shards.length, "Core worker count");
+    const producer = index.execution === "producer";
+    requireValue(
+      matching.length === (producer ? 0 : index.plan.shards.length),
+      "Core worker count",
+    );
     const results = matching.flatMap((x) => {
       requireValue(
         x.preparation?.status === "worker-inputs-ready" &&
@@ -186,16 +215,18 @@ export function aggregateShardResults({ catalog, workers, macos }) {
       platform: "linux",
       ...verifyExecutionResults({
         plan: index.plan,
-        receipt: {
-          schemaVersion: 1,
-          scope: "platform",
-          status: "passed",
-          terminal: true,
-          executionId: "aggregate:" + index.plan.planSha256,
-          planSha256: index.plan.planSha256,
-          buildSha256: index.binding.buildSha256,
-          results,
-        },
+        receipt: producer
+          ? index.receipt
+          : {
+              schemaVersion: 1,
+              scope: "platform",
+              status: "passed",
+              terminal: true,
+              executionId: "aggregate:" + index.plan.planSha256,
+              planSha256: index.plan.planSha256,
+              buildSha256: index.binding.buildSha256,
+              results,
+            },
         buildSha256: index.binding.buildSha256,
       }),
     });
@@ -278,6 +309,43 @@ export async function shardCli(args) {
     const root = resolve(values.root),
       plan = json(join(root, "quality-test-execution-plan.json")),
       stages = json(join(root, "quality-stages.json"));
+    if (plan.shards.length === 1) {
+      requireValue(
+        !values.bundle && !values.transport && !values["artifact-id"],
+        "producer transport not applicable",
+      );
+      const { createWorkerSourceControl } = await import("./quality-worker-inputs.mjs");
+      const control = createWorkerSourceControl({ root, executionPlan: plan });
+      const binding = {
+        ...plan.binding,
+        planSha256: plan.planSha256,
+        buildSha256: executionDigest(stages.artifacts),
+        producer: control.metadata,
+      };
+      const index = {
+        schemaVersion: 1,
+        execution: "producer",
+        core: plan.binding.manifest.core,
+        groupId: JSON.parse(control.groupBytes).groupId,
+        candidate: plan.binding.manifest,
+        plan,
+        stages,
+        binding,
+        bindingBytes: JSON.stringify(binding, null, 2) + "\n",
+        admission: control.admission,
+        receipt: json(join(root, "quality-test-execution.json")),
+      };
+      verifyIndex(index, {
+        cores: [index.core],
+        sources: index.candidate.repositories,
+        node: plan.binding.node,
+        runId: plan.binding.runId,
+        runAttempt: plan.binding.runAttempt,
+        groupId: index.groupId,
+      });
+      write(values.output, index);
+      return index;
+    }
     const bindingBytes = readFileSync(join(root, "quality-worker-binding.json"), "utf8"),
       binding = JSON.parse(bindingBytes);
     const { createWorkerBinding } = await import("./quality-worker-inputs.mjs");
@@ -293,6 +361,7 @@ export async function shardCli(args) {
     requireValue(sha(bytes) === binding.inputSha256, "original candidate bytes");
     const index = {
       schemaVersion: 1,
+      execution: "workers",
       bundleBytes: statSync(values.bundle).size,
       bundleSha256: transport.bundleSha256,
       core: candidate.core,

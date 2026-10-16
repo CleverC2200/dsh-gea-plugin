@@ -379,7 +379,7 @@ test("Linux preparation exports once and failed checks block executable worker i
   );
   assert.match(sourcePlan, /quality-worker-control\.mjs --mode freeze/);
   const steps = linux.split(/\n      - /);
-  for (const stage of ["prepare", "build", "checks"]) {
+  for (const stage of ["prepare", "build", "checks", "tests"]) {
     const step = steps.find((entry) => entry.includes(`id: quality-${stage}\n`));
     assert.ok(step, stage);
     assert.match(step, new RegExp(`--stage ${stage}(?:\n|$)`));
@@ -404,7 +404,15 @@ test("Linux preparation exports once and failed checks block executable worker i
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: sdk-paths"));
   assert.match(linux, /--stage plan.*--test-shards auto/);
   assert.match(linux, /QUALITY_TEST_SHARDS: \$\{\{ steps\.quality-plan\.outputs\.shards \}\}/);
-  assert.doesNotMatch(linux, /--stage tests|--stage summary/);
+  assert.match(linux, /--stage tests/);
+  const localTests = steps.find((step) => step.includes("id: quality-tests"));
+  assert.match(localTests, /quality-plan\.outputs\.shards == '1'/);
+  const browserCache = steps.find((step) => step.includes("path: .quality-browser"));
+  assert.match(browserCache, /quality-plan\.outputs\.browser == 'true'/);
+  const chromeSnapshot = steps.find((step) => step.includes("--mode prepare-browser"));
+  assert.match(chromeSnapshot, /quality-plan\.outputs\.shards != '1'/);
+  assert.match(chromeSnapshot, /quality-plan\.outputs\.browser == 'true'/);
+  assert.doesNotMatch(linux, /--stage summary/);
   assert.equal((linux.match(/quality-prepared-inputs\.mjs export/g) ?? []).length, 1);
   const planner = source.slice(
     source.indexOf("  plan-test-shards:\n"),

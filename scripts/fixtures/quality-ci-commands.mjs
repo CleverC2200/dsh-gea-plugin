@@ -6,6 +6,8 @@ import { resolve } from "node:path";
 
 const job = process.env.QUALITY_STAGE_FIXTURE_ROOT;
 if (!job) throw Error("QUALITY_STAGE_FIXTURE_ROOT_REQUIRED");
+if (process.env.FIXTURE_PLATFORM)
+  Object.defineProperty(process, "platform", { value: process.env.FIXTURE_PLATFORM });
 const originalSpawn = commands.spawnSync;
 const originalExec = commands.execFileSync;
 const success = { status: 0, stdout: "", stderr: "" };
@@ -22,9 +24,13 @@ commands.spawnSync = (command, args, options = {}) => {
     const core = args[args.indexOf("--core") + 1];
     if (process.env.FIXTURE_FAIL === "prepare") return { ...success, status: 1 };
     if (args.includes("--prepare") && !existsSync(core)) {
-      const clone = originalSpawn("git", ["clone", "-q", resolve(job, "core-source"), core], {
-        encoding: "utf8",
-      });
+      const clone = originalSpawn(
+        "git",
+        ["clone", "-q", resolve(job, "source/official-core"), core],
+        {
+          encoding: "utf8",
+        },
+      );
       if (clone.status) return clone;
     }
     if (!existsSync(core)) return { ...success, status: 1, stderr: "missing prepared SDK" };

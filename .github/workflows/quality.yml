@@ -340,6 +340,7 @@ jobs:
           path: ${{ steps.sdk-paths.outputs.paths }}
           key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ matrix.core }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
       - uses: actions/cache/restore@v4
+        if: steps.quality-plan.outputs.browser == 'true'
         with:
           path: .quality-browser
           key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('candidate/dsh-gea-plugin/pnpm-lock.yaml') }}
@@ -387,15 +388,25 @@ jobs:
           QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
         run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage checks
 
+      - name: Execute the single shard in its producer
+        id: quality-tests
+        if: ${{ !cancelled() && steps.quality-checks.outcome == 'success' && steps.quality-plan.outputs.shards == '1' }}
+        env:
+          QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage tests
+
       - name: Freeze the actual system Chrome distribution
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' && steps.quality-plan.outputs.shards != '1' && steps.quality-plan.outputs.browser == 'true' }}
         run: node scripts/quality-shards.mjs --mode prepare-browser --root "$GITHUB_WORKSPACE"
       - name: Freeze worker preparation binding
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' && steps.quality-plan.outputs.shards != '1' }}
         run: node scripts/quality-shards.mjs --mode binding --root "$GITHUB_WORKSPACE" --output "$GITHUB_WORKSPACE/quality-worker-binding.json"
       - name: Export prepared bytes once for this Core
         id: export
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' && steps.quality-plan.outputs.shards != '1' }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/transfer"
           node scripts/quality-prepared-inputs.mjs export --root "$GITHUB_WORKSPACE" --binding "$GITHUB_WORKSPACE/quality-worker-binding.json" --manifest "$GITHUB_WORKSPACE/transfer/manifest.json" --bundle "$GITHUB_WORKSPACE/transfer/prepared.tar" > "$GITHUB_WORKSPACE/transport-export.json"
@@ -409,12 +420,17 @@ jobs:
           compression-level: 1
           if-no-files-found: error
       - name: Publish the small Core index with trusted upload identity
+        id: worker-index
         if: ${{ !cancelled() && steps.bundle.outcome == 'success' }}
         env:
           BUNDLE_ARTIFACT_ID: ${{ steps.bundle.outputs.artifact-id }}
         run: node scripts/quality-shards.mjs --mode index --root "$GITHUB_WORKSPACE" --bundle "$GITHUB_WORKSPACE/transfer/prepared.tar" --transport "$GITHUB_WORKSPACE/transport-export.json" --artifact-id "$BUNDLE_ARTIFACT_ID" --output "$GITHUB_WORKSPACE/quality-index.json"
+      - name: Publish the single producer execution index
+        id: producer-index
+        if: ${{ !cancelled() && steps.quality-tests.outcome == 'success' }}
+        run: node scripts/quality-shards.mjs --mode index --root "$GITHUB_WORKSPACE" --output "$GITHUB_WORKSPACE/quality-index.json"
       - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() && steps.bundle.outcome == 'success' }}
+        if: ${{ !cancelled() && (steps.worker-index.outcome == 'success' || steps.producer-index.outcome == 'success') }}
         with:
           name: quality-a${{ github.run_attempt }}-index-${{ matrix.core }}
           path: quality-index.json
@@ -440,6 +456,7 @@ jobs:
             quality-stages.json
             quality-test-plan.json
             quality-test-execution-plan.json
+            quality-test-execution.json
             quality-source-admission.json
             system-chrome-preparation.json
             candidate/dsh-gea-plugin/.runtime/quality-fast.json
@@ -490,7 +507,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    name: test-${{ matrix.core }}-${{ matrix.shard }}
+    name: ${{ matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards' }}
     if: ${{ always() && !cancelled() && needs.plan-test-shards.result == 'success' && needs.plan-test-shards.outputs.has-shards == 'true' }}
     needs: [candidate-scope, plan-test-shards]
     runs-on: ubuntu-latest
@@ -747,7 +764,7 @@ jobs:
           name: quality-a${{ github.run_attempt }}-allocation
           path: final/allocation
       - uses: actions/download-artifact@v8
-        if: always()
+        if: ${{ always() && needs.plan-test-shards.outputs.has-shards == 'true' }}
         with:
           pattern: quality-a${{ github.run_attempt }}-worker-*
           path: final/workers
@@ -769,7 +786,7 @@ jobs:
       - name: Reconcile early allocation with every original producer index
         if: always()
         run: |
-          mkdir -p final/catalog
+          mkdir -p final/catalog final/workers
           node scripts/quality-worker-control.mjs --mode catalog --controls final/controls --indexes final/indexes --allocation final/allocation/allocation.json --output final/catalog/catalog.json
       - name: Verify exact coverage and independently measure the hosted attempt
         if: always()

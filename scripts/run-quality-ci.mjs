@@ -13,7 +13,14 @@ import { runQualityChecks } from "./run-quality-checks.mjs";
 /** Public source-event admission and fail-closed workflow aggregation. */
 import { parseArgs, isDeepStrictEqual } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, realpathSync, existsSync, mkdirSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  realpathSync,
+  existsSync,
+  mkdirSync,
+  appendFileSync,
+} from "node:fs";
 import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -239,6 +246,7 @@ try {
       hosted = assessHostedBudget({
         snapshot,
         requiredJobs: catalog?.requiredJobs ?? ["candidate-scope", "plan-test-shards"],
+        notApplicableJobs: catalog?.notApplicableJobs ?? [],
         finalJobName: "candidate-quality",
         mode: "in-gate",
       });
@@ -457,6 +465,8 @@ try {
       refuse("QUALITY_TEST_FROZEN_SHARD_REQUIRED");
     if (values.stage === "plan") {
       finalGroup.verifyUnchanged();
+      if (process.env.GITHUB_OUTPUT)
+        appendFileSync(process.env.GITHUB_OUTPUT, `browser=${plan.browser === true}\n`);
       console.log(JSON.stringify(executionPlan));
       process.exit(0);
     }
