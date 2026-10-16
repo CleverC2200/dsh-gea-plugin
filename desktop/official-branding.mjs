@@ -1,6 +1,9 @@
 import { fileURLToPath } from "node:url";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
 
-export function officialGeaBranding(config) {
+export function officialGeaBranding(config, { companySeed } = {}) {
   const icon = fileURLToPath(new URL("./build/icon.png", import.meta.url));
   const welcome = fileURLToPath(new URL("./official-welcome", import.meta.url));
   return {
@@ -12,6 +15,7 @@ export function officialGeaBranding(config) {
       ...config.extraMetadata,
       productName: "GEA Desktop",
       dshDesktopAppId: "com.cleverc2200.gea.desktop",
+      ...(companySeed ? { main: "official-main.cjs" } : {}),
     },
     mac: { ...config.mac, icon },
     files: [
@@ -23,9 +27,41 @@ export function officialGeaBranding(config) {
         to: "renderer/gea-brand",
         filter: ["icon.png"],
       },
+      ...(companySeed
+        ? [
+            {
+              from: fileURLToPath(new URL(".", import.meta.url)),
+              to: ".",
+              filter: ["official-main.cjs", "company-bootstrap.mjs"],
+            },
+          ]
+        : []),
     ],
-    extraResources: config.extraResources.map((resource) =>
-      resource.to === "icon.png" ? { ...resource, from: icon } : resource,
-    ),
+    extraResources: [
+      ...config.extraResources.map((resource) =>
+        resource.to === "icon.png" ? { ...resource, from: icon } : resource,
+      ),
+      ...(companySeed
+        ? [{ from: companySeed, to: "company-seed", filter: ["**/*"] }]
+        : []),
+    ],
+    ...(companySeed
+      ? {
+          afterPack: async (context) => {
+            await config.afterPack?.(context);
+            const resources = context.packager.getResourcesDir(
+              context.appOutDir,
+            );
+            const path = join(resources, "company-seed/manifest.json");
+            const manifest = JSON.parse(await readFile(path, "utf8"));
+            const root = join(resources, "app.asar");
+            for (const artifact of manifest.core.artifacts)
+              artifact.sha256 = createHash("sha256")
+                .update(await readFile(join(root, artifact.path)))
+                .digest("hex");
+            await writeFile(path, JSON.stringify(manifest, null, 2) + "\n");
+          },
+        }
+      : {}),
   };
 }
