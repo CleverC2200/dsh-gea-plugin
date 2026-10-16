@@ -28,7 +28,7 @@ import {
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
-import { lastUserQuestion, mountTurnAnchor } from "./host/turn-anchor.ts";
+import { lastUserQuestion } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
 import {
   assertBusinessResourceAvailable,
@@ -580,11 +580,6 @@ export async function apply(
       if (message.source.kind !== "user") return;
       const question = lastUserQuestion([message]);
       if (question) resetReadQuestion(question, agent.id);
-    }),
-  );
-  ctx.effect(() =>
-    mountTurnAnchor(ctx, {
-      onNewQuestion: resetReadQuestion,
     }),
   );
   ctx.effect(() => async () => {

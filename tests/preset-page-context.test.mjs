@@ -2,19 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { surfacePromptLine } from "../src/host/workbench-surface.ts";
-import {
-  profileFor,
-  allowedTools,
-  COMMON_PROMPT,
-  TOOL_DESCRIPTIONS,
-} from "../src/host/prompt-policy.ts";
+import { profileFor, allowedTools, TOOL_DESCRIPTIONS } from "../src/host/prompt-policy.ts";
 
 test("scope queries do not require a bound page; page references cannot fabricate a page", () => {
   const main = surfacePromptLine(undefined);
   assert.match(main, /未绑定/);
   assert.match(main, /不空读页面/);
   assert.match(main, /query_business_data/);
-  assert.match(COMMON_PROMPT, /独立查询无需开页面/);
   const profile = profileFor("gea-readonly");
   assert.ok(allowedTools(profile).has("gea_sales_plan_read"));
   assert.ok(allowedTools(profile).has("gea_visible_workbench_context"));

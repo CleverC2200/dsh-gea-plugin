@@ -157,6 +157,23 @@ test("interleaved tool arguments assemble into distinct validated final blocks",
   ]);
   assert.equal(chunks.at(-1).reason.kind, "tool-calls");
 });
+test("empty tool metadata on continuation frames preserves the original call", async () => {
+  const wire =
+    event(toolDelta(0, "read-0", '{"kind":')) +
+    event({ tool_calls: [{ index: 0, id: "", function: { name: "", arguments: '"periods"}' } }] }) +
+    event({}, "tool_calls");
+  const chunks = await collect(geaTextStream(streamOf(wire), undefined, offered));
+  assert.deepEqual(
+    chunks.find((chunk) => chunk.type === "block-end" && chunk.block.type === "tool-call").block,
+    {
+      type: "tool-call",
+      id: "read-0",
+      name: "gea_sales_plan_read",
+      arguments: '{"kind":"periods"}',
+    },
+  );
+});
+
 test("unoffered, duplicate, changed, oversized and incomplete tools never produce executable blocks", async () => {
   const cases = [
     event(toolDelta(0, "id", "{}", "gea_approve")) + event({}, "tool_calls"),

@@ -295,7 +295,7 @@ test(
 );
 
 test(
-  "catalog stalls block backend repetition while native query results retain every returned row",
+  "repeated catalog calls remain available and native query results retain every returned row",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t, {
@@ -382,7 +382,7 @@ test(
           arguments: JSON.stringify({ keyword: "a" }),
         };
       else if (step === 5) {
-        assert.match(
+        assert.doesNotMatch(
           body.messages.filter((message) => message.role === "tool").at(-1).content,
           /GEA_CATALOG_NO_PROGRESS/,
         );
@@ -445,7 +445,7 @@ test(
       (rows) => rows.some((row) => row.type === "turn/end"),
       30000,
     );
-    assert.equal(calls.filter((call) => call.name === "inspect_cube_model").length, 3);
+    assert.equal(calls.filter((call) => call.name === "inspect_cube_model").length, 4);
     const sent = calls.filter((call) => call.name === "query_business_data");
     assert.equal(sent.length, 1, "caller-owned named queries stay in one native dispatch");
     assert.deepEqual(sent[0].arguments, args);

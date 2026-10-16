@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { currentMcp, queryTool, query, businessCallBudget } from "./fixtures/current-mcp.mjs";
+import { currentMcp, queryTool, query } from "./fixtures/current-mcp.mjs";
 
 const catalog = "mcp__gea-gateway__weknora_list_knowledge_bases";
 const ask = "mcp__gea-gateway__weknora_ask";
@@ -375,7 +375,7 @@ test("forged knowledge source and retired LightRAG tools cannot register", async
   assert.equal((await f.execute(queryTool, query)).isError, false);
 });
 
-test("production prompt guards allow knowledge calls, preserve long citations and share the business call budget", async (t) => {
+test("production prompt guards allow knowledge calls, preserve long citations without a business call budget", async (t) => {
   const payload = { ...answer(), answer: "完整知识答案。".repeat(1600) };
   const f = await fixture(t, {
     prompts: true,
@@ -384,11 +384,10 @@ test("production prompt guards allow knowledge calls, preserve long citations an
   assert.ok(f.ctx.tools.schemas(f.agents.get("sales")).some((tool) => tool.name === ask));
   assert.deepEqual(successful(await invoke(f, ask, args)), payload);
   // Knowledge is governed by the same budget as all other business methods.
-  for (let i = 1; i < businessCallBudget; i++) await invoke(f, ask, args);
+  for (let i = 1; i < 64; i++) await invoke(f, ask, args);
   const exhausted = await invoke(f, ask, args);
-  assert.equal(exhausted.isError, true);
-  assert.match(JSON.stringify(exhausted), /GEA_CALL_BUDGET/);
-  assert.ok(count(f, "weknora_ask") === businessCallBudget);
+  assert.equal(exhausted.isError, false);
+  assert.ok(count(f, "weknora_ask") === 65);
 });
 
 for (const [label, body] of [
@@ -442,8 +441,7 @@ test("current personal Agent exposes knowledge tools under its retained Consumer
     agent: f.agents.get("personal"),
     signal: new AbortController().signal,
   });
-  assert.match(JSON.stringify(assembled.sections), /weknora_list_knowledge_bases/);
-  assert.match(JSON.stringify(assembled.sections), /COMPLETED 仅表示服务端处理结束/);
+  assert.ok(!assembled.sections.some((section) => section.name.startsWith("gea:")));
   assert.deepEqual(successful(await invoke(f, catalog, {}, "personal")), [
     library("current-library"),
   ]);
@@ -552,19 +550,18 @@ for (const failure of [
     assert.equal(count(f, "weknora_ask"), 1);
   });
 
-test("personal knowledge calls share the turn budget and regain it on the next turn", async (t) => {
+test("personal knowledge calls remain available beyond former turn limits", async (t) => {
   const f = await fixture(t, {
     personal: true,
     prompts: true,
     handler: (_wire, _init, reply) => reply({ structuredContent: answer() }),
   });
-  for (let i = 0; i < businessCallBudget; i++)
+  for (let i = 0; i < 64; i++)
     assert.equal((await invoke(f, ask, args, "personal")).isError, false);
   const refused = await invoke(f, ask, args, "personal");
-  assert.equal(refused.isError, true);
-  assert.match(JSON.stringify(refused), /GEA_CALL_BUDGET/);
-  assert.equal(count(f, "weknora_ask"), businessCallBudget);
+  assert.equal(refused.isError, false);
+  assert.equal(count(f, "weknora_ask"), 65);
   f.ctx.emit("session/event", { id: "personal" }, { type: "turn/start" });
   assert.equal((await invoke(f, ask, args, "personal")).isError, false);
-  assert.equal(count(f, "weknora_ask"), businessCallBudget + 1);
+  assert.equal(count(f, "weknora_ask"), 66);
 });

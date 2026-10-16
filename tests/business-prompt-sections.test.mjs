@@ -113,11 +113,8 @@ test("business section policy preserves native UI protocol and leaves ordinary c
     true,
   );
   const ui = businessView.sections.find((section) => section.name === "genui:fence").text;
-  assert.match(ui, /dsh-ui/);
-  assert.match(ui, /render_ui/);
-  assert.match(ui, /原生 skill 加载 genui/);
-  assert.match(ui, /简单事实或明确纯文字请求使用文字/);
-  assert.match(ui, /缺失时如实说明/);
+  assert.equal(ui, "vendor coding presentation policy");
+  assert.deepEqual(businessView.sections, sections);
   assert.equal(
     businessView.sections.find((section) => section.name === "kept-native-section").text,
     "native section survives",
@@ -149,18 +146,9 @@ test("business section policy preserves native UI protocol and leaves ordinary c
   assert.equal(assembly.sections[3].text, nativeFiles.text);
   preset = "standard";
   const ordinary = await assemble();
-  assert.deepEqual(
-    ordinary.sections.slice(0, -1),
-    sections,
-    "ordinary coding keeps every Core and independent source section",
-  );
+  assert.deepEqual(ordinary.sections, sections);
   for (const [index, section] of sections.entries())
     assert.equal(ordinary.sections[index], section);
-  assert.deepEqual(ordinary.sections.at(-1), {
-    name: "gea:admission",
-    text: "当前实际会话预设未声明 GEA 业务身份。Skill 可用于规则说明，但实际库存取数需点击工作台的‘使用基地库存 Agent 分析’入口或选用相应业务资源。子智能体的角色名和提示词不改变其实际父会话的业务身份。GEA 工具当前不可用；其它 MCP 结果应标明独立来源，不证明 GEA 页面或授权恢复。",
-  });
-  assert.equal(ordinary.sections.length, sections.length + 1);
   assert.deepEqual(ordinary.tools, assembly.tools);
   assert.equal(ordinary.contexts, assembly.contexts);
   assert.equal(ordinary.variables, assembly.variables);

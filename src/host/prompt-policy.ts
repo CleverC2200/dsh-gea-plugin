@@ -1,17 +1,12 @@
 import policy from "../../presets/execution-policy.json" with { type: "json" };
 
 export const PROMPT_VERSION = policy.version;
-export const KNOWLEDGE_PROMPT = policy.knowledge;
-export const COMMON_PROMPT = [policy.common, KNOWLEDGE_PROMPT, policy.output].join("\n");
 export const PROMPT_BUDGET = {
   system: 2200,
   tools: 10000,
   initial: 16000,
   target: 12000,
   result: 6000,
-  calls: 20,
-  evidenceCalls: 12,
-  complexCalls: 40,
 } as const;
 export type PromptProfile = {
   label: string;

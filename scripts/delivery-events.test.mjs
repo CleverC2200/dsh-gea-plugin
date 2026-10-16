@@ -31,9 +31,7 @@ test("delivery keeps ordinary package Prompt and source checks plus the authoriz
     steps
       .filter((step) => step.if === "steps.scope.outputs.bootstrap == 'true'")
       .map((step) => step.run),
-    [
-      "node --test scripts/plugin-update-pr-lane.test.mjs desktop/company-bootstrap.test.mjs desktop/official-branding.test.mjs",
-    ],
+    ["node --test scripts/plugin-update-pr-lane.test.mjs"],
   );
   const packageScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
   for (const name of [

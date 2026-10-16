@@ -286,27 +286,25 @@ test(
     assert.equal(direct.datasets[0].rows[0]["inv.row_count"], 42);
     assert.equal(direct.evidenceId, undefined, "native MCP retains the direct server result");
     const readArgs = (body) => {
-      const receipt = body.messages
-        .filter((message) => message.role === "system")
-        .flatMap((message) => message.content.split("\n"))
-        .find(
-          (line) =>
-            line.startsWith('{"evidenceId":') && line.includes('"tool":"gea_sales_plan_read"'),
-        );
-      assert.ok(receipt, "sales evidence ID is advertised in the model's public result receipt");
-      evidenceId ??= JSON.parse(receipt).evidenceId;
+      const index = JSON.parse(
+        body.messages.filter((message) => message.role === "tool").at(-1).content,
+      );
+      const receipt = index.evidence.find((item) => item.tool === "gea_sales_plan_read");
+      assert.ok(receipt, "sales evidence ID is discoverable through the capability tool");
+      evidenceId ??= receipt.evidenceId;
       return { evidenceId, format: "raw", offset: 0, limit: 4000 };
     };
     replies = await run("核对当前在线审批清单及其证据。", [
       ["gea_sales_plan_read", { kind: "list", query: { periodId: "20260801" } }],
+      ["gea_capabilities", {}],
       ["gea_evidence_read", readArgs],
       ["gea_evidence_read", () => ({ evidenceId, format: "raw", offset: 0, limit: 100 })],
     ]);
-    assert.equal(replies[1].isError, false, replies[1].text);
-    const first = JSON.parse(replies[1].text);
+    assert.equal(replies[2].isError, false, replies[2].text);
+    const first = JSON.parse(replies[2].text);
     assert.match(first.content, /"currentQty":"10"/);
     assert.match(first.content, /"currentAmount":"20"/);
-    const audit = JSON.parse(replies[2].text);
+    const audit = JSON.parse(replies[3].text);
     assert.equal(audit.content.length, Math.min(audit.totalChars, 100));
     revoked = true;
     replies = await run("继续读取刚才证据。", [["gea_evidence_read", () => ({ evidenceId })]]);

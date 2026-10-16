@@ -124,7 +124,7 @@ export function assertReceiptMessages(rows, core) {
         assert.fail("Unsupported receipt user-message source: " + source.kind);
     }
   }
-  assert.equal(contexts.length, 1, "Receipt must retain one runtime-context snapshot");
+  assert.equal(contexts.length, 0, "Company receipts do not inject runtime-context snapshots");
   assert.equal(
     times.length,
     core === alpha ? 1 : 0,

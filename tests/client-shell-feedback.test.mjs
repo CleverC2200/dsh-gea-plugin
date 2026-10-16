@@ -246,12 +246,18 @@ test(
       await page.locator(".gea-drawer-function .gea-sidebar-tab").click();
 
       const desktopConversation = page.locator(".agent-workbench-native-conversation");
+      let desktopRailWidth;
       await expect
-        .poll(async () => Math.round((await desktopConversation.boundingBox())?.width ?? 0), {
-          message: "capture the settled formal desktop split width before responsive transitions",
-        })
+        .poll(
+          async () => {
+            desktopRailWidth = Math.round((await desktopConversation.boundingBox())?.width ?? 0);
+            return desktopRailWidth;
+          },
+          {
+            message: "capture the settled formal desktop split width before responsive transitions",
+          },
+        )
         .toBe(520);
-      const desktopRailWidth = (await desktopConversation.boundingBox()).width;
       // The current Core owns the complete input seat at the window floor,
       // including short windows and while the welcome area is scrolled.
       for (const viewport of [

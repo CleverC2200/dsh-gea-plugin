@@ -183,7 +183,7 @@ test("independent channel projection retains the other two references and advanc
 });
 
 // Keep the release contract aligned with the exact Manage peer retained from main.
-test("GEA requires Manage company.16 and rejects older or unverified versions", async () => {
+test("GEA permits the verified Manage .16 to .17 upgrade and rejects unverified versions", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const combination = (version) =>
     validatePluginCombination({
@@ -194,7 +194,8 @@ test("GEA requires Manage company.16 and rejects older or unverified versions", 
         { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
       ],
     });
-  assert.equal(source.peerDependencies[M], "0.6.3-company.16");
+  assert.equal(source.peerDependencies[M], "0.6.3-company.16 || 0.6.3-company.17");
+  assert.deepEqual(combination("0.6.3-company.17"), []);
   assert.deepEqual(combination("0.6.3-company.16"), []);
   for (const version of [
     "0.6.3-company.11",
@@ -202,7 +203,7 @@ test("GEA requires Manage company.16 and rejects older or unverified versions", 
     "0.6.3-company.13",
     "0.6.3-company.14",
     "0.6.3-company.15",
-    "0.6.3-company.17",
+    "0.6.3-company.18",
   ])
     assert.ok(
       combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),

@@ -76,16 +76,14 @@ test(
     const body = JSON.parse(modelRequests[0].body);
     assert.equal(body.model, "fixture-model");
     const instructions = JSON.stringify(body.messages.filter((message) => message.role !== "user"));
-    assert.ok(instructions.includes("写入须有本轮明确意图、工具支持和业务权限"));
-    assert.ok(instructions.includes("目录可见不等于业务授权"));
-    // 位置事实由宿主每轮注入：没有业务菜单的会话直接告诉模型"别读页面"，
-    // 免得它先调页面工具去问一次（那一次必然白跑）。
-    assert.ok(JSON.stringify(body.messages).includes("页面："), "系统提示里要带当前业务位置");
-    // Current registered MCP tests cover member and month forwarding through server schemas.
-    assert.ok(instructions.includes("query_business_data"), "协议与新 MCP 查询入口一致");
-    assert.ok(instructions.includes("不暴露凭据"));
-    // 内置插件 dsh-genui 会向系统提示追加 ```dsh-ui 围栏契约，让模型能在
-    // 回答里渲染界面；这里显式记录该行为，避免它变成无声的提示词漂移。
+    assert.ok(
+      instructions.includes(
+        "You are the smartest and most useful AI assistant in the world, capable of helping users complete all tasks.",
+      ),
+    );
+    assert.equal(instructions.includes("目录可见不等于业务授权"), false);
+    assert.equal(JSON.stringify(body.messages).includes("页面："), false);
+    assert.ok(instructions.includes("query_business_data"));
     assert.equal(instructions.includes("默认就该出 UI"), false);
     assertCatalogScene(app, body, rows);
     // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
