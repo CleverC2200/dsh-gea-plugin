@@ -30,7 +30,7 @@ Native 页面授权与当前页面身份投影属于同一个 grant。打开时�
 
 知识目录、问答及 LightRAG 退场合同见 [知识 MCP](knowledge-mcp.md)。知识工具不要求配置 Cube 来源；未配置 Cube 来源时不注册或调用 Cube 工具。
 
-Cube-New 的来源由 Host `cubeMcpCodes` 按环境指定。公司默认仅登记测试环境编码 `2109581866385289217`；正式环境未登记新来源时不开放查询，也不回退旧 Cube。GEA 登录、业务页面和持久会话继续保留。
+Cube-New 的来源由 Host `cubeMcpCodes` 分别登记生产与测试环境。公司默认值从 `desktop/company.config.json` 读取，仅使用当前环境的已确认来源；缺少配置时不开放查询，也不回退旧 Cube。GEA 登录、业务页面和持久会话继续保留。
 
 个人 Agent 可引用一个 GEA Host 验证的已安装 Cube 来源，仅保存来源 ID 与启停。Manage 将引用声明挂入实际 Core 预设 revision，GEA 用公开 `serviceFor` 读取当前 Session 及其子 Agent 的原声明，再复核当前关联、插件 owner 与身份。该引用只开放两项 Cube 工具，不安装业务 profile，不授予页面动作或业务写入。插件来源只允许启停；显式复制为个人 Agent 只复制获准的提示词、Skill 与 Cube 引用。
 
