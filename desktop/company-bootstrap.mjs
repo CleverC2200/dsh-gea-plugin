@@ -24,9 +24,7 @@ function validCoreArtifacts(artifacts) {
       (row) =>
         typeof row?.path === "string" &&
         !isAbsolute(row.path) &&
-        row.path
-          .split(/[\\/]/)
-          .every((part) => part && part !== "." && part !== "..") &&
+        row.path.split(/[\\/]/).every((part) => part && part !== "." && part !== "..") &&
         /^[a-f0-9]{64}$/.test(row.sha256),
     ) &&
     new Set(artifacts.map((row) => row.path)).size === artifacts.length
@@ -46,8 +44,7 @@ export function planCompanyCoreRefresh(updates, core, source) {
     !core ||
     [previous, core].some((proof) =>
       Object.keys(proof).some(
-        (key) =>
-          !["kind", "root", "head", "version", "artifacts"].includes(key),
+        (key) => !["kind", "root", "head", "version", "artifacts"].includes(key),
       ),
     ) ||
     previous.kind !== "desktop" ||
@@ -72,9 +69,7 @@ export function planCompanyCoreRefresh(updates, core, source) {
   ])
     if (
       updates[key] !== undefined &&
-      (!Number.isSafeInteger(updates[key]) ||
-        updates[key] < 1000 ||
-        updates[key] > maximum)
+      (!Number.isSafeInteger(updates[key]) || updates[key] < 1000 || updates[key] > maximum)
     )
       throw Error("GEA_CORE_REFRESH_REJECTED");
   return {
@@ -105,8 +100,7 @@ async function verifyCompanyCore(root, core) {
 export async function refreshCompanyCore({ root, seed, home, apply = true }) {
   const profile = join(home, "profiles/desktop");
   const patch = join(profile, "cordis.patch.yml");
-  if (!existsSync(patch))
-    return { status: "no-update-configuration", changed: false };
+  if (!existsSync(patch)) return { status: "no-update-configuration", changed: false };
   const require = createRequire(join(root, "dsh/package.json"));
   const YAML = require("yaml");
   const { withFileLock, writeFileAtomic } = await import(
@@ -121,12 +115,9 @@ export async function refreshCompanyCore({ root, seed, home, apply = true }) {
         throw Error("GEA_PROFILE_PATCH_INVALID");
       const rows = document.toJS();
       const index = rows.findIndex(
-        (row) =>
-          row?.id === "gea-proof" ||
-          row?.name === "@cleverc2200/gea-dsh-prototype",
+        (row) => row?.id === "gea-proof" || row?.name === "@cleverc2200/gea-dsh-prototype",
       );
-      if (index === -1)
-        return { status: "no-update-configuration", changed: false };
+      if (index === -1) return { status: "no-update-configuration", changed: false };
       const updates = rows[index]?.config?.pluginUpdates;
       const manifest = await json(join(seed, "manifest.json"));
       const core = await verifyCompanyCore(root, manifest.core);
@@ -146,8 +137,7 @@ export async function refreshCompanyCore({ root, seed, home, apply = true }) {
           mode: 0o600,
           dirMode: 0o700,
         });
-      if (updates === undefined)
-        document.setIn([index, "config", "pluginUpdates"], next);
+      if (updates === undefined) document.setIn([index, "config", "pluginUpdates"], next);
       else {
         document.setIn([index, "config", "pluginUpdates", "core"], next.core);
         for (const key of ["source", "checkTimeoutMs", "pollIntervalMs"])
@@ -156,10 +146,7 @@ export async function refreshCompanyCore({ root, seed, home, apply = true }) {
       }
       await writeFileAtomic(patch, document.toString(), { mode: 0o600 });
       return {
-        status:
-          updates?.source === undefined
-            ? "update-source-configured"
-            : "core-proof-refreshed",
+        status: updates?.source === undefined ? "update-source-configured" : "core-proof-refreshed",
         changed: true,
         backup,
       };
@@ -187,9 +174,7 @@ async function assertCompletedInstallation(record, profile) {
     )
       throw Error("NOT_RECOVERABLE");
     const log = receipt.diagnostic.slice(prefix.length);
-    const local = relative(join(profile, ".plugin-manager/logs"), log).split(
-      /[\\/]/,
-    );
+    const local = relative(join(profile, ".plugin-manager/logs"), log).split(/[\\/]/);
     if (
       !isAbsolute(log) ||
       local.length !== 2 ||
@@ -199,8 +184,7 @@ async function assertCompletedInstallation(record, profile) {
     )
       throw Error("NOT_RECOVERABLE");
     const current = await json(join(profile, "package.json"));
-    if (names.every((name) => current.dependencies?.[name]))
-      throw Error("NOT_RECOVERABLE");
+    if (names.every((name) => current.dependencies?.[name])) throw Error("NOT_RECOVERABLE");
     for (const file of [
       "package.json",
       "cordis.patch.yml",
@@ -257,9 +241,7 @@ export async function installCompanyPackages({
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
   const require = createRequire(anchor);
-  const boot = await import(
-    pathToFileURL(require.resolve("@deepseek-ai/dsh-app-boot"))
-  );
+  const boot = await import(pathToFileURL(require.resolve("@deepseek-ai/dsh-app-boot")));
   const { runProfilePnpm } = await import(
     pathToFileURL(require.resolve("@deepseek-ai/dsh-plugin-manager/operations"))
   );
@@ -275,13 +257,8 @@ export async function installCompanyPackages({
       let selectedStore = store;
       let offlineArguments = offline ? ["--offline"] : [];
       if (existsSync(modulesPath)) {
-        const modules = require("yaml").parse(
-          await readFile(modulesPath, "utf8"),
-        );
-        if (
-          typeof modules?.storeDir !== "string" ||
-          !isAbsolute(modules.storeDir)
-        )
+        const modules = require("yaml").parse(await readFile(modulesPath, "utf8"));
+        if (typeof modules?.storeDir !== "string" || !isAbsolute(modules.storeDir))
           throw Error("GEA_COMPANY_STORE_INVALID");
         selectedStore = modules.storeDir;
         if (offline && selectedStore !== join(store, "v11"))
@@ -302,8 +279,7 @@ export async function installCompanyPackages({
           ...offlineArguments,
           "--registry=https://registry.npmjs.org",
           "--store-dir=" + selectedStore,
-          "--config.cache-dir=" +
-            join(home, "desktop-company-cache", "metadata"),
+          "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),
         ],
         {
           execution: "service",
@@ -320,8 +296,7 @@ export async function installCompanyPackages({
           lookupTimeoutMs: 30000,
         },
       );
-      if (result.exitCode !== 0)
-        throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
+      if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
       await complete?.({ writeFileAtomic });
       return result;
     },
@@ -337,8 +312,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
     ? await json(join(profile, "package.json"))
     : undefined;
   let missing = names.filter((name) => !current?.dependencies?.[name]);
-  if (!missing.length)
-    return { status: "existing-profile-preserved", changed: false };
+  if (!missing.length) return { status: "existing-profile-preserved", changed: false };
   const manifest = await readCompanySeed(seed);
   const core = await verifyCompanyCore(root, manifest.core);
   await mkdir(record, { recursive: true, mode: 0o700 });
@@ -354,18 +328,14 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         ? await json(join(profile, "package.json"))
         : undefined;
       missing = names.filter((name) => !latest?.dependencies?.[name]);
-      if (!missing.length)
-        return { status: "existing-profile-preserved", changed: false };
+      if (!missing.length) return { status: "existing-profile-preserved", changed: false };
       for (const file of [
         "package.json",
         "cordis.patch.yml",
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml",
       ]) {
-        if (
-          existsSync(join(profile, file)) &&
-          !existsSync(join(record, "before-" + file))
-        )
+        if (existsSync(join(profile, file)) && !existsSync(join(record, "before-" + file)))
           await cp(join(profile, file), join(record, "before-" + file), {
             errorOnExist: true,
             force: false,
@@ -392,9 +362,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         });
       let operationStarted = false;
       try {
-        const selected = manifest.packages.filter((row) =>
-          missing.includes(row.name),
-        );
+        const selected = manifest.packages.filter((row) => missing.includes(row.name));
         await installCompanyPackages({
           root,
           support,
@@ -413,8 +381,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
               );
             await writeFile(
               join(record, "receipt.json"),
-              JSON.stringify({ status: "installing", packages: missing }) +
-                "\n",
+              JSON.stringify({ status: "installing", packages: missing }) + "\n",
               { mode: 0o600 },
             );
             operationStarted = true;
@@ -422,9 +389,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           complete: async ({ writeFileAtomic }) => {
             const installed = await json(join(profile, "package.json"));
             for (const row of selected) {
-              const actual = await json(
-                join(profile, "node_modules", row.name, "package.json"),
-              );
+              const actual = await json(join(profile, "node_modules", row.name, "package.json"));
               if (
                 actual.version !== row.version ||
                 !installed.dsh?.profile?.bundles?.includes(row.name)
@@ -435,16 +400,12 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
               const require = createRequire(join(root, "dsh/package.json"));
               const YAML = require("yaml");
               const patch = join(profile, "cordis.patch.yml");
-              const document = YAML.parseDocument(
-                await readFile(patch, "utf8"),
-              );
+              const document = YAML.parseDocument(await readFile(patch, "utf8"));
               if (document.errors.length || !Array.isArray(document.toJS()))
                 throw Error("GEA_PROFILE_PATCH_INVALID");
               const rows = document.toJS();
               const index = rows.findIndex(
-                (row) =>
-                  row?.id === "gea-proof" ||
-                  row?.name === "@cleverc2200/gea-dsh-prototype",
+                (row) => row?.id === "gea-proof" || row?.name === "@cleverc2200/gea-dsh-prototype",
               );
               if (index === -1)
                 document.add({
@@ -476,20 +437,15 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           changed: true,
           packages: selected.map(({ name, version }) => ({ name, version })),
         };
-        await writeFile(
-          join(record, "receipt.json"),
-          JSON.stringify(result, null, 2) + "\n",
-          {
-            mode: 0o600,
-          },
-        );
+        await writeFile(join(record, "receipt.json"), JSON.stringify(result, null, 2) + "\n", {
+          mode: 0o600,
+        });
         return result;
       } catch (error) {
         if (operationStarted)
           await writeFile(
             join(record, "receipt.json"),
-            JSON.stringify({ status: "failed", diagnostic: error.message }) +
-              "\n",
+            JSON.stringify({ status: "failed", diagnostic: error.message }) + "\n",
             { mode: 0o600 },
           );
         throw error;
@@ -499,10 +455,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [root, support, seed] = process.argv.slice(2);
   const require = createRequire(join(root, "dsh/package.json"));
   const { resolveDshHome } = await import(

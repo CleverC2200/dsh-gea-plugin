@@ -30,24 +30,14 @@ export async function repairPluginStore({
     async () => {
       if (await optional(join(profile, ".plugin-manager/run.json")))
         throw Error("PROFILE_WRITER_UNCONFIRMED");
-      const latest = await optional(
-        join(profile, "gea/plugin-updates/latest.json"),
-      );
+      const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
       if (latest) {
         const pointer = JSON.parse(latest.toString("utf8"));
-        if (
-          typeof pointer?.id !== "string" ||
-          !/^[-a-f0-9]{36}$/.test(pointer.id)
-        )
+        if (typeof pointer?.id !== "string" || !/^[-a-f0-9]{36}$/.test(pointer.id))
           throw Error("UPDATE_JOURNAL_INVALID");
         const operation = JSON.parse(
           await readFile(
-            join(
-              profile,
-              "gea/plugin-updates/operations",
-              pointer.id,
-              "receipt.json",
-            ),
+            join(profile, "gea/plugin-updates/operations", pointer.id, "receipt.json"),
             "utf8",
           ),
         );
@@ -57,9 +47,7 @@ export async function repairPluginStore({
         )
           throw Error("UPDATE_RECOVERY_REQUIRED");
       }
-      const metadata = await optional(
-        join(profile, "node_modules/.modules.yaml"),
-      );
+      const metadata = await optional(join(profile, "node_modules/.modules.yaml"));
       if (!metadata) throw Error("PROFILE_STORE_UNAVAILABLE");
       const store = YAML.parse(metadata.toString("utf8"))?.storeDir;
       if (
@@ -128,10 +116,7 @@ export async function repairPluginStore({
   );
 }
 
-if (
-  process.argv[1] &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url
-) {
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   const { values } = parseArgs({
     options: {
       profile: { type: "string" },
@@ -150,8 +135,7 @@ if (
     pathToFileURL(require.resolve("@deepseek-ai/dsh-atomic-write"))
   );
   const profile =
-    values.profile ??
-    join(process.env.DSH_HOME ?? join(homedir(), ".dsh"), "profiles/desktop");
+    values.profile ?? join(process.env.DSH_HOME ?? join(homedir(), ".dsh"), "profiles/desktop");
   const root = dirname(dirname(anchor));
   const result = await repairPluginStore({
     profile,

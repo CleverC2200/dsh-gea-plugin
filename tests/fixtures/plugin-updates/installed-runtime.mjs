@@ -1,23 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  writeFile,
-  rm,
-  symlink,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { build } from "esbuild";
 import { parse as parseYaml } from "yaml";
-import {
-  projectPluginRelease,
-  companyPackageNames,
-} from "../../../src/shared/plugin-release.mjs";
+import { projectPluginRelease, companyPackageNames } from "../../../src/shared/plugin-release.mjs";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const repository = fileURLToPath(new URL("../../../", import.meta.url));
 const ownFile = fileURLToPath(import.meta.url);
@@ -64,32 +54,17 @@ function runtimeLocation(proof, sdk) {
 async function createHost(input) {
   const location = runtimeLocation(input.proof, input.sdk),
     { Context } = await import(
-      pathToFileURL(
-        location("@deepseek-ai/cordis", "vendor/cordis/lib/index.js"),
-      )
+      pathToFileURL(location("@deepseek-ai/cordis", "vendor/cordis/lib/index.js"))
     ),
     { default: Loader } = await import(
-      pathToFileURL(
-        location(
-          "@deepseek-ai/cordis-plugin-loader",
-          "vendor/loader/lib/index.js",
-        ),
-      )
+      pathToFileURL(location("@deepseek-ai/cordis-plugin-loader", "vendor/loader/lib/index.js"))
     ),
     { PluginPackages } = await import(
-      pathToFileURL(
-        location(
-          "@deepseek-ai/dsh-app-boot",
-          "packages/boot/app-boot/lib/index.js",
-        ),
-      )
+      pathToFileURL(location("@deepseek-ai/dsh-app-boot", "packages/boot/app-boot/lib/index.js"))
     ),
     { default: ClientModules } = await import(
       pathToFileURL(
-        location(
-          "@deepseek-ai/dsh-client-modules",
-          "packages/client/modules/lib/index.js",
-        ),
+        location("@deepseek-ai/dsh-client-modules", "packages/client/modules/lib/index.js"),
       )
     );
   const ctx = new Context(),
@@ -151,30 +126,20 @@ async function clientObservations(input, host) {
   let ModuleSystem, parseBootManifest;
   if (input.proof.kind === "desktop") {
     vm.runInContext(
-      await readFile(
-        host.location("@deepseek-ai/dsh-client-modules", "client"),
-        "utf8",
-      ),
+      await readFile(host.location("@deepseek-ai/dsh-client-modules", "client"), "utf8"),
       browser,
     );
-    ({ ClientModuleSystem: ModuleSystem, parseBootManifest } = registrations
-      .pop()
-      .factory(() => {
-        throw Error("unexpected static dependency");
-      }));
+    ({ ClientModuleSystem: ModuleSystem, parseBootManifest } = registrations.pop().factory(() => {
+      throw Error("unexpected static dependency");
+    }));
   } else {
     ({ ClientModuleSystem: ModuleSystem, parseBootManifest } = await import(
-      pathToFileURL(
-        join(input.sdk, "packages/client/modules/lib/types/client/index.js"),
-      )
+      pathToFileURL(join(input.sdk, "packages/client/modules/lib/types/client/index.js"))
     ));
   }
   for (const name of companyPackageNames)
     vm.runInContext(
-      await readFile(
-        join(input.profile.dir, "node_modules", name, "lib/client.js"),
-        "utf8",
-      ),
+      await readFile(join(input.profile.dir, "node_modules", name, "lib/client.js"), "utf8"),
       browser,
     );
   const graph = host.ctx.clientModules.graph(),
@@ -189,9 +154,7 @@ async function clientObservations(input, host) {
   client.loader.internal = modules;
   client.provide("modules", modules);
   await modules.entries.start(client.loader, modules.manifest);
-  const { readClientPluginModules } = await import(
-    pathToFileURL(input.subject)
-  );
+  const { readClientPluginModules } = await import(pathToFileURL(input.subject));
   const observed = readClientPluginModules(client);
   assert.equal(
     observed.length,
@@ -211,14 +174,9 @@ async function clientObservations(input, host) {
 }
 function controlledSource(input) {
   const fetchBefore = globalThis.fetch,
-    objects = new Map(
-      input.objects.map(([url, bytes]) => [url, Buffer.from(bytes, "base64")]),
-    );
+    objects = new Map(input.objects.map(([url, bytes]) => [url, Buffer.from(bytes, "base64")]));
   globalThis.fetch = async (url) => {
-    assert.ok(
-      objects.has(String(url)),
-      "No unapproved network request: " + url,
-    );
+    assert.ok(objects.has(String(url)), "No unapproved network request: " + url);
     return new Response(objects.get(String(url)));
   };
   return () => {
@@ -240,9 +198,7 @@ async function observeFresh(input) {
       modules: observed.modules,
     });
     const after = await host.route("status", { pageIdentity: "fresh-page" });
-    const row = after.items.find(
-      (item) => item.packageName === companyPackageNames[2],
-    );
+    const row = after.items.find((item) => item.packageName === companyPackageNames[2]);
     assert.equal(row.state, "completed", JSON.stringify(after));
     assert.equal(row.runningHostVersion, "3.1.0");
     assert.equal(row.runningClientVersion, "3.1.0");
@@ -258,12 +214,7 @@ async function observeFresh(input) {
     restoreFetch();
   }
 }
-export async function installedScenario(
-  t,
-  proof,
-  sdk,
-  { customStore = false } = {},
-) {
+export async function installedScenario(t, proof, sdk, { customStore = false } = {}) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
   const root = await mkdtemp(join(repository, ".runtime/actual-install-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -272,9 +223,7 @@ export async function installedScenario(
   await mkdir(dir);
   const oldVersions = ["1.0.0", "2.0.0", "3.0.0"],
     old = await Promise.all(
-      companyPackageNames.map((name, index) =>
-        makeArchive(root, name, oldVersions[index]),
-      ),
+      companyPackageNames.map((name, index) => makeArchive(root, name, oldVersions[index])),
     );
   const target = await makeArchive(root, companyPackageNames[2], "3.1.0"),
     location = runtimeLocation(proof, sdk);
@@ -292,13 +241,10 @@ export async function installedScenario(
             location(
               name,
               {
-                "@deepseek-ai/dsh-app-boot":
-                  "packages/boot/app-boot/lib/index.js",
+                "@deepseek-ai/dsh-app-boot": "packages/boot/app-boot/lib/index.js",
                 "@deepseek-ai/cordis": "vendor/cordis/lib/index.js",
-                "@deepseek-ai/dsh-plugin-manager":
-                  "packages/boot/plugin-manager/lib/index.js",
-                "@deepseek-ai/dsh-atomic-write":
-                  "packages/util/atomic-write/lib/index.js",
+                "@deepseek-ai/dsh-plugin-manager": "packages/boot/plugin-manager/lib/index.js",
+                "@deepseek-ai/dsh-atomic-write": "packages/util/atomic-write/lib/index.js",
               }[name],
             ),
           ),
@@ -307,37 +253,25 @@ export async function installedScenario(
   );
   await mkdir(join(root, "node_modules/@deepseek-ai"), { recursive: true });
   for (const [name, target] of Object.entries(sdkDependencies))
-    await symlink(
-      target.slice("link:".length),
-      join(root, "node_modules", name),
-      "dir",
-    );
+    await symlink(target.slice("link:".length), join(root, "node_modules", name), "dir");
   await writeFile(
     join(dir, "package.json"),
     JSON.stringify({
       private: true,
       packageManager: "pnpm@11.7.0",
       dependencies: Object.fromEntries(
-        old.map((artifact) => [
-          artifact.manifest.name,
-          "file:" + artifact.path,
-        ]),
+        old.map((artifact) => [artifact.manifest.name, "file:" + artifact.path]),
       ),
       dsh: { profile: { bundles: [...companyPackageNames] } },
       retained: { draft: "keep", selection: "sales" },
     }),
   );
-  await writeFile(
-    join(dir, "pnpm-workspace.yaml"),
-    "packages: []\nautoInstallPeers: false\n",
-  );
+  await writeFile(join(dir, "pnpm-workspace.yaml"), "packages: []\nautoInstallPeers: false\n");
   await writeFile(
     join(dir, ".npmrc"),
     "auto-install-peers=false\nstrict-peer-dependencies=false\noffline=true\n",
   );
-  const initialStore = customStore
-    ? join(root, "company offline cache", "store")
-    : null;
+  const initialStore = customStore ? join(root, "company offline cache", "store") : null;
   execFileSync(
     process.execPath,
     [
@@ -424,10 +358,7 @@ export async function installedScenario(
                     proof.root,
                     "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js",
                   )
-                : join(
-                    sdk,
-                    "packages/boot/plugin-manager/lib/types/operations.js",
-                  ),
+                : join(sdk, "packages/boot/plugin-manager/lib/types/operations.js"),
             "@deepseek-ai/dsh-atomic-write": location(
               "@deepseek-ai/dsh-atomic-write",
               "packages/util/atomic-write/lib/index.js",
@@ -438,9 +369,7 @@ export async function installedScenario(
             ),
           };
           builder.onResolve({ filter: /^@deepseek-ai\// }, (args) =>
-            aliases[args.path]
-              ? { path: aliases[args.path], external: true }
-              : undefined,
+            aliases[args.path] ? { path: aliases[args.path], external: true } : undefined,
           );
         },
       },
@@ -492,9 +421,7 @@ export async function installedScenario(
   try {
     await host.route("check", {});
     const checked = await host.route("status", { pageIdentity: "old-page" }),
-      row = checked.items.find(
-        (item) => item.packageName === companyPackageNames[2],
-      );
+      row = checked.items.find((item) => item.packageName === companyPackageNames[2]);
     assert.equal(row.state, "available", JSON.stringify(checked));
     oldProcess = checked.hostProcessIdentity;
     await host.route("update", {
@@ -505,22 +432,18 @@ export async function installedScenario(
     do {
       pending = await host.route("status", { pageIdentity: "old-page" });
       if (
-        pending.items.find(
-          (item) => item.packageName === companyPackageNames[2],
-        ).state === "pending-restart" ||
+        pending.items.find((item) => item.packageName === companyPackageNames[2]).state ===
+          "pending-restart" ||
         ["restored", "failed", "unknown"].includes(pending.operation?.stage)
       )
         break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     } while (Date.now() < deadline);
-    const installed = pending.items.find(
-      (item) => item.packageName === companyPackageNames[2],
-    );
+    const installed = pending.items.find((item) => item.packageName === companyPackageNames[2]);
     assert.equal(installed.state, "pending-restart", JSON.stringify(pending));
     assert.equal(installed.installedVersion, "3.1.0");
     assert.equal(
-      parseYaml(await readFile(join(dir, "node_modules/.modules.yaml"), "utf8"))
-        .storeDir,
+      parseYaml(await readFile(join(dir, "node_modules/.modules.yaml"), "utf8")).storeDir,
       initializedStore,
     );
     assert.equal(installed.runningHostVersion, "3.0.0");
@@ -531,14 +454,10 @@ export async function installedScenario(
   const inputFile = join(root, "input.json");
   await writeFile(inputFile, JSON.stringify(input));
   const fresh = JSON.parse(
-    execFileSync(
-      process.execPath,
-      ["--expose-internals", ownFile, "observe", inputFile],
-      {
-        encoding: "utf8",
-        timeout: 60000,
-      },
-    ),
+    execFileSync(process.execPath, ["--expose-internals", ownFile, "observe", inputFile], {
+      encoding: "utf8",
+      timeout: 60000,
+    }),
   );
   assert.notEqual(fresh.processIdentity, oldProcess);
   assert.equal(fresh.row.state, "completed");
@@ -547,12 +466,7 @@ export async function installedScenario(
   );
   const operation = JSON.parse(
     await readFile(
-      join(
-        root,
-        "runtime/plugin-updates/operations",
-        pointer.id,
-        "receipt.json",
-      ),
+      join(root, "runtime/plugin-updates/operations", pointer.id, "receipt.json"),
       "utf8",
     ),
   );
@@ -580,28 +494,19 @@ export async function installedScenario(
     },
     operation,
     profileLockSha256: sha(await readFile(join(dir, "pnpm-lock.yaml"))),
-    pending: pending.items.find(
-      (row) => row.packageName === companyPackageNames[2],
-    ),
+    pending: pending.items.find((row) => row.packageName === companyPackageNames[2]),
     fresh,
     packageManager: {
       file: pnpm,
       version: JSON.parse(
-        await readFile(
-          join(repository, "node_modules/pnpm/package.json"),
-          "utf8",
-        ),
+        await readFile(join(repository, "node_modules/pnpm/package.json"), "utf8"),
       ).version,
     },
-    profileRetained: JSON.parse(
-      await readFile(join(dir, "package.json"), "utf8"),
-    ).retained,
+    profileRetained: JSON.parse(await readFile(join(dir, "package.json"), "utf8")).retained,
   };
 }
 if (process.argv[1] === ownFile && process.argv[2] === "observe") {
   console.log(
-    JSON.stringify(
-      await observeFresh(JSON.parse(await readFile(process.argv[3], "utf8"))),
-    ),
+    JSON.stringify(await observeFresh(JSON.parse(await readFile(process.argv[3], "utf8")))),
   );
 }

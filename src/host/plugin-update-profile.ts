@@ -77,14 +77,11 @@ export async function optionalFile(path: string): Promise<Buffer | null> {
   try {
     return await readFile(path);
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return null;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
     throw error;
   }
 }
-export async function pluginProfileStoreDirectory(
-  profile: string,
-): Promise<string> {
+export async function pluginProfileStoreDirectory(profile: string): Promise<string> {
   const bytes = await optionalFile(join(profile, "node_modules/.modules.yaml"));
   if (!bytes) throw Error("PROFILE_STORE_UNAVAILABLE");
   let modules: unknown;
@@ -102,12 +99,8 @@ export async function pluginProfileStoreDirectory(
   )
     throw Error("PROFILE_STORE_INVALID");
   try {
-    if (!(await stat(modules.storeDir)).isDirectory())
-      throw Error("PROFILE_STORE_UNAVAILABLE");
-    await access(
-      modules.storeDir,
-      constants.R_OK | constants.W_OK | constants.X_OK,
-    );
+    if (!(await stat(modules.storeDir)).isDirectory()) throw Error("PROFILE_STORE_UNAVAILABLE");
+    await access(modules.storeDir, constants.R_OK | constants.W_OK | constants.X_OK);
   } catch {
     throw Error("PROFILE_STORE_UNAVAILABLE");
   }
@@ -143,9 +136,7 @@ export type ProfileSnapshot = {
 };
 
 /** Fingerprint physical contents without following protected external roots during a copy. */
-async function tree(
-  root: string,
-): Promise<{ entries: TreeEntry[]; bytes: number }> {
+async function tree(root: string): Promise<{ entries: TreeEntry[]; bytes: number }> {
   const entries: TreeEntry[] = [];
   let bytes = 0;
   async function walk(path: string, rel: string) {
@@ -192,8 +183,7 @@ async function externalRoots(
     } catch (error) {
       // The physical snapshot already preserves the link. Optional executable
       // targets may be absent; required package resolution is checked separately.
-      if (error instanceof Error && "code" in error && error.code === "ENOENT")
-        continue;
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
       throw error;
     }
     if (within(nodeModules, target) || targets[target]) continue;
@@ -218,22 +208,16 @@ async function packages(root: string): Promise<ProfilePackage[]> {
     const raw = await optionalFile(join(dir, "package.json"));
     if (!raw) return;
     const manifest = object(JSON.parse(raw.toString("utf8")));
-    if (
-      typeof manifest.name !== "string" ||
-      typeof manifest.version !== "string"
-    )
+    if (typeof manifest.name !== "string" || typeof manifest.version !== "string")
       throw Error("PROFILE_GRAPH_INVALID");
     comparePluginVersions(manifest.version, manifest.version);
     const peerDependencies = strings(manifest.peerDependencies),
       dependencies = strings(manifest.dependencies),
       optionalDependencies = strings(manifest.optionalDependencies);
     const peerDependenciesMeta: Record<string, { optional: boolean }> = {};
-    for (const [peer, rawMeta] of Object.entries(
-      object(manifest.peerDependenciesMeta ?? {}),
-    )) {
+    for (const [peer, rawMeta] of Object.entries(object(manifest.peerDependenciesMeta ?? {}))) {
       const meta = object(rawMeta);
-      if (typeof meta.optional !== "boolean")
-        throw Error("PROFILE_GRAPH_INVALID");
+      if (typeof meta.optional !== "boolean") throw Error("PROFILE_GRAPH_INVALID");
       peerDependenciesMeta[peer] = { optional: meta.optional };
     }
     const parsed = {
@@ -257,17 +241,9 @@ async function packages(root: string): Promise<ProfilePackage[]> {
     }).sort()) {
       let resolved: string;
       try {
-        resolved = resolveBundleDir(
-          "dsh",
-          name,
-          join(dir, "package.json"),
-          profileDirectory,
-        );
+        resolved = resolveBundleDir("dsh", name, join(dir, "package.json"), profileDirectory);
       } catch (error) {
-        if (
-          Object.hasOwn(dependencies, name) &&
-          !Object.hasOwn(optionalDependencies, name)
-        )
+        if (Object.hasOwn(dependencies, name) && !Object.hasOwn(optionalDependencies, name))
           throw Error("PROFILE_GRAPH_UNRESOLVED", { cause: error });
         continue; // Missing peers remain on the consumer for compatibility validation.
       }
@@ -277,21 +253,16 @@ async function packages(root: string): Promise<ProfilePackage[]> {
   for (const name of (await readdir(root)).sort()) {
     if (name.startsWith(".")) continue;
     const locations = name.startsWith("@")
-      ? (await readdir(join(root, name)))
-          .sort()
-          .map((child) => join(root, name, child))
+      ? (await readdir(join(root, name))).sort().map((child) => join(root, name, child))
       : [join(root, name)];
     for (const location of locations) {
       const info = await lstat(location);
-      if (info.isDirectory() || info.isSymbolicLink())
-        await visitPackage(location, true);
+      if (info.isDirectory() || info.isSymbolicLink()) await visitPackage(location, true);
     }
   }
   return output;
 }
-export async function readPluginProfile(
-  profileDirectory: string,
-): Promise<ProfileSnapshot> {
+export async function readPluginProfile(profileDirectory: string): Promise<ProfileSnapshot> {
   const files: Record<string, Buffer | null> = {};
   for (const name of profilePreservedFiles)
     files[name] = await optionalFile(join(profileDirectory, name));
@@ -329,10 +300,7 @@ export async function readPluginProfile(
     sha256: sha256(
       canonical({
         files: Object.fromEntries(
-          Object.entries(files).map(([name, bytes]) => [
-            name,
-            bytes ? sha256(bytes) : null,
-          ]),
+          Object.entries(files).map(([name, bytes]) => [name, bytes ? sha256(bytes) : null]),
         ),
         entries: graph.entries,
         external,
@@ -345,9 +313,7 @@ export async function combinationManifests(
   core: FixedCore,
   profileDirectory: string,
 ): Promise<PluginManifest[]> {
-  const roots = snapshot.packages.filter(
-    (row) => row.root && !Object.hasOwn(core.sdk, row.name),
-  );
+  const roots = snapshot.packages.filter((row) => row.root && !Object.hasOwn(core.sdk, row.name));
   for (const consumer of snapshot.packages.filter((row) => !row.root)) {
     const affected: Record<string, string> = {};
     for (const [name, range] of Object.entries({
@@ -359,21 +325,14 @@ export async function combinationManifests(
         continue;
       }
       if (!companyPackageNames.some((company) => company === name)) continue;
-      const selected = snapshot.packages.find(
-        (row) => row.root && row.name === name,
-      );
+      const selected = snapshot.packages.find((row) => row.root && row.name === name);
       if (!selected) {
         affected[name] = range;
         continue;
       }
       try {
         const resolved = await realpath(
-          resolveBundleDir(
-            "dsh",
-            name,
-            join(consumer.dir, "package.json"),
-            profileDirectory,
-          ),
+          resolveBundleDir("dsh", name, join(consumer.dir, "package.json"), profileDirectory),
         );
         if (resolved === selected.dir) affected[name] = range;
       } catch {
@@ -399,12 +358,9 @@ export async function validateActualProfile(
 ): Promise<string[]> {
   const failures: string[] = [];
   for (const consumer of snapshot.packages) {
-    for (const [name, range] of Object.entries(
-      consumer.peerDependencies ?? {},
-    )) {
+    for (const [name, range] of Object.entries(consumer.peerDependencies ?? {})) {
       const expectedSdk =
-        core.sdk[name] ??
-        (/^@deepseek-ai\/dsh(?:-|$)/.test(name) ? core.version : undefined);
+        core.sdk[name] ?? (/^@deepseek-ai\/dsh(?:-|$)/.test(name) ? core.version : undefined);
       let version: string | undefined;
       try {
         const dir = await realpath(
@@ -415,9 +371,7 @@ export async function validateActualProfile(
             profileDirectory,
           ),
         );
-        const manifest = object(
-          JSON.parse(await readFile(join(dir, "package.json"), "utf8")),
-        );
+        const manifest = object(JSON.parse(await readFile(join(dir, "package.json"), "utf8")));
         if (typeof manifest.version === "string") version = manifest.version;
       } catch {
         /* Missing peers are judged below, including optional absence. */
@@ -438,8 +392,7 @@ export async function freezePluginProfile(
   snapshot: ProfileSnapshot,
   directory: string,
 ): Promise<void> {
-  if (!snapshot.files["pnpm-lock.yaml"])
-    throw Error("PROFILE_FROZEN_LOCK_REQUIRED");
+  if (!snapshot.files["pnpm-lock.yaml"]) throw Error("PROFILE_FROZEN_LOCK_REQUIRED");
   const capacity = await statfs(profileDirectory);
   if (capacity.bavail * capacity.bsize < snapshot.bytes * 2 + 64 * 1024 * 1024)
     throw Error("PROFILE_RECOVERY_CAPACITY_REQUIRED");
@@ -450,19 +403,13 @@ export async function freezePluginProfile(
         mode: 0o600,
         flag: "wx",
       });
-  await cp(
-    join(profileDirectory, "node_modules"),
-    join(directory, "node_modules"),
-    {
-      recursive: true,
-      dereference: false,
-      preserveTimestamps: true,
-      verbatimSymlinks: true,
-    },
-  );
-  for (const entry of snapshot.entries.filter(
-    (entry) => entry.kind === "file",
-  )) {
+  await cp(join(profileDirectory, "node_modules"), join(directory, "node_modules"), {
+    recursive: true,
+    dereference: false,
+    preserveTimestamps: true,
+    verbatimSymlinks: true,
+  });
+  for (const entry of snapshot.entries.filter((entry) => entry.kind === "file")) {
     const file = await open(join(directory, "node_modules", entry.path), "r");
     try {
       await file.sync();
@@ -512,11 +459,7 @@ export async function freezePluginProfile(
   const directories = snapshot.entries
     .filter((entry) => entry.kind === "directory")
     .map((entry) => join(directory, "node_modules", entry.path));
-  for (const path of [
-    ...directories.reverse(),
-    join(directory, "node_modules"),
-    directory,
-  ]) {
+  for (const path of [...directories.reverse(), join(directory, "node_modules"), directory]) {
     const savedDirectory = await open(path, "r");
     try {
       await savedDirectory.sync();
@@ -541,26 +484,18 @@ export async function restorePluginProfile(
     throw Error("PROFILE_EXTERNAL_ROOT_CHANGED");
   const failed = join(directory, "failed-node_modules");
   await rename(join(profileDirectory, "node_modules"), failed);
-  await cp(
-    join(directory, "node_modules"),
-    join(profileDirectory, "node_modules"),
-    {
-      recursive: true,
-      dereference: false,
-      preserveTimestamps: true,
-      verbatimSymlinks: true,
-    },
-  );
+  await cp(join(directory, "node_modules"), join(profileDirectory, "node_modules"), {
+    recursive: true,
+    dereference: false,
+    preserveTimestamps: true,
+    verbatimSymlinks: true,
+  });
   for (const name of ["package.json", "pnpm-lock.yaml"]) {
     const bytes = snapshot.files[name];
-    if (bytes)
-      await writeFile(join(profileDirectory, name), bytes, { mode: 0o600 });
+    if (bytes) await writeFile(join(profileDirectory, name), bytes, { mode: 0o600 });
     else await rm(join(profileDirectory, name), { force: true });
   }
-  if (
-    (await readPluginProfile(profileDirectory)).ownedSha256 !==
-    snapshot.ownedSha256
-  )
+  if ((await readPluginProfile(profileDirectory)).ownedSha256 !== snapshot.ownedSha256)
     throw Error("PROFILE_RESTORE_VERIFICATION_FAILED");
 }
 export function retainsProfileFields(
@@ -597,8 +532,5 @@ export function retainsUnmanagedManifestFields(
       delete fields[key];
     return fields;
   };
-  return (
-    canonical(withoutGraph(before.manifest)) ===
-    canonical(withoutGraph(current.manifest))
-  );
+  return canonical(withoutGraph(before.manifest)) === canonical(withoutGraph(current.manifest));
 }

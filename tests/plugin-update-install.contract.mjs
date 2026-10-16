@@ -24,9 +24,7 @@ test(
       head: execFileSync("git", ["-C", sdk, "rev-parse", "HEAD"], {
         encoding: "utf8",
       }).trim(),
-      version: JSON.parse(
-        await readFile(join(sdk, "apps/cli/package.json"), "utf8"),
-      ).version,
+      version: JSON.parse(await readFile(join(sdk, "apps/cli/package.json"), "utf8")).version,
       artifacts: await Promise.all(
         paths.map(async (path) => ({
           path,

@@ -36,16 +36,11 @@ test("missing update source uses the bundled source without replacing an existin
     source: { channelUrl: "https://example.test/custom.json" },
     core: currentCore,
   };
-  assert.deepEqual(
-    planCompanyCoreRefresh(existing, currentCore, source).source,
-    existing.source,
-  );
+  assert.deepEqual(planCompanyCoreRefresh(existing, currentCore, source).source, existing.source);
 });
 
 test("an existing profile that only added GenUI receives its missing update source and preserves prior settings and receipts", async () => {
-  const directory = await mkdtemp(
-    join(tmpdir(), "gea-existing-update-source-"),
-  );
+  const directory = await mkdtemp(join(tmpdir(), "gea-existing-update-source-"));
   const root = join(directory, "app"),
     seed = join(directory, "seed"),
     home = join(directory, "home");
@@ -61,9 +56,7 @@ test("an existing profile that only added GenUI receives its missing update sour
     "dir",
   );
   await symlink(
-    await realpath(
-      join(repository, "node_modules/@deepseek-ai/dsh-atomic-write"),
-    ),
+    await realpath(join(repository, "node_modules/@deepseek-ai/dsh-atomic-write")),
     join(root, "dsh/node_modules/@deepseek-ai/dsh-atomic-write"),
     "dir",
   );
@@ -88,10 +81,7 @@ test("an existing profile that only added GenUI receives its missing update sour
     channelUrl: "https://example.test/stable.json",
     publicKey: "keep",
   };
-  await writeFile(
-    join(seed, "manifest.json"),
-    JSON.stringify({ core, source }),
-  );
+  await writeFile(join(seed, "manifest.json"), JSON.stringify({ core, source }));
   const patch =
     "- id: gea-proof\n  disabled: false\n  config:\n    knowledge:\n      baseUrl: https://weknora.example.test\n- id: user-disabled\n  disabled: true\n";
   await writeFile(join(profile, "cordis.patch.yml"), patch);
@@ -101,25 +91,14 @@ test("an existing profile that only added GenUI receives its missing update sour
     packages: [{ name: "@changfenhuang/dsh-genui", version: "0.11.3" }],
   });
   await writeFile(join(bootstrap, "receipt.json"), receipt);
-  assert.equal(
-    (await refreshCompanyCore({ root, seed, home, apply: false })).status,
-    "ready",
-  );
-  assert.equal(
-    await readFile(join(profile, "cordis.patch.yml"), "utf8"),
-    patch,
-  );
+  assert.equal((await refreshCompanyCore({ root, seed, home, apply: false })).status, "ready");
+  assert.equal(await readFile(join(profile, "cordis.patch.yml"), "utf8"), patch);
   const result = await refreshCompanyCore({ root, seed, home });
   assert.equal(result.status, "update-source-configured");
   assert.equal(await readFile(result.backup, "utf8"), patch);
-  assert.equal(
-    await readFile(join(bootstrap, "receipt.json"), "utf8"),
-    receipt,
-  );
+  assert.equal(await readFile(join(bootstrap, "receipt.json"), "utf8"), receipt);
   const YAML = await import("yaml");
-  const rows = YAML.parse(
-    await readFile(join(profile, "cordis.patch.yml"), "utf8"),
-  );
+  const rows = YAML.parse(await readFile(join(profile, "cordis.patch.yml"), "utf8"));
   assert.deepEqual(rows[0].config.knowledge, {
     baseUrl: "https://weknora.example.test",
   });
@@ -163,10 +142,7 @@ test("the same admitted desktop Core refresh changes only its proof and supplies
   assert.deepEqual(next, { ...updates, core: currentCore });
   assert.deepEqual(config, before);
   assert.deepEqual(
-    planCompanyCoreRefresh(
-      { source: updates.source, core: updates.core },
-      currentCore,
-    ),
+    planCompanyCoreRefresh({ source: updates.source, core: updates.core }, currentCore),
     {
       source: updates.source,
       core: currentCore,
@@ -200,18 +176,11 @@ test("a different or unknown Core proof and invalid configured timing cannot be 
       ...changed,
     };
     const before = structuredClone(updates);
-    assert.throws(
-      () => planCompanyCoreRefresh(updates, currentCore),
-      /GEA_CORE_REFRESH_REJECTED/,
-    );
+    assert.throws(() => planCompanyCoreRefresh(updates, currentCore), /GEA_CORE_REFRESH_REJECTED/);
     assert.deepEqual(updates, before);
   }
   assert.throws(
-    () =>
-      planCompanyCoreRefresh(
-        { core: currentCore },
-        { ...currentCore, head: "b".repeat(40) },
-      ),
+    () => planCompanyCoreRefresh({ core: currentCore }, { ...currentCore, head: "b".repeat(40) }),
     /GEA_CORE_REFRESH_REJECTED/,
   );
 });
@@ -235,11 +204,9 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
     "cordis.patch.yml":
       "- id: gea-proof\n  config:\n    knowledge:\n      baseUrl: https://weknora.example.test\n",
     "gea/plugin-updates/latest.json": '{"id":"old","stage":"completed"}',
-    "gea/plugin-updates/operations/old/receipt.json":
-      '{"version":"0.0.154","stage":"completed"}',
+    "gea/plugin-updates/operations/old/receipt.json": '{"version":"0.0.154","stage":"completed"}',
   };
-  for (const [name, text] of Object.entries(files))
-    await writeFile(join(profile, name), text);
+  for (const [name, text] of Object.entries(files)) await writeFile(join(profile, name), text);
   const result = await bootstrapCompanyProfile({
     root: "unused",
     support: "unused",
@@ -286,10 +253,7 @@ test("an incomplete owned installation cannot be hidden by four declared depende
       /GEA_COMPANY_INSTALL_INCOMPLETE/,
     );
     assert.equal(await readFile(record, "utf8"), receipt);
-    assert.equal(
-      await readFile(join(profile, "package.json"), "utf8"),
-      manifest,
-    );
+    assert.equal(await readFile(join(profile, "package.json"), "utf8"), manifest);
   }
 });
 
@@ -326,10 +290,7 @@ test("a damaged bundled archive stops first installation before creating the use
 
 test("the packaged seed rejects missing plugins and paths outside its archives directory", async () => {
   const seed = await mkdtemp(join(tmpdir(), "gea-bootstrap-manifest-"));
-  await writeFile(
-    join(seed, "manifest.json"),
-    JSON.stringify({ schema: 1, packages: [] }),
-  );
+  await writeFile(join(seed, "manifest.json"), JSON.stringify({ schema: 1, packages: [] }));
   await assert.rejects(readCompanySeed(seed), /GEA_SEED_INVALID/);
   const names = [
     "@cleverc2200/dsh-agent-workbench",
@@ -353,13 +314,7 @@ test("the packaged seed rejects missing plugins and paths outside its archives d
 });
 
 test("only an unchanged profile with a known pre-write store rejection can reach recovery once", async () => {
-  for (const variant of [
-    "known",
-    "changed",
-    "other-error",
-    "retried",
-    "all-declared",
-  ]) {
+  for (const variant of ["known", "changed", "other-error", "retried", "all-declared"]) {
     const home = await mkdtemp(join(tmpdir(), "gea-store-recovery-"));
     const profile = join(home, "profiles/desktop");
     const record = join(profile, "gea/bootstrap");
@@ -373,8 +328,7 @@ test("only an unchanged profile with a known pre-write store rejection can reach
       "dsh-agent-manage": "old",
       "@cleverc2200/gea-dsh-prototype": "old",
     };
-    if (variant === "all-declared")
-      dependencies["@changfenhuang/dsh-genui"] = "old";
+    if (variant === "all-declared") dependencies["@changfenhuang/dsh-genui"] = "old";
     const files = {
       "package.json": JSON.stringify({ dependencies }),
       "cordis.patch.yml": "- id: preserved\n",
@@ -397,15 +351,9 @@ test("only an unchanged profile with a known pre-write store rejection can reach
         : "[ERR_PNPM_UNEXPECTED_STORE] Unexpected store location\n",
     );
     if (variant === "changed")
-      await writeFile(
-        join(profile, "cordis.patch.yml"),
-        "user changed configuration\n",
-      );
+      await writeFile(join(profile, "cordis.patch.yml"), "user changed configuration\n");
     if (variant === "retried")
-      await writeFile(
-        join(record, "before-store-conflict-retry.json"),
-        receipt,
-      );
+      await writeFile(join(record, "before-store-conflict-retry.json"), receipt);
     await assert.rejects(
       bootstrapCompanyProfile({
         root: "unused",
