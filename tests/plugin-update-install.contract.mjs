@@ -21,8 +21,12 @@ test(
     const proof = {
       kind: "source",
       root: sdk,
-      head: execFileSync("git", ["-C", sdk, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-      version: JSON.parse(await readFile(join(sdk, "apps/cli/package.json"), "utf8")).version,
+      head: execFileSync("git", ["-C", sdk, "rev-parse", "HEAD"], {
+        encoding: "utf8",
+      }).trim(),
+      version: JSON.parse(
+        await readFile(join(sdk, "apps/cli/package.json"), "utf8"),
+      ).version,
       artifacts: await Promise.all(
         paths.map(async (path) => ({
           path,
@@ -32,7 +36,21 @@ test(
         })),
       ),
     };
-    const result = await installedScenario(t, proof, sdk);
-    assert.deepEqual(result.profileRetained, { draft: "keep", selection: "sales" });
+    for (const customStore of [false, true]) {
+      await t.test(
+        customStore
+          ? "company-seeded custom store survives online update"
+          : "default store survives online update",
+        async (t) => {
+          const result = await installedScenario(t, proof, sdk, {
+            customStore,
+          });
+          assert.deepEqual(result.profileRetained, {
+            draft: "keep",
+            selection: "sales",
+          });
+        },
+      );
+    }
   },
 );
