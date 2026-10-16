@@ -1,3 +1,4 @@
+import type { PluginUpdateFileCommit } from "./plugin-update-windows.ts";
 import { createHash } from "node:crypto";
 import { resolveBundleDir } from "@deepseek-ai/dsh-app-boot";
 import { createReadStream } from "node:fs";
@@ -391,7 +392,13 @@ export async function freezePluginProfile(
   profileDirectory: string,
   snapshot: ProfileSnapshot,
   directory: string,
+  commit?: PluginUpdateFileCommit,
 ): Promise<void> {
+  const targetDirectory = directory;
+  if (process.platform === "win32") {
+    if (!commit) throw Error("UPDATE_WINDOWS_STORAGE_UNAVAILABLE");
+    directory += ".preparing";
+  }
   if (!snapshot.files["pnpm-lock.yaml"]) throw Error("PROFILE_FROZEN_LOCK_REQUIRED");
   const capacity = await statfs(profileDirectory);
   if (capacity.bavail * capacity.bsize < snapshot.bytes * 2 + 64 * 1024 * 1024)
@@ -410,7 +417,10 @@ export async function freezePluginProfile(
     verbatimSymlinks: true,
   });
   for (const entry of snapshot.entries.filter((entry) => entry.kind === "file")) {
-    const file = await open(join(directory, "node_modules", entry.path), "r");
+    const file = await open(
+      join(directory, "node_modules", entry.path),
+      process.platform === "win32" ? "r+" : "r",
+    );
     try {
       await file.sync();
     } finally {
@@ -419,7 +429,7 @@ export async function freezePluginProfile(
   }
   for (const [name, bytes] of Object.entries(snapshot.files)) {
     if (!bytes) continue;
-    const file = await open(join(directory, name), "r");
+    const file = await open(join(directory, name), process.platform === "win32" ? "r+" : "r");
     try {
       await file.sync();
     } finally {
@@ -449,11 +459,18 @@ export async function freezePluginProfile(
     ) + "\n",
     { mode: 0o600, flag: "wx" },
   );
-  const snapshotFile = await open(join(directory, "snapshot.json"), "r");
+  const snapshotFile = await open(
+    join(directory, "snapshot.json"),
+    process.platform === "win32" ? "r+" : "r",
+  );
   try {
     await snapshotFile.sync();
   } finally {
     await snapshotFile.close();
+  }
+  if (process.platform === "win32" && commit) {
+    await commit.replace(directory, targetDirectory);
+    return;
   }
   // Sync directory entries after syncing file contents, before the durable acceptance receipt.
   const directories = snapshot.entries

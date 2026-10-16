@@ -44,6 +44,7 @@ import {
 } from "./plugin-update-profile.ts";
 import { writePluginRecoveryNotes } from "./plugin-update-recovery-notes.ts";
 import { observeProfilePackageProcesses } from "./plugin-update-processes.ts";
+import { prepareWindowsPackageRun, type PluginUpdateFileCommit } from "./plugin-update-windows.ts";
 
 /** Stable for the lifetime of this Node process, including Controller recreation in the same process. */
 export const pluginUpdateProcessIdentity = `${process.pid}:${performance.timeOrigin}`;
@@ -57,6 +58,7 @@ export type PluginUpdateControllerOptions = {
     "name" | "dir" | "installAnchor" | "cwd" | "home" | "packageManager"
   >;
   core: FixedCore;
+  fileCommit?: PluginUpdateFileCommit;
   runtimeDirectory: string;
   source: Source;
   /** Trusted startup Loader namespace and materialized client proof reader supplied by 04. */
@@ -86,7 +88,7 @@ const code = (error: unknown, fallback: string) =>
   error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message) ? error.message : fallback;
 const run = promisify(execFile);
 
-async function durableJson(path: string, value: unknown) {
+async function durableJson(path: string, value: unknown, commit?: PluginUpdateFileCommit) {
   const temp = path + "." + randomUUID() + ".partial",
     file = await open(temp, "wx", 0o600);
   try {
@@ -96,6 +98,11 @@ async function durableJson(path: string, value: unknown) {
     await file.close();
   }
   try {
+    if (process.platform === "win32") {
+      if (!commit) throw Error("UPDATE_WINDOWS_STORAGE_UNAVAILABLE");
+      await commit.replace(temp, path);
+      return;
+    }
     await rename(temp, path);
     const directory = await open(join(path, ".."), "r");
     try {
@@ -253,7 +260,10 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   let startup: RuntimePackageProof[] = [],
     mutationInThisController = false;
   let plans = new Map<CompanyPackageName, Plan>();
-  let currentMonitor: Awaited<ReturnType<typeof observeProfilePackageProcesses>> | null = null;
+  let currentMonitor: Pick<
+    Awaited<ReturnType<typeof observeProfilePackageProcesses>>,
+    "capture" | "snapshot" | "waitForQuiescence" | "cancelObserved" | "close"
+  > | null = null;
   function snapshot() {
     return structuredClone(state);
   }
@@ -318,7 +328,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     return operation;
   }
   async function persist(operation: PluginUpdateOperation) {
-    await durableJson(join(operations, operation.id, "receipt.json"), operation);
+    await durableJson(
+      join(operations, operation.id, "receipt.json"),
+      operation,
+      options.fileCommit,
+    );
     state = { ...state, operation };
     row(operation.packageName, {
       state: operation.stage,
@@ -470,21 +484,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     if (!initialized) await initialize();
     if (closed) fail("UPDATE_HOST_CLOSED");
     if (active || journalBroken || blocking(state.operation)) return snapshot();
-    if (process.platform === "win32") {
-      plans.clear();
-      state = {
-        ...state,
-        items: state.items.map((item) => ({
-          ...item,
-          state: "blocked",
-          planId: null,
-          diagnostic: "UPDATE_PROCESS_PLATFORM_UNSUPPORTED",
-          problem: { kind: "environment", code: "unsupported-platform" },
-        })),
-      };
-      publish();
-      return snapshot();
-    }
     const generation = ++checking;
     plans.clear();
     state = {
@@ -600,7 +599,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   }): Promise<PluginUpdateOperation> {
     if (!initialized) await initialize();
     if (closed) fail("UPDATE_HOST_CLOSED");
-    if (process.platform === "win32") fail("UPDATE_PROCESS_PLATFORM_UNSUPPORTED");
     if (active || journalBroken || blocking(state.operation)) fail("UPDATE_OPERATION_BLOCKED");
     const plan = plans.get(request.packageName);
     if (!plan || plan.id !== request.planId) fail("UPDATE_PLAN_STALE");
@@ -652,8 +650,19 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             const id = randomUUID(),
               operationDirectory = join(operations, id);
             await mkdir(operationDirectory, { mode: 0o700 });
+            const windowsRun =
+              process.platform === "win32"
+                ? await prepareWindowsPackageRun(
+                    operationDirectory,
+                    options.profile.dir,
+                    options.profile.installAnchor,
+                    options.core.version,
+                    options.profile.packageManager,
+                  )
+                : null;
+            currentMonitor = windowsRun;
             recovery = join(operationDirectory, "recovery");
-            await freezePluginProfile(options.profile.dir, baseline, recovery);
+            await freezePluginProfile(options.profile.dir, baseline, recovery, options.fileCommit);
             await writePluginRecoveryNotes(operationDirectory, options.profile.dir);
             lifetime.signal.throwIfAborted();
             options.source.assertCurrentRelease(plan.release);
@@ -679,7 +688,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               processes: [],
             };
             await persist(operation);
-            await durableJson(latest, { schema: 1, id });
+            await durableJson(latest, { schema: 1, id }, options.fileCommit);
             plans.clear();
             state = {
               ...state,
@@ -697,7 +706,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             publish();
             accept(structuredClone(operation));
             await stage("installing");
-            currentMonitor = await observeProfilePackageProcesses(options.profile.dir);
+            currentMonitor ??= await observeProfilePackageProcesses(options.profile.dir);
             lifetime.signal.throwIfAborted();
             options.source.assertCurrentRelease(plan.release);
             mutationStarted = true;
@@ -723,7 +732,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                   "--config.auto-install-peers=false",
                 ],
                 {
-                  ...options.profile.packageManager,
+                  ...(windowsRun?.packageManager ?? options.profile.packageManager),
                   execution: "service",
                   signal: lifetime.signal,
                   outputBytes: 16_000,

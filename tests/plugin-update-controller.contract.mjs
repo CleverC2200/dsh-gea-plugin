@@ -623,7 +623,7 @@ test("Core SDK peers resolve from the explicit installation while a normal pnpm 
     "available",
   );
 });
-test("Windows check and submission reject before download, acceptance or any package mutation", async (t) => {
+test("Windows checks the signed channel even before package installation capability is available", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t),
     controller = createPluginUpdateController(f.options);
@@ -640,17 +640,14 @@ test("Windows check and submission reject before download, acceptance or any pac
         packageName: available.packageName,
         planId: available.planId,
       }),
-      /UPDATE_PROCESS_PLATFORM_UNSUPPORTED/,
+      /UPDATE_WINDOWS_LAUNCHER_UNSUPPORTED/,
     );
     await controller.check();
     assert.ok(
       controller
         .snapshot()
         .items.every(
-          (row) =>
-            row.state === "blocked" &&
-            row.diagnostic === "UPDATE_PROCESS_PLATFORM_UNSUPPORTED" &&
-            row.planId === null,
+          (row) => ["available", "current"].includes(row.state) && row.diagnostic === null,
         ),
     );
     assert.equal(controller.snapshot().operation, null);

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createPluginReleaseSource } from "../../../src/host/plugin-release-source.ts";
 import { companyPackageNames, projectPluginRelease } from "../../../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
-export async function controllerFixture(t, { mode = "success", sourceFailure } = {}) {
+export async function controllerFixture(t, { mode = "success", sourceFailure, fileCommit } = {}) {
   const root = await mkdtemp(join(tmpdir(), "plugin-update-real-profile-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, "profile"),
@@ -142,6 +142,7 @@ export async function controllerFixture(t, { mode = "success", sourceFailure } =
     },
     {
       trustDirectory: join(root, "source-trust"),
+      fileCommit: fileCommit ?? { replace: rename },
       resolveAuthentication: async () => ({}),
       fetch: async (url) => {
         if (sourceFailure === "http")
