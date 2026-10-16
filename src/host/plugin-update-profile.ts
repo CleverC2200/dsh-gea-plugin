@@ -539,8 +539,14 @@ export function retainsProfileFields(
     ...strings(expected.dependencies),
     [release.name]: "file:" + archivePath,
   };
-  if (canonical(after.manifest) !== canonical(expected)) return false;
-  return true;
+  const current = structuredClone(after.manifest);
+  if (process.platform === "win32") {
+    const dependencies = strings(current.dependencies);
+    if (dependencies[release.name] === "file:" + archivePath.replaceAll("\\", "/"))
+      dependencies[release.name] = "file:" + archivePath;
+    current.dependencies = dependencies;
+  }
+  return canonical(current) === canonical(expected);
 }
 export function retainsUnmanagedManifestFields(
   before: ProfileSnapshot,

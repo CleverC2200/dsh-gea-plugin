@@ -36,7 +36,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {readPluginProfile, combinationManifests, validateActualProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileFields, readPluginProfile, combinationManifests, validateActualProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -70,6 +70,7 @@ const {
   validateActualProfile,
   parseUpdateClientStatus,
   pluginProfileStoreDirectory,
+  retainsProfileFields,
 } = await import(pathToFileURL(modulePath));
 test("profile store metadata selects its existing directory and rejects unusable state", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "plugin-update-store-"));
@@ -757,4 +758,26 @@ test("an absent optional executable target does not block update or change its s
   const operation = await waitForStage(controller, ["pending-restart", "unknown", "restored"]);
   assert.equal(operation.stage, "pending-restart", JSON.stringify(operation));
   assert.equal(await readlink(join(bin, "cloudflared")), target);
+});
+
+test("Windows accepts pnpm file separators only for the selected exact archive", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { ...descriptor, value: "win32" });
+  try {
+    const release = { name: "selected-plugin" },
+      archive = String.raw`C:\GEA\cache\signed.tgz`;
+    const before = {
+      manifest: { dependencies: { other: "1.0.0", "selected-plugin": "1.0.0" }, retained: "keep" },
+    };
+    const after = structuredClone(before);
+    after.manifest.dependencies[release.name] = "file:" + archive.replaceAll("\\", "/");
+    assert.equal(retainsProfileFields(before, after, release, archive), true);
+    after.manifest.retained = "changed";
+    assert.equal(retainsProfileFields(before, after, release, archive), false);
+    after.manifest.retained = "keep";
+    after.manifest.dependencies[release.name] += ".different";
+    assert.equal(retainsProfileFields(before, after, release, archive), false);
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
 });

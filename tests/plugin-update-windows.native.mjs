@@ -2,16 +2,7 @@ import { installPnpmConsumerLayout } from "./fixtures/plugin-updates/pnpm-profil
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  readFile,
-  symlink,
-  rm,
-  readdir,
-  readlink,
-  stat,
-  realpath,
-} from "node:fs/promises";
+import { mkdtemp, readFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
