@@ -27,6 +27,7 @@ const candidatePhases = new Set([
   "business-profile",
   "mcp-client-repair",
   "knowledge-merge",
+  "plugin-update-pr",
   "prepare",
   "verify-input",
   "macos-isolation",
@@ -98,7 +99,13 @@ try {
     refuse("QUALITY_STAGE_REQUIRED", values.stage);
   if (
     values.stage !== "full" &&
-    !["quality", "business-profile", "mcp-client-repair", "knowledge-merge"].includes(values.phase)
+    ![
+      "quality",
+      "business-profile",
+      "mcp-client-repair",
+      "knowledge-merge",
+      "plugin-update-pr",
+    ].includes(values.phase)
   )
     refuse("QUALITY_STAGE_PHASE", values.phase);
   if (
@@ -177,6 +184,14 @@ try {
         gea: own.path,
       });
 
+    let pluginPlan;
+    if (values.phase === "plugin-update-pr") {
+      const { pluginUpdateLane, validatePluginUpdateGroup, pluginUpdatePlan } =
+        await import("./plugin-update-pr-lane.mjs");
+      if (!pluginUpdateLane(process.cwd())) refuse("PLUGIN_UPDATE_EVENT_REQUIRED");
+      validatePluginUpdateGroup(candidate.repositories);
+      pluginPlan = pluginUpdatePlan;
+    }
     let knowledgePlan;
     if (values.phase === "knowledge-merge") {
       const {
@@ -210,6 +225,7 @@ try {
     );
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
     const selectedPlan =
+      pluginPlan ??
       knowledgePlan ??
       (values.phase === "macos-isolation"
         ? {
@@ -294,6 +310,7 @@ try {
       "business-profile",
       "mcp-client-repair",
       "knowledge-merge",
+      "plugin-update-pr",
     ].includes(values.phase);
     if (stagedPhase) {
       stages = qualityStageRun({
