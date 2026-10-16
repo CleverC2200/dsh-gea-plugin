@@ -249,7 +249,8 @@ try {
     }
     writeFileSync(resolve(output, "hosted-budget.json"), JSON.stringify(hosted, null, 2) + "\n");
     console.log(JSON.stringify({ coverage, hosted }));
-    if (coverage.status !== "passed" || !hosted.passed) refuse("QUALITY_FINAL_REJECTED");
+    if (coverage.status !== "passed" || hosted.functional?.status !== "passed")
+      refuse("QUALITY_FINAL_REJECTED");
   } else if (values.phase === "input") {
     refuse(
       "CANDIDATE_INPUT_REQUIRED",

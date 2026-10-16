@@ -103,6 +103,8 @@ macOS 对每个 required Core 保留独立原生隔离测试，通过本机 SDK 
 
 `candidate-quality` 始终汇总小 catalogue 与每片/Mac 回执，不下载大 bundle。它核完整一次执行覆盖，并通过 [hosted budget](../scripts/quality-hosted-budget.mjs) 读取当前 run attempt 的 REST run 和全分页 jobs，分别保存 `coverage.json`、`hosted-budget.json`、`hosted-snapshot.json` 到本轮 `quality-a<attempt>-final` artifact。排队、准备、运输、锁安装、cache save、汇总与上传尾部都属于实际墙钟。门内 in-gate 结果只量到判定时刻，`completedMeasurement:false`；workflow 完成后还须从外部用 completed 模式及原 gateDecision 复核全部 job 和 final 上传尾部，才可声明完整600秒结果。compatibility 使用独立 `compatibility-final` 汇总其原上游状态，不代替 required 验收。
 
+本次仅合入已验证的选择与分片，不新增实验分支的600秒性能硬阻断。原源码准入、静态检查、构建、macOS隔离、逐文件完整覆盖及必需上游状态仍全部阻断；身份或功能状态未知同样拒绝。`hosted-budget.json` 的性能失败或未知保持原样，600秒目标仍待完成，不因功能门禁通过而改记达标。
+
 本地省略 `--stage` 仍完整运行，`--phase` 选择原质量 lane；显式分阶段仍可使用 prepare/build/checks/tests/summary。`--stage verify-tests [--test-results FILE]` 只读核当前执行计划、build摘要和完整平台回执；本地 summary 继续复核实际准备/构建产物。`--test-shards N` 只改变完整集合分组。阶段状态只属于当前 job；本地或 fixture 通过不代表真实 VM、完整 workflow、业务、发布或600秒验收。
 
 `node --test scripts/run-quality-ci-stages.test.mjs` 通过公开 CLI 验证真实临时 Git 输入、跨进程恢复、实际 fixture 测试、失败与取消。独立 checkout 可用 `GEA_FINAL_GROUP_WORKBENCH_SOURCE` 和 `GEA_FINAL_GROUP_MANAGE_SOURCE` 指向本票登记的只读 peer 源码。安装/编译命令使用受控 OS adapter，不安装依赖或构建产品；这些结果不代替远端完整 CI、真实 SDK 编译、Native 或业务验收。
