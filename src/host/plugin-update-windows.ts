@@ -45,7 +45,7 @@ async function main(){
   if(child?.process)api.closeHandleChecked(bindings,child.process,'plugin package failed process');
  }
 }
-main().catch(()=>{process.stderr.write('UPDATE_WINDOWS_JOB_UNCONFIRMED\n');process.exitCode=1;});
+main().catch(error=>{const detail=typeof error?.api==='string'&&/^[A-Za-z0-9_]+$/.test(error.api)&&Number.isInteger(error.win32Code)?error.api+':'+error.win32Code:/^[A-Z][A-Z0-9_]+$/.test(error?.message)?error.message:/^[A-Z][A-Z0-9_]+$/.test(error?.code)?error.code:'UNKNOWN';process.stderr.write('UPDATE_WINDOWS_JOB_UNCONFIRMED '+detail+'\n');process.exitCode=1;});
 `;
 
 import type { ProfileContext } from "@deepseek-ai/dsh-app-boot";
@@ -151,10 +151,12 @@ export async function prepareWindowsPackageRun(
           throw Error("WINDOWS_JOB_RUN_RECORD_MISMATCH");
         process.kill(value.pid, 0);
         observed = { pid: value.pid, grouped: false, startIdentity: nonce, sawAlive: true };
-        writeFileSync(join(directory, "windows-job-ack.json"), JSON.stringify({ nonce }), {
+        const acknowledgement = join(directory, "windows-job-ack.json");
+        writeFileSync(acknowledgement + ".tmp", JSON.stringify({ nonce }), {
           flag: "wx",
           mode: 0o600,
         });
+        renameSync(acknowledgement + ".tmp", acknowledgement);
       }
       if (value.stage === "empty") {
         if (!("exitCode" in value) || !Number.isInteger(value.exitCode))
