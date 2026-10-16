@@ -1,11 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, mkdtemp, cp, writeFile, rm, realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve, join } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
-test("the installed base inventory Agent receives every declared P1 Skill through Manage", async (t) => {
-  const directory = resolve("../dsh-agent-workbench/lib/business/inventory-aqkc");
+test("the base inventory declaration passes every P1 Skill to Manage", async (t) => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "gea-base-resources-")));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await cp(resolve("../dsh-agent-manage/business-resources/inventory-aqkc"), directory, {
+    recursive: true,
+  });
+  for (const file of ["plugin.json", "page.json"])
+    await cp(
+      resolve("../dsh-agent-workbench/business/inventory-aqkc", file),
+      resolve(directory, file),
+    );
+  await writeFile(resolve(directory, "index.html"), "<!doctype html><title>基地库存</title>");
   const manifest = JSON.parse(await readFile(resolve(directory, "plugin.json"), "utf8"));
   const expected = [
     "inventory-aqkc",
