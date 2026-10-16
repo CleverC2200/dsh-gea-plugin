@@ -1,5 +1,6 @@
 import { installPnpmConsumerLayout } from "./fixtures/plugin-updates/pnpm-profile.mjs";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import {
   mkdtemp,
@@ -55,6 +56,16 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
     f.options.quiescenceWaitMs = 1500;
     const before = await readFile(join(f.dir, "package.json"));
     controller = createPluginUpdateController(f.options);
+    controller.subscribe((snapshot) => {
+      if (mode === "pnpm" && snapshot.operation?.stage === "verifying")
+        console.error(
+          "WINDOWS_FIXTURE_MANIFEST",
+          JSON.stringify({
+            manifest: JSON.parse(readFileSync(join(f.dir, "package.json"), "utf8")),
+            archive: snapshot.operation.archivePath,
+          }),
+        );
+    });
     await controller.initialize();
     await controller.check();
     const item = controller
