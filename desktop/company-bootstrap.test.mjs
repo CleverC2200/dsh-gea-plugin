@@ -190,3 +190,58 @@ test("the packaged seed rejects missing plugins and paths outside its archives d
   );
   await assert.rejects(readCompanySeed(seed), /GEA_SEED_INVALID/);
 });
+
+test("only an unchanged profile with a known pre-write store rejection can reach recovery once", async () => {
+  for (const variant of ["known", "changed", "other-error", "retried", "all-declared"]) {
+    const home = await mkdtemp(join(tmpdir(), "gea-store-recovery-"));
+    const profile = join(home, "profiles/desktop");
+    const record = join(profile, "gea/bootstrap");
+    const log = join(profile, ".plugin-manager/logs/operation-known/pnpm.log");
+    await mkdir(record, { recursive: true });
+    await mkdir(join(profile, ".plugin-manager/logs/operation-known"), { recursive: true });
+    const dependencies = {
+      "@cleverc2200/dsh-agent-workbench": "old",
+      "dsh-agent-manage": "old",
+      "@cleverc2200/gea-dsh-prototype": "old",
+    };
+    if (variant === "all-declared") dependencies["@changfenhuang/dsh-genui"] = "old";
+    const files = {
+      "package.json": JSON.stringify({ dependencies }),
+      "cordis.patch.yml": "- id: preserved\n",
+      "pnpm-lock.yaml": "lockfileVersion: 9\n",
+      "pnpm-workspace.yaml": "packages: []\n",
+    };
+    for (const [name, text] of Object.entries(files)) {
+      await writeFile(join(profile, name), text);
+      await writeFile(join(record, "before-" + name), text);
+    }
+    const receipt = JSON.stringify({
+      status: "failed",
+      diagnostic: "GEA_COMPANY_INSTALL_FAILED: " + log,
+    });
+    await writeFile(join(record, "receipt.json"), receipt);
+    await writeFile(
+      log,
+      variant === "other-error"
+        ? "[ERR_PNPM_OTHER]\n"
+        : "[ERR_PNPM_UNEXPECTED_STORE] Unexpected store location\n",
+    );
+    if (variant === "changed")
+      await writeFile(join(profile, "cordis.patch.yml"), "user changed configuration\n");
+    if (variant === "retried")
+      await writeFile(join(record, "before-store-conflict-retry.json"), receipt);
+    await assert.rejects(
+      bootstrapCompanyProfile({
+        root: "unused",
+        support: "unused",
+        seed: join(home, "absent-seed"),
+        home,
+      }),
+      (error) =>
+        variant === "known"
+          ? error.code === "ENOENT"
+          : error.message === "GEA_COMPANY_INSTALL_INCOMPLETE",
+    );
+    assert.equal(await readFile(join(record, "receipt.json"), "utf8"), receipt);
+  }
+});
