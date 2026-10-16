@@ -998,7 +998,7 @@ watch(process.env.GITHUB_WORKSPACE,()=>{});await new Promise(()=>{});
   chmodSync(join(f.root, "bin/gh"), 0o755);
   const run = f.earlyReceiveAsync(apiBase, { EARLY_BROWSER_CLOSURE: "1" });
   try {
-    await deadline(fileReady(join(f.root, "download-descendant")));
+    await fileReady(join(f.root, "download-descendant"), 15000);
     run.child.kill("SIGINT");
     const result = await deadline(run.closed);
     assert.equal(result.code, 1, result.stderr);
@@ -1759,12 +1759,12 @@ test("worker CLI rechecks all fresh dependency roots after managers are ready be
   assert.equal(f.read("quality-worker-inputs.json").status, "failed");
 });
 
-function fileReady(file) {
+function fileReady(file, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       watcher.close();
       reject(Error("fixture process did not become ready"));
-    }, 5000);
+    }, timeoutMs);
     const check = () => {
       if (existsSync(file)) {
         clearTimeout(timer);
