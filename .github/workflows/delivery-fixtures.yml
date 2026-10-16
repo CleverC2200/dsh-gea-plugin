@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   windows-plugin-update:
-    if: github.head_ref == 'codex/windows-plugin-updates-159-20261016' || github.ref_name == 'codex/windows-plugin-updates-159-20261016'
+    if: github.event.pull_request.draft != true && (github.head_ref == 'codex/windows-plugin-updates-159-20261016' || github.ref_name == 'codex/windows-plugin-updates-159-20261016')
     runs-on: windows-2025
     timeout-minutes: 12
     steps:

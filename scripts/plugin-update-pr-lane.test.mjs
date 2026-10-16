@@ -91,7 +91,7 @@ test("every targeted stage requires public hash admission before preparation", (
   }
 });
 
-test("desktop first-install scope is bound to its own PR and frozen packaging source", (t) => {
+test("Windows update scope is bound to its own PR and frozen source", (t) => {
   const a = desktopBootstrapAuthorization;
   const input = {
     event: "pull_request",
