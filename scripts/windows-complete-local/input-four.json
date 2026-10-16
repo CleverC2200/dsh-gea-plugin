@@ -1,0 +1,111 @@
+{
+  "packages": [
+    {
+      "name": "@cleverc2200/dsh-agent-workbench",
+      "version": "0.1.8",
+      "path": "cleverc2200-dsh-agent-workbench-0.1.8.tgz",
+      "sha256": "22434e45e47c94fdf5de420c7cc4150a6a35b1b9bfde892d539fe96336f845e2"
+    },
+    {
+      "name": "dsh-agent-manage",
+      "version": "0.6.3-company.15",
+      "path": "dsh-agent-manage-0.6.3-company.15.tgz",
+      "sha256": "b917a338ff6a7f10bfe9a6911aa5aed3fd3dcfb3ba05672aa984a8c82509ab69"
+    },
+    {
+      "name": "@cleverc2200/gea-dsh-prototype",
+      "version": "0.0.155",
+      "path": "cleverc2200-gea-dsh-prototype-0.0.155.tgz",
+      "sha256": "42bbb26978402e835d843567aea979fdc65a2b192ecbbee8c68ba8cee969489e"
+    },
+    {
+      "name": "@changfenhuang/dsh-genui",
+      "version": "0.11.3",
+      "path": "dsh-genui-0.11.3.tgz",
+      "sha256": "6f7de08dc584a5097e4064296dd23bbfa79a7b1af705f6b497bd99906ab1030a"
+    }
+  ],
+  "core": {
+    "head": "639ed015397290b3745d163aafe02ffee4aa3f84",
+    "version": "0.2.0-rc.2",
+    "artifacts": [
+      {
+        "path": "package.json",
+        "sha256": "5eac5861d9e18b4156b669ca2122a0e5eb627285ea18d806f80374236f4fa356"
+      },
+      {
+        "path": "lib/main.js",
+        "sha256": "10325004a1ddbd8118ed0607ea28d50a7b0d692dcaeb25a67a7d8aea9165019d"
+      },
+      {
+        "path": "dsh/package.json",
+        "sha256": "09058d99b57edc509ba44f2e934094daf36a592fcef24b31793a250ba9dbb124"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh/package.json",
+        "sha256": "2aaa9350c8d746d61add92553a0be802fe79bcd85616c868c8a36fef4116a338"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-desktop-host/package.json",
+        "sha256": "63d5fbcefa123d1385025d9e2b68221247817f7148ba1a6dbf9b4eaffd22678e"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js",
+        "sha256": "6c6182cbd9ff7df144145065885fbc5873e9a9db9651c5152e785c84a55689d6"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-app-boot/package.json",
+        "sha256": "497bf998efe8af19241c6d7eea51448c5e4f7e1727afae5253974769637b9220"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js",
+        "sha256": "234db45e1b3f8c683b5bc1f551948b2a2ec52a6468c7b6937725a23f1c0e0d96"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/cordis/package.json",
+        "sha256": "41c9dee4715a89ef94f227384460c8445857c8faf33493eb545604a948828649"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/cordis/lib/index.js",
+        "sha256": "6a9394c0877ff45218818c6e815edd038f8057e1a1deb390a8d43ec81c57691e"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/package.json",
+        "sha256": "b18b5e0ca3b9502e38dff57e909eb075fdd8ae8f180bd02b15bf6f35cf8e1e69"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js",
+        "sha256": "f46a48b3422927eea5605a70b78502e06ef9ceaa29d7a73f4a7f742361ff51c8"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-atomic-write/package.json",
+        "sha256": "bbf399274ae948f980e8cb5552697b660d42f82b4c29ad6cb6013065ca248747"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js",
+        "sha256": "5f07978ef594a2711b2da301d5cb73a835cf1a48c1f8920ab5c6625137e12029"
+      },
+      {
+        "path": "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js",
+        "sha256": "bf511a06b6ff2d7aab1f7725fcc80f304eb32a9541790e22cd28f8a9617b2c68"
+      }
+    ]
+  },
+  "source": {
+    "channel": "stable",
+    "channelUrl": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/plugin-detail-stable.json",
+    "authenticationRef": "anonymous",
+    "allowed": [
+      {
+        "origin": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com",
+        "pathPrefix": "/plugin-release/"
+      }
+    ],
+    "trustedKeys": [
+      {
+        "keyId": "plugin-detail-test-20261015",
+        "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4yJrjMTO0WzaKJzheHiMpGj5BamQ7eE1Xy3JQp7zIP0=\n-----END PUBLIC KEY-----\n"
+      }
+    ]
+  }
+}
