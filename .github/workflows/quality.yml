@@ -329,7 +329,6 @@ jobs:
           restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare owned Core source without compiling
         id: sdk-paths
-        if: needs.candidate-scope.outputs.business-lane == 'full'
         env:
           CORE_HEAD: ${{ matrix.core }}
         run: |
@@ -337,7 +336,6 @@ jobs:
           node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
         id: sdk-cache
-        if: needs.candidate-scope.outputs.business-lane == 'full'
         with:
           path: ${{ steps.sdk-paths.outputs.paths }}
           key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ matrix.core }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
@@ -423,7 +421,7 @@ jobs:
           if-no-files-found: error
 
       - name: Save verified SDK cache within the measured job wall clock
-        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && needs.candidate-scope.outputs.business-lane == 'full' && steps.sdk-cache.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.sdk-cache.outputs.cache-hit != 'true' }}
         continue-on-error: true
         timeout-minutes: 1
         uses: actions/cache/save@v4

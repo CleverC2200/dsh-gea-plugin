@@ -91,6 +91,8 @@ producer 将原 candidate、阶段/执行计划、来源回执、binding 原字�
 
 [小控制入口](../scripts/quality-worker-control.mjs) 用原 plan、control 原字节 SHA 和实际源码校验早期 matrix。worker 仅有界等待同 repo/run/attempt/head/Core 的唯一成功 producer，核 API artifact 唯一 ID 后用 runner 既有 gh 下载到空私有 inbox，并再次核身份；失败、取消、超时、API 错误、缺失/重复/漂移均拒绝。请求和下载受同一单调时限及原 owned cancellation/drain 约束。接收仍完整核原 manifest/binding/tar，final 收齐原 producer indexes，复核早期 control/allocation 与原 catalog 精确一致，source-plan 也列入 required jobs。产物名包含 run_attempt，拒绝旧 attempt；大产物压缩等级1不变。
 
+producer 的 SDK 产物缓存供全部已准入 lane 使用，业务 lane 只决定测试范围。固定源码先核输入，再定位 SDK 输出与恢复缓存；是否可复用仍由原 SDK 身份及字节校验决定，缺失时按原锁准备，损坏或身份漂移直接拒绝。保存使用本次 restore 的原 key，不扩大匹配范围。
+
 包下载缓存仅保留 producer 的 `~/.npm`、`~/.cache/node/corepack` 和固定 Manage pnpm store 恢复/保存，沿原四仓锁 key、恢复前缀和成功 prepare 后的原 `cache-primary-key`。C3i 的 v8 worker restore 加安装未证明净收益，本轮回撤 worker locator/restore；历史观测保留。各 worker 仍按原 manager/锁独立 fresh 安装，缓存不含 `node_modules` 或构建物，也不替代源码/锁/integrity 检查。producer save、所有独立安装和 post 尾部均计入600秒。
 
 [worker 输入入口](../scripts/quality-worker-inputs.mjs) 在同一次活调用中完成提前五锁、有界接收和 GEA 锁安装，保留原配置/源码/锁前后检查。Manage 与 GEA 声明兼容时，可提前用 Manage 自身解析的 `@playwright/test → playwright → playwright-core` 精确 Node bin 运行 Linux `install-deps chromium`；三包完整相对文件字节、模式、内链、bin 在执行前后及 GEA 安装后须相同。只支持当前 Linux 闭包及 Darwin 专用的已知 optional fsevents 声明；版本或已知形状执行前不兼容才明确 deferred 到原晚段，IO/损坏/权限/命令非零/取消或执行后漂移均失败。不会把任意 optional 依赖忽略为通过。

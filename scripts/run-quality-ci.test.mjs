@@ -14,6 +14,46 @@ import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
+import { parse } from "yaml";
+
+test("all admitted quality lanes reuse the same fixed SDK cache without weakening source admission", () => {
+  const workflow = parse(readFileSync(".github/workflows/quality.yml", "utf8"));
+  const producer = workflow.jobs.gates;
+  const steps = producer.steps;
+  const paths = steps.find((step) => step.id === "sdk-paths");
+  const restore = steps.find((step) => step.id === "sdk-cache");
+  const save = steps.find((step) => step.name?.startsWith("Save verified SDK cache"));
+  assert.equal(paths.if, undefined);
+  assert.equal(restore.if, undefined);
+  assert.doesNotMatch(save.if, /business-lane/);
+  assert.match(save.if, /steps\.quality-build\.outcome == 'success'/);
+  assert.match(save.if, /steps\.sdk-cache\.outputs\.cache-hit != 'true'/);
+  assert.equal(save.with.key, "${{ steps.sdk-cache.outputs.cache-primary-key }}");
+  assert.equal(restore.with.path, "${{ steps.sdk-paths.outputs.paths }}");
+  assert.equal(restore.with["restore-keys"], undefined);
+  for (const input of [
+    "github.repository",
+    "runner.os",
+    "runner.arch",
+    "steps.node.outputs.node-version",
+    "matrix.core",
+  ])
+    assert.ok(restore.with.key.includes(input), input);
+  for (const input of [
+    "prepare-official-sdk.mjs",
+    "sdk-artifact-cache.mjs",
+    "supported-cores.json",
+    "pnpm-lock.yaml",
+  ])
+    assert.ok(restore.with.key.includes(input), input);
+  const admission = steps.findIndex((step) => step.run?.includes("--phase verify-input"));
+  const plan = steps.findIndex((step) => step.id === "quality-plan");
+  const preparation = steps.findIndex((step) => step.id === "quality-prepare");
+  assert.ok(admission >= 0 && admission < plan && plan < steps.indexOf(paths));
+  assert.ok(steps.indexOf(paths) < steps.indexOf(restore) && steps.indexOf(restore) < preparation);
+  assert.equal(producer.env.QUALITY_REUSE_SDK, "true");
+  assert.match(steps[preparation].run, /--prepare-sdk.*--stage prepare/);
+});
 
 const run = (args, environment = {}) => {
   const env = { ...process.env };
