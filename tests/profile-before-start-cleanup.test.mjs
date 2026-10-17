@@ -104,3 +104,32 @@ for (const asynchronous of [false, true]) {
     await cleanup();
   });
 }
+
+test("profile cancellation before source preparation preserves the case cancellation without reading unused inputs", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-source-before-start-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const controller = new AbortController();
+  const reason = Error("case cancelled before immutable preparation");
+  let cleanup;
+  try {
+    await assert.rejects(
+      profile(
+        {
+          name: t.name,
+          signal: controller.signal,
+          after: (fn) => {
+            cleanup = fn;
+          },
+        },
+        {
+          runtimeParent: directory,
+          sourcesFile: join(directory, "not-prepared.json"),
+          beforeStart: () => controller.abort(reason),
+        },
+      ),
+      (error) => error === reason,
+    );
+  } finally {
+    await cleanup?.();
+  }
+});

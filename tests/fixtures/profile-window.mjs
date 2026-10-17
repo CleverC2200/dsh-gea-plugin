@@ -7,6 +7,7 @@ import {
   readSourceSelection,
   selectSourceCombination,
 } from "../../scripts/source-profile.mjs";
+import { readProfileSourceRecords } from "./profile-inputs.mjs";
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const save = (file, value) => writeFile(file, JSON.stringify(value), { mode: 0o600 });
 export async function freezeProfileWindow({
@@ -15,6 +16,7 @@ export async function freezeProfileWindow({
   config,
   deployment,
   sources,
+  sourcesFile,
   caseName,
   coreOnly,
   signal,
@@ -29,7 +31,9 @@ export async function freezeProfileWindow({
   if (!coreOnly) {
     let selected = await readSourceSelection(runtime);
     if (!selected) {
-      const composition = await prepareSourcePlugins(core, runtime, deployment, { sources });
+      const composition = await prepareSourcePlugins(core, runtime, deployment, {
+        sources: sources ?? (await readProfileSourceRecords(sourcesFile)),
+      });
       signal?.throwIfAborted();
       recordLifecycle({ event: "source-prepared" });
       await selectSourceCombination(runtime, composition.id, core);
