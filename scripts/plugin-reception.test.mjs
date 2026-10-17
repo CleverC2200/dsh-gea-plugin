@@ -303,13 +303,8 @@ test("company preset reception accepts the approved persona projection and still
     if (["auto-negotiation", "agent-resource-skill"].includes(doc.id))
       doc.byteEqualStandard = false;
   validateRuntimeObservation(runtime);
-  runtime.documents.find(
-    (doc) => doc.id === "auto-negotiation",
-  ).fullStandardRetained = false;
-  assert.throws(
-    () => validateRuntimeObservation(runtime),
-    /RECEPTION_STANDARD_INCOMPLETE/,
-  );
+  runtime.documents.find((doc) => doc.id === "auto-negotiation").fullStandardRetained = false;
+  assert.throws(() => validateRuntimeObservation(runtime), /RECEPTION_STANDARD_INCOMPLETE/);
 });
 
 test("company capability retention accepts a persona prefix but rejects missing tools and changed compaction", () => {
@@ -332,7 +327,13 @@ test("company capability retention accepts a persona prefix but rejects missing 
   retainStandard(baseline, actual, "business", additions);
   assert.deepEqual(additions, ["/@deepseek-ai/dsh-persona"]);
   assert.throws(
-    () => retainStandard(baseline, actual.slice(0, 2), "business", []),
+    () =>
+      retainStandard(
+        baseline,
+        actual.filter((row) => row.name !== "@deepseek-ai/dsh-tools"),
+        "business",
+        [],
+      ),
     /STANDARD_ENTRY_LOST_OR_DUPLICATED/,
   );
   const changed = structuredClone(actual);
