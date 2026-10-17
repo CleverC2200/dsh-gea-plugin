@@ -85,33 +85,27 @@ test("three cancelled reads do not trip the consumer failure circuit; a new rang
   const result = await business.pluginSql(query, new AbortController().signal);
   assert.deepEqual(result.rows, [{ sku: "A" }]);
 });
-test("real repeated read failures still stop at three and cancellation does not clear an existing failure", async (t) => {
+test("repeated SQL failures remain individual failures and the next explicit read can succeed", async (t) => {
   const business = fixture(t);
   let fetches = 0;
+  let failing = true;
   t.mock.method(globalThis, "fetch", async (url, init) => {
     init.signal.throwIfAborted();
-    fetches++;
     if (url.endsWith("/session")) return success(url, init);
-    throw Error("fixture-read-failure");
+    fetches++;
+    if (failing) throw Error("fixture-read-failure");
+    return success(url, init);
   });
-  for (let i = 0; i < 2; i++)
+  for (let i = 0; i < 4; i++)
     await assert.rejects(
       business.pluginSql(query, new AbortController().signal),
       /GEA SQL 查询服务暂时不可用/,
     );
-  const cancelled = new AbortController();
-  cancelled.abort();
-  await assert.rejects(business.pluginSql(query, cancelled.signal), { name: "AbortError" });
-  await assert.rejects(
-    business.pluginSql(query, new AbortController().signal),
-    /GEA SQL 查询服务暂时不可用/,
-  );
-  const before = fetches;
-  await assert.rejects(
-    business.pluginSql(query, new AbortController().signal),
-    /GEA_PLUGIN_RETRY_STOPPED/,
-  );
-  assert.equal(fetches, before);
+  assert.equal(fetches, 4);
+  failing = false;
+  const result = await business.pluginSql(query, new AbortController().signal);
+  assert.deepEqual(result.rows, [{ sku: "A" }]);
+  assert.equal(fetches, 5);
 });
 
 test("a current login rejected by SQL delegation preserves its original 401 while invalidating identity", async (t) => {

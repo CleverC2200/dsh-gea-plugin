@@ -42,7 +42,7 @@ Manage 注册当前业务会话授权列表中的 Cube 工具 `inspect_cube_mode
 
 `inspect_cube_model` 返回服务端原始说明，包括 View 的 `aliasMember`。客户端不再二次投影目录或替服务端判断成员发布。`query_business_data` 原样传递 `action=query`、`response_mode=inline_complete` 和具名查询；业务参数及容量约束来自当前 `tools/list` Schema，不写死旧的8条/1000行上限，也不补默认 limit。
 
-查询入口检查度量、维度、时间、分段、嵌套筛选和排序的成员引用是否带完整前缀。裸字段在发送业务请求前返回 `GEA_CUBE_QUERY_MEMBER_REQUIRED`，提示按实际 `aliasMember` 修正；客户端不补前缀或推定 View 映射，成员存在性与授权仍由服务端判断。响应合同失败保留 `GEA_CUBE_NEW_*` 错误码，列出不符合约定的字段，按当前会话停止本轮查询。
+查询入口检查度量、维度、时间、分段、嵌套筛选和排序的成员引用是否带完整前缀。裸字段在发送业务请求前返回 `GEA_CUBE_QUERY_MEMBER_REQUIRED`，提示按实际 `aliasMember` 修正；客户端不补前缀或推定 View 映射，成员存在性与授权仍由服务端判断。响应合同失败保留 `GEA_CUBE_NEW_*` 错误码，列出不符合约定的字段，当前查询保持失败；后续独立查询重新核对授权，不设置通用停轮。
 
 查询优先消费本次响应的 `structuredContent`；只有文本能力时选择一份业务 JSON，不拼接说明文本，也不合并两份 rows。直返路径不调用 `resources/read`，不要求 URI、有效期或制品 SHA。原始金额、大整数、编码字符串、null和零值保持；结构化结果再序列化时保留原始数字词法形式。
 
@@ -52,9 +52,9 @@ Manage 注册当前业务会话授权列表中的 Cube 工具 `inspect_cube_mode
 
 MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResponseBytes` 默认320 MiB，按解码后的 UTF-8 报文字节计量，覆盖结构化对象及转义文本的双份承载；这是客户端接收预算，不是服务端额度或完整100 MiB业务验收保证。读取期间超限即停止，取消仍遵循原身份代际。日志正文仍受独立4 MiB上限保护。
 
-错误先于业务数据解析。保留服务端 `code/category/retryable/suggestedAction/retryAfterMs` 及请求/审计标识；`AI_GATEWAY_MCP_RESULT_TOO_LARGE` 要求缩小查询、减少列或分页，即使返回retryable也不原样重试，不回退 OSS。成员未发布、拒权或过期仍沿原失败与会话保护。接入依据为2026-10-14《GEA MCP 查询结果直返：调用方适配说明》，它替代前一天关于固定制品交付的说明；真实环境部署和业务联调另行确认。
+错误先于业务数据解析。保留服务端 `code/category/retryable/suggestedAction/retryAfterMs` 及请求/审计标识；`AI_GATEWAY_MCP_RESULT_TOO_LARGE` 要求缩小查询、减少列或分页，即使返回retryable也不原样重试，不回退 OSS。成员未发布与拒权保留本次失败；握手失败不做负缓存，下一次显式调用重新核权。明确会话过期继续失效原连接并停止当前轮，重新发起问题后按当前身份建立新会话。接入依据为2026-10-14《GEA MCP 查询结果直返：调用方适配说明》，它替代前一天关于固定制品交付的说明；真实环境部署和业务联调另行确认。
 
-`sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
+`sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。普通 SQL 失败不累计为后续请求的熔断状态，页面与 RPC 共用该入口。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
 
 GEA 不设置每轮业务调用、证据回读或重复目录调用次数额度，不因调用次数移除 MCP 或官方 standard 工具。身份、Consumer、资源启用与服务端授权仍按原执行合同校验；官方工具遵循当前权限模式。 证据索引通过 gea_capabilities 按需读取，系统提示不自动追加索引；证据正文回读仍重新核对当前归属和授权。
 

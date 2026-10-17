@@ -147,7 +147,6 @@ export function registerGeaTools(
           note: `本轮各项读取累计重复 ${business.repeatReads().repeats(scope)} 次；停止重复读取「${what}」。已有目录继续有效，按现有字段完成未完成的单模型业务查询；不要重读目录或改别名继续找。`,
           availableEvidence: business.successfulPlanEvidence(scope),
         });
-      wasteScope(scope);
       const reason = `本轮各项读取累计重复 ${business.repeatReads().repeats(scope)} 次（本次：${what}）`;
       business.stopTurn(scope, reason);
       throw new Error(
@@ -158,9 +157,6 @@ export function registerGeaTools(
     // 模型拿不回它正需要的那份目录，就一遍遍重发，直到整轮停手。
     const content = replay?.();
     if (content) return content;
-    // 只有"什么都没还回去"的那次才算白跑：把内容重放回去的读法是有效的，
-    // 不能记进白跑总账（否则白跑闸门会先把还能干活的轮次停掉，session-c8f8206e 就是这样）。
-    wasteScope(scope);
     return JSON.stringify({
       source: "GEA_READ_DEDUP",
       availability: "already-read",
@@ -205,11 +201,6 @@ export function registerGeaTools(
       `\n…（这份内容共 ${text.length} 字符，本轮已经给过 ${times - 1} 次，这里只重放开头。）` +
       "\n（同一份内容重读不会带来新信息：要么换 model=/换参数去查别的，要么就用手上已有的证据作答。）"
     );
-  };
-
-  /** 记一次白跑；scope 为空时按全局记。 */
-  const wasteScope = (scope: string): void => {
-    business.moduleMcpWaste().waste(scope || "global");
   };
 
   ctx.effect(() =>

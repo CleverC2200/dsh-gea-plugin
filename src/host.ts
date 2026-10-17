@@ -311,12 +311,9 @@ export async function apply(
   ctx.effect(() => mountBusinessPrompts(ctx, business, capability));
   // 每步把"用户这一轮问的是什么"钉在消息末尾：系统提示里的位置段只能劝阻，
   // 长轮次（一轮 17 次工具调用）里模型会把用户那条消息丢掉，最后说自己"没收到提问"。
-  // 用户换了问题 = 新的一轮：把"本轮"级的计数清零（重复读闸门、本轮白跑总账）。
   const resetReadQuestion = (question: string, scope: string) => {
     business.repeatReads().clear(scope);
     business.clearTurnReplays(scope);
-    business.moduleMcpFailures().clear(scope);
-    business.moduleMcpWaste().progress(scope);
     business.rememberTurnQuestion(scope, question);
     business.clearTurnStops(scope);
   };

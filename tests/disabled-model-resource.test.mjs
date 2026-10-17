@@ -833,3 +833,90 @@ test("the actual Native Host grant binds and withdraws its current page projecti
   revoked.release();
   assert.equal((await bound()).pageBound, false);
 });
+
+for (const entry of ["RPC", "HTML"])
+  test(`actual ${entry} SQL reads recover from repeated failures across Session and login changes`, async (t) => {
+    const app = await fixture(t, true, { actualBusiness: true, login: true });
+    const login = async () => {
+      const qr = await app.route("login/start");
+      assert.equal(qr.ok, true, JSON.stringify(qr));
+      const result = await app.route("login/poll", { loginId: qr.value.loginId });
+      assert.equal(result.ok, true, JSON.stringify(result));
+    };
+    await login();
+    const loginFetch = globalThis.fetch;
+    let failing = true;
+    let reads = 0;
+    t.mock.method(globalThis, "fetch", async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      init.signal.throwIfAborted();
+      if (path.endsWith("/ai/gateway/session")) {
+        const wire = JSON.parse(init.body);
+        return Response.json({
+          success: true,
+          result: {
+            accessDecision: { allowed: true },
+            delegationToken: "sql-page-delegation",
+            gatewayContext: { ...wire, sessionId: "sql-page-session" },
+          },
+        });
+      }
+      if (!path.endsWith("/ai/gateway/sql/execute")) return loginFetch(input, init);
+      reads++;
+      return failing
+        ? Response.json(
+            { success: false, code: "SQL_UNAVAILABLE", message: "temporary failure" },
+            { status: 503 },
+          )
+        : Response.json({ success: true, result: { rows: [{ sku: "fresh" }], total: 1 } });
+    });
+    const query = { sql: "SELECT sku FROM inventory ORDER BY sku", pageNo: 1, pageSize: 1 };
+    let grant;
+    const open = async () => {
+      grant = await app.pages.get("inventory-dealer")(
+        app.agent.id,
+        app.preset,
+        new AbortController().signal,
+      );
+    };
+    if (entry === "HTML") await open();
+    const read = async () => {
+      if (entry === "HTML") return grant.readSql(query, new AbortController().signal);
+      const result = await app.route("plugin/sql", {
+        consumerCode: "dealer-inventory-replenishment",
+        ...query,
+      });
+      if (!result.ok) throw Object.assign(Error(result.error.message), result.error);
+      return result.value;
+    };
+    for (let i = 0; i < 4; i++)
+      await assert.rejects(read(), /503|SQL_UNAVAILABLE|temporary failure/);
+    assert.equal(reads, 4);
+    failing = false;
+    assert.deepEqual((await read()).rows, [{ sku: "fresh" }]);
+    failing = true;
+    for (let i = 0; i < 3; i++)
+      await assert.rejects(read(), /503|SQL_UNAVAILABLE|temporary failure/);
+    app.agent.id = "session-22222222-2222-4222-8222-222222222222";
+    if (entry === "HTML") {
+      grant.release();
+      await open();
+    }
+    failing = false;
+    assert.deepEqual((await read()).rows, [{ sku: "fresh" }]);
+    failing = true;
+    for (let i = 0; i < 3; i++)
+      await assert.rejects(read(), /503|SQL_UNAVAILABLE|temporary failure/);
+    await app.route("logout");
+    if (entry === "HTML") {
+      assert.equal(grant.signal.aborted, true);
+      grant.release();
+    }
+    await login();
+    app.agent.id = "session-33333333-3333-4333-8333-333333333333";
+    if (entry === "HTML") await open();
+    failing = false;
+    assert.deepEqual((await read()).rows, [{ sku: "fresh" }]);
+    assert.equal(reads, 13);
+    grant?.release();
+  });

@@ -35,16 +35,6 @@ import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 
-/**
- * 同一模块连续失败多少次就熔断（窗口内）。模块"表不可读"这类失败重试没有意义，
- * 熔断是为了让模型回到"用现有证据作答"，而不是把整轮耗在换表上。
- */
-const PLUGIN_FAILURE_LIMIT = 3;
-const PLUGIN_FAILURE_WINDOW_MS = 10 * 60 * 1000;
-
-/** 网关拒绝过 MCP 会话的模块在这个窗口内不再重试（见 moduleMcp）。 */
-const MCP_REJECTION_TTL_MS = 10 * 60 * 1000;
-
 import {
   validateServiceAccounts,
   serviceAccountReady,
@@ -67,12 +57,6 @@ import { modelHttpError } from "../shared/model-http-error.ts";
 import { ApiLogBatch, parseApiBatchRequest } from "./api-log-batch.ts";
 import { DebugRunCoordinator } from "./debug-run.ts";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
-import {
-  createMcpWasteGuard,
-  createMcpFailureGuard,
-  type McpFailureGuard,
-  type McpWasteGuard,
-} from "./mcp-failure-guard.ts";
 import { createCallDedup, type CallDedup } from "./call-dedup.ts";
 
 import { createCapabilityRegistry, type CapabilityRegistry } from "../capability/registry.ts";
@@ -724,8 +708,6 @@ export class Business {
     string,
     { authToken: string; delegationToken: string }
   >();
-  /** 同一模块连续失败计数：用来在"换着表一直重试"时及时熔断。 */
-  private readonly pluginFailures = new Map<string, { count: number; at: number }>();
   /** 受管表列清单的短缓存：同一张表不重复探查。 */
   private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
   private capabilities: CapabilityRegistry;
@@ -936,11 +918,7 @@ export class Business {
     this.modelRoutes.clear();
     this.pluginDelegations.clear();
     this.moduleMcpCache.clear();
-    this.moduleMcpRejections.clear();
-    // 元信息缓存与"本轮白跑"计数都跟身份绑定：换身份一律作废。
     this.readDedup.clear();
-    this.mcpWasteGuard.clear();
-    this.mcpFailureGuard.clear();
     this.repeatGuard.clear();
     this.clearTurnReplays();
     this.turnQuestions.clear();
@@ -1963,14 +1941,7 @@ export class Business {
   /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
   invalidateModuleMcp(consumerCode: string): void {
     this.moduleMcpCache.delete(consumerCode);
-    this.moduleMcpRejections.delete(consumerCode);
   }
-  /**
-   * 网关明确拒绝过 MCP 会话的模块：短窗口内不再重试。
-   * 线上实测：网关回 rejected 后模型会换模块反复试（一轮三次），每次都白等一次往返。
-   */
-  private readonly moduleMcpRejections = new Map<string, { at: number; permission: boolean }>();
-
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
    * 页面不可用时的兜底查询走这里：不依赖页面、也不依赖我们替它写 SQL。
@@ -1978,79 +1949,16 @@ export class Business {
   async moduleMcp(consumerCode: string, signal: AbortSignal): Promise<GatewayMcpClient> {
     this.assertExecutionAllowed(consumerCode);
     const auth = this.authenticated();
-    const rejected = this.moduleMcpRejections.get(consumerCode);
-    if (rejected !== undefined) {
-      if (Date.now() - rejected.at < MCP_REJECTION_TTL_MS)
-        throw Object.assign(
-          new Error(
-            rejected.permission
-              ? `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（刚才网关已明确拒绝，10 分钟内不再重试）。需要管理员开通该 Agent/模块权限。`
-              : `GEA_MCP_HTTP_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 调用，10 分钟内不要再试它。换一个已开通的模块，或读页面证据。`,
-          ),
-          rejected.permission ? { code: "AGENT_ACCESS_DENIED", retryable: false } : {},
-        );
-      this.moduleMcpRejections.delete(consumerCode);
-    }
+    const identity = this.epoch.signal;
+    signal.throwIfAborted();
     const cached = this.moduleMcpCache.get(consumerCode);
     if (cached && cached.token === auth.token) return cached.module;
-    let module: GatewayMcpClient;
-    try {
-      const transport = await this.openMcpConnection(
-        { consumerType: "AGENT", consumerCode },
-        signal,
-      );
-      module = await openGatewayMcp(transport, signal);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const code =
-        error && typeof error === "object" && "code" in error
-          ? String((error as { code?: unknown }).code)
-          : "";
-      // 权限没开通：这是业务状态，不是故障。原样抛出带 code 的错误，由工具层转成
-      // 正常提示（见 Cube-New query_business_data），不要显示成红色调用失败。
-      if (code === "AGENT_ACCESS_DENIED") {
-        this.moduleMcpRejections.set(consumerCode, {
-          at: Date.now(),
-          permission: true,
-        });
-        throw Object.assign(
-          new Error(
-            `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（${message.replace(/^AGENT_ACCESS_DENIED: /, "")}）。需要管理员在当前环境为该账号开通该 Agent/模块的权限。`,
-          ),
-          { code: "AGENT_ACCESS_DENIED", retryable: false },
-        );
-      }
-      // 其余是"网关拒绝/代理出错"：这类才是真失败，保留可读原因。
-      if (/GEA_MCP_(SESSION_(REJECTED|HTTP_\d+)|HTTP_\d+)/.test(message)) {
-        this.moduleMcpRejections.set(consumerCode, {
-          at: Date.now(),
-          permission: false,
-        });
-        throw new Error(
-          `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用（${message}）。10 分钟内不要再试它：换一个已开通的模块，或读页面证据。`,
-        );
-      }
-      throw error;
-    }
+    const transport = await this.openMcpConnection({ consumerType: "AGENT", consumerCode }, signal);
+    const module = await openGatewayMcp(transport, signal);
+    identity.throwIfAborted();
+    signal.throwIfAborted();
     this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
     return module;
-  }
-
-  /**
-   * 模块 MCP 通道的失败熔断（见 host/mcp-failure-guard.ts）。
-   * 工具层在真调数据前后各记一次：连续失败到上限就停手，别再换模型/换写法试。
-   */
-  private readonly mcpFailureGuard = createMcpFailureGuard();
-
-  moduleMcpFailures(): McpFailureGuard {
-    return this.mcpFailureGuard;
-  }
-
-  /** 本轮整体熔断：单个模块的熔断挡不住"换着模块试"（见 mcp-failure-guard.ts）。 */
-  private readonly mcpWasteGuard = createMcpWasteGuard();
-
-  moduleMcpWaste(): McpWasteGuard {
-    return this.mcpWasteGuard;
   }
 
   /** 只读元信息（目录/成员/工具清单）的同轮去重，避免同一份东西被读几十遍。 */
@@ -2456,16 +2364,6 @@ export class Business {
     this.assertExecutionAllowed(consumerCode);
     this.sqlReadLimit?.assertAvailable(consumerCode);
     const auth = this.authenticated();
-    // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
-    // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
-    const failures = this.pluginFailures.get(consumerCode);
-    if (failures && failures.count >= PLUGIN_FAILURE_LIMIT) {
-      if (Date.now() - failures.at < PLUGIN_FAILURE_WINDOW_MS)
-        throw new Error(
-          `GEA_PLUGIN_RETRY_STOPPED: ${consumerCode} 本轮已连续失败 ${failures.count} 次，不要再换表或换写法重试。请用已经拿到的数据作答；确实缺口径时，直接说明缺哪一项，不要继续取数。`,
-        );
-      this.pluginFailures.delete(consumerCode);
-    }
     const sqlValue = query.sql;
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
@@ -2531,7 +2429,6 @@ export class Business {
             signal,
             limit: this.sqlReadLimit,
           });
-          this.pluginFailures.delete(consumerCode);
           return result;
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {
@@ -2558,11 +2455,6 @@ export class Business {
       signal.throwIfAborted();
       // A failed delegated credential must not poison the next page refresh.
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
-      const previous = this.pluginFailures.get(consumerCode);
-      this.pluginFailures.set(consumerCode, {
-        count: (previous?.count ?? 0) + 1,
-        at: Date.now(),
-      });
       throw error;
     }
   }

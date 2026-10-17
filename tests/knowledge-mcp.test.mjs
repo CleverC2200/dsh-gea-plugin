@@ -279,6 +279,10 @@ for (const [label, payload] of [
     assert.match(JSON.stringify(result), /GEA_KNOWLEDGE_RESULT_INVALID/);
     assert.match(JSON.stringify(result), /contract-request/);
     assert.equal(count(f, "weknora_ask"), 1);
+    f.setHandler(undefined);
+    assert.equal((await f.execute(queryTool, query)).isError, false);
+    f.setHandler((_wire, _init, reply) => reply({ structuredContent: answer() }));
+    assert.deepEqual(successful(await invoke(f, ask, args)), answer());
   });
 
 test("ambiguous business text does not merge answers or fabricate citations", async (t) => {

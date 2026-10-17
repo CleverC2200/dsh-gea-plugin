@@ -71,7 +71,6 @@ test("registered sales reads replay after two reads, isolate scopes and permit a
   assert.equal(reads, 3);
   f.business.repeatReads().clear("s1");
   f.business.clearTurnReplays("s1");
-  f.business.moduleMcpWaste().progress("s1");
   await f.execute("gea_sales_plan_read", args);
   assert.equal(reads, 4);
 });

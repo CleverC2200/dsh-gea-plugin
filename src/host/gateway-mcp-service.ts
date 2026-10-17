@@ -100,13 +100,6 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
           ? stopExpiredGateway(business, consumer, sessionId, error)
           : undefined;
         if (expired) throw expired;
-        if (
-          error instanceof Error &&
-          current &&
-          (("code" in error && error.code === "DATA_QUERY_MEMBER_NOT_PUBLISHED") ||
-            ("category" in error && error.category === "RESPONSE_CONTRACT"))
-        )
-          business.stopTurn(sessionId, error.message);
         throw readableError(error);
       }
     },

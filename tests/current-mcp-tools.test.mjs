@@ -239,7 +239,7 @@ for (const failure of [
   });
 }
 
-test("member publication failure stops the calling turn and a new turn can query again", async (t) => {
+test("member publication failure stays failed and an independent query can run in the same turn", async (t) => {
   const f = await currentMcp(t, {
     handler: (_wire, _init, reply) =>
       reply({
@@ -254,11 +254,10 @@ test("member publication failure stops the calling turn and a new turn can query
   const failed = await f.execute();
   assert.equal(failed.isError, true);
   assert.match(JSON.stringify(failed), /DATA_QUERY_MEMBER_NOT_PUBLISHED/);
-  assert.match(JSON.stringify(await f.execute()), /TURN_STOPPED/);
   assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
-  f.business.clearTurnStops("sales");
   f.setHandler(undefined);
   assert.equal((await f.execute()).isError, false);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 2);
 });
 
 for (const transition of ["preset", "resource", "identity"]) {
@@ -350,7 +349,7 @@ test("registered expired gateway preserves the failure and stops the turn until 
   assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, sessions + 1);
 });
 
-test("registered malformed data stops subsequent queries without a retry or a fabricated empty result", async (t) => {
+test("registered malformed data stays failed without blocking an independent valid query", async (t) => {
   const f = await currentMcp(t, {
     handler: (_wire, _init, reply) =>
       reply({
@@ -364,8 +363,9 @@ test("registered malformed data stops subsequent queries without a retry or a fa
   const result = await f.execute();
   assert.equal(result.isError, true);
   assert.match(JSON.stringify(result), /GEA_CUBE_NEW_/);
-  assert.match(JSON.stringify(await f.execute()), /TURN_STOPPED/);
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  f.setHandler(undefined);
+  assert.equal((await f.execute()).isError, false);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 2);
 });
 
 test("registered no_data retains an explicit empty dataset without converting missing values into zero", async (t) => {
@@ -463,3 +463,73 @@ test("registered successful code OK remains exact business data", async (t) => {
   assert.equal(result.value, raw);
   assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
 });
+
+for (const failure of ["http", "permission"])
+  test(`a failed MCP ${failure} handshake permits the next explicit authorized query`, async (t) => {
+    let reject = false;
+    const options = {
+      sessionHandler: () =>
+        reject && failure === "permission"
+          ? Response.json({
+              success: true,
+              result: { accessDecision: { allowed: false, code: "AGENT_ACCESS_DENIED" } },
+            })
+          : undefined,
+    };
+    const f = await currentMcp(t, options);
+    f.business.invalidateModuleMcp("sales_forecast");
+    reject = true;
+    if (failure === "http") options.initializeStatus = 502;
+    const before = f.calls.filter(({ url }) => url.endsWith("/session")).length;
+    const failed = await f.execute();
+    assert.equal(failed.isError, true);
+    assert.match(JSON.stringify(failed), failure === "http" ? /HTTP_502/ : /AGENT_ACCESS_DENIED/);
+    assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, before + 1);
+    reject = false;
+    options.initializeStatus = undefined;
+    const next = await f.execute();
+    assert.equal(next.isError, false, JSON.stringify(next));
+    assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, before + 2);
+  });
+
+for (const transition of ["caller", "identity"])
+  test(`cancelled MCP initialization after ${transition} revocation permits a fresh connection`, async (t) => {
+    let pause = false;
+    const entered = Promise.withResolvers();
+    const released = Promise.withResolvers();
+    const f = await currentMcp(t, {
+      initializeHandler: async () => {
+        if (!pause) return;
+        entered.resolve();
+        await released.promise;
+      },
+    });
+    const controller = new AbortController();
+    f.business.invalidateModuleMcp("sales_forecast");
+    pause = true;
+    const pending = f.execute(queryTool, query, "sales", controller.signal);
+    await entered.promise;
+    if (transition === "caller") controller.abort();
+    else
+      f.business.restoreDesktopLogin({
+        schema: 1,
+        environment: "production",
+        base: "https://mcp.fixture.invalid",
+        auth: {
+          token: "fixture-private-login",
+          tenantId: "0",
+          id: "fixture-user",
+          name: "Fixture",
+          username: "fixture",
+        },
+      });
+    pause = false;
+    released.resolve();
+    assert.equal((await pending).isError, true);
+    await f.ctx.systemPrompt.assemble({
+      scope: f.agents.get("sales"),
+      agent: f.agents.get("sales"),
+      signal: new AbortController().signal,
+    });
+    assert.equal((await f.execute()).isError, false);
+  });

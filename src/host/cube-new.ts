@@ -60,7 +60,7 @@ export function cubeQueryResultError(
 ): Error {
   return Object.assign(
     Error(
-      `${code}: GEA 查询响应字段缺失或不符合约定：${invalidFields.join("、")}。这是响应合同问题，不是查询参数错误。本轮停止查询，请核对服务端响应；不换字段重试，也不自行补成完整结果。`,
+      `${code}: GEA 查询响应字段缺失或不符合约定：${invalidFields.join("、")}。这是响应合同问题，不是查询参数错误。本次查询失败，请核对服务端响应；不自行补成完整结果。`,
     ),
     {
       code,
