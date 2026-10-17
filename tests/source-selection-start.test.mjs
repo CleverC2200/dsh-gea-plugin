@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sourceWindow, snapshot } from "./fixtures/source-window.mjs";
 
@@ -12,7 +12,7 @@ for (const entry of ["start.mjs", "runSourceProfile"])
     assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
     const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
     assert.deepEqual(effects.traversals, [{
-      path: join(fixture.runtime, "source-combinations", fixture.frozen.combination.id),
+      path: await realpath(join(fixture.runtime, "source-combinations", fixture.frozen.combination.id)),
       locked: true,
     }]);
   });

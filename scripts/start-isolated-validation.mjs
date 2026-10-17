@@ -19,7 +19,7 @@ import { parseArgs } from "node:util";
 import { corePackages } from "./source-composition.mjs";
 import { readSupportedCore } from "./supported-cores.mjs";
 
-import { admitSourceWindow } from "./window-admission.mjs";
+import { admitSourceWindow, checkSourceWindow } from "./window-admission.mjs";
 import { readDeployment } from "./deployment.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -32,7 +32,7 @@ const digest = async (path) =>
     .digest("hex");
 
 /** Boot the official profile from artifacts built in the pinned source checkout. */
-import { resolveSourceInputs, readSourceSelection } from "./source-profile.mjs";
+import { resolveSourceInputs } from "./source-profile.mjs";
 
 export async function runSourceProfile(
   core,
@@ -42,6 +42,7 @@ export async function runSourceProfile(
   port = 0,
   {
     sources,
+    sourcesFile,
     window,
     config,
     dev = false,
@@ -49,52 +50,43 @@ export async function runSourceProfile(
   } = {},
 ) {
   if (plugins !== (mode !== "isolated-core-host")) throw Error("WINDOW_MODE_MISMATCH");
-  await admitSourceWindow({
-    window,
-    mode,
-    core,
-    runtime,
-    config,
-    deployment,
-    sources,
-  });
-  let selected;
-  if (plugins) {
-    selected = await readSourceSelection(runtime);
-    if (selected === undefined) await resolveSourceInputs(sources, { requireEntries: true });
-  }
-  const supported = await readSupportedCore(core);
-  const coreSha = supported.head;
-  if (config) deployment = await readDeployment(config);
-  await mkdir(join(runtime, "home"), { recursive: true, mode: 0o700 });
-  process.env.DSH_HOME = join(runtime, "home");
-  process.env.DSH_TELEMETRY_DISABLED = "1";
-  if (dev) process.env.GEA_WEB_LOGIN_PERSIST = "1";
+  const request = { window, mode, core, runtime, config, deployment, sources, sourcesFile };
+  await checkSourceWindow(request);
   await mkdir(runtime, { recursive: true, mode: 0o700 });
-  await save(join(runtime, "core-source.json"), {
-    upstream: supported.head,
-    adaptation: coreSha,
-    dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
-      cwd: core,
-      encoding: "utf8",
-    }).trim(),
-    version: supported.version,
-  });
-  const profile = join(runtime, "home/profiles/plugin-split-validation");
-  await mkdir(profile, { recursive: true, mode: 0o700 });
-  await mkdir(join(runtime, "workspace"), { recursive: true, mode: 0o700 });
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
   try {
+    const admitted = await admitSourceWindow(request);
+    const selected = admitted.selected;
+    sources = admitted.sources ?? sources;
+    const supported = await readSupportedCore(core);
+    const coreSha = supported.head;
+    if (config) deployment = await readDeployment(config);
+    await mkdir(join(runtime, "home"), { recursive: true, mode: 0o700 });
+    process.env.DSH_HOME = join(runtime, "home");
+    process.env.DSH_TELEMETRY_DISABLED = "1";
+    if (dev) process.env.GEA_WEB_LOGIN_PERSIST = "1";
+    await save(join(runtime, "core-source.json"), {
+      upstream: supported.head,
+      adaptation: coreSha,
+      dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
+        cwd: core,
+        encoding: "utf8",
+      }).trim(),
+      version: supported.version,
+    });
+    const profile = join(runtime, "home/profiles/plugin-split-validation");
+    await mkdir(profile, { recursive: true, mode: 0o700 });
+    await mkdir(join(runtime, "workspace"), { recursive: true, mode: 0o700 });
     await lock.writeFile(JSON.stringify({ pid: process.pid }));
     let composition = { dependencies: {}, bundles: [], patches: [] };
     if (plugins) {
-      const { prepareSourcePlugins, readSourceCombination } = await import("./source-profile.mjs");
+      const { prepareSourcePlugins } = await import("./source-profile.mjs");
       composition = selected
-        ? await readSourceCombination(runtime, selected.id, core)
+        ? admitted.composition
         : await prepareSourcePlugins(core, runtime, deployment, {
             sources,
           });
-      const manifestSha256 = await digest(
+      const manifestSha256 = selected ? admitted.manifestSha256 : await digest(
         join(runtime, "source-combinations", composition.id, "combination.json"),
       );
       if (selected && selected.manifestSha256 !== manifestSha256)
@@ -137,7 +129,7 @@ export async function runSourceProfile(
       await rename(temporary, join(profile, "node_modules"));
       await save(
         join(runtime, "company-plugins.json"),
-        await json(join(runtime, "source-combinations", composition.id, "company-plugins.json")),
+        selected ? admitted.metadata : await json(join(runtime, "source-combinations", composition.id, "company-plugins.json")),
       );
     }
     await save(join(profile, "package.json"), {

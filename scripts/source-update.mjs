@@ -91,19 +91,9 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
         const reference = JSON.parse(bytes);
         if (reference.package !== release.package)
           throw Error("SOURCE_ARTIFACT_PACKAGE_MISMATCH");
-        await readSourceCombination(runtime, reference.combination, core);
-        const directory = join(
-          runtime,
-          "source-combinations",
-          reference.combination,
-        );
-        const recordBytes = await fs.readFile(
-          join(directory, "combination.json"),
-        );
-        if (digest(recordBytes) !== reference.manifestSha256)
+        const { record, plugins, manifestSha256 } = await readSourceCombinationRecord(runtime, reference.combination, core);
+        if (manifestSha256 !== reference.manifestSha256)
           throw Error("SOURCE_ARTIFACT_MANIFEST_MISMATCH");
-        const record = JSON.parse(recordBytes);
-        const plugins = await json(join(directory, "company-plugins.json"));
         const actual = sourceComponent(record, plugins, release.package);
         if (
           actual.version !== release.version ||

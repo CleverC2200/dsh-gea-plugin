@@ -99,17 +99,10 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
         throw Error("SOURCE_PLUGIN_UNMERGED: " + repo);
     }
     const expectedCommit = input.commit;
-    if (expectedCommit) {
-      const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-        cwd: source,
-        encoding: "utf8",
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }).trim();
-      if (commit !== expectedCommit)
-        throw Error(
-          `SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`,
-        );
-    }
+    if (expectedCommit && commit !== expectedCommit)
+      throw Error(
+        `SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`,
+      );
     const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
     if (manifest.name !== plugin.name) throw Error("SOURCE_PLUGIN_IDENTITY_MISMATCH: " + repo);
     const assetRoot = input.assets ? await realpath(input.assets) : source;
@@ -509,23 +502,11 @@ export async function mergeSourceComponents(
   const records = new Map(),
     metadata = new Map();
   for (const id of new Set([latest, ...Object.values(updates)])) {
-    const directory = join(runtime, "source-combinations", id);
-    const bytes = await readFile(join(directory, "combination.json"));
-    if (
-      expectedManifests &&
-      createHash("sha256").update(bytes).digest("hex") !== expectedManifests[id]
-    )
+    const { record, plugins, manifestSha256 } = await readSourceCombinationRecord(runtime, id, core);
+    if (expectedManifests && manifestSha256 !== expectedManifests[id])
       throw Error("SOURCE_ARTIFACT_MANIFEST_MISMATCH");
-    const record = JSON.parse(bytes);
-    await readSourceCombination(runtime, id, core);
-    const pluginBytes = await readFile(join(directory, "company-plugins.json"));
-    if (
-      createHash("sha256").update(pluginBytes).digest("hex") !==
-      record.files["company-plugins.json"]
-    )
-      throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
     records.set(id, record);
-    metadata.set(id, JSON.parse(pluginBytes));
+    metadata.set(id, plugins);
   }
   const expectedExternal = {};
   for (const record of records.values()) {
