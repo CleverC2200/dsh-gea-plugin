@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { surfacePromptLine } from "../src/host/workbench-surface.ts";
 import { profileFor, allowedTools, TOOL_DESCRIPTIONS } from "../src/host/prompt-policy.ts";
 
@@ -21,8 +20,6 @@ test("scope queries do not require a bound page; page references cannot fabricat
 test("page context keeps a narrow focus and does not claim complete scope", async () => {
   assert.match(TOOL_DESCRIPTIONS.gea_visible_workbench_context, /focus/);
   assert.match(TOOL_DESCRIPTIONS.gea_visible_workbench_context, /不是全量/);
-  const business = await readFile(new URL("../src/host/business.ts", import.meta.url), "utf8");
-  assert.match(business, /本工具每轮最多调用一次/);
 });
 test("ordinary statistics do not mandate a Skill and generic sessions have no business profile", async () => {
   const core = allowedTools(profileFor("gea-readonly"));

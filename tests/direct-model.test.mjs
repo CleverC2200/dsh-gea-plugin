@@ -36,7 +36,8 @@ test("direct model deployment does not require an AionUi backend", async () => {
     "https://llm.example.test/v1",
   );
   assert.equal(
-    patch.flatMap((row) => row.insert ?? []).find((entry) => entry.id === "gea-proof").config.visibleContextSubagent,
+    patch.flatMap((row) => row.insert ?? []).find((entry) => entry.id === "gea-proof").config
+      .visibleContextSubagent,
     true,
   );
   assert.equal(JSON.stringify(patch).includes("AionUi"), false);
@@ -67,16 +68,25 @@ test("GEA model deployment uses the logged-in GEA route", async () => {
   const config = await readDeployment(path);
   const patch = deploymentPatch(config, dir, resolve(dir, "runtime"));
   assert.equal(config.analysis.source, "gea");
-  assert.equal(config.modelRequestTimeoutMs, 120000);
+  assert.equal(config.modelRequestTimeoutMs, 300000);
   assert.equal(config.requestTimeoutMs, 15000);
-  assert.equal(patch.flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config.modelRequestTimeoutMs, 120000);
-  assert.equal(patch.flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config.requestTimeoutMs, 15000);
+  assert.equal(
+    patch.flatMap((row) => row.insert ?? []).find((entry) => entry.id === "gea-proof").config
+      .modelRequestTimeoutMs,
+    300000,
+  );
+  assert.equal(
+    patch.flatMap((row) => row.insert ?? []).find((entry) => entry.id === "gea-proof").config
+      .requestTimeoutMs,
+    15000,
+  );
   assert.equal(
     patch.find((row) => row.id === "llm-pi-ai"),
     undefined,
   );
   assert.equal(
-    patch.flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config.analysisAgentCode,
+    patch.flatMap((row) => row.insert ?? []).find((entry) => entry.id === "gea-proof").config
+      .analysisAgentCode,
     "sales_forecast",
   );
 });
@@ -142,18 +152,13 @@ test("GEA stream timeout resolves independently from read timeouts and rejects i
     const config = await readDeployment(path);
     assert.equal(config.modelRequestTimeoutMs, modelRequestTimeoutMs);
     assert.equal(config.requestTimeoutMs, 15000);
-    const host = deploymentPatch(config, dir, resolve(dir, "runtime")).flatMap(row => row.insert ?? []).find(entry => entry.id === "gea-proof").config;
+    const host = deploymentPatch(config, dir, resolve(dir, "runtime"))
+      .flatMap((row) => row.insert ?? [])
+      .find((entry) => entry.id === "gea-proof").config;
     assert.equal(host.modelRequestTimeoutMs, modelRequestTimeoutMs);
     assert.equal(host.requestTimeoutMs, 15000);
   }
-  for (const modelRequestTimeoutMs of [
-    999,
-    600001,
-    0,
-    null,
-    "120000",
-    1000.5,
-  ]) {
+  for (const modelRequestTimeoutMs of [999, 600001, 0, null, "120000", 1000.5]) {
     await writeFile(path, JSON.stringify({ ...base, modelRequestTimeoutMs }));
     await assert.rejects(readDeployment(path), /INVALID_modelRequestTimeoutMs/);
   }

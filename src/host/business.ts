@@ -29,21 +29,10 @@ import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./pag
 import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.ts";
 import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
 import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
-import { createRepeatGuard, type RepeatGuard } from "./repeat-guard.ts";
 import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
-
-/**
- * 同一模块连续失败多少次就熔断（窗口内）。模块"表不可读"这类失败重试没有意义，
- * 熔断是为了让模型回到"用现有证据作答"，而不是把整轮耗在换表上。
- */
-const PLUGIN_FAILURE_LIMIT = 3;
-const PLUGIN_FAILURE_WINDOW_MS = 10 * 60 * 1000;
-
-/** 网关拒绝过 MCP 会话的模块在这个窗口内不再重试（见 moduleMcp）。 */
-const MCP_REJECTION_TTL_MS = 10 * 60 * 1000;
 
 import {
   validateServiceAccounts,
@@ -67,13 +56,6 @@ import { modelHttpError } from "../shared/model-http-error.ts";
 import { ApiLogBatch, parseApiBatchRequest } from "./api-log-batch.ts";
 import { DebugRunCoordinator } from "./debug-run.ts";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
-import {
-  createMcpWasteGuard,
-  createMcpFailureGuard,
-  type McpFailureGuard,
-  type McpWasteGuard,
-} from "./mcp-failure-guard.ts";
-import { createCallDedup, type CallDedup } from "./call-dedup.ts";
 
 import { createCapabilityRegistry, type CapabilityRegistry } from "../capability/registry.ts";
 import { workbenchContract, effectRank, type CapabilityEffect } from "../capability/contract.ts";
@@ -715,8 +697,6 @@ export class Business {
    * 见 workbench-surface.ts：这是"在不在工作台"的唯一权威来源。
    */
   private readonly surfaces = new Map<string, WorkbenchSurface>();
-  /** 上一次返回的页面上下文正文：内容没变就不重复发送（历史里不用再背一份）。 */
-  private readonly lastContextReplies = new Map<string, string>();
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
@@ -724,8 +704,6 @@ export class Business {
     string,
     { authToken: string; delegationToken: string }
   >();
-  /** 同一模块连续失败计数：用来在"换着表一直重试"时及时熔断。 */
-  private readonly pluginFailures = new Map<string, { count: number; at: number }>();
   /** 受管表列清单的短缓存：同一张表不重复探查。 */
   private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
   private capabilities: CapabilityRegistry;
@@ -936,14 +914,7 @@ export class Business {
     this.modelRoutes.clear();
     this.pluginDelegations.clear();
     this.moduleMcpCache.clear();
-    this.moduleMcpRejections.clear();
-    // 元信息缓存与"本轮白跑"计数都跟身份绑定：换身份一律作废。
-    this.readDedup.clear();
-    this.mcpWasteGuard.clear();
-    this.mcpFailureGuard.clear();
-    this.repeatGuard.clear();
     this.clearTurnReplays();
-    this.turnQuestions.clear();
     this.turnStops.clear();
     this.salesTransactions.clear();
     this.qr = undefined;
@@ -953,7 +924,6 @@ export class Business {
     this.surfaces.clear();
     // 页面身份同理：换了身份，"当前页"这件事也算不清了。
     this.pageIdentities.clear();
-    this.lastContextReplies.clear();
     this.clearQuery();
     this.notifyIdentity();
   }
@@ -1030,7 +1000,6 @@ export class Business {
     if (previous !== undefined && previous.menu !== next.menu) {
       this.visibleWorkbenchContexts.delete(sessionId);
       this.pageIdentities.delete(sessionId);
-      this.lastContextReplies.delete(sessionId);
     }
     return next;
   }
@@ -1044,7 +1013,6 @@ export class Business {
   clearSurface(sessionId: string, menu: string): void {
     if (this.surfaces.get(sessionId)?.menu !== menu) return;
     this.surfaces.delete(sessionId);
-    this.lastContextReplies.delete(sessionId);
   }
 
   /**
@@ -1070,7 +1038,7 @@ export class Business {
    * 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。
    *
    * focus：用户问题里提到的对象/字段。带上就只回相关行与字段；不带只回摘要（行数、
-   * 字段名、范围），避免整屏明细灌进上下文——这是"先判断是不是问这一屏，再引用数据"。
+   * 字段名、范围），避免整屏明细灌进上下文。
    */
   visibleWorkbenchContext(sessionId: string, focus?: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
@@ -1091,7 +1059,7 @@ export class Business {
         reason:
           `这个对话在「${presence.menuTitle}」（主对话），没有业务页面证据：不要推断用户在看哪一页，也不要去打开页面。` +
           "这只影响“当前页可见行”这类问题；按月或按范围的数据问题请直接用只读数据工具查询并作答（query_business_data、gea_sales_plan_read；不要自己写 SQL），不要因此拒答或索要经销商编码。" +
-          "确实需要“这一屏”时，说清需要哪一页，让用户从左侧功能区点开对应菜单。本工具每轮最多调用一次，不要重复调用。",
+          "确实需要“这一屏”时，说清需要哪一页，让用户从左侧功能区点开对应菜单。",
       });
     }
     if (!value) {
@@ -1132,16 +1100,6 @@ export class Business {
         ? { contextNote: compressed.note, contextOmitted: compressed.omitted }
         : {}),
     });
-    // 同一份内容第二次要就只回"没变"，不再把整包塞回历史。
-    if (this.lastContextReplies.get(sessionId) === body)
-      return JSON.stringify({
-        source: "GEA_RENDERED_WORKBENCH",
-        renderedAt: value.receivedAt,
-        coverage: "current-visible-page",
-        unchanged: true,
-        note: "这一屏与上一次读取完全相同：沿用上一次的内容，未重复发送。",
-      });
-    this.lastContextReplies.set(sessionId, body);
     return body;
   }
 
@@ -1963,14 +1921,7 @@ export class Business {
   /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
   invalidateModuleMcp(consumerCode: string): void {
     this.moduleMcpCache.delete(consumerCode);
-    this.moduleMcpRejections.delete(consumerCode);
   }
-  /**
-   * 网关明确拒绝过 MCP 会话的模块：短窗口内不再重试。
-   * 线上实测：网关回 rejected 后模型会换模块反复试（一轮三次），每次都白等一次往返。
-   */
-  private readonly moduleMcpRejections = new Map<string, { at: number; permission: boolean }>();
-
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
    * 页面不可用时的兜底查询走这里：不依赖页面、也不依赖我们替它写 SQL。
@@ -1978,117 +1929,23 @@ export class Business {
   async moduleMcp(consumerCode: string, signal: AbortSignal): Promise<GatewayMcpClient> {
     this.assertExecutionAllowed(consumerCode);
     const auth = this.authenticated();
-    const rejected = this.moduleMcpRejections.get(consumerCode);
-    if (rejected !== undefined) {
-      if (Date.now() - rejected.at < MCP_REJECTION_TTL_MS)
-        throw Object.assign(
-          new Error(
-            rejected.permission
-              ? `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（刚才网关已明确拒绝，10 分钟内不再重试）。需要管理员开通该 Agent/模块权限。`
-              : `GEA_MCP_HTTP_REJECTED：网关刚才已拒绝过「${consumerCode}」的 MCP 调用，10 分钟内不要再试它。换一个已开通的模块，或读页面证据。`,
-          ),
-          rejected.permission ? { code: "AGENT_ACCESS_DENIED", retryable: false } : {},
-        );
-      this.moduleMcpRejections.delete(consumerCode);
-    }
+    const identity = this.epoch.signal;
+    signal.throwIfAborted();
     const cached = this.moduleMcpCache.get(consumerCode);
     if (cached && cached.token === auth.token) return cached.module;
-    let module: GatewayMcpClient;
-    try {
-      const transport = await this.openMcpConnection(
-        { consumerType: "AGENT", consumerCode },
-        signal,
-      );
-      module = await openGatewayMcp(transport, signal);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const code =
-        error && typeof error === "object" && "code" in error
-          ? String((error as { code?: unknown }).code)
-          : "";
-      // 权限没开通：这是业务状态，不是故障。原样抛出带 code 的错误，由工具层转成
-      // 正常提示（见 Cube-New query_business_data），不要显示成红色调用失败。
-      if (code === "AGENT_ACCESS_DENIED") {
-        this.moduleMcpRejections.set(consumerCode, {
-          at: Date.now(),
-          permission: true,
-        });
-        throw Object.assign(
-          new Error(
-            `AGENT_ACCESS_DENIED：当前账号没有「${consumerCode}」这个模块的 MCP 权限（${message.replace(/^AGENT_ACCESS_DENIED: /, "")}）。需要管理员在当前环境为该账号开通该 Agent/模块的权限。`,
-          ),
-          { code: "AGENT_ACCESS_DENIED", retryable: false },
-        );
-      }
-      // 其余是"网关拒绝/代理出错"：这类才是真失败，保留可读原因。
-      if (/GEA_MCP_(SESSION_(REJECTED|HTTP_\d+)|HTTP_\d+)/.test(message)) {
-        this.moduleMcpRejections.set(consumerCode, {
-          at: Date.now(),
-          permission: false,
-        });
-        throw new Error(
-          `GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用（${message}）。10 分钟内不要再试它：换一个已开通的模块，或读页面证据。`,
-        );
-      }
-      throw error;
-    }
+    const transport = await this.openMcpConnection({ consumerType: "AGENT", consumerCode }, signal);
+    const module = await openGatewayMcp(transport, signal);
+    identity.throwIfAborted();
+    signal.throwIfAborted();
     this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
     return module;
   }
 
-  /**
-   * 模块 MCP 通道的失败熔断（见 host/mcp-failure-guard.ts）。
-   * 工具层在真调数据前后各记一次：连续失败到上限就停手，别再换模型/换写法试。
-   */
-  private readonly mcpFailureGuard = createMcpFailureGuard();
-
-  moduleMcpFailures(): McpFailureGuard {
-    return this.mcpFailureGuard;
-  }
-
-  /** 本轮整体熔断：单个模块的熔断挡不住"换着模块试"（见 mcp-failure-guard.ts）。 */
-  private readonly mcpWasteGuard = createMcpWasteGuard();
-
-  moduleMcpWaste(): McpWasteGuard {
-    return this.mcpWasteGuard;
-  }
-
-  /** 只读元信息（目录/成员/工具清单）的同轮去重，避免同一份东西被读几十遍。 */
-  private readonly readDedup = createCallDedup();
-
-  metadataDedup(): CallDedup {
-    return this.readDedup;
-  }
-
-  /** 同一轮里的重复读收敛（见 host/repeat-guard.ts）。 */
-  private readonly repeatGuard = createRepeatGuard();
-
-  repeatReads(): RepeatGuard {
-    return this.repeatGuard;
-  }
-
-  /**
-   * 本轮"已经读过"的内容副本：去重命中时把内容还回去，不再只回一句话。
-   *
-   * 线上实测（session-bbd8f3be）：模型索引被读了 8 次——头两次拿全文，之后只拿到
-   * "这一轮已经读过了"的空壳；模型手上有用的正是那份目录，拿不回来就只能再发一次，
-   * 一直到整轮停手。所以去重要"省带宽"，但不能"扣内容"：命中时重放内容（长内容只重放开头）。
-   */
   private readonly turnReplays = new Map<string, { text: string; at: number }>();
-  private readonly planReadCounts = new Map<string, { detail: number; aggregate: number }>();
   private readonly turnReadRevisions = new Map<string, number>();
   readTurnRevision(scope: string): number {
     return this.turnReadRevisions.get(scope) ?? 0;
   }
-  allowPlanRead(scope: string, aggregate: boolean): boolean {
-    const counts = this.planReadCounts.get(scope) ?? {
-      detail: 0,
-      aggregate: 0,
-    };
-    this.planReadCounts.set(scope, counts);
-    return aggregate ? ++counts.aggregate <= 8 : ++counts.detail <= 20;
-  }
-
   rememberTurnReplay(scope: string, key: string, text: string): void {
     if (!text) return;
     const full = `${scope || "global"}\u0000${key}`;
@@ -2098,10 +1955,6 @@ export class Business {
       const oldest = this.turnReplays.keys().next().value as string;
       this.turnReplays.delete(oldest);
     }
-  }
-
-  turnReplay(scope: string, key: string): string | undefined {
-    return this.turnReplays.get(`${scope || "global"}\u0000${key}`)?.text;
   }
 
   /** 本轮成功聚合的有界摘要；读取失败/停手不抹掉已有事实，换轮或身份沿用回执清理。 */
@@ -2183,42 +2036,17 @@ export class Business {
     if (scope !== undefined) {
       for (const key of this.turnReplays.keys())
         if (key.startsWith(`${scope || "global"}\u0000`)) this.turnReplays.delete(key);
-      this.planReadCounts.delete(scope);
       this.turnReadRevisions.set(scope, this.readTurnRevision(scope) + 1);
     } else {
       this.turnReplays.clear();
-      this.planReadCounts.clear();
       this.turnReadRevisions.clear();
     }
   }
 
-  /**
-   * "这一轮别再取数了"的整轮闸门。
-   *
-   * 线上实测（session-424510f0）：重复读闸门在第 40 步就抛了 GEA_TURN_REPEAT_STOPPED，
-   * 但模型换个工具（gea_sales_plan_read）接着试，又跑了 15 步才被白跑总账拦住。
-   * 停手必须是整轮的：一旦置位，本轮所有取数工具都只回一句"已停手"，逼它用已拿到的证据作答。
-   */
   private readonly turnStops = new Map<
     string,
     { at: number; reason: string; kind: "query" | "session-expired" }
   >();
-
-  /**
-   * 这一轮用户的原话（每个会话一条）。页面快照工具用它判"用户有没有页面意图"——
-   * 默认不读页面，只有原话里出现"这一屏/这几行/展开/选中/这单"这类指代才允许生成快照，
-   * 免得一进对话就把整屏的行与字段塞进上下文。
-   */
-  private readonly turnQuestions = new Map<string, string>();
-
-  rememberTurnQuestion(scope: string, question: string): void {
-    const text = question.replace(/\s+/g, " ").trim();
-    if (text) this.turnQuestions.set(scope || "global", text);
-  }
-
-  turnQuestion(scope: string): string | undefined {
-    return this.turnQuestions.get(scope || "global");
-  }
 
   stopTurn(scope: string, reason: string, kind: "query" | "session-expired" = "query"): void {
     this.turnStops.set(scope || "global", { at: Date.now(), reason, kind });
@@ -2456,16 +2284,6 @@ export class Business {
     this.assertExecutionAllowed(consumerCode);
     this.sqlReadLimit?.assertAvailable(consumerCode);
     const auth = this.authenticated();
-    // 同一个模块连续失败就到此为止：线上实测模型会换着表/换着 SQL 一直重试
-    // （38 步、4 分钟不输出）。熔断后强制它用手上的证据作答，或说明缺什么。
-    const failures = this.pluginFailures.get(consumerCode);
-    if (failures && failures.count >= PLUGIN_FAILURE_LIMIT) {
-      if (Date.now() - failures.at < PLUGIN_FAILURE_WINDOW_MS)
-        throw new Error(
-          `GEA_PLUGIN_RETRY_STOPPED: ${consumerCode} 本轮已连续失败 ${failures.count} 次，不要再换表或换写法重试。请用已经拿到的数据作答；确实缺口径时，直接说明缺哪一项，不要继续取数。`,
-        );
-      this.pluginFailures.delete(consumerCode);
-    }
     const sqlValue = query.sql;
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
@@ -2531,7 +2349,6 @@ export class Business {
             signal,
             limit: this.sqlReadLimit,
           });
-          this.pluginFailures.delete(consumerCode);
           return result;
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {
@@ -2558,11 +2375,6 @@ export class Business {
       signal.throwIfAborted();
       // A failed delegated credential must not poison the next page refresh.
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
-      const previous = this.pluginFailures.get(consumerCode);
-      this.pluginFailures.set(consumerCode, {
-        count: (previous?.count ?? 0) + 1,
-        at: Date.now(),
-      });
       throw error;
     }
   }

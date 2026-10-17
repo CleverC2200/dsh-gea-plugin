@@ -22,7 +22,6 @@ function textContent(content: readonly ContentBlock[]): string {
 
 export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
   const messages: GeaMessage[] = [];
-  let reasoningChars = 0;
   if (options.system !== undefined) messages.push({ role: "system", content: options.system });
   for (const message of options.messages) {
     if (message.role === "system") {
@@ -64,12 +63,6 @@ export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
         )
           throw new LlmError(
             "GEA_REASONING_HISTORY_INCOMPLETE: 已保存的思考缺少完整响应标记，请保留原会话并新建会话；不会将部分思考冒充完整历史回传。",
-            "PROVIDER_PROTOCOL",
-          );
-        reasoningChars += reasoning.length;
-        if (reasoning.length > 1_048_576 || reasoningChars > 4_194_304)
-          throw new LlmError(
-            "GEA_REASONING_HISTORY_TOO_LARGE: 思考历史超出网关上限，请按完整消息组缩减上下文；不会截断原文。",
             "PROVIDER_PROTOCOL",
           );
       }

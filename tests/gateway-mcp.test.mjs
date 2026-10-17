@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { readFile } from "node:fs/promises";
 const { outputFiles } = await build({
   entryPoints: ["src/host/gateway-mcp.ts"],
   bundle: true,
@@ -670,15 +669,6 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
     ),
     { message: "GEA_MCP_SESSION_HTTP_502" },
   );
-});
-
-test("宿主对拒绝过的模块在窗口内不再重试，并给出可读的下一步", async () => {
-  const source = await readFile(new URL("../src/host/business.ts", import.meta.url), "utf8");
-  // 线上实测：网关回 rejected 后模型会换模块反复试，一轮三次，每次都白等一次往返。
-  assert.match(source, /MCP_REJECTION_TTL_MS = 10 \* 60 \* 1000/);
-  assert.match(source, /AGENT_ACCESS_DENIED：当前账号没有/);
-  assert.match(source, /GEA_MCP_HTTP_REJECTED：网关拒绝了这个模块的 MCP 调用/);
-  assert.match(source, /10 分钟内不要再试它/);
 });
 
 test("HTTP 429 按 Retry-After 给出等待建议，不当作连接坏了", async () => {

@@ -66,6 +66,10 @@ test(
     );
     assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");
     assert.equal(
+      manifest.peerDependencies["@deepseek-ai/dsh-timeout"],
+      "0.2.0-rc.2 || 0.2.1-alpha.1",
+    );
+    assert.equal(
       manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"],
       versions["@cleverc2200/dsh-agent-workbench"],
     );

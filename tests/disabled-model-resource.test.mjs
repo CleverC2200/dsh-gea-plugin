@@ -6,7 +6,7 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { BusinessResources } from "dsh-agent-manage/business-resources";
 import { Context } from "@deepseek-ai/cordis";
-import { ToolRuntime } from "@deepseek-ai/dsh-tools";
+import { ToolRuntime, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
 import { LlmRuntime, LlmAdapter } from "@deepseek-ai/dsh-llm";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
 
@@ -19,8 +19,8 @@ async function fixture(
     workbenchEnabled = true,
     actualBusiness = false,
     modelFailure,
-    planRead,
     login = false,
+    ui = false,
   } = {},
 ) {
   fixtureEnvironment(t, {
@@ -71,7 +71,7 @@ async function fixture(
   const compiled = await build({
     stdin: {
       contents:
-        "export {apply} from './src/host.ts'; export {Business} from './src/host/business.ts';",
+        "export {apply} from './src/host.ts'; export {Business} from './src/host/business.ts'; export {createRenderUiTool, createValidateDshUiTool} from '../../upstream-inputs/genui/src/plugin/tool.ts';",
       resolveDir: process.cwd(),
     },
     bundle: true,
@@ -85,7 +85,9 @@ async function fixture(
   });
   const output = join(root, "host.mjs");
   await writeFile(output, compiled.outputFiles[0].text);
-  const { apply, Business } = await import(pathToFileURL(output));
+  const { apply, Business, createRenderUiTool, createValidateDshUiTool } = await import(
+    pathToFileURL(output)
+  );
   const directory = join(root, "dealer");
   await cp(resolve("../dsh-agent-workbench/lib/business/inventory-dealer"), directory, {
     recursive: true,
@@ -113,7 +115,8 @@ async function fixture(
     adapters = new Map(),
     handlers = new Map(),
     tools = new Map(),
-    cleanups = [];
+    cleanups = [],
+    guards = [];
   const preset = "gea-html-inventory-dealer";
   // A pre-existing Session's persisted preset projection survives resource changes.
   const agent = {
@@ -189,7 +192,10 @@ async function fixture(
         tools.set(tool.name, tool);
         return () => {};
       },
-      guard: () => () => {},
+      guard: (guard) => {
+        guards.push(guard);
+        return () => {};
+      },
       schemas: () => [],
       get: () => undefined,
     },
@@ -206,6 +212,9 @@ async function fixture(
       saveSelection: async () => {},
     },
   };
+  if (ui)
+    for (const tool of [createRenderUiTool(), createValidateDshUiTool()])
+      tools.set(tool.name, tool);
   agent.ctx = { effect: ctx.effect };
   ctx.agentResources = new BusinessResources(ctx, join(root, "selected.json"));
   const register = ctx.agentResources.register.bind(ctx.agentResources);
@@ -220,7 +229,6 @@ async function fixture(
     return release;
   };
   const calls = { route: [], transport: [] };
-  if (planRead) Business.prototype.agentQuery = planRead;
   if (!actualBusiness) {
     Business.prototype.status = () => ({
       authenticated: true,
@@ -268,6 +276,7 @@ async function fixture(
   });
   return {
     ctx,
+    toolSchema: (name) => tools.get(name).parameters,
     agent,
     external,
     pages,
@@ -345,7 +354,7 @@ async function fixture(
         off();
       }
     },
-    async executeTool(name) {
+    async executeTool(name, args = {}) {
       const core = new Context();
       core.provide("systemPrompt", { tools: () => () => {} });
       const runtime = new ToolRuntime(core);
@@ -364,17 +373,21 @@ async function fixture(
             }
           : tools.get(name);
       const off = runtime.register(definition);
-      const detach = core.on("tools/execute", handlers.get("tools/execute")[0]);
+      const guardOffs = guards.map((guard) => runtime.guard(guard));
+      const detaches = ["tools/execute", "tools/post-execute"].flatMap((event) =>
+        (handlers.get(event) ?? []).map((handler) => core.on(event, handler)),
+      );
       try {
         return await runtime.execute({
           name,
           agent,
           callId: "fixture-call",
-          arguments: {},
+          arguments: args,
           signal: new AbortController().signal,
         });
       } finally {
-        detach();
+        detaches.forEach((detach) => detach());
+        guardOffs.forEach((dispose) => dispose());
         off();
       }
     },
@@ -614,6 +627,43 @@ test("the official LLM stream seam denies a retained direct GEA provider before 
   assert.deepEqual(app.external, []);
 });
 
+test("model/advice shares the adapter idle lifetime without an outer total deadline", async (t) => {
+  let writer;
+  let closed = false;
+  const encoder = new TextEncoder();
+  const app = await fixture(t, true, {
+    modelFailure: () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            writer = controller;
+          },
+          cancel() {
+            closed = true;
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+  });
+  app.ctx.llm.stream = (options) => app.adapter.stream(options);
+  const result = app.route("model/advice", { question: "fixture" });
+  const heartbeat = setInterval(() => {
+    if (writer && !closed) writer.enqueue(encoder.encode(": keepalive\n\n"));
+  }, 150);
+  t.after(() => clearInterval(heartbeat));
+  await new Promise((done) => setTimeout(done, 1400));
+  if (!closed)
+    writer.enqueue(
+      encoder.encode(
+        'data: {"choices":[{"index":0,"delta":{"content":"fixture answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      ),
+    );
+  const reply = await result;
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  assert.equal(reply.value.answer, "fixture answer");
+  assert.equal(closed, true);
+});
+
 test("the registered GEA model adapter preserves a chat 403 without treating it as a network outage", async (t) => {
   const app = await fixture(t, true, {
     modelFailure: () =>
@@ -684,34 +734,6 @@ test("the registered GEA model adapter translates connection and stream failures
       );
       assert.equal(app.calls.transport.length, 1);
     });
-});
-
-test("the actual Host inbox resets read guards and records the question only for its own Session", async (t) => {
-  let reads = 0;
-  const app = await fixture(t, true, {
-    planRead: async () => {
-      reads++;
-      return '{"rows":[{"qty":3}]}';
-    },
-  });
-  const args = { kind: "periods", query: {} };
-  await app.claimQuestion("s1", "全国库存按品类汇总");
-  await app.claimQuestion("s2", "全国库存按品类汇总");
-  for (const scope of ["s1", "s2"]) {
-    await app.executeRegistered("gea_sales_plan_read", args, scope);
-    await app.executeRegistered("gea_sales_plan_read", args, scope);
-    await app.executeRegistered("gea_sales_plan_read", args, scope);
-  }
-  assert.equal(reads, 4);
-  await app.claimQuestion("s1", "全国库存按品类汇总");
-  await app.executeRegistered("gea_sales_plan_read", args, "s1");
-  await app.executeRegistered("gea_sales_plan_read", args, "s2");
-  assert.equal(reads, 5, "same question claimed again resets only its Session");
-  assert.match(
-    await app.executeRegistered("gea_visible_workbench_context", {}, "s1"),
-    /PAGE_INTENT_MISSING/,
-  );
-  assert.equal(app.external.length, 0);
 });
 
 test("the actual Native Host grant binds and withdraws its current page projection", async (t) => {
@@ -795,4 +817,383 @@ test("the actual Native Host grant binds and withdraws its current page projecti
   assert.throws(() => revoked.observe(contextSnapshot), /abort/i);
   revoked.release();
   assert.equal((await bound()).pageBound, false);
+});
+
+for (const entry of ["RPC", "HTML"])
+  test(`actual ${entry} SQL reads recover from repeated failures across Session and login changes`, async (t) => {
+    const app = await fixture(t, true, { actualBusiness: true, login: true });
+    const login = async () => {
+      const qr = await app.route("login/start");
+      assert.equal(qr.ok, true, JSON.stringify(qr));
+      const result = await app.route("login/poll", { loginId: qr.value.loginId });
+      assert.equal(result.ok, true, JSON.stringify(result));
+    };
+    await login();
+    const loginFetch = globalThis.fetch;
+    let failing = true;
+    let reads = 0;
+    t.mock.method(globalThis, "fetch", async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      init.signal.throwIfAborted();
+      if (path.endsWith("/ai/gateway/session")) {
+        const wire = JSON.parse(init.body);
+        return Response.json({
+          success: true,
+          result: {
+            accessDecision: { allowed: true },
+            delegationToken: "sql-page-delegation",
+            gatewayContext: { ...wire, sessionId: "sql-page-session" },
+          },
+        });
+      }
+      if (!path.endsWith("/ai/gateway/sql/execute")) return loginFetch(input, init);
+      reads++;
+      return failing
+        ? Response.json(
+            { success: false, code: "SQL_UNAVAILABLE", message: "temporary failure" },
+            { status: 503 },
+          )
+        : Response.json({ success: true, result: { rows: [{ sku: "fresh" }], total: 1 } });
+    });
+    const query = { sql: "SELECT sku FROM inventory ORDER BY sku", pageNo: 1, pageSize: 1 };
+    let grant;
+    const open = async () => {
+      grant = await app.pages.get("inventory-dealer")(
+        app.agent.id,
+        app.preset,
+        new AbortController().signal,
+      );
+    };
+    if (entry === "HTML") await open();
+    const read = async () => {
+      if (entry === "HTML") return grant.readSql(query, new AbortController().signal);
+      const result = await app.route("plugin/sql", {
+        consumerCode: "dealer-inventory-replenishment",
+        ...query,
+      });
+      if (!result.ok) throw Object.assign(Error(result.error.message), result.error);
+      return result.value;
+    };
+    for (let i = 0; i < 4; i++)
+      await assert.rejects(read(), /503|SQL_UNAVAILABLE|temporary failure/);
+    assert.equal(reads, 4);
+    failing = false;
+    assert.deepEqual((await read()).rows, [{ sku: "fresh" }]);
+    failing = true;
+    for (let i = 0; i < 3; i++)
+      await assert.rejects(read(), /503|SQL_UNAVAILABLE|temporary failure/);
+    app.agent.id = "session-22222222-2222-4222-8222-222222222222";
+    if (entry === "HTML") {
+      grant.release();
+      await open();
+    }
+    failing = false;
+    assert.deepEqual((await read()).rows, [{ sku: "fresh" }]);
+    failing = true;
+    for (let i = 0; i < 3; i++)
+      await assert.rejects(read(), /503|SQL_UNAVAILABLE|temporary failure/);
+    await app.route("logout");
+    if (entry === "HTML") {
+      assert.equal(grant.signal.aborted, true);
+      grant.release();
+    }
+    await login();
+    app.agent.id = "session-33333333-3333-4333-8333-333333333333";
+    if (entry === "HTML") await open();
+    failing = false;
+    assert.deepEqual((await read()).rows, [{ sku: "fresh" }]);
+    assert.equal(reads, 13);
+    grant?.release();
+  });
+
+test("registered online detail reads execute beyond twenty calls", async (t) => {
+  const app = await fixture(t, true, { actualBusiness: true, login: true });
+  app.agent.session.preset = "gea-readonly";
+  const qr = await app.route("login/start");
+  await app.route("login/poll", { loginId: qr.value.loginId });
+  const loginFetch = globalThis.fetch;
+  let reads = 0;
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (!/\/sales-plan\/plans\/p-\d+$/.test(path)) return loginFetch(input, init);
+    reads++;
+    const planId = path.split("/").at(-1);
+    return Response.json({
+      success: true,
+      result: {
+        planId,
+        currentVersion: { id: "v-" + reads, planId },
+        skus: [],
+        versions: [],
+        logs: [],
+      },
+    });
+  });
+  for (let n = 1; n <= 21; n++) {
+    const result = JSON.parse(
+      await app.executeRegistered("gea_sales_plan_read", {
+        kind: "detail",
+        query: { planId: "p-" + n },
+      }),
+    );
+    assert.equal(result.value?.planId, "p-" + n, JSON.stringify(result));
+    assert.equal(result.coverage, "partial");
+  }
+  assert.equal(reads, 21);
+});
+
+test("registered aggregate reads refresh the same query beyond eight calls", async (t) => {
+  const app = await fixture(t, true, { actualBusiness: true, login: true });
+  app.agent.session.preset = "gea-readonly";
+  const qr = await app.route("login/start");
+  await app.route("login/poll", { loginId: qr.value.loginId });
+  const loginFetch = globalThis.fetch;
+  let amount = "1.25";
+  let scans = 0;
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith("/sales-plan/plans")) {
+      scans++;
+      return Response.json({
+        success: true,
+        result: {
+          records: [
+            {
+              planId: "p",
+              versionId: "v",
+              periodId: "20261001",
+              orderType: "M",
+              planTypeCode: "Y",
+              skuCount: 1,
+            },
+          ],
+          total: 1,
+          current: 1,
+          size: 200,
+        },
+      });
+    }
+    if (path.endsWith("/sales-plan/plans/versions/v/skus"))
+      return Response.json({
+        success: true,
+        result: [{ versionId: "v", skuCode: "s", amt: amount, qty: "2" }],
+      });
+    return loginFetch(input, init);
+  });
+  for (let n = 1; n <= 9; n++) {
+    amount = n === 9 ? "9007199254740993.125" : String(n) + ".25";
+    const result = JSON.parse(
+      await app.executeRegistered("gea_sales_plan_read", {
+        kind: "aggregate",
+        query: { periodId: "20261001" },
+      }),
+    );
+    assert.equal(result.value?.totals[0].amt, amount, JSON.stringify(result));
+    assert.equal(result.coverage, "complete");
+  }
+  assert.equal(scans, 18);
+});
+
+test("authorized page reads return current content after missing snapshots, new questions and repeated focus", async (t) => {
+  const app = await fixture(t, true, { actualBusiness: true, login: true, mock: true });
+  app.agent.session.preset = "gea-readonly";
+  const qr = await app.route("login/start");
+  await app.route("login/poll", { loginId: qr.value.loginId });
+  const read = async () =>
+    JSON.parse(await app.executeRegistered("gea_visible_workbench_context", { focus: "qty" }));
+  assert.equal((await read()).coverage, "none");
+  const grant = await app.pages.get("gea-proof")(
+    app.agent.id,
+    "gea-readonly",
+    new AbortController().signal,
+  );
+  assert.equal((await read()).availability, "in-workbench-no-snapshot");
+  grant.observe({
+    format: "gea-workbench-visible-v1",
+    sequence: 1,
+    view: "regional-approval",
+    scope: { month: "2026-10", planType: "Y", approvalStage: "province", dimension: "customer" },
+    visibleRows: [{ planId: "p-page", qty: "-5.125" }],
+    selectedPlanIds: [],
+    pagination: { page: 1, pageSize: 20, total: 10 },
+    evidence: {
+      source: "gea-user-session",
+      completeness: "paged-queue",
+      queryState: "success",
+      dataVersion: "sales-plan-v1.11",
+    },
+  });
+  await app.claimQuestion(app.agent.id, "What is the quantity?");
+  const first = await read();
+  assert.match(JSON.stringify(first.context), /-5.125/);
+  assert.equal(first.coverage, "current-visible-page");
+  for (let n = 0; n < 3; n++) assert.deepEqual(await read(), first);
+  await app.claimQuestion(app.agent.id, "请核对数量");
+  assert.deepEqual(await read(), first);
+  grant.release();
+  assert.equal((await read()).coverage, "none");
+  assert.throws(() => grant.observe({ sequence: 2 }), /PAGE_OWNER_RELEASED/);
+});
+
+test("actual UI tools accept signed values, delta and totals under the business guard", async (t) => {
+  const app = await fixture(t, true, { actualBusiness: true, login: true, ui: true });
+  const qr = await app.route("login/start");
+  await app.route("login/poll", { loginId: qr.value.loginId });
+  const spec = {
+    items: [
+      {
+        type: "table",
+        columns: ["差额"],
+        rows: [["-5"], ["+10"], ["−10"]],
+        types: ["delta"],
+        total: true,
+      },
+      { type: "stat", label: "差额", value: "-5", delta: "+10" },
+      { type: "hero", title: "数量", value: "-5", delta: "−10" },
+    ],
+  };
+  for (const name of ["render_ui", "validate_dsh_ui"]) {
+    const result = await app.executeTool(name, { spec });
+    assert.equal(result.isError, false, JSON.stringify(result));
+    assert.match(JSON.stringify(result.content), /status=(rendered|valid)/);
+    const invalid = await app.executeTool(name, { spec: 123 });
+    assert.match(JSON.stringify(invalid.content), /status=invalid/);
+    assert.ok(validateJsonSchemaValue(app.toolSchema(name), { spec: 123 }).length > 0);
+    assert.doesNotMatch(JSON.stringify(invalid), /GEA_UI_BUSINESS_SEMANTICS/);
+  }
+});
+
+test("repeated registered reads recover from failure and keep full current partial results", async (t) => {
+  const app = await fixture(t, true, { actualBusiness: true, login: true });
+  app.agent.session.preset = "gea-readonly";
+  const qr = await app.route("login/start");
+  await app.route("login/poll", { loginId: qr.value.loginId });
+  const loginFetch = globalThis.fetch;
+  let reads = 0;
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (!path.endsWith("/sales-plan/plans")) return loginFetch(input, init);
+    reads++;
+    return reads === 1
+      ? Response.json({ success: false, message: "temporary read failure" }, { status: 503 })
+      : Response.json({
+          success: true,
+          result: {
+            records: [
+              { planId: "p", note: "x".repeat(8500), current: reads, tail: "CURRENT_EVIDENCE_END" },
+            ],
+            total: 2,
+            current: 1,
+            size: 1,
+          },
+        });
+  });
+  const args = { kind: "list", query: { pageNo: 1, pageSize: 1 } };
+  await assert.rejects(app.executeRegistered("gea_sales_plan_read", args), /503/);
+  for (let n = 2; n <= 12; n++) {
+    const result = JSON.parse(await app.executeRegistered("gea_sales_plan_read", args));
+    assert.equal(result.value.records[0].current, n);
+    assert.equal(result.value.records[0].note.length, 8500);
+    assert.equal(result.value.records[0].tail, "CURRENT_EVIDENCE_END");
+    assert.equal(result.coverage, "partial");
+    assert.equal(result.value.total, 2);
+  }
+  assert.equal(reads, 12);
+});
+
+test("explicit page rereads restore content after official Session tool-result pruning", async (t) => {
+  const { Session, SessionId } = await import("@deepseek-ai/dsh-session");
+  const { createToolResultMessage, ToolCallId } = await import("@deepseek-ai/dsh-llm");
+  const { default: SessionProjectionRegistry } = await import(
+    pathToFileURL(
+      resolve("../../official-latest-standard/packages/session/session-projection/lib/index.js"),
+    )
+  );
+  const { default: TokenMeter } = await import(
+    pathToFileURL(resolve("../../official-latest-standard/packages/llm/token-meter/lib/index.js"))
+  );
+  const { default: ToolResultPruner } = await import(
+    pathToFileURL(
+      resolve(
+        "../../official-latest-standard/packages/compaction/compaction-tool-result-pruner/lib/index.js",
+      ),
+    )
+  );
+  const app = await fixture(t, true, { actualBusiness: true, login: true, mock: true });
+  app.agent.session.preset = "gea-readonly";
+  const qr = await app.route("login/start");
+  await app.route("login/poll", { loginId: qr.value.loginId });
+  const grant = await app.pages.get("gea-proof")(
+    app.agent.id,
+    "gea-readonly",
+    new AbortController().signal,
+  );
+  grant.observe({
+    format: "gea-workbench-visible-v1",
+    sequence: 1,
+    view: "regional-approval",
+    scope: { month: "2026-10", planType: "Y", approvalStage: "province", dimension: "customer" },
+    visibleRows: Array.from({ length: 20 }, (_, n) => ({
+      planId: "p-" + n,
+      note: n === 10 ? "PAGE_MIDDLE_EVIDENCE" : "x".repeat(500),
+    })),
+    selectedPlanIds: [],
+    pagination: { page: 1, pageSize: 20, total: 20 },
+    evidence: {
+      source: "gea-user-session",
+      completeness: "paged-queue",
+      queryState: "success",
+      dataVersion: "sales-plan-v1.11",
+    },
+  });
+  const first = await app.executeTool("gea_visible_workbench_context");
+  assert.equal(first.isError, false, JSON.stringify(first));
+  assert.match(first.value, /PAGE_MIDDLE_EVIDENCE/);
+  const session = Session.create(SessionId("page-prune-session"));
+  session.append(
+    "tool/result",
+    {
+      turn: 1,
+      step: 1,
+      message: createToolResultMessage({
+        callId: ToolCallId("page-read"),
+        content: first.content,
+        isError: false,
+      }),
+    },
+    { surfaceOp: "append" },
+  );
+  const core = new Context();
+  new SessionProjectionRegistry(core);
+  new TokenMeter(core);
+  const pruner = new ToolResultPruner(core, {
+    thresholdChars: 1000,
+    headChars: 500,
+    tailChars: 200,
+  });
+  assert.equal(pruner.pruneSession(session).pruned.length, 1);
+  assert.ok(session.snapshotEvents().some((event) => event.type === "compaction/prune"));
+  assert.match(JSON.stringify(session.deriveMessages()), /tool result middle pruned/);
+  const reread = await app.executeTool("gea_visible_workbench_context");
+  assert.equal(reread.isError, false, JSON.stringify(reread));
+  assert.equal(reread.value, first.value);
+  const projected = JSON.parse(reread.content[0].text);
+  assert.equal(projected.projection, "reference");
+  let offset = 0,
+    restored = "";
+  while (offset !== null) {
+    const result = await app.executeTool("gea_evidence_read", {
+      evidenceId: projected.evidenceId,
+      format: "raw",
+      offset,
+      limit: 4000,
+    });
+    assert.equal(result.isError, false, JSON.stringify(result));
+    const part = JSON.parse(result.value);
+    restored += part.content;
+    offset = part.nextOffset;
+  }
+  assert.equal(restored, first.value);
+  assert.match(restored, /PAGE_MIDDLE_EVIDENCE/);
+  grant.release();
 });

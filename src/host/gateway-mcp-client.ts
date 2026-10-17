@@ -57,7 +57,7 @@ function toolError(
   const message = typeof failure?.message === "string" ? failure.message : "MCP 工具未返回成功结果";
   const action =
     code === "DATA_QUERY_MEMBER_NOT_PUBLISHED"
-      ? "查询成员尚未发布，需要服务端核对底层成员发布和资源绑定。本轮停止查询，不换成员、过滤条件或身份重试。"
+      ? "查询成员尚未发布，需要服务端核对底层成员发布和资源绑定。本次查询失败，不自行推定成员或资源绑定。"
       : code === "AI_GATEWAY_MCP_RESULT_TOO_LARGE"
         ? "结果超出网关预算，请缩小查询、减少返回列或降低分页大小；不要原样重试，不回退 OSS。"
         : "本次没有取得有效结果。按原错误修正配置或参数，不自动重复请求。";

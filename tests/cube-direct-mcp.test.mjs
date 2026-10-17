@@ -392,7 +392,7 @@ test("direct MCP derives sales and dealer Consumers from real Session presets an
   );
 });
 
-test("a changed preset cannot receive a late direct MCP result; publication failure closes the query turn", async () => {
+test("a changed preset cannot receive a late direct MCP result; publication failure stays local", async () => {
   const f = serviceFixture(),
     signal = new AbortController().signal;
   f.module.call = async () => {
@@ -417,9 +417,9 @@ test("a changed preset cannot receive a late direct MCP result; publication fail
   );
   await assert.rejects(
     f.service.call("sales", "query_business_data", query, signal),
-    /TURN_STOPPED/,
+    /member not published/,
   );
-  assert.equal(sent, 1);
+  assert.equal(sent, 2);
 });
 
 test("the legacy catalog, batch and module tools are no longer registered", () => {
@@ -553,7 +553,7 @@ test("named query batches match by name and preserve business pagination and opt
   assert.equal(resourceReads(f), 0);
 });
 
-test("ambiguous and unsupported query responses stop the current round without resource fallback", async () => {
+test("ambiguous and unsupported query responses fail without resource fallback or blocking a later query", async () => {
   for (const [result, code] of [
     [
       {
@@ -585,9 +585,10 @@ test("ambiguous and unsupported query responses stop the current round without r
       service.service.call("sales", "query_business_data", query, client.signal),
       code,
     );
-    await assert.rejects(
-      service.service.call("sales", "query_business_data", query, client.signal),
-      /GEA_TURN_STOPPED/,
+    service.module.call = async () => "independent-result";
+    assert.equal(
+      await service.service.call("sales", "query_business_data", query, client.signal),
+      "independent-result",
     );
     assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 1);
     assert.equal(resourceReads(client), 0);
@@ -807,7 +808,7 @@ for (const key of ["complete", "hasMore"])
     assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 1);
   });
 
-test("direct metadata with contradictory pagination fails with actionable fields and stops further queries", async () => {
+test("direct metadata with contradictory pagination fails with actionable fields and permits independent queries", async () => {
   const payload = JSON.parse(raw);
   payload.deliveryMode = "inline_complete";
   delete payload.datasets[0].complete;
@@ -821,20 +822,21 @@ test("direct metadata with contradictory pagination fails with actionable fields
     (error) => {
       assert.match(error.message, /GEA_CUBE_NEW_PAGE_METADATA/);
       assert.match(error.message, /hasMorePages/);
-      assert.match(error.message, /本轮停止查询/);
+      assert.match(error.message, /本次查询失败/);
       return true;
     },
   );
-  await assert.rejects(
-    service.service.call("sales", "query_business_data", query, client.signal),
-    /GEA_TURN_STOPPED/,
+  service.module.call = async () => "independent-result";
+  assert.equal(
+    await service.service.call("sales", "query_business_data", query, client.signal),
+    "independent-result",
   );
   assert.equal(client.sent.filter((x) => x.wire.method === "tools/call").length, 1);
   assert.equal(resourceReads(client), 0);
   assert.equal(payload.datasets[0].complete, undefined);
 });
 
-test("response-contract stop is isolated to the calling session", async () => {
+test("response-contract failure permits independent queries in the same and another session", async () => {
   const f = serviceFixture();
   f.module.call = async () => {
     throw Object.assign(Error("contract mismatch"), {
@@ -848,6 +850,10 @@ test("response-contract stop is isolated to the calling session", async () => {
     /contract mismatch/,
   );
   f.module.call = async () => "other-session-result";
+  assert.equal(
+    await f.service.call("sales", "query_business_data", query, signal),
+    "other-session-result",
+  );
   assert.equal(
     await f.service.call("dealer", "query_business_data", query, signal),
     "other-session-result",

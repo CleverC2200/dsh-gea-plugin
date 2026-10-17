@@ -182,7 +182,6 @@ test("independent channel projection retains the other two references and advanc
   );
 });
 
-// Keep the release contract aligned with the exact Manage peer retained from main.
 test("GEA permits the verified Manage .16 to .18 upgrade and rejects unverified versions", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const combination = (version) =>

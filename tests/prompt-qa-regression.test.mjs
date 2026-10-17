@@ -549,7 +549,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       readChars: resultObject(r.tools[2]).content.length,
     };
   });
-  await check("ASCII signed table cells are rejected by the business UI guard", async () => {
+  await check("ASCII signed table cells reach the native renderer", async () => {
     const r = await run(
       await create(),
       [
@@ -562,53 +562,50 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
       ],
       "检验业务差额颜色",
     );
-    assert.equal(r.tools[1].isError, true);
-    assert.match(r.tools[1].text, /GEA_UI_BUSINESS_SEMANTICS/);
-    return { blocked: true };
+    assert.equal(r.tools[1].isError, false, r.tools[1].text);
+    assert.match(r.tools[1].text, /status=rendered/);
+    return { rendered: true };
   });
-  await check(
-    "equivalent signed text and hero delta cannot bypass the business UI guard",
-    async () => {
-      const variants = [
-        {
-          name: "leading whitespace",
-          node: { type: "table", columns: ["计划差额"], rows: [[" +10"]] },
+  await check("signed text and hero delta retain native rendering semantics", async () => {
+    const variants = [
+      {
+        name: "leading whitespace",
+        node: { type: "table", columns: ["计划差额"], rows: [[" +10"]] },
+      },
+      {
+        name: "Unicode minus",
+        node: { type: "table", columns: ["计划差额"], rows: [["−10"]] },
+      },
+      {
+        name: "hero delta",
+        node: {
+          type: "hero",
+          title: "计划差额",
+          value: "10",
+          delta: "+10",
         },
-        {
-          name: "Unicode minus",
-          node: { type: "table", columns: ["计划差额"], rows: [["−10"]] },
-        },
-        {
-          name: "hero delta",
-          node: {
-            type: "hero",
-            title: "计划差额",
-            value: "10",
-            delta: "+10",
-          },
-        },
-      ];
-      const results = [];
-      for (const item of variants) {
-        const r = await run(
-          await create(),
-          [action("gea_capabilities", {}), action("render_ui", { spec: { items: [item.node] } })],
-          "检验业务差额颜色边界",
-        );
-        assert.match(r.tools[1].text, /已渲染|GEA_UI_BUSINESS_SEMANTICS/, r.tools[1].text);
-        results.push({
-          name: item.name,
-          isError: r.tools[1].isError,
-          text: r.tools[1].text.slice(0, 900),
-        });
-      }
-      await writeFile(new URL("ui-guard-variants.json", out), JSON.stringify(results, null, 2));
-      assert.ok(
-        results.every((item) => item.isError && /GEA_UI_BUSINESS_SEMANTICS/.test(item.text)),
-        JSON.stringify(results.map(({ name, isError }) => ({ name, isError }))),
+      },
+    ];
+    const results = [];
+    for (const item of variants) {
+      const r = await run(
+        await create(),
+        [action("gea_capabilities", {}), action("render_ui", { spec: { items: [item.node] } })],
+        "检验业务差额颜色边界",
       );
-    },
-  );
+      assert.match(r.tools[1].text, /status=rendered/, r.tools[1].text);
+      results.push({
+        name: item.name,
+        isError: r.tools[1].isError,
+        text: r.tools[1].text.slice(0, 900),
+      });
+    }
+    await writeFile(new URL("ui-render-variants.json", out), JSON.stringify(results, null, 2));
+    assert.ok(
+      results.every((item) => !item.isError && /status=rendered/.test(item.text)),
+      JSON.stringify(results.map(({ name, isError }) => ({ name, isError }))),
+    );
+  });
   await check(
     "selected resource and native renderer restore after stopping and starting the Harness process",
     async () => {

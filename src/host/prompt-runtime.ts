@@ -9,13 +9,7 @@ import { resolve } from "node:path";
 import type { Business } from "./business.ts";
 import type { CapabilityRegistry } from "../capability/registry.ts";
 import { isMainSurface } from "./workbench-surface.ts";
-import {
-  allowedTools,
-  businessUiIssue,
-  profileFor,
-  promptMeasurement,
-  TOOL_DESCRIPTIONS,
-} from "./prompt-policy.ts";
+import { allowedTools, profileFor, promptMeasurement, TOOL_DESCRIPTIONS } from "./prompt-policy.ts";
 import { cubeAllowed, resolveCubeAccess } from "./cube-access.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
 
@@ -166,10 +160,6 @@ export function mountBusinessPrompts(
         return;
       }
       const state = stateOf(agent);
-      if (["render_ui", "validate_dsh_ui"].includes(exec.name)) {
-        const issue = businessUiIssue(exec.arguments);
-        if (issue) return issue;
-      }
       if (!businessMethod(exec.name)) return;
       if (!personalGateway && !namesFor(agent, state).has(exec.name))
         return ["gea_page", "gea_workbench_apply"].includes(exec.name) && !pageBound(agent)
