@@ -37,11 +37,13 @@ function fixture(
     publicQuality = false,
     actualPnpmConfig = false,
     earlyManagePlaywright = "1.58.2",
+    delegatedMacos = false,
   } = {},
 ) {
   const testFiles = [
     "scripts/fixture.test.mjs",
     ...(publicQuality && withShards ? ["scripts/second.test.mjs"] : []),
+    ...(delegatedMacos ? ["scripts/isolated-validation.test.mjs"] : []),
   ];
   const coreManager = actualPnpmConfig ? "pnpm@11.7.0" : "pnpm@11.11.0";
   const pnpmConfigCli = actualPnpmConfig
@@ -100,6 +102,8 @@ function fixture(
   ])
     put("candidate/dsh-gea-plugin/scripts/" + file, readFileSync(join(own, "scripts", file)));
   if (publicQuality) {
+    if (delegatedMacos)
+      put("candidate/dsh-gea-plugin/scripts/isolated-validation.test.mjs", "export {};\n");
     for (const file of [
       "run-quality-ci.mjs",
       "business-profile-ci.mjs",
@@ -839,6 +843,51 @@ test("the early control freezes original public source-plan bytes without claimi
   assert.equal(control.runtime, true);
   assert.equal(control.buildSha256, undefined);
   assert.equal(control.installedDependencies, undefined);
+});
+
+test("the public Linux plan retains macOS coverage without charging a delegated file to Linux workers", (t) => {
+  const f = fixture(t, {
+    publicQuality: true,
+    withShards: true,
+    runtime: true,
+    browser: true,
+    delegatedMacos: true,
+  });
+  f.put(
+    "timings.json",
+    JSON.stringify({
+      source: { kind: "test-fixture" },
+      files: [
+        { file: "scripts/fixture.test.mjs", durationMs: 360000 },
+        { file: "scripts/second.test.mjs", durationMs: 60000 },
+      ],
+    }),
+  );
+  const result = f.quality("plan", [
+    "--test-shards",
+    "auto",
+    "--test-timings",
+    join(f.root, "timings.json"),
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(result.stdout);
+  assert.equal(plan.shards.length, 1);
+  assert.equal(plan.selected.length, 3);
+  assert.deepEqual(plan.files, ["scripts/fixture.test.mjs", "scripts/second.test.mjs"]);
+  assert.deepEqual(plan.platformTasks, [
+    {
+      platform: "darwin",
+      phase: "macos-isolation",
+      files: ["scripts/isolated-validation.test.mjs"],
+    },
+  ]);
+  assert.deepEqual(plan.required, [
+    "scripts/fixture.test.mjs",
+    "scripts/isolated-validation.test.mjs",
+    "scripts/second.test.mjs",
+  ]);
+  assert.equal(plan.estimates.unknownFiles, 0);
+  assert.equal(plan.estimates.estimatedMs, 360000);
 });
 
 async function earlyWorkerFixture(

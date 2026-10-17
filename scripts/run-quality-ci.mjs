@@ -430,7 +430,7 @@ try {
     const shardCount =
       values["test-shards"] === "auto"
         ? (await import("./quality-shards.mjs")).plannedShardCount({
-            selection: selectedPlan,
+            selection: plan,
             timings,
           })
         : Number(values["test-shards"]);
