@@ -114,12 +114,13 @@ function verifyIndex(index, expected) {
 export function plannedShardCount({ selection, timings }) {
   if (!(selection.runtimeFiles ?? []).length) return 1;
   const samples = new Map((timings?.files ?? []).map((entry) => [entry.file, entry.durationMs]));
-  const unknownWeight = Math.max(400000, ...selection.files.map((file) => samples.get(file) ?? 0));
+  const longestMeasuredMs = Math.max(0, ...selection.files.map((file) => samples.get(file) ?? 0));
+  const unknownWeight = Math.max(400000, longestMeasuredMs);
   const weightedMs = selection.files.reduce(
     (sum, file) => sum + (samples.get(file) ?? unknownWeight),
     0,
   );
-  const nodeWallBudgetMs = 220000;
+  const nodeWallBudgetMs = Math.max(220000, longestMeasuredMs);
   return Math.min(14, Math.max(1, Math.ceil(weightedMs / (2 * nodeWallBudgetMs))));
 }
 export function createShardCatalog({ indexes, expected }) {

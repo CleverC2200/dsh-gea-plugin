@@ -809,7 +809,7 @@ test("historical scheduling weights preserve their registered complete sample an
       },
       timings,
     }),
-    14,
+    11,
   );
   assert.equal(plan.shards.filter((x) => x.estimatedMs === null).length, 3);
 });
@@ -849,8 +849,8 @@ test("auto routing keeps leaf, unknown and empty selections bounded without drop
     [[120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000], 3],
     [[null, 20000], 1],
     [[null, null, 20000], 2],
-    [[600000, null], 3],
-    [[600000], 2],
+    [[600000, null], 1],
+    [[600000], 1],
     [[], 1],
   ]) {
     const files = durations.map((_, index) => `tests/leaf-${index}.test.mjs`);
@@ -878,4 +878,31 @@ test("auto routing keeps leaf, unknown and empty selections bounded without drop
     assert.equal(plan.estimates.unknownFiles, durations.filter((value) => value === null).length);
     if (durations.includes(null)) assert.equal(plan.estimates.estimatedMs, null);
   }
+});
+
+test("auto routing avoids extra runners when one measured file already exceeds the setup-based target", async () => {
+  const { plannedShardCount } = await import("./quality-shards.mjs");
+  const files = [
+    "tests/long.test.mjs",
+    ...Array.from({ length: 20 }, (_, i) => `tests/small-${i}.test.mjs`),
+  ];
+  const selection = { files, required: [files[0]], runtimeFiles: files };
+  const timings = {
+    source: { kind: "test-fixture" },
+    files: files.map((file, index) => ({ file, durationMs: index === 0 ? 360000 : 60000 })),
+  };
+  const shardCount = plannedShardCount({ selection, timings });
+  assert.equal(shardCount, 3);
+  const plan = createExecutionPlan({
+    selection,
+    platformPlan: { files },
+    binding: {},
+    timings,
+    shardCount,
+    concurrency: 3,
+  });
+  assert.equal(plan.estimates.estimatedMs, 360000);
+  assert.deepEqual(plan.shards.flatMap((shard) => shard.files).sort(), [...files].sort());
+  assert.deepEqual(plan.required, selection.required);
+  assert.equal(plan.estimates.unknownFiles, 0);
 });
