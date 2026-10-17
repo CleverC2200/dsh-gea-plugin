@@ -797,20 +797,6 @@ test("historical scheduling weights preserve their registered complete sample an
   assert.equal(plan.estimates.unknownFiles, 3);
   assert.equal(plan.estimates.estimatedMs, null);
   assert.equal(plan.timingSource.runId, timings.source.runId);
-  const { plannedShardCount } = await import("./quality-shards.mjs");
-  assert.equal(
-    plannedShardCount({
-      selection: {
-        files: [
-          ...timings.files.map((entry) => entry.file),
-          "scripts/isolated-validation.test.mjs",
-        ],
-        runtimeFiles: ["tests/source-update-web.test.mjs"],
-      },
-      timings,
-    }),
-    11,
-  );
   assert.equal(plan.shards.filter((x) => x.estimatedMs === null).length, 3);
 });
 

@@ -1,655 +1,671 @@
 {
   "source": {
     "repository": "CleverC2200/dsh-gea-plugin",
-    "runId": 38998513833,
+    "runId": 39004545625,
     "runAttempt": 1,
-    "head": "e3027a36c3c939189ec80fb5d76766e1fbac91ab",
+    "head": "616d267fce35096ee9877330aceacc609f79e1bf",
     "platform": "linux",
     "node": "24.21.0",
     "core": "639ed015397290b3745d163aafe02ffee4aa3f84",
     "fileConcurrency": 3,
     "kind": "historical-reference-only",
     "acceptance": "not-acceptance",
-    "planSha256": "f2aa97356d70f549283dea65bc5ffc7e756d50651ecb58c960791e7ec245da19",
+    "planSha256": "4ab65bd3842c2b4f30b4177a37fafe6c5057d2ad5ffa0b1c6698da3211235162",
     "buildSha256": "077f851f30776f972ed14baf6592fbe19ff06fa467ea046fd743140c12ea18dd",
-    "selectionSha256": "8e53969047d36d9aa98f0c900a0b34a65a457c0d2fec33e35a6b5d9df82e79ce",
-    "provenanceSha256": "16ddc8b30fe41f999e12400624d303ec4d5e873d2a6388e1c9779e95a9e8526c",
-    "fileCount": 158,
-    "filesSha256": "d3d7f2591d52a94e7838c8d546110a54dde66909f82e00630bd35977e384cff8",
-    "note": "Complete same-run source/test/coverage gates passed. Performance failed at 814 seconds. No cross-run fill; no CPU/I/O independence or <=600s claim."
+    "selectionSha256": "014726c353dcd8448aaaf74689e5d3538ece9e5b7b0b883d952799e03ac200ca",
+    "provenanceSha256": "16f6cf6729295b8d63abd01014aebb638198097be05baa54a177dcc35b75ff0e",
+    "fileCount": 162,
+    "filesSha256": "1b0475fd849a0418338aa90186a41915bedfc2b9e8b5585f7888287022d7f139",
+    "note": "Complete same-run source/test/coverage gates passed, including the independent Darwin gate. Performance failed at 688 seconds. No cross-run fill; no CPU/I/O independence or <=600s claim."
   },
   "files": [
     {
       "file": "scripts/ci-policy-impact.test.mjs",
-      "durationMs": 28266.23584
+      "durationMs": 17947.219696
     },
     {
       "file": "scripts/deliver-packages.test.mjs",
-      "durationMs": 26470.966356
+      "durationMs": 22008.448167
     },
     {
       "file": "scripts/delivery-check.test.mjs",
-      "durationMs": 437.036131
+      "durationMs": 446.511452
     },
     {
       "file": "scripts/delivery-continuation.test.mjs",
-      "durationMs": 2693.221251
+      "durationMs": 2847.09469
     },
     {
       "file": "scripts/delivery-integrity.test.mjs",
-      "durationMs": 3285.733166
+      "durationMs": 3257.457815
     },
     {
       "file": "scripts/delivery-readiness.test.mjs",
-      "durationMs": 1336.014496
+      "durationMs": 921.94009
     },
     {
       "file": "scripts/delivery-runtime.test.mjs",
-      "durationMs": 2855.874561
+      "durationMs": 2635.438871
     },
     {
       "file": "scripts/knowledge-merge-ci.test.mjs",
-      "durationMs": 311.413458
+      "durationMs": 288.962164
     },
     {
       "file": "scripts/package-profile.test.mjs",
-      "durationMs": 155.035232
+      "durationMs": 177.003239
     },
     {
       "file": "scripts/package-smoke.test.mjs",
-      "durationMs": 2644.977595
+      "durationMs": 4243.518491
     },
     {
       "file": "scripts/package-version-gate.test.mjs",
-      "durationMs": 77.979639
+      "durationMs": 83.904366
     },
     {
       "file": "scripts/page-interaction-package.test.mjs",
-      "durationMs": 7071.881293
+      "durationMs": 6761.044924
     },
     {
       "file": "scripts/plugin-reception.test.mjs",
-      "durationMs": 195.830912
+      "durationMs": 179.205213
     },
     {
       "file": "scripts/plugin-update-pr-lane.test.mjs",
-      "durationMs": 550.761127
+      "durationMs": 492.985253
     },
     {
       "file": "scripts/quality-prepared-inputs.test.mjs",
-      "durationMs": 13280.753227
+      "durationMs": 13256.775237
     },
     {
       "file": "scripts/quality-shards.test.mjs",
-      "durationMs": 6721.529155
+      "durationMs": 5828.819898
     },
     {
       "file": "scripts/quality-upstreams.test.mjs",
-      "durationMs": 790.689889
+      "durationMs": 678.854555
     },
     {
       "file": "scripts/quality-workbench.test.mjs",
-      "durationMs": 3162.634025
+      "durationMs": 2895.783945
     },
     {
       "file": "scripts/quality-worker-control.test.mjs",
-      "durationMs": 432.652385
+      "durationMs": 491.979957
     },
     {
       "file": "scripts/quality-worker-inputs.test.mjs",
-      "durationMs": 102959.802684
+      "durationMs": 132636.568455
     },
     {
       "file": "scripts/run-quality-checks.test.mjs",
-      "durationMs": 489.3868
+      "durationMs": 432.970489
     },
     {
       "file": "scripts/run-quality-ci-stages.test.mjs",
-      "durationMs": 34071.120489
+      "durationMs": 34711.474955
     },
     {
       "file": "scripts/run-quality-ci.test.mjs",
-      "durationMs": 9327.779292
+      "durationMs": 8686.299895
     },
     {
       "file": "tests/action-error-copy-web.test.mjs",
-      "durationMs": 46886.216948
+      "durationMs": 44615.662337
     },
     {
       "file": "tests/action-errors.test.mjs",
-      "durationMs": 25782.301364
+      "durationMs": 20638.583286
     },
     {
       "file": "tests/agent-tools.test.mjs",
-      "durationMs": 112002.67014
+      "durationMs": 104289.424781
     },
     {
       "file": "tests/aionui.test.mjs",
-      "durationMs": 1171.3606
+      "durationMs": 1164.401443
     },
     {
       "file": "tests/api-log-web.test.mjs",
-      "durationMs": 45680.333513
+      "durationMs": 42402.857618
     },
     {
       "file": "tests/approval-batch-selection-web.test.mjs",
-      "durationMs": 53020.338893
+      "durationMs": 40973.848944
     },
     {
       "file": "tests/approval-draft-web.test.mjs",
-      "durationMs": 90996.465653
+      "durationMs": 134664.874173
     },
     {
       "file": "tests/approval-notification-decoupled.test.mjs",
-      "durationMs": 77681.863945
+      "durationMs": 71930.927588
     },
     {
       "file": "tests/approval-permissions.test.mjs",
-      "durationMs": 34567.335498
+      "durationMs": 31894.39501
     },
     {
       "file": "tests/approval-roles-refresh-web.test.mjs",
-      "durationMs": 49478.24859
+      "durationMs": 47746.481931
     },
     {
       "file": "tests/approval-visibility-web.test.mjs",
-      "durationMs": 30419.319377
+      "durationMs": 51424.331009
     },
     {
       "file": "tests/aps-mock-reception.test.mjs",
-      "durationMs": 2844.900842
+      "durationMs": 2546.696329
     },
     {
       "file": "tests/aps-sql-consumer.test.mjs",
-      "durationMs": 35603.558736
+      "durationMs": 35227.089349
     },
     {
       "file": "tests/auth.test.mjs",
-      "durationMs": 72932.934615
+      "durationMs": 111046.206182
     },
     {
       "file": "tests/authorized-cube-loop.test.mjs",
-      "durationMs": 25721.171575
+      "durationMs": 21454.526758
     },
     {
       "file": "tests/batch-province-outcome-web.test.mjs",
-      "durationMs": 46153.934271
+      "durationMs": 43560.782852
     },
     {
       "file": "tests/branch-stock-ability-web.test.mjs",
-      "durationMs": 89781.274862
+      "durationMs": 89126.59395
     },
     {
       "file": "tests/branch-stock-agent.test.mjs",
-      "durationMs": 36852.134567
+      "durationMs": 38721.405889
     },
     {
       "file": "tests/branch-stock-context-text.test.mjs",
-      "durationMs": 29303.888547
+      "durationMs": 30139.517575
+    },
+    {
+      "file": "tests/branch-stock-data-states-web.test.mjs",
+      "durationMs": 141081.409241
     },
     {
       "file": "tests/branch-stock-export-context.test.mjs",
-      "durationMs": 143496.21173
+      "durationMs": 138074.658962
     },
     {
       "file": "tests/branch-stock-identity-owner-web.test.mjs",
-      "durationMs": 31812.100793
+      "durationMs": 30554.635273
     },
     {
       "file": "tests/branch-stock-lifecycle-web.test.mjs",
-      "durationMs": 153541.495346
+      "durationMs": 231821.794736
+    },
+    {
+      "file": "tests/branch-stock-migration-web.test.mjs",
+      "durationMs": 27477.018736
     },
     {
       "file": "tests/branch-stock-upgrade-web.test.mjs",
-      "durationMs": 129316.02459
-    },
-    {
-      "file": "tests/branch-stock-web.test.mjs",
-      "durationMs": 275526.610632
+      "durationMs": 127157.340061
     },
     {
       "file": "tests/business-page-grant.test.mjs",
-      "durationMs": 324.0291
+      "durationMs": 334.948278
     },
     {
       "file": "tests/business-prompt-sections.test.mjs",
-      "durationMs": 486.774138
+      "durationMs": 573.78764
     },
     {
       "file": "tests/catalog-scene-input.test.mjs",
-      "durationMs": 618.91162
+      "durationMs": 594.38918
     },
     {
       "file": "tests/category-plan-page.test.mjs",
-      "durationMs": 43694.598707
+      "durationMs": 42574.404118
     },
     {
       "file": "tests/client-shell-feedback.test.mjs",
-      "durationMs": 58023.245011
+      "durationMs": 51673.6381
     },
     {
       "file": "tests/composer-stats-placement.test.mjs",
-      "durationMs": 46567.632488
+      "durationMs": 49322.32444
     },
     {
       "file": "tests/composer-stats-web.test.mjs",
-      "durationMs": 26285.31578
+      "durationMs": 47835.055342
     },
     {
       "file": "tests/controlled-execution.test.mjs",
-      "durationMs": 308.279926
+      "durationMs": 368.003302
     },
     {
       "file": "tests/core-default-slots-web.test.mjs",
-      "durationMs": 6633.572213
+      "durationMs": 6507.963001
     },
     {
       "file": "tests/correction-host.test.mjs",
-      "durationMs": 72398.986327
+      "durationMs": 108089.693239
     },
     {
       "file": "tests/correction-resubmit-web.test.mjs",
-      "durationMs": 46214.701503
+      "durationMs": 44727.132494
     },
     {
       "file": "tests/correction-web.test.mjs",
-      "durationMs": 101808.850785
+      "durationMs": 98445.620852
     },
     {
       "file": "tests/current-startup-web.test.mjs",
-      "durationMs": 36491.170175
+      "durationMs": 34944.634276
     },
     {
       "file": "tests/dealer-prompt.test.mjs",
-      "durationMs": 41921.886545
+      "durationMs": 38942.920562
     },
     {
       "file": "tests/dealer-resource-reception.test.mjs",
-      "durationMs": 1723.25199
+      "durationMs": 1061.383333
     },
     {
       "file": "tests/detail-budget.test.mjs",
-      "durationMs": 38543.540305
+      "durationMs": 37756.869378
     },
     {
       "file": "tests/detail-summary-web.test.mjs",
-      "durationMs": 42493.117379
+      "durationMs": 38753.192216
     },
     {
       "file": "tests/details.test.mjs",
-      "durationMs": 37993.665059
+      "durationMs": 37125.341771
     },
     {
       "file": "tests/draft-host.test.mjs",
-      "durationMs": 79232.935767
+      "durationMs": 72633.393554
     },
     {
       "file": "tests/environments.test.mjs",
-      "durationMs": 36964.648583
+      "durationMs": 35277.457948
     },
     {
       "file": "tests/evidence-budget-stop.test.mjs",
-      "durationMs": 43583.059312
+      "durationMs": 77038.476918
     },
     {
       "file": "tests/explicit-source-contract.test.mjs",
-      "durationMs": 1323.488067
+      "durationMs": 1939.507197
     },
     {
       "file": "tests/gateway-handshake.test.mjs",
-      "durationMs": 184.89555
+      "durationMs": 416.060331
     },
     {
       "file": "tests/gea-model-identity.test.mjs",
-      "durationMs": 20319.495164
+      "durationMs": 41410.751125
     },
     {
       "file": "tests/gea-model.test.mjs",
-      "durationMs": 45735.716842
+      "durationMs": 45800.071287
     },
     {
       "file": "tests/gea-reasoning-effort.test.mjs",
-      "durationMs": 52716.332513
+      "durationMs": 43190.008849
     },
     {
       "file": "tests/gea-reasoning-profile.test.mjs",
-      "durationMs": 56205.597862
+      "durationMs": 52915.22205
     },
     {
       "file": "tests/genui-source-web.test.mjs",
-      "durationMs": 49637.863717
+      "durationMs": 41575.70882
     },
     {
       "file": "tests/global-identity-error-web.test.mjs",
-      "durationMs": 44208.850297
+      "durationMs": 43082.567477
     },
     {
       "file": "tests/group-selection-web.test.mjs",
-      "durationMs": 86703.434219
+      "durationMs": 136642.455486
     },
     {
       "file": "tests/html-client-first-handshake.test.mjs",
-      "durationMs": 7500.528219
+      "durationMs": 8116.982549
     },
     {
       "file": "tests/html-client-pages.test.mjs",
-      "durationMs": 4617.650342
+      "durationMs": 4116.544007
     },
     {
       "file": "tests/html-identity-discovery-web.test.mjs",
-      "durationMs": 28484.778564
+      "durationMs": 34190.87327
     },
     {
       "file": "tests/html-plugin-public-resources.test.mjs",
-      "durationMs": 38476.183663
+      "durationMs": 38461.502268
     },
     {
       "file": "tests/html-self-report-web.test.mjs",
-      "durationMs": 29634.088336
+      "durationMs": 45254.613197
     },
     {
       "file": "tests/html-shared-theme-web.test.mjs",
-      "durationMs": 35926.16088
+      "durationMs": 52206.155874
     },
     {
       "file": "tests/inline-draft-status-web.test.mjs",
-      "durationMs": 26783.828859
+      "durationMs": 29186.125961
     },
     {
       "file": "tests/launch.test.mjs",
-      "durationMs": 1859.087476
+      "durationMs": 1647.537231
     },
     {
       "file": "tests/lifecycle.test.mjs",
-      "durationMs": 39756.158462
+      "durationMs": 38847.04018
     },
     {
       "file": "tests/logout.test.mjs",
-      "durationMs": 92057.345198
+      "durationMs": 89071.630955
     },
     {
       "file": "tests/mcp-evidence-loop.test.mjs",
-      "durationMs": 38794.080647
+      "durationMs": 41242.959935
+    },
+    {
+      "file": "tests/model-profile-fixture.test.mjs",
+      "durationMs": 3930.773381
     },
     {
       "file": "tests/model.test.mjs",
-      "durationMs": 54028.946989
+      "durationMs": 74173.986977
     },
     {
       "file": "tests/month-aggregation-context-web.test.mjs",
-      "durationMs": 44928.211798
+      "durationMs": 44240.544114
     },
     {
       "file": "tests/mps-plan-page.test.mjs",
-      "durationMs": 32347.177786
+      "durationMs": 27989.474173
     },
     {
       "file": "tests/native-page-identity-web.test.mjs",
-      "durationMs": 282586.248342
+      "durationMs": 133072.776195
     },
     {
       "file": "tests/native-reference-authority.test.mjs",
-      "durationMs": 40335.803811
+      "durationMs": 29112.523529
     },
     {
       "file": "tests/native-status-projection-web.test.mjs",
-      "durationMs": 48981.860138
+      "durationMs": 38924.056002
     },
     {
       "file": "tests/notifications.test.mjs",
-      "durationMs": 59419.848657
+      "durationMs": 58768.754203
     },
     {
       "file": "tests/optional-companion-manifest.test.mjs",
-      "durationMs": 68.737325
+      "durationMs": 78.800271
     },
     {
       "file": "tests/page-interaction-web.test.mjs",
-      "durationMs": 97666.66531
+      "durationMs": 93596.056741
     },
     {
       "file": "tests/page-interaction-workbenches.test.mjs",
-      "durationMs": 32722.295018
+      "durationMs": 48497.755398
     },
     {
       "file": "tests/page-reference-columns-web.test.mjs",
-      "durationMs": 175733.344473
+      "durationMs": 176885.655411
     },
     {
       "file": "tests/page-reference-identity-web.test.mjs",
-      "durationMs": 114443.082622
+      "durationMs": 181276.109081
     },
     {
       "file": "tests/page-reference-reload-web.test.mjs",
-      "durationMs": 26766.114551
+      "durationMs": 31799.205077
     },
     {
       "file": "tests/partial-evidence.test.mjs",
-      "durationMs": 39594.911842
+      "durationMs": 43118.846924
     },
     {
       "file": "tests/pending-adjustments-web.test.mjs",
-      "durationMs": 90925.373544
+      "durationMs": 90883.428498
     },
     {
       "file": "tests/plugin-release-source.test.mjs",
-      "durationMs": 1830.265608
+      "durationMs": 2088.896655
     },
     {
       "file": "tests/plugin-sql-cancel.test.mjs",
-      "durationMs": 614.21651
+      "durationMs": 606.322222
     },
     {
       "file": "tests/plugin-sql-delegation-expiry.test.mjs",
-      "durationMs": 37453.641126
+      "durationMs": 36196.162338
     },
     {
       "file": "tests/preset-modes.test.mjs",
-      "durationMs": 9277.526248
+      "durationMs": 6857.212876
     },
     {
       "file": "tests/profile-before-start-cleanup.test.mjs",
-      "durationMs": 1158.714314
+      "durationMs": 1150.003973
     },
     {
       "file": "tests/profile-cube-boundary.test.mjs",
-      "durationMs": 1191.919222
+      "durationMs": 1170.869899
     },
     {
       "file": "tests/profile-lifecycle.test.mjs",
-      "durationMs": 11112.027301
+      "durationMs": 10730.795249
     },
     {
       "file": "tests/profile-window.test.mjs",
-      "durationMs": 2912.251613
+      "durationMs": 4314.339342
     },
     {
       "file": "tests/progress-column-web.test.mjs",
-      "durationMs": 45040.081769
+      "durationMs": 47378.327579
     },
     {
       "file": "tests/prompt-qa-regression.test.mjs",
-      "durationMs": 60164.684321
+      "durationMs": 116401.539656
     },
     {
       "file": "tests/prompt-v2.test.mjs",
-      "durationMs": 81731.838657
+      "durationMs": 80637.813855
     },
     {
       "file": "tests/published-runtime.test.mjs",
-      "durationMs": 493.882821
+      "durationMs": 479.506859
     },
     {
       "file": "tests/read-paging.test.mjs",
-      "durationMs": 83302.619727
+      "durationMs": 66389.810056
     },
     {
       "file": "tests/receipt-classification.test.mjs",
-      "durationMs": 156.164207
+      "durationMs": 213.175454
     },
     {
       "file": "tests/receipt.test.mjs",
-      "durationMs": 55081.443561
+      "durationMs": 95316.607532
     },
     {
       "file": "tests/regional-plan-page.test.mjs",
-      "durationMs": 46762.693232
+      "durationMs": 41732.462317
     },
     {
       "file": "tests/registered-core-input.test.mjs",
-      "durationMs": 265.44692
+      "durationMs": 213.507614
     },
     {
       "file": "tests/reject-dialog-close-web.test.mjs",
-      "durationMs": 97985.061738
+      "durationMs": 95516.588801
     },
     {
       "file": "tests/resubmit-host.test.mjs",
-      "durationMs": 36108.235299
+      "durationMs": 35839.147409
     },
     {
       "file": "tests/resubmit-web.test.mjs",
-      "durationMs": 49413.133576
+      "durationMs": 47175.061965
     },
     {
-      "file": "tests/returned-resubmit-web.test.mjs",
-      "durationMs": 358914.435868
+      "file": "tests/returned-approval-web.test.mjs",
+      "durationMs": 107852.084723
+    },
+    {
+      "file": "tests/returned-rejection-web.test.mjs",
+      "durationMs": 71085.907067
+    },
+    {
+      "file": "tests/returned-role-review-web.test.mjs",
+      "durationMs": 151385.979047
     },
     {
       "file": "tests/role-approval-host.test.mjs",
-      "durationMs": 76822.780597
+      "durationMs": 113177.231577
     },
     {
       "file": "tests/role-visible-permission-web.test.mjs",
-      "durationMs": 48505.187547
+      "durationMs": 46879.291971
     },
     {
       "file": "tests/safety-stock-prompt.test.mjs",
-      "durationMs": 30054.023994
+      "durationMs": 24464.587049
     },
     {
       "file": "tests/sales-plan-action.test.mjs",
-      "durationMs": 547.193422
+      "durationMs": 555.031213
     },
     {
       "file": "tests/sales-readonly-host.test.mjs",
-      "durationMs": 37831.492091
+      "durationMs": 36815.652713
     },
     {
       "file": "tests/sales-result-runtime.test.mjs",
-      "durationMs": 42293.169971
+      "durationMs": 34103.198832
     },
     {
       "file": "tests/save-host.test.mjs",
-      "durationMs": 37445.154122
+      "durationMs": 76012.733567
     },
     {
       "file": "tests/save-web.test.mjs",
-      "durationMs": 44704.634993
+      "durationMs": 43887.190181
     },
     {
       "file": "tests/selection.test.mjs",
-      "durationMs": 28628.833137
+      "durationMs": 23664.612246
     },
     {
       "file": "tests/settings-nav-order-web.test.mjs",
-      "durationMs": 34122.547079
+      "durationMs": 27988.36272
     },
     {
       "file": "tests/shared-theme-native-web.test.mjs",
-      "durationMs": 13585.456231
+      "durationMs": 6223.442705
     },
     {
       "file": "tests/shared-theme-source-web.test.mjs",
-      "durationMs": 48359.163447
+      "durationMs": 48182.091856
     },
     {
       "file": "tests/sidebar-source-web.test.mjs",
-      "durationMs": 38894.636171
+      "durationMs": 47994.151915
     },
     {
       "file": "tests/source-assembly.test.mjs",
-      "durationMs": 15008.790378
+      "durationMs": 19420.23901
     },
     {
       "file": "tests/source-combination-reader.test.mjs",
-      "durationMs": 235.651176
+      "durationMs": 178.572707
     },
     {
       "file": "tests/source-combination.test.mjs",
-      "durationMs": 182.181891
+      "durationMs": 191.906879
     },
     {
       "file": "tests/source-integrity.test.mjs",
-      "durationMs": 1483.263839
+      "durationMs": 1654.049542
     },
     {
       "file": "tests/source-selection-start.test.mjs",
-      "durationMs": 10221.205715
+      "durationMs": 7404.833465
     },
     {
       "file": "tests/source-update-web.test.mjs",
-      "durationMs": 196743.135637
+      "durationMs": 256576.619281
     },
     {
       "file": "tests/source-update.test.mjs",
-      "durationMs": 16875.780582
+      "durationMs": 14968.793349
     },
     {
       "file": "tests/split-declarations-web.test.mjs",
-      "durationMs": 49726.119769
+      "durationMs": 37670.94605
     },
     {
       "file": "tests/stage-lane-web.test.mjs",
-      "durationMs": 26304.701266
+      "durationMs": 37824.464364
     },
     {
       "file": "tests/stage-progress-detail-web.test.mjs",
-      "durationMs": 28021.433054
+      "durationMs": 38160.846847
     },
     {
       "file": "tests/v16-visual.test.mjs",
-      "durationMs": 61278.020897
+      "durationMs": 53202.117846
     },
     {
       "file": "tests/v16-web.test.mjs",
-      "durationMs": 40016.182917
+      "durationMs": 41050.815478
     },
     {
       "file": "tests/variance-color-web.test.mjs",
-      "durationMs": 137881.230342
+      "durationMs": 117338.741052
     },
     {
       "file": "tests/verify-workbench.test.mjs",
-      "durationMs": 45174.205085
+      "durationMs": 32119.429273
     },
     {
       "file": "tests/web.test.mjs",
-      "durationMs": 54590.827155
+      "durationMs": 55185.442021
     },
     {
       "file": "tests/window-launch-admission.test.mjs",
-      "durationMs": 55057.317508
+      "durationMs": 51204.312045
     },
     {
       "file": "tests/workbench-boot.test.mjs",
-      "durationMs": 29601.658421
+      "durationMs": 41416.849353
     },
     {
       "file": "tests/workbench-contract-runner.test.mjs",
-      "durationMs": 1151.542008
+      "durationMs": 1458.196672
     },
     {
       "file": "tests/workbench-host.test.mjs",
-      "durationMs": 90489.35883
+      "durationMs": 85954.257107
     },
     {
       "file": "tests/workbench-status-identity-race-web.test.mjs",
-      "durationMs": 47760.625621
+      "durationMs": 35249.575477
     },
     {
       "file": "tests/workflow-config.test.mjs",
-      "durationMs": 62081.714508
+      "durationMs": 60336.449531
     }
   ]
 }

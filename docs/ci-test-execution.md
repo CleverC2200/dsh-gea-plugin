@@ -10,7 +10,7 @@
 
 三并发计划通过本次真实容量校验后，`runExecutionPlan` 在每个非空片的子 Node 启动环境中设置 `UV_THREADPOOL_SIZE`。`active=min(3,片文件数)`，池预算为 `min(4,max(1,floor(可用CPU/active)))`；四CPU时一文件为4、两文件为2、至少三文件为1，覆盖继承环境、调用方 environment 和 env-file 的同名值。二/四并发保留原环境协议。每片 result 同时保留本次 `capacity` 及 `libuvPool` 的 `declared` 大小、activeFiles、CPU及来源，汇总只保留 results 时仍可按各片实际容量独立重算，不能借一片容量解释其他片；这是启动声明，不是 native pool 实际线程观测或进程树CPU硬限制。该值也会被默认继承环境的测试文件及Host/launcher后代继承；启动后不动态改变，片尾只剩一文件时不会扩池。C3am 本机小语料不能证明两文件档、真实Linux/Profile或600秒收益，单片与全轮仍须 fresh hosted 实测。
 
-当前 `quality-test-timings.json` 的158个 Linux 样本来自 [run 38998513833](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/38998513833) / attempt 1，精确源码、Node、Core、计划、构建、选择集及来源摘要由该文件登记。提取前使用原冻结计划核验同轮全部14个 worker 的逐文件回执；文件并发三。同轮 Linux/Darwin 共159文件完整执行，20个 job 的功能结果通过，completed 墙钟814秒，600秒目标仍失败。样本仅为 `historical-reference-only`、`not-acceptance` 的路由参考。模拟分配不能证明实际收益，新的完整 hosted 运行负责验收。
+当前 `quality-test-timings.json` 的162个 Linux 样本来自 [run 39004545625](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/39004545625) / attempt 1，精确源码、Node、Core、计划、构建、选择集及来源摘要由该文件登记。提取前使用原冻结计划核验同轮全部14个 worker 的逐文件回执；文件并发三。同轮 Linux/Darwin 共163文件完整执行，20个 job 的功能结果通过，completed 墙钟688秒，600秒目标仍失败。样本仅为 `historical-reference-only`、`not-acceptance` 的路由参考。模拟分配不能证明实际收益，新的完整 hosted 运行负责验收。
 
 此前 [run 38822102215](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/38822102215) 的167个 Linux 样本及636秒性能失败仍保留在历史提交和原证据中。本次只使用新轮完整实测，旧轮测过而本轮未测的文件仍为未知，不跨轮回填。三/四并发容量下限、Source 90000ms、Host 45000ms 和业务动作预算保持原约定。
 
