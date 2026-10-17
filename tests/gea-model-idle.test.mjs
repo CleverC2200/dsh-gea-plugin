@@ -6,7 +6,7 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
-const root = await mkdtemp(resolve(".gea-model-idle-"));
+const root = await mkdtemp(resolve("node_modules/.gea-model-idle-"));
 const compiled = await build({
   entryPoints: ["src/host/gea-model.ts"],
   bundle: true,
