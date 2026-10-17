@@ -644,7 +644,7 @@ export async function prepareWorkerInputs(values) {
             (x) => x.repo === "dsh-gea-plugin",
           ).head,
         };
-        const deadline = performance.now() + 300000;
+        const deadline = performance.now() + 600000;
         const remaining = () => {
           owned.signal.throwIfAborted();
           const milliseconds = Math.ceil(deadline - performance.now());

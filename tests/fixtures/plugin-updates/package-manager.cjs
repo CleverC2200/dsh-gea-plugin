@@ -24,26 +24,31 @@ setTimeout(() => {
     setInterval(() => console.log("working"), 50);
     return;
   }
-  const archive = args.find((arg) => arg.startsWith("file:") && arg.endsWith(".tgz"))?.slice(5);
-  if (!archive) process.exit(9);
-  const manifest = JSON.parse(
-    cp.execFileSync("tar", ["-xOf", archive, "package/package.json"], {
-      encoding: "utf8",
-    }),
-  );
-  const target = path.join(process.cwd(), "node_modules", manifest.name);
-  fs.rmSync(target, { recursive: true, force: true });
-  fs.mkdirSync(target, { recursive: true });
-  cp.execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
-  const profilePath = path.join(process.cwd(), "package.json"),
-    profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
-  profile.dependencies[manifest.name] = "file:" + archive;
-  if (mode === "bad-fields") profile.retained.draft = "broken";
-  fs.writeFileSync(profilePath, JSON.stringify(profile));
-  fs.writeFileSync(
-    path.join(process.cwd(), "pnpm-lock.yaml"),
-    "lockfileVersion: 9\nupdated: true\n",
-  );
+  const archives = args
+    .filter((arg) => arg.startsWith("file:") && arg.endsWith(".tgz"))
+    .map((arg) => arg.slice(5));
+  if (!archives.length) process.exit(9);
+  for (const archive of archives) {
+    const manifest = JSON.parse(
+      cp.execFileSync("tar", ["-xOf", archive, "package/package.json"], {
+        encoding: "utf8",
+      }),
+    );
+    const target = path.join(process.cwd(), "node_modules", manifest.name);
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.mkdirSync(target, { recursive: true });
+    cp.execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
+    const profilePath = path.join(process.cwd(), "package.json"),
+      profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
+    profile.dependencies[manifest.name] = "file:" + archive;
+    if (mode === "bad-fields") profile.retained.draft = "broken";
+    fs.writeFileSync(profilePath, JSON.stringify(profile));
+    fs.writeFileSync(
+      path.join(process.cwd(), "pnpm-lock.yaml"),
+      "lockfileVersion: 9\nupdated: true\n",
+    );
+    if (mode === "fail-after-first") process.exit(1);
+  }
   if (mode === "orphan") {
     const child = cp.spawn(
       process.execPath,

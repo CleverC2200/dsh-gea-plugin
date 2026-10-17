@@ -202,9 +202,24 @@ async function observeFresh(input) {
     assert.equal(row.state, "completed", JSON.stringify(after));
     assert.equal(row.runningHostVersion, "3.1.0");
     assert.equal(row.runningClientVersion, "3.1.0");
+    if (input.allUpdates) {
+      assert.deepEqual(
+        after.items.map((item) => item.state),
+        Array(3).fill("completed"),
+      );
+      assert.deepEqual(
+        after.items.map((item) => item.runningHostVersion),
+        ["1.1.0", "2.1.0", "3.1.0"],
+      );
+      assert.deepEqual(
+        after.items.map((item) => item.runningClientVersion),
+        ["1.1.0", "2.1.0", "3.1.0"],
+      );
+    }
     return {
       processIdentity: after.hostProcessIdentity,
       row,
+      items: after.items,
       clientModules: observed.modules,
       graph: observed.graph,
     };
@@ -214,7 +229,12 @@ async function observeFresh(input) {
     restoreFetch();
   }
 }
-export async function installedScenario(t, proof, sdk, { customStore = false } = {}) {
+export async function installedScenario(
+  t,
+  proof,
+  sdk,
+  { customStore = false, allUpdates = false } = {},
+) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
   const root = await mkdtemp(join(repository, ".runtime/actual-install-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -227,6 +247,13 @@ export async function installedScenario(t, proof, sdk, { customStore = false } =
     );
   const target = await makeArchive(root, companyPackageNames[2], "3.1.0"),
     location = runtimeLocation(proof, sdk);
+  const targets = allUpdates
+    ? [
+        await makeArchive(root, companyPackageNames[0], "1.1.0"),
+        await makeArchive(root, companyPackageNames[1], "2.1.0"),
+        target,
+      ]
+    : [old[0], old[1], target];
   const sdkDependencies = Object.fromEntries(
     [
       "@deepseek-ai/dsh-app-boot",
@@ -292,7 +319,7 @@ export async function installedScenario(t, proof, sdk, { customStore = false } =
   ).storeDir;
   const objects = [],
     refs = [];
-  for (const artifact of [old[0], old[1], target]) {
+  for (const artifact of targets) {
     const url = `https://fixture.invalid/packages/${sha(artifact.bytes)}/plugin.tgz`;
     objects.push([url, artifact.bytes.toString("base64")]);
     const release = projectPluginRelease({
@@ -414,6 +441,7 @@ export async function installedScenario(t, proof, sdk, { customStore = false } =
     },
     deployment: { runtimeDir: join(root, "runtime"), requestTimeoutMs: 120000 },
     objects,
+    allUpdates,
   };
   const restoreFetch = controlledSource(input),
     host = await createHost(input);
@@ -424,10 +452,19 @@ export async function installedScenario(t, proof, sdk, { customStore = false } =
       row = checked.items.find((item) => item.packageName === companyPackageNames[2]);
     assert.equal(row.state, "available", JSON.stringify(checked));
     oldProcess = checked.hostProcessIdentity;
-    await host.route("update", {
-      packageName: row.packageName,
-      planId: row.planId,
-    });
+    if (allUpdates) {
+      assert.ok(
+        checked.items.every((item) => item.state === "available"),
+        JSON.stringify(checked),
+      );
+      await host.route("update-all", {
+        plans: checked.items.map(({ packageName, planId }) => ({ packageName, planId })),
+      });
+    } else
+      await host.route("update", {
+        packageName: row.packageName,
+        planId: row.planId,
+      });
     const deadline = Date.now() + 60000;
     do {
       pending = await host.route("status", { pageIdentity: "old-page" });
@@ -471,6 +508,10 @@ export async function installedScenario(t, proof, sdk, { customStore = false } =
     ),
   );
   assert.equal(operation.stage, "completed");
+  if (allUpdates) {
+    assert.equal(operation.targets.length, 3);
+    assert.equal(operation.completionProofs.length, 3);
+  }
   return {
     core: { kind: proof.kind, head: proof.head, version: proof.version },
     officialRunner: {

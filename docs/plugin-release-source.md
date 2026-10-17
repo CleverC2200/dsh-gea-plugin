@@ -10,6 +10,18 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 [planPluginUpdate](../src/shared/plugin-release.mjs) 接收 release、实际固定 Core 的 head/version/sdk 及已安装 manifest。Core SDK 版本由可信宿主读取，不从频道选择。被替换包必须已安装；更新不降级，不执行同版本替换。`dataCompatibility.kind=preserve` 才能自动计划，migration-required 必须先完成独立迁移。计划用替换后的完整图检查 candidate 与所有已安装消费者的必需/可选 peers，以及公司包 dependencies；可选 peer 缺席可接受，已安装时必须满足。结果为 ready/current/blocked；没有静默更新依赖。
 
+## 列表与批量更新
+
+公司 Core 保留官方插件页及顺序，只扩展已安装卡片。顶部刷新通过 `plugins.list.tools` 提供的 `registerRefresh` 同时检查公司插件。列表与详情共用同一个更新客户端和 Host 状态；关闭页面取消页面检查，已经受理的安装仍由 Host 持有。中文说明与无个人账号前缀的展示名使用官方 `locale/*.json` 元信息协议，安装标识保持原值。
+
+`update-all` 接收一至三个唯一包的固定 planId。Host 在同一所有权内下载全部归档，取得原 profile 锁后重新核来源、基线、逐包条件及最终组合，只调用一次原包管理器。它使用一份完整备份和一份操作回执。明确失败且确认写者停止时恢复整组；写者或设置归属不明时保持 unknown，不覆盖用户修改。单包路径复用同一实现。
+
+批量回执在原单包字段之外保存 `targets`，每项包含包名、目标版本、摘要与归档路径。重建 Host 时恢复全部行的待重启状态。只有新进程中的每个目标 Host/client 都有对应版本和实际装载归属，且安装图仍匹配，整组才 completed，并保存各自 completionProofs。安装成功和原进程内重建控制器均不算加载完成。
+
+存在待重启且无进行中或未知操作时，桌面显示一键重启。操作调用公司 Core 的无参数桥，复用原任务确认与 Host 收尾；取消不留下延迟重启。普通浏览器不显示不可用的重启按钮。设置中的 GEA 接口日志复用 Workbench 原日志页面及身份投影，不迁移业务认证权威。
+
+未装载的插件不生成更新计划，列表显示启用并重启的原因；受理前再次核装载状态。更新流程不自动启用插件。
+
 ## 生成独立发布输入
 
 [source publication formatter](../scripts/production-manifest.mjs) 保留源码已有 peer 约束，包括经 GEA 实际消费接口验证的 Manage `.12 || .14 || .15` exact OR。验证覆盖 business-resources、user-agent-cube 与 forecast-source，不声明其它 Manage 版本或全部功能兼容。只有源码没有 companion peer 时才按明确版本输入生成 exact peer；辅助能力仍是 optional。普通三包交付按最终 manifest 完整图验证，不以三个版本相等或 GEA peer 字符串相等代替兼容性。semver 是明确的运行依赖，生产 stage 正常生成的 shrinkwrap 包含它。
@@ -22,7 +34,7 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 ## 官方插件页接线与部署输入
 
-GEA client 使用官方既有的 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，仅向 Workbench、Manage、GEA 三个 bundle 的详情贡献检查、单包更新、状态与版本。它等待公开 slots、locale 与 modules 服务，不要求额外的 Core 更新 provider。中英文随官方 locale 切换；按钮和状态使用官方公共组件与主题，样式随贡献生命周期装载和释放。非目标 bundle、row 与 item 不贡献内容。Host 通过已认证的 `connection.fetch` 注册 status/check/update/observed 四个 POST 路由，不另建业务登录权威。详情关闭中止本页检查与轮询，已接受安装由 Host 生命周期持有；重入读取同一持久状态。官方列表、详情卸载等控件继续由官方锁和更新前后的基线检查保护。
+GEA client 使用官方既有的 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，向 Workbench、Manage、GEA 三个 bundle 的详情贡献检查、单包更新、状态与版本；公司 Core 的列表扩展见下文。它等待公开 slots、locale 与 modules 服务，不要求额外的 Core 更新 provider。中英文随官方 locale 切换；按钮和状态使用官方公共组件与主题，样式随贡献生命周期装载和释放。非目标 bundle、row 与 item 不贡献内容。Host 通过已认证的 `connection.fetch` 注册 status/check/update/update-all/observed 五个 POST 路由，不另建业务登录权威。详情关闭中止本页检查与轮询，已接受安装由 Host 生命周期持有；重入读取同一持久状态。官方列表、详情卸载等控件继续由官方锁和更新前后的基线检查保护。
 
 `pluginUpdates` 是可选部署配置，省略或配置不完整时三包状态为 blocked，不使用旧 unsigned 频道、默认生产地址或凭据。有效配置包含 `source`（上述来源配置）、`core`（下面的显式来源证明）、`checkTimeoutMs`（1000–120000）和 `pollIntervalMs`（1000–30000）。本接线只支持 `source.authenticationRef="anonymous"`，认证解析器返回空 headers；公网 OSS origin/prefix 也必须显式填写。已核旧 OSS 匿名读取能力不提供新签名频道 URL 或公钥，二者仍需部署输入。
 

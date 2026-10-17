@@ -41,7 +41,7 @@ test("fixed Core and workbench resolve while ordinary patches preserve the offic
       "link:../../official-latest-standard/packages/client/ui-layout",
       sdkVersion(core, "@deepseek-ai/dsh-client-ui-layout"),
     ],
-    ["dependencies", "@cleverc2200/dsh-agent-workbench", "link:../dsh-agent-workbench", "0.1.9"],
+    ["dependencies", "@cleverc2200/dsh-agent-workbench", "link:../dsh-agent-workbench", "0.1.10"],
   ]) {
     assert.equal(manifest[section][name], link);
     assert.deepEqual(lock.importers["."][section][name], { specifier: link, version: link });

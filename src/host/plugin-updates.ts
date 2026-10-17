@@ -161,7 +161,7 @@ export function mountPluginUpdates(
             : "UPDATE_CORE_OR_SOURCE_UNVERIFIED";
       }
     })());
-  for (const action of ["status", "check", "update", "observed"] as const) {
+  for (const action of ["status", "check", "update", "update-all", "observed"] as const) {
     routes.push(
       ctx.connection.fetch.register({
         path: `/api/gea/plugin-updates/${action}`,
@@ -220,6 +220,29 @@ export function mountPluginUpdates(
               await controller.check(
                 AbortSignal.any([request.signal, lifetime.signal, AbortSignal.timeout(timeout)]),
               );
+            } else if (action === "update-all") {
+              if (
+                Object.keys(payload).length !== 1 ||
+                !Array.isArray(payload.plans) ||
+                !payload.plans.length ||
+                payload.plans.length > companyPackageNames.length
+              )
+                throw Error("UPDATE_REQUEST_INVALID");
+              const plans = payload.plans.map((rawPlan) => {
+                const plan = updateObject(rawPlan);
+                if (
+                  Object.keys(plan).length !== 2 ||
+                  typeof plan.planId !== "string" ||
+                  !/^[a-f0-9-]{36}$/.test(plan.planId)
+                )
+                  throw Error("UPDATE_REQUEST_INVALID");
+                return { packageName: updatePackageName(plan.packageName), planId: plan.planId };
+              });
+              const operation = await controller.submitBatch(plans);
+              return Response.json({
+                ok: true,
+                value: { id: operation.id, stage: operation.stage },
+              });
             } else if (action === "update") {
               if (
                 Object.keys(payload).some((key) => !["packageName", "planId"].includes(key)) ||

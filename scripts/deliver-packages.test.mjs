@@ -415,7 +415,7 @@ test("an incompatible Core stops delivery without echoing request secrets", asyn
   assert.deepEqual(await readdir(cwd), ["request.json"]);
 });
 
-test("RC2 delivery retains both official Core identities and the same-version private Core", async (t) => {
+test("RC2 delivery retains upstream, private and company Core identities", async (t) => {
   const fixture = await requestFixture(t, {
     coreVersion: "0.2.0-rc.2",
     successfulPackageManager: true,
@@ -433,6 +433,7 @@ test("RC2 delivery retains both official Core identities and the same-version pr
     { head: request.core.head, version: "0.2.0-rc.2" },
     { head: "5badb15009ae1756c3afe0ae0cef1faafc290ccc", version: "0.2.1-alpha.1" },
     { head: "8ff14441ac932b55cf1f14b1715128eaa162b1ec", version: "0.2.1-alpha.1" },
+    { head: "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8", version: "0.2.0-rc.2" },
   ]);
   assert.match(
     await readFile(join(fixture.destination, "INSTALL.md"), "utf8"),

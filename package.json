@@ -1,15 +1,16 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.162",
+  "version": "0.0.163",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
-  "description": "GEA business Agent plugin for the shared DeepSeek Harness workbench",
+  "description": "接入 GEA 业务身份、授权与业务工具。",
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
     "./package.json": "./package.json",
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json"
   },
   "scripts": {
     "typecheck": "node scripts/generate-plugin-package-version.mjs --check && tsc --noEmit",
@@ -68,7 +69,7 @@
     "test:ci-full": "node scripts/run-quality-full.mjs",
     "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs && pnpm run test:plugin-updates",
     "test:profile-window": "node --test tests/profile-window.test.mjs",
-    "test:plugin-updates": "node --expose-internals --test --test-concurrency=1 tests/plugin-update-controller.contract.mjs tests/plugin-update-integration.contract.mjs tests/plugin-update-install.contract.mjs tests/plugin-update-detail.browser.mjs",
+    "test:plugin-updates": "node --expose-internals --test --test-concurrency=1 tests/plugin-update-controller.contract.mjs tests/plugin-update-integration.contract.mjs tests/plugin-update-install.contract.mjs tests/plugin-update-detail.browser.mjs tests/plugin-update-list.browser.mjs",
     "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs",
     "typecheck:plugin-updates": "node scripts/check-plugin-updates-types.mjs",
     "test:package-version": "node --test scripts/package-version-gate.test.mjs scripts/plugin-package-version.test.mjs",
@@ -194,7 +195,8 @@
     "presets/inventory-dealer.skill.md",
     "presets/prompt-policy.json",
     "presets/inventory-fc.skill.md",
-    "presets/inventory-qll.skill.md"
+    "presets/inventory-qll.skill.md",
+    "locale/"
   ],
   "workspaces": [
     "packages/*"

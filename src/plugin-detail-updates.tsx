@@ -1,9 +1,9 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
-import type { PropsLocale, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
+import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
 import { Button, Tag, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
 import { companyPackageNames } from "./shared/plugin-release.mjs";
 import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts";
@@ -192,7 +192,124 @@ function DetailSection({
     </section>
   );
 }
-/** Contribute only through the official detail slots; the Host retains installation ownership. */
+function ListBadge({ subject, updates, t }: Props): ReactNode {
+  const name = targetName(subject);
+  const state = useDetail(updates);
+  const row = state.items.find((item) => item.packageName === name);
+  if (!name || !row || row.state === "idle") return null;
+  return (
+    <span className={`gea-plugin-list-status ${row.state}`} role="status">
+      {row.state === "available" && row.candidateVersion
+        ? t("newVersion", { version: row.candidateVersion })
+        : t(state.checking ? "checking" : row.state)}
+    </span>
+  );
+}
+function ListActions({ subject, updates, t }: Props): ReactNode {
+  const name = targetName(subject);
+  const state = useDetail(updates);
+  const row = state.items.find((item) => item.packageName === name);
+  if (!name || row?.state !== "available" || !row.planId) return null;
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="gea-plugin-list-update"
+      disabled={state.checking || state.submitting !== null || pluginUpdateBusy(state.items)}
+      onClick={() => {
+        void updates.update(name);
+      }}
+    >
+      {t("updateShort")}
+    </Button>
+  );
+}
+function ListTools({
+  packages,
+  registerRefresh,
+  updates,
+  t,
+}: PropsRuntime<"plugins.list.tools"> &
+  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner }): ReactNode {
+  const state = useDetail(updates);
+  useEffect(() => registerRefresh(() => updates.check()), [registerRefresh, updates]);
+  const installed = new Set(packages.map((pkg) => pkg.name));
+  const available = state.items.filter(
+    (row) => installed.has(row.packageName) && row.state === "available" && row.planId,
+  );
+  const pending = state.items.some(
+    (row) => installed.has(row.packageName) && row.state === "pending-restart",
+  );
+  const busy = state.checking || state.submitting !== null || pluginUpdateBusy(state.items);
+  const bridge = desktopRestart();
+  const [restarting, setRestarting] = useState(false);
+  const [restartFailed, setRestartFailed] = useState(false);
+  const restartBusy =
+    state.checking ||
+    state.submitting !== null ||
+    state.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
+  return (
+    <div className="gea-plugin-list-tools">
+      <span className="gea-plugin-list-summary" role="status">
+        {state.transportError
+          ? t(
+              state.transportError === "check"
+                ? "checkError"
+                : state.transportError === "unknown"
+                  ? "unknownError"
+                  : "statusError",
+            )
+          : state.checking
+            ? t("checking")
+            : available.length
+              ? t("availableCount", { count: String(available.length) })
+              : ""}
+      </span>
+      {available.length ? (
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={busy}
+          onClick={() => {
+            void updates.updateAll(available.map((row) => row.packageName));
+          }}
+        >
+          {t("updateAll")}
+        </Button>
+      ) : null}
+      {restartFailed ? <span role="alert">{t("restartError")}</span> : null}
+      {pending && bridge ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={restartBusy || restarting}
+          onClick={() => {
+            setRestarting(true);
+            setRestartFailed(false);
+            void bridge()
+              .catch(() => setRestartFailed(true))
+              .finally(() => setRestarting(false));
+          }}
+        >
+          {t("restartNow")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+function desktopRestart(): (() => Promise<unknown>) | undefined {
+  if (
+    !("dshDesktop" in window) ||
+    typeof window.dshDesktop !== "object" ||
+    window.dshDesktop === null
+  )
+    return;
+  const bridge = window.dshDesktop;
+  if (!("restart" in bridge) || typeof bridge.restart !== "function") return;
+  const restart = bridge.restart.bind(bridge);
+  return async () => restart();
+}
+
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
   const fiber = ctx.inject(["slots", "locale", "modules"], (scope) => {
     scope.effect(() => {
@@ -204,6 +321,39 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
     const updates = createPluginDetailUpdates(scope);
     scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
     scope.effect(() => () => updates.dispose());
+    scope.slots.inject("plugins.list.badge", () =>
+      scope.slots.register(
+        {
+          name: "plugins.list.badge",
+          id: "gea.plugins.list.badge",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates }),
+        },
+        ListBadge,
+      ),
+    );
+    scope.slots.inject("plugins.list.actions", () =>
+      scope.slots.register(
+        {
+          name: "plugins.list.actions",
+          id: "gea.plugins.list.actions",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates }),
+        },
+        ListActions,
+      ),
+    );
+    scope.slots.inject("plugins.list.tools", () =>
+      scope.slots.register(
+        {
+          name: "plugins.list.tools",
+          id: "gea.plugins.list.tools",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates }),
+        },
+        ListTools,
+      ),
+    );
     scope.slots.inject("plugins.detail.actions", () =>
       scope.slots.register(
         {
