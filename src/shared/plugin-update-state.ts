@@ -35,6 +35,13 @@ export type PluginUpdateStage =
   | "unknown";
 export type PluginUpdateOperation = {
   schema: 1;
+  targets?: {
+    packageName: CompanyPackageName;
+    targetVersion: string;
+    targetSha256: string;
+    archivePath: string;
+  }[];
+  completionProofs?: NonNullable<PluginUpdateOperation["completionProof"]>[];
   id: string;
   packageName: CompanyPackageName;
   targetVersion: string;

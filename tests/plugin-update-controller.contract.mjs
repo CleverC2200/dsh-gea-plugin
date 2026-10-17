@@ -781,3 +781,55 @@ test("Windows accepts pnpm file separators only for the selected exact archive",
     Object.defineProperty(process, "platform", descriptor);
   }
 });
+
+for (const mode of ["success", "fail-after-first"]) {
+  test(`batch update uses one owner and ${mode === "success" ? "installs all packages" : "restores all packages after a partial install"}`, async (t) => {
+    const { controllerFixture, waitForStage } =
+      await import("./fixtures/plugin-updates/profile.mjs");
+    const f = await controllerFixture(t, { mode, allUpdates: true });
+    const before = await readPluginProfile(f.dir);
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    const requests = controller
+      .snapshot()
+      .items.map(({ packageName, planId }) => ({ packageName, planId }));
+    assert.equal(requests.length, 3);
+    assert.ok(requests.every((row) => row.planId));
+    const accepted = await controller.submitBatch(requests);
+    assert.equal(accepted.targets.length, 3);
+    await assert.rejects(controller.submitBatch(requests), /UPDATE_OPERATION_BLOCKED/);
+    const operation = await waitForStage(controller, ["pending-restart", "restored", "unknown"]);
+    assert.equal(operation.stage, mode === "success" ? "pending-restart" : "restored");
+    const calls = (await readFile(join(f.dir, "invocations.ndjson"), "utf8"))
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].args.filter((arg) => arg.startsWith("file:")).length, 3);
+    const after = await readPluginProfile(f.dir);
+    if (mode === "success") {
+      assert.deepEqual(
+        controller.snapshot().items.map((row) => row.state),
+        Array(3).fill("pending-restart"),
+      );
+      assert.deepEqual(
+        controller.snapshot().items.map((row) => row.installedVersion),
+        ["1.1.0", "2.1.0", "3.1.0"],
+      );
+      assert.deepEqual(after.manifest.retained, before.manifest.retained);
+      await controller.dispose();
+      const reopened = createPluginUpdateController(f.options);
+      t.after(() => reopened.dispose());
+      await reopened.initialize();
+      assert.deepEqual(
+        reopened.snapshot().items.map((row) => row.state),
+        Array(3).fill("pending-restart"),
+      );
+    } else {
+      assert.equal(after.ownedSha256, before.ownedSha256);
+      assert.deepEqual(after.manifest, before.manifest);
+    }
+  });
+}

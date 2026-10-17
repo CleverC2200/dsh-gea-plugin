@@ -41,3 +41,30 @@
     grid-template-columns: minmax(100px, 1fr) minmax(0, 1fr);
   }
 }
+
+.gea-plugin-list-status {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.gea-plugin-list-status.available,
+.gea-plugin-list-update {
+  color: var(--dsw-alias-state-error-primary);
+}
+.gea-plugin-list-update {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 30%, transparent);
+  white-space: nowrap;
+}
+.gea-plugin-list-status.current,
+.gea-plugin-list-status.completed {
+  color: var(--dsw-alias-state-success-primary);
+}
+.gea-plugin-list-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gea-plugin-list-summary {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}

@@ -1,5 +1,11 @@
 export const en = {
   title: "Plugin update",
+  newVersion: "New version {version}",
+  updateShort: "Update",
+  updateAll: "Update all",
+  restartNow: "Restart",
+  restartError: "Could not restart. Try again.",
+  availableCount: "{count} plugin updates available",
   check: "Check for updates",
   update: "Update to {version}",
   installed: "Installed",
@@ -45,6 +51,12 @@ export const en = {
 } as const;
 export const zh: Record<keyof typeof en, string> = {
   title: "插件更新",
+  newVersion: "新版本 {version}",
+  updateShort: "更新",
+  updateAll: "全部更新",
+  restartNow: "一键重启",
+  restartError: "重启失败，请重试。",
+  availableCount: "{count} 个插件可更新",
   check: "检查更新",
   update: "更新至 {version}",
   installed: "已安装",

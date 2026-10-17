@@ -534,18 +534,27 @@ export function retainsProfileFields(
   release: PluginRelease,
   archivePath: string,
 ): boolean {
+  return retainsProfileUpdates(before, after, [{ release, archivePath }]);
+}
+export function retainsProfileUpdates(
+  before: ProfileSnapshot,
+  after: ProfileSnapshot,
+  updates: readonly { release: PluginRelease; archivePath: string }[],
+): boolean {
   const expected = structuredClone(before.manifest);
-  expected.dependencies = {
-    ...strings(expected.dependencies),
-    [release.name]: "file:" + archivePath,
-  };
   const current = structuredClone(after.manifest);
-  if (process.platform === "win32") {
-    const dependencies = strings(current.dependencies);
-    if (dependencies[release.name] === "file:" + archivePath.replaceAll("\\", "/"))
-      dependencies[release.name] = "file:" + archivePath;
-    current.dependencies = dependencies;
+  const expectedDependencies = strings(expected.dependencies);
+  const currentDependencies = strings(current.dependencies);
+  for (const { release, archivePath } of updates) {
+    expectedDependencies[release.name] = "file:" + archivePath;
+    if (
+      process.platform === "win32" &&
+      currentDependencies[release.name] === "file:" + archivePath.replaceAll("\\", "/")
+    )
+      currentDependencies[release.name] = "file:" + archivePath;
   }
+  expected.dependencies = expectedDependencies;
+  current.dependencies = currentDependencies;
   return canonical(current) === canonical(expected);
 }
 export function retainsUnmanagedManifestFields(

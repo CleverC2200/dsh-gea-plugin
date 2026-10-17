@@ -161,6 +161,57 @@ export function createPluginDetailUpdates(ctx: Context) {
     page = undefined;
     publish({ checking: false });
   };
+  const submitRows = (names: readonly string[]): Promise<void> => {
+    if (submitting) return submitting;
+    const rows = names.map((name) => snapshot.items.find((row) => row.packageName === name));
+    const selected = rows.filter(
+      (row): row is PluginUpdateRow & { planId: string } =>
+        row?.state === "available" && typeof row.planId === "string",
+    );
+    if (
+      !page ||
+      snapshot.checking ||
+      pluginUpdateBusy(snapshot.items) ||
+      selected.length !== names.length ||
+      !selected.length ||
+      new Set(names).size !== names.length
+    )
+      return Promise.resolve();
+    publish({ submitting: names.join(","), transportError: null });
+    const run = async () => {
+      try {
+        await request(
+          names.length === 1 ? "update" : "update-all",
+          names.length === 1
+            ? { packageName: selected[0]?.packageName, planId: selected[0]?.planId }
+            : {
+                plans: selected.map((row) => ({
+                  packageName: row.packageName,
+                  planId: row.planId,
+                })),
+              },
+          AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
+        );
+      } catch {
+        publish({
+          transportError: "unknown",
+          items: snapshot.items.map((item) =>
+            names.includes(item.packageName) ? { ...item, state: "unknown" } : item,
+          ),
+        });
+      } finally {
+        publish({ submitting: null });
+      }
+      if (page)
+        await refresh(page).catch(() => {
+          publish({ transportError: "status" });
+        });
+    };
+    submitting = run().finally(() => {
+      submitting = undefined;
+    });
+    return submitting;
+  };
   return {
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
@@ -207,46 +258,8 @@ export function createPluginDetailUpdates(ctx: Context) {
       });
       return checking;
     },
-    update(name: string): Promise<void> {
-      if (submitting) return submitting;
-      const row = snapshot.items.find((row) => row.packageName === name);
-      if (
-        !page ||
-        snapshot.checking ||
-        pluginUpdateBusy(snapshot.items) ||
-        row?.state !== "available" ||
-        !row.planId
-      )
-        return Promise.resolve();
-      publish({ submitting: name, transportError: null });
-      const run = async () => {
-        try {
-          // The Host owns an accepted operation, independent of the detail page lifetime.
-          await request(
-            "update",
-            { packageName: row.packageName, planId: row.planId },
-            AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
-          );
-        } catch {
-          publish({
-            transportError: "unknown",
-            items: snapshot.items.map((item) =>
-              item.packageName === name ? { ...item, state: "unknown" } : item,
-            ),
-          });
-        } finally {
-          publish({ submitting: null });
-        }
-        if (page)
-          await refresh(page).catch(() => {
-            publish({ transportError: "status" });
-          });
-      };
-      submitting = run().finally(() => {
-        submitting = undefined;
-      });
-      return submitting;
-    },
+    update: (name: string) => submitRows([name]),
+    updateAll: (names: readonly string[]) => submitRows(names),
     async dispose() {
       disposed = true;
       listeners.clear();
