@@ -75,9 +75,17 @@ test("the isolated source CLI leaves the frozen snapshot's complete verification
   assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
   assert.equal(parent.processes[0].command, "/usr/bin/sandbox-exec");
   const child = JSON.parse(await readFile(fixture.observation + ".child", "utf8"));
-  const snapshot = await realpath(join(fixture.frozen.combination.snapshot.runtime,
-    "source-combinations", fixture.frozen.combination.snapshot.id));
-  assert.deepEqual(child.traversals.filter(({ path }) => path === snapshot), [{ path: snapshot, locked: true }]);
+  const snapshot = await realpath(
+    join(
+      fixture.frozen.combination.snapshot.runtime,
+      "source-combinations",
+      fixture.frozen.combination.snapshot.id,
+    ),
+  );
+  assert.deepEqual(
+    child.traversals.filter(({ path }) => path === snapshot),
+    [{ path: snapshot, locked: true }],
+  );
   assert.equal(child.processes.length, 1);
   assert.deepEqual(parent.network, []);
   assert.deepEqual(child.network, []);

@@ -31,9 +31,6 @@ const digest = async (path) =>
     .update(await readFile(path))
     .digest("hex");
 
-/** Boot the official profile from artifacts built in the pinned source checkout. */
-import { resolveSourceInputs } from "./source-profile.mjs";
-
 export async function runSourceProfile(
   core,
   runtime,
@@ -216,7 +213,7 @@ async function launch() {
     owner: values.owner,
     freezeSha256: values["freeze-sha256"],
   };
-  await admitSourceWindow({
+  await checkSourceWindow({
     window,
     mode,
     core: values.core ?? resolve(root, "../../official-latest-standard"),
@@ -225,7 +222,6 @@ async function launch() {
   });
   if (process.platform !== "darwin") throw Error("ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX");
   const fixedSources = values.sources ? await json(resolve(values.sources)) : undefined;
-  if (values.plugins === true) await resolveSourceInputs(fixedSources, { requireEntries: true });
   const core = await realpath(values.core ?? resolve(root, "../../official-latest-standard"));
   const manifest = await json(join(core, "package.json"));
   const packages = {};

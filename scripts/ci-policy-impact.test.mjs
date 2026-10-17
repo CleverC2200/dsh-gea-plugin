@@ -437,15 +437,28 @@ test("peer quality command mappings keep required contracts and fail closed when
       "scripts/run-quality-ci-stages.test.mjs",
       "scripts/run-quality-ci.test.mjs",
     ]);
-    fixture.change(fixture.own, "scripts/ci-test-policy.json", JSON.stringify({
-      ...fixture.policy,
-      rules: fixture.policy.rules.filter((rule) => rule.repo !== repo || !new RegExp(rule.pattern).test(file)),
-    }));
+    fixture.change(
+      fixture.own,
+      "scripts/ci-test-policy.json",
+      JSON.stringify({
+        ...fixture.policy,
+        rules: fixture.policy.rules.filter(
+          (rule) => rule.repo !== repo || !new RegExp(rule.pattern).test(file),
+        ),
+      }),
+    );
     assert.throws(() => fixture.plan(), /CI_TEST_IMPACT_UNMAPPED/);
   }
   const fixture = resourceImpactFixture(t);
-  fixture.change(fixture.repositories[1], "scripts/check-static.mjs", "export const unknown = true;\n");
-  assert.throws(() => fixture.plan(), /CI_TEST_IMPACT_UNMAPPED: dsh-agent-manage\/scripts\/check-static\.mjs/);
+  fixture.change(
+    fixture.repositories[1],
+    "scripts/check-static.mjs",
+    "export const unknown = true;\n",
+  );
+  assert.throws(
+    () => fixture.plan(),
+    /CI_TEST_IMPACT_UNMAPPED: dsh-agent-manage\/scripts\/check-static\.mjs/,
+  );
 });
 
 test("the prepared tar helper selects its CLI regression while an unknown Python source still rejects", (t) => {
