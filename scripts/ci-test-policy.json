@@ -266,6 +266,16 @@
     {
       "pattern": "^scripts/quality-peer-baseline\\.json$",
       "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/run-quality-(?:ci|fast|checks)\\.mjs$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/run-quality-(?:ci|checks)\\.mjs$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     }
   ]
 }
