@@ -364,13 +364,9 @@ jobs:
             ${{ steps.cache-path.outputs.store }}
           key: ${{ steps.download-cache.outputs.cache-primary-key }}
 
-      - name: Check source before candidate builds and tests
-        id: quality-source
-        run: corepack pnpm quality:fast --source-only
-
       - name: Build frozen candidate packages
         id: quality-build
-        if: ${{ success() && steps.quality-prepare.outcome == 'success' && steps.quality-source.outcome == 'success' }}
+        if: ${{ success() && steps.quality-prepare.outcome == 'success' }}
         env:
           QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
           CORE_HEAD: ${{ matrix.core }}

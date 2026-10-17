@@ -22,8 +22,9 @@ commands.spawnSync = (command, args) => {
 syncBuiltinESMExports();
 `,
   );
+  let sequence = 0;
   const run = (args, fail) => {
-    const log = join(root, "commands-" + args.length + ".jsonl");
+    const log = join(root, "commands-" + sequence++ + ".jsonl");
     const child = spawnSync(
       process.execPath,
       ["--import", preload, resolve("scripts/run-quality-fast.mjs"), ...args],
@@ -39,22 +40,47 @@ syncBuiltinESMExports();
       checks: JSON.parse(readFileSync(join(root, ".runtime/quality-fast.json"))),
     };
   };
-  const failed = run([], "format:check");
-  assert.equal(failed.child.status, 1, failed.child.stderr);
-  assert.deepEqual(
-    failed.commands.map((args) => args[1]),
-    ["lint", "format:check", "check:knowledge", "check:prompt-execution"],
-  );
-  assert.deepEqual(
-    failed.checks.slice(-2).map((entry) => entry.status),
-    ["skipped", "skipped"],
-  );
+  for (const name of ["lint", "format:check", "check:knowledge", "check:prompt-execution"]) {
+    const failed = run([], name);
+    assert.equal(failed.child.status, 1, failed.child.stderr);
+    assert.deepEqual(
+      failed.commands.map((args) => args[1]),
+      ["lint", "format:check", "check:knowledge", "check:prompt-execution"],
+    );
+    assert.deepEqual(
+      failed.checks.slice(-2).map((entry) => entry.status),
+      ["skipped", "skipped"],
+    );
+  }
   const source = run(["--source-only", "scripts/example.mjs"]);
   assert.equal(source.child.status, 0, source.child.stderr);
   assert.deepEqual(source.commands[0], ["pnpm", "lint", "scripts/example.mjs"]);
   assert.deepEqual(source.commands[1], ["pnpm", "format:check", "scripts/example.mjs"]);
   assert.ok(source.checks.every((entry) => entry.status === "passed"));
   assert.equal(source.commands.length, 4);
+  const complete = run([]);
+  assert.equal(complete.child.status, 0, complete.child.stderr);
+  assert.deepEqual(
+    complete.commands.map((args) => args[1]),
+    [
+      "lint",
+      "format:check",
+      "check:knowledge",
+      "check:prompt-execution",
+      "typecheck:official",
+      "test:quality",
+    ],
+  );
+  const ci = run(["--checks-only"]);
+  assert.equal(ci.child.status, 0, ci.child.stderr);
+  assert.deepEqual(
+    ci.commands.map((args) => args[1]),
+    ["lint", "format:check", "check:knowledge", "check:prompt-execution", "typecheck:official"],
+  );
+  const types = run(["--checks-only"], "typecheck:official");
+  assert.equal(types.child.status, 1, types.child.stderr);
+  assert.equal(types.checks.at(-1).name, "typecheck:official");
+  assert.equal(types.checks.at(-1).status, "failed");
 });
 
 test("a failed early gate preserves later behavioral observations and final failure", () => {
