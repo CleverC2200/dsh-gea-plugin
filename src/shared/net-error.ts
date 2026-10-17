@@ -65,7 +65,7 @@ function isTimeout(error: unknown): boolean {
  */
 export function networkError(
   error: unknown,
-  context: { what: string; stage?: string; timeoutMs?: number; timeoutScope?: "model-total" },
+  context: { what: string; stage?: string; timeoutMs?: number; timeoutScope?: "model-idle" },
 ): Error {
   // 中止（用户点停止）走既有口径；已有 code 的错（GEA_MODEL_HTTP_500 这类）保持原样。
   // dsh 中止时 fetch 直接以 signal.reason 为拒绝原因；有的实现会把它包进 cause，两种都认。
@@ -81,14 +81,11 @@ export function networkError(
 
   const stage = context.stage ? `${context.stage}阶段` : "";
   const detail = causeOf(error) ?? (error instanceof Error ? error.message : String(error));
-  if (isTimeout(error) && context.timeoutScope === "model-total")
+  if (isTimeout(error) && context.timeoutScope === "model-idle")
     return Object.assign(
       new Error(
-        `${NETWORK_TIMEOUT_CODE}: ${context.what}请求达到总时限${context.timeoutMs ? `（${Math.round(context.timeoutMs / 1000)} 秒）` : ""}，本轮未完成。` +
-          (context.stage === "流式读取"
-            ? "已收到响应，但未在总时限内生成完毕；这不代表连续无输出。"
-            : "等待模型响应时超时。") +
-          "仅凭超时不能确定是模型生成、网关还是网络耗时；请结合请求日志核对。",
+        `${NETWORK_TIMEOUT_CODE}: ${context.what}连续${context.timeoutMs ? ` ${Math.round(context.timeoutMs / 1000)} 秒` : ""}未收到新的模型事件或心跳，本轮未完成。` +
+          "这是空闲超时，持续输出和心跳会续期。仅凭超时不能确定模型、网关或网络原因，请结合请求日志核对。",
       ),
       { code: NETWORK_TIMEOUT_CODE, cause: error },
     );

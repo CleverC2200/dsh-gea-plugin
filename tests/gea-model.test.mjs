@@ -331,7 +331,7 @@ test(
       },
     );
     await t.test(
-      "stream total timeout preserves partial output and writes bounded diagnostics",
+      "stream idle timeout preserves partial output and writes bounded diagnostics",
       async () => {
         mode = "hold";
         held = undefined;
@@ -340,8 +340,8 @@ test(
         const rows = await ended(id);
         assert.notEqual(rows.find((row) => row.type === "turn/end").data.reason.kind, "completed");
         assert.match(JSON.stringify(rows), /GEA_NETWORK_TIMEOUT/);
-        assert.match(JSON.stringify(rows), /总时限/);
-        assert.match(JSON.stringify(rows), /已收到响应/);
+        assert.match(JSON.stringify(rows), /空闲超时/);
+        assert.match(JSON.stringify(rows), /心跳/);
         assert.doesNotMatch(JSON.stringify(rows), /这不是参数问题/);
         await until(async () => heldClosed, Boolean);
         const log = await readFile(app.runtime + "/server.log", "utf8");

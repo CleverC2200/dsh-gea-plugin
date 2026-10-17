@@ -77,7 +77,7 @@ export async function readDeployment(
   const selected = resolveEnvironments(config);
   config.environment = selected.environment;
   const url = httpsEndpoint(selected.baseUrl, "INVALID_GEA_BASE_URL");
-  if (config.modelRequestTimeoutMs === undefined) config.modelRequestTimeoutMs = 120000;
+  if (config.modelRequestTimeoutMs === undefined) config.modelRequestTimeoutMs = 300000;
   for (const [name, low, high] of [
     ["pageSize", 1, 100],
     ["periodPageSize", 1, 1000],

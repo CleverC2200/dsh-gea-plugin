@@ -614,6 +614,43 @@ test("the official LLM stream seam denies a retained direct GEA provider before 
   assert.deepEqual(app.external, []);
 });
 
+test("model/advice shares the adapter idle lifetime without an outer total deadline", async (t) => {
+  let writer;
+  let closed = false;
+  const encoder = new TextEncoder();
+  const app = await fixture(t, true, {
+    modelFailure: () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            writer = controller;
+          },
+          cancel() {
+            closed = true;
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+  });
+  app.ctx.llm.stream = (options) => app.adapter.stream(options);
+  const result = app.route("model/advice", { question: "fixture" });
+  const heartbeat = setInterval(() => {
+    if (writer && !closed) writer.enqueue(encoder.encode(": keepalive\n\n"));
+  }, 150);
+  t.after(() => clearInterval(heartbeat));
+  await new Promise((done) => setTimeout(done, 1400));
+  if (!closed)
+    writer.enqueue(
+      encoder.encode(
+        'data: {"choices":[{"index":0,"delta":{"content":"fixture answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      ),
+    );
+  const reply = await result;
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  assert.equal(reply.value.answer, "fixture answer");
+  assert.equal(closed, true);
+});
+
 test("the registered GEA model adapter preserves a chat 403 without treating it as a network outage", async (t) => {
   const app = await fixture(t, true, {
     modelFailure: () =>

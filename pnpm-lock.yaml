@@ -135,6 +135,9 @@ importers:
       '@deepseek-ai/dsh-skill':
         specifier: link:../../official-latest-standard/packages/skill/skill
         version: link:../../official-latest-standard/packages/skill/skill
+      '@deepseek-ai/dsh-timeout':
+        specifier: link:../../official-latest-standard/packages/util/timeout
+        version: link:../../official-latest-standard/packages/util/timeout
       '@deepseek-ai/dsh-tools':
         specifier: link:../../official-latest-standard/packages/core/tools
         version: link:../../official-latest-standard/packages/core/tools

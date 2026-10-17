@@ -175,6 +175,7 @@ export async function* geaTextStream(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
   offered?: { names: readonly string[]; maxBytes: number },
+  activity?: () => void,
 ): AsyncGenerator<StreamChunk> {
   const reader = body.getReader();
   let cancellation: Promise<void> | undefined;
@@ -190,7 +191,13 @@ export async function* geaTextStream(
   signal?.addEventListener("abort", onAbort, { once: true });
   const decoder = new TextDecoder();
   const events: string[] = [];
-  const parser = createParser({ onEvent: (event) => events.push(event.data) });
+  const parser = createParser({
+    onComment: () => activity?.(),
+    onEvent: (event) => {
+      activity?.();
+      events.push(event.data);
+    },
+  });
   let text = "";
   let reasoning = "";
   let reasoningStarted = false;
