@@ -22,7 +22,7 @@ const cases = [
     "supported stock combinations update and restore on the same durable profile",
   ],
   [
-    "branch-stock-web.test.mjs",
+    "branch-stock-migration-web.test.mjs",
     "branch stock migration preserves rows and runs authorized page and Agent reads",
   ],
   [
@@ -118,7 +118,7 @@ for (const [file, name] of cases)
 test("branch data fixture closes its owned browser when navigation fails before the UI try block", async (t) => {
   const result = await probe(
     t,
-    "branch-stock-web.test.mjs",
+    "branch-stock-data-states-web.test.mjs",
     "branch page distinguishes denied data",
     "early-ui-failure",
   );

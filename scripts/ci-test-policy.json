@@ -20,6 +20,11 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^tests/branch-stock-(?:migration|data-states)-web\\.test\\.mjs$",
+      "tests": ["tests/model-profile-fixture.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-worker-control\\.mjs$",
       "tests": [
         "scripts/quality-worker-control.test.mjs",
