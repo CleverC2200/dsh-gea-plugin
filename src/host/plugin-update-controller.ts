@@ -590,6 +590,15 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           });
           continue;
         }
+        if (proofs.find((proof) => proof.name === release.name)?.host.kind !== "active") {
+          row(release.name, {
+            state: "blocked",
+            candidateVersion: release.version,
+            diagnostic: "UPDATE_PACKAGE_INACTIVE",
+            problem: { kind: "policy", code: "inactive" },
+          });
+          continue;
+        }
         const plan = planPluginUpdate({
           release,
           core: options.core,
@@ -597,15 +606,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         });
         if (generation !== checking || closed) return snapshot();
         if (plan.kind === "ready") {
-          if (proofs.find((proof) => proof.name === release.name)?.host.kind !== "active") {
-            row(release.name, {
-              state: "blocked",
-              candidateVersion: release.version,
-              diagnostic: "UPDATE_PACKAGE_INACTIVE",
-              problem: { kind: "policy", code: "inactive" },
-            });
-            continue;
-          }
           const id = randomUUID();
           plans.set(release.name, { id, release, baseline: profile });
           row(release.name, {

@@ -859,3 +859,21 @@ test("inactive package is excluded from batch plans and cannot be disabled after
   assert.equal(controller.snapshot().operation, null);
   await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
 });
+
+test("same-version inactive package reports its load diagnosis before current status", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const inactive = f.proofs[1];
+  inactive.host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller.snapshot().items.find((item) => item.packageName === inactive.name);
+  assert.equal(row.installedVersion, "2.0.0");
+  assert.equal(row.state, "blocked");
+  assert.equal(row.candidateVersion, "2.0.0");
+  assert.equal(row.planId, null);
+  assert.equal(row.diagnostic, "UPDATE_PACKAGE_INACTIVE");
+  assert.deepEqual(row.problem, { kind: "policy", code: "inactive" });
+});
