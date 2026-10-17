@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ciCores } from "../scripts/ci-core-policy.mjs";
 
-const rc2 = "21cf973fb02bb9ea8ba79c08704b2e41e80d4f62";
+const rc2 = "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8";
 const alpha = "5badb15009ae1756c3afe0ae0cef1faafc290ccc";
 
 test("required and compatibility select disjoint company and upstream Core inputs", () => {

@@ -187,7 +187,7 @@
   "coreHeads": {
     "rc2": "639ed015397290b3745d163aafe02ffee4aa3f84",
     "alpha": "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
-    "company": "21cf973fb02bb9ea8ba79c08704b2e41e80d4f62"
+    "company": "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8"
   },
   "requiredPeers": {
     "dsh-agent-workbench": "c5a5bc64fade154bf5b468f0d848974ac308823a",
@@ -284,7 +284,7 @@
       "workflow",
       "write"
     ],
-    "21cf973fb02bb9ea8ba79c08704b2e41e80d4f62": [
+    "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8": [
       "ask_user_question",
       "bash",
       "create_goal",
