@@ -141,7 +141,6 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
       assetRoot,
       manifest: assetManifest,
       commit,
-      dirty,
       plugin,
     });
   }
@@ -195,8 +194,6 @@ export async function prepareSourcePlugins(
           target,
           version: manifest.version,
           plugin,
-          commit: input.commit,
-          dirty: input.dirty,
         },
       ];
     }),
@@ -315,7 +312,7 @@ export async function prepareSourcePlugins(
   };
   const files = await resourceDigests(snapshot);
   const snapshots = {};
-  for (const [name, { source, target, version, plugin, commit, dirty }] of plugins) {
+  for (const [name, { source, target, version, plugin }] of plugins) {
     const manifest = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
     const artifactEntries = [...componentArtifactEntries(manifest), ...plugin.digests];
     const digests = {};
@@ -330,8 +327,16 @@ export async function prepareSourcePlugins(
         encoding: "utf8",
         env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       }).trim(),
-      commit,
-      dirty,
+      commit: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
+        cwd: source,
+        encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      }).trim(),
+      dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
+        cwd: source,
+        encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      }).trim(),
       digests,
     };
   }

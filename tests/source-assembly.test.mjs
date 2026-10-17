@@ -53,7 +53,7 @@ test(
 );
 
 test(
-  "each new composition freezes source identities once and keeps case snapshots independent",
+  "each new composition records post-copy source identity and keeps case snapshots independent",
   { timeout: 180000 },
   async (t) => {
     const { root, sources } = await sourceAssemblyFixture(t);
@@ -68,35 +68,42 @@ test(
         `
 import child from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-const calls = [], exec = child.execFileSync;
+import {writeFileSync, unlinkSync} from 'node:fs';
+const source = ${JSON.stringify(sources[0].source)}, previous = ${JSON.stringify(sources[0].commit)};
+const exec = child.execFileSync;
+let expected;
 child.execFileSync = function(command, args, options) {
- calls.push({command, args, cwd: options?.cwd});
+ if (!expected && options?.cwd === source && args.join(' ') === 'remote get-url source') {
+  writeFileSync(source + '/post-copy-commit.txt', 'post-copy revision');
+  exec.call(this, 'git', ['add', 'post-copy-commit.txt'], {cwd: source});
+  exec.call(this, 'git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'post-copy revision'], {cwd: source});
+  writeFileSync(source + '/post-copy-dirty.txt', 'post-copy dirty bytes');
+  expected = {
+   commit: exec.call(this, 'git', ['rev-parse', 'HEAD'], {cwd: source, encoding: 'utf8'}).trim(),
+   dirty: exec.call(this, 'git', ['status', '--porcelain'], {cwd: source, encoding: 'utf8'}).trim()
+  };
+ }
  return exec.call(this, command, args, options);
 };
 syncBuiltinESMExports();
 const {prepareSourcePlugins} = await import(${JSON.stringify(new URL("../scripts/source-profile.mjs", import.meta.url).href)});
 const composition = await prepareSourcePlugins(${JSON.stringify(core)}, ${JSON.stringify(runtime)}, undefined, {sources: ${JSON.stringify(sources)}});
-console.log(JSON.stringify({composition, calls}));
+const {readFile} = await import('node:fs/promises');
+const audit = JSON.parse(await readFile(${JSON.stringify(runtime)} + '/source-combinations/' + composition.id + '/company-plugins.json', 'utf8'));
+exec('git', ['reset', '--hard', previous], {cwd: source, stdio: 'ignore'});
+unlinkSync(source + '/post-copy-dirty.txt');
+console.log(JSON.stringify({composition, audit, expected}));
 `,
       ],
       { encoding: "utf8" },
     );
     assert.equal(observed.status, 0, observed.stderr);
-    const { composition, calls } = JSON.parse(observed.stdout);
-    for (const { source } of sources) {
-      assert.equal(
-        calls.filter((call) => call.cwd === source && call.args.join(" ") === "rev-parse HEAD")
-          .length,
-        1,
-        source + " HEAD",
-      );
-      assert.equal(
-        calls.filter((call) => call.cwd === source && call.args.join(" ") === "status --porcelain")
-          .length,
-        1,
-        source + " status",
-      );
-    }
+    const { composition, audit, expected } = JSON.parse(observed.stdout);
+    assert.ok(expected);
+    assert.notEqual(expected.commit, sources[0].commit);
+    assert.match(expected.dirty, /post-copy-dirty.txt/);
+    assert.equal(audit[names[0]].commit, expected.commit);
+    assert.equal(audit[names[0]].dirty, expected.dirty);
     const second = await prepareSourcePlugins(core, other, undefined, { sources });
     assert.notEqual(composition.id, second.id);
     const entry = join(
