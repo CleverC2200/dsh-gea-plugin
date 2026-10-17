@@ -309,12 +309,8 @@ export async function apply(
   ctx.provide("geaMcp", createGatewayMcpService(ctx, business));
   registerGeaTools(ctx, business, capability);
   ctx.effect(() => mountBusinessPrompts(ctx, business, capability));
-  // 每步把"用户这一轮问的是什么"钉在消息末尾：系统提示里的位置段只能劝阻，
-  // 长轮次（一轮 17 次工具调用）里模型会把用户那条消息丢掉，最后说自己"没收到提问"。
-  const resetReadQuestion = (question: string, scope: string) => {
-    business.repeatReads().clear(scope);
+  const resetReadTurn = (scope: string) => {
     business.clearTurnReplays(scope);
-    business.rememberTurnQuestion(scope, question);
     business.clearTurnStops(scope);
   };
   // native pre-step.messages 是本步新领取的消息，不是全历史。领取新问题时（提示组装前）清理，
@@ -323,7 +319,7 @@ export async function apply(
     ctx.on("agent/inbox/claimed", ({ agent, message }) => {
       if (message.source.kind !== "user") return;
       const question = lastUserQuestion([message]);
-      if (question) resetReadQuestion(question, agent.id);
+      if (question) resetReadTurn(agent.id);
     }),
   );
   ctx.effect(() => async () => {

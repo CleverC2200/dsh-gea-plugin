@@ -115,7 +115,7 @@ macOS 对每个 required Core 保留独立原生隔离测试，通过本机 SDK 
 
 ## 异步执行与确定性检查
 
-[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出状态、参数快照、grant、执行 lease 与证据 store；[`prompt-runtime`](../src/host/prompt-runtime.ts) 接入真实 Host hooks。迟到的失败、成功和回读视图不进入新轮次或新资源的状态，持久化期间失去归属也不发布当前证据。预算与 UI mask 继续由原 admission 状态管理；详细执行条件见 [执行链](execution-logic.md)。
+[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出状态、参数快照、grant、执行 lease 与证据 store；[`prompt-runtime`](../src/host/prompt-runtime.ts) 接入真实 Host hooks。迟到的失败、成功和回读视图不进入新轮次或新资源的状态，持久化期间失去归属也不发布当前证据。业务工具权限与页面引用继续由原 admission 状态管理；详细执行条件见 [执行链](execution-logic.md)。
 
 | 检查范围                                  | 现有入口与边界                                                                                                                                                                                                                        |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

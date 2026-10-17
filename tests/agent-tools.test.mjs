@@ -969,7 +969,7 @@ test(
         );
       },
     );
-    await t.test("同一轮第二次读这一屏被挡回，避免工具调用堆成一组把正文挤进折叠区", async () => {
+    await t.test("同一轮再次读当前页保留可回读的证据引用", async () => {
       outcome = "visible-context-twice";
       modelRequests = [];
       await ended(
@@ -1016,8 +1016,8 @@ test(
         (message) => message.role === "tool" && message.tool_call_id === "visible-context-2",
       );
       assert.match(first.content, /current-visible-page/);
-      assert.match(second.content, /PAGE_CONTEXT_ALREADY_READ/);
-      assert.match(second.content, /本轮已经读过/);
+      assert.equal(JSON.parse(second.content).projection, "reference");
+      assert.equal(typeof JSON.parse(second.content).evidenceId, "string");
     });
     await t.test(
       "an unsynchronised page context is a safe tool result rather than a visible tool error",

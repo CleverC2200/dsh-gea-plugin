@@ -28,7 +28,7 @@
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
-Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，HTML lease 使用 `gea_page` 读取，以及目录声明的 `gea_plugin_page_apply` 视图动作。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。
+Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，HTML lease 使用 `gea_page` 读取，以及目录声明的 `gea_plugin_page_apply` 视图动作。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。 页面读取保留 focus 摘要、来源及实际覆盖范围；同页同焦点再次调用仍返回当前内容。页面身份 TTL 和 owner 撤销继续生效，工具不再以问题词表或重复窗口决定是否读取。
 
 知识目录、问答及 LightRAG 退场合同见 [知识 MCP](knowledge-mcp.md)。知识工具不要求配置 Cube 来源；未配置 Cube 来源时不注册或调用 Cube 工具。
 
@@ -56,11 +56,11 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 
 `sqlReadLimit` 限定同一 Host 生命周期内对应 Consumer 的物理请求。分页、续期后的再次请求、失败和发出后的取消计数；发出前取消不计数。零额度在登录或委托前拒绝，只开放声明的一个 Consumer，其他 Consumer 直接拒绝；不能换 Consumer 继续使用额度。页数或行数超限拒绝，不截断成完整结果。普通 SQL 失败不累计为后续请求的熔断状态，页面与 RPC 共用该入口。销售只读自动请求另沿 Business 的 `readonlyValidation` 合同计数；历史剩余额度不授权新窗口。
 
-GEA 不设置每轮业务调用、证据回读或重复目录调用次数额度，不因调用次数移除 MCP 或官方 standard 工具。身份、Consumer、资源启用与服务端授权仍按原执行合同校验；官方工具遵循当前权限模式。 证据索引通过 gea_capabilities 按需读取，系统提示不自动追加索引；证据正文回读仍重新核对当前归属和授权。
+在线销售读取、证据回读和原生 MCP 查询不设模型侧每轮调用次数或重复次数额度。再次显式读取会按当前参数执行在线查询，聚合重新复核当前结果；部署显式配置的物理请求额度仍按上一段执行。身份、Consumer、资源启用与服务端授权仍按原执行合同校验；官方工具遵循当前权限模式。证据索引通过 gea_capabilities 按需读取，系统提示不自动追加索引；证据正文回读仍重新核对当前归属和授权。
 
 ## 异步执行与证据归属
 
-[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出、失败/拒权事实、回读视图、执行 lease 与证据 store，并在同一个 lease 内保存调用参数快照与准入 grant。[Prompt runtime](../src/host/prompt-runtime.ts) 在实际工具派发前登记执行，派发结束的唯一 post-execute 消费 token；around-dispatch 失败也撤销元数据。hooks 只转交执行句柄、Core 结果与后续 policy 决定；State 的 `finish` 与 `read` 集中结果发布、来源复核和回读投影，runtime 不再配对另一份 grant Map。原 admission 状态继续管理预算与 UI mask。
+[`PromptExecutionState`](../src/host/prompt-execution-state.ts) 私有持有工具输出、失败/拒权事实、回读视图、执行 lease 与证据 store，并在同一个 lease 内保存调用参数快照与准入 grant。[Prompt runtime](../src/host/prompt-runtime.ts) 在实际工具派发前登记执行，派发结束的唯一 post-execute 消费 token；around-dispatch 失败也撤销元数据。hooks 只转交执行句柄、Core 结果与后续 policy 决定；State 的 `finish` 与 `read` 集中结果发布、来源复核和回读投影，runtime 不再配对另一份 grant Map。原 admission 状态继续管理业务工具权限与页面引用。
 
 轮次、实际preset、Agent状态与store身份epoch决定执行是否仍有效。迟到失败、成功和目录事实只记到原执行；新轮或资源切换后的旧结果不能更新当前状态。原始证据写入之后再次核归属，失去归属时不向当前轮发布回执或投影；文件仍保留。回读重新核原 grant/owner/资源，视图去重也只属于当前有效执行，不由同一个Session地址直接授予。
 

@@ -50,69 +50,6 @@ function fixture(t) {
     tools.get(name).execute(args, { agent: agentFor(scope), signal: new AbortController().signal });
   return { business, tools, execute };
 }
-test("actual tool stops distinct detail reads at 20 but leaves aggregation and other sessions usable", async (t) => {
-  const f = fixture(t);
-  let reads = 0;
-  t.mock.method(f.business, "agentQuery", async () => {
-    reads++;
-    return "{}";
-  });
-  for (let n = 0; n < 20; n++)
-    await f.execute("gea_sales_plan_read", { kind: "detail", query: { planId: String(n) } });
-  const limited = JSON.parse(
-    await f.execute("gea_sales_plan_read", { kind: "detail", query: { planId: "21" } }),
-  );
-  assert.equal(limited.code, "GEA_PLAN_READ_LIMIT");
-  assert.equal(reads, 20);
-  await f.execute("gea_sales_plan_read", { kind: "aggregate", query: { periodId: "p" } });
-  assert.equal(reads, 21);
-  await f.execute("gea_sales_plan_read", { kind: "detail", query: { planId: "21" } }, "two");
-  assert.equal(reads, 22);
-  f.business.clearTurnReplays("one");
-  f.business.repeatReads().clear("one");
-  await f.execute("gea_sales_plan_read", { kind: "detail", query: { planId: "21" } });
-  assert.equal(reads, 23);
-});
-test("aggregate argument order does not trigger a new scan and a replay keeps the summary table intact", async (t) => {
-  const f = fixture(t);
-  let reads = 0;
-  const result = JSON.stringify({
-    query: { kind: "aggregate" },
-    coverage: "complete",
-    value: { basis: "x".repeat(9000), groups: [{ amt: "EXACT_TABLE_AT_END" }] },
-  });
-  t.mock.method(f.business, "agentQuery", async () => {
-    reads++;
-    return result;
-  });
-  await f.execute("gea_sales_plan_read", {
-    kind: "aggregate",
-    query: { periodId: "p", orderType: "M" },
-  });
-  for (let i = 0; i < 5; i++)
-    assert.match(
-      await f.execute("gea_sales_plan_read", {
-        query: { orderType: "M", periodId: "p" },
-        kind: "aggregate",
-      }),
-      /EXACT_TABLE_AT_END/,
-    );
-  assert.equal(reads, 1);
-});
-test("resetting one conversation preserves another conversation guard and replay", (t) => {
-  const f = fixture(t);
-  for (let n = 0; n < 20; n++) f.business.allowPlanRead("two", false);
-  f.business.rememberTurnReplay("two", "key", "two-private");
-  f.business.stopTurn("two", "reason");
-  f.business.clearTurnReplays("one");
-  f.business.clearTurnStops("one");
-  assert.equal(f.business.allowPlanRead("two", false), false);
-  assert.equal(f.business.turnReplay("two", "key"), "two-private");
-  assert.equal(f.business.turnStopped("two"), "reason");
-  f.business.clearTurnReplays();
-  assert.equal(f.business.turnReplay("two", "key"), undefined);
-});
-
 const aggregateReceipt = () =>
   JSON.stringify({
     source: "GEA_LIVE_READONLY",
@@ -133,9 +70,8 @@ const aggregateReceipt = () =>
 
 test("success evidence survives a whole-turn stop but is cleared on a new question or identity change", async (t) => {
   const f = fixture(t);
-  t.mock.method(f.business, "agentQuery", async () => aggregateReceipt());
-  await f.execute("gea_sales_plan_read", { kind: "aggregate", query: { periodId: "20261001" } });
-  f.business.stopTurn("one", "预算耗尽");
+  f.business.rememberTurnReplay("one", "plan|aggregate", aggregateReceipt());
+  f.business.stopTurn("one", "网关会话已失效", "session-expired");
   const stopped = JSON.parse(
     await f.execute("gea_sales_plan_read", { kind: "list", query: { periodId: "20261001" } }),
   );

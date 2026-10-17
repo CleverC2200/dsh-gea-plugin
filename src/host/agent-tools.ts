@@ -11,9 +11,6 @@ import { summarizeVisibleWorkbenchContext } from "./visible-context-summary.ts";
 import { findRecipe, missingRecipeParams, recipesFor } from "../capability/recipes.ts";
 import { LAYER_POLICY } from "../capability/layers.ts";
 import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
-import { REPEAT_TURN_LIMIT } from "./repeat-guard.ts";
-
-import { pageIntentOf } from "./page-intent.ts";
 
 import { readableError } from "../shared/abort.ts";
 import { didYouMean } from "../shared/name-lookup.ts";
@@ -79,36 +76,6 @@ export function registerGeaTools(
     });
   };
 
-  /**
-   * 每次应答最多读一次"这一屏"。
-   *
-   * 线上实测：一轮里 gea_visible_workbench_context 被调了 3 次（说明里写着每轮最多一次，
-   * 模型没听），结果工具调用被折叠成一组、正文被挤进折叠区。这里做硬上限：
-   * 同一会话 + 同一焦点 + 页面序列号没变，窗口内再读就只回"本轮已读过"。
-   */
-  const VISIBLE_CONTEXT_REPEAT_WINDOW_MS = 90_000;
-  const visibleContextReads = new Map<string, { at: number; focus: string; sequence?: number }>();
-  const visibleContextGuard = (
-    sessionId: string,
-    focus: string,
-    sequence: number | undefined,
-  ): string | undefined => {
-    const previous = visibleContextReads.get(sessionId);
-    if (!previous) return undefined;
-    if (Date.now() - previous.at > VISIBLE_CONTEXT_REPEAT_WINDOW_MS) return undefined;
-    if (previous.focus !== focus) return undefined;
-    // 页面真的翻页/刷新了，就允许再读一次。
-    if (previous.sequence !== sequence) return undefined;
-    return JSON.stringify({
-      source: "GEA_RENDERED_WORKBENCH",
-      coverage: "none",
-      authority: "read-only-ui-context",
-      availability: "already-read",
-      code: "PAGE_CONTEXT_ALREADY_READ",
-      note: "这一屏本轮已经读过（同一焦点每次应答最多读一次）：请直接用手上的证据作答；确实要看另一部分，就换一个更具体的 focus 再读一次。",
-    });
-  };
-
   /** 把通道顺序并进工具结果；结果不是 JSON 就原样返回，绝不让"给建议"变成"给报错"。 */
   const withChannels = (payload: string, plan: ChannelPlan): string => {
     try {
@@ -118,89 +85,6 @@ export function registerGeaTools(
     } catch {
       return payload;
     }
-  };
-
-  /**
-   * 同一轮里的重复读闸门（见 host/repeat-guard.ts）。
-   *
-   * 线上实测一轮 117 步：同一个模型明细读了 31 次、同一份目录索引 24 次。元信息去重只省了
-   * 带宽，模型还是每次都占一步。返回 undefined 表示"照常读"；返回字符串就是"别读了"的提示；
-   * 累计到上限后停止元数据探索；业务读取的重复耗尽仍交给整轮止损。
-   */
-  const overRepeated = (
-    scope: string,
-    key: string,
-    what: string,
-    /** 命中"已读过"时可以把内容原样还回去（见 business.turnReplay）。 */
-    replay?: () => string | undefined,
-  ): string | undefined => {
-    const verdict = business.repeatReads().note(scope, key);
-    const metadata = key.startsWith("catalog|") || key.startsWith("tools|");
-    const metadataStopped = metadata && business.repeatReads().repeats(scope) >= REPEAT_TURN_LIMIT;
-    if (verdict === "fresh" && !metadataStopped) return undefined;
-    if (verdict === "stop" || metadataStopped) {
-      // Metadata convergence does not revoke data already returned or block unfinished queries.
-      if (metadata)
-        return JSON.stringify({
-          source: "GEA_METADATA_REPEAT_STOPPED",
-          availability: "metadata-stopped",
-          note: `本轮各项读取累计重复 ${business.repeatReads().repeats(scope)} 次；停止重复读取「${what}」。已有目录继续有效，按现有字段完成未完成的单模型业务查询；不要重读目录或改别名继续找。`,
-          availableEvidence: business.successfulPlanEvidence(scope),
-        });
-      const reason = `本轮各项读取累计重复 ${business.repeatReads().repeats(scope)} 次（本次：${what}）`;
-      business.stopTurn(scope, reason);
-      throw new Error(
-        `GEA_TURN_REPEAT_STOPPED: ${reason}。本轮所有取数工具都已停用，请用已取得的证据作答并说明缺口。`,
-      );
-    }
-    // 去重要省带宽，但不能扣内容：线上实测（session-bbd8f3be）只回一句"已读过"时，
-    // 模型拿不回它正需要的那份目录，就一遍遍重发，直到整轮停手。
-    const content = replay?.();
-    if (content) return content;
-    return JSON.stringify({
-      source: "GEA_READ_DEDUP",
-      availability: "already-read",
-      note: `「${what}」这一轮已经读过了（同一份内容最多认真回两次）：直接用手上的结果，别再读一遍；要看别的模型/别的范围就换参数。`,
-    });
-  };
-
-  /** 重放已读内容：短的原样给，长的只给开头（去重省上下文，但内容不能扣）。 */
-  const REPLAY_FULL_LIMIT = 8_000;
-  const REPLAY_HEAD_CHARS = 1_200;
-  /** 同一份内容最多完整重放几次：再往后只给开头，免得把窗口灌满。 */
-  const REPLAY_FULL_TIMES = 2;
-  const REPLAY_NOTE =
-    "\n\n（同一轮里这一份已经读过了：上面就是它的内容，**直接用**；" +
-    "要看别的范围或别的模型就换参数，不要原样再读一次。）";
-  /**
-   * 同一份内容被重放过几次（scope + key）。
-   *
-   * 线上实测（session-66071a55）：模型在"读索引 → 挑一个模型看成员 → 不行 → 再读索引"
-   * 这个模式里把同一份索引读了 11 次、同一个模型的成员读了 9 次——它确实需要随时看到
-   * 那份索引，但不需要每次都看全文（7.3k 字符 ×11 就把窗口灌满了）。
-   * 所以：前两次原样重放，之后只给开头 + 一句"重读不会有新信息"。
-   */
-  const replayCounts = new Map<string, number>();
-  const replayOf = (scope: string, key: string): string | undefined => {
-    const text = business.turnReplay(scope, key);
-    if (text === undefined) {
-      // 上一轮留下的计数不能影响这一轮：内容副本没了就把计数清掉（换轮/换身份都会走这里）。
-      replayCounts.delete(`${scope}\u0000${key}`);
-      return undefined;
-    }
-    const id = `${scope}\u0000${key}`;
-    const times = (replayCounts.get(id) ?? 0) + 1;
-    replayCounts.set(id, times);
-    // 前两次（且内容不超预算）原样重放；之后只给开头 + 一句"重读不会有新信息"，
-    // 这样模型想反复核对还能核，但不会把同一份 7k 字符灌十几遍。
-    // aggregate 本身已是有界汇总，不能截成只剩 basis 的开头而丢掉已取到的表。
-    if (key.startsWith("plan|") && text.includes('"kind":"aggregate"')) return text + REPLAY_NOTE;
-    if (times <= REPLAY_FULL_TIMES && text.length <= REPLAY_FULL_LIMIT) return text + REPLAY_NOTE;
-    return (
-      text.slice(0, REPLAY_HEAD_CHARS) +
-      `\n…（这份内容共 ${text.length} 字符，本轮已经给过 ${times - 1} 次，这里只重放开头。）` +
-      "\n（同一份内容重读不会带来新信息：要么换 model=/换参数去查别的，要么就用手上已有的证据作答。）"
-    );
   };
 
   ctx.effect(() =>
@@ -301,25 +185,6 @@ export function registerGeaTools(
               note: `【本轮已停手】${stop}。本轮所有取数工具都已停用：不要再换工具/换写法试，直接用已经拿到的证据作答；确实缺数据就如实说清缺哪一项，然后结束这一轮。`,
             });
           const key = `plan|${JSON.stringify({ kind: args.kind, query: Object.fromEntries(Object.entries(args.query ?? {}).sort(([a], [b]) => a.localeCompare(b))) })}`;
-          const repeat = overRepeated(scope, key, `销售计划 ${String(args.kind)}`, () =>
-            replayOf(scope, key),
-          );
-          if (repeat) return repeat;
-          // 聚合已在宿主复核过完整性：同轮同范围复用该带时间戳的快照，刷新需新一轮。
-          if (args.kind === "aggregate") {
-            const cached = business.turnReplay(scope, key);
-            if (cached) return cached + REPLAY_NOTE;
-          }
-          if (!business.allowPlanRead(scope, args.kind === "aggregate"))
-            return JSON.stringify({
-              source: "GEA_READ_BUDGET",
-              coverage: "none",
-              code: "GEA_PLAN_READ_LIMIT",
-              note:
-                args.kind === "aggregate"
-                  ? "本轮聚合次数已达上限，请按已有汇总作答并说明缺口。"
-                  : "本轮明细读取已达 20 次上限。汇总/占比请改用 kind=aggregate，传 periods 返回的 periodId；不要逐单翻页拼全量。",
-            });
           try {
             const text = await business.agentQuery(args, exec.signal);
             business.rememberTurnReplay(scope, key, text);
@@ -542,39 +407,7 @@ export function registerGeaTools(
         }),
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error("WORKBENCH_SESSION_REQUIRED");
-          // 默认不读页面：只有用户这一轮明确表达了页面意图（"这一屏/这几行/展开/选中/这单"…）
-          // 才生成快照。宿主判定，不靠模型自觉——线上实测一进对话就先拉一份整屏快照，
-          // 上下文当场被撑起来。
-          const question = business.turnQuestion(exec.agent.id);
-          const intent = pageIntentOf(question);
-          if (question && !intent)
-            return JSON.stringify({
-              source: "GEA_RENDERED_WORKBENCH",
-              coverage: "none",
-              availability: "no-page-intent",
-              code: "PAGE_INTENT_MISSING",
-              question,
-              note:
-                "这一轮用户没有页面意图（默认不读页面，免得把整屏数据塞进上下文）：" +
-                "只有用户明确说「读这一屏/看这几行/展开/选中的/这单」这类话时才读页面快照。" +
-                "当前问题请直接取数：销售提报/计划结果用授权Hive Cube模型，在线工具仅用于实时审批；其它数据按授权模型读取；" +
-                "如果用户确实需要屏幕上的内容，直接说明「要看这一屏请明确说一声」。",
-            });
           const focus = typeof args?.focus === "string" ? args.focus : undefined;
-          const sequence = business.workbenchStateSnapshot?.(exec.agent.id)?.sequence;
-          // 硬上限：同一轮同一焦点最多读一次，避免把工具调用堆成一组、正文被折叠。
-          const blocked = visibleContextGuard(
-            exec.agent.id,
-            (focus ?? "").trim().toLowerCase(),
-            sequence,
-          );
-          if (blocked) return withChannels(blocked, channelsFor(exec.agent.id));
-          // 先占位再读：同一轮的第二次调用（可能并发下发）必须被挡住。
-          visibleContextReads.set(exec.agent.id, {
-            at: Date.now(),
-            focus: (focus ?? "").trim().toLowerCase(),
-            sequence,
-          });
           const snapshot = await business.waitVisibleWorkbenchContext(exec.agent.id, 2000, focus);
           const plan = channelsFor(exec.agent.id);
           // 已经压成摘要了就不必再让子 Agent 压一遍。
