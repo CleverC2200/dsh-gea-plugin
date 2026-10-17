@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import * as candidate from "../scripts/source-combination-integrity.mjs";
 import { createReadScope } from "../scripts/delivery-input-scope.mjs";
+import { spawnSync } from "node:child_process";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 const abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 async function fixture(t) {
@@ -14,6 +15,68 @@ async function fixture(t) {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return root;
 }
+test("the update baseline consumes its verified manifest and component metadata without rereading them", async (t) => {
+  const runtime = await fixture(t),
+    id = randomUUID(),
+    directory = join(runtime, "source-combinations", id),
+    name = "fixture-plugin";
+  await fs.mkdir(join(directory, "node_modules", name), { recursive: true });
+  await fs.writeFile(
+    join(directory, "node_modules", name, "package.json"),
+    JSON.stringify({ name, version: "1.0.0" }),
+  );
+  await fs.writeFile(
+    join(directory, "company-plugins.json"),
+    JSON.stringify({
+      [name]: {
+        version: "1.0.0",
+        origin: "https://fixture.invalid/source",
+        commit: "a".repeat(40),
+      },
+    }),
+  );
+  const record = {
+    composition: { id, dependencies: { [name]: "1.0.0" } },
+    files: await candidate.resourceDigests(directory),
+    externalRoots: [],
+    externalFiles: {},
+    externalLockFiles: [],
+  };
+  await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record));
+  const manifestSha256 = digest(await fs.readFile(join(directory, "combination.json")));
+  await fs.writeFile(
+    join(runtime, "source-selection.json"),
+    JSON.stringify({ id, manifestSha256 }),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
+const reads={};
+for(const target of [fs,fs.promises]){
+ const read=target.readFile;
+ target.readFile=function(file,...args){reads[file]=(reads[file]??0)+1;return read.call(this,file,...args);};
+}
+syncBuiltinESMExports();
+const {readSourceUpdateBaseline}=await import(${JSON.stringify(new URL("../scripts/source-update.mjs", import.meta.url).href)});
+const baseline=await readSourceUpdateBaseline(${JSON.stringify(runtime)});
+console.log(JSON.stringify({baseline,reads}));
+`,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const { baseline, reads } = JSON.parse(result.stdout);
+  assert.equal(baseline.id, id);
+  assert.equal(baseline.manifestSha256, manifestSha256);
+  assert.equal(baseline.components[name].version, "1.0.0");
+  assert.equal(reads[join(directory, "combination.json")], 1);
+  assert.equal(reads[join(directory, "company-plugins.json")], 2);
+});
 test("public digest preserves full bytes and supported path/FileHandle inputs", async (t) => {
   const root = await fixture(t),
     file = join(root, "a");

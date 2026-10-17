@@ -1,10 +1,7 @@
 /** Start the current source composition in an isolated, configured DSH profile. */
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
-import { readDeployment } from "./deployment.mjs";
 import { runSourceProfile } from "./start-isolated-validation.mjs";
-import { readSourceSelection, requireSourceInputs } from "./source-profile.mjs";
-import { admitSourceWindow } from "./window-admission.mjs";
 const root = resolve(import.meta.dirname, "..");
 try {
   const { values } = parseArgs({
@@ -34,26 +31,10 @@ try {
       owner: values.owner,
       freezeSha256: values["freeze-sha256"],
     };
-    await admitSourceWindow({
-      window,
-      mode: "source-host",
-      core,
-      runtime,
-      config: resolve(values.config ?? "gea.config.json"),
-      sourcesFile: values.sources,
-    });
-    const sources = values.sources
-      ? JSON.parse(await (await import("node:fs/promises")).readFile(values.sources, "utf8"))
-      : undefined;
-    if ((await readSourceSelection(runtime)) === undefined) requireSourceInputs(sources);
-    const deployment = await readDeployment(resolve(values.config ?? "gea.config.json"), {
-      resolveCredentials: false,
-      credentialEnv: process.env,
-    });
     const port = Number(values.port);
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw Error("GEA_PORT_INVALID");
-    await runSourceProfile(core, runtime, true, deployment, port, {
-      sources,
+    await runSourceProfile(core, runtime, true, undefined, port, {
+      sourcesFile: values.sources,
       window,
       config: resolve(values.config ?? "gea.config.json"),
       dev: values.dev,

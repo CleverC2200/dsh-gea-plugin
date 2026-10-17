@@ -89,6 +89,8 @@ node scripts/start-isolated-validation.mjs --window /absolute/open-window.json -
 
 直接调用 `runSourceProfile` 时，在最后的 options 提供 `window: {file, case, owner, freezeSha256}`，隔离 source 委托也提供 `mode: "isolated-source-host"`。默认 core-only/source-host 由 plugins 参数决定，参数与 mode 不匹配拒绝；省略窗口不成为绕过。`--help` 只显示说明。
 
+普通 CLI 与测试包装共用 `runSourceProfile` 启动事务。无副作用的窗口检查通过后，入口取得已有 `source-profile.lock`，重新核对窗口、冻结输入与当前选择，在锁内完整验证选中组合一次，并直接消费该次验证的组合及组件元数据。完整性或凭据拒绝仍不创建 Profile、不启动 Host；验证期间只允许临时持有锁，失败时释放。复制、更新和下一次启动仍各自验证当前内容，不跨事务复用。
+
 缺声明、关闭、暂停、错误 case/owner/mode/runtime/Core、预算 unknown/缺失/不一致/耗尽，以及配置、候选、组合或资源摘要错误都在本入口的 profile/config/env、keychain、启动进程和网络动作之前拒绝。预检中的共享候选 CLI/Git 仅做本地只读输入检查。错误不改来源、恢复旧协议或自动重试；真实关闭、预算和停止条件仍由原有效窗口负责。
 
 `test:window` 通过同一 CLI/公开函数观察文件、环境、keychain、启动进程与网络 seam。正确声明只进入 loopback fixture，真实固定 Core 的 CLI/lib 不替换，Host/Native 不实际启动。这个结果不是模型、业务、安装或真实窗口验收。

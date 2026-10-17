@@ -45,11 +45,15 @@ function sameDigests(actual, expected) {
 
 /** Reject incomplete snapshots before changing the selected combination. */
 export async function readSourceCombination(runtime, id, core, { readScope } = {}) {
+  return (await readSourceCombinationRecord(runtime, id, core, { readScope })).record.composition;
+}
+
+export async function readSourceCombinationRecord(runtime, id, core, { readScope } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const directory = join(runtime, "source-combinations", id);
-  const record = JSON.parse(
-    (await readBytes(join(directory, "combination.json"), readScope)).toString("utf8"),
-  );
+  const bytes = await readBytes(join(directory, "combination.json"), readScope);
+  const manifestSha256 = createHash("sha256").update(bytes).digest("hex");
+  const record = JSON.parse(bytes.toString("utf8"));
   if (record.composition.id !== id) throw Error("SOURCE_COMBINATION_ID_MISMATCH");
   if (
     core &&
@@ -66,10 +70,15 @@ export async function readSourceCombination(runtime, id, core, { readScope } = {
     Array.isArray(record.composition.dependencies)
   )
     throw Error("INVALID_SOURCE_DEPENDENCIES");
+  let plugins = {};
   if (Object.keys(record.composition.dependencies).length) {
-    const plugins = JSON.parse(
-      (await readBytes(join(directory, "company-plugins.json"), readScope)).toString("utf8"),
-    );
+    const pluginBytes = await readBytes(join(directory, "company-plugins.json"), readScope);
+    if (
+      createHash("sha256").update(pluginBytes).digest("hex") !==
+      record.files["company-plugins.json"]
+    )
+      throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
+    plugins = JSON.parse(pluginBytes.toString("utf8"));
     for (const [name, version] of Object.entries(record.composition.dependencies)) {
       if (
         !/^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name) ||
@@ -104,7 +113,7 @@ export async function readSourceCombination(runtime, id, core, { readScope } = {
         kind: record.externalLockFiles.includes(entry.path) ? "lock" : "external-dependency",
       })),
     });
-  return record.composition;
+  return { record, plugins, manifestSha256 };
 }
 
 /** Fix the resolved dependency graph, including built core files and transitive links. */

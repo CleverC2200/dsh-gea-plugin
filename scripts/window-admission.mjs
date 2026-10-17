@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   readSourceSelection,
-  readSourceCombination,
+  readSourceCombinationRecord,
   resolveSourceInputs,
 } from "./source-profile.mjs";
 import { sourcePlugins } from "./source-composition.mjs";
@@ -24,16 +24,16 @@ export const sourceWindowModes = Object.freeze([
   "isolated-source-host",
   "isolated-core-host",
 ]);
-export async function admitSourceWindow({
-  window,
-  mode,
-  core,
-  runtime,
-  config,
-  deployment,
-  sources,
-  sourcesFile,
-}) {
+export async function checkSourceWindow(request) {
+  await inspectSourceWindow(request);
+}
+export async function admitSourceWindow(request) {
+  return inspectSourceWindow(request, readSourceCombinationRecord);
+}
+async function inspectSourceWindow(
+  { window, mode, core, runtime, config, deployment, sources, sourcesFile },
+  readSnapshot,
+) {
   if (
     !window?.file ||
     !window.case ||
@@ -146,15 +146,25 @@ export async function admitSourceWindow({
     if (!binding?.runtime || !binding.id || !binding.manifestSha256)
       throw Error("WINDOW_COMBINATION_REQUIRED");
     const directory = join(binding.runtime, "source-combinations", binding.id);
-    if (digest(await readFile(join(directory, "combination.json"))) !== binding.manifestSha256)
+    let verified;
+    if (readSnapshot) verified = await readSnapshot(binding.runtime, binding.id, core);
+    else {
+      const bytes = await readFile(join(directory, "combination.json"));
+      verified = {
+        record: JSON.parse(bytes),
+        manifestSha256: digest(bytes),
+        plugins: JSON.parse(await readFile(join(directory, "company-plugins.json"), "utf8")),
+      };
+    }
+    if (verified.manifestSha256 !== binding.manifestSha256)
       throw Error("WINDOW_COMBINATION_MISMATCH");
-    const composition = await readSourceCombination(binding.runtime, binding.id, core);
+    const composition = verified.record.composition;
     if (
       JSON.stringify(Object.keys(composition.dependencies).sort()) !==
       JSON.stringify(sourcePlugins.map((plugin) => plugin.name).sort())
     )
       throw Error("WINDOW_COMBINATION_MISMATCH");
-    const metadata = JSON.parse(await readFile(join(directory, "company-plugins.json"), "utf8"));
+    const metadata = verified.plugins;
     for (const entry of candidate.repositories) {
       const plugin = sourcePlugins.find((plugin) => plugin.repo === entry.repo);
       if (
@@ -164,19 +174,20 @@ export async function admitSourceWindow({
       )
         throw Error("WINDOW_SOURCE_CANDIDATE_MISMATCH");
     }
-    return directory;
+    return { directory, composition, metadata, manifestSha256: verified.manifestSha256 };
   };
   const combination = frozen.combination;
+  let snapshot, selected, fixed;
   if (mode === "isolated-core-host") {
     if (combination?.kind !== "core" || sources !== undefined || sourcesFile !== undefined)
       throw Error("WINDOW_COMBINATION_MISMATCH");
   } else if (combination?.kind === "selection") {
     if (mode !== "source-host" || sources !== undefined || sourcesFile !== undefined)
       throw Error("WINDOW_COMBINATION_MISMATCH");
-    const selected = await readSourceSelection(expectedRuntime);
+    selected = await readSourceSelection(expectedRuntime);
     if (selected?.id !== combination.id || selected?.manifestSha256 !== combination.manifestSha256)
       throw Error("WINDOW_COMBINATION_MISMATCH");
-    await verifySnapshot({ ...combination, runtime: expectedRuntime });
+    snapshot = await verifySnapshot({ ...combination, runtime: expectedRuntime });
   } else if (combination?.kind === "sources") {
     if (sources === undefined && sourcesFile === undefined)
       throw Error("WINDOW_SOURCE_INPUTS_REQUIRED");
@@ -187,10 +198,12 @@ export async function admitSourceWindow({
       (sourcesFile && (await realpath(sourcesFile)) !== (await realpath(combination.file)))
     )
       throw Error("WINDOW_SOURCE_DIGEST_MISMATCH");
-    const fixed = JSON.parse(bytes);
+    fixed = JSON.parse(bytes);
     if (sources !== undefined && JSON.stringify(sources) !== JSON.stringify(fixed))
       throw Error("WINDOW_SOURCE_DIGEST_MISMATCH");
-    const directory = await verifySnapshot(combination.snapshot);
+    snapshot = await verifySnapshot(combination.snapshot);
+    if (!readSnapshot) return;
+    const { directory } = snapshot;
     const entries = await resolveSourceInputs(fixed, { requireEntries: true });
     for (const entry of entries) {
       if (
@@ -212,4 +225,5 @@ export async function admitSourceWindow({
         throw Error("WINDOW_SOURCE_CANDIDATE_MISMATCH");
     }
   } else throw Error("WINDOW_COMBINATION_MISMATCH");
+  return { ...snapshot, selected, sources: fixed };
 }

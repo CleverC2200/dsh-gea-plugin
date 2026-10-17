@@ -7,6 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { isNewer } from "../desktop/updates.mjs";
 import {
   readSourceCombination,
+  readSourceCombinationRecord,
   mergeSourceComponents,
   sourceComponent,
 } from "./source-profile.mjs";
@@ -27,27 +28,14 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const json = async (file) => JSON.parse(await fs.readFile(file, "utf8"));
 
 /** Capture the actual selected component identities, rather than an offered channel list. */
-export async function readSourceUpdateBaseline(
-  runtime,
-  core,
-  { io = fs } = {},
-) {
-  const selection = JSON.parse(
-    await io.readFile(join(runtime, "source-selection.json"), "utf8"),
+export async function readSourceUpdateBaseline(runtime, core, { io = fs } = {}) {
+  const selection = JSON.parse(await io.readFile(join(runtime, "source-selection.json"), "utf8"));
+  const { record, plugins, manifestSha256 } = await readSourceCombinationRecord(
+    runtime,
+    selection.id,
+    core,
   );
-  await readSourceCombination(runtime, selection.id, core);
-  const directory = join(runtime, "source-combinations", selection.id);
-  const recordBytes = await fs.readFile(join(directory, "combination.json"));
-  const record = JSON.parse(recordBytes);
-  const manifestSha256 = digest(recordBytes);
-  if (selection.manifestSha256 !== manifestSha256)
-    throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
-  const pluginBytes = await fs.readFile(
-    join(directory, "company-plugins.json"),
-  );
-  if (digest(pluginBytes) !== record.files["company-plugins.json"])
-    throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
-  const plugins = JSON.parse(pluginBytes);
+  if (selection.manifestSha256 !== manifestSha256) throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
   const components = {};
   for (const name of Object.keys(record.composition.dependencies))
     components[name] = sourceComponent(record, plugins, name);
@@ -95,24 +83,16 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
         if (!artifact.startsWith(channelDirectory + sep))
           throw Error("SOURCE_ARTIFACT_OUTSIDE_CHANNEL");
         const bytes = await io.readFile(artifact);
-        if (digest(bytes) !== release.downloadSha256)
-          throw Error("RELEASE_CHECKSUM_MISMATCH");
+        if (digest(bytes) !== release.downloadSha256) throw Error("RELEASE_CHECKSUM_MISMATCH");
         const reference = JSON.parse(bytes);
-        if (reference.package !== release.package)
-          throw Error("SOURCE_ARTIFACT_PACKAGE_MISMATCH");
-        await readSourceCombination(runtime, reference.combination, core);
-        const directory = join(
+        if (reference.package !== release.package) throw Error("SOURCE_ARTIFACT_PACKAGE_MISMATCH");
+        const { record, plugins, manifestSha256 } = await readSourceCombinationRecord(
           runtime,
-          "source-combinations",
           reference.combination,
+          core,
         );
-        const recordBytes = await fs.readFile(
-          join(directory, "combination.json"),
-        );
-        if (digest(recordBytes) !== reference.manifestSha256)
+        if (manifestSha256 !== reference.manifestSha256)
           throw Error("SOURCE_ARTIFACT_MANIFEST_MISMATCH");
-        const record = JSON.parse(recordBytes);
-        const plugins = await json(join(directory, "company-plugins.json"));
         const actual = sourceComponent(record, plugins, release.package);
         if (
           actual.version !== release.version ||
@@ -144,8 +124,7 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
     operation.phase = "validating";
     const current = await readSourceUpdateBaseline(runtime, core);
     operation.before = current;
-    if (proposal.baseline.core !== current.core)
-      throw Error("STALE_SOURCE_CORE");
+    if (proposal.baseline.core !== current.core) throw Error("STALE_SOURCE_CORE");
     const planned = { ...current.components };
     for (const [name, candidate] of prepared) {
       const previous = current.components[name];
@@ -179,9 +158,7 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
       compatibility[name] = {
         core: declared.core.filter((value) => advertised.core.includes(value)),
         interface: "current-unified-v2",
-        workbench: declared.workbench.filter((value) =>
-          advertised.workbench.includes(value),
-        ),
+        workbench: declared.workbench.filter((value) => advertised.workbench.includes(value)),
       };
     }
     for (const name of Object.keys(planned)) {
@@ -189,9 +166,7 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
       if (
         !accepted?.core?.includes(current.core) ||
         accepted.interface !== "current-unified-v2" ||
-        !accepted.workbench?.includes(
-          planned["@cleverc2200/dsh-agent-workbench"].version,
-        )
+        !accepted.workbench?.includes(planned["@cleverc2200/dsh-agent-workbench"].version)
       )
         throw Error("SOURCE_RELEASE_INCOMPATIBLE");
     }
@@ -213,18 +188,13 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
     const combination = await mergeSourceComponents(
       runtime,
       current.id,
-      Object.fromEntries(
-        [...prepared].map(([name, value]) => [name, value.combination]),
-      ),
+      Object.fromEntries([...prepared].map(([name, value]) => [name, value.combination])),
       core,
       {
         expectedManifests: {
           [current.id]: current.manifestSha256,
           ...Object.fromEntries(
-            [...prepared.values()].map((value) => [
-              value.combination,
-              value.manifestSha256,
-            ]),
+            [...prepared.values()].map((value) => [value.combination, value.manifestSha256]),
           ),
         },
       },
@@ -234,20 +204,10 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
       join(runtime, "source-combinations", combination.id, "combination.json"),
     );
     const assembledPlugins = await json(
-      join(
-        runtime,
-        "source-combinations",
-        combination.id,
-        "company-plugins.json",
-      ),
+      join(runtime, "source-combinations", combination.id, "company-plugins.json"),
     );
     for (const name of Object.keys(planned))
-      if (
-        !equal(
-          sourceComponent(assembledRecord, assembledPlugins, name),
-          planned[name],
-        )
-      )
+      if (!equal(sourceComponent(assembledRecord, assembledPlugins, name), planned[name]))
         throw Error("SOURCE_MERGE_IDENTITY_MISMATCH");
     assembledRecord.compatibility = compatibility;
     const assembledBytes = JSON.stringify(assembledRecord, null, 2) + "\n";
@@ -271,9 +231,7 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
     await io.rename(temporary, join(runtime, "source-selection.json"));
     operation.activation = "written-unverified";
     operation.phase = "reading-back";
-    const actual = JSON.parse(
-      await io.readFile(join(runtime, "source-selection.json"), "utf8"),
-    );
+    const actual = JSON.parse(await io.readFile(join(runtime, "source-selection.json"), "utf8"));
     if (
       actual.id !== combination.id ||
       actual.manifestSha256 !== manifestSha256 ||
@@ -299,9 +257,7 @@ export async function applySourceUpdate(runtime, proposal, { core, io = fs }) {
           io,
         });
         operation.activation =
-          operation.observed.id === operation.target
-            ? "selected-unverified"
-            : "unchanged";
+          operation.observed.id === operation.target ? "selected-unverified" : "unchanged";
       } catch (observationError) {
         operation.activation = "unknown";
         operation.observationError = observationError.message;
