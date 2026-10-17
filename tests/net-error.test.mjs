@@ -85,16 +85,16 @@ test("已有 code 的错误与用户中止保持原样（不重复包装）", ()
   assert.match(rawReason.message, /GEA_TURN_ABORTED/);
 });
 
-test("model total timeout names the budget without diagnosing a network failure", () => {
+test("model idle timeout names the interval without diagnosing a network failure", () => {
   const error = m.networkError(new DOMException("timeout", "TimeoutError"), {
     what: "GEA 模型网关",
     stage: "流式读取",
-    timeoutMs: 120000,
-    timeoutScope: "model-total",
+    timeoutMs: 300000,
+    timeoutScope: "model-idle",
   });
   assert.equal(error.code, "GEA_NETWORK_TIMEOUT");
-  assert.match(error.message, /总时限.*120 秒/);
-  assert.match(error.message, /已收到响应/);
+  assert.match(error.message, /300 秒/);
+  assert.match(error.message, /心跳/);
   assert.doesNotMatch(error.message, /这不是参数问题|检查到该地址的网络或代理|连接 GEA/);
 });
 

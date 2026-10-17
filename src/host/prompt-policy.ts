@@ -73,44 +73,6 @@ export function allowedTools(profile: PromptProfile, pageTool?: string): Set<str
   return names;
 }
 
-/** GenUI's sign-based colours and auto totals have no domain meaning. Require explicit business labels instead. */
-export function businessUiIssue(input: unknown): string | undefined {
-  let value = input;
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const args = value as Record<string, unknown>;
-    value = args.spec ?? args.json ?? value;
-  }
-  if (typeof value === "string") {
-    try {
-      value = JSON.parse(value);
-    } catch {
-      return undefined;
-    }
-  }
-  const visit = (node: unknown): boolean => {
-    if (Array.isArray(node)) return node.some(visit);
-    if (!node || typeof node !== "object") return false;
-    const record = node as Record<string, unknown>;
-    if (["stat", "hero"].includes(String(record.type)) && record.delta !== undefined) return true;
-    if (
-      record.type === "table" &&
-      (record.total === true ||
-        (Array.isArray(record.types) && record.types.includes("delta")) ||
-        (Array.isArray(record.rows) &&
-          record.rows.some(
-            (row) =>
-              Array.isArray(row) &&
-              row.some((cell) => typeof cell === "string" && /^[+−-]\s*[\d.]/.test(cell.trim())),
-          )))
-    )
-      return true;
-    return Object.values(record).some(visit);
-  };
-  return visit(value)
-    ? "GEA_UI_BUSINESS_SEMANTICS: 不使用自动合计或按正负自动着色的 delta。使用已核实汇总；差额写成带业务含义的中性文字（例如“超计划 100”），需要颜色时明确业务状态。"
-    : undefined;
-}
-
 export function promptMeasurement(system: string, tools: readonly unknown[], extras = "") {
   const definitions = JSON.stringify(tools);
   return {

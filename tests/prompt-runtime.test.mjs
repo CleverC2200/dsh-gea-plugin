@@ -10,7 +10,6 @@ import {
   exactResult,
 } from "../src/host/prompt-evidence.ts";
 import { mountBusinessPrompts } from "../src/host/prompt-runtime.ts";
-import { businessUiIssue } from "../src/host/prompt-policy.ts";
 test("evidence projection preserves exact numbers and scope; original reads cannot cross identities or sessions", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-evidence-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -70,52 +69,6 @@ test("protected evidence restores after restart only with current authorization"
   await assert.rejects(restored.read("another-session", id, 0, 4000, authorize), /UNAVAILABLE/);
   resourceVersion = "revoked";
   await assert.rejects(restored.read("s", id, 0, 4000, authorize), /AUTHORIZATION_CHANGED/);
-});
-
-test("business UI rejects sign-based colours and unverified automatic totals", () => {
-  for (const cell of [" +10", "\t−10", " -.5", "+.2", "\n+  10"])
-    assert.match(
-      businessUiIssue({
-        spec: { items: [{ type: "table", columns: ["差额"], rows: [[cell]] }] },
-      }),
-      /SEMANTICS/,
-    );
-  for (const type of ["hero", "stat"])
-    assert.match(businessUiIssue({ spec: { items: [{ type, delta: "−10" }] } }), /SEMANTICS/);
-  assert.equal(
-    businessUiIssue({
-      spec: {
-        items: [{ type: "table", columns: ["差额"], rows: [[-10], ["少于计划 10"]] }],
-      },
-    }),
-    undefined,
-  );
-  assert.match(
-    businessUiIssue({
-      items: [{ type: "stat", label: "计划差额", value: "100", delta: "+100" }],
-    }),
-    /SEMANTICS/,
-  );
-  assert.match(
-    businessUiIssue({
-      spec: JSON.stringify({
-        items: [{ type: "table", columns: ["金额"], rows: [[1]], total: true }],
-      }),
-    }),
-    /SEMANTICS/,
-  );
-  assert.match(
-    businessUiIssue({
-      items: [{ type: "table", columns: ["差额"], rows: [["+100"]] }],
-    }),
-    /SEMANTICS/,
-  );
-  assert.equal(
-    businessUiIssue({
-      items: [{ type: "table", columns: ["差额"], rows: [["超计划 100"]] }],
-    }),
-    undefined,
-  );
 });
 
 test("one evidence grant never includes another consumer historical receipt", () => {

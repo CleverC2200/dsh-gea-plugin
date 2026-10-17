@@ -20,6 +20,25 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/(?:call-dedup|repeat-guard)\\.ts$",
+      "tests": [
+        "tests/disabled-model-resource.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/agent-read-convergence.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/mcp-failure-guard\\.ts$",
+      "tests": ["tests/current-mcp-tools.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/page-intent\\.ts$",
+      "tests": ["tests/disabled-model-resource.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-worker-control\\.mjs$",
       "tests": [
         "scripts/quality-worker-control.test.mjs",

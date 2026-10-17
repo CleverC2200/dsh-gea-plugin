@@ -4,7 +4,7 @@
   "periodPageSize": 100,
   "requestTimeoutMs": 15000,
   "mcpRequestTimeoutMs": 60000,
-  "modelRequestTimeoutMs": 120000,
+  "modelRequestTimeoutMs": 300000,
   "maxSnapshotBytes": 100000,
   "analysis": {
     "mode": "model",

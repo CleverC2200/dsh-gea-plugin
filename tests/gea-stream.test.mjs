@@ -1,17 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import { createRequire } from "node:module";
 
 const { outputFiles } = await build({
   entryPoints: ["src/shared/gea-stream.ts"],
   bundle: true,
   write: false,
   platform: "node",
-  format: "esm",
+  format: "cjs",
+  packages: "external",
 });
-const { geaTextStream, geaUsage } = await import(
-  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
+const mod = { exports: {} };
+new Function("require", "module", "exports", outputFiles[0].text)(
+  createRequire(import.meta.url),
+  mod,
+  mod.exports,
 );
+const { geaTextStream, geaUsage } = mod.exports;
 const encoder = new TextEncoder();
 const event = (delta, finish = null) =>
   `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\r\n\r\n`;
@@ -32,6 +38,7 @@ test("SSE framing preserves split UTF-8 and multiline data in the final text blo
   let offset = 0;
   const body = new ReadableStream({
     pull(controller) {
+      if (offset === bytes.length) return controller.close();
       controller.enqueue(bytes.slice(offset, ++offset));
     },
     cancel() {
@@ -48,18 +55,18 @@ test("SSE framing preserves split UTF-8 and multiline data in the final text blo
     chunks.find((chunk) => chunk.type === "block-end" && chunk.block.type === "reasoning").block,
     { type: "reasoning", text: "private reasoning" },
   );
-  assert.equal(cancelled, 1);
+  assert.equal(cancelled, 0);
   assert.equal(body.locked, false);
 });
 
-test("EOF, unsupported tools, unknown terminal reasons and reasoning-only stops fail closed", async () => {
+test("EOF, unsupported tools, unknown terminal reasons and empty stops fail closed", async () => {
   for (const [wire, expected] of [
     [event({ content: "partial" }), "GEA_MODEL_INCOMPLETE_STREAM"],
     [event({ content: "partial" }) + "data: [DONE]\n\n", "GEA_MODEL_INCOMPLETE_STREAM"],
     [event({ tool_calls: [{ id: "call-1" }] }), "GEA_MODEL_UNSUPPORTED_TOOL_CALL"],
     [event({ content: "partial" }, "tool_calls"), "GEA_MODEL_INVALID_TOOL_CALL"],
     [event({ content: "partial" }, "content_filter"), "GEA_MODEL_UNSUPPORTED_FINISH_REASON"],
-    [event({ reasoning_content: "reasoning only" }, "stop"), "GEA_MODEL_EMPTY_RESPONSE"],
+    [event({}, "stop"), "GEA_MODEL_EMPTY_RESPONSE"],
   ]) {
     const body = new ReadableStream({
       start(controller) {
@@ -100,7 +107,7 @@ const streamOf = (wire) =>
       controller.close();
     },
   });
-const offered = { names: ["gea_sales_plan_read"], maxBytes: 2000 };
+const offered = { names: ["gea_sales_plan_read"] };
 test("raw DSML protocol is never a completed business response, including split markers", async () => {
   for (const text of [
     "<｜｜DSML｜｜ calls>",
@@ -174,15 +181,12 @@ test("empty tool metadata on continuation frames preserves the original call", a
   );
 });
 
-test("unoffered, duplicate, changed, oversized and incomplete tools never produce executable blocks", async () => {
+test("unoffered, duplicate, changed and incomplete tools never produce executable blocks", async () => {
   const cases = [
     event(toolDelta(0, "id", "{}", "gea_approve")) + event({}, "tool_calls"),
     event(toolDelta(0, "id", "{}")) + event(toolDelta(1, "id", "{}")) + event({}, "tool_calls"),
     event(toolDelta(0, "id", "{}")) + event(toolDelta(0, "other", "")) + event({}, "tool_calls"),
-    event(toolDelta(0, "id", JSON.stringify({ huge: "中".repeat(1000) }))) +
-      event({}, "tool_calls"),
     event(toolDelta(0, "id", "{}")) + event({}, "stop"),
-    event(toolDelta(0, "id", "{}")) + event({}, "length"),
     event(toolDelta(0, "id", "{}")),
   ];
   for (const wire of cases) {
@@ -250,7 +254,7 @@ test("流里的错误对象：上下文超限单独成码，不回显网关原�
     },
   })}\r\n\r\n`;
   await assert.rejects(collect(geaTextStream(streamOf(frame))), (error) => {
-    assert.equal(error.code, "GEA_MODEL_CONTEXT_TOO_LONG");
+    assert.equal(error.code, "CONTEXT_WINDOW_EXCEEDED");
     assert.match(error.message, /GEA_MODEL_CONTEXT_TOO_LONG/);
     assert.doesNotMatch(error.message, /maximum context length/);
     assert.match(error.message, /上下文超出模型上限/);
@@ -320,4 +324,18 @@ test("provider usage is captured after finish without inventing zero usage or do
     totalTokens: 120,
   });
   assert.equal(chunks.at(-1).type, "finish");
+});
+
+test("SSE output-parameter errors and transient failures do not trigger context recovery", async () => {
+  for (const error of [
+    { code: "invalid_request", message: "max_tokens must be positive" },
+    { code: "rate_limit_exceeded", message: "token limit reached" },
+    { code: "invalid_api_key", type: "authentication_error", message: "maximum context length" },
+    { code: "upstream_error", type: "server_error", message: "maximum context length" },
+  ]) {
+    await assert.rejects(
+      collect(geaTextStream(streamOf(`data: ${JSON.stringify({ error })}\n\n`))),
+      { code: "GEA_MODEL_GATEWAY_ERROR" },
+    );
+  }
 });

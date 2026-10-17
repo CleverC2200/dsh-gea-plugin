@@ -213,7 +213,9 @@ export async function currentMcp(t, options = {}) {
     init.signal.throwIfAborted();
     const wire = JSON.parse(init.body);
     calls.push({ url: String(url), wire, headers: new Headers(init.headers) });
-    if (String(url).endsWith("/session"))
+    if (String(url).endsWith("/session")) {
+      const custom = await options.sessionHandler?.(wire, init);
+      if (custom !== undefined) return custom;
       return Response.json({
         success: true,
         result: {
@@ -227,10 +229,13 @@ export async function currentMcp(t, options = {}) {
           delegationToken: "fixture-private-delegation",
         },
       });
+    }
     assert.ok(String(url).endsWith("/mcp"), "direct queries never discover resource catalogs");
     const reply = (result, headers) =>
       Response.json({ jsonrpc: "2.0", id: wire.id, result }, { headers });
     if (wire.method === "initialize") {
+      const custom = await options.initializeHandler?.(wire, init, reply);
+      if (custom !== undefined) return custom;
       if (options.initializeStatus) return new Response(null, { status: options.initializeStatus });
       return reply(
         {

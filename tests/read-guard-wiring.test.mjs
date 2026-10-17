@@ -55,27 +55,6 @@ function fixture(t) {
     registered.get(name).execute(args, { agent: { id: scope, session: {} }, signal });
   return { business, execute };
 }
-test("registered sales reads replay after two reads, isolate scopes and permit a fresh round", async (t) => {
-  const f = fixture(t);
-  let reads = 0;
-  t.mock.method(f.business, "agentQuery", async () => {
-    reads++;
-    return '{"rows":[{"qty":3}]}';
-  });
-  const args = { kind: "periods", query: {} };
-  await f.execute("gea_sales_plan_read", args);
-  await f.execute("gea_sales_plan_read", args);
-  assert.match(await f.execute("gea_sales_plan_read", args), /"qty":3/);
-  assert.equal(reads, 2);
-  await f.execute("gea_sales_plan_read", args, "s2");
-  assert.equal(reads, 3);
-  f.business.repeatReads().clear("s1");
-  f.business.clearTurnReplays("s1");
-  f.business.moduleMcpWaste().progress("s1");
-  await f.execute("gea_sales_plan_read", args);
-  assert.equal(reads, 4);
-});
-
 // Retired catalog/listing specifications are preserved under fixtures/retired-query/specifications.
 // Current authorization, schema refresh and cancellation run through Core tools.execute in current-mcp-tools.test.mjs.
 test("registered native read non-Error failures remain readable", async (t) => {
@@ -87,25 +66,6 @@ test("registered native read non-Error failures remain readable", async (t) => {
     f.execute("gea_sales_plan_read", { kind: "periods" }),
     (error) => error instanceof Error && !error.message.includes("[object Object]"),
   );
-});
-
-test("registered page context reads require the current user's page intent", async (t) => {
-  const f = fixture(t);
-  let reads = 0;
-  t.mock.method(f.business, "waitVisibleWorkbenchContext", async () => {
-    reads++;
-    return '{"coverage":"current-visible-page"}';
-  });
-  f.business.rememberTurnQuestion("s1", "全国库存按品类汇总");
-  assert.match(await f.execute("gea_visible_workbench_context"), /PAGE_INTENT_MISSING/);
-  assert.equal(reads, 0);
-  f.business.rememberTurnQuestion("s1", "看一下这一屏");
-  assert.match(await f.execute("gea_visible_workbench_context"), /current-visible-page/);
-  assert.equal(reads, 1);
-  assert.match(await f.execute("gea_visible_workbench_context"), /PAGE_CONTEXT_ALREADY_READ/);
-  f.business.rememberTurnQuestion("s2", "全国库存按品类汇总");
-  assert.match(await f.execute("gea_visible_workbench_context", {}, "s2"), /PAGE_INTENT_MISSING/);
-  assert.equal(reads, 1);
 });
 
 test("registered recipe executes parameterized SQL with only accepted query keys", async (t) => {

@@ -180,3 +180,24 @@ test("an APS model-list 403 keeps its denial and identity instead of becoming a 
   assert.equal(requests.length, 3, "no automatic retry, Consumer fallback or chat request");
   assert.equal(business.status().authenticated, true, "403 must not log out the user");
 });
+
+test("only explicit context rejection on a model inference request receives Core overflow classification", async () => {
+  for (const [status, code, message, expected] of [
+    [400, "context_length_exceeded", "request rejected", "CONTEXT_WINDOW_EXCEEDED"],
+    [413, "invalid_request", "Input exceeds the model context window", "CONTEXT_WINDOW_EXCEEDED"],
+    [400, "invalid_request", "max_tokens must be positive", "GEA_MODEL_HTTP_400"],
+    [401, "context_length_exceeded", "maximum context length", "GEA_MODEL_HTTP_401"],
+    [429, "rate_limit_exceeded", "token limit reached", "GEA_MODEL_HTTP_429"],
+    [503, "upstream_error", "maximum context length", "GEA_MODEL_HTTP_503"],
+  ]) {
+    const error = await modelHttpError(
+      Response.json({ error: { code, message, requestId: "request-id" } }, { status }),
+      "aps",
+      "模型推理",
+      [],
+    );
+    assert.equal(error.code, expected);
+    assert.equal(error.details.httpStatus, status);
+    assert.equal(error.details.requestId, "request-id");
+  }
+});
