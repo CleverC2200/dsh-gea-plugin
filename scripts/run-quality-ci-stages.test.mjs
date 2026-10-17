@@ -281,7 +281,10 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
     commands.filter((entry) => entry.command === "sdk" && entry.args.includes("--prepare")).length,
     1,
   );
-  assert.equal(commands.filter((entry) => entry.command === "sdk").length, 5);
+  assert.deepEqual(
+    commands.filter((entry) => entry.args.includes("quality:fast")).map((entry) => entry.args),
+    [["pnpm", "quality:fast", "--checks-only"]],
+  );
 });
 
 test("one producer executes the existing tests stage and indexes its original receipt without transport", (t) => {

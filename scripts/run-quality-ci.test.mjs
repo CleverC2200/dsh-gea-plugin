@@ -103,7 +103,8 @@ test("candidate execution requires the one explicit hashed public admission and 
 test("the workflow binds full source history and the same public quality command", () => {
   const workflow = readFileSync(".github/workflows/quality.yml", "utf8");
   assert.doesNotMatch(workflow, /self-hosted|pull_request_target/);
-  assert.match(workflow, /permissions:\n  contents: read/);
+  const parsed = parse(workflow);
+  assert.deepEqual(parsed.permissions, { contents: "read" });
   assert.match(
     workflow,
     /QUALITY_EXPECTED_SHA: \$\{\{ github.event.pull_request.head.sha \|\| github.sha \}\}/,
@@ -114,10 +115,14 @@ test("the workflow binds full source history and the same public quality command
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --prepare-sdk.*--prepare-inputs/);
   assert.match(readFileSync("scripts/run-quality-ci.mjs", "utf8"), /APS_BUILD_MODE: ["']mock["']/);
   assert.match(workflow, /if: always\(\)/);
-  assert.match(
-    workflow,
-    /needs: \[candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation\]/,
-  );
+  assert.deepEqual(parsed.jobs["candidate-quality"].needs, [
+    "candidate-scope",
+    "source-plan",
+    "gates",
+    "plan-test-shards",
+    "test-shards",
+    "macos-isolation",
+  ]);
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
@@ -386,20 +391,31 @@ test("Linux preparation exports once and failed checks block executable worker i
     assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
     assert.doesNotMatch(step, /continue-on-error/);
   }
-  for (const name of [
-    "Freeze the actual system Chrome distribution",
-    "Freeze worker preparation binding",
-    "Export prepared bytes once",
-    "Publish the small Core index",
-  ]) {
-    const step = steps.find((entry) => entry.includes(name));
-    assert.ok(step, name);
-    assert.match(step, /!cancelled\(\).*steps\.(?:quality-build|bundle)\.outcome == 'success'/);
-    if (!name.startsWith("Publish")) assert.match(step, /quality-checks\.outcome == 'success'/);
+  const producer = parse(source).jobs.gates.steps;
+  for (const command of ["prepare-browser", "binding", "export", "index"]) {
+    const step = producer.find((entry) =>
+      command === "export"
+        ? entry.run?.includes("quality-prepared-inputs.mjs export")
+        : command === "index"
+          ? entry.id === "worker-index"
+          : entry.run?.includes(`quality-shards.mjs --mode ${command}`),
+    );
+    assert.ok(step, command);
+    assert.match(step.if, /!cancelled\(\).*steps\.(?:quality-build|bundle)\.outcome == 'success'/);
+    if (command !== "index") assert.match(step.if, /quality-checks\.outcome == 'success'/);
   }
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: cache-path"));
-  assert.ok(linux.indexOf("id: quality-source") < linux.indexOf("id: quality-build"));
-  assert.match(linux, /quality:fast --source-only/);
+  assert.equal(
+    producer.filter((step) => step.run?.includes("quality:fast")).length,
+    0,
+    "producer source checks run through the post-build checks stage only",
+  );
+  const build = producer.find((step) => step.id === "quality-build");
+  const checks = producer.find((step) => step.id === "quality-checks");
+  assert.match(build.if, /steps\.quality-prepare\.outcome == 'success'/);
+  assert.doesNotMatch(build.if, /quality-source/);
+  assert.equal(checks.if, "steps.quality-build.outcome == 'success'");
+  assert.ok(producer.indexOf(build) < producer.indexOf(checks));
   assert.match(sourcePlan, /GITHUB_STEP_SUMMARY/);
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: sdk-paths"));
   assert.match(linux, /--stage plan.*--test-shards auto/);
