@@ -11,7 +11,7 @@ import {
   branchStockAcceptance,
   branchStockExpectedText,
 } from "./fixtures/branch-stock-acceptance.mjs";
-import { readProfileSources } from "./fixtures/profile-inputs.mjs";
+import { readProfileSourceRecords } from "./fixtures/profile-inputs.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
 import {
   htmlFrameElement,
@@ -60,10 +60,10 @@ test(
   "branch stock migration preserves rows and runs authorized page and Agent reads",
   { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 240000 },
   async (t) => {
-    const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+    const workbench = (await readProfileSourceRecords(process.env.GEA_TEST_SOURCE_INPUTS)).find(
       (source) => source.repo === "dsh-agent-workbench",
     );
-    const migrated = resolve(workbench.assetRoot, "lib/business/inventory-fc");
+    const migrated = resolve(workbench.assets ?? workbench.source, "lib/business/inventory-fc");
     await mkdir(out, { recursive: true });
     const browser = await testBrowser(t, () =>
       chromium.launch({
@@ -321,10 +321,10 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
     "branch page distinguishes " + mode + " data",
     { skip: process.env.GEA_TEST_SOURCE_CORE !== "1", timeout: 90000 },
     async (t) => {
-      const workbench = (await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS)).find(
+      const workbench = (await readProfileSourceRecords(process.env.GEA_TEST_SOURCE_INPUTS)).find(
         (source) => source.repo === "dsh-agent-workbench",
       );
-      const migrated = resolve(workbench.assetRoot, "lib/business/inventory-fc");
+      const migrated = resolve(workbench.assets ?? workbench.source, "lib/business/inventory-fc");
       const state = stockState();
       state.mode = mode === "empty-error" ? "empty" : mode;
       const app = await profile(t, {

@@ -20,19 +20,34 @@ export const fileDigest = async (file, readScope) =>
 
 /** Hash shipped resources, excluding dependency links and their writable stores. */
 export async function resourceDigests(directory, prefix = "", readScope) {
-  if (readScope) await readScope.resolve(directory, { traverse: true });
-  const files = {};
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-    const file = join(directory, entry.name);
-    if (entry.isDirectory()) Object.assign(files, await resourceDigests(file, relative, readScope));
-    else if (entry.isSymbolicLink()) {
-      if (readScope) await readScope.resolve(file, { traverse: true });
-      files[relative] = "link:" + (await realpath(file));
-    } else if (entry.isFile() && relative !== "combination.json")
-      files[relative] = await fileDigest(file, readScope);
+  return digestResources(directory, prefix, readScope, false);
+}
+
+export async function publishedResourceDigests(directory, prefix = "") {
+  return digestResources(directory, prefix, undefined, true);
+}
+
+async function digestResources(directory, prefix, readScope, excludeDependencies) {
+  const files = {},
+    pending = [];
+  async function visit(directory, prefix) {
+    if (readScope) await readScope.resolve(directory, { traverse: true });
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (excludeDependencies && ["node_modules", ".git"].includes(entry.name)) continue;
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const file = join(directory, entry.name);
+      if (entry.isDirectory()) await visit(file, relative);
+      else if (entry.isSymbolicLink()) {
+        if (readScope) await readScope.resolve(file, { traverse: true });
+        files[relative] = "link:" + (await realpath(file));
+      } else if (entry.isFile() && (excludeDependencies || relative !== "combination.json")) {
+        files[relative] = null;
+        pending.push([relative, file]);
+      }
+    }
   }
-  return files;
+  await visit(directory, prefix);
+  return hashFiles(files, pending, readScope);
 }
 
 function sameDigests(actual, expected) {
@@ -147,7 +162,14 @@ export async function dependencyDigests(directories, readScope) {
     }
   }
   for (const directory of directories) await visit(directory);
-  // Keep the complete traversal and its key order; only independent byte reads overlap.
+  return hashFiles(
+    files,
+    pending.map((file) => [file, file]),
+    readScope,
+  );
+}
+
+async function hashFiles(files, pending, readScope) {
   const digests = [];
   let next = 0,
     failure;
@@ -156,7 +178,7 @@ export async function dependencyDigests(directories, readScope) {
       while (!failure && next < pending.length) {
         const index = next++;
         try {
-          digests[index] = await fileDigest(pending[index], readScope);
+          digests[index] = await fileDigest(pending[index][1], readScope);
         } catch (error) {
           failure ??= error;
         }
@@ -164,7 +186,7 @@ export async function dependencyDigests(directories, readScope) {
     }),
   );
   if (failure) throw failure;
-  for (const [index, file] of pending.entries()) files[file] = digests[index];
+  for (const [index, [key]] of pending.entries()) files[key] = digests[index];
   return files;
 }
 
