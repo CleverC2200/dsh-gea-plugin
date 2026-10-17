@@ -153,7 +153,7 @@ test("the default source CLI validates direct fixture credentials after window a
   assert.deepEqual(JSON.parse(await readFile(fixture.observation, "utf8")).credentialEnvReads, []);
   fixture.current.status = "open";
   await fixture.refresh();
-  await assertNoEffects(fixture, fixture.run(), /ANALYSIS_CREDENTIAL_MISSING/, before);
+  await assertNoEffects(fixture, fixture.run(), /ANALYSIS_CREDENTIAL_MISSING/, before, true);
   const accepted = fixture.run("start.mjs", [], environment);
   assert.equal(accepted.status, 0, accepted.stderr);
   assert.match(accepted.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
@@ -271,13 +271,33 @@ for (const mode of ["isolated-core-host", "isolated-source-host"])
     assert.equal(effects.processes.length, 1);
     assert.deepEqual(effects.credentialReads, []);
     assert.deepEqual(effects.network, []);
+    const cli = JSON.parse(
+      await readFile(join(fixture.fixedCore, "apps/cli/package.json"), "utf8"),
+    );
+    const receipt = JSON.parse(await readFile(join(fixture.runtime, "core-source.json"), "utf8"));
+    assert.equal(receipt.version, cli.version);
+    assert.equal(
+      receipt.adaptation,
+      JSON.parse(await readFile(fixture.candidateFile, "utf8")).core,
+    );
   });
 
-async function assertNoEffects(fixture, result, expected, before) {
+async function assertNoEffects(fixture, result, expected, before, locked = false) {
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
   assert.equal(result.status, 1, JSON.stringify({ stderr: result.stderr, effects }));
   assert.match(result.stderr, expected, JSON.stringify(effects));
-  assert.deepEqual(effects.writes, []);
+  assert.deepEqual(
+    effects.writes.filter(
+      ({ operation, path }) =>
+        !locked ||
+        !(
+          (operation === "mkdir" && path === fixture.runtime) ||
+          (["open", "unlink"].includes(operation) &&
+            path === join(fixture.runtime, "source-profile.lock"))
+        ),
+    ),
+    [],
+  );
   assert.deepEqual(effects.processes, []);
   assert.deepEqual(effects.network, []);
   assert.deepEqual(effects.credentialReads, []);
@@ -442,6 +462,7 @@ test("a changed shipped artifact is refused by the existing source-profile reade
     fixture.run(),
     /SOURCE_COMBINATION_DIGEST_MISMATCH/,
     await snapshot(fixture.runtime),
+    true,
   );
 });
 test("a changed deployment file is refused before credentials or configuration writes", async (t) => {
@@ -542,18 +563,19 @@ for (const mode of ["source-host", "isolated-source-host", "isolated-core-host"]
     );
   });
 
-// The existing public function must record the admitted Core before attempting a Host.
-test("isolated Core admission records the registered version before a held profile lock", async (t) => {
+test("a held profile lock prevents profile writes and preserves the existing lock owner", async (t) => {
   const fixture = await sourceWindow(t, "isolated-core-host");
   await mkdir(fixture.runtime, { recursive: true });
   await writeFile(join(fixture.runtime, "source-profile.lock"), "fixture-owned-lock");
   const result = fixture.run("runSourceProfile");
   assert.equal(result.status, 1);
   assert.match(result.stderr, /EEXIST/);
-  const cli = JSON.parse(await readFile(join(fixture.fixedCore, "apps/cli/package.json"), "utf8"));
-  const receipt = JSON.parse(await readFile(join(fixture.runtime, "core-source.json"), "utf8"));
-  assert.equal(receipt.version, cli.version);
-  assert.equal(receipt.adaptation, JSON.parse(await readFile(fixture.candidateFile, "utf8")).core);
+  await assert.rejects(access(join(fixture.runtime, "core-source.json")), { code: "ENOENT" });
+  await assert.rejects(access(join(fixture.runtime, "home")), { code: "ENOENT" });
+  assert.equal(
+    await readFile(join(fixture.runtime, "source-profile.lock"), "utf8"),
+    "fixture-owned-lock",
+  );
   const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
   assert.deepEqual(effects.processes, []);
   assert.deepEqual(effects.network, []);

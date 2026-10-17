@@ -30,16 +30,10 @@ export async function checkSourceWindow(request) {
 export async function admitSourceWindow(request) {
   return inspectSourceWindow(request, readSourceCombinationRecord);
 }
-async function inspectSourceWindow({
-  window,
-  mode,
-  core,
-  runtime,
-  config,
-  deployment,
-  sources,
-  sourcesFile,
-}, readSnapshot) {
+async function inspectSourceWindow(
+  { window, mode, core, runtime, config, deployment, sources, sourcesFile },
+  readSnapshot,
+) {
   if (
     !window?.file ||
     !window.case ||

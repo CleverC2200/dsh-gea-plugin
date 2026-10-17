@@ -86,9 +86,9 @@ export async function runSourceProfile(
         : await prepareSourcePlugins(core, runtime, deployment, {
             sources,
           });
-      const manifestSha256 = selected ? admitted.manifestSha256 : await digest(
-        join(runtime, "source-combinations", composition.id, "combination.json"),
-      );
+      const manifestSha256 = selected
+        ? admitted.manifestSha256
+        : await digest(join(runtime, "source-combinations", composition.id, "combination.json"));
       if (selected && selected.manifestSha256 !== manifestSha256)
         throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
       if (!selected)
@@ -129,7 +129,11 @@ export async function runSourceProfile(
       await rename(temporary, join(profile, "node_modules"));
       await save(
         join(runtime, "company-plugins.json"),
-        selected ? admitted.metadata : await json(join(runtime, "source-combinations", composition.id, "company-plugins.json")),
+        selected
+          ? admitted.metadata
+          : await json(
+              join(runtime, "source-combinations", composition.id, "company-plugins.json"),
+            ),
       );
     }
     await save(join(profile, "package.json"), {

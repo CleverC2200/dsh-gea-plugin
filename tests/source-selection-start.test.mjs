@@ -11,10 +11,14 @@ for (const entry of ["start.mjs", "runSourceProfile"])
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
     const effects = JSON.parse(await readFile(fixture.observation, "utf8"));
-    assert.deepEqual(effects.traversals, [{
-      path: await realpath(join(fixture.runtime, "source-combinations", fixture.frozen.combination.id)),
-      locked: true,
-    }]);
+    assert.deepEqual(effects.traversals, [
+      {
+        path: await realpath(
+          join(fixture.runtime, "source-combinations", fixture.frozen.combination.id),
+        ),
+        locked: true,
+      },
+    ]);
   });
 
 for (const change of ["window", "selection", "asset"])
@@ -30,14 +34,22 @@ for (const change of ["window", "selection", "asset"])
       contents = JSON.stringify({ id: "0".repeat(36), manifestSha256: "0".repeat(64) });
       expected = /WINDOW_COMBINATION_MISMATCH/;
     } else {
-      file = join(fixture.runtime, "source-combinations", fixture.frozen.combination.id,
-        "node_modules/@cleverc2200/dsh-agent-workbench/lib/host.js");
+      file = join(
+        fixture.runtime,
+        "source-combinations",
+        fixture.frozen.combination.id,
+        "node_modules/@cleverc2200/dsh-agent-workbench/lib/host.js",
+      );
       contents = "changed while acquiring lock";
       expected = /SOURCE_COMBINATION_DIGEST_MISMATCH/;
     }
-    const result = fixture.run("runSourceProfile", {}, {
-      GEA_FIXTURE_LOCK_CHANGE: JSON.stringify({ file, contents }),
-    });
+    const result = fixture.run(
+      "runSourceProfile",
+      {},
+      {
+        GEA_FIXTURE_LOCK_CHANGE: JSON.stringify({ file, contents }),
+      },
+    );
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, expected);
     const effects = JSON.parse(await readFile(fixture.observation, "utf8"));

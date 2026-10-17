@@ -27,7 +27,10 @@ import {
   readSourceCombination,
   readSourceCombinationRecord,
 } from "./source-combination-integrity.mjs";
-export { readSourceCombination, readSourceCombinationRecord } from "./source-combination-integrity.mjs";
+export {
+  readSourceCombination,
+  readSourceCombinationRecord,
+} from "./source-combination-integrity.mjs";
 
 /** A new composition/check/build always names the same explicit five owners. No directory fallback. */
 export function requireSourceInputs(sources) {
@@ -502,7 +505,11 @@ export async function mergeSourceComponents(
   const records = new Map(),
     metadata = new Map();
   for (const id of new Set([latest, ...Object.values(updates)])) {
-    const { record, plugins, manifestSha256 } = await readSourceCombinationRecord(runtime, id, core);
+    const { record, plugins, manifestSha256 } = await readSourceCombinationRecord(
+      runtime,
+      id,
+      core,
+    );
     if (expectedManifests && manifestSha256 !== expectedManifests[id])
       throw Error("SOURCE_ARTIFACT_MANIFEST_MISMATCH");
     records.set(id, record);

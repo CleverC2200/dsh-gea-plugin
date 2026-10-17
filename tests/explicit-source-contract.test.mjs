@@ -132,7 +132,12 @@ async function fixture(t, firstProjectPaths) {
 test("fixed source commits reuse the HEAD already read during the same input resolution", async (t) => {
   const { records } = await fixture(t);
   const { spawnSync } = await import("node:child_process");
-  const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
 import child from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 const heads=[];
@@ -145,11 +150,20 @@ syncBuiltinESMExports();
 const {resolveSourceInputs}=await import(${JSON.stringify(new URL("../scripts/source-profile.mjs", import.meta.url).href)});
 const inputs=await resolveSourceInputs(${JSON.stringify(records)});
 console.log(JSON.stringify({commits:inputs.map(input=>input.commit),heads}));
-`], { encoding: "utf8" });
+`,
+    ],
+    { encoding: "utf8" },
+  );
   assert.equal(result.status, 0, result.stderr);
   const observed = JSON.parse(result.stdout);
-  assert.deepEqual(observed.commits, records.map((record) => record.commit));
-  assert.deepEqual(observed.heads, records.map((record) => record.source));
+  assert.deepEqual(
+    observed.commits,
+    records.map((record) => record.commit),
+  );
+  assert.deepEqual(
+    observed.heads,
+    records.map((record) => record.source),
+  );
 });
 test("frozen five-source assets are verified and reused for both check and build; corrupted bytes fail before output/compiler writes", async (t) => {
   const { dir, records, core } = await fixture(t);

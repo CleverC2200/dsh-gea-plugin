@@ -27,7 +27,13 @@ test("the update baseline consumes its verified manifest and component metadata 
   );
   await fs.writeFile(
     join(directory, "company-plugins.json"),
-    JSON.stringify({ [name]: { version: "1.0.0", origin: "https://fixture.invalid/source", commit: "a".repeat(40) } }),
+    JSON.stringify({
+      [name]: {
+        version: "1.0.0",
+        origin: "https://fixture.invalid/source",
+        commit: "a".repeat(40),
+      },
+    }),
   );
   const record = {
     composition: { id, dependencies: { [name]: "1.0.0" } },
@@ -38,8 +44,16 @@ test("the update baseline consumes its verified manifest and component metadata 
   };
   await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record));
   const manifestSha256 = digest(await fs.readFile(join(directory, "combination.json")));
-  await fs.writeFile(join(runtime, "source-selection.json"), JSON.stringify({ id, manifestSha256 }));
-  const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+  await fs.writeFile(
+    join(runtime, "source-selection.json"),
+    JSON.stringify({ id, manifestSha256 }),
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
 import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 const reads={};
@@ -51,7 +65,10 @@ syncBuiltinESMExports();
 const {readSourceUpdateBaseline}=await import(${JSON.stringify(new URL("../scripts/source-update.mjs", import.meta.url).href)});
 const baseline=await readSourceUpdateBaseline(${JSON.stringify(runtime)});
 console.log(JSON.stringify({baseline,reads}));
-`], { encoding: "utf8" });
+`,
+    ],
+    { encoding: "utf8" },
+  );
   assert.equal(result.status, 0, result.stderr);
   const { baseline, reads } = JSON.parse(result.stdout);
   assert.equal(baseline.id, id);

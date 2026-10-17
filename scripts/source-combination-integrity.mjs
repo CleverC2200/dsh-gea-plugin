@@ -73,7 +73,10 @@ export async function readSourceCombinationRecord(runtime, id, core, { readScope
   let plugins = {};
   if (Object.keys(record.composition.dependencies).length) {
     const pluginBytes = await readBytes(join(directory, "company-plugins.json"), readScope);
-    if (createHash("sha256").update(pluginBytes).digest("hex") !== record.files["company-plugins.json"])
+    if (
+      createHash("sha256").update(pluginBytes).digest("hex") !==
+      record.files["company-plugins.json"]
+    )
       throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
     plugins = JSON.parse(pluginBytes.toString("utf8"));
     for (const [name, version] of Object.entries(record.composition.dependencies)) {
