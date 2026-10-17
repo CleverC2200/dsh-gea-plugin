@@ -88,12 +88,13 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     process.env.GEA_FINAL_GROUP_CORE_SOURCE ?? resolve(dirname(cordis), "../../../.."),
   );
   const core = join(job, "cold-core-source");
+  const coreHead = git(coreSource, "rev-parse", "HEAD");
   git(job, "clone", "--quiet", "--no-hardlinks", "--no-checkout", coreSource, core);
   git(core, "sparse-checkout", "set", "--no-cone", "/package.json", "/pnpm-lock.yaml");
-  git(core, "checkout", "--quiet", "5badb15009ae1756c3afe0ae0cef1faafc290ccc");
+  git(core, "checkout", "--quiet", coreHead);
   assert.equal(existsSync(join(core, "vendor/cordis/lib/types/index.d.ts")), false);
   const manifest = {
-    core: "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
+    core: coreHead,
     repositories: Object.entries(roots).map(([repo, path]) => ({
       repo,
       path,
@@ -172,7 +173,7 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     unchangedEffects();
   };
   reject(
-    run("explicit-core-disagrees", ["--core-head", "639ed015397290b3745d163aafe02ffee4aa3f84"]),
+    run("explicit-core-disagrees", ["--core-head", "0".repeat(40)]),
     /CANDIDATE_CORE_MISMATCH/,
   );
   reject(run("explicit-empty-core", ["--core-head", ""]), /CANDIDATE_CORE_MISMATCH/);
@@ -290,7 +291,7 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   assert.equal(JSON.parse(rcGood.stdout).official.commit, rc.core);
   unchangedEffects();
   writeFileSync(file, original);
-  git(core, "checkout", "--quiet", "5badb15009ae1756c3afe0ae0cef1faafc290ccc");
+  git(core, "checkout", "--quiet", coreHead);
   const packageScripts = JSON.parse(readFileSync(join(root, "package.json"))).scripts;
   assert.doesNotMatch(packageScripts["test:quality"], /final-group-input/);
   assert.equal(
