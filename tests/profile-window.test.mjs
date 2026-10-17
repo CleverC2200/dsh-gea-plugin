@@ -25,6 +25,7 @@ for (const core of supportedCores) {
       runtime: resolve(directory, "runtime"),
       caseName: t.name,
       coreOnly: true,
+      sourcesFile: join(directory, "unused-source-inputs.json"),
     });
     const request = JSON.parse(await readFile(result.request, "utf8"));
     const window = JSON.parse(await readFile(request.file, "utf8"));
@@ -74,7 +75,7 @@ test("the real profile freeze and launcher reuse the selected source-host combin
     runtime: fixture.runtime,
     config: fixture.configFile,
     deployment,
-    sources,
+    sourcesFile,
     caseName: t.name,
     coreOnly: false,
   });

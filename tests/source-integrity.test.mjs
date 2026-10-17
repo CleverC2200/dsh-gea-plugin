@@ -129,6 +129,47 @@ test("complete resource and transitive dependency maps include tail files, repea
   assert.deepEqual(await f.run(), f.composition);
 });
 
+test("complete frozen maps accept reordered keys and reject same-count key substitution", async (t) => {
+  const f = await fixture(t);
+  const recordPath = join(f.directory, "combination.json");
+  const record = JSON.parse(await readFile(recordPath, "utf8"));
+  for (const key of ["files", "externalFiles"])
+    record[key] = Object.fromEntries(Object.entries(record[key]).reverse());
+  await writeFile(recordPath, JSON.stringify(record));
+  assert.deepEqual(await f.run(), f.composition);
+  for (const kind of ["resource", "dependency"]) {
+    const changed = structuredClone(record);
+    const map = changed[kind === "resource" ? "files" : "externalFiles"];
+    const original = kind === "resource" ? "pages/0/asset-069.json" : f.dependencies[69];
+    const replacement = kind === "resource" ? "unrecorded.json" : join(f.a, "unrecorded.js");
+    const expected = map[original];
+    assert.equal(typeof expected, "string");
+    delete map[original];
+    map[replacement] = expected;
+    await writeFile(recordPath, JSON.stringify(changed));
+    await assert.rejects(f.run(), (error) => {
+      assert.equal(
+        error.message,
+        kind === "resource"
+          ? "SOURCE_COMBINATION_DIGEST_MISMATCH"
+          : "SOURCE_DEPENDENCY_DIGEST_MISMATCH",
+      );
+      assert.equal(error.mismatches.length, 2);
+      const removed = error.mismatches.find((entry) => entry.path === original);
+      const added = error.mismatches.find((entry) => entry.path === replacement);
+      assert.equal(removed.actual, expected);
+      assert.equal(removed.expected, null);
+      assert.equal(added.actual, null);
+      assert.equal(added.expected, expected);
+      if (kind === "dependency") {
+        assert.equal(removed.kind, "external-dependency");
+        assert.equal(added.kind, "external-dependency");
+      }
+      return true;
+    });
+  }
+});
+
 test("full combination verification uses the safe read scope for resources, links, dependencies and locks", async (t) => {
   const f = await fixture(t);
   const readScope = await createReadScope(f.root);

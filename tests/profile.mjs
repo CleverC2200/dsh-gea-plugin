@@ -10,7 +10,6 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
-import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 import { withSourceSetup } from "./fixtures/source-test.mjs";
@@ -64,7 +63,6 @@ async function createProfile(t, options) {
   t.signal?.throwIfAborted();
   const root = options.pluginRoot ?? defaultRoot;
   const sourcesFile = options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS;
-  if (!options.desktopGraph && !options.coreOnly) await readProfileSources(sourcesFile);
   if (process.env.GEA_TEST_SOURCE_CORE === "1" && resolve(root) !== defaultRoot)
     throw new Error(
       "SOURCE_TEST_REQUIRES_CURRENT_CHECKOUT: packaged artifacts use the installed-runtime test lane",
@@ -371,7 +369,7 @@ async function createProfile(t, options) {
           runtime,
           config,
           deployment,
-          sources: options.coreOnly ? undefined : await readProfileSources(sourcesFile),
+          sourcesFile: options.coreOnly ? undefined : sourcesFile,
           caseName: t.name,
           coreOnly: options.coreOnly,
           signal: t.signal,

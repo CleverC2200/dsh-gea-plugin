@@ -3,7 +3,7 @@ import { isAbsolute } from "node:path";
 import { requireSourceInputs, resolveSourceInputs } from "../../scripts/source-profile.mjs";
 
 /** Profile callers provide an external, fixed source record file. */
-export async function readProfileSources(file) {
+export async function readProfileSourceRecords(file) {
   if (!file) throw new Error("EXPLICIT_SOURCE_INPUTS_REQUIRED");
   const records = requireSourceInputs(JSON.parse(await readFile(file, "utf8")));
   if (
@@ -18,5 +18,9 @@ export async function readProfileSources(file) {
   for (const record of records)
     if (!(await stat(record.dependencies)).isDirectory())
       throw new Error("PROFILE_DEPENDENCY_DIRECTORY_REQUIRED");
-  return resolveSourceInputs(records, { requireEntries: true });
+  return records;
+}
+
+export async function readProfileSources(file) {
+  return resolveSourceInputs(await readProfileSourceRecords(file), { requireEntries: true });
 }
