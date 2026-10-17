@@ -82,8 +82,11 @@ test("the isolated source CLI leaves the frozen snapshot's complete verification
       fixture.frozen.combination.snapshot.id,
     ),
   );
+  const traversals = await Promise.all(
+    child.traversals.map(async ({ path, locked }) => ({ path: await realpath(path), locked })),
+  );
   assert.deepEqual(
-    child.traversals.filter(({ path }) => path === snapshot),
+    traversals.filter(({ path }) => path === snapshot),
     [{ path: snapshot, locked: true }],
   );
   assert.equal(child.processes.length, 1);
