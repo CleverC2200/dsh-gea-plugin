@@ -81,7 +81,7 @@ export function validateRuntimeObservation(runtime, packageManifests, core) {
         /^[a-f0-9]{64}$/.test(docs[0].sha256),
       "RECEPTION_STANDARD_INCOMPLETE",
     );
-    if (["standard", "auto-negotiation", "agent-resource-skill"].includes(id))
+    if (id === "standard")
       assert(docs[0].byteEqualStandard === true, "RECEPTION_GENERAL_PRESET_CHANGED");
   }
   assert(runtime.actualDefault === "auto-negotiation", "RECEPTION_DEFAULT_CHANGED");
@@ -261,4 +261,37 @@ export function bindReception(manifest, install, observe, bindings = {}) {
     modelTasks: 0,
     businessQueries: 0,
   };
+}
+
+export function retainStandard(expectedRows, actualRows, id, allowedChanges, path = "") {
+  for (const expected of expectedRows) {
+    const key = expected.id ?? expected.name,
+      located = `${path}/${key}`;
+    const matches = actualRows.filter((row) => (row.id ?? row.name) === key);
+    assert.equal(matches.length, 1, `STANDARD_ENTRY_LOST_OR_DUPLICATED:${id}`);
+    const actual = matches[0];
+    const metadata = (row) =>
+      Object.fromEntries(Object.entries(row).filter(([key]) => key !== "config"));
+    assert.deepEqual(metadata(actual), metadata(expected), `STANDARD_ENTRY_METADATA_CHANGED:${id}`);
+    if (expected.group === true)
+      retainStandard(expected.config, actual.config, id, allowedChanges, located);
+    else if (
+      expected.name === "@deepseek-ai/dsh-persona" &&
+      !["standard", "auto-negotiation", "agent-resource-skill"].includes(id)
+    ) {
+      assert.equal(typeof actual.config?.prefix, "string", "BUSINESS_PERSONA_MISSING");
+      assert(
+        actual.config.prefix.startsWith(expected.config?.prefix ?? ""),
+        "STANDARD_PERSONA_PREFIX_LOST",
+      );
+      const withoutPrefix = (config) =>
+        Object.fromEntries(Object.entries(config ?? {}).filter(([key]) => key !== "prefix"));
+      assert.deepEqual(
+        withoutPrefix(actual.config),
+        withoutPrefix(expected.config),
+        "STANDARD_PERSONA_CONTEXT_CHANGED",
+      );
+      if (actual.config.prefix !== expected.config?.prefix) allowedChanges.push(located);
+    } else assert.deepEqual(actual.config, expected.config, `STANDARD_ENTRY_CONFIG_CHANGED:${id}`);
+  }
 }
