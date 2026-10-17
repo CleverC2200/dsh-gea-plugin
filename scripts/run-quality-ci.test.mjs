@@ -259,7 +259,7 @@ test("dispatch retains its frozen run while a new source event cancels its obsol
   );
   assert.match(
     workflow,
-    /repository: deepseek-ai\/deepseek-harness\n          ref: \$\{\{ matrix\.core \}\}\n          fetch-depth: 0\n          path: source\/official-core/,
+    /repository: CleverC2200\/deepseek-harness\n          ref: \$\{\{ matrix\.core \}\}\n          fetch-depth: 0\n          path: source\/official-core/,
   );
   assert.match(
     workflow,

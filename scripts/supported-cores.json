@@ -38,7 +38,7 @@
     }
   },
   {
-    "head": "0cf2891164f97383ebccd1fdcd6c02d9b78698bb",
+    "head": "7235a25dbea9b2f6b8bd9f9e5bc2f09756777ea9",
     "version": "0.2.0-rc.2",
     "sdk": {
       "@deepseek-ai/cordis": "4.0.4",
