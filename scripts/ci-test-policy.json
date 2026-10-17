@@ -6,7 +6,11 @@
     "tests/business-page-grant.test.mjs",
     "tests/gateway-handshake.test.mjs"
   ],
-  "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
+  "tests": [
+    "tests/*.test.mjs",
+    "scripts/*.test.mjs",
+    "tests/*.contract.mjs"
+  ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
     "scripts/knowledge-merge-ci.test.mjs",
@@ -39,12 +43,17 @@
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^business/inventory-(?:aqkc|dealer|fc|personal|qll)/source/",
-      "tests": ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"]
+      "tests": [
+        "tests/source-integrity.test.mjs",
+        "tests/branch-stock-ability-web.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^static/regional/source/index\\.html$",
-      "tests": ["tests/page-interaction-workbenches.test.mjs"]
+      "tests": [
+        "tests/page-interaction-workbenches.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -58,7 +67,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/fixtures/quality-system-chrome-commands\\.mjs$",
-      "tests": ["scripts/quality-system-chrome.test.mjs", "scripts/quality-worker-inputs.test.mjs"]
+      "tests": [
+        "scripts/quality-system-chrome.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -71,12 +83,17 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-test-timings\\.json$",
-      "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/quality-shards.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci-stages.test.mjs",
+        "scripts/quality-shards.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-worker-inputs\\.mjs$",
-      "tests": ["scripts/quality-worker-inputs.test.mjs"]
+      "tests": [
+        "scripts/quality-worker-inputs.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -90,17 +107,24 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-prepared-tar\\.py$",
-      "tests": ["scripts/quality-prepared-inputs.test.mjs"]
+      "tests": [
+        "scripts/quality-prepared-inputs.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^(?:business|static|theme)/",
-      "tests": ["scripts/quality-workbench.test.mjs", "tests/business-page-grant.test.mjs"]
+      "tests": [
+        "scripts/quality-workbench.test.mjs",
+        "tests/business-page-grant.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^src/sales-plan\\.ts$",
-      "tests": ["tests/sales-plan-action.test.mjs"]
+      "tests": [
+        "tests/sales-plan-action.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -132,22 +156,33 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig(?:\\.[^/]+)?\\.json|scripts/ci-test-policy\\.json)$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "tests/window-launch-admission.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/ci-test-policy\\.json$",
-      "tests": ["scripts/ci-policy-impact.test.mjs", "tests/sales-plan-action.test.mjs"]
+      "tests": [
+        "scripts/ci-policy-impact.test.mjs",
+        "tests/sales-plan-action.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/final-group-input\\.contract\\.mjs$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/fixtures/quality-ci-commands\\.mjs$",
-      "tests": ["scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -162,27 +197,40 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:presets|default-presets|business-skills)/",
-      "tests": ["tests/prompt-execution-state.test.mjs", "tests/capability-recipes.test.mjs"]
+      "tests": [
+        "tests/prompt-execution-state.test.mjs",
+        "tests/capability-recipes.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^src/(?:client|company|frame|page|workbench|business)",
-      "tests": ["tests/controlled-execution.test.mjs", "tests/business-page-grant.test.mjs"]
+      "tests": [
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-manage",
       "pattern": "^(?:src|business-resources|presets)/",
-      "tests": ["tests/controlled-execution.test.mjs", "tests/business-page-grant.test.mjs"]
+      "tests": [
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^desktop/",
-      "tests": ["tests/window-launch-admission.test.mjs"]
+      "tests": [
+        "tests/window-launch-admission.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/plugin-update-pr-lane\\.",
-      "tests": ["scripts/run-quality-ci.test.mjs"],
+      "tests": [
+        "scripts/run-quality-ci.test.mjs"
+      ],
       "exclusive": true
     },
     {
@@ -200,7 +248,10 @@
     {
       "repo": "dsh-agent-manage",
       "pattern": "^src/runtime/gea-mcp(?:-scope)?\\.ts$",
-      "tests": ["tests/knowledge-mcp.test.mjs", "tests/current-mcp-tools.test.mjs"]
+      "tests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -227,7 +278,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/start-isolated-validation\\.mjs$",
-      "tests": ["tests/window-launch-admission.test.mjs", "tests/source-selection-start.test.mjs"]
+      "tests": [
+        "tests/window-launch-admission.test.mjs",
+        "tests/source-selection-start.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -241,12 +295,17 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^\\.github/workflows/(?:quality|compatibility)\\.yml$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
-      "tests": ["scripts/delivery-events.test.mjs"]
+      "tests": [
+        "scripts/delivery-events.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -261,11 +320,33 @@
     {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/(?:prepare-official-sdk|sdk-artifact-cache)\\.mjs$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "pattern": "^scripts/quality-peer-baseline\\.json$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/run-quality-(?:ci|fast|checks)\\.mjs$",
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/run-quality-(?:ci|checks)\\.mjs$",
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     }
   ]
 }

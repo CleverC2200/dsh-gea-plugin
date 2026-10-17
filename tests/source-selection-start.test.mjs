@@ -60,6 +60,29 @@ for (const change of ["window", "selection", "asset"])
     await assert.rejects(access(join(fixture.runtime, "source-profile.lock")), { code: "ENOENT" });
   });
 
+test("the isolated source CLI leaves the frozen snapshot's complete verification to its locked child startup", async (t) => {
+  const fixture = await sourceWindow(t, "isolated-source-host");
+  const result = fixture.run("start-isolated-validation.mjs", [], { GEA_FIXTURE_DELEGATE: "1" });
+  const parent = JSON.parse(await readFile(fixture.observation, "utf8"));
+  assert.deepEqual(parent.traversals, []);
+  if (process.platform !== "darwin") {
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ISOLATED_VALIDATION_REQUIRES_MACOS_SANDBOX/);
+    assert.deepEqual(parent.processes, []);
+    return;
+  }
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.match(result.stdout, /LOCAL_LOOPBACK_FIXTURE_ONLY/);
+  assert.equal(parent.processes[0].command, "/usr/bin/sandbox-exec");
+  const child = JSON.parse(await readFile(fixture.observation + ".child", "utf8"));
+  const snapshot = await realpath(join(fixture.frozen.combination.snapshot.runtime,
+    "source-combinations", fixture.frozen.combination.snapshot.id));
+  assert.deepEqual(child.traversals.filter(({ path }) => path === snapshot), [{ path: snapshot, locked: true }]);
+  assert.equal(child.processes.length, 1);
+  assert.deepEqual(parent.network, []);
+  assert.deepEqual(child.network, []);
+});
+
 test("startup rejects incomplete selection digests and manifest-only changes before launching a Host", async (t) => {
   for (const kind of ["missing", "empty", "null", "manifest-changed"]) {
     await t.test(kind, async (t) => {
