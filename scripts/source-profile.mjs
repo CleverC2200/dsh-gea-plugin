@@ -25,8 +25,9 @@ import {
   componentArtifactEntries,
   dependencyDigests,
   readSourceCombination,
+  readSourceCombinationRecord,
 } from "./source-combination-integrity.mjs";
-export { readSourceCombination } from "./source-combination-integrity.mjs";
+export { readSourceCombination, readSourceCombinationRecord } from "./source-combination-integrity.mjs";
 
 /** A new composition/check/build always names the same explicit five owners. No directory fallback. */
 export function requireSourceInputs(sources) {

@@ -7,6 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { isNewer } from "../desktop/updates.mjs";
 import {
   readSourceCombination,
+  readSourceCombinationRecord,
   mergeSourceComponents,
   sourceComponent,
 } from "./source-profile.mjs";
@@ -35,19 +36,9 @@ export async function readSourceUpdateBaseline(
   const selection = JSON.parse(
     await io.readFile(join(runtime, "source-selection.json"), "utf8"),
   );
-  await readSourceCombination(runtime, selection.id, core);
-  const directory = join(runtime, "source-combinations", selection.id);
-  const recordBytes = await fs.readFile(join(directory, "combination.json"));
-  const record = JSON.parse(recordBytes);
-  const manifestSha256 = digest(recordBytes);
+  const { record, plugins, manifestSha256 } = await readSourceCombinationRecord(runtime, selection.id, core);
   if (selection.manifestSha256 !== manifestSha256)
     throw Error("SOURCE_SELECTION_DIGEST_MISMATCH");
-  const pluginBytes = await fs.readFile(
-    join(directory, "company-plugins.json"),
-  );
-  if (digest(pluginBytes) !== record.files["company-plugins.json"])
-    throw Error("SOURCE_COMBINATION_DIGEST_MISMATCH");
-  const plugins = JSON.parse(pluginBytes);
   const components = {};
   for (const name of Object.keys(record.composition.dependencies))
     components[name] = sourceComponent(record, plugins, name);
