@@ -758,18 +758,32 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   );
 });
 
-test("historical scheduling weights retain the complete v15 source and leave new tests unknown", async () => {
+test("historical scheduling weights preserve their registered complete sample and leave unmeasured tests unknown", async () => {
   const timings = JSON.parse(readFileSync(new URL("./quality-test-timings.json", import.meta.url)));
-  assert.equal(timings.source.runId, 38822102215);
+  assert.equal(timings.source.repository, "CleverC2200/dsh-gea-plugin");
+  assert.ok(Number.isSafeInteger(timings.source.runId) && timings.source.runId > 0);
+  assert.ok(Number.isSafeInteger(timings.source.runAttempt) && timings.source.runAttempt > 0);
   assert.equal(timings.source.kind, "historical-reference-only");
   assert.equal(timings.source.fileConcurrency, 3);
   assert.equal(timings.source.acceptance, "not-acceptance");
-  assert.equal(timings.source.head, "6ff1ae528e38572ad9365c248186fba8899b6b87");
-  assert.equal(timings.files.length, 167);
+  assert.match(timings.source.head, /^[a-f0-9]{40}$/);
+  assert.equal(timings.source.platform, "linux");
+  for (const key of ["planSha256", "buildSha256", "selectionSha256", "provenanceSha256"])
+    assert.match(timings.source[key], /^[a-f0-9]{64}$/);
+  assert.equal(timings.files.length, timings.source.fileCount);
+  assert.equal(new Set(timings.files.map((entry) => entry.file)).size, timings.source.fileCount);
+  assert.ok(
+    timings.files.every((entry) => Number.isFinite(entry.durationMs) && entry.durationMs >= 0),
+  );
+  assert.equal(
+    executionDigest(timings.files.map((entry) => entry.file).sort()),
+    timings.source.filesSha256,
+  );
   const files = [
     "tests/source-update-web.test.mjs",
     "tests/future-profile.test.mjs",
     "scripts/future.test.mjs",
+    "scripts/ci-core-policy.test.mjs",
   ];
   const plan = createExecutionPlan({
     selection: { files },
@@ -779,10 +793,10 @@ test("historical scheduling weights retain the complete v15 source and leave new
     concurrency: 3,
     timings,
   });
-  assert.equal(plan.shards.length, 3);
-  assert.equal(plan.estimates.unknownFiles, 2);
+  assert.equal(plan.shards.length, 4);
+  assert.equal(plan.estimates.unknownFiles, 3);
   assert.equal(plan.estimates.estimatedMs, null);
-  assert.equal(plan.timingSource.runId, 38822102215);
+  assert.equal(plan.timingSource.runId, timings.source.runId);
   const { plannedShardCount } = await import("./quality-shards.mjs");
   assert.equal(
     plannedShardCount({
@@ -797,7 +811,7 @@ test("historical scheduling weights retain the complete v15 source and leave new
     }),
     14,
   );
-  assert.equal(plan.shards.filter((x) => x.estimatedMs === null).length, 2);
+  assert.equal(plan.shards.filter((x) => x.estimatedMs === null).length, 3);
 });
 
 test("routing uses one shard without Profiles and bounds fixed heavy work at fourteen", async () => {
