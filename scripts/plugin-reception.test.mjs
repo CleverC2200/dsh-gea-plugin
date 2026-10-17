@@ -8,6 +8,7 @@ import {
   artifactSetSha256,
   validateRuntimeObservation,
   bindReception,
+  retainStandard,
 } from "./plugin-reception/contract.mjs";
 
 const fixture = async (name) =>
@@ -294,4 +295,50 @@ test("public CLI rejects relative inputs without echoing token text or starting 
   assert.match(result.stderr, /^RECEPTION_ABSOLUTE_INPUT_REQUIRED\s*$/);
   assert.equal(result.stdout, "");
   assert(!result.stderr.includes("do-not-echo"));
+});
+
+test("company preset reception accepts the approved persona projection and still requires standard capabilities", async () => {
+  const runtime = await fixture("observe-03");
+  for (const doc of runtime.documents)
+    if (["auto-negotiation", "agent-resource-skill"].includes(doc.id))
+      doc.byteEqualStandard = false;
+  validateRuntimeObservation(runtime);
+  runtime.documents.find(
+    (doc) => doc.id === "auto-negotiation",
+  ).fullStandardRetained = false;
+  assert.throws(
+    () => validateRuntimeObservation(runtime),
+    /RECEPTION_STANDARD_INCOMPLETE/,
+  );
+});
+
+test("company capability retention accepts a persona prefix but rejects missing tools and changed compaction", () => {
+  const baseline = [
+    {
+      name: "@deepseek-ai/dsh-persona",
+      config: {
+        prefix: "minimal",
+        suffix: "",
+        complete: true,
+        includeRuntimeContext: false,
+      },
+    },
+    { name: "@deepseek-ai/dsh-tools", config: { enabled: true } },
+    { name: "@deepseek-ai/dsh-compaction", config: { enabled: true } },
+  ];
+  const actual = structuredClone(baseline);
+  actual[0].config.prefix += "\n\nUser role";
+  const additions = [];
+  retainStandard(baseline, actual, "business", additions);
+  assert.deepEqual(additions, ["/@deepseek-ai/dsh-persona"]);
+  assert.throws(
+    () => retainStandard(baseline, actual.slice(0, 2), "business", []),
+    /STANDARD_ENTRY_LOST_OR_DUPLICATED/,
+  );
+  const changed = structuredClone(actual);
+  changed[2].config.enabled = false;
+  assert.throws(
+    () => retainStandard(baseline, changed, "business", []),
+    /STANDARD_ENTRY_CONFIG_CHANGED/,
+  );
 });

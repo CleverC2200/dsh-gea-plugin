@@ -1,4 +1,4 @@
-import { artifactSetSha256, businessIds, documentIds } from "./contract.mjs";
+import { artifactSetSha256, businessIds, documentIds, retainStandard } from "./contract.mjs";
 /** In-process ordinary Web profile boot. Real Loader/resolver/services, with all outgoing transports denied. */
 import assert from "node:assert/strict";
 import { readFile, writeFile, realpath } from "node:fs/promises";
@@ -277,16 +277,27 @@ try {
     assert(Array.isArray(docs.get(id).rows), "PRESET_DOCUMENT_NOT_PLUGIN_LIST");
   }
   const standard = docs.get("standard").rows;
+  const manageRequire = createRequire(join(v.profile, "package.json"));
+  const { composeStandardPreset, ORCHESTRATION_PRESET } = await import(
+    pathToFileURL(manageRequire.resolve("dsh-agent-manage/standard-preset"))
+  );
+  const companyStandard = (await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET))
+    .plugins;
   for (const id of ["auto-negotiation", "agent-resource-skill"])
-    assert.deepEqual(docs.get(id).rows, standard, "GENERAL_PRESET_DIFFERS_FROM_STANDARD");
+    assert.deepEqual(
+      docs.get(id).rows,
+      companyStandard,
+      "GENERAL_PRESET_DIFFERS_FROM_COMPANY_STANDARD",
+    );
   projected.documents = ids.map((id) => {
     const doc = docs.get(id),
       additions = [];
-    retainStandard(standard, doc.rows, id, additions);
+    const baseline = id === "standard" ? standard : companyStandard;
+    retainStandard(baseline, doc.rows, id, additions);
     return {
       id,
       sha256: createHash("sha256").update(doc.content).digest("hex"),
-      standardEntries: flatten(standard).length,
+      standardEntries: flatten(baseline).length,
       declaredEntries: flatten(doc.rows).length,
       fullStandardRetained: true,
       byteEqualStandard: doc.content === docs.get("standard").content,
@@ -348,36 +359,4 @@ async function save() {
 }
 function flatten(rows) {
   return rows.flatMap((row) => [row, ...(row.group === true ? flatten(row.config) : [])]);
-}
-function retainStandard(expectedRows, actualRows, id, allowedChanges, path = "") {
-  for (const expected of expectedRows) {
-    const key = expected.id ?? expected.name,
-      located = `${path}/${key}`;
-    const matches = actualRows.filter((row) => (row.id ?? row.name) === key);
-    assert.equal(matches.length, 1, `STANDARD_ENTRY_LOST_OR_DUPLICATED:${id}`);
-    const actual = matches[0];
-    const metadata = (row) =>
-      Object.fromEntries(Object.entries(row).filter(([key]) => key !== "config"));
-    assert.deepEqual(metadata(actual), metadata(expected), `STANDARD_ENTRY_METADATA_CHANGED:${id}`);
-    if (expected.group === true)
-      retainStandard(expected.config, actual.config, id, allowedChanges, located);
-    else if (
-      expected.name === "@deepseek-ai/dsh-persona" &&
-      !["standard", "auto-negotiation", "agent-resource-skill"].includes(id)
-    ) {
-      assert.equal(typeof actual.config?.prefix, "string", "BUSINESS_PERSONA_MISSING");
-      assert(
-        actual.config.prefix.startsWith(expected.config?.prefix ?? ""),
-        "STANDARD_PERSONA_PREFIX_LOST",
-      );
-      const withoutPrefix = (config) =>
-        Object.fromEntries(Object.entries(config ?? {}).filter(([key]) => key !== "prefix"));
-      assert.deepEqual(
-        withoutPrefix(actual.config),
-        withoutPrefix(expected.config),
-        "STANDARD_PERSONA_CONTEXT_CHANGED",
-      );
-      if (actual.config.prefix !== expected.config?.prefix) allowedChanges.push(located);
-    } else assert.deepEqual(actual.config, expected.config, `STANDARD_ENTRY_CONFIG_CHANGED:${id}`);
-  }
 }
