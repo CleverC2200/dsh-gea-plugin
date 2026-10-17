@@ -833,3 +833,29 @@ for (const mode of ["success", "fail-after-first"]) {
     }
   });
 }
+
+test("inactive package is excluded from batch plans and cannot be disabled after checking", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { allUpdates: true });
+  const inactive = f.proofs[1];
+  inactive.host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const blocked = controller.snapshot().items.find((row) => row.packageName === inactive.name);
+  assert.equal(blocked.state, "blocked");
+  assert.equal(blocked.planId, null);
+  assert.deepEqual(blocked.problem, { kind: "policy", code: "inactive" });
+  const selected = controller.snapshot().items.filter((row) => row.state === "available");
+  assert.equal(selected.length, 2);
+  const before = (await readPluginProfile(f.dir)).sha256;
+  f.proofs[0].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  await assert.rejects(
+    controller.submitBatch(selected.map(({ packageName, planId }) => ({ packageName, planId }))),
+    /UPDATE_PACKAGE_INACTIVE/,
+  );
+  assert.equal((await readPluginProfile(f.dir)).sha256, before);
+  assert.equal(controller.snapshot().operation, null);
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+});

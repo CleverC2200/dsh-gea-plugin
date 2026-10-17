@@ -597,6 +597,15 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         });
         if (generation !== checking || closed) return snapshot();
         if (plan.kind === "ready") {
+          if (proofs.find((proof) => proof.name === release.name)?.host.kind !== "active") {
+            row(release.name, {
+              state: "blocked",
+              candidateVersion: release.version,
+              diagnostic: "UPDATE_PACKAGE_INACTIVE",
+              problem: { kind: "policy", code: "inactive" },
+            });
+            continue;
+          }
           const id = randomUUID();
           plans.set(release.name, { id, release, baseline: profile });
           row(release.name, {
@@ -702,6 +711,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             if (selected.some((selectedPlan) => baseline?.sha256 !== selectedPlan.baseline.sha256))
               fail("UPDATE_BASELINE_CHANGED");
             const direct = object(baseline.manifest.dependencies ?? {});
+            const runtimeProofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
             const manifests = await combinationManifests(
               baseline,
               options.core,
@@ -709,6 +719,10 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             );
             for (const selectedPlan of selected) {
               const release = selectedPlan.release;
+              if (
+                runtimeProofs.find((proof) => proof.name === release.name)?.host.kind !== "active"
+              )
+                fail("UPDATE_PACKAGE_INACTIVE");
               if (!Object.hasOwn(direct, release.name)) fail("PACKAGE_NOT_INSTALLED");
               const resolved = await realpath(
                 resolveBundleDir(

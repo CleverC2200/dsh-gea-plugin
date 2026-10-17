@@ -141,7 +141,7 @@ test("official installed list checks once, keeps actions beside content, submits
   const cards = page.locator("[data-plugin-package]");
   assert.equal(await cards.count(), 3);
   for (const name of ["dsh-agent-workbench", "dsh-agent-manage", "gea-dsh-prototype"])
-    await page.getByRole("button", { name: `打开 ${name} 详情`, exact: true }).count();
+    assert.equal(await page.getByRole("button", { name: `查看 ${name}`, exact: true }).count(), 1);
   assert.equal(await page.getByRole("button", { name: /@cleverc2200/ }).count(), 0);
   await page.getByRole("button", { name: "刷新", exact: true }).dblclick();
   await page.getByRole("button", { name: "全部更新", exact: true }).waitFor();
@@ -175,7 +175,7 @@ test("official installed list checks once, keeps actions beside content, submits
     );
   }
   if (process.env.GEA_LIST_SCREENSHOT)
-    await page.screenshot({ path: process.env.GEA_LIST_SCREENSHOT });
+    await page.locator("[data-plugin-panel]").screenshot({ path: process.env.GEA_LIST_SCREENSHOT });
   await page.getByRole("button", { name: "全部更新", exact: true }).click();
   const restart = page.getByRole("button", { name: "一键重启", exact: true });
   await restart.waitFor();
