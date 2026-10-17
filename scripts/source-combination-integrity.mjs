@@ -35,6 +35,14 @@ export async function resourceDigests(directory, prefix = "", readScope) {
   return files;
 }
 
+function sameDigests(actual, expected) {
+  const keys = Object.keys(actual);
+  if (keys.length !== Object.keys(expected).length) return false;
+  for (const key of keys)
+    if (!Object.hasOwn(expected, key) || actual[key] !== expected[key]) return false;
+  return true;
+}
+
 /** Reject incomplete snapshots before changing the selected combination. */
 export async function readSourceCombination(runtime, id, core, { readScope } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
@@ -83,19 +91,13 @@ export async function readSourceCombination(runtime, id, core, { readScope } = {
     }
   }
   const actual = await resourceDigests(directory, "", readScope);
-  if (
-    JSON.stringify(Object.entries(actual).sort()) !==
-    JSON.stringify(Object.entries(record.files).sort())
-  )
+  if (!sameDigests(actual, record.files))
     throw Object.assign(Error("SOURCE_COMBINATION_DIGEST_MISMATCH"), {
       mismatches: changedInputs(actual, record.files),
     });
   const external = await dependencyDigests(record.externalRoots, readScope);
   for (const file of record.externalLockFiles) external[file] = await fileDigest(file, readScope);
-  if (
-    JSON.stringify(Object.entries(external).sort()) !==
-    JSON.stringify(Object.entries(record.externalFiles).sort())
-  )
+  if (!sameDigests(external, record.externalFiles))
     throw Object.assign(Error("SOURCE_DEPENDENCY_DIGEST_MISMATCH"), {
       mismatches: changedInputs(external, record.externalFiles).map((entry) => ({
         ...entry,
