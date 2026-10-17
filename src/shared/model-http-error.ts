@@ -1,4 +1,5 @@
 /** Model HTTP failures retain their protocol status and safe gateway diagnostics. */
+import { CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError } from "@deepseek-ai/dsh-llm";
 import { GeaResponseError } from "./gea-error.js";
 
 export async function modelHttpError(
@@ -27,13 +28,23 @@ export async function modelHttpError(
     },
     secrets,
   );
-  const code = `GEA_MODEL_HTTP_${response.status}`;
+  const contextOverflow =
+    operation === "模型推理" &&
+    [400, 413, 422].includes(response.status) &&
+    isContextWindowExceededError(
+      [field("code"), field("errorCode"), field("type"), field("message")]
+        .filter((value) => typeof value === "string")
+        .join(" "),
+    );
+  const code = contextOverflow ? CONTEXT_WINDOW_EXCEEDED_CODE : `GEA_MODEL_HTTP_${response.status}`;
   const action =
     response.status === 403
       ? `当前 Agent ${consumer} 的请求被拒绝。请核对该 Agent 的模型访问授权，本轮停止，不自动重试或切换身份。`
       : response.status === 401
         ? "模型凭据未通过认证，请重新登录 GEA。"
-        : "模型网关已返回失败响应，请按状态码和原始错误核对；本轮停止，不自动重试。";
+        : contextOverflow
+          ? "模型上下文超限，由 Core 按现有压缩策略决定能否恢复。"
+          : "模型网关已返回失败响应，请按状态码和原始错误核对；本轮停止，不自动重试。";
   const details = Object.entries(safe.details)
     .filter(([key]) => key !== "httpStatus")
     .map(([key, value]) => `${key}=${value}`)

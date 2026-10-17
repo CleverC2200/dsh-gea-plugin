@@ -222,3 +222,100 @@ for (const reason of ["user", "identity"]) {
     t.mock.timers.tick(5000);
   });
 }
+
+test("legal tool parameters larger than the business snapshot budget reach Core intact", async (t) => {
+  const argumentsText = JSON.stringify({ text: "中".repeat(40000) });
+  const { adapter } = fixture(
+    t,
+    async () =>
+      new Response(
+        event(
+          {
+            tool_calls: [
+              {
+                index: 0,
+                id: "large",
+                type: "function",
+                function: { name: "lookup", arguments: argumentsText },
+              },
+            ],
+          },
+          "tool_calls",
+        ) + "data: [DONE]\n\n",
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    { mockTimers: false },
+  );
+  const chunks = await collect(
+    adapter.stream({
+      ...options,
+      tools: [{ name: "lookup", description: "fixture", parameters: { type: "object" } }],
+    }),
+  );
+  assert.equal(
+    chunks.find((chunk) => chunk.type === "block-end" && chunk.block.type === "tool-call").block
+      .arguments,
+    argumentsText,
+  );
+});
+
+test("reasoning beyond the former character bound reaches the completed Core block unchanged", async (t) => {
+  const reasoning = "😀".repeat(524289);
+  const { adapter } = fixture(
+    t,
+    async () =>
+      new Response(
+        event({ reasoning_content: reasoning, content: "answer" }, "stop") + "data: [DONE]\n\n",
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    { mockTimers: false },
+  );
+  const chunks = await collect(adapter.stream(options));
+  assert.equal(
+    chunks.find((chunk) => chunk.type === "block-end" && chunk.block.type === "reasoning").block
+      .text,
+    reasoning,
+  );
+  assert.equal(chunks.at(-1).replayState.response.complete, true);
+});
+
+test("finish waits for late usage and protocol termination beyond the former tail deadline", async (t) => {
+  const stream = response();
+  const { adapter } = fixture(t, async () => stream.value);
+  let settledResult = false;
+  const result = collect(adapter.stream(options)).finally(() => {
+    settledResult = true;
+  });
+  await settled();
+  stream.send(event({ content: "answer" }, "stop"));
+  await settled();
+  t.mock.timers.tick(300);
+  await settled();
+  assert.equal(settledResult, false);
+  stream.send('data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":30}}\n\n');
+  stream.send("data: [DONE]\n\n");
+  const chunks = await result;
+  assert.equal(chunks.find((chunk) => chunk.type === "usage").usage.totalTokens, 130);
+  assert.equal(chunks.at(-1).reason.kind, "stop");
+});
+
+test("an unterminated finish continues pulsing on heartbeats and then obeys the existing idle timeout", async (t) => {
+  const stream = response();
+  const { adapter } = fixture(t, async () => stream.value);
+  const result = collect(adapter.stream(options)).then(
+    (chunks) => ({ chunks }),
+    (error) => ({ error }),
+  );
+  await settled();
+  stream.send(event({ content: "answer" }, "stop"));
+  await settled();
+  for (let i = 0; i < 3; i++) {
+    t.mock.timers.tick(900);
+    stream.send(": heartbeat\n\n");
+    await settled();
+  }
+  t.mock.timers.tick(1001);
+  const outcome = await result;
+  assert.equal(outcome.error.code, "GEA_NETWORK_TIMEOUT");
+  assert.equal(stream.cancelled(), 1);
+});

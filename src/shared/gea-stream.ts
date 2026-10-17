@@ -1,8 +1,12 @@
-/** 将 GEA SSE 增量转换为 DSH 流块；只接受声明过的工具、限制累计大小，并拒绝歧义格式。 */
+/** 将 GEA SSE 增量转换为 DSH 流块；只接受声明过的工具，并拒绝歧义格式。 */
 import { createParser } from "eventsource-parser";
 import { brandString } from "@deepseek-ai/dsh-brand";
 import type { ToolCallId } from "@deepseek-ai/dsh-llm/brand";
-import type { StreamChunk } from "@deepseek-ai/dsh-llm";
+import {
+  CONTEXT_WINDOW_EXCEEDED_CODE,
+  isContextWindowExceededError,
+  type StreamChunk,
+} from "@deepseek-ai/dsh-llm";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("GEA_MODEL_INVALID_SSE");
@@ -18,14 +22,11 @@ const STREAM_FAILURES: Record<string, string> = {
   GEA_MODEL_INCOMPLETE_STREAM: "模型这一轮没返回结束标记就断流了，本轮已中止，请重发一次",
   GEA_MODEL_UNSUPPORTED_TOOL_CALL: "模型用了这个客户端不支持的调用方式，本轮已中止",
   GEA_MODEL_INVALID_TOOL_CALL: "模型这一轮回复里的工具调用不合法，本轮已中止，请重发一次",
-  GEA_MODEL_TOOL_CALL_TOO_LARGE: "模型这一轮想传的参数超过上限，本轮已中止，请把请求拆小一点再试",
   GEA_MODEL_UNSUPPORTED_FINISH_REASON: "模型返回了无法识别的结束原因，本轮已中止",
-  GEA_MODEL_REASONING_TOO_LARGE: "模型返回的思考超出网关历史上限，本轮已中止，原文不会被截断回传",
   GEA_MODEL_EMPTY_RESPONSE: "模型这一轮没有给出任何内容，请重发一次",
   GEA_MODEL_INVALID_SSE: "模型返回的数据格式无法解析，本轮已中止",
   GEA_MODEL_GATEWAY_ERROR: "模型网关在流里回了错误，本轮已中止",
-  GEA_MODEL_CONTEXT_TOO_LONG:
-    "这一轮上下文超出模型上限，本轮已中止：把问题拆小（少读几份明细、换成聚合口径）再问一次",
+  GEA_MODEL_CONTEXT_TOO_LONG: "模型上下文超出模型上限，由 Core 按现有压缩策略决定能否恢复",
 };
 
 function streamFailure(code: string, detail?: string): Error {
@@ -40,9 +41,6 @@ function invalid(code: string, detail?: string): never {
 }
 
 /** Classify gateway failures without copying response text into diagnostics. */
-const CONTEXT_LIMIT_SIGN =
-  /context length|context_length|maximum context|too many tokens|token limit|reduce the length|max_tokens/i;
-
 function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boolean } {
   const error = record(value);
   const codes = new Set([
@@ -80,9 +78,23 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
     ]
       .filter(Boolean)
       .join(" | "),
-    contextLimit: CONTEXT_LIMIT_SIGN.test(
-      [error.code, error.message].filter((value) => typeof value === "string").join(" "),
-    ),
+    contextLimit:
+      !["authentication_error", "permission_error", "rate_limit_error", "server_error"].includes(
+        String(error.type),
+      ) &&
+      ![
+        "invalid_api_key",
+        "permission_denied",
+        "rate_limit_exceeded",
+        "concurrency_limit_exceeded",
+        "MODEL_UPSTREAM_RATE_LIMITED",
+        "MODEL_UPSTREAM_UNAVAILABLE",
+      ].includes(String(error.code)) &&
+      isContextWindowExceededError(
+        [error.code, error.type, error.message]
+          .filter((value) => typeof value === "string")
+          .join(" "),
+      ),
   };
 }
 
@@ -134,7 +146,11 @@ function completion(data: string): {
   // 一律报"格式无法解析"等于把真因吞掉（线上就是这么被误导的）。
   if (payload.error != null) {
     const detail = gatewayErrorDetail(payload.error);
-    if (detail.contextLimit) invalid("GEA_MODEL_CONTEXT_TOO_LONG", detail.detail);
+    if (detail.contextLimit) {
+      const error = streamFailure("GEA_MODEL_CONTEXT_TOO_LONG", detail.detail);
+      Object.assign(error, { code: CONTEXT_WINDOW_EXCEEDED_CODE });
+      throw error;
+    }
     invalid("GEA_MODEL_GATEWAY_ERROR", detail.detail);
   }
   if (!Array.isArray(payload.choices)) invalid("GEA_MODEL_INVALID_SSE", "choices 不是数组");
@@ -168,13 +184,13 @@ function completion(data: string): {
  * 将流式文本保留在权威的最终块中，并要求收到终止完成事件。
  * @param body 此次模型调用拥有的成功 SSE 响应体。
  * @param signal 同时取消待读取和所属请求。
- * @param offered 所属请求提供的工具名及参数字节预算；省略时仅允许文本。
+ * @param offered 所属请求提供的工具名；省略时仅允许文本。
  * @returns Harness 流块；不完整或不支持的完成会抛错，交由 LlmRuntime 分类。
  */
 export async function* geaTextStream(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
-  offered?: { names: readonly string[]; maxBytes: number },
+  offered?: { names: readonly string[] },
   activity?: () => void,
 ): AsyncGenerator<StreamChunk> {
   const reader = body.getReader();
@@ -202,10 +218,8 @@ export async function* geaTextStream(
   let reasoning = "";
   let reasoningStarted = false;
   const calls = new Map<number, { id: string; name: string; arguments: string }>();
-  let callBytes = 0;
   let terminal: "stop" | "max-tokens" | "tool-calls" | undefined;
   let usage: import("@deepseek-ai/dsh-llm").TokenUsage | undefined;
-  let usageDeadline = 0;
   const finishChunk = (reason: NonNullable<typeof terminal>): StreamChunk => ({
     type: "finish",
     reason: { kind: reason },
@@ -218,25 +232,7 @@ export async function* geaTextStream(
     yield { type: "block-start", index: 0, blockType: "text" };
     while (true) {
       signal?.throwIfAborted();
-      if (terminal && Date.now() >= usageDeadline) {
-        if (usage) yield { type: "usage", usage };
-        yield finishChunk(terminal);
-        return;
-      }
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const read = terminal
-        ? await Promise.race([
-            reader.read(),
-            new Promise<ReadableStreamReadResult<Uint8Array>>((done) => {
-              timer = setTimeout(
-                () => done({ done: true, value: undefined }),
-                Math.max(1, usageDeadline - Date.now()),
-              );
-            }),
-          ]).finally(() => {
-            if (timer) clearTimeout(timer);
-          })
-        : await reader.read();
+      const read = await reader.read();
       signal?.throwIfAborted();
       parser.feed(read.done ? decoder.decode() : decoder.decode(read.value, { stream: true }));
       for (const data of events.splice(0)) {
@@ -256,8 +252,6 @@ export async function* geaTextStream(
         // mutate blocks which have already completed.
         if (terminal) continue;
         if (chunk.reasoning) {
-          if (reasoning.length + chunk.reasoning.length > 1_048_576)
-            invalid("GEA_MODEL_REASONING_TOO_LARGE");
           reasoning += chunk.reasoning;
           if (!reasoningStarted) {
             reasoningStarted = true;
@@ -287,17 +281,13 @@ export async function* geaTextStream(
             if (fragment === undefined || fragment === "") continue;
             if (typeof fragment !== "string" || (call[field] && call[field] !== fragment))
               invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具调用标识或名称片段冲突");
-            if (!call[field]) callBytes += new TextEncoder().encode(fragment).byteLength;
             call[field] = fragment;
           }
           if (fn.arguments !== undefined) {
             if (typeof fn.arguments !== "string")
               invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具参数片段不是字符串");
             call.arguments += fn.arguments;
-            callBytes += new TextEncoder().encode(fn.arguments).byteLength;
           }
-          if (!calls.has(delta.index as number)) callBytes += 1;
-          if (callBytes > offered.maxBytes) invalid("GEA_MODEL_TOOL_CALL_TOO_LARGE");
           calls.set(delta.index as number, call);
         }
         if (chunk.text) {
@@ -309,6 +299,7 @@ export async function* geaTextStream(
         }
         if (chunk.finish) {
           signal?.throwIfAborted();
+          if (chunk.finish === "max-tokens") calls.clear();
           const ids = new Set<string>();
           if (calls.size > 0 !== (chunk.finish === "tool-calls"))
             invalid("GEA_MODEL_INVALID_TOOL_CALL", "结束标记与工具调用不一致");
@@ -327,7 +318,8 @@ export async function* geaTextStream(
             if (!args || typeof args !== "object" || Array.isArray(args))
               invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具参数不是 JSON 对象");
           }
-          if (!text.trim() && chunk.finish === "stop") invalid("GEA_MODEL_EMPTY_RESPONSE");
+          if (!text.trim() && !reasoning.trim() && chunk.finish === "stop")
+            invalid("GEA_MODEL_EMPTY_RESPONSE");
           yield { type: "block-end", index: 0, block: { type: "text", text } };
           if (reasoningStarted)
             yield { type: "block-end", index: 1, block: { type: "reasoning", text: reasoning } };
@@ -357,7 +349,6 @@ export async function* geaTextStream(
           }
           signal?.throwIfAborted();
           terminal = chunk.finish;
-          usageDeadline = Date.now() + 250;
         }
       }
       if (read.done) {

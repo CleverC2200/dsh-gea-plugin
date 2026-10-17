@@ -111,8 +111,7 @@ test("reasoning and tool IDs survive client tool continuation; absent, null and 
       }) +
       event({}, "tool_calls");
     const assembler = new BlockAssembler();
-    for (const chunk of await collect(wire, false, { names: ["query"], maxBytes: 200 }))
-      assembler.push(chunk);
+    for (const chunk of await collect(wire, false, { names: ["query"] })) assembler.push(chunk);
     const history = [
       {
         role: "assistant",
@@ -236,21 +235,12 @@ test("request buffers stay isolated and multi-choice output is rejected rather t
   );
 });
 
-test("history preserves more than a short window and enforces Java UTF-16 limits without truncation", () => {
-  const full = "😀".repeat(524288);
-  assert.equal(toGeaMessages({ messages: [assistant(full)] })[0].reasoning_content, full);
-  assert.throws(
-    () => toGeaMessages({ messages: [assistant(full + "x")] }),
-    /GEA_REASONING_HISTORY_TOO_LARGE/,
-  );
-  assert.equal(
-    toGeaMessages({ messages: Array.from({ length: 8 }, (_, i) => assistant("思考" + i)) }).length,
-    8,
-  );
-  assert.throws(
-    () => toGeaMessages({ messages: Array.from({ length: 5 }, () => assistant(full)) }),
-    /GEA_REASONING_HISTORY_TOO_LARGE/,
-  );
+test("complete reasoning history beyond the former per-message and request bounds remains lossless", () => {
+  const full = "😀".repeat(524289);
+  const histories = Array.from({ length: 5 }, () => assistant(full));
+  const messages = toGeaMessages({ messages: histories });
+  assert.equal(messages.length, 5);
+  assert.ok(messages.every((message) => message.reasoning_content === full));
 });
 
 test("abort keeps only an unfinished display prefix and releases its reader", async () => {

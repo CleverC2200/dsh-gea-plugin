@@ -99,7 +99,9 @@ export class GeaModelAdapter extends LlmAdapter {
     return {
       provider,
       id: model,
-      ...(route.contextWindows?.[model] ? { contextWindow: route.contextWindows[model] } : {}),
+      ...(route.contextWindows?.[model]
+        ? { context: { contextWindow: route.contextWindows[model] } }
+        : {}),
       name: route.names[model] ?? "GEA 模型（名称未提供）",
       // 声明默认档位：用户没显式选档位时，DSH 会补上它并按 extra_params 发给网关。
       reasoning: {
@@ -187,7 +189,6 @@ export class GeaModelAdapter extends LlmAdapter {
         signal,
         {
           names: options.tools?.map((tool) => tool.name) ?? [],
-          maxBytes: business.config.maxSnapshotBytes,
         },
         () => watchdog.pulse(),
       )) {
