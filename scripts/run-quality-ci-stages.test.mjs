@@ -41,6 +41,7 @@ const fixtureSourceFiles = [
   "ci-platform-tests.mjs",
   "quality-test-reporter.mjs",
   "quality-test-execution.mjs",
+  "quality-test-timings.mjs",
   "quality-shards.mjs",
   "quality-worker-inputs.mjs",
   "quality-worker-control.mjs",
@@ -461,10 +462,27 @@ test("the public plan keeps unknown timings and every selected file in nonempty 
   writeFileSync(
     timings,
     JSON.stringify({
-      source: { runId: "measured-fixture", platform: process.platform, concurrency: 2 },
+      schemaVersion: 2,
+      source: {
+        runId: "measured-fixture",
+        platform: process.platform,
+        node: process.versions.node,
+        core: JSON.parse(readFileSync(f.input)).core,
+        fileConcurrency: 2,
+      },
       files: [
-        { file: "tests/slow.test.mjs", durationMs: 300 },
-        { file: "scripts/stage-fixture.test.mjs", durationMs: 100 },
+        {
+          file: "tests/slow.test.mjs",
+          durationMs: 300,
+          sha256: hash(readFileSync(join(f.gea, "tests/slow.test.mjs"))),
+          fixtures: [],
+        },
+        {
+          file: "scripts/stage-fixture.test.mjs",
+          durationMs: 100,
+          sha256: hash(readFileSync(join(f.gea, "scripts/stage-fixture.test.mjs"))),
+          fixtures: [],
+        },
       ],
     }),
   );

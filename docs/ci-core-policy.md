@@ -4,6 +4,10 @@
 
 `candidate-quality` 只运行 required 基线。rc.2 的质量、适用的 Windows 归档及安全检查仍是合并条件。最终门禁继续拒绝失败、取消、缺失或跳过的必需任务。
 
+Windows 插件更新原生回归由 [`ci-windows-update.mjs`](../scripts/ci-windows-update.mjs) 按实际 event HEAD 与 base 的完整 diff 判定，覆盖更新 Host/共享实现、安装 fixture、原生入口、依赖锁与工作流。适用时在 `windows-2025` 执行；其他改动在轻量 Linux job 写明确 `not-applicable` 回执。`windows-plugin-update` 始终属于最终聚合依赖和必需 job，失败、取消、缺失或跳过不能放行，不再依赖单次任务分支名。
+
+该原生检查只验证本次源码对固定 GEA 157 unsigned Windows runtime / Core `639ed015397290b3745d163aafe02ffee4aa3f84` 的安装事务行为；下载的安装器原 SHA256、URL 和证据范围集中在上述模块，并在运行回执中保留。它不证明当前 required Core 的联合验收，也不证明桌面 UI、正式签名或发行。当前 Core 的 Linux/macOS 质量仍按原冻结三仓输入独立判定。
+
 `candidate-compatibility` 通过 `workflow_dispatch` 独立运行 alpha，仍使用冻结的三仓完整 SHA 和同一必需检查与受影响测试命令。失败保留在该工作流的日志、产物及结论中。它不作为 required merge context，也不要求它完成或成功后才接收 rc.2。
 
 合并核验必须绑定候选组或实际 main 的完整三仓输入，核 rc.2 必需任务和适用的安全检查。按工作流身份单独记录 alpha，不再以“所有 check-run 一律成功”判断。alpha 未运行或失败不能记成兼容通过；只凭任务名包含 alpha 也不能豁免其他检查。

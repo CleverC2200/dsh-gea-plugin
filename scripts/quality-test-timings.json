@@ -1,689 +1,2899 @@
 {
+  "schemaVersion": 2,
   "source": {
     "repository": "CleverC2200/dsh-gea-plugin",
-    "runId": 38822102215,
+    "runId": 39095827120,
     "runAttempt": 1,
-    "head": "6ff1ae528e38572ad9365c248186fba8899b6b87",
+    "head": "ee877b4fdaff29df6535930b02ac34aecf32b2c6",
     "platform": "linux",
     "node": "24.21.0",
-    "core": "639ed015397290b3745d163aafe02ffee4aa3f84",
+    "core": "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8",
     "fileConcurrency": 3,
     "kind": "historical-reference-only",
     "acceptance": "not-acceptance",
-    "planSha256": "17b3811ffc39b0ca65e86d59506806ba4d346060cba9bf0f5f72596d74117fe5",
-    "buildSha256": "c8211c7b01c298c0883593d2219af7f83407c6568409902794dddc6cdbd86c5c",
-    "selectionSha256": "57e91f5324c97d2d17e304612b44001710dd4a8e550502674e58b7eea1b3f2bc",
-    "provenanceSha256": "1378ff54c342e4b16f30f7c454b51ae4dc060f667e180db7cfd4c489d47bf019",
-    "note": "Complete same-run source/test/coverage gates passed. Performance may fail. No cross-run fill; no CPU/I/O independence or <=600s claim."
+    "planSha256": "bb9c5fafb24a7877e396ca6ec264c213c0b482651e7e570da83a81dfa81a0666",
+    "buildSha256": "627b16535128bba270dbba08773a1be35adebc12804beec26012e485803d6ea0",
+    "selectionSha256": "8a8ecba0a945133dd94994678217e33a3ac6971ea8f32e788dbb76648a4bd3d9",
+    "artifacts": [
+      {
+        "id": 12125425221,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-9",
+        "sha256": "8b439f874625e7780e5e1e182a2c59e82051d5182dc03d778fa40e7983446db1"
+      },
+      {
+        "id": 12125330087,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-13",
+        "sha256": "865fdbc45daad6d4cbf88cdc5ad3d898db91b36834912538320e3ec4c18620cf"
+      },
+      {
+        "id": 12125305207,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-11",
+        "sha256": "830b06576dd6881bd0a8304d6bb9855b02ef89e6c42d93362fd9510f804f504d"
+      },
+      {
+        "id": 12125230048,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-5",
+        "sha256": "d3fa39715c4625172893ba134a6d360f262a1adcfc264037172cf7362350a7cf"
+      },
+      {
+        "id": 12125185549,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-10",
+        "sha256": "10246f1082b24407663411cc5c72ba69d66fc52797eab62c272298c4d5f177e7"
+      },
+      {
+        "id": 12125140921,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-8",
+        "sha256": "1a449140c64abb26d416ff998d279e7ef17dfb192e4ea0a404ea1e6865241919"
+      },
+      {
+        "id": 12124985355,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-2",
+        "sha256": "aeee5b5b5cf0991c6c60ef78a3553b148e6ad59edd6c8369329ec808433339a1"
+      },
+      {
+        "id": 12124931068,
+        "name": "quality-a1-final",
+        "sha256": "d7e66236fb599bb70b6bb9ba816cb8b1fb51191ac04fc79106d7e235aa89104c"
+      },
+      {
+        "id": 12124876279,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-4",
+        "sha256": "bd66152dd3209a88a83b8d97f2d9073a5c5236910eadbc60f8e93b7bfc6c2af6"
+      },
+      {
+        "id": 12124871216,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-7",
+        "sha256": "2fafaf172c985c4058d3c975700b04a2c3dfd25ae97673a7a41709953c4a674f"
+      },
+      {
+        "id": 12124821138,
+        "name": "quality-a1-index-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8",
+        "sha256": "e792b886c21f971c663d77680f3dd62ac75ed68546a6ce9f8c6a331434021293"
+      },
+      {
+        "id": 12124756725,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-6",
+        "sha256": "eb6ed00cedf9971f9dfec47baa189e74bd9b52e4e61591fa73c901389aced7f8"
+      },
+      {
+        "id": 12124254945,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-14",
+        "sha256": "ae1a6e95b24859f7986cf2a719b7110499f3d612fe9f31c18ec8165f9e02277c"
+      },
+      {
+        "id": 12124173644,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-12",
+        "sha256": "af2dac253a02965e799436e5ba5fac5c5445989aac8f7337fbf798b9a3d8bbaf"
+      },
+      {
+        "id": 12124033880,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-3",
+        "sha256": "b0488242241a04285275916fd611468d61597d4d2a1f2841a9481a4e7b51eb49"
+      },
+      {
+        "id": 12123724682,
+        "name": "quality-a1-worker-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8-1",
+        "sha256": "29ac636fdc34c2e48ec2b611e742c51454c66af30276b7b3cdabdc1cc1469eae"
+      }
+    ],
+    "note": "Complete exactly-once Linux reports from one run only. File and referenced fixture digests come from the measured head. Changed or missing inputs and incompatible environments become unknown. No cross-run fill, performance pass or <=600s claim."
+  },
+  "fixtures": {
+    "scripts/source-combination-integrity.mjs": "83ddb7ed86c82e40fc5356ef56e48193f955435c9b3bd5c4dba5b5e91f5db648",
+    "scripts/source-profile.mjs": "82d2d6490eb65d2156ccc2aebaf6a9e36968810fa923d497b14b125053f60f48",
+    "scripts/start-isolated-validation.mjs": "60ac25594819c321414ad6c5031c74054664d50500a42feb0240b9aa9781340a",
+    "tests/fixtures/branch-stock-acceptance.mjs": "b1b8886ca9ea0b3d086a7f1f1492bc9a05db2861f1da4b66c6e902fe25263ce9",
+    "tests/fixtures/branch-stock.mjs": "943d3d66e5094d3b2a7ac765aab1843b31121ae691ab2f556c22653253da25d2",
+    "tests/fixtures/business-page.mjs": "39bf47bfa85ea242a4f659994bc3d3de4c7810db8055a0588029e2773b55793b",
+    "tests/fixtures/business-session.mjs": "67ca2cc986ca3c777db5c43b2022cd102b71543dd7ebb1cd5209e94d30332fc7",
+    "tests/fixtures/catalog-scene.mjs": "006cbabae0afd3d1e62d01b34117edeccc75b0d5c8bb0247a6f5cde057a51621",
+    "tests/fixtures/compiled-source.mjs": "cc03c448e0ff873f8d1709b4ec490e575a861bbdb96c0a23e3e9832decf30d03",
+    "tests/fixtures/composer-stats.mjs": "ee16fafefd07535e8440e9815e0dd38ad529d8193e80fea0776cda648e5c4d20",
+    "tests/fixtures/core-documents.mjs": "8cf23fa9d2b74c63345743539d964b562b51a3a80f0fd1b0600479dbce303351",
+    "tests/fixtures/correction-service.mjs": "7c3d18c10cf3267664937e623bace95208021995026323cb5f121e596e893861",
+    "tests/fixtures/cube-wire.mjs": "bed037c5896c1c91873128f789f40dce5451ef7e873b0c8789a6539fe0292dc3",
+    "tests/fixtures/html-resource.mjs": "0768c515efa763798fefd506fc203c0971a688550639196e630196ccc21bc13d",
+    "tests/fixtures/model-profile.mjs": "c48600e8ad3dddf7c5b2ac71a93c7ebd195b83f0b3dc3380d34e4b99c50e695f",
+    "tests/fixtures/native-page.mjs": "91a646d558e946725bacc05157272a3f4d75a41fec9d2b5975ac0179b088d8e0",
+    "tests/fixtures/plugin-updates/installed-runtime.mjs": "7125bdeae81d739579e48052e4a154cc9f3a06c32a8168a21a1a2773308764e7",
+    "tests/fixtures/plugin-updates/pnpm-profile.mjs": "bee4f200775c2d32719ad89f553b1f8c6c10b0979d8d9e90dddc8f3adc27ba60",
+    "tests/fixtures/plugin-updates/profile.mjs": "d602e6936fa61581f0e4a32197d8661005b82f7a198ea3c0f54cee3d740288e5",
+    "tests/fixtures/profile-inputs.mjs": "a0a269d7ca71ee716e3686d936ef14ad7ec60ec4a270296835e2422db8fe749b",
+    "tests/fixtures/profile-parent-lifetime.mjs": "af7337cb3087955451269e8b3f516d81822597a1ed40b80f245dd4c2b2fc8d0c",
+    "tests/fixtures/profile-ready.mjs": "2a39df89d41f6be110bc2fc720c662f81c49ab6ea7ddf791b3e90fcf17a82793",
+    "tests/fixtures/profile-window.mjs": "94ec2bcc26867b5c8b8b0629061890b1f46fe29d688f44cece42e479aeb22d55",
+    "tests/fixtures/receipt-skill-catalog.mjs": "8bd4ab251f9412d6156f5fa54dabeec481d03ac62c14300f37b07cccebcfa306",
+    "tests/fixtures/source-assembly.mjs": "11e177c2053827fadb4cfcb31e6ddbb30569061bb5706fb0a2b8ab1907e8e4c6",
+    "tests/fixtures/source-test.mjs": "6420681ae0d18610c3dc51e415928936050f29aeba31e12074e2dc48c896345f",
+    "tests/fixtures/source-updates.mjs": "05528f1b15059fa0de26860f032d3c52f91e8ba6d3a2ef5a739a6e80bc7cb837",
+    "tests/fixtures/source-window-inputs.mjs": "4ab5a66a76e1e17e10166c0e34da5e3404b40344e14c896d97455f71e63b4ec1",
+    "tests/fixtures/source-window.mjs": "c638e5663e7c6b35e4b3f3df08c912345f76dcd13952c576cdc6541355b4fa19",
+    "tests/fixtures/stock-reference-page.mjs": "684bc46d357b15b09ab208746a20f2048cedd9d7a62189e45c41fa6318563143",
+    "tests/fixtures/test-browser.mjs": "983889c68cea0cb10fe2b06055660dc4067e6111a0bee0914fb96b93147e0ecc",
+    "tests/fixtures/workbench-contract.mjs": "94b520fefdcdfa14e566698b8da5d58a1f06f4543127fa7ac44e2aeb77f2128d",
+    "tests/fixtures/workbench-profile.mjs": "ce9a8079e195c9707c8901f7317c4b0d48ccc99f5dab3d3d3b9f6285b52055fb",
+    "tests/profile.mjs": "fcaa4e08c324c487ebdcc921050b35aa1e9dcb239c8d981d64d972ede4a10468",
+    "tests/source-profile-start.mjs": "b4df817afd5b25ac366837fa237aaa718956e7f1a8ba52c23796af052df64536"
   },
   "files": [
     {
-      "file": "scripts/ci-core-policy.test.mjs",
-      "durationMs": 77.288248
+      "file": "scripts/build.test.mjs",
+      "durationMs": 881.170246,
+      "sha256": "eb0ae1f715f441c0649248004ecbc6a65da53bc8ab25b7248272cad6d3cac0e1",
+      "fixtures": []
     },
     {
       "file": "scripts/ci-policy-impact.test.mjs",
-      "durationMs": 3375.109861
+      "durationMs": 29268.429452,
+      "sha256": "cde276921d3bd675e61201a267f67955481ec1c76eb0cc8695360a2b6901404f",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/deliver-packages.test.mjs",
+      "durationMs": 35954.657176,
+      "sha256": "17b86616ff0c8b861bb73629efd130bfa5ebd778e1b1641bd541d411f692082d",
+      "fixtures": []
     },
     {
       "file": "scripts/delivery-check.test.mjs",
-      "durationMs": 297.004393
+      "durationMs": 488.134057,
+      "sha256": "452a8b246188f25614162688664b46866dbb33ab6dec695eef9e708432badfaf",
+      "fixtures": []
     },
     {
       "file": "scripts/delivery-continuation.test.mjs",
-      "durationMs": 2609.629937
+      "durationMs": 2781.628068,
+      "sha256": "b059e7739fa5af4ca5e4421389ef8804e6a94d2f2c0c2c52670b800bde8a8a82",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/delivery-events.test.mjs",
+      "durationMs": 126.932586,
+      "sha256": "56670299aa9e0f0887e5ff5c17206284ca5bd2f65867a5ec9ed70b95bb46798c",
+      "fixtures": []
     },
     {
       "file": "scripts/delivery-integrity.test.mjs",
-      "durationMs": 2942.029614
+      "durationMs": 2876.283009,
+      "sha256": "78e8f88c4a51805b15a9c2cd132d54444abb4f8936c529ecb2c83ae61be43f6e",
+      "fixtures": []
     },
     {
       "file": "scripts/delivery-readiness.test.mjs",
-      "durationMs": 969.883892
+      "durationMs": 1295.167695,
+      "sha256": "a2989ede50a1b551e7c7b6cd7c6d7a5d7bbdab00226ac0a1ac25b1b62b1ba2e4",
+      "fixtures": []
     },
     {
       "file": "scripts/delivery-runtime.test.mjs",
-      "durationMs": 1959.787626
+      "durationMs": 2711.921296,
+      "sha256": "68684f80395a2ec490e6acd0e717be9185b6bbcf97e311b52ff0cc924ccfc0aa",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/dependency-lock.test.mjs",
+      "durationMs": 892.227331,
+      "sha256": "5bace4fbd8a24a0d98e7e5518f7cc973ecc14f428599cd3b19710db4c7386632",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/desktop-dev.test.mjs",
+      "durationMs": 86.100761,
+      "sha256": "12e0b3ac2419ebda770233d5013238f71d4ed4b044509613341b7ee7281ec8f4",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/dev-observe.test.mjs",
+      "durationMs": 825.178581,
+      "sha256": "ed3bd4dfe8ea57f8a21f48e0f114ea61e2712f5a3242b3ce84c7b69b510aecc4",
+      "fixtures": []
     },
     {
       "file": "scripts/knowledge-merge-ci.test.mjs",
-      "durationMs": 219.515464
+      "durationMs": 263.403189,
+      "sha256": "3aafff711d774ec953b972101b4e8fb590bf49ef9e1d9e75dd42514b35e59da1",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/package-desktop.test.mjs",
+      "durationMs": 107.709437,
+      "sha256": "783831a591fbbcc698dec4d7b63915a562b0aeb25da7d0f68ea8bfc7d9392064",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/package-profile.test.mjs",
+      "durationMs": 162.060535,
+      "sha256": "5ef0f5ffa5d7c04a6987fc3b5fb1d4754f6ff3a6446ea8280d8871efd1cda569",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/package-smoke.test.mjs",
+      "durationMs": 3627.313055,
+      "sha256": "be90cc23e693a5187953f5cb60402c78ef6dd14f2e6aafaf703f0ac6a065347e",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/package-version-gate.test.mjs",
+      "durationMs": 91.740351,
+      "sha256": "b5e18355f5ddd56882fa89a0a0d8a2d000ba4f4ff4d19142b66d893db4778228",
+      "fixtures": []
     },
     {
       "file": "scripts/page-interaction-package.test.mjs",
-      "durationMs": 7545.620415
+      "durationMs": 7517.408991,
+      "sha256": "f37e477f765abc84e509b96c7ec7cb8c3314e439d708075a440a894fa4400b12",
+      "fixtures": []
     },
     {
-      "file": "scripts/quality-hosted-budget.test.mjs",
-      "durationMs": 214.91382
+      "file": "scripts/plugin-package-version.test.mjs",
+      "durationMs": 584.735658,
+      "sha256": "1c836830b2fac76f41274874d46694583b5fe86ac4dfb4c6d04a3098a405b434",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/plugin-reception.test.mjs",
+      "durationMs": 218.572349,
+      "sha256": "a46b2e51449b3ecc61c41acc6e2ed9be91c1c8ea60fe867eb6de2bcb34df534a",
+      "fixtures": []
+    },
+    {
+      "file": "scripts/plugin-update-pr-lane.test.mjs",
+      "durationMs": 552.489386,
+      "sha256": "ae6d7fe2d8d127ed2c70ac83f6d66228f8f1191606b77849d6aedcf75fa9d187",
+      "fixtures": []
     },
     {
       "file": "scripts/quality-policy.test.mjs",
-      "durationMs": 4229.733406
+      "durationMs": 5805.208702,
+      "sha256": "0369aa61d7638dce53d25ec3d5b32fd530569d3840cb17f02ccd110d5f595462",
+      "fixtures": []
     },
     {
       "file": "scripts/quality-prepared-inputs.test.mjs",
-      "durationMs": 10201.926081
+      "durationMs": 14951.293129,
+      "sha256": "3ed8ba48ffc6989c0f984acc45700eecfe02d70c3646275517059a9c14ed09e9",
+      "fixtures": []
     },
     {
       "file": "scripts/quality-shards.test.mjs",
-      "durationMs": 1786.910495
-    },
-    {
-      "file": "scripts/quality-system-chrome.test.mjs",
-      "durationMs": 30762.316818
-    },
-    {
-      "file": "scripts/quality-test-execution.test.mjs",
-      "durationMs": 15422.957301
-    },
-    {
-      "file": "scripts/quality-test-reporter.test.mjs",
-      "durationMs": 8709.473376
+      "durationMs": 5186.538692,
+      "sha256": "2bd6d27bd1a666c9d97c80958438972a1517de8e307df54aad269a508e629183",
+      "fixtures": []
     },
     {
       "file": "scripts/quality-upstreams.test.mjs",
-      "durationMs": 745.095264
+      "durationMs": 644.111905,
+      "sha256": "7b0394aeb733b8e409d1d044cd13abaff6e2b88b025029ed71cea0da6817cee9",
+      "fixtures": []
     },
     {
       "file": "scripts/quality-workbench.test.mjs",
-      "durationMs": 1560.567188
+      "durationMs": 2258.55404,
+      "sha256": "29bf4b71bc8f13a1f92f7a8bb8283e63cd024aaadc40f9ae9b5b7e8c6be9a14c",
+      "fixtures": []
     },
     {
       "file": "scripts/quality-worker-control.test.mjs",
-      "durationMs": 497.975378
+      "durationMs": 542.881576,
+      "sha256": "58ba6533bd60a6500aacf136562a510c10b77fc6601d4a681015235f36ccd1c0",
+      "fixtures": []
     },
     {
       "file": "scripts/quality-worker-inputs.test.mjs",
-      "durationMs": 111342.573177
+      "durationMs": 136936.933033,
+      "sha256": "14322c15877eb0f9b2d9a1f20c6a69184a5402ac114e0055331d7c293938d98b",
+      "fixtures": [
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/profile.mjs"
+      ]
     },
     {
       "file": "scripts/quality.test.mjs",
-      "durationMs": 6273.316021
+      "durationMs": 6218.792964,
+      "sha256": "74da9ed769f23f96fafa36448e2b1064b3fe881b044ea23232f9bab6f5a72015",
+      "fixtures": []
     },
     {
-      "file": "scripts/run-quality-checks.test.mjs",
-      "durationMs": 65.776572
+      "file": "scripts/repair-plugin-store.test.mjs",
+      "durationMs": 1739.157266,
+      "sha256": "f6edd399e15718fa84503fb7d134741e1efa968d02f75c93a27506e7233028b0",
+      "fixtures": []
     },
     {
       "file": "scripts/run-quality-ci-stages.test.mjs",
-      "durationMs": 36877.765985
+      "durationMs": 35318.276323,
+      "sha256": "c35d70b09c1b2494079bd1c7ffcaf45ffb8ac924ed57cad6ea2c41b71337cdfe",
+      "fixtures": []
     },
     {
       "file": "scripts/run-quality-ci.test.mjs",
-      "durationMs": 7955.874133
+      "durationMs": 9010.566879,
+      "sha256": "065e200f12520e5ede45777da200721fdfa37fbe95e1be0d8746b1cf9fb8ead3",
+      "fixtures": []
     },
     {
       "file": "scripts/run-quality-full.test.mjs",
-      "durationMs": 3687.974077
+      "durationMs": 5540.01572,
+      "sha256": "bbe1608922a78da33cd4b171745788496d384ad96386b1dcbaab3211616d900f",
+      "fixtures": []
     },
     {
       "file": "tests/action-error-copy-web.test.mjs",
-      "durationMs": 50653.445784
+      "durationMs": 53267.628842,
+      "sha256": "43e220ee967aa5f4e7a73adf8582422170730d90a1ab3000890bc8ad5772e11a",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/action-errors.test.mjs",
-      "durationMs": 44830.535964
+      "durationMs": 24702.108749,
+      "sha256": "55b34633897f2dc2ea733f04e401da0591a7a04856479d32499e268c4f0dae15",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/agent-tools.test.mjs",
-      "durationMs": 87400.55283
+      "durationMs": 71527.727922,
+      "sha256": "7b974f87fe13a836c55eb558651f2d6d87a71ed913b0fcc0f4b24f932c6f91eb",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/html-resource.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/aionui.test.mjs",
-      "durationMs": 937.565743
+      "durationMs": 872.340457,
+      "sha256": "063929f9ebd89f3835e8be3297ce8f16ad450c2609e76a03fe28c086a3d1feda",
+      "fixtures": ["tests/fixtures/source-window-inputs.mjs", "tests/fixtures/source-window.mjs"]
     },
     {
       "file": "tests/api-log-web.test.mjs",
-      "durationMs": 52660.597454
+      "durationMs": 39315.981797,
+      "sha256": "9b7aed4ec2ccd2cb5d576c28105c11dfaa0103eab0134967083ec3fca54074ed",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/approval-batch-selection-web.test.mjs",
-      "durationMs": 48431.926735
+      "durationMs": 55220.877309,
+      "sha256": "321c0846435c5f1432b72318d61036697fe7a40b99f093595cd19d2a75993049",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/approval-draft-web.test.mjs",
-      "durationMs": 152691.288866
+      "durationMs": 154682.856253,
+      "sha256": "edf18b69c2e4f42982507af8b7c943356ce655888f8a07139be1796f01700265",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/approval-notification-decoupled.test.mjs",
-      "durationMs": 53775.084743
+      "durationMs": 89346.808162,
+      "sha256": "b638ecd71cc5eb86c545a216c469d2cb14350335a304be3ed4536fb6cc4500ab",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/approval-permissions.test.mjs",
-      "durationMs": 44302.212085
+      "durationMs": 41787.574797,
+      "sha256": "44953b11aa9438474d38fa02a9a471092163de1b117b292d41a5a58f6d04390a",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/approval-roles-refresh-web.test.mjs",
-      "durationMs": 50014.527289
+      "durationMs": 50334.201762,
+      "sha256": "7859bd323cc17df6a5001a3058a41bace8ab2e15f46cdd12e3ac10990d37374a",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/approval-visibility-web.test.mjs",
-      "durationMs": 58677.801144
+      "durationMs": 57229.351565,
+      "sha256": "e20aee8a0119b1de33abc9b27080c166b10629bd8ca52f38f4a65d900cd33507",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/aps-mock-reception.test.mjs",
-      "durationMs": 1470.907618
+      "durationMs": 1936.452523,
+      "sha256": "b6a8011087ed4dca202045bcb6e6144ec8a22de42e9f79c34e60079f820c0bd5",
+      "fixtures": [
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/compiled-source.mjs",
+        "tests/fixtures/profile-inputs.mjs"
+      ]
     },
     {
       "file": "tests/aps-sql-consumer.test.mjs",
-      "durationMs": 43609.791747
+      "durationMs": 46585.520051,
+      "sha256": "6c6cb0bcbabcc8d4444a94bcbbf42cd6d0584bad15bfececb9ea0ec41a7a54d3",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/auth.test.mjs",
-      "durationMs": 100546.05061
+      "durationMs": 135747.371901,
+      "sha256": "714e51e639ee0f7344bef91ee0d0164bb4ec75d7887f40f0899e56ea45cb40b5",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/authorized-cube-loop.test.mjs",
-      "durationMs": 33653.242252
+      "durationMs": 44578.451691,
+      "sha256": "80ef6ab0bc65eac6b3936c77ac6b8a940794fde6afeb24d1cb243d97fa248f09",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/batch-province-outcome-web.test.mjs",
-      "durationMs": 47575.286106
+      "durationMs": 54674.972677,
+      "sha256": "7c940b6d461645163d564cdff52a9023121a5cc25bc20054f1bd891e7140f6ea",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-ability-web.test.mjs",
-      "durationMs": 110173.215066
+      "durationMs": 60589.305848,
+      "sha256": "3d080d142319813627c7f44855951358adad3ae41433cb064b5a5ba9c9c61feb",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/html-resource.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-agent.test.mjs",
-      "durationMs": 47300.196894
-    },
-    {
-      "file": "tests/branch-stock-authority-web.test.mjs",
-      "durationMs": 80643.162922
+      "durationMs": 31744.826696,
+      "sha256": "da9392c965658077c5f887caca92ec061782f60ae4f811b1efd95ad4d13dc427",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-context-text.test.mjs",
-      "durationMs": 57085.674946
-    },
-    {
-      "file": "tests/branch-stock-empty-web.test.mjs",
-      "durationMs": 109583.837293
+      "durationMs": 28708.011177,
+      "sha256": "83d3504cfd520ada15b1726f961bc9ef0c9a4441d8c2e88ec935dde023c2fa70",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-export-context.test.mjs",
-      "durationMs": 163358.048671
+      "durationMs": 133198.617548,
+      "sha256": "cb37013be9f88c98a18840532e86a27cbf00a1c390695b338c09d0033bbfd932",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-identity-owner-web.test.mjs",
-      "durationMs": 38641.164219
+      "durationMs": 55678.681363,
+      "sha256": "2199d260e52a00c542e668b07998ddb6801dae2da26109193f9ca84f98758069",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-lifecycle-web.test.mjs",
-      "durationMs": 110592.514673
-    },
-    {
-      "file": "tests/branch-stock-logout-web.test.mjs",
-      "durationMs": 109811.602376
-    },
-    {
-      "file": "tests/branch-stock-query-errors-web.test.mjs",
-      "durationMs": 77489.277181
+      "durationMs": 295809.217666,
+      "sha256": "a68fe21eb09b5e41aedc45d0eb9b78b4e863d42c5e64ebec5fd9e87a14b2ceb2",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-upgrade-web.test.mjs",
-      "durationMs": 155301.604996
+      "durationMs": 168627.25159,
+      "sha256": "dcf9a7e01801485f0ac631af2ffbc1926dc1b37e63aba6bc5eb78658a9e2afbe",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/branch-stock-web.test.mjs",
-      "durationMs": 83970.479204
+      "durationMs": 256343.479341,
+      "sha256": "d9c426570477becf00829f2ec0bd4b04f2ecaeb4daaf9fb2d81d8c4a6cc896c4",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/business-page-grant.test.mjs",
-      "durationMs": 220.583966
+      "durationMs": 355.089359,
+      "sha256": "ec4e8ba399ebc3dc0670fefcc2d98e81380509541f8b3bf9a63bcf573bc87813",
+      "fixtures": ["tests/fixtures/html-resource.mjs"]
     },
     {
       "file": "tests/catalog-scene-input.test.mjs",
-      "durationMs": 1223.851944
+      "durationMs": 879.543161,
+      "sha256": "6427c2fa010d004e643a23ef16db1fa8e607d2cc147e7ca50f34f964ef109798",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/catalog-scene.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-assembly.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/category-plan-page.test.mjs",
-      "durationMs": 29585.138321
-    },
-    {
-      "file": "tests/ci-core-policy.test.mjs",
-      "durationMs": 150.263236
+      "durationMs": 52584.873883,
+      "sha256": "85ef1fa22f486bae47bad66e1356631db3a88596e1e5d1234da66c15f0663dc8",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/client-shell-feedback.test.mjs",
-      "durationMs": 66123.776144
+      "durationMs": 64412.151933,
+      "sha256": "8912b62acc2c065199fc29a3f2039aa2a9e7dfdd978c34e0c9965b4b5bb29f41",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/composer-stats-placement.test.mjs",
-      "durationMs": 45367.114867
+      "durationMs": 55549.720071,
+      "sha256": "181d90d8beb3eed975dcc911dd9a059ea4ba736cebccbb9b73ac24e409090237",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/composer-stats.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/composer-stats-web.test.mjs",
-      "durationMs": 55801.187017
+      "durationMs": 42926.10135,
+      "sha256": "5e560cd8ffce392c8f99291eb40903fef7d883806d9b69f175bedd137d5c47e2",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/composer-stats.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/controlled-execution.test.mjs",
-      "durationMs": 193.211708
+      "durationMs": 320.295375,
+      "sha256": "b165c62615246e69cd63d1c97cbb5352c540c570802ebe2642a35efd9a46727c",
+      "fixtures": []
     },
     {
       "file": "tests/core-default-slots-web.test.mjs",
-      "durationMs": 3978.695661
+      "durationMs": 4958.779034,
+      "sha256": "446584483194d68820a96be560b3e1411dcd0c0adcbdb12c39ea17220f8be7ad",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/correction-host.test.mjs",
-      "durationMs": 143748.083288
+      "durationMs": 138529.292765,
+      "sha256": "f98b8b3604a976c7ef1961ddb32dab25dc3d1434e0883e9b5a4cd500cbeb841a",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/correction-resubmit-web.test.mjs",
-      "durationMs": 37155.172663
+      "durationMs": 46653.474934,
+      "sha256": "03dfde9aa49fdceb1b9edc085e97295ea818d2479db0cc36be3c2670112d8d35",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/correction-web.test.mjs",
-      "durationMs": 87386.683337
+      "durationMs": 110488.491736,
+      "sha256": "399d3c3473c12859389f18186259abcb38213660b8ca62334ae93a9ed4b5f304",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/correction-service.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/current-startup-web.test.mjs",
-      "durationMs": 32005.48952
+      "durationMs": 53887.76491,
+      "sha256": "48f241eefd8340c8b4b83c3120a7074c1da9e7249174df1be5388fff297a994d",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/dealer-prompt.test.mjs",
-      "durationMs": 27021.362804
+      "durationMs": 25064.803683,
+      "sha256": "0220d93c3c289ce3e99f9901e855cd21eaadc32a9123d35ef170622282b9f1d5",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/deployment-mcp.test.mjs",
+      "durationMs": 78.23066,
+      "sha256": "31810f87eeb240aaead4605758b1bbc1cdcec9d4ada4ad3e26f4ec1523a91a60",
+      "fixtures": []
+    },
+    {
+      "file": "tests/deployment-service-account.test.mjs",
+      "durationMs": 100.642228,
+      "sha256": "aa30573ceb34fba9cef866e787c37c5ae876f5d971a76f700ed9552f8d2a54e6",
+      "fixtures": []
     },
     {
       "file": "tests/detail-budget.test.mjs",
-      "durationMs": 46771.979938
+      "durationMs": 38357.146518,
+      "sha256": "c993b8a1ae6c1ef5041c2e7482b180e23b0adb4113839d69bb02cfca3ab6cec6",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/detail-summary-web.test.mjs",
-      "durationMs": 52910.428355
+      "durationMs": 53676.542747,
+      "sha256": "2f93b5c402dce4fa2837ab60a1a38891833e18e3b6dd4077018da05cf4bfeb41",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/details.test.mjs",
-      "durationMs": 44488.456998
+      "durationMs": 44775.910848,
+      "sha256": "5dc26b4aa05d266119a875e99c3b6fed1e7b403138239fd1c92daa2567a2fd5b",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/direct-model.test.mjs",
+      "durationMs": 117.78774,
+      "sha256": "8863f7ecdfa3d472825d24c3911b58b044a79b8d1949d3e70608ab5ecd5075c7",
+      "fixtures": []
+    },
+    {
+      "file": "tests/disabled-model-resource.test.mjs",
+      "durationMs": 15013.809739,
+      "sha256": "bf3c320857118dd5b6cd8e179da7b04fe6968920ef099d111aaf1a1b55f7640c",
+      "fixtures": ["tests/fixtures/business-session.mjs"]
     },
     {
       "file": "tests/draft-host.test.mjs",
-      "durationMs": 94834.550906
-    },
-    {
-      "file": "tests/editable-input-style-web.test.mjs",
-      "durationMs": 153256.717136
+      "durationMs": 52752.639079,
+      "sha256": "3a52ec34a043c678fb7167d28889c899e8b80f67ada94ea5eed38bd513c6b616",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/environments.test.mjs",
-      "durationMs": 33412.727567
+      "durationMs": 31876.171437,
+      "sha256": "429b9a643ecf9bc9a01d9164278905f7238636b3f481b3c655fb6e4233839a5e",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/evidence-budget-stop.test.mjs",
-      "durationMs": 57346.085235
+      "durationMs": 67266.734927,
+      "sha256": "b90acf1111d934c1350493d7dccabae11660f3eb7b01850a7605c3fc21e5437f",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/explicit-source-contract.test.mjs",
-      "durationMs": 1582.11375
+      "durationMs": 1291.520949,
+      "sha256": "c7240e566ac66926cea96c8ee960c8fb082174e504866e04504862bf064b1e8d",
+      "fixtures": []
     },
     {
       "file": "tests/gateway-handshake.test.mjs",
-      "durationMs": 278.891642
+      "durationMs": 259.447143,
+      "sha256": "5dc122efbb13d49a1155837f41e6c275fafe7aace3461fdb0ac009650e71e17c",
+      "fixtures": []
     },
     {
       "file": "tests/gea-model-identity.test.mjs",
-      "durationMs": 44267.325783
+      "durationMs": 44802.404375,
+      "sha256": "876cb1d0ecc928e2e2b20721ac3e022548f9e0c2a03442a3ce098b5c1ba3a6fb",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/gea-model.test.mjs",
-      "durationMs": 31523.854369
+      "durationMs": 49505.952602,
+      "sha256": "63ddd08c2a9497dcbba07943c876f16b3482c08a2c6737534259775265aaca0d",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/gea-reasoning-effort.test.mjs",
-      "durationMs": 49709.192126
+      "durationMs": 68352.894203,
+      "sha256": "b2a0497984ea160e92c5b409a86224f4a5db7e1d01d1058298eed5a319912de8",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/gea-reasoning-profile.test.mjs",
-      "durationMs": 69598.045746
+      "durationMs": 69857.618345,
+      "sha256": "768262391b073ce8f548c607997d3ccae06e55a1d71e6686cdf78364e70d7adc",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/genui-source-web.test.mjs",
-      "durationMs": 46329.961326
+      "durationMs": 33360.893179,
+      "sha256": "d7eb1a3070cc5dcfa5898e2d7de3d07e6f137d24f0a4dcfefce5283f39a4c7d9",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/core-documents.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/global-identity-error-web.test.mjs",
-      "durationMs": 54685.726228
+      "durationMs": 41415.601213,
+      "sha256": "ab439c44be968969d5683973dc845ad162427ed93e9eb5d7dd352a38a794c60c",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/group-selection-web.test.mjs",
-      "durationMs": 140124.949398
+      "durationMs": 159826.651028,
+      "sha256": "42d5eb016d5de2615e75c5dc353ab88cf68c10f538c99aa352de032e21905cbe",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/host-config.test.mjs",
+      "durationMs": 562.044507,
+      "sha256": "ce6a9aff1e0ef06e4ab28e235076dff376ab56b369f7f7820000f20136922ed9",
+      "fixtures": []
     },
     {
       "file": "tests/html-client-first-handshake.test.mjs",
-      "durationMs": 5282.245114
+      "durationMs": 9087.50114,
+      "sha256": "178211ed6f97d20640e079a823ca802fc5b5fdfcc2eeb87248b7007deb9b148f",
+      "fixtures": ["tests/fixtures/profile-inputs.mjs", "tests/fixtures/workbench-contract.mjs"]
     },
     {
       "file": "tests/html-client-pages.test.mjs",
-      "durationMs": 2455.285644
+      "durationMs": 5389.905599,
+      "sha256": "02ca0abeae0139245aea29486c33752dd48096881a0aef807cf0c8c5f003b0fc",
+      "fixtures": ["tests/fixtures/profile-inputs.mjs", "tests/fixtures/workbench-contract.mjs"]
     },
     {
       "file": "tests/html-identity-discovery-web.test.mjs",
-      "durationMs": 55516.510502
+      "durationMs": 46342.105934,
+      "sha256": "d31bcc233b384184515fcf72cb9c0cce24bf37cf2d73e4ab89d5ec8d285fc5f9",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/html-plugin-public-resources.test.mjs",
-      "durationMs": 32587.059896
+      "durationMs": 31626.717956,
+      "sha256": "9ff7372cc5f297fd3d08fee91af5a4084f86722976d16b39abf3d84191c52891",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/html-self-report-web.test.mjs",
-      "durationMs": 40887.19412
+      "durationMs": 51720.962824,
+      "sha256": "3b8ba98d465dd53bd3ecc5534049da5da3618b46ace8edbc6e38664ed24b534c",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/html-shared-theme-web.test.mjs",
-      "durationMs": 38997.402287
+      "durationMs": 61660.148939,
+      "sha256": "66a89361aa90434ecc0bd52bf498edd8a75f00ee5239cafa767bdf39e12c3f96",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/inline-draft-status-web.test.mjs",
-      "durationMs": 40610.422096
+      "durationMs": 40917.699151,
+      "sha256": "f92b59a8acf73cedc7b394599051f1b35a1f9ada00a7a882a58db5be5cf8847c",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/launch.test.mjs",
-      "durationMs": 831.85273
+      "durationMs": 1246.605648,
+      "sha256": "8b0bc7a496e9bb2fa6575f8219fdfb3e8c2157e35320ea0f95174d52e28d66c8",
+      "fixtures": ["tests/fixtures/source-window-inputs.mjs", "tests/fixtures/source-window.mjs"]
     },
     {
       "file": "tests/lifecycle.test.mjs",
-      "durationMs": 47404.483292
+      "durationMs": 49792.025761,
+      "sha256": "b96e7be8a12262408001fbce578b72114400d1b30ad0503cfdb29ee85d61f040",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/logout.test.mjs",
-      "durationMs": 65154.459912
+      "durationMs": 104087.222258,
+      "sha256": "e69a9e575adbfa9c7ba0c2a14cd04efefa8ad1867b8627b42e9529dee0c55e91",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/mcp-evidence-loop.test.mjs",
-      "durationMs": 46780.333225
+      "durationMs": 29916.707758,
+      "sha256": "3c4a65f09e56770c60a4178b1ccaad8da676a28dafc21558bf1230b571844109",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/mock-validation-execution.test.mjs",
+      "durationMs": 504.965469,
+      "sha256": "ead02018ef043a1664f2b22a52a9b4516feb9697e96327ee064c2f34baba5040",
+      "fixtures": []
     },
     {
       "file": "tests/model.test.mjs",
-      "durationMs": 98516.911626
+      "durationMs": 87189.571336,
+      "sha256": "5cdef6793a42a859ca0610e3a87122a73d430227e657ace7b0038c5ce59bb51f",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/catalog-scene.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/month-aggregation-context-web.test.mjs",
-      "durationMs": 37429.31281
+      "durationMs": 37538.558217,
+      "sha256": "81a3ba71cd923c5aa4922728e1aaf2f44c59fc3d5c040c7c741bef47d8fa336d",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/mps-plan-page.test.mjs",
-      "durationMs": 44810.920362
+      "durationMs": 41880.375196,
+      "sha256": "5b5b0ef24b3ab58dba689dc43587f82f643b3c41a588f313d38e598b608bc311",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/native-page-identity-web.test.mjs",
-      "durationMs": 180739.98668
+      "durationMs": 260067.811562,
+      "sha256": "693c2aaff90fb71c160c2ec5cd69f6d55f26e1db9ceb177987c0d3573f5b3249",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/native-reference-authority.test.mjs",
-      "durationMs": 26980.08683
+      "durationMs": 44434.85873,
+      "sha256": "8e5ef7f6319a968bcb2a8ed3a6d82d50cba5d8427d6a9725a088fcbe9eb2cf9e",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/native-status-projection-web.test.mjs",
-      "durationMs": 34062.99489
+      "durationMs": 52211.599675,
+      "sha256": "93d4e793887d320d096dbabb4dd93c6f40d49ece47ea5c74d92244928c26c414",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/notifications.test.mjs",
-      "durationMs": 48471.665275
+      "durationMs": 67602.511083,
+      "sha256": "1117dbef937fbaa15ccf3a5b0b64bc7f5ff44c495c45201f2a8e5ec0cc5832fc",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/optional-companion-manifest.test.mjs",
+      "durationMs": 120.01055,
+      "sha256": "2d2d3cd35ebf6404a7aa3599fe32d0491621148e5814699428545faeb5652568",
+      "fixtures": []
+    },
+    {
+      "file": "tests/ordinary-profile-startup.test.mjs",
+      "durationMs": 767.349619,
+      "sha256": "4929af6d9e7f3005022f574466d90b41d21b568dad777964489878197c18daac",
+      "fixtures": []
     },
     {
       "file": "tests/page-interaction-web.test.mjs",
-      "durationMs": 70708.781158
+      "durationMs": 107723.937795,
+      "sha256": "7931575f0a7194aa2b52f112204573ca313de6691726493c8928010ef73f5838",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/html-resource.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/page-interaction-workbenches.test.mjs",
-      "durationMs": 58243.583422
+      "durationMs": 66283.20041,
+      "sha256": "1dcffb2398624d07df0868cf0e7d5b0f1121b811af34afee72b026aa86a33b57",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/html-resource.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/page-reference-columns-web.test.mjs",
-      "durationMs": 80151.877789
-    },
-    {
-      "file": "tests/page-reference-edits-web.test.mjs",
-      "durationMs": 108061.708408
+      "durationMs": 128225.921291,
+      "sha256": "17a16a56a656249e24fa84e246a2f4a124d5147cc4096462cb5ce36a6a4f9cc4",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/page-reference-identity-web.test.mjs",
-      "durationMs": 154079.835575
+      "durationMs": 165099.644395,
+      "sha256": "0bafb196a591eb62552b2096502128bb1ac4d694e743c0fe65bf40a17ad65a6e",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/page-reference-reload-web.test.mjs",
-      "durationMs": 58736.050322
+      "durationMs": 57013.666606,
+      "sha256": "f25be7d32b4f0542dc8a01a0435c5f37c9240c3bcfe29a57a1d2db31a9f3d4f5",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/stock-reference-page.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/partial-evidence.test.mjs",
-      "durationMs": 34248.10492
+      "durationMs": 31350.401056,
+      "sha256": "40eaed2e2db8382576982fd55f360e924506374f43d121f80844c29ac890c94c",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/pending-adjustments-web.test.mjs",
-      "durationMs": 100502.449203
+      "durationMs": 64521.814902,
+      "sha256": "6d7cfdde8fff902f8781f231a1ba50782a9ca5c45adfe0172c0afbb4c65e4a65",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/plugin-release-source.test.mjs",
+      "durationMs": 1241.394759,
+      "sha256": "f556b1b3fdd82cf27afad6164a679a963cd0c0dc2250c884bb6af5c91ff5979c",
+      "fixtures": []
+    },
+    {
+      "file": "tests/plugin-release.test.mjs",
+      "durationMs": 90.404018,
+      "sha256": "d92907c60e577eff75e6c9f39216e4741869817f720bcfe31a3c1487481197a0",
+      "fixtures": []
     },
     {
       "file": "tests/plugin-sql-cancel.test.mjs",
-      "durationMs": 478.899286
+      "durationMs": 634.313617,
+      "sha256": "8ff6cddcb6ec7f528a7b80fa669491d5f8618d7ee75c330f403f3cb697f0a62a",
+      "fixtures": []
     },
     {
       "file": "tests/plugin-sql-delegation-expiry.test.mjs",
-      "durationMs": 32405.214747
+      "durationMs": 31614.000004,
+      "sha256": "e7f2510d0c5e53dbdeec2ceeca71c54df22b6cbc87f944bee008fd2e31fa535e",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/plugin-update-controller.contract.mjs",
+      "durationMs": 18699.531567,
+      "sha256": "48b900a52e4533683999aaba68b69098ee5d352287cdd18e8f1d685699dfe2fc",
+      "fixtures": [
+        "tests/fixtures/plugin-updates/pnpm-profile.mjs",
+        "tests/fixtures/plugin-updates/profile.mjs"
+      ]
+    },
+    {
+      "file": "tests/plugin-update-install.contract.mjs",
+      "durationMs": 10882.539507,
+      "sha256": "1fcbfabdee61bdb4d1c086fc3ef7861e77b15b28e9190ca4dda0319f5566b92a",
+      "fixtures": ["tests/fixtures/plugin-updates/installed-runtime.mjs"]
     },
     {
       "file": "tests/preset-modes.test.mjs",
-      "durationMs": 7357.438086
+      "durationMs": 10941.074459,
+      "sha256": "1431436fcb8ea46509dfcd3b38db8ba2398582dda6a05ad1ee4a15ccac1b07f6",
+      "fixtures": ["tests/fixtures/source-assembly.mjs"]
     },
     {
       "file": "tests/profile-before-start-cleanup.test.mjs",
-      "durationMs": 1694.726096
+      "durationMs": 1905.63709,
+      "sha256": "b03e52bfe74d66afc06e2bf20e04645cf365e98f859ffacb9d338ab808c6ee94",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/profile-cube-boundary.test.mjs",
-      "durationMs": 1030.265901
+      "durationMs": 1002.304871,
+      "sha256": "2d36e30d07d3419a9665cd6a91b554a9ac0cfdaffc3c3a4b5eb62f06bbb190ad",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/profile-lifecycle.test.mjs",
-      "durationMs": 11759.901398
+      "durationMs": 11255.794441,
+      "sha256": "13a9a72208243f251620466b17d5e93f8303c1682428a6d54eca3bcf14c80799",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/profile-window.test.mjs",
-      "durationMs": 3609.00454
+      "durationMs": 3359.701398,
+      "sha256": "fa09d1331ddf546fd0b80f1f8df8276a1ec9d4c1393ba44fafa2c73d8a7d13ca",
+      "fixtures": [
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-window-inputs.mjs",
+        "tests/fixtures/source-window.mjs"
+      ]
     },
     {
       "file": "tests/progress-column-web.test.mjs",
-      "durationMs": 35076.588211
+      "durationMs": 38024.905059,
+      "sha256": "5fe29193c5c6e0648856bbf4b08840458e366ef796a981de971de07d02f21f0c",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/prompt-qa-regression.test.mjs",
-      "durationMs": 142984.571374
+      "durationMs": 138621.73102,
+      "sha256": "6a1f75348e93cdf60a123a5fa7f06c603cd27fe060e8f3d8f604f5ecffc89829",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/catalog-scene.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/prompt-v2.test.mjs",
-      "durationMs": 69550.270527
+      "durationMs": 96231.221189,
+      "sha256": "29817fff52ebe74d88a35ca5d81db9b19d56b312c2ee7fa6cac6daf82c5387d0",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/html-resource.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/published-runtime.test.mjs",
+      "durationMs": 315.9324,
+      "sha256": "15b99aa8af4baf59439d232ba4dac1ef05437e4b1d829583584bdc19e42f9f2f",
+      "fixtures": []
     },
     {
       "file": "tests/read-paging.test.mjs",
-      "durationMs": 65569.010776
+      "durationMs": 74989.967812,
+      "sha256": "8c1879fe24f9371d800beb49a1c040567f5b0dd9f08a58c846edfbe7aa2f7dd1",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/receipt-classification.test.mjs",
-      "durationMs": 218.865596
+      "durationMs": 183.820386,
+      "sha256": "d59283b4fdb0e14d931ab26999d2daf1557ba8037a0d27f05690293bef64c283",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/receipt-skill-catalog.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/receipt.test.mjs",
-      "durationMs": 99890.882701
+      "durationMs": 108266.256349,
+      "sha256": "b7508022627f4df459279ae45042d8da5150c377ec0d689ff7670c52eb1bab56",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/receipt-skill-catalog.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/regional-plan-page.test.mjs",
-      "durationMs": 35258.674502
+      "durationMs": 44639.829937,
+      "sha256": "750a077be1afca416fb2f8c19a5bb5a16e1e31999be3f5b49f35c387bdc153f1",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/reject-dialog-close-web.test.mjs",
-      "durationMs": 94034.483266
+      "durationMs": 100368.127821,
+      "sha256": "eb2d29951c9883f679fb1e2ebc4358b6d2f19f92f1538da908570b1b38dee2d1",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/resubmit-host.test.mjs",
-      "durationMs": 32051.632563
+      "durationMs": 41894.358331,
+      "sha256": "a3d970f1dfaf77b7c53e2e69914a559964fa4f6b7d6180fe33f2adab309de621",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/resubmit-web.test.mjs",
-      "durationMs": 35699.413698
+      "durationMs": 55823.286794,
+      "sha256": "eb5ec5fd6a0ce0f538d5d2d4476341ebabc0a41d9bd561f1c93c40d335102f65",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/returned-resubmit-web.test.mjs",
-      "durationMs": 88171.676861
-    },
-    {
-      "file": "tests/returned-review-batch-web.test.mjs",
-      "durationMs": 72918.528255
-    },
-    {
-      "file": "tests/returned-review-reject-web.test.mjs",
-      "durationMs": 108134.590279
-    },
-    {
-      "file": "tests/returned-review-roles-web.test.mjs",
-      "durationMs": 159711.454856
+      "durationMs": 330486.690586,
+      "sha256": "84cd5d6eeedd8f87f8a108d68fd65fa2c2a907436c3afaa4fec5a17449e3bbf1",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/role-approval-host.test.mjs",
-      "durationMs": 107484.275624
+      "durationMs": 129378.607899,
+      "sha256": "c788bb0611fdf8c0f2e783cd8f53662cc92b9eaf4b9165f84ac8ebc9de27e5a5",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/role-visible-permission-web.test.mjs",
-      "durationMs": 31690.421608
+      "durationMs": 47434.044942,
+      "sha256": "178e758bcc17cfc3da41f71ae3bf4892f634c92f81e735def14860a78053a47e",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/safety-stock-prompt.test.mjs",
-      "durationMs": 32872.061365
-    },
-    {
-      "file": "tests/safety-stock-skill-scope.test.mjs",
-      "durationMs": 137.202538
-    },
-    {
-      "file": "tests/sales-plan-action.test.mjs",
-      "durationMs": 487.131014
+      "durationMs": 35921.184922,
+      "sha256": "ae544640324526815797dbbc370d979ba9cc7a9435977fc62b7d2ca13080d224",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/sales-readonly-host.test.mjs",
-      "durationMs": 36732.017741
+      "durationMs": 43207.523677,
+      "sha256": "32a1737b3571b79252b89e13af449951084f3720af1339f9fb363b6d69dcdb97",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/sales-result-runtime.test.mjs",
-      "durationMs": 37366.384135
+      "durationMs": 38353.724936,
+      "sha256": "e314908d9a92077758ea7cb821215a4eb0bcbf183f0a10e084be5aad081180f8",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/save-host.test.mjs",
-      "durationMs": 55570.141259
+      "durationMs": 83279.43945,
+      "sha256": "13d0986da475f8a74033a3a99747fa75ba70909469a6489ca4a92de7acc594f2",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/save-web.test.mjs",
-      "durationMs": 39815.738427
+      "durationMs": 50041.875857,
+      "sha256": "0192c4454ca783ed696978a5623cb7f60b28962652e37574a0048229fe3ee330",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/selection.test.mjs",
-      "durationMs": 34077.877824
+      "durationMs": 34875.737644,
+      "sha256": "cf4a3c766d07bd860e9345e8efd307c673e415a7fd947b8a7f8de1fe618b62f6",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/settings-nav-order-web.test.mjs",
-      "durationMs": 31965.149618
+      "durationMs": 32458.535957,
+      "sha256": "4382e71020180aa9aaf1d4852098b871c99c2c28f7b64bc6f6b1013fb312f6b0",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/shared-theme-native-web.test.mjs",
-      "durationMs": 6598.111361
+      "durationMs": 11654.7045,
+      "sha256": "5c3174eae6cde890ec6bb905b696c4f1b1197777396376eda7dac8abbd6ae148",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/core-documents.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/shared-theme-source-web.test.mjs",
-      "durationMs": 59641.462446
+      "durationMs": 35234.622448,
+      "sha256": "70f026fb472dc3a6ec870e92c4c383fd965b3636a5519822f1be60aa9de38b29",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/core-documents.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/sidebar-source-web.test.mjs",
-      "durationMs": 26931.40074
+      "durationMs": 33451.544723,
+      "sha256": "44e1b9cf6d27ecd9784a1be437194bb9e7c73183050f9063861e4c08e42d8a1c",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/source-assembly.test.mjs",
-      "durationMs": 8820.290607
+      "durationMs": 17242.724451,
+      "sha256": "d389f2413138cb17218d09162a6a898f1704ba107bc898b6e8fcfef0cbeb0b5f",
+      "fixtures": ["tests/fixtures/source-assembly.mjs"]
     },
     {
       "file": "tests/source-combination-reader.test.mjs",
-      "durationMs": 229.769191
+      "durationMs": 99.019481,
+      "sha256": "f0016541da7f5a8b32df9e2f6ce43154543074422e4de399c0cf8637d5a656dc",
+      "fixtures": []
     },
     {
       "file": "tests/source-combination.test.mjs",
-      "durationMs": 248.925555
+      "durationMs": 138.92888,
+      "sha256": "208498d4e29b60a0772a3fac24b5dc0b54f1740af5524389ce7c36ab6cba3e45",
+      "fixtures": []
+    },
+    {
+      "file": "tests/source-composition.test.mjs",
+      "durationMs": 67.125537,
+      "sha256": "b63d2f81793f313f8a01050eedaf80750a3f73ca6b09216d87e21c328d7e91a0",
+      "fixtures": []
     },
     {
       "file": "tests/source-integrity.test.mjs",
-      "durationMs": 1732.229206
+      "durationMs": 1075.86426,
+      "sha256": "fbf07256b4366ae16c7a73dd725473fa0cfa20fe64e30fd59dd2b329c092a5b1",
+      "fixtures": []
     },
     {
       "file": "tests/source-selection-start.test.mjs",
-      "durationMs": 4497.785831
-    },
-    {
-      "file": "tests/source-test-budget.test.mjs",
-      "durationMs": 6454.245522
-    },
-    {
-      "file": "tests/source-update-metadata.test.mjs",
-      "durationMs": 1061.300761
+      "durationMs": 3075.005436,
+      "sha256": "0cbb49de1515b2addf859c65733574ce1dec3f53ace9e46b30de0da68467b3c2",
+      "fixtures": ["tests/fixtures/source-window-inputs.mjs", "tests/fixtures/source-window.mjs"]
     },
     {
       "file": "tests/source-update-web.test.mjs",
-      "durationMs": 252925.952104
+      "durationMs": 308919.415938,
+      "sha256": "b5be616cc94481b14a4e2a6e623e099332feb5d406a5fb86da4de343de5763d6",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/branch-stock-acceptance.mjs",
+        "tests/fixtures/branch-stock.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/source-update.test.mjs",
-      "durationMs": 17961.307441
+      "durationMs": 17620.846298,
+      "sha256": "efe462c3461982663f6e4de4ed96f5196d1036b9b84666abcadb6192bf6adef7",
+      "fixtures": ["tests/fixtures/source-updates.mjs"]
     },
     {
       "file": "tests/split-declarations-web.test.mjs",
-      "durationMs": 47183.803381
+      "durationMs": 40968.794712,
+      "sha256": "399de45e23d40fe6837cc38d4689cab0978d9c31de91704861cbe431fcf21507",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/fixtures/workbench-profile.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
+    },
+    {
+      "file": "tests/sql-read-limit.test.mjs",
+      "durationMs": 684.580715,
+      "sha256": "90a5964a0bb1e5212da2fb315ec9b5010640f5481e7910e6b54667d52c01b140",
+      "fixtures": []
     },
     {
       "file": "tests/stage-lane-web.test.mjs",
-      "durationMs": 136158.897906
+      "durationMs": 51312.105849,
+      "sha256": "6d8e011623dc3ab91fc4ea952105290b446ae3ae20c8190eafabd08fd58bcceb",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/stage-progress-detail-web.test.mjs",
-      "durationMs": 29873.778641
+      "durationMs": 41291.793354,
+      "sha256": "0218275b86c65eba84ea0b6d522e9abffc47e6997cd3400735aaa0eeb6d02a15",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/v16-visual.test.mjs",
-      "durationMs": 71416.124589
+      "durationMs": 58059.056655,
+      "sha256": "e209c597e98ebba13bb4ca8d2038f882ad79eae07aace41f9fde7593c1588309",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/v16-web.test.mjs",
-      "durationMs": 55959.500965
+      "durationMs": 49411.852236,
+      "sha256": "8bd4e21a0f438e0a85dc5309b41cf32897638675d9e223ded4fe2dc84bf06810",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/business-session.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/model-profile.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/variance-color-web.test.mjs",
-      "durationMs": 80138.266428
+      "durationMs": 91543.250186,
+      "sha256": "b55cfef3f11437669a6ff4e0f5a2c3f45cb4150f689d500505844f39eb475390",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/verify-workbench.test.mjs",
-      "durationMs": 37399.467651
+      "durationMs": 32409.008829,
+      "sha256": "7eb252e196b7a1e7677c142c0e1751f75779afe62067d4878df4bcafe33794e8",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/web.test.mjs",
-      "durationMs": 48687.113614
+      "durationMs": 53306.88161,
+      "sha256": "d77fd950f78d5ccccab8843850aff0efaf2c74725e18850d9836ff2f58a5608e",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/window-launch-admission.test.mjs",
-      "durationMs": 52441.99251
+      "durationMs": 37755.127818,
+      "sha256": "7d309bed3d345197b2114c14037bde6fd57ff798878fc6f160034c30df008877",
+      "fixtures": ["tests/fixtures/source-window-inputs.mjs", "tests/fixtures/source-window.mjs"]
     },
     {
       "file": "tests/workbench-boot.test.mjs",
-      "durationMs": 40140.006727
+      "durationMs": 34105.92556,
+      "sha256": "1358e0e3f9f91025ac104fe6425292f77fee5ae00602aacb32e05947177518c1",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/workbench-contract-runner.test.mjs",
-      "durationMs": 1599.551299
+      "durationMs": 1613.402954,
+      "sha256": "b16031e6f54c1d665d9389e40aa7deae6d4178b23c04009eb7f3d33d64afd1fe",
+      "fixtures": ["tests/fixtures/profile-inputs.mjs", "tests/fixtures/workbench-contract.mjs"]
     },
     {
       "file": "tests/workbench-host.test.mjs",
-      "durationMs": 122162.955956
+      "durationMs": 102133.452566,
+      "sha256": "106f359d44acfeb8209410bdb456caf9bd04850ebdb607595c30b15c126239c0",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/workbench-status-identity-race-web.test.mjs",
-      "durationMs": 26806.26212
+      "durationMs": 42310.861006,
+      "sha256": "1a10fad2d1003eb0cd2fb682400d33ed8f8813bf86ca835ad25613f0f3c378c0",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/native-page.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     },
     {
       "file": "tests/workflow-config.test.mjs",
-      "durationMs": 57585.725017
+      "durationMs": 65134.720313,
+      "sha256": "ba294c43138d90304c962977fa9adda12614c444e08295f972c51685e5d9c31b",
+      "fixtures": [
+        "scripts/source-combination-integrity.mjs",
+        "scripts/source-profile.mjs",
+        "scripts/start-isolated-validation.mjs",
+        "tests/fixtures/business-page.mjs",
+        "tests/fixtures/cube-wire.mjs",
+        "tests/fixtures/profile-inputs.mjs",
+        "tests/fixtures/profile-parent-lifetime.mjs",
+        "tests/fixtures/profile-ready.mjs",
+        "tests/fixtures/profile-window.mjs",
+        "tests/fixtures/source-test.mjs",
+        "tests/fixtures/test-browser.mjs",
+        "tests/profile.mjs",
+        "tests/source-profile-start.mjs"
+      ]
     }
   ]
 }

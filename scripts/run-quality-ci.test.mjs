@@ -114,10 +114,15 @@ test("the workflow binds full source history and the same public quality command
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --prepare-sdk.*--prepare-inputs/);
   assert.match(readFileSync("scripts/run-quality-ci.mjs", "utf8"), /APS_BUILD_MODE: ["']mock["']/);
   assert.match(workflow, /if: always\(\)/);
-  assert.match(
-    workflow,
-    /needs: \[candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation\]/,
-  );
+  assert.deepEqual(parse(workflow).jobs["candidate-quality"].needs, [
+    "candidate-scope",
+    "source-plan",
+    "gates",
+    "plan-test-shards",
+    "test-shards",
+    "macos-isolation",
+    "windows-plugin-update",
+  ]);
   assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
@@ -356,10 +361,7 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
     if (file === "quality") {
       assert.match(macos, /sdk-artifact-cache\.mjs.*--github-paths/);
       assert.match(macos, /path: quality-macos-result\.json/);
-      assert.match(
-        source,
-        /needs: \[candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation\]/,
-      );
+      assert.ok(parse(source).jobs["candidate-quality"].needs.includes("macos-isolation"));
     } else {
       assert.match(source, /QUALITY_ISOLATION_RESULT: \$\{\{ needs\.macos-isolation\.result \}\}/);
       assert.match(source, /--phase compatibility-final/);
@@ -382,7 +384,7 @@ test("Linux preparation exports once and failed checks block executable worker i
   for (const stage of ["prepare", "build", "checks", "tests"]) {
     const step = steps.find((entry) => entry.includes(`id: quality-${stage}\n`));
     assert.ok(step, stage);
-    assert.match(step, new RegExp(`--stage ${stage}(?:\n|$)`));
+    assert.match(step, new RegExp(`--stage ${stage}(?:\\s|$)`));
     assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
     assert.doesNotMatch(step, /continue-on-error/);
   }
@@ -400,6 +402,14 @@ test("Linux preparation exports once and failed checks block executable worker i
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: cache-path"));
   assert.ok(linux.indexOf("id: quality-source") < linux.indexOf("id: quality-build"));
   assert.match(linux, /quality:fast --source-only/);
+  assert.match(
+    linux,
+    /--source-receipt-out \.runtime\/quality-source-checks\.json --input-sha256 "\$INPUT_SHA256"/,
+  );
+  assert.match(
+    linux,
+    /--stage checks --source-check-receipt \.runtime\/quality-source-checks\.json/,
+  );
   assert.match(sourcePlan, /GITHUB_STEP_SUMMARY/);
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: sdk-paths"));
   assert.match(linux, /--stage plan.*--test-shards auto/);

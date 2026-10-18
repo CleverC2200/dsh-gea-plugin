@@ -85,7 +85,7 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 Linux [quality workflow](../.github/workflows/quality.yml) 在 scope 后并行启动 source-plan、producer 与 Mac。source-plan 仅 checkout 同组三仓/Core、写原候选并运行公开 `--stage plan --test-shards auto --test-file-concurrency 3 --test-timings scripts/quality-test-timings.json`，不安装或编译；小 control 只有计划与来源，没有产物或依赖准入权。early planner 收齐每个 required Core 后生成原正式计划的全部非空片，最多14个 worker、`max-parallel: 14`，不填空片。普通入口文件并发仍为2，Linux 各阶段显式3、Mac保持默认2；算法、容量拒绝和历史来源见 [测试执行合同](ci-test-execution.md)。历史样本未知耗时仍为 null，不证明新候选的性能通过。
 
-每个 required Core 的 producer 只执行一次 `prepare`、`build`、`checks`，用原输入哈希、lane、完整三仓和执行计划形成 `quality-stages.json`。准备安装声明的原锁、SDK及私有 Workbench worktree；构建生成候选包、资产和必要浏览器/桌面输出。GEA/Manage 输出按字节摘要冻结。`checks` 收集 final-group 与 fast；producer 在依赖准备后、候选构建前先调用现有 fast 的 source-only 检查。checks 失败阻断 Chrome 快照与准备物导出，worker 不会收到可执行输入，最终结果保留原失败。准备或构建失败也不能发布可执行输入。
+每个 required Core 的 producer 只执行一次 `prepare`、`build`、`checks`，用原输入哈希、lane、完整三仓和执行计划形成 `quality-stages.json`。准备安装声明的原锁、SDK及私有 Workbench worktree；构建生成候选包、资产和必要浏览器/桌面输出。GEA/Manage 输出按字节摘要冻结。producer 在候选构建前执行 lint、format、knowledge、prompt-execution，并以 `--source-receipt-out .runtime/quality-source-checks.json --input-sha256 <原候选哈希>` 保存完整结果。`checks --source-check-receipt FILE` 继续核 final-group，fast 只在原输入 SHA、实际 HEAD、全部源码字节、Node 与平台相同且四项均通过时复用回执，然后执行官方类型检查；失败、缺项、部分文件检查或源码漂移均拒绝。普通本地 fast 不传回执时仍执行原四项检查。checks 失败阻断 Chrome 快照与准备物导出，worker 不会收到可执行输入，最终结果保留原失败。准备或构建失败也不能发布可执行输入。
 
 producer 将原 candidate、阶段/执行计划、来源回执、binding 原字节及准备物摘要发布为小 index；大 bundle 每 Core 只导出、上传一次，保留1天。worker 在 producer 构建期间以一次活调用准备固定源码和独立的五组锁，保留最多双安装及 Workbench→inventory 顺序。GEA 依赖所需 GenUI 产物留到接收后；没有可重放的 source-ready token 或第二次调用接受旧 modules。新增 source-plan 的四仓 checkout 与小 control 传输都计入真实成本，不假称提前启动必然更快。
 

@@ -41,6 +41,7 @@ jobs:
       group-id: ${{ steps.group.outputs.group-id }}
       source-kind: ${{ steps.group.outputs.source-kind }}
       baseline-id: ${{ steps.group.outputs.baseline-id }}
+      windows-applicable: ${{ steps.windows.outputs.applicable }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -121,6 +122,47 @@ jobs:
       - name: Read the registered official baselines
         id: cores
         run: node --input-type=module -e 'import fs from "node:fs"; import {ciCores} from "./scripts/ci-core-policy.mjs"; fs.appendFileSync(process.env.GITHUB_OUTPUT, "cores=" + JSON.stringify(ciCores("required").map(core => core.head)) + "\n")'
+      - name: Select affected native Windows installer regression
+        id: windows
+        env:
+          QUALITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/ci-windows-update.mjs
+
+  windows-plugin-update:
+    needs: candidate-scope
+    runs-on: ${{ needs.candidate-scope.outputs.windows-applicable == 'true' && 'windows-2025' || 'ubuntu-latest' }}
+    timeout-minutes: 12
+    env:
+      QUALITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      QUALITY_WINDOWS_APPLICABLE: ${{ needs.candidate-scope.outputs.windows-applicable }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ needs.candidate-scope.outputs.node-version }}
+      - name: Verify scope and record explicit not-applicable decisions
+        run: node scripts/ci-windows-update.mjs
+      - name: Check native Windows installer using the fixed regression runtime
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        shell: pwsh
+        run: |
+          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1
+          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
+          node scripts/check-windows-plugin-update.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-plugin-update-a${{ github.run_attempt }}-${{ github.sha }}
+          path: |
+            windows-update-scope.json
+            .runtime/windows-update-native/result.json
+          if-no-files-found: error
 
   source-plan:
     name: source-plan-${{ matrix.core }}
@@ -366,7 +408,9 @@ jobs:
 
       - name: Check source before candidate builds and tests
         id: quality-source
-        run: corepack pnpm quality:fast --source-only
+        env:
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+        run: corepack pnpm quality:fast --source-only --source-receipt-out .runtime/quality-source-checks.json --input-sha256 "$INPUT_SHA256"
 
       - name: Build frozen candidate packages
         id: quality-build
@@ -378,7 +422,7 @@ jobs:
           QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
         run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage build
 
-      - name: Run independent source checks
+      - name: Verify frozen source receipt and SDK-dependent checks
         id: quality-checks
         if: steps.quality-build.outcome == 'success'
         env:
@@ -386,7 +430,7 @@ jobs:
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
           QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage checks
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage checks --source-check-receipt .runtime/quality-source-checks.json
 
       - name: Execute the single shard in its producer
         id: quality-tests
@@ -460,6 +504,7 @@ jobs:
             quality-source-admission.json
             system-chrome-preparation.json
             candidate/dsh-gea-plugin/.runtime/quality-fast.json
+            candidate/dsh-gea-plugin/.runtime/quality-source-checks.json
           if-no-files-found: warn
 
   plan-test-shards:
@@ -747,7 +792,16 @@ jobs:
       contents: read
       actions: read
     if: always()
-    needs: [candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation]
+    needs:
+      [
+        candidate-scope,
+        source-plan,
+        gates,
+        plan-test-shards,
+        test-shards,
+        macos-isolation,
+        windows-plugin-update,
+      ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -523,6 +523,57 @@ test("detail contributions select the built browser and actual installer contrac
   assert.equal(plan.browser, true);
 });
 
+test("browser-only changes and their dedicated fixtures select their browser consumer", async (t) => {
+  for (const changed of [
+    "tests/plugin-update-list.browser.mjs",
+    "tests/fixtures/plugin-updates/list-browser.tsx",
+  ]) {
+    await t.test(changed, (t) => {
+      const file = "tests/plugin-update-list.browser.mjs";
+      const fixture = resourceImpactFixture(t, [
+        file,
+        "tests/fixtures/plugin-updates/list-browser.tsx",
+      ]);
+      fixture.change(
+        fixture.own,
+        changed,
+        readFileSync(new URL("../" + changed, import.meta.url), "utf8") + "\n",
+      );
+      const plan = fixture.plan();
+      assert.ok(plan.files.includes(file), JSON.stringify(plan));
+      assert.ok(plan.reasons[fixture.own.repo + "/" + changed].includes(file));
+      assert.equal(plan.browser, true);
+      assert.deepEqual(plan.required, businessCore);
+      assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+    });
+  }
+});
+
+test("the shared returned-review fixture selects every isolated browser scenario", (t) => {
+  const consumers = [
+    "tests/returned-resubmit-web.test.mjs",
+    "tests/returned-review-roles-web.test.mjs",
+    "tests/returned-review-reject-web.test.mjs",
+  ];
+  const shared = "tests/fixtures/returned-review.mjs";
+  const fixture = resourceImpactFixture(t, [...consumers, shared, "tests/profile.mjs"]);
+  fixture.change(
+    fixture.own,
+    shared,
+    readFileSync(new URL("../" + shared, import.meta.url), "utf8") + "\n",
+  );
+  const plan = fixture.plan();
+  assert.ok(
+    consumers.every((file) => plan.files.includes(file)),
+    JSON.stringify(plan),
+  );
+  assert.equal(plan.browser, true);
+  assert.ok(
+    consumers.every((file) => plan.runtimeFiles.includes(file)),
+    JSON.stringify(plan),
+  );
+});
+
 test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {

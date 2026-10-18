@@ -10,29 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  windows-plugin-update:
-    if: github.event.pull_request.draft != true && (github.head_ref == 'codex/windows-plugin-updates-159-20261016' || github.ref_name == 'codex/windows-plugin-updates-159-20261016')
-    runs-on: windows-2025
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - shell: pwsh
-        run: |
-          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1
-          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
-          node scripts/check-windows-plugin-update.mjs
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: windows-plugin-update-${{ github.sha }}
-          path: .runtime/windows-update-native/result.json
-          if-no-files-found: warn
   delivery-fixtures:
     runs-on: ubuntu-latest
     steps:

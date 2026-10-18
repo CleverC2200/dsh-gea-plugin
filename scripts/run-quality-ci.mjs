@@ -113,6 +113,7 @@ try {
       "test-shards": { type: "string", default: "1" },
       "test-file-concurrency": { type: "string", default: "2" },
       "test-timings": { type: "string" },
+      "source-check-receipt": { type: "string" },
       "test-results": { type: "string" },
       "execution-plan": { type: "string" },
       "test-shard": { type: "string" },
@@ -425,7 +426,16 @@ try {
         ? { ...selectedPlan, platformTasks: [] }
         : selectPlatformTests(selectedPlan);
     const timings = values["test-timings"]
-      ? JSON.parse(readFileSync(values["test-timings"]))
+      ? (await import("./quality-test-timings.mjs")).currentTestTimings({
+          timings: JSON.parse(readFileSync(values["test-timings"])),
+          root: process.cwd(),
+          environment: {
+            platform: process.platform,
+            node: process.versions.node,
+            core: candidate.core,
+            fileConcurrency: testFileConcurrency,
+          },
+        })
       : undefined;
     const shardCount =
       values["test-shards"] === "auto"
@@ -938,7 +948,20 @@ try {
           },
           {
             name: "fast",
-            execute: () => run("corepack", ["pnpm", "quality:fast", "--checks-only"]),
+            execute: () =>
+              run("corepack", [
+                "pnpm",
+                "quality:fast",
+                "--checks-only",
+                ...(values["source-check-receipt"]
+                  ? [
+                      "--source-receipt-in",
+                      values["source-check-receipt"],
+                      "--input-sha256",
+                      finalGroup.receipt.inputSha256,
+                    ]
+                  : []),
+              ]),
           },
         ]);
         stages.record.checks.push(...checks);

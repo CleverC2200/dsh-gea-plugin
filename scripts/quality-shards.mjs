@@ -169,6 +169,7 @@ export function createShardCatalog({ indexes, expected }) {
     requiredJobs: [
       "candidate-scope",
       "plan-test-shards",
+      "windows-plugin-update",
       ...ordered.flatMap((index) => [
         `prepare-${index.core}`,
         ...(index.execution === "producer"

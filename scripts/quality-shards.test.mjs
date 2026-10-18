@@ -90,6 +90,7 @@ test("the public planner collects every Core and rejects missing, duplicate or c
   assert.deepEqual(catalog.requiredJobs, [
     "candidate-scope",
     "plan-test-shards",
+    "windows-plugin-update",
     ...expected.cores.flatMap((core) => [
       `prepare-${core}`,
       `test-${core}-1`,
@@ -260,6 +261,7 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
     wrongHead = false,
     hostedRequiredJobs = catalog.requiredJobs,
     hostedCores = [core],
+    hostedNativeConclusion = "success",
     hostedSkippedWorker = false,
     skippedConclusion = "skipped",
     skippedCopies = 1;
@@ -278,7 +280,12 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
               run_attempt: 2,
               head_sha: head,
               status: name === "candidate-quality" ? "in_progress" : "completed",
-              conclusion: name === "candidate-quality" ? null : "success",
+              conclusion:
+                name === "candidate-quality"
+                  ? null
+                  : name === "windows-plugin-update"
+                    ? hostedNativeConclusion
+                    : "success",
               started_at: at(-1000),
               completed_at: name === "candidate-quality" ? null : at(-500),
             })),
@@ -364,6 +371,13 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   const green = await invoke("final-green");
   assert.equal(green.status, 0, green.stderr);
   assert.equal(green.hosted.completedMeasurement, false, "in-gate is not completed acceptance");
+  for (const conclusion of ["failure", "cancelled", "skipped"]) {
+    hostedNativeConclusion = conclusion;
+    const failed = await invoke("native-" + conclusion);
+    assert.equal(failed.status, 1, failed.stderr);
+    assert.notEqual(failed.hosted.functional.status, "passed");
+  }
+  hostedNativeConclusion = "success";
   const { createEarlyAllocation, createWorkerCatalog } =
     await import("./quality-worker-control.mjs");
   const controlBytes = JSON.stringify({
@@ -758,19 +772,14 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   );
 });
 
-test("historical scheduling weights retain the complete v15 source and leave new tests unknown", async () => {
+test("historical scheduling weights retain their measured source and leave new tests unknown", async () => {
   const timings = JSON.parse(readFileSync(new URL("./quality-test-timings.json", import.meta.url)));
-  assert.equal(timings.source.runId, 38822102215);
   assert.equal(timings.source.kind, "historical-reference-only");
   assert.equal(timings.source.fileConcurrency, 3);
   assert.equal(timings.source.acceptance, "not-acceptance");
-  assert.equal(timings.source.head, "6ff1ae528e38572ad9365c248186fba8899b6b87");
-  assert.equal(timings.files.length, 167);
-  const files = [
-    "tests/source-update-web.test.mjs",
-    "tests/future-profile.test.mjs",
-    "scripts/future.test.mjs",
-  ];
+  assert.match(timings.source.head, /^[a-f0-9]{40}$/);
+  const measuredFile = timings.files[0].file;
+  const files = [measuredFile, "tests/future-profile.test.mjs", "scripts/future.test.mjs"];
   const plan = createExecutionPlan({
     selection: { files },
     platformPlan: { files },
@@ -782,7 +791,7 @@ test("historical scheduling weights retain the complete v15 source and leave new
   assert.equal(plan.shards.length, 3);
   assert.equal(plan.estimates.unknownFiles, 2);
   assert.equal(plan.estimates.estimatedMs, null);
-  assert.equal(plan.timingSource.runId, 38822102215);
+  assert.equal(plan.timingSource.runId, timings.source.runId);
   const { plannedShardCount } = await import("./quality-shards.mjs");
   assert.equal(
     plannedShardCount({

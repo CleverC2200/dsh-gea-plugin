@@ -6,7 +6,12 @@
     "tests/business-page-grant.test.mjs",
     "tests/gateway-handshake.test.mjs"
   ],
-  "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
+  "tests": [
+    "tests/*.test.mjs",
+    "scripts/*.test.mjs",
+    "tests/*.contract.mjs",
+    "tests/*.browser.mjs"
+  ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
     "scripts/knowledge-merge-ci.test.mjs",
