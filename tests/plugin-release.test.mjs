@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { productionManifest } from "../scripts/production-manifest.mjs";
 import {
   validatePluginCombination,
   planPluginUpdate,
@@ -182,7 +183,7 @@ test("independent channel projection retains the other two references and advanc
   );
 });
 
-test("GEA permits the verified Manage .16 to .18 upgrade and rejects unverified versions", async () => {
+test("GEA permits declared Manage .16 through .19 releases and rejects undeclared versions", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const combination = (version) =>
     validatePluginCombination({
@@ -193,10 +194,7 @@ test("GEA permits the verified Manage .16 to .18 upgrade and rejects unverified 
         { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
       ],
     });
-  assert.equal(
-    source.peerDependencies[M],
-    "0.6.3-company.16 || 0.6.3-company.17 || 0.6.3-company.18",
-  );
+  assert.deepEqual(combination("0.6.3-company.19"), []);
   assert.deepEqual(combination("0.6.3-company.18"), []);
   assert.deepEqual(combination("0.6.3-company.17"), []);
   assert.deepEqual(combination("0.6.3-company.16"), []);
@@ -206,12 +204,66 @@ test("GEA permits the verified Manage .16 to .18 upgrade and rejects unverified 
     "0.6.3-company.13",
     "0.6.3-company.14",
     "0.6.3-company.15",
-    "0.6.3-company.19",
+    "0.6.3-company.20",
   ])
     assert.ok(
       combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
       version,
     );
+});
+
+test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 and Manage .18 to .19", async () => {
+  const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const manifest = productionManifest(source, {
+    [W]: "0.1.10",
+    [M]: "0.6.3-company.19",
+    "@changfenhuang/dsh-genui": "0.11.3",
+    "dsh-better-sidebar": "0.24.1",
+  });
+  const nextGea = {
+    name: G,
+    version: manifest.version,
+    peerDependencies: Object.fromEntries(
+      Object.entries(manifest.peerDependencies).filter(([name]) => [W, M, G].includes(name)),
+    ),
+  };
+  const installed = [
+    { name: W, version: "0.1.9" },
+    { name: M, version: "0.6.3-company.18" },
+    {
+      name: G,
+      version: "0.0.162",
+      peerDependencies: {
+        [W]: "0.1.9",
+        [M]: "0.6.3-company.16 || 0.6.3-company.17 || 0.6.3-company.18",
+      },
+    },
+  ];
+  const project = (manifest) =>
+    projectPluginRelease({
+      manifest,
+      artifact,
+      supportedCores: [core],
+      dataCompatibility: { kind: "preserve" },
+      notes: "Company-peer-only upgrade fixture",
+    });
+  const nextWorkbench = { name: W, version: "0.1.10" };
+  const nextManage = { name: M, version: "0.6.3-company.19" };
+  assert.equal(
+    planPluginUpdate({ release: project(nextWorkbench), core, installed }).code,
+    "COMBINATION_INCOMPATIBLE",
+  );
+  assert.equal(planPluginUpdate({ release: project(nextGea), core, installed }).kind, "ready");
+  const afterGea = installed.map((entry) => (entry.name === G ? nextGea : entry));
+  assert.equal(
+    planPluginUpdate({ release: project(nextWorkbench), core, installed: afterGea }).kind,
+    "ready",
+  );
+  const afterWorkbench = afterGea.map((entry) => (entry.name === W ? nextWorkbench : entry));
+  assert.equal(
+    planPluginUpdate({ release: project(nextManage), core, installed: afterWorkbench }).kind,
+    "ready",
+  );
 });
 
 test("a partial channel adds an independently published package without replacing existing references", async () => {
