@@ -138,9 +138,15 @@ test("an existing profile that only added GenUI receives its missing update sour
     join(root, "dsh/node_modules/@deepseek-ai/dsh-atomic-write"),
     "dir",
   );
-  await writeFile(join(root, "dsh/package.json"), "{}");
+  await writeFile(
+    join(root, "dsh/package.json"),
+    JSON.stringify({
+      name: "@deepseek-ai/dsh-desktop-runtime",
+      version: currentCore.version,
+    }),
+  );
   const metadata = JSON.stringify({
-    version: currentCore.version,
+    version: currentCore.version + ".20261018.1",
     dshBuildCommit: currentCore.head,
     dshBuildDirty: false,
   });
