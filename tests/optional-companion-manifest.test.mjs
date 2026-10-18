@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import semver from "semver";
 import { productionManifest } from "../scripts/production-manifest.mjs";
 const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const versions = {
@@ -43,4 +44,22 @@ test("production manifest preserves an existing exact peer when another package 
     versions,
   );
   assert.equal(ranged.peerDependencies["dsh-agent-manage"], "^0.6.3");
+});
+test("production manifest accepts Manage company.19 and the previously supported releases", () => {
+  const manifest = productionManifest(source, {
+    ...versions,
+    "dsh-agent-manage": "0.6.3-company.19",
+  });
+  for (const version of [
+    "0.6.3-company.16",
+    "0.6.3-company.17",
+    "0.6.3-company.18",
+    "0.6.3-company.19",
+  ]) {
+    assert.equal(
+      semver.satisfies(version, manifest.peerDependencies["dsh-agent-manage"]),
+      true,
+      `production manifest must accept Manage ${version}`,
+    );
+  }
 });
