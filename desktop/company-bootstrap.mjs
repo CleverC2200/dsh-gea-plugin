@@ -317,12 +317,15 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
-  let missing = names.filter(
-    (name) =>
-      !current?.dependencies?.[name] &&
-      (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
-  );
-  if (!missing.length) return { status: "existing-profile-preserved", changed: false };
+  let missing = names
+    .slice(0, 3)
+    .filter(
+      (name) =>
+        !current?.dependencies?.[name] &&
+        (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
+    );
+  if (!missing.length && receipt?.status !== "failed")
+    return { status: "existing-profile-preserved", changed: false };
   const manifest = await readCompanySeed(seed);
   const core = await verifyCompanyCore(root, manifest.core);
   await mkdir(record, { recursive: true, mode: 0o700 });
@@ -337,12 +340,17 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
       const latest = existsSync(join(profile, "package.json"))
         ? await json(join(profile, "package.json"))
         : undefined;
-      missing = names.filter(
-        (name) =>
-          !latest?.dependencies?.[name] &&
-          (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
-      );
-      if (!missing.length) return { status: "existing-profile-preserved", changed: false };
+      missing = manifest.packages
+        .map((row) => row.name)
+        .filter(
+          (name) =>
+            !latest?.dependencies?.[name] &&
+            (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
+        );
+      if (!missing.length) {
+        if (latestReceipt?.status === "failed") throw Error("GEA_COMPANY_INSTALL_INCOMPLETE");
+        return { status: "existing-profile-preserved", changed: false };
+      }
       for (const file of [
         "package.json",
         "cordis.patch.yml",

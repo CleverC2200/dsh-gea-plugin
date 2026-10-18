@@ -359,3 +359,29 @@ test("the desktop seed accepts exactly the three required plugins without GenUI"
   );
   await assert.rejects(readCompanySeed(seed), /GEA_SEED_INVALID/);
 });
+
+test("an existing three-plugin profile without a bootstrap receipt stays untouched", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "gea-existing-three-"));
+  const { rm } = await import("node:fs/promises");
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const profile = join(home, "profiles/desktop");
+  await mkdir(profile, { recursive: true });
+  const bytes = JSON.stringify({
+    dependencies: {
+      "@cleverc2200/dsh-agent-workbench": "keep",
+      "dsh-agent-manage": "keep",
+      "@cleverc2200/gea-dsh-prototype": "keep",
+    },
+    dsh: { profile: { bundles: ["user-choice"] } },
+  });
+  await writeFile(join(profile, "package.json"), bytes);
+  assert.deepEqual(
+    await bootstrapCompanyProfile({ root: "unused", support: "unused", seed: "unused", home }),
+    {
+      status: "existing-profile-preserved",
+      changed: false,
+    },
+  );
+  assert.equal(await readFile(join(profile, "package.json"), "utf8"), bytes);
+  await assert.rejects(access(join(profile, "gea/bootstrap/receipt.json")), { code: "ENOENT" });
+});
