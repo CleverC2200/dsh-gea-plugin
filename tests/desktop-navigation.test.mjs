@@ -36,6 +36,9 @@ function fixture() {
     request,
     acks,
     resolves: () => resolves,
+    enqueue: () => {
+      pending = { id: "delivery-2", navigationReference: "second-reference", schemaVersion: 1 };
+    },
     change: () => {
       epoch.abort();
       epoch = new AbortController();
@@ -137,4 +140,67 @@ test("an empty desktop queue does not ask a signed-out account to open a message
   assert.equal(f.resolves(), 0);
   assert.equal(f.acks.length, 0);
   nav.dispose();
+});
+
+test("完成响应丢失后以原 receipt 重试 finish 幂等，切身份后旧 receipt 仍拒绝", async () => {
+  const f = fixture();
+  f.change();
+  const nav = api.createDesktopNavigation(f.business, f.request);
+  const first = await nav.poll();
+  assert.equal((await nav.finish({ receipt: first.receipt, outcome: "visible" })).state, "idle");
+  assert.equal((await nav.finish({ receipt: first.receipt, outcome: "visible" })).state, "idle");
+  assert.equal(f.acks.length, 1);
+  assert.equal(f.resolves(), 1);
+  f.enqueue();
+  const next = await nav.poll();
+  assert.equal(next.state, "ready");
+  assert.notEqual(next.receipt, first.receipt);
+  assert.equal((await nav.finish({ receipt: first.receipt, outcome: "visible" })).state, "idle");
+  assert.equal((await nav.poll()).receipt, next.receipt);
+  assert.equal(f.acks.length, 1);
+  f.change();
+  await assert.rejects(
+    nav.finish({ receipt: first.receipt, outcome: "visible" }),
+    /NAVIGATION_RECEIPT_STALE/,
+  );
+  nav.dispose();
+});
+
+test("旧壳 pending 404 保持安静，真实 receipt 的 complete 404 保留 finish 失败", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.GEA_DESKTOP_CONTROL_URL;
+  const originalToken = process.env.GEA_DESKTOP_CONTROL_TOKEN;
+  process.env.GEA_DESKTOP_CONTROL_URL = "http://127.0.0.1:32123";
+  process.env.GEA_DESKTOP_CONTROL_TOKEN = "fixture-token";
+  let pendingMissing = true;
+  globalThis.fetch = async (url) =>
+    new URL(url).pathname === "/navigation/pending" && !pendingMissing
+      ? Response.json({
+          id: "delivery-1",
+          navigationReference: "private-reference",
+          schemaVersion: 1,
+        })
+      : new Response(null, { status: 404 });
+  const f = fixture();
+  f.change();
+  const nav = api.createDesktopNavigation(f.business);
+  try {
+    assert.equal((await nav.poll()).state, "unavailable");
+    pendingMissing = false;
+    const first = await nav.poll();
+    const failed = await nav.finish({ receipt: first.receipt, outcome: "visible" });
+    assert.equal(failed.state, "error");
+    assert.equal(failed.receipt, first.receipt);
+    assert.equal(failed.stage, "finish");
+    assert.equal(failed.code, "NAVIGATION_CONTROL_UNAVAILABLE");
+    assert.equal((await nav.poll()).receipt, first.receipt);
+    assert.equal(f.acks.length, 1);
+  } finally {
+    nav.dispose();
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.GEA_DESKTOP_CONTROL_URL;
+    else process.env.GEA_DESKTOP_CONTROL_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.GEA_DESKTOP_CONTROL_TOKEN;
+    else process.env.GEA_DESKTOP_CONTROL_TOKEN = originalToken;
+  }
 });

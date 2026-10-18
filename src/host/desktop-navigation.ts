@@ -69,7 +69,7 @@ async function desktopRequest(path: string, body?: unknown): Promise<unknown> {
   } catch {
     throw Error("NAVIGATION_CONTROL_UNAVAILABLE");
   }
-  if (response.status === 404) return undefined;
+  if (response.status === 404 && body === undefined) return undefined;
   if (!response.ok) throw Error("NAVIGATION_CONTROL_UNAVAILABLE");
   try {
     return await response.json();
@@ -84,6 +84,7 @@ export function createDesktopNavigation(
   request: ControlRequest = desktopRequest,
 ) {
   let active: Active | undefined;
+  let completed: { receipt: string; visible: boolean; signal: AbortSignal } | undefined;
   let disposed = false;
   let identityRevision = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -91,6 +92,7 @@ export function createDesktopNavigation(
   const stop = business.watchIdentity(() => {
     identityRevision++;
     active = undefined;
+    completed = undefined;
   });
   const serial = <T>(action: () => Promise<T>): Promise<T> => {
     const next = tail.then(action);
@@ -205,7 +207,10 @@ export function createDesktopNavigation(
         record("target-visible", "success");
       }
       await request("/navigation/complete", { id: task.id });
-      if (current(task)) active = undefined;
+      if (current(task)) {
+        completed = { receipt: task.receipt, visible, signal: task.signal };
+        active = undefined;
+      }
       return { state: "idle" };
     } catch (error) {
       if (!current(task)) throw Error("NAVIGATION_RECEIPT_STALE");
@@ -233,6 +238,13 @@ export function createDesktopNavigation(
           !["visible", "dismissed"].includes(String(value.outcome))
         )
           throw Error("NAVIGATION_REQUEST_INVALID");
+        if (
+          completed?.receipt === value.receipt &&
+          completed.visible === (value.outcome === "visible") &&
+          !completed.signal.aborted &&
+          business.status().authenticated
+        )
+          return { state: "idle" };
         if (!active || active.receipt !== value.receipt) throw Error("NAVIGATION_RECEIPT_STALE");
         return complete(active, value.outcome === "visible");
       });
@@ -247,6 +259,7 @@ export function createDesktopNavigation(
     dispose() {
       disposed = true;
       active = undefined;
+      completed = undefined;
       stop();
     },
   };
