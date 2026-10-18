@@ -70,3 +70,62 @@ jobs:
         run: node --run test:prompt-execution
       - if: steps.scope.outputs.bootstrap != 'true'
         run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
+
+  windows-complete-package:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      DSH_DESKTOP_TARGET_PLATFORM: win32
+      DSH_DESKTOP_TARGET_ARCH: x64
+      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
+      DSH_DESKTOP_UNSIGNED: '1'
+      DSH_DESKTOP_BUILD_VERSION: 0.2.0-rc.2.20261018.1
+      DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+      DSH_DESKTOP_BUILD_DIRTY: '0'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_BUILDER_7Z_FILTER: BCJ
+      GEA_COMPLETE_SOURCE_SHA: 6c1436652a34e1473350978e200d025ac98d1c33
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: packaging
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 6c1436652a34e1473350978e200d025ac98d1c33
+          path: gea
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+          path: core
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.1'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Prepare declared Core toolchain
+        working-directory: core
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile --prefer-offline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build full Windows package and verify isolated first installation
+        env:
+          GEA_GITHUB_READ_TOKEN: ${{ github.token }}
+        run: node packaging/scripts/windows-complete-local/build.mjs core gea
+      - name: Keep installer and original build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GEA-Desktop-0.2.0-rc.2.20261018.1-win-x64-complete
+          if-no-files-found: warn
+          compression-level: 0
+          path: |
+            core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
