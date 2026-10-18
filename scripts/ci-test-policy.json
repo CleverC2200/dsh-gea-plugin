@@ -285,9 +285,23 @@
       ]
     },
     {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-output|build-static-authors)\\.mjs$",
+      "tests": [
+        "scripts/quality-workbench.test.mjs",
+        "scripts/quality-prepared-inputs.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/(?:prepare-official-sdk|sdk-artifact-cache)\\.mjs$",
       "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/(?:download-cache|run-quality-ci)\\.mjs$",
+      "tests": ["scripts/ci-policy-impact.test.mjs"]
     },
     {
       "pattern": "^scripts/quality-peer-baseline\\.json$",
