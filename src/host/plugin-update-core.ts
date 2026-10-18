@@ -79,11 +79,7 @@ export async function readPluginUpdateCore(ctx: Context, raw: unknown): Promise<
       app.dshBuildDirty !== false
     )
       throw Error("UPDATE_CORE_SOURCE_MISMATCH");
-    if (
-      app.version !== proof.version ||
-      runtime.name !== "@deepseek-ai/dsh-desktop-runtime" ||
-      runtime.version !== proof.version
-    )
+    if (runtime.name !== "@deepseek-ai/dsh-desktop-runtime" || runtime.version !== proof.version)
       throw Error("UPDATE_CORE_VERSION_MISMATCH");
   }
   const observedPaths = new Set<string>();

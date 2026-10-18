@@ -743,3 +743,17 @@ test("desktop Core proof rejects an SDK manifest linked outside the admitted ins
     .digest("hex");
   await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_SDK_MISMATCH/);
 });
+
+test("dated Desktop builds retain the actual Core runtime version and artifact proof", async (t) => {
+  const f = await desktopCoreFixture(t);
+  f.app.version = "0.2.0-rc.2.20261018.1";
+  const bytes = JSON.stringify(f.app);
+  await writeFile(join(f.root, "package.json"), bytes);
+  f.proof.artifacts.find((row) => row.path === "package.json").sha256 = createHash("sha256")
+    .update(bytes)
+    .digest("hex");
+  assert.equal((await f.readPluginUpdateCore(f.ctx, f.proof)).version, f.runtime.version);
+  f.runtime.version = "0.2.1";
+  await writeFile(join(f.root, "dsh/package.json"), JSON.stringify(f.runtime));
+  await assert.rejects(f.readPluginUpdateCore(f.ctx, f.proof), /UPDATE_CORE_VERSION_MISMATCH/);
+});

@@ -13,7 +13,10 @@ const names = [
 ];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const desktopCoreHead = "639ed015397290b3745d163aafe02ffee4aa3f84";
+const desktopCoreHeads = new Set([
+  "639ed015397290b3745d163aafe02ffee4aa3f84",
+  "8cfb899ccf21d3662421b99b5f4627842ef712ea",
+]);
 const desktopCoreVersion = "0.2.0-rc.2";
 
 function validCoreArtifacts(artifacts) {
@@ -49,8 +52,8 @@ export function planCompanyCoreRefresh(updates, core, source) {
     ) ||
     previous.kind !== "desktop" ||
     core.kind !== "desktop" ||
-    previous.head !== desktopCoreHead ||
-    core.head !== desktopCoreHead ||
+    !desktopCoreHeads.has(previous.head) ||
+    !desktopCoreHeads.has(core.head) ||
     previous.version !== desktopCoreVersion ||
     core.version !== desktopCoreVersion ||
     typeof previous.root !== "string" ||
@@ -82,12 +85,14 @@ export function planCompanyCoreRefresh(updates, core, source) {
 
 async function verifyCompanyCore(root, core) {
   const app = await json(join(root, "package.json"));
+  const runtime = await json(join(root, "dsh/package.json"));
   if (
-    core?.head !== desktopCoreHead ||
+    !desktopCoreHeads.has(core?.head) ||
     core.version !== desktopCoreVersion ||
     !validCoreArtifacts(core.artifacts) ||
     app.dshBuildCommit !== core.head ||
-    app.version !== core.version ||
+    runtime.name !== "@deepseek-ai/dsh-desktop-runtime" ||
+    runtime.version !== core.version ||
     app.dshBuildDirty !== false
   )
     throw Error("GEA_SEED_CORE_MISMATCH");
@@ -208,7 +213,8 @@ export async function readCompanySeed(seed) {
   if (
     manifest.schema !== 1 ||
     !Array.isArray(manifest.packages) ||
-    manifest.packages.length !== names.length
+    manifest.packages.length < 3 ||
+    manifest.packages.length > names.length
   )
     throw Error("GEA_SEED_INVALID");
   for (const [index, row] of manifest.packages.entries()) {
@@ -311,12 +317,15 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
-  let missing = names.filter(
-    (name) =>
-      !current?.dependencies?.[name] &&
-      (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
-  );
-  if (!missing.length) return { status: "existing-profile-preserved", changed: false };
+  let missing = names
+    .slice(0, 3)
+    .filter(
+      (name) =>
+        !current?.dependencies?.[name] &&
+        (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
+    );
+  if (!missing.length && receipt?.status !== "failed")
+    return { status: "existing-profile-preserved", changed: false };
   const manifest = await readCompanySeed(seed);
   const core = await verifyCompanyCore(root, manifest.core);
   await mkdir(record, { recursive: true, mode: 0o700 });
@@ -331,12 +340,17 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
       const latest = existsSync(join(profile, "package.json"))
         ? await json(join(profile, "package.json"))
         : undefined;
-      missing = names.filter(
-        (name) =>
-          !latest?.dependencies?.[name] &&
-          (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
-      );
-      if (!missing.length) return { status: "existing-profile-preserved", changed: false };
+      missing = manifest.packages
+        .map((row) => row.name)
+        .filter(
+          (name) =>
+            !latest?.dependencies?.[name] &&
+            (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
+        );
+      if (!missing.length) {
+        if (latestReceipt?.status === "failed") throw Error("GEA_COMPANY_INSTALL_INCOMPLETE");
+        return { status: "existing-profile-preserved", changed: false };
+      }
       for (const file of [
         "package.json",
         "cordis.patch.yml",
