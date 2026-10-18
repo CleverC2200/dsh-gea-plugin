@@ -3,15 +3,30 @@ import type { Business } from "./host/business.ts";
 type IdentityStatus = Readonly<
   Pick<
     ReturnType<Business["status"]>,
-    "environment" | "environments" | "authenticated" | "loginState" | "user"
-  >
+    "environment" | "environments" | "authenticated" | "loginState"
+  > & {
+    user: Readonly<
+      Partial<Pick<NonNullable<ReturnType<Business["status"]>["user"]>, "name" | "avatar">>
+    > | null;
+  }
 >;
+class IdentityObservationError extends Error {
+  readonly code: string;
+  readonly recoverable: boolean;
+  constructor(code: string, recoverable: boolean, message: string) {
+    super(message);
+    this.code = code;
+    this.recoverable = recoverable;
+  }
+}
+
 export type IdentitySnapshot = Readonly<{
   state: "unknown" | "confirmed" | "error";
   scope: string | null;
   subject: string | null;
   status: IdentityStatus | null;
   error?: string;
+  errorCode?: string;
 }>;
 export interface BusinessIdentityProjection {
   getSnapshot(): IdentitySnapshot;
@@ -31,16 +46,102 @@ async function requestBusinessIdentityScope(
       cache: "no-store",
       signal: requestSignal,
     });
-    const value = await response.json();
+    if (!response.ok)
+      throw new IdentityObservationError(
+        `IDENTITY_HTTP_${response.status}`,
+        response.status === 404 ||
+          response.status === 408 ||
+          response.status === 429 ||
+          response.status >= 500,
+        "登录状态读取失败，请重试。",
+      );
+    let value: unknown;
+    try {
+      value = await response.json();
+    } catch {
+      throw new IdentityObservationError(
+        "IDENTITY_INVALID_RESPONSE",
+        false,
+        "身份服务返回无效，请重试。",
+      );
+    }
     requestSignal.throwIfAborted();
-    if (!response.ok) throw Error(value.error ?? "登录状态读取失败，请重试。");
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("status" in value) ||
+      !value.status ||
+      typeof value.status !== "object" ||
+      !("scope" in value) ||
+      (value.scope !== null && typeof value.scope !== "string")
+    )
+      throw new IdentityObservationError(
+        "IDENTITY_INVALID_RESPONSE",
+        false,
+        "身份服务返回无效，请重试。",
+      );
+    const status = value.status;
+    if (
+      !("authenticated" in status) ||
+      typeof status.authenticated !== "boolean" ||
+      !("environment" in status) ||
+      !["production", "test"].includes(String(status.environment)) ||
+      !("loginState" in status) ||
+      !["authenticated", "signed-out", "expired"].includes(String(status.loginState)) ||
+      !("user" in status) ||
+      (status.user !== null && (typeof status.user !== "object" || Array.isArray(status.user)))
+    )
+      throw new IdentityObservationError(
+        "IDENTITY_INVALID_RESPONSE",
+        false,
+        "身份服务返回无效，请重试。",
+      );
+    if (
+      (status.authenticated && status.loginState !== "authenticated") ||
+      (!status.authenticated && status.loginState === "authenticated")
+    )
+      throw new IdentityObservationError(
+        "IDENTITY_INVALID_RESPONSE",
+        false,
+        "身份服务返回无效，请重试。",
+      );
+    const user = status.user;
+    if (
+      (user &&
+        (("name" in user && typeof user.name !== "string") ||
+          ("avatar" in user && user.avatar !== undefined && typeof user.avatar !== "string"))) ||
+      ("subject" in value && value.subject !== null && typeof value.subject !== "string") ||
+      ("environments" in status &&
+        (!Array.isArray(status.environments) ||
+          !status.environments.every((item: unknown) => typeof item === "string")))
+    )
+      throw new IdentityObservationError(
+        "IDENTITY_INVALID_RESPONSE",
+        false,
+        "身份服务返回无效，请重试。",
+      );
     return {
-      scope: typeof value.scope === "string" ? value.scope : null,
-      subject: typeof value.subject === "string" ? value.subject : null,
-      status: value.status ?? null,
+      scope: value.scope,
+      subject: "subject" in value && typeof value.subject === "string" ? value.subject : null,
+      status: {
+        environment: status.environment === "test" ? "test" : "production",
+        environments:
+          "environments" in status && Array.isArray(status.environments) ? status.environments : [],
+        authenticated: status.authenticated,
+        loginState: String(status.loginState),
+        user: user
+          ? {
+              ...("name" in user && typeof user.name === "string" ? { name: user.name } : {}),
+              ...("avatar" in user && typeof user.avatar === "string"
+                ? { avatar: user.avatar }
+                : {}),
+            }
+          : null,
+      },
     };
   } catch (error) {
-    if (timeout.aborted && !signal?.aborted) throw Error("登录状态读取超时，请重试。");
+    if (timeout.aborted && !signal?.aborted)
+      throw new IdentityObservationError("IDENTITY_TIMEOUT", true, "登录状态读取超时，请重试。");
     throw error;
   }
 }
@@ -48,26 +149,60 @@ async function requestBusinessIdentityScope(
 /** One read-only projection per GEA client. The Host remains the authority. */
 export function createBusinessIdentityReader() {
   let snapshot: IdentitySnapshot = { state: "unknown", scope: null, subject: null, status: null };
-  let issued = 0,
-    accepted = 0;
+  let issued = 0;
+  let observed = false;
+  let startupDeadline: number | undefined;
+  let startupTimer: ReturnType<typeof setTimeout> | undefined;
+  const publishError = (message: string, code: string) => {
+    if (snapshot.error === message && snapshot.errorCode === code) return;
+    clearTimeout(startupTimer);
+    startupTimer = undefined;
+    snapshot = {
+      ...snapshot,
+      state: observed ? "confirmed" : "error",
+      error: message,
+      errorCode: code,
+    };
+    for (const listener of listeners) listener();
+  };
+  const beginObservation = () => {
+    startupDeadline ??= Date.now() + 5000;
+    if (!observed && snapshot.state === "unknown" && Date.now() >= startupDeadline) {
+      publishError("登录状态读取超时，请重试。", "IDENTITY_STARTUP_TIMEOUT");
+      return;
+    }
+    if (!observed && snapshot.state === "unknown" && startupTimer === undefined)
+      startupTimer = setTimeout(
+        () => {
+          startupTimer = undefined;
+          if (!observed && snapshot.state === "unknown")
+            publishError("登录状态读取超时，请重试。", "IDENTITY_STARTUP_TIMEOUT");
+        },
+        Math.max(0, startupDeadline - Date.now()),
+      );
+  };
   let initial: Promise<string | null> | undefined;
   let initialController: AbortController | undefined;
   const listeners = new Set<() => void>();
   const read = async (signal?: AbortSignal): Promise<string | null> => {
     signal?.throwIfAborted();
+    beginObservation();
     const request = ++issued;
     try {
       const next = await requestBusinessIdentityScope(signal);
       signal?.throwIfAborted();
-      if (request < accepted) return snapshot.scope;
+      if (request !== issued) return snapshot.scope;
       const previous = snapshot;
-      accepted = request;
+      observed = true;
+      clearTimeout(startupTimer);
+      startupTimer = undefined;
       snapshot = { state: "confirmed", ...next };
       if (
         previous.state !== "confirmed" ||
         previous.error ||
         previous.scope !== next.scope ||
         previous.subject !== next.subject ||
+        previous.status?.authenticated !== next.status?.authenticated ||
         previous.status?.loginState !== next.status?.loginState ||
         previous.status?.environment !== next.status?.environment ||
         JSON.stringify(previous.status?.environments) !==
@@ -77,7 +212,7 @@ export function createBusinessIdentityReader() {
       ) {
         for (const listener of listeners) listener();
         if (
-          previous.state !== "unknown" &&
+          previous.status !== null &&
           (previous.scope !== next.scope || previous.subject !== next.subject)
         )
           window.dispatchEvent(
@@ -88,15 +223,15 @@ export function createBusinessIdentityReader() {
       }
       return next.scope;
     } catch (error) {
-      if (!signal?.aborted && request >= accepted) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (snapshot.error !== message || snapshot.state === "unknown") {
-          snapshot = {
-            ...snapshot,
-            state: snapshot.state === "confirmed" ? "confirmed" : "error",
-            error: message,
-          };
-          for (const listener of listeners) listener();
+      if (!signal?.aborted && request === issued) {
+        const recoverable =
+          error instanceof TypeError ||
+          (error instanceof IdentityObservationError && error.recoverable);
+        if (observed || !recoverable || Date.now() >= startupDeadline!) {
+          publishError(
+            error instanceof Error ? error.message : String(error),
+            error instanceof IdentityObservationError ? error.code : "IDENTITY_READ_FAILED",
+          );
         }
       }
       throw error;
@@ -130,10 +265,11 @@ export function createBusinessIdentityReader() {
   };
   reader.readScope = async (signal) => {
     signal?.throwIfAborted();
-    return snapshot.state === "confirmed" ? snapshot.scope : reader(signal);
+    return snapshot.state === "confirmed" && !snapshot.error ? snapshot.scope : reader(signal);
   };
   reader.refresh = read;
   reader.start = () => {
+    beginObservation();
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -148,6 +284,8 @@ export function createBusinessIdentityReader() {
     return () => {
       controller.abort();
       initialController?.abort();
+      clearTimeout(startupTimer);
+      startupTimer = undefined;
       clearTimeout(timer);
     };
   };
