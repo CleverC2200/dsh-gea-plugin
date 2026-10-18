@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
+import semver from "semver";
 
 const root = resolve(import.meta.dirname, "..");
 const pnpm = process.env.GEA_PACKAGE_PNPM;
@@ -15,13 +16,10 @@ test(
   async (t) => {
     const work = await mkdtemp(join(tmpdir(), "gea-production-package-"));
     t.after(() => rm(work, { recursive: true, force: true }));
+    const source = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
     const versions = {
-      "@cleverc2200/gea-dsh-prototype": JSON.parse(
-        await import("node:fs/promises").then((fs) =>
-          fs.readFile(join(root, "package.json"), "utf8"),
-        ),
-      ).version,
-      "@cleverc2200/dsh-agent-workbench": "0.1.1",
+      "@cleverc2200/gea-dsh-prototype": source.version,
+      "@cleverc2200/dsh-agent-workbench": "0.1.10",
       "dsh-agent-manage": "0.6.3-company.6",
       "@changfenhuang/dsh-genui": "0.11.3",
       "dsh-better-sidebar": "0.24.1",
@@ -71,8 +69,14 @@ test(
     );
     assert.equal(
       manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"],
-      versions["@cleverc2200/dsh-agent-workbench"],
+      source.peerDependencies["@cleverc2200/dsh-agent-workbench"] ??
+        versions["@cleverc2200/dsh-agent-workbench"],
     );
+    const workbenchRange = manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"];
+    for (const version of ["0.1.9", "0.1.10"])
+      assert.equal(semver.satisfies(version, workbenchRange), true, version);
+    for (const version of ["0.1.8", "0.1.11"])
+      assert.equal(semver.satisfies(version, workbenchRange), false, version);
     assert.equal(manifest.devDependencies, undefined);
     assert.ok(
       !files.some((file) => file.includes("node_modules/") || file.includes("scripts/start.mjs")),
