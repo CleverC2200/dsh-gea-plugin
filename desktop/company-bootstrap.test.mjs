@@ -308,3 +308,54 @@ test("only an unchanged profile with a known pre-write store rejection can reach
     assert.equal(await readFile(join(record, "receipt.json"), "utf8"), receipt);
   }
 });
+
+test("the admitted company Core refresh preserves the existing source and rejects unknown builds", () => {
+  const next = { ...currentCore, head: "8cfb899ccf21d3662421b99b5f4627842ef712ea" };
+  const source = { channelUrl: "https://example.test/custom.json" };
+  assert.deepEqual(planCompanyCoreRefresh({ source, core: currentCore }, next), {
+    source,
+    core: next,
+    checkTimeoutMs: 60000,
+    pollIntervalMs: 2000,
+  });
+  assert.deepEqual(planCompanyCoreRefresh(undefined, next, source).core, next);
+  assert.throws(
+    () =>
+      planCompanyCoreRefresh(
+        { source, core: currentCore },
+        {
+          ...next,
+          head: "c".repeat(40),
+        },
+      ),
+    /GEA_CORE_REFRESH_REJECTED/,
+  );
+});
+
+test("the desktop seed accepts exactly the three required plugins without GenUI", async (t) => {
+  const seed = await mkdtemp(join(tmpdir(), "gea-three-plugin-seed-"));
+  const { rm } = await import("node:fs/promises");
+  const { createHash } = await import("node:crypto");
+  t.after(() => rm(seed, { recursive: true, force: true }));
+  await mkdir(join(seed, "archives"));
+  const bytes = Buffer.from("fixture archive");
+  await writeFile(join(seed, "archives/plugin.tgz"), bytes);
+  const packages = [
+    "@cleverc2200/dsh-agent-workbench",
+    "dsh-agent-manage",
+    "@cleverc2200/gea-dsh-prototype",
+  ].map((name) => ({
+    name,
+    version: "1.0.0",
+    file: "plugin.tgz",
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  }));
+  const manifest = { schema: 1, packages };
+  await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest));
+  assert.deepEqual(await readCompanySeed(seed), manifest);
+  await writeFile(
+    join(seed, "manifest.json"),
+    JSON.stringify({ ...manifest, packages: packages.slice(0, 2) }),
+  );
+  await assert.rejects(readCompanySeed(seed), /GEA_SEED_INVALID/);
+});
