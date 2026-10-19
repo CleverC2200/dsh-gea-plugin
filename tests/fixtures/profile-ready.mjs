@@ -11,6 +11,7 @@ export async function waitProfileReady({
   readOutput,
   readLaunchLog,
   recordLifecycle = () => {},
+  probe,
 }) {
   let deadline = source ? undefined : Date.now() + timeoutMs;
   const observed = new Set();
@@ -58,7 +59,14 @@ export async function waitProfileReady({
     const output = readOutput();
     const log = await readLaunchLog();
     const launch = [...log.matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(-1)?.[1];
-    if (launch && deadline !== undefined) return launch;
+    if (launch && deadline !== undefined) {
+      const remaining = Math.max(1, deadline - Date.now());
+      const readySignal = AbortSignal.any([
+        ...(signal ? [signal] : []),
+        AbortSignal.timeout(remaining),
+      ]);
+      if (!probe || (await probe(launch, readySignal))) return launch;
+    }
     if (child.exitCode !== null || child.signalCode !== null)
       throw Error("Profile exited: " + output);
     // Leave another observation before a short startup deadline, without extending it.

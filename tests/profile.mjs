@@ -474,6 +474,7 @@ async function createProfile(t, options) {
       process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph
         ? { combination: admitted.combination, core: admitted.core, previous: previousHost }
         : undefined;
+    let authenticatedLaunch;
     const launch = await waitProfileReady({
       child,
       runtime,
@@ -491,16 +492,38 @@ async function createProfile(t, options) {
         }
       },
       recordLifecycle,
+      probe: async (url, readySignal) => {
+        const currentOrigin = new URL(url).origin;
+        if (authenticatedLaunch !== url) {
+          const exchange = await fetch(url, { redirect: "manual", signal: readySignal });
+          cookie = exchange.headers
+            .getSetCookie()
+            .map((value) => value.split(";")[0])
+            .join("; ");
+          if (!cookie) throw new Error("Launch authentication failed");
+          authenticatedLaunch = url;
+        }
+        if (options.coreOnly) return true;
+        const status = await fetch(currentOrigin + "/api/gea-proof/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Cookie: cookie, Origin: currentOrigin },
+          body: "{}",
+          signal: readySignal,
+        });
+        // Core may expose its URL while Manage's asynchronous services are still loading.
+        // Only a local read-only status probe waits; login and business calls are never replayed.
+        if (status.status === 404) {
+          await status.body?.cancel();
+          return false;
+        }
+        if (status.status !== 200 || (await status.json()).ok !== true)
+          throw new Error("GEA business readiness failed: HTTP " + status.status);
+        return true;
+      },
     });
     origin = new URL(launch).origin;
     recordLifecycle({ event: "host-ready", origin });
     t.signal?.throwIfAborted();
-    const exchange = await fetch(launch, { redirect: "manual", signal: t.signal });
-    cookie = exchange.headers
-      .getSetCookie()
-      .map((value) => value.split(";")[0])
-      .join("; ");
-    if (!cookie) throw new Error("Launch authentication failed");
   }
   const api = {
     dir,
