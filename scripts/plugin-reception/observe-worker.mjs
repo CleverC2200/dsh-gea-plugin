@@ -1,8 +1,14 @@
-import { artifactSetSha256, businessIds, documentIds, retainStandard } from "./contract.mjs";
+import {
+  artifactSetSha256,
+  businessIds,
+  documentIds,
+  retainStandard,
+  projectOrchestrationStandard,
+} from "./contract.mjs";
 /** In-process ordinary Web profile boot. Real Loader/resolver/services, with all outgoing transports denied. */
 import assert from "node:assert/strict";
 import { readFile, writeFile, realpath } from "node:fs/promises";
-import { join, basename, dirname, sep } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import http from "node:http";
@@ -289,28 +295,31 @@ try {
   const companyStandard = (await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET))
     .plugins;
   const manageRoot = dirname(manageRequire.resolve("dsh-agent-manage/package.json"));
-  const manageManifest = await readJson(join(manageRoot, "package.json"));
-  const orchestrationStandard = structuredClone(companyStandard);
-  if (manageManifest.version === "0.6.3-company.20") {
-    const persona = orchestrationStandard.find((row) => row.name === "@deepseek-ai/dsh-persona");
-    const filesystem = orchestrationStandard.find(
-      (row) => row.name === "@deepseek-ai/dsh-skill-filesystem",
-    );
-    assert(persona && filesystem, "ORCHESTRATION_STANDARD_CAPABILITIES_REQUIRED");
-    const prompt = await readFile(
+  let orchestrationPrompt;
+  try {
+    orchestrationPrompt = await readFile(
       join(manageRoot, "business-resources/orchestration/prompt.md"),
       "utf8",
     );
-    assert(prompt.trim(), "ORCHESTRATION_PROMPT_REQUIRED");
-    persona.config.prefix += "\n\n" + prompt;
-    filesystem.config = {
-      ...filesystem.config,
-      customSkillDirs: [
-        join(manageRoot, "business-resources/orchestration/skills") + sep,
-        ...(filesystem.config?.customSkillDirs ?? []),
-      ],
-    };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
   }
+  const managedOrchestration = (await ctx.agentResources.pluginAgents()).find(
+    (row) => row.id === ORCHESTRATION_PRESET.id,
+  );
+  if (managedOrchestration) {
+    assert.equal(
+      managedOrchestration.prompt,
+      orchestrationPrompt,
+      "ORCHESTRATION_SOURCE_PROMPT_DIFFERS",
+    );
+    assert.equal(managedOrchestration.customized, false, "ORCHESTRATION_FRESH_PROFILE_REQUIRED");
+  }
+  const orchestrationStandard = projectOrchestrationStandard(companyStandard, {
+    prompt: orchestrationPrompt,
+    skillDirectory: join(manageRoot, "business-resources/orchestration/skills"),
+    managed: Boolean(managedOrchestration),
+  });
   assert.deepEqual(
     docs.get("auto-negotiation").rows,
     orchestrationStandard,
