@@ -221,7 +221,10 @@ export function createPluginDetailUpdates(ctx: Context) {
         reflectObservation(owner);
       }
     } catch {
-      if (!owner.lifetime.signal.aborted) publish({ transportError: "status" });
+      if (!owner.lifetime.signal.aborted) {
+        publish({ transportError: "status" });
+        if (owner.observation) notify("unconfirmed");
+      }
       if (owner.recovering) owner.recovering--;
     }
     if (!owner.refs && !owner.observation && !owner.recovering) close(owner);
@@ -272,6 +275,7 @@ export function createPluginDetailUpdates(ctx: Context) {
           AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
         );
       } catch {
+        if (page?.observation) notify("unconfirmed");
         publish({
           transportError: "unknown",
           items: snapshot.items.map((item) =>
@@ -284,6 +288,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       if (page)
         await refresh(page).catch(() => {
           publish({ transportError: "status" });
+          if (page?.observation) notify("unconfirmed");
         });
     };
     submitting = run().finally(() => {

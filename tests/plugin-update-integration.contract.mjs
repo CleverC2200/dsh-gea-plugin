@@ -478,6 +478,63 @@ test("loading and disconnected startup probes neither invent an operation nor re
   assert.equal(attempts, disposedAt);
 });
 
+test("submitted transport failures immediately become unconfirmed and recover only from actual status", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let phase = "available",
+    failure = null,
+    updates = 0;
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/status")) {
+      if (failure === "offline") throw TypeError("offline");
+      if (failure === "timeout") throw new DOMException("request timed out", "TimeoutError");
+      return Response.json({ ok: true, value: status(rows(phase)) });
+    }
+    if (url.endsWith("/check")) throw TypeError("ordinary check failed");
+    assert(url.endsWith("/update"));
+    updates++;
+    failure = "offline";
+    throw TypeError("submission disconnected");
+  };
+  const ctx = new Context(),
+    owner = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  const close = owner.retain();
+  await new Promise(setImmediate);
+  const submitting = owner.update(name);
+  close();
+  await submitting;
+  assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  assert.equal(owner.getSnapshot().items.find((row) => row.packageName === name).state, "unknown");
+  failure = null;
+  phase = "installing";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "progress");
+  failure = "timeout";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  assert.equal(owner.getSnapshot().items[0].state, "installing");
+  failure = null;
+  phase = "pending-restart";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "pending-restart");
+  assert.equal(updates, 1);
+  await owner.dispose();
+  phase = "available";
+  const ordinary = createPluginDetailUpdates(ctx);
+  t.after(() => ordinary.dispose());
+  const release = ordinary.retain();
+  await new Promise(setImmediate);
+  await ordinary.check();
+  assert.equal(ordinary.getSnapshot().notice, null);
+  release();
+});
+
 test("a submitted update keeps observing after detail close and releases on each real terminal state", async (t) => {
   const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
   const original = globalThis.fetch;
