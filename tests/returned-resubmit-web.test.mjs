@@ -278,7 +278,7 @@ const fixture = async (
       });
       const prior = submitReceipts.get(body.planId);
       if (prior) return send({ ...prior, replayed: true });
-      if (denySubmit) {
+      if (denySubmit === true || denySubmit === body.planId) {
         reply({ success: false, message: "提报窗口已关闭，请联系业务管理员" }, 403);
         return true;
       }
@@ -451,7 +451,7 @@ for (const mixed of [false, true])
     const { frame, submitted, approved, state } = await fixture(t);
     await selectPlan(frame);
     await selectPlan(frame, mixed ? "沈阳待审批" : "济南退回区域");
-    const submit = frame.getByRole("button", { name: "批量提交", exact: true });
+    const submit = frame.getByRole("button", { name: "提交所选", exact: true });
     await expect(submit).toBeEnabled();
     await submit.click();
     const dialog = frame.getByRole("dialog");
@@ -467,6 +467,38 @@ for (const mixed of [false, true])
     if (!mixed) assert.equal(state.get(PLAN_B).seq, 2);
     if (mixed) assert.equal(state.get(PLAN_C).seq, 1);
   });
+
+test("mixed batch preserves approval success when returned submission is refused", { timeout: 90000 }, async (t) => {
+  const { frame, submitted, approved } = await fixture(t, { denySubmit: true });
+  await selectPlan(frame);
+  await selectPlan(frame, "沈阳待审批");
+  await frame.getByRole("button", { name: "提交所选", exact: true }).click();
+  const dialog = frame.getByRole("dialog");
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
+  await expect(dialog).toContainText("成功 1 笔", { timeout: 30000 });
+  await expect(dialog).toContainText("提报窗口已关闭，请联系业务管理员");
+  assert.equal(submitted.length, 1);
+  assert.deepEqual(approved.map(({ planId }) => planId), [PLAN_C]);
+});
+
+test("mixed batch retries only unknown intent and never repeats approved items", { timeout: 90000 }, async (t) => {
+  const { frame, submitted, approved, state } = await fixture(t, { unknownOnce: true });
+  await selectPlan(frame);
+  await selectPlan(frame, "沈阳待审批");
+  await frame.getByRole("button", { name: "提交所选", exact: true }).click();
+  const dialog = frame.getByRole("dialog");
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
+  await expect(dialog).toContainText("结果暂时未知");
+  await expect.poll(() => approved.length).toBe(1);
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+  await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
+  await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
+  assert.equal(approved.length, 1);
+  assert.equal(submitted.length, 2);
+  assert.deepEqual(submitted[1], submitted[0]);
+  assert.equal(state.get(PLAN_A).seq, 2);
+});
 
 test(
   "successful submission with incomplete readback survives close and only resumes reading",
