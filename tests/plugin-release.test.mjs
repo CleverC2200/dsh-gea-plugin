@@ -29,14 +29,18 @@ test("single-package update validates existing consumers and permits independent
   assert.equal(
     validatePluginCombination({
       core,
-      manifests: graph.map((m) => (m.name === W ? { ...m, version: "1.1.0" } : m)),
+      manifests: graph.map((m) =>
+        m.name === W ? { ...m, version: "1.1.0" } : m,
+      ),
     })[0].code,
     "PEER_INCOMPATIBLE",
   );
   assert.deepEqual(
     validatePluginCombination({
       core,
-      manifests: graph.map((m) => (m.name === G ? { ...m, version: "3.1.0" } : m)),
+      manifests: graph.map((m) =>
+        m.name === G ? { ...m, version: "3.1.0" } : m,
+      ),
     }),
     [],
   );
@@ -57,8 +61,13 @@ const release = () =>
 test("release projection keeps final manifest peers and fixed Core identity; plan prevents downgrade and replacement", () => {
   const r = release();
   assert.deepEqual(r.requires, { [W]: "1.0.0", [M]: "2.0.0" });
-  assert.deepEqual(r.supportedCores, [{ head: core.head, version: core.version }]);
-  assert.equal(planPluginUpdate({ release: r, core, installed: graph }).kind, "ready");
+  assert.deepEqual(r.supportedCores, [
+    { head: core.head, version: core.version },
+  ]);
+  assert.equal(
+    planPluginUpdate({ release: r, core, installed: graph }).kind,
+    "ready",
+  );
   assert.equal(
     planPluginUpdate({
       release: r,
@@ -144,7 +153,9 @@ test("optional installed peers are checked and unrelated installed consumers blo
   );
 });
 test("independent channel projection retains the other two references and advances revision", async () => {
-  const { mergePluginChannelRelease } = await import("../src/shared/plugin-release.mjs");
+  const { mergePluginChannelRelease } = await import(
+    "../src/shared/plugin-release.mjs"
+  );
   const previous = {
     schema: 1,
     channel: "test",
@@ -169,7 +180,11 @@ test("independent channel projection retains the other two references and advanc
     issuedAt: previous.issuedAt,
     expiresAt: previous.expiresAt,
   });
-  assert.deepEqual(next.releases, [previous.releases[0], selected, previous.releases[2]]);
+  assert.deepEqual(next.releases, [
+    previous.releases[0],
+    selected,
+    previous.releases[2],
+  ]);
   assert.throws(
     () =>
       mergePluginChannelRelease({
@@ -184,14 +199,20 @@ test("independent channel projection retains the other two references and advanc
 });
 
 test("GEA permits declared Manage .16 through .20 releases and rejects undeclared versions", async () => {
-  const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const source = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
   const combination = (version) =>
     validatePluginCombination({
       core,
       manifests: [
         { name: W, version: "1.0.0" },
         { name: M, version },
-        { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
+        {
+          name: G,
+          version: source.version,
+          peerDependencies: { [M]: source.peerDependencies[M] },
+        },
       ],
     });
   assert.deepEqual(combination("0.6.3-company.20"), []);
@@ -214,7 +235,9 @@ test("GEA permits declared Manage .16 through .20 releases and rejects undeclare
 });
 
 test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 and Manage .18 to .19", async () => {
-  const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const source = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
   const manifest = productionManifest(source, {
     [W]: "0.1.10",
     [M]: "0.6.3-company.19",
@@ -225,7 +248,9 @@ test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 an
     name: G,
     version: manifest.version,
     peerDependencies: Object.fromEntries(
-      Object.entries(manifest.peerDependencies).filter(([name]) => [W, M, G].includes(name)),
+      Object.entries(manifest.peerDependencies).filter(([name]) =>
+        [W, M, G].includes(name),
+      ),
     ),
   };
   const installed = [
@@ -254,21 +279,38 @@ test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 an
     planPluginUpdate({ release: project(nextWorkbench), core, installed }).code,
     "COMBINATION_INCOMPATIBLE",
   );
-  assert.equal(planPluginUpdate({ release: project(nextGea), core, installed }).kind, "ready");
-  const afterGea = installed.map((entry) => (entry.name === G ? nextGea : entry));
   assert.equal(
-    planPluginUpdate({ release: project(nextWorkbench), core, installed: afterGea }).kind,
+    planPluginUpdate({ release: project(nextGea), core, installed }).kind,
     "ready",
   );
-  const afterWorkbench = afterGea.map((entry) => (entry.name === W ? nextWorkbench : entry));
+  const afterGea = installed.map((entry) =>
+    entry.name === G ? nextGea : entry,
+  );
   assert.equal(
-    planPluginUpdate({ release: project(nextManage), core, installed: afterWorkbench }).kind,
+    planPluginUpdate({
+      release: project(nextWorkbench),
+      core,
+      installed: afterGea,
+    }).kind,
+    "ready",
+  );
+  const afterWorkbench = afterGea.map((entry) =>
+    entry.name === W ? nextWorkbench : entry,
+  );
+  assert.equal(
+    planPluginUpdate({
+      release: project(nextManage),
+      core,
+      installed: afterWorkbench,
+    }).kind,
     "ready",
   );
 });
 
 test("a partial channel adds an independently published package without replacing existing references", async () => {
-  const { mergePluginChannelRelease } = await import("../src/shared/plugin-release.mjs");
+  const { mergePluginChannelRelease } = await import(
+    "../src/shared/plugin-release.mjs"
+  );
   const reference = (name) => ({
     name,
     sha256: "a".repeat(64),
