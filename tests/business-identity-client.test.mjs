@@ -3,6 +3,41 @@ import assert from "node:assert/strict";
 import { createBusinessIdentityReader } from "../src/business-identity-client.ts";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
+test("Host user identifiers remain exact strings and notify changes without accepting numeric IDs", async (t) => {
+  const originalFetch = globalThis.fetch,
+    originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  });
+  globalThis.window = new EventTarget();
+  const user = {
+    id: "9007199254740993",
+    tenantId: "0",
+    username: "alice",
+    name: "Alice",
+    avatar: "avatar",
+  };
+  globalThis.fetch = async () =>
+    Response.json({
+      scope: "host-scope",
+      subject: "host-subject",
+      status: { environment: "test", authenticated: true, loginState: "authenticated", user },
+    });
+  const read = createBusinessIdentityReader();
+  let notices = 0;
+  t.after(read.subscribe(() => notices++));
+  await read.refresh();
+  assert.deepEqual(read.getSnapshot().status.user, user);
+  user.id = "9007199254740994";
+  await read.refresh();
+  assert.equal(read.getSnapshot().status.user.id, user.id);
+  assert.equal(notices, 2);
+  user.id = 9007199254740994;
+  await assert.rejects(read.refresh(), { code: "IDENTITY_INVALID_RESPONSE" });
+  assert.equal(read.getSnapshot().status.user.id, "9007199254740994");
+});
+
 test("the read-only identity route exposes configured environment choices without endpoint or credential state", async (t) => {
   const routes = new Map(),
     cleanups = [];
@@ -68,7 +103,12 @@ test("page and observer reads share one identity, ignore older replies and stop 
   };
   const read = createBusinessIdentityReader();
   const initial = read();
-  pending[0].resolve(Response.json({ scope: "A" }));
+  pending[0].resolve(
+    Response.json({
+      scope: "A",
+      status: { environment: "test", authenticated: true, loginState: "authenticated", user: null },
+    }),
+  );
   assert.equal(await initial, "A");
   assert.equal(
     changes.length,
@@ -77,9 +117,19 @@ test("page and observer reads share one identity, ignore older replies and stop 
   );
   const older = read(),
     newer = read();
-  pending[2].resolve(Response.json({ scope: "B" }));
+  pending[2].resolve(
+    Response.json({
+      scope: "B",
+      status: { environment: "test", authenticated: true, loginState: "authenticated", user: null },
+    }),
+  );
   assert.equal(await newer, "B");
-  pending[1].resolve(Response.json({ scope: "A" }));
+  pending[1].resolve(
+    Response.json({
+      scope: "A",
+      status: { environment: "test", authenticated: true, loginState: "authenticated", user: null },
+    }),
+  );
   assert.equal(await older, "B", "an older response cannot restore an already superseded identity");
   assert.equal(changes.length, 1);
   const controller = new AbortController();
@@ -96,7 +146,15 @@ test("page and observer reads share one identity, ignore older replies and stop 
     ok: true,
     json: () => {
       queueMicrotask(() => queueMicrotask(() => disposing.abort()));
-      return Promise.resolve({ scope: "C" });
+      return Promise.resolve({
+        scope: "C",
+        status: {
+          environment: "test",
+          authenticated: true,
+          loginState: "authenticated",
+          user: null,
+        },
+      });
     },
   });
   await assert.rejects(committing, { name: "AbortError" });
@@ -152,10 +210,10 @@ test("concurrent initial reads share one Host request and errors never invent a 
   );
   assert.equal(read.getSnapshot().state, "confirmed");
   assert.equal(read.getSnapshot().error, "offline");
-  assert.equal(
-    await read.readScope(),
-    "A",
-    "page opens consume the confirmed projection without another read",
+  await assert.rejects(
+    read.readScope(),
+    /offline/,
+    "new page opens require current identity confirmation",
   );
   assert.equal(notices, 1, "a repeated identical failure is one visible condition");
   globalThis.fetch = async () =>
@@ -315,4 +373,117 @@ test("the reader preserves the Host subject verbatim and notifies a subject chan
       (request) => request.options.method === undefined && request.options.body === undefined,
     ),
   );
+});
+
+test("first connection failure stays unknown until Host recovery without emitting a logout", async (t) => {
+  const originalFetch = globalThis.fetch,
+    originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  });
+  globalThis.window = new EventTarget();
+  const events = [];
+  window.addEventListener("gea-business-identity-changed", (event) => events.push(event.detail));
+  globalThis.fetch = async () => {
+    throw new TypeError("Failed to fetch");
+  };
+  const reader = createBusinessIdentityReader();
+  await assert.rejects(reader(), /Failed to fetch/);
+  assert.deepEqual(reader.getSnapshot(), {
+    state: "unknown",
+    scope: null,
+    subject: null,
+    status: null,
+  });
+  globalThis.fetch = async () =>
+    Response.json({
+      scope: "host-A",
+      subject: "user-A",
+      status: {
+        environment: "test",
+        environments: ["test"],
+        authenticated: true,
+        loginState: "authenticated",
+        user: { name: "Alice" },
+      },
+    });
+  await reader.refresh();
+  assert.equal(reader.getSnapshot().status.user.name, "Alice");
+  assert.equal(reader.getSnapshot().error, undefined);
+  assert.deepEqual(events, [], "initial recovery must not invalidate restored Sessions or drafts");
+});
+
+test("invalid identity and local HTTP authorization failures are visible immediately without inventing signed out", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  for (const response of [
+    Response.json({ unexpected: true }),
+    Response.json({}, { status: 401 }),
+    Response.json({}, { status: 403 }),
+  ]) {
+    globalThis.fetch = async () => response;
+    const reader = createBusinessIdentityReader();
+    await assert.rejects(reader());
+    assert.equal(reader.getSnapshot().state, "error");
+    assert.equal(reader.getSnapshot().status, null);
+    assert.match(reader.getSnapshot().errorCode, /^IDENTITY_(INVALID_RESPONSE|HTTP_40[13])$/);
+  }
+});
+
+test("startup budget is fixed across retries and publishes failure even while a request is pending", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () => Response.json({}, { status: 404 });
+  const reader = createBusinessIdentityReader();
+  await assert.rejects(reader());
+  assert.equal(reader.getSnapshot().state, "unknown");
+  t.mock.timers.tick(4000);
+  await assert.rejects(reader());
+  const pending = Promise.withResolvers();
+  globalThis.fetch = () => pending.promise;
+  const reading = reader.refresh();
+  t.mock.timers.tick(999);
+  assert.equal(reader.getSnapshot().state, "unknown");
+  t.mock.timers.tick(1);
+  assert.equal(reader.getSnapshot().state, "error");
+  assert.equal(reader.getSnapshot().errorCode, "IDENTITY_STARTUP_TIMEOUT");
+  pending.resolve(
+    Response.json({
+      scope: "A",
+      status: { environment: "test", authenticated: true, loginState: "authenticated", user: null },
+    }),
+  );
+  await reading;
+  assert.equal(reader.getSnapshot().state, "confirmed");
+  assert.equal(reader.getSnapshot().error, undefined);
+});
+
+test("a stopped observer cancels its request and a later owner cannot renew the initial budget", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let signal;
+  globalThis.fetch = async (_path, options) => {
+    signal = options.signal;
+    throw new TypeError("offline");
+  };
+  const reader = createBusinessIdentityReader();
+  const stop = reader.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(4000);
+  stop();
+  assert.equal(signal.aborted, true);
+  t.mock.timers.tick(2000);
+  const stopNext = reader.start();
+  t.after(stopNext);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reader.getSnapshot().state, "error");
 });

@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { randomUUID, createHash } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
-import { createBusinessSession, selectBusinessResource } from "./fixtures/business-session.mjs";
+import {
+  createBusinessSession,
+  selectBusinessResource,
+  readPluginAgent,
+} from "./fixtures/business-session.mjs";
 import { requireSourceInputs } from "../scripts/source-profile.mjs";
 
 test(
@@ -276,16 +280,22 @@ test(
         assert.equal(results[0].isError, false, results[0].text);
         const text = results[0].text;
         assert.ok(text.startsWith('<skill_content name="inventory-dealer">'));
+        const owner = await readPluginAgent(app, "gea-html-inventory-dealer");
+        const directory = owner.skills.find((skill) => skill.name === "inventory-dealer").directory;
+        assert.ok(directory);
         assert.ok(
           text.includes(
-            "Base directory for this skill: " + (await realpath(join(root, "skills", "dealer"))),
+            "Base directory for this skill: " +
+              (await realpath(join(directory.bundle, "tree", directory.entry))),
           ),
         );
         const instructions = /<skill_instructions>\n([\s\S]*)\n<\/skill_instructions>/.exec(text);
         assert.ok(instructions, "the public skill result contains instruction content");
         assert.equal(
           instructions[1],
-          maintained["skills/dealer/SKILL.md"].replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, ""),
+          maintained["skills/dealer/SKILL.md"]
+            .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "")
+            .trim(),
           "Manage projects only frontmatter; the maintained instruction bytes are unchanged",
         );
       }

@@ -183,7 +183,7 @@ test("independent channel projection retains the other two references and advanc
   );
 });
 
-test("GEA permits declared Manage .16 through .20 releases and rejects undeclared versions", async () => {
+test("GEA permits declared Manage .16 through .21 releases and rejects undeclared versions", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const combination = (version) =>
     validatePluginCombination({
@@ -191,13 +191,10 @@ test("GEA permits declared Manage .16 through .20 releases and rejects undeclare
       manifests: [
         { name: W, version: "1.0.0" },
         { name: M, version },
-        {
-          name: G,
-          version: source.version,
-          peerDependencies: { [M]: source.peerDependencies[M] },
-        },
+        { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
       ],
     });
+  assert.deepEqual(combination("0.6.3-company.21"), []);
   assert.deepEqual(combination("0.6.3-company.20"), []);
   assert.deepEqual(combination("0.6.3-company.19"), []);
   assert.deepEqual(combination("0.6.3-company.18"), []);
@@ -209,7 +206,7 @@ test("GEA permits declared Manage .16 through .20 releases and rejects undeclare
     "0.6.3-company.13",
     "0.6.3-company.14",
     "0.6.3-company.15",
-    "0.6.3-company.21",
+    "0.6.3-company.22",
   ])
     assert.ok(
       combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
@@ -261,20 +258,12 @@ test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 an
   assert.equal(planPluginUpdate({ release: project(nextGea), core, installed }).kind, "ready");
   const afterGea = installed.map((entry) => (entry.name === G ? nextGea : entry));
   assert.equal(
-    planPluginUpdate({
-      release: project(nextWorkbench),
-      core,
-      installed: afterGea,
-    }).kind,
+    planPluginUpdate({ release: project(nextWorkbench), core, installed: afterGea }).kind,
     "ready",
   );
   const afterWorkbench = afterGea.map((entry) => (entry.name === W ? nextWorkbench : entry));
   assert.equal(
-    planPluginUpdate({
-      release: project(nextManage),
-      core,
-      installed: afterWorkbench,
-    }).kind,
+    planPluginUpdate({ release: project(nextManage), core, installed: afterWorkbench }).kind,
     "ready",
   );
 });

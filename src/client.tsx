@@ -19,6 +19,7 @@ export function apply(ctx: Context): void {
   });
   ctx.effect(() => identity.start());
   ctx.provide("businessAccount", {
+    refreshIdentity: identity.refresh,
     getSnapshot: identity.getSnapshot,
     subscribe: identity.subscribe,
     startLogin: async (signal, environment) => {

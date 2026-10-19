@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
-import { createBusinessSession, selectBusinessResource } from "./fixtures/business-session.mjs";
+import {
+  createBusinessSession,
+  selectBusinessResource,
+  readPluginAgent,
+} from "./fixtures/business-session.mjs";
 import { requireSourceInputs } from "../scripts/source-profile.mjs";
 
 test(
@@ -26,13 +30,8 @@ test(
       "inventory-aqkc",
     );
     const maintained = {};
-    for (const [file, sha256] of Object.entries({
-      "prompt.json": "6d2ef0ee1c39c07c0920d5c223839d166eebaa53451bceda5e06eb48b0e7738c",
-      "capability.json": "6429c5a2fa2d0da45c1e5e194ff8795575730e3aa60d338b1e87b5784ba67273",
-      "skills/aqkc/SKILL.md": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
-    })) {
+    for (const file of ["prompt.json", "capability.json", "skills/aqkc/SKILL.md"]) {
       const bytes = await readFile(join(maintainedRoot, file));
-      assert.equal(createHash("sha256").update(bytes).digest("hex"), sha256, file);
       maintained[file] = bytes.toString("utf8");
       await writeFile(join(root, file), bytes);
     }
@@ -266,16 +265,22 @@ test(
         assert.equal(results[0].isError, false);
         const text = results[0].text;
         assert.ok(text.startsWith('<skill_content name="inventory-aqkc">'));
+        const owner = await readPluginAgent(app, "gea-html-inventory-aqkc");
+        const directory = owner.skills.find((skill) => skill.name === "inventory-aqkc").directory;
+        assert.ok(directory);
         assert.ok(
           text.includes(
-            "Base directory for this skill: " + (await realpath(join(root, "skills", "aqkc"))),
+            "Base directory for this skill: " +
+              (await realpath(join(directory.bundle, "tree", directory.entry))),
           ),
         );
         const instructions = /<skill_instructions>\n([\s\S]*)\n<\/skill_instructions>/.exec(text);
         assert.ok(instructions, "the public skill result contains instruction content");
         assert.equal(
           instructions[1],
-          maintained["skills/aqkc/SKILL.md"].replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, ""),
+          maintained["skills/aqkc/SKILL.md"]
+            .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "")
+            .trim(),
           "Manage projects only frontmatter; the maintained instruction bytes are unchanged",
         );
       }

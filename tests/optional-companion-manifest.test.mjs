@@ -45,7 +45,7 @@ test("production manifest preserves an existing exact peer when another package 
   );
   assert.equal(ranged.peerDependencies["dsh-agent-manage"], "^0.6.3");
 });
-test("production manifest accepts Manage company.20 and the previously supported releases", () => {
+test("production manifest accepts Manage company.21 and the previously supported releases", () => {
   const manifest = productionManifest(source, {
     ...versions,
     "dsh-agent-manage": "0.6.3-company.19",
@@ -56,6 +56,7 @@ test("production manifest accepts Manage company.20 and the previously supported
     "0.6.3-company.18",
     "0.6.3-company.19",
     "0.6.3-company.20",
+    "0.6.3-company.21",
   ]) {
     assert.equal(
       semver.satisfies(version, manifest.peerDependencies["dsh-agent-manage"]),
@@ -64,11 +65,11 @@ test("production manifest accepts Manage company.20 and the previously supported
     );
   }
 });
-test("production manifest accepts Workbench .9 and .10 but rejects undeclared versions", () => {
+test("production manifest accepts Workbench .9 through .12 but rejects undeclared versions", () => {
   const manifest = productionManifest(source, versions);
   const range = manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"];
-  for (const version of ["0.1.9", "0.1.10", "0.1.11"])
+  for (const version of ["0.1.9", "0.1.10", "0.1.11", "0.1.12"])
     assert.equal(semver.satisfies(version, range), true, version);
-  for (const version of ["0.1.8", "0.1.12"])
+  for (const version of ["0.1.8", "0.1.13"])
     assert.equal(semver.satisfies(version, range), false, version);
 });

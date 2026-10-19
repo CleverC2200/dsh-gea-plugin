@@ -1,8 +1,13 @@
-import { selectBusinessResource, fixtureRequest } from "./fixtures/business-session.mjs";
+import {
+  selectBusinessResource,
+  fixtureRequest,
+  readPluginAgent,
+} from "./fixtures/business-session.mjs";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { parseDocument } from "yaml";
 import { readSession, readToolResults, until } from "./profile.mjs";
 import {
   assertCatalogScene,
@@ -106,18 +111,63 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     content: "Explicit domain rule fixture.",
     enabled: true,
   }));
+  async function directoryAction(action, body) {
+    const result = await fixtureRequest(
+      app,
+      "/api/agent-manage/agents/skills/directory/" + action,
+      body,
+    );
+    assert.equal(result.ok, true, JSON.stringify(result));
+    return result.value;
+  }
+  async function writeFixtureSkill(skill) {
+    const target = { id: "gea-readonly", name: skill.name };
+    const view = await directoryAction("open", target);
+    const path = view.entry === "." ? "SKILL.md" : view.entry + "/SKILL.md";
+    const file = await directoryAction("read", { ...target, path });
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(file.data);
+    assert.ok(frontmatter, skill.name);
+    const metadata = parseDocument(frontmatter[1]);
+    assert.equal(metadata.get("name"), skill.name);
+    metadata.set("description", skill.description);
+    const written = await directoryAction("write", {
+      ...target,
+      revision: view.revision,
+      path,
+      fileVersion: file.fileVersion,
+      encoding: "utf8",
+      data: "---\n" + metadata.toString() + "---\n" + skill.content,
+    });
+    await directoryAction("apply", { ...target, revision: written.revision });
+  }
   async function saveFixtureSkills() {
+    const current = await readPluginAgent(app, "gea-readonly");
     const saved = await fixtureRequest(app, "/api/agent-manage/agents/plugin/skills", {
       id: "gea-readonly",
-      skills: fixtureSkills,
+      skills: fixtureSkills.map((skill) => ({
+        ...(current.skills.find((row) => row.name === skill.name) ?? skill),
+        enabled: skill.enabled,
+      })),
     });
     assert.equal(saved.ok, true, JSON.stringify(saved));
+    for (const skill of fixtureSkills) await writeFixtureSkill(skill);
   }
   async function updateFixtureSkill(name, changes) {
     const skill = fixtureSkills.find((skill) => skill.name === name);
     assert.ok(skill);
     Object.assign(skill, changes);
-    await saveFixtureSkills();
+    if (changes.content !== undefined || changes.description !== undefined)
+      await writeFixtureSkill(skill);
+    if (changes.enabled !== undefined) {
+      const current = await readPluginAgent(app, "gea-readonly");
+      const saved = await fixtureRequest(app, "/api/agent-manage/agents/plugin/skills", {
+        id: "gea-readonly",
+        skills: current.skills.map((row) =>
+          row.name === name ? { ...row, enabled: skill.enabled } : row,
+        ),
+      });
+      assert.equal(saved.ok, true, JSON.stringify(saved));
+    }
   }
   await saveFixtureSkills();
   let script = [],
