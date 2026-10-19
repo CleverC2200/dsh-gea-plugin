@@ -76,6 +76,7 @@ const fixture = async (
       seq: row.seq,
       dealerCode: row.dealerCode,
       submitter: "9007199254740993",
+      returnReason: "请核对数量与继承确认值",
       targetQty: "1.000",
       targetAmount: "12.34",
     };
@@ -168,6 +169,10 @@ const fixture = async (
             dealerName: row.name,
             orgName: row.name,
             orgCode: "org-" + planId,
+            provinceCode: "province-" + planId,
+            provinceName: row.name,
+            areaCode: "area-" + planId,
+            areaName: row.name,
             currentQty: "2.000",
             currentAmount: "24.68",
             targetQty: "1.000",
@@ -330,10 +335,17 @@ const captureEvidence = async (page, app, name) => {
   const directory = process.env.S1_EVIDENCE_DIR;
   if (!directory) return;
   await mkdir(directory, { recursive: true });
-  await page.screenshot({ path: resolve(directory, name + ".png"), fullPage: true });
+  await page.screenshot({
+    path: resolve(directory, name + ".png"),
+    fullPage: true,
+    animations: "disabled",
+  });
   await writeFile(
     resolve(directory, name + ".aria.txt"),
-    await page.locator("body").ariaSnapshot(),
+    await page
+      .frameLocator('iframe[src^="/api/agent-workbench/native?"]')
+      .locator("body")
+      .ariaSnapshot(),
   );
   await writeFile(
     resolve(directory, name + ".host.json"),
@@ -371,11 +383,12 @@ for (const [role, returnedStatus] of [
       await edit.click();
       const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
       await dialog.getByRole("textbox", { name: "提报数量 789" }).fill("3.000");
+      await expect(dialog).toContainText("请核对数量与继承确认值");
       if (returnedStatus >= 7) await expect(dialog).toContainText("1.250");
       await expect(dialog).toContainText("37.02");
       if (returnedStatus === 7) await captureEvidence(page, app, "inheritance-confirmation");
       await dialog.locator("label.arco-checkbox").click();
-      await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
+      await dialog.getByRole("button", { name: "确认重提", exact: true }).dblclick();
       await expect(dialog).toContainText("服务端已确认计划");
       assert.equal(submitted.length, 1);
       assert.equal(submitted[0].body.status, returnedStatus - 5);
