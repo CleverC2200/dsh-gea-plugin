@@ -287,6 +287,11 @@
     {
       "pattern": "^scripts/quality-peer-baseline\\.json$",
       "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^desktop/(?:company-(?:bootstrap|gea-refresh)|legacy-gea-cleanup|official-(?:main|branding|startup)|plugin-(?:storage|store)|runtime-resolution|recovery)(?:\\.|/)",
+      "tests": ["scripts/desktop-gea-upgrade.test.mjs"]
     }
   ]
 }
