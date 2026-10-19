@@ -65,6 +65,7 @@ test(
       },
       env: { GEA_SUBMIT_CLIENT: "fixture-client", GEA_SUBMIT_SECRET: "fixture-secret" },
     });
+    let expectedRequest = request;
     let writes = 0;
     let upstreamActions = 0;
     app.route((req, res, reply) => {
@@ -126,14 +127,14 @@ test(
       if (path.endsWith("/api/v1/internal/sales-plans")) {
         writes++;
         assert.equal(req.headers.authorization, "Bearer fixture-service");
-        assert.deepEqual(JSON.parse(req.body), request);
+        assert.deepEqual(JSON.parse(req.body), expectedRequest);
         reply({
           success: true,
           result: {
             planId,
             versionId: "v2",
             seq: 2,
-            status: 2,
+            status: expectedRequest.status,
             replayed: false,
             requestId: req.headers["x-request-id"],
             traceId: "trace",
@@ -197,6 +198,17 @@ test(
       (await app.rpc("sales-plan/submit", { ...command, request: { ...request, status: 3 } })).ok,
       false,
     );
+    version.status = 6;
+    version.submitter = "original-customer-owner";
+    expectedRequest = { ...request, status: 1 };
+    const customerSubmission = await app.rpc("sales-plan/submit", {
+      ...command,
+      request: expectedRequest,
+      idempotencyKey: "customer-resubmit",
+      requestId: "customer-resubmit",
+    });
+    assert.equal(customerSubmission.ok, true, JSON.stringify(customerSubmission));
+    assert.equal(writes, 2);
     await app.rpc("logout");
     assert.equal((await app.rpc("sales-plan/submit", command)).ok, false);
   },

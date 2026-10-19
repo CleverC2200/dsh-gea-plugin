@@ -22,6 +22,7 @@ const fixture = async (
     shortened = false,
     unknownOnce = false,
     normalBatch = false,
+    sameIdPeriod = false,
   } = {},
 ) => {
   const app = await profile(t, {
@@ -145,6 +146,9 @@ const fixture = async (
     if (path.endsWith("/periods"))
       return send({
         records: [
+          ...(sameIdPeriod
+            ? [{ periodId: "20261001", periodMonth: "2026-10", planTypeCode: "DC", status: "OPEN" }]
+            : []),
           { periodId: "20261001", periodMonth: "2026-10", planTypeCode: "Y", status: "OPEN" },
         ],
         total: 1,
@@ -153,8 +157,13 @@ const fixture = async (
       });
     if (path.endsWith("/plans")) {
       const status = req.url.searchParams.get("status");
+      const type = req.url.searchParams.get("planTypeCode");
       const records = [...state.keys()]
-        .filter((planId) => status === null || status === String(state.get(planId).status))
+        .filter(
+          (planId) =>
+            (!type || type === "Y") &&
+            (status === null || status === String(state.get(planId).status)),
+        )
         .map((planId) => {
           const row = state.get(planId);
           return {
@@ -269,7 +278,10 @@ const fixture = async (
       row.versionId = "v-new";
       row.seq = 2;
       row.status = body.status;
-      row.nextActor = shortened ? "area" : "province";
+      const nodes = shortened ? [1, 3, 4] : [1, 2, 3, 4];
+      row.nextActor = { 1: "region", 2: "province", 3: "area", 4: "category" }[
+        nodes.find((node) => node >= body.status)
+      ];
       submittedQty = body.items[0].qty;
       logs.push({
         planId: PLAN_A,
@@ -351,6 +363,20 @@ const captureEvidence = async (page, app, name) => {
     resolve(directory, name + ".host.json"),
     await readFile(resolve(app.runtime, "source-host.json")),
   );
+  const host = JSON.parse(await readFile(resolve(app.runtime, "source-host.json"), "utf8"));
+  await writeFile(
+    resolve(directory, name + ".plugins.json"),
+    await readFile(
+      resolve(app.runtime, "source-combinations", host.combination, "company-plugins.json"),
+    ),
+  );
+  await writeFile(
+    resolve(directory, name + ".warnings.txt"),
+    app.output
+      .split("\n")
+      .filter((line) => /warning|failed to import/.test(line))
+      .join("\n"),
+  );
 };
 
 const selectPlan = (frame, name = "乌鲁木齐退回区域") =>
@@ -375,6 +401,7 @@ for (const [role, returnedStatus] of [
         role,
         returnedStatus,
         shortened: returnedStatus === 7,
+        sameIdPeriod: returnedStatus === 7,
       });
       await selectPlan(frame);
       const edit = frame.getByRole("button", { name: "修改后提交", exact: true });
@@ -394,7 +421,10 @@ for (const [role, returnedStatus] of [
       assert.equal(submitted[0].body.status, returnedStatus - 5);
       assert.equal(submitted[0].body.items[0].qty, "3.000");
       assert.equal(state.get(PLAN_A).seq, 2);
-      if (returnedStatus === 7) assert.equal(state.get(PLAN_A).nextActor, "area");
+      assert.equal(
+        state.get(PLAN_A).nextActor,
+        { 6: "region", 7: "area", 8: "area", 9: "category" }[returnedStatus],
+      );
       assert.deepEqual(approved, []);
     },
   );
