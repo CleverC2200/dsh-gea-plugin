@@ -36,7 +36,7 @@ export async function createReleasePreflightFixture(t, options = {}) {
       "utf8",
     ),
   );
-  const manifests = options.manifests ?? [
+  const manifests = [
     { name: W, version: "0.1.14" },
     { name: M, version: "0.6.3-company.22" },
     {

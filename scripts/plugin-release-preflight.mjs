@@ -1,10 +1,9 @@
 import { readFile, realpath } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { isAbsolute, join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readPluginUpdateCore } from "../src/host/plugin-update-core.ts";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { join, dirname } from "node:path";
 import { inspectPluginArchive } from "../src/host/plugin-release-source.ts";
 import {
   companyPackageNames,
