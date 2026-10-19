@@ -14,6 +14,7 @@ export const fixture = async (
     role = "region",
     returnedStatus = 7,
     denySubmit = false,
+    endedReject = false,
     readbackFailure = false,
     serviceReady = true,
     shortened = false,
@@ -269,6 +270,22 @@ export const fixture = async (
       assert.equal(body.expectedSnapshot, "a".repeat(64));
       assert.equal(body.expectedStatus, row.status);
       attempts.push(body);
+      if (endedReject && planId === PLAN_A && body.action === "REJECT") {
+        reply(
+          {
+            success: false,
+            code: 409,
+            message: "该版本审批实例已经结束",
+            errorCode: "SALES_PLAN_APPROVAL_STATE_INVALID",
+            category: "CONFLICT",
+            retryable: false,
+            requestId: req.headers["x-request-id"],
+            traceId: req.headers["x-request-id"],
+          },
+          409,
+        );
+        return true;
+      }
       if (body.action === "APPROVE" && row.status >= 6) {
         reply({ success: false, message: "当前用户不具备审批权限" }, 403);
         return true;
