@@ -13,7 +13,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { readDeployment } from "../scripts/deployment.mjs";
 import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 import { withSourceSetup } from "./fixtures/source-test.mjs";
-import { waitProfileReady } from "./fixtures/profile-ready.mjs";
+import { waitProfileReady, probeProfileBusiness } from "./fixtures/profile-ready.mjs";
 import { fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
@@ -504,21 +504,8 @@ async function createProfile(t, options) {
           authenticatedLaunch = url;
         }
         if (options.coreOnly) return true;
-        const status = await fetch(currentOrigin + "/api/gea-proof/status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Cookie: cookie, Origin: currentOrigin },
-          body: "{}",
-          signal: readySignal,
-        });
-        // Core may expose its URL while Manage's asynchronous services are still loading.
-        // Only a local read-only status probe waits; login and business calls are never replayed.
-        if (status.status === 404) {
-          await status.body?.cancel();
-          return false;
-        }
-        if (status.status !== 200 || (await status.json()).ok !== true)
-          throw new Error("GEA business readiness failed: HTTP " + status.status);
-        return true;
+        // Core can expose its URL before Manage's asynchronous services are installed.
+        return probeProfileBusiness(currentOrigin, cookie, readySignal);
       },
     });
     origin = new URL(launch).origin;

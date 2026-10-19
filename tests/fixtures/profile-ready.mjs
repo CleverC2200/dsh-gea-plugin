@@ -76,3 +76,27 @@ export async function waitProfileReady({
   }
   throw Error("Profile not ready: " + readOutput());
 }
+
+/** Prove local routes are installed without refreshing identity or issuing business reads. */
+export async function probeProfileBusiness(origin, cookie, signal, fetcher = fetch) {
+  const response = await fetcher(origin + "/api/gea-proof/api-log/snapshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie, Origin: origin },
+    body: "{}",
+    signal,
+  });
+  if (response.status === 404) {
+    await response.body?.cancel();
+    return false;
+  }
+  if (response.status !== 200)
+    throw new Error("GEA business readiness failed: HTTP " + response.status);
+  const result = await response.json();
+  // Guest and read-only policy errors also prove the business handler is installed.
+  if (
+    result?.ok !== true &&
+    !(result?.ok === false && typeof result.error?.code === "string" && result.error.code)
+  )
+    throw new Error("GEA business readiness failed: invalid response");
+  return true;
+}
