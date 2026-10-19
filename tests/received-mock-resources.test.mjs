@@ -69,6 +69,11 @@ test("the received mock packages publish selectable original resources and only 
   for (const item of packages) {
     const id = "gea-html-" + item.manifest.id,
       definition = definitions.get(id);
+    if (item.manifest.id === "inventory-orderworkbench") {
+      assert.equal(definition, undefined);
+      assert.equal(pages.has(item.manifest.id), false);
+      continue;
+    }
     assert.equal(definition.enabled, true);
     assert.deepEqual(definition.profile.skills, [item.manifest.id]);
     const persona = JSON.parse(await readFile(resolve(definition.root, definition.prompt), "utf8"));

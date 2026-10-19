@@ -4,6 +4,10 @@ const legacyApsIds = new Set([
   "inventory-apsdelivery",
 ]);
 
+export function isHtmlPluginRemoved(id: string): boolean {
+  return id === "inventory-orderworkbench";
+}
+
 /** Only the consolidated APS manifest may retire the three legacy APS plugins. */
 export function selectHtmlPlugins<T extends { id: string; replaces?: string[] }>(
   plugins: T[],
@@ -17,7 +21,7 @@ export function selectHtmlPlugins<T extends { id: string; replaces?: string[] }>
 
 /** Requested development pages retain their panels and conversation bindings. */
 export function isHtmlPluginRetired(id: string, mock: boolean, hidden: readonly string[]): boolean {
-  if (id === "inventory-orderworkbench") return true;
+  if (isHtmlPluginRemoved(id)) return true;
   const retainedPreview = [
     "inventory-apsplan",
     "inventory-dms",
