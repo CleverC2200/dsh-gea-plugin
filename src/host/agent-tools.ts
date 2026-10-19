@@ -15,7 +15,7 @@ import { channelPlan, type ChannelPlan } from "../capability/channel.ts";
 import { readableError } from "../shared/abort.ts";
 import { didYouMean } from "../shared/name-lookup.ts";
 
-function gatewaySessionExpired(error: unknown): boolean {
+export function gatewaySessionExpired(error: unknown): boolean {
   const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
   const message = error instanceof Error ? error.message : String(error);
   return /\b(?:GEA_GATEWAY_SESSION_EXPIRED|AI_GATEWAY_SESSION_(?:MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED))\b/.test(
@@ -28,19 +28,58 @@ export function stopExpiredGateway(
   consumerCode: string,
   scope: string,
   error: unknown,
+  expectedModule?: Awaited<ReturnType<Business["moduleMcp"]>>,
 ): Error | undefined {
   if (!gatewaySessionExpired(error)) return undefined;
-  business.invalidateModuleMcp(consumerCode);
+  business.invalidateModuleMcp(consumerCode, expectedModule);
   business.stopTurn(scope, "网关会话已失效。", "session-expired");
-  const diagnostic = (error instanceof Error ? error.message : String(error))
-    .match(/\b(?:requestId|traceId|auditId)=[0-9a-f-]{36}\b/g)
-    ?.join("，");
+  const metadata = error !== null && typeof error === "object" ? error : {};
+  const ids = Object.fromEntries(
+    ["requestId", "traceId", "auditId"].flatMap((key) => {
+      const value: unknown = Reflect.get(metadata, key);
+      return typeof value === "string" && /^[A-Za-z0-9._:-]{1,200}$/.test(value)
+        ? [[key, value]]
+        : [];
+    }),
+  );
+  const httpStatus: unknown = Reflect.get(metadata, "httpStatus");
+  const businessCode: unknown = Reflect.get(metadata, "code");
+  const gatewayTrace: unknown = Reflect.get(metadata, "gatewayTrace");
+  const gatewayIds =
+    gatewayTrace !== null && typeof gatewayTrace === "object"
+      ? Object.fromEntries(
+          ["requestId", "traceId", "auditId"].flatMap((key) => {
+            const value: unknown = Reflect.get(gatewayTrace, key);
+            return typeof value === "string" && /^[A-Za-z0-9._:-]{1,200}$/.test(value)
+              ? [[key, value]]
+              : [];
+          }),
+        )
+      : {};
+  const diagnostic = [
+    ...(typeof httpStatus === "number" && Number.isInteger(httpStatus)
+      ? [`HTTP ${httpStatus}`]
+      : []),
+    ...(typeof businessCode === "string" && /^[A-Z][A-Z0-9_]{0,99}$/.test(businessCode)
+      ? [`business.code=${businessCode}`]
+      : []),
+    ...Object.entries(ids).map(([key, value]) => `${key}=${value}`),
+    ...Object.entries(gatewayIds).map(([key, value]) => `gateway.${key}=${value}`),
+  ].join(" ");
   return Object.assign(
     new Error(
       "GEA_GATEWAY_SESSION_EXPIRED: 网关会话已失效，本轮查询已停止。重新发起问题时会按当前登录身份建立新会话并重新核对授权；不要换工具或参数继续尝试。" +
         (diagnostic ? " 诊断标识：" + diagnostic : ""),
     ),
-    { code: "GEA_GATEWAY_SESSION_EXPIRED" },
+    {
+      code: "GEA_GATEWAY_SESSION_EXPIRED",
+      ...(typeof httpStatus === "number" && Number.isInteger(httpStatus) ? { httpStatus } : {}),
+      ...(typeof businessCode === "string" && /^[A-Z][A-Z0-9_]{0,99}$/.test(businessCode)
+        ? { businessCode }
+        : {}),
+      ...ids,
+      gatewayTrace: gatewayIds,
+    },
   );
 }
 

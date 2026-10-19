@@ -137,3 +137,145 @@ test("a missing trusted plan month refuses a complete period index instead of dr
     /GEA_PLAN_MONTH_SOURCE_MISSING/,
   );
 });
+
+function visiblePlans(t, records) {
+  const business = makeBusiness();
+  t.after(() => business.dispose());
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    assert.equal(url.pathname, "/sales-plan/plans");
+    const current = Number(url.searchParams.get("pageNo"));
+    return Response.json({
+      success: true,
+      result: {
+        records: records.slice((current - 1) * 2, current * 2),
+        total: records.length,
+        current,
+        size: 2,
+        pages: Math.ceil(records.length / 2),
+      },
+    });
+  });
+  return { business, requests };
+}
+
+test("monthly and correction tabs discover a shared period regardless of M/Z row order", async (t) => {
+  const monthly = {
+    planId: "p-jxs-2026-10-00011",
+    periodId: "20261001",
+    planTypeCode: "Y",
+    orderType: "M",
+  };
+  const correction = { ...monthly, planId: "p-jxs-2026-10-00012", orderType: "Z" };
+  for (const records of [
+    [monthly, correction],
+    [correction, monthly],
+  ]) {
+    await t.test(records.map((row) => row.orderType).join(","), async (t) => {
+      const f = visiblePlans(t, records);
+      for (const planType of ["MONTHLY", "CORRECTION"]) {
+        const page = await f.business.workbenchQuery(
+          { kind: "periods", query: { planType, periodMonth: "2026-10" } },
+          new AbortController().signal,
+        );
+        assert.equal(page.total, 1);
+        assert.deepEqual(page.records, [
+          {
+            periodId: "20261001",
+            tenantId: "0",
+            periodMonth: "2026-10",
+            planType,
+            planTypeCode: "Y",
+            status: "UNKNOWN",
+          },
+        ]);
+      }
+      assert.equal(
+        f.requests.every((url) => url.pathname === "/sales-plan/plans"),
+        true,
+      );
+    });
+  }
+});
+
+test("an M-only month remains discoverable for read-only correction browsing with unknown period status", async (t) => {
+  const f = visiblePlans(t, [
+    {
+      planId: "p-jxs-2026-10-00011",
+      periodId: "20261001",
+      planTypeCode: "Y",
+      orderType: "M",
+      status: 5,
+    },
+  ]);
+  const page = await f.business.workbenchQuery(
+    { kind: "periods", query: { planType: "CORRECTION", periodMonth: "2026-10" } },
+    new AbortController().signal,
+  );
+  assert.equal(page.total, 1);
+  assert.deepEqual(page.records, [
+    {
+      periodId: "20261001",
+      tenantId: "0",
+      periodMonth: "2026-10",
+      planType: "CORRECTION",
+      planTypeCode: "Y",
+      status: "UNKNOWN",
+    },
+  ]);
+  assert.equal(f.requests.length, 1);
+});
+
+test("untyped period discovery keeps tuple deduplication, month filtering and result pagination", async (t) => {
+  const f = visiblePlans(t, [
+    {
+      planId: "p-jxs-2026-10-00011",
+      periodId: "20261001",
+      planTypeCode: "Y",
+      orderType: "M",
+    },
+    {
+      planId: "p-jxs-2026-10-00012",
+      periodId: "20261001",
+      planTypeCode: "Y",
+      orderType: "Z",
+    },
+    {
+      planId: "p-jxs-2026-10-00013",
+      periodId: "20261002",
+      planTypeCode: "DC",
+      orderType: "M",
+    },
+    {
+      planId: "p-jxs-2026-09-00014",
+      periodId: "20260901",
+      planTypeCode: "Y",
+      orderType: "M",
+    },
+  ]);
+  const all = await f.business.workbenchQuery(
+    { kind: "periods", query: {} },
+    new AbortController().signal,
+  );
+  assert.equal(all.total, 3);
+  assert.deepEqual(
+    all.records.map((row) => row.periodId),
+    ["20261001", "20261002", "20260901"],
+  );
+  const filtered = await f.business.workbenchQuery(
+    { kind: "periods", query: { periodMonth: "2026-10", pageNo: 2, pageSize: 1 } },
+    new AbortController().signal,
+  );
+  assert.equal(filtered.total, 2);
+  assert.equal(filtered.current, 2);
+  assert.equal(filtered.size, 1);
+  assert.equal(filtered.pages, 2);
+  assert.equal(filtered.records[0].periodId, "20261002");
+  assert.equal(filtered.records[0].status, "UNKNOWN");
+  assert.deepEqual(
+    f.requests.map((url) => url.searchParams.get("pageNo")),
+    ["1", "2", "1", "2"],
+  );
+});

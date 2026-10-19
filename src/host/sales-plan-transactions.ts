@@ -58,10 +58,6 @@ type SalesPlanHost = {
   periodPageSize: number;
 };
 
-/**
- * 旧服务仅接收基础动作字段；显式协商 role-visible-v1 后保留操作角色和快照，
- * 让上游对同一个角色、同一份审批依据执行校验和写入。
- */
 const UPSTREAM_ACTION_FIELDS = [
   "action",
   "expectedStatus",
@@ -75,6 +71,10 @@ function upstreamActionBody(request: Record<string, unknown>): Record<string, un
     if (request[field] !== undefined) body[field] = request[field];
   if (request.approvalPolicy === "role-visible-v1") {
     for (const field of ["approvalRole", "approvalPolicy", "expectedSnapshot"])
+      if (request[field] !== undefined) body[field] = request[field];
+  }
+  if (request.adjustmentMode === "ABSOLUTE_NET") {
+    for (const field of ["adjustmentMode", "approvalRole", "expectedSnapshot"])
       if (request[field] !== undefined) body[field] = request[field];
   }
   return body;
@@ -399,7 +399,14 @@ export class SalesPlanTransactions {
         salesPlanStagesForRoles(auth.roles),
       );
       if (
+        detail.correctionContext?.contract !== "absolute-net-v1" ||
+        detail.correctionContext.monthlyApproved !== true ||
+        detail.correctionContext.approvalOpen !== true ||
         !access ||
+        detail.actionContext?.nodeOrder !== access.nodeOrder ||
+        !detail.actionContext?.allowedActions.includes(
+          request.action as GeaSalesPlanActionRequest["action"],
+        ) ||
         !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest["action"]) ||
         !detail.currentVersion.submitter ||
         detail.currentVersion.submitter === auth.id
@@ -415,6 +422,7 @@ export class SalesPlanTransactions {
         throw new GeaResponseError(409, {
           message: "纠偏版本或快照已变化，请刷新",
         });
+      request.approvalRole = access.approvalRole;
       const typed = request as GeaSalesPlanActionRequest;
       validateSalesPlanActionInput(
         {

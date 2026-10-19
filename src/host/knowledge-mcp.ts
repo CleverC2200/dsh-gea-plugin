@@ -60,6 +60,23 @@ export function knowledgeArguments(method: KnowledgeMethod, args: Record<string,
     );
 }
 
+export function knowledgeSelection(catalog: string, args: Record<string, unknown>): void {
+  const payload: unknown = JSON.parse(catalog);
+  const envelope = record(payload);
+  const libraries = Array.isArray(payload) ? payload : envelope?.result;
+  if (!Array.isArray(libraries)) throw invalid("knowledgeBases", payload);
+  const available = new Set(libraries.map((item: unknown) => record(item)?.id));
+  const selected = Array.isArray(args.knowledgeBaseIds) ? args.knowledgeBaseIds : [];
+  const unavailable = selected.filter((id: unknown) => !available.has(id));
+  if (unavailable.length)
+    throw Object.assign(
+      Error(
+        `GEA_KNOWLEDGE_SELECTION_REQUIRED: 所选知识库当前不可问答，请从当前 ASK 目录重新选择，不按名称替换历史 ID。不可用 ID=${JSON.stringify(unavailable)} 当前目录=${catalog}`,
+      ),
+      { code: "GEA_KNOWLEDGE_SELECTION_REQUIRED", retryable: false },
+    );
+}
+
 /** Prefer the structured business result; text-only peers must supply exactly one business JSON value. */
 export function knowledgeResult(
   method: KnowledgeMethod,
@@ -124,6 +141,13 @@ export function knowledgeResult(
     )
       throw invalid("references.knowledgeBaseId", payload, gatewayTrace);
   }
+  Object.assign(answer, {
+    geaCompletion: {
+      status: "UNKNOWN",
+      reason: "SERVER_COMPLETION_UNVERIFIED",
+      message: "尚未取得可验证的生成结束依据，正文和引用的完成度未知，不能报告完整成功。",
+    },
+  });
   if (Object.keys(gatewayTrace).length) Object.assign(envelope ?? answer, { gatewayTrace });
   return stringify(payload);
 }
