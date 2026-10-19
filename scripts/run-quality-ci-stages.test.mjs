@@ -53,7 +53,10 @@ const fixtureSourceFiles = [
   "fixtures/quality-ci-commands.mjs",
   "fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
 ];
-function fixture(t, { additionalTests = [], docs = false, docsWhitespace = false } = {}) {
+function fixture(
+  t,
+  { additionalTests = [], docs = false, docsWhitespace = false, macos = false } = {},
+) {
   const job = realpathSync(mkdtempSync(join(tmpdir(), "gea-ci-stages-")));
   t.after(() => rmSync(job, { recursive: true, force: true }));
   const write = (file, value) => {
@@ -222,6 +225,17 @@ function fixture(t, { additionalTests = [], docs = false, docsWhitespace = false
       join(gea, file),
       "import test from 'node:test'; test('selected public file', () => {});\n",
     );
+  if (macos) {
+    json(join(job, "candidate-group.json"), { groupId: "macos-fixture" });
+    for (const file of [
+      "scripts/isolated-validation.test.mjs",
+      "tests/host-config-keychain.test.mjs",
+    ])
+      write(
+        join(gea, file),
+        `import test from 'node:test'; import '../lib/host.js'; import { appendFileSync } from 'node:fs'; test('prepared Host reaches the native task', () => appendFileSync(${JSON.stringify(join(job, "native-tests-executed"))}, ${JSON.stringify(file + "\n")}));\n`,
+      );
+  }
   const geaHead = commit(gea);
   const manifest = {
     core: coreHead,
@@ -269,6 +283,7 @@ function fixture(t, { additionalTests = [], docs = false, docsWhitespace = false
       QUALITY_POLICY_WORKBENCH: "/stale/policy",
       GEA_TEST_CANDIDATE_INPUTS: "/stale/candidate",
       GEA_TEST_SOURCE_INPUTS: "/stale/sources",
+      ...(macos ? { QUALITY_STAGE_FIXTURE_MACOS: "1" } : {}),
       ...extra,
     };
     for (const key of ["CI", "QUALITY_EXPECTED_SHA", "NODE_TEST_CONTEXT"])
@@ -304,6 +319,46 @@ function fixture(t, { additionalTests = [], docs = false, docsWhitespace = false
     read: () => JSON.parse(readFileSync(join(job, "quality-stages.json"))),
   };
 }
+
+test("the public macOS task prepares only fixed Host dependencies before executing both native contracts", (t) => {
+  const f = fixture(t, { macos: true });
+  const result = f.run(undefined, {}, ["--phase", "macos-isolation"]);
+  if (process.platform !== "darwin") {
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /QUALITY_MACOS_ISOLATION_REQUIRED/);
+    assert.equal(existsSync(join(f.job, "native-tests-executed")), false);
+    return;
+  }
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(
+    readFileSync(join(f.job, "native-tests-executed"), "utf8").trim().split("\n").sort(),
+    ["scripts/isolated-validation.test.mjs", "tests/host-config-keychain.test.mjs"],
+  );
+  const commands = readFileSync(join(f.job, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  const install = commands.findIndex(
+    (entry) => entry.command === "corepack" && entry.args.includes("install"),
+  );
+  const host = commands.findIndex((entry) => entry.command === "host-build");
+  assert.ok(install >= 0 && host > install);
+  assert.deepEqual(commands[host].args, ["scripts/build.mjs", "--target", "host"]);
+  assert.equal(
+    commands.some(
+      (entry) =>
+        entry.args.includes("build:plugin") ||
+        entry.args.includes("build:core") ||
+        entry.args.includes("build"),
+    ),
+    false,
+  );
+  const blocked = fixture(t, { macos: true });
+  const failed = blocked.run(undefined, { FIXTURE_FAIL: "build" }, ["--phase", "macos-isolation"]);
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /QUALITY_COMMAND_FAILED/);
+  assert.equal(existsSync(join(blocked.job, "native-tests-executed")), false);
+});
 
 test("separate CLI processes prepare once, preserve the plan, restore fixed environment and summarize real stages", (t) => {
   const f = fixture(t);
