@@ -68,6 +68,7 @@ const UPSTREAM_NOTIFICATION_PAYLOAD_INVALID = {
 const openWorkbench = async (t) => {
   const app = await profile(t);
   const writes = [];
+  const statuses = new Map();
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
     const send = (result) => {
@@ -100,7 +101,12 @@ const openWorkbench = async (t) => {
     if (detail) {
       const row = plans.find((item) => item.planId === detail[1]);
       return send({
-        currentVersion: { ...row, id: row.versionId, effective: true },
+        currentVersion: {
+          ...row,
+          id: row.versionId,
+          status: statuses.get(row.versionId) ?? row.status,
+          effective: true,
+        },
         skus: [skuFor(row.versionId)],
         versions: [],
         logs: [],
@@ -128,6 +134,7 @@ const openWorkbench = async (t) => {
         reply(UPSTREAM_NOTIFICATION_PAYLOAD_INVALID, 409);
         return true;
       }
+      statuses.set(row.versionId, 2);
       return send({
         planId: row.planId,
         versionId: row.versionId,
@@ -170,12 +177,12 @@ const openWorkbench = async (t) => {
 const batchApprove = async ({ frame, rowBox }, planIds, remark) => {
   for (const planId of planIds) await rowBox(planId).click();
   await frame.getByRole("button", { name: "通过", exact: true }).click();
-  const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
+  const dialog = frame.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("批量审批备注").fill(remark);
-  await dialog.locator("label.arco-checkbox").click();
-  await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
-  await expect(frame.getByTestId("regional-approval-batch-result")).toBeVisible();
+  await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
+  await expect(frame.getByRole("dialog")).toBeVisible();
 };
 
 test("同一请求在不同省区得到不同上游结果时，客户端逐笔如实呈现", { timeout: 120000 }, async (t) => {
@@ -184,13 +191,13 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
 
   // 第一轮：省区 0013 的两笔——上游接受。
   await batchApprove(ctx, ["p1", "p2"], "456");
-  await expect(frame.getByTestId("regional-approval-batch-result")).toContainText("成功 2 笔");
+  await expect(frame.getByRole("dialog")).toContainText("成功 2 笔");
   await frame.getByRole("button", { name: "关闭", exact: true }).click();
-  await expect(frame.getByTestId("regional-approval-batch-action-dialog")).toBeHidden();
+  await expect(frame.getByRole("dialog")).toBeHidden();
 
   // 第二轮：另外三个省区的三笔——上游以通知 payload 校验失败拒绝。
   await batchApprove(ctx, ["p3", "p4", "p5"], "456");
-  const result = frame.getByTestId("regional-approval-batch-result");
+  const result = frame.getByRole("dialog");
   await expect(result).toContainText("成功 0 笔");
   await expect(result).toContainText("失败 3 笔");
   for (const name of ["客户3", "客户4", "客户5"]) await expect(result).toContainText(name);

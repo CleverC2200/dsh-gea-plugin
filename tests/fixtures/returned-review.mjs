@@ -50,14 +50,32 @@ export const fixture = async (
         name: "乌鲁木齐退回区域",
       },
     ],
-    [PLAN_B, { versionId: "v2", seq: 1, status: 7, dealerCode: "457", name: "济南退回区域" }],
-    [PLAN_C, { versionId: "v3", seq: 1, status: 1, dealerCode: "458", name: "沈阳待审批" }],
+    [
+      PLAN_B,
+      {
+        versionId: "v2",
+        seq: 1,
+        status: 7,
+        dealerCode: "457",
+        name: "济南退回区域",
+      },
+    ],
+    [
+      PLAN_C,
+      {
+        versionId: "v3",
+        seq: 1,
+        status: 1,
+        dealerCode: "458",
+        name: "沈阳待审批",
+      },
+    ],
   ]);
   const submitted = [];
   const logs = [];
   let readbackBlocked = readbackFailure;
-  let submittedQty = "2.000";
-  let submitReceipt;
+  const submittedQuantities = new Map();
+  const submitReceipts = new Map();
   if (normalBatch) state.get(PLAN_B).status = 1;
   const approved = [];
   const rejected = [];
@@ -86,7 +104,7 @@ export const fixture = async (
     skuCode: "789",
     productCategName: "Category",
     baseQty: "1.000",
-    qty: planId === PLAN_A ? submittedQty : "2.000",
+    qty: submittedQuantities.get(planId) ?? "2.000",
     regionConfirmedQty: returnedStatus >= 7 ? "1.250" : null,
     regionConfirmedAmount: returnedStatus >= 7 ? "15.43" : null,
     provinceConfirmedQty: returnedStatus >= 8 ? "1.500" : null,
@@ -94,7 +112,7 @@ export const fixture = async (
     areaConfirmedQty: returnedStatus >= 9 ? "1.750" : null,
     areaConfirmedAmount: returnedStatus >= 9 ? "21.60" : null,
     price: "12.3400",
-    amt: planId === PLAN_A && submittedQty === "3.000" ? "37.02" : "24.68",
+    amt: submittedQuantities.get(planId) === "3.000" ? "37.02" : "24.68",
     amtBase: "12.34",
   });
   const rowVersions = (planId, current) =>
@@ -104,7 +122,7 @@ export const fixture = async (
           current,
           {
             ...current,
-            id: "v1",
+            id: { [PLAN_A]: "v1", [PLAN_B]: "v2", [PLAN_C]: "v3" }[planId],
             seq: 1,
             status: returnedStatus,
             effective: false,
@@ -145,9 +163,21 @@ export const fixture = async (
       return send({
         records: [
           ...(sameIdPeriod
-            ? [{ periodId: "20261001", periodMonth: "2026-10", planTypeCode: "DC", status: "OPEN" }]
+            ? [
+                {
+                  periodId: "20261001",
+                  periodMonth: "2026-10",
+                  planTypeCode: "DC",
+                  status: "OPEN",
+                },
+              ]
             : []),
-          { periodId: "20261001", periodMonth: "2026-10", planTypeCode: "Y", status: "OPEN" },
+          {
+            periodId: "20261001",
+            periodMonth: "2026-10",
+            planTypeCode: "Y",
+            status: "OPEN",
+          },
         ],
         total: sameIdPeriod ? 2 : 1,
         current: 1,
@@ -212,7 +242,7 @@ export const fixture = async (
         currentVersion: current,
         versions: rowVersions(planId, current),
         skus: readbackBlocked && submitted.length && planId === PLAN_A ? [] : [sku(planId)],
-        logs,
+        logs: logs.filter((log) => log.planId === planId),
         actionContext: {
           versionId: current.id,
           status: current.status,
@@ -268,37 +298,43 @@ export const fixture = async (
       });
     if (path.endsWith("/api/v1/internal/sales-plans")) {
       const body = JSON.parse(req.body);
+      const planId = [...state.entries()].find(
+        ([, row]) => row.dealerCode === body.dealerCode,
+      )?.[0];
+      assert.ok(planId);
       submitted.push({
+        planId,
         body,
         key: req.headers["idempotency-key"],
         requestId: req.headers["x-request-id"],
       });
-      if (submitReceipt) return send({ ...submitReceipt, replayed: true });
-      if (denySubmit) {
+      const prior = submitReceipts.get(planId);
+      if (prior) return send({ ...prior, replayed: true });
+      if (denySubmit === true || denySubmit === planId) {
         reply({ success: false, message: "提报窗口已关闭，请联系业务管理员" }, 403);
         return true;
       }
       assert.equal(body.status, returnedStatus - 5);
       assert.equal(body.items.length, 1);
       assert.equal(body.items[0].price, "12.3400");
-      const row = state.get(PLAN_A);
-      row.versionId = "v-new";
+      const row = state.get(planId);
+      row.versionId = planId === PLAN_A ? "v-new" : "v-new-b";
       row.seq = 2;
       row.status = body.status;
       const nodes = shortened ? [1, 3, 4] : [1, 2, 3, 4];
       row.nextActor = { 1: "region", 2: "province", 3: "area", 4: "category" }[
         nodes.find((node) => node >= body.status)
       ];
-      submittedQty = body.items[0].qty;
+      submittedQuantities.set(planId, body.items[0].qty);
       logs.push({
-        planId: PLAN_A,
-        versionId: "v-new",
+        planId: planId,
+        versionId: row.versionId,
         actionCode: "RESUBMIT",
         requestId: req.headers["x-request-id"],
       });
-      submitReceipt = {
-        planId: PLAN_A,
-        versionId: "v-new",
+      const submitReceipt = {
+        planId: planId,
+        versionId: row.versionId,
         seq: 2,
         status: body.status,
         requestId: req.headers["x-request-id"],
@@ -306,7 +342,8 @@ export const fixture = async (
         auditId: "a",
         replayed: false,
       };
-      if (unknownOnce) {
+      submitReceipts.set(planId, submitReceipt);
+      if (unknownOnce && planId === PLAN_A) {
         reply({ message: "结果暂时未知" }, 502);
         return true;
       }

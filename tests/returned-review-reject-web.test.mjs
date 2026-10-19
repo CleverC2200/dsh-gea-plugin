@@ -18,7 +18,7 @@ test(
     await expect(dialog).toContainText("退回版本继续逐级退回");
     await expect(dialog).toContainText("正常审批退回");
     await dialog.getByRole("textbox", { name: "批量审批备注" }).fill("继续退回客户核对");
-    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await frame.getByRole("button", { name: "确认批量退回", exact: true }).click();
     const result = frame.getByTestId("regional-approval-batch-result");
     await expect(result).toContainText("成功 2 笔", { timeout: 30000 });

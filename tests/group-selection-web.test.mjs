@@ -90,6 +90,7 @@ const planIdForVersion = (versionId) => "p" + versionId.slice(1);
 const openWorkbench = async (t) => {
   const app = await profile(t);
   const writes = [];
+  const statuses = new Map();
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
     const send = (result) => {
@@ -107,13 +108,18 @@ const openWorkbench = async (t) => {
     if (detail) {
       const plan = plans.find((row) => row.planId === detail[1]);
       return send({
-        currentVersion: { ...plan, id: plan.versionId, effective: true },
+        currentVersion: {
+          ...plan,
+          id: plan.versionId,
+          status: statuses.get(plan.versionId) ?? plan.status,
+          effective: true,
+        },
         skus: [skuFor(plan.versionId)],
         versions: [],
         logs: [],
         actionContext: {
           versionId: plan.versionId,
-          status: 1,
+          status: statuses.get(plan.versionId) ?? 1,
           nodeOrder: 2,
           allowedActions: ["APPROVE", "REJECT"],
           snapshotHash: "a".repeat(64),
@@ -133,6 +139,7 @@ const openWorkbench = async (t) => {
       writes.push(body);
       // 通过走到下一节点（1→2）；退回回到上一个节点对应的退回码（1→6）。
       const toStatus = body.action === "REJECT" ? 6 : 2;
+      statuses.set(action[1], toStatus);
       return send({
         planId: planIdForVersion(action[1]),
         versionId: action[1],
@@ -181,24 +188,24 @@ test("多选批量通过：勾选 3 笔一次性逐笔提交", { timeout: 90000 
   await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeEnabled();
 
   await frame.getByRole("button", { name: "通过", exact: true }).click();
-  const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
+  const dialog = frame.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await expect(frame.getByTestId("regional-approval-batch-summary")).toContainText("3 笔");
-  await dialog.locator("label.arco-checkbox").click();
-  await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
+  await expect(dialog).toContainText("提交所选计划（3）");
+  await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
 
-  await expect(frame.getByTestId("regional-approval-batch-result")).toContainText("成功 3 笔");
+  await expect(dialog).toContainText("成功 3 笔");
   assert.equal(writes.length, 3);
   assert.deepEqual(writes.map((body) => body.action).sort(), ["APPROVE", "APPROVE", "APPROVE"]);
-  // 全部成功后弹窗自己在 5 秒左右收起，并清掉本次勾选。
-  await expect(frame.getByTestId("regional-approval-batch-autoclose")).toBeVisible();
-  await expect(dialog).toBeHidden({ timeout: 12000 });
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(dialog).toBeHidden();
   await expect(single.locator("input")).not.toBeChecked();
 });
 
 test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { timeout: 90000 }, async (t) => {
   const app = await profile(t);
   const writes = [];
+  const statuses = new Map();
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
     const send = (result) => {
@@ -216,13 +223,18 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
     if (detail) {
       const plan = plans.find((row) => row.planId === detail[1]);
       return send({
-        currentVersion: { ...plan, id: plan.versionId, effective: true },
+        currentVersion: {
+          ...plan,
+          id: plan.versionId,
+          status: statuses.get(plan.versionId) ?? plan.status,
+          effective: true,
+        },
         skus: [skuFor(plan.versionId)],
         versions: [],
         logs: [],
         actionContext: {
           versionId: plan.versionId,
-          status: 1,
+          status: statuses.get(plan.versionId) ?? 1,
           nodeOrder: 2,
           allowedActions: ["APPROVE", "REJECT"],
           snapshotHash: "a".repeat(64),
@@ -244,6 +256,7 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
         reply({ message: "状态已变化", errorCode: "SALES_PLAN_CONFLICT", requestId: "r" }, 409);
         return true;
       }
+      statuses.set(action[1], 2);
       return send({
         planId: planIdForVersion(action[1]),
         versionId: action[1],
@@ -283,12 +296,12 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
   await groupBox.click();
   await frame.getByRole("button", { name: "通过", exact: true }).click();
 
-  const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
+  const dialog = frame.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await dialog.locator("label.arco-checkbox").click();
-  await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
+  await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
 
-  const result = frame.getByTestId("regional-approval-batch-result");
+  const result = dialog;
   await expect(result).toContainText("成功 1 笔");
   await expect(result).toContainText("失败 1 笔");
   // 失败的那笔要能看出是哪一个，并且不能只给技术错误码。
@@ -309,10 +322,10 @@ test("多选批量退回：共用一个退回原因，逐笔带上", { timeout: 
   const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
   await expect(dialog).toBeVisible();
   const confirm = frame.getByRole("button", { name: "确认批量退回", exact: true });
-  // 退回原因必填：没填、没确认之前不能提交。
+  // 退回原因必填。
   await expect(confirm).toBeDisabled();
   await dialog.getByLabel("批量审批备注").fill("促销依据待补充");
-  await dialog.locator("label.arco-checkbox").click();
+  await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
   await expect(confirm).toBeEnabled();
   await confirm.click();
 

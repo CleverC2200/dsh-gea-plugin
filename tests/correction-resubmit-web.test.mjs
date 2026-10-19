@@ -237,10 +237,11 @@ test(
       throw error;
     }
     const d = f.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
+    await d.locator("summary").first().click();
     const input = d.getByRole("textbox", { name: "纠偏调整量 789" });
     await expect(input).toHaveValue("2");
     await input.fill("5");
-    await d.locator("label.arco-checkbox").click();
+    await expect(d.locator("label.arco-checkbox")).toHaveCount(0);
     await d.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(d).toContainText("新版本 v2");
     await d.getByRole("button", { name: "关闭", exact: true }).click();
