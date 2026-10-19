@@ -316,9 +316,19 @@
       "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     },
     {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/check-agent-knowledge\\.mjs$",
+      "tests": ["scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:(?:quality|run-quality-ci|run-quality-fast)\\.mjs|ci-test-policy\\.json)$",
+      "tests": []
+    },
+    {
       "repo": "dsh-agent-manage",
-      "pattern": "^scripts/(?:download-cache|run-quality-ci)\\.mjs$",
-      "tests": ["scripts/ci-policy-impact.test.mjs"]
+      "pattern": "^scripts/(?:(?:check-preset-capabilities|download-cache|preset-test-lanes|run-quality-ci|write-ci-input)\\.mjs|ci-test-policy\\.json)$",
+      "tests": []
     },
     {
       "pattern": "^scripts/quality-peer-baseline\\.json$",

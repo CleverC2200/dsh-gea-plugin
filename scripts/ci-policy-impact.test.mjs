@@ -236,6 +236,7 @@ test("engineering source, dynamic commands and configuration reselect the origin
         "tests/source-selection-start.test.mjs",
       ],
     ],
+    [0, "scripts/check-agent-knowledge.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
   ];
@@ -367,27 +368,53 @@ test("Workbench build commands select prepared assets, frozen transport and buil
   }
 });
 
-test("Manage private CI commands select the GEA dynamic peer source contract", async (t) => {
-  for (const name of ["download-cache", "run-quality-ci"]) {
-    await t.test(name, (t) => {
-      const fixture = resourceImpactFixture(t);
-      const peer = fixture.repositories.find((entry) => entry.repo === "dsh-agent-manage");
-      const file = `scripts/${name}.mjs`;
-      assert.equal(existsSync(join(peer.path, file)), false);
-      fixture.change(peer, file, "export const fixture = true;\n");
-      const plan = fixture.plan();
-      assert.deepEqual(plan.changes, [{ repo: peer.repo, file }]);
-      assert.deepEqual(plan.reasons[peer.repo + "/" + file], ["scripts/ci-policy-impact.test.mjs"]);
-      assert.deepEqual(plan.required, businessCore);
-      assert.deepEqual(plan.files, [...businessCore, "scripts/ci-policy-impact.test.mjs"].sort());
-    });
-  }
+test("named peer-private CI inputs select no GEA execution without an actual consumer", async (t) => {
+  for (const [repo, files] of [
+    [
+      "dsh-agent-workbench",
+      ["quality.mjs", "run-quality-ci.mjs", "run-quality-fast.mjs", "ci-test-policy.json"],
+    ],
+    [
+      "dsh-agent-manage",
+      [
+        "check-preset-capabilities.mjs",
+        "download-cache.mjs",
+        "preset-test-lanes.mjs",
+        "run-quality-ci.mjs",
+        "write-ci-input.mjs",
+        "ci-test-policy.json",
+      ],
+    ],
+  ])
+    for (const name of files) {
+      await t.test(repo + "/" + name, (t) => {
+        const fixture = resourceImpactFixture(t);
+        const peer = fixture.repositories.find((entry) => entry.repo === repo);
+        const file = `scripts/${name}`;
+        fixture.change(
+          peer,
+          file,
+          name.endsWith(".json") ? "{}\n" : "export const fixture = true;\n",
+        );
+        const plan = fixture.plan();
+        assert.deepEqual(plan.changes, [{ repo, file }]);
+        assert.deepEqual(plan.reasons[repo + "/" + file], []);
+        assert.deepEqual(plan.required, businessCore);
+        assert.deepEqual(plan.files, businessCore);
+      });
+    }
 });
 
 test("explicit peer CI mappings preserve additional executable GEA import consumers", async (t) => {
   for (const [repo, file, contracts] of [
     ["dsh-agent-workbench", "scripts/build-output.mjs", workbenchBuildContracts],
-    ["dsh-agent-manage", "scripts/download-cache.mjs", ["scripts/ci-policy-impact.test.mjs"]],
+    ["dsh-agent-manage", "scripts/download-cache.mjs", []],
+    ["dsh-agent-workbench", "scripts/run-quality-fast.mjs", []],
+    [
+      "dsh-agent-workbench",
+      "scripts/check-agent-knowledge.mjs",
+      ["scripts/run-quality-ci-stages.test.mjs"],
+    ],
   ]) {
     await t.test(repo + "/" + file, (t) => {
       const fixture = resourceImpactFixture(t);
@@ -408,6 +435,9 @@ test("peer CI mappings reject unowned adjacent command names", (t) => {
     ["dsh-agent-workbench", "scripts/build-unowned.mjs"],
     ["dsh-agent-manage", "scripts/download-cache-unowned.mjs"],
     ["dsh-agent-manage", "scripts/run-quality-ci-unowned.mjs"],
+    ["dsh-agent-workbench", "scripts/check-agent-knowledge-unowned.mjs"],
+    ["dsh-agent-workbench", "scripts/run-quality-fast-unowned.mjs"],
+    ["dsh-agent-manage", "scripts/write-ci-input-unowned.mjs"],
   ]) {
     const fixture = resourceImpactFixture(t);
     const peer = fixture.repositories.find((entry) => entry.repo === repo);
