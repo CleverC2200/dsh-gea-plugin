@@ -382,6 +382,8 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
     "status",
     "pageNo",
     "pageSize",
+    "versionIds",
+    "summaryOnly",
   ],
   detail: ["planId"],
   versions: ["planId"],
@@ -3080,6 +3082,17 @@ export class Business {
     const kind = text(payload.kind);
     this.salesReadonly?.assertQuery(kind);
     query = normalizePlanQuery(kind, query);
+    if (kind === "list" && query.versionIds !== undefined) {
+      if (!Array.isArray(query.versionIds) || query.versionIds.length === 0)
+        throw new Error("INVALID_QUERY");
+      const versionIds = query.versionIds.map((value) => text(value));
+      if (versionIds.some((value) => value.includes(","))) throw new Error("INVALID_QUERY");
+      query = { ...query, versionIds: [...new Set(versionIds)].join(",") };
+    }
+    if (kind === "list" && query.summaryOnly !== undefined) {
+      if (typeof query.summaryOnly !== "boolean") throw new Error("INVALID_QUERY");
+      query = { ...query, summaryOnly: String(query.summaryOnly) };
+    }
     if (kind === "versionSkus") {
       if (query.offset !== undefined && query.pageNo !== undefined)
         throw new Error("INVALID_QUERY: versionSkus uses either pageNo or offset from nextQuery.");
@@ -3144,6 +3157,7 @@ export class Business {
           String(integer(value, 1, key === "pageSize" ? 1000 : Number.MAX_SAFE_INTEGER)),
         );
       else if (key === "status" && kind !== "periods") params.set(key, String(integer(value, 0)));
+      else if (key === "versionIds") params.set(key, String(value));
       else params.set(key, text(value));
     }
     const result = await this.gatewayRequests.read(

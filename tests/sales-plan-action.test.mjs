@@ -51,7 +51,8 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage) {
     if (path.endsWith("/plans/p")) await detailGate?.();
     let result;
     if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:category-approve"] };
-    else if (path.endsWith("/plans")) result = listPage;
+    else if (path.endsWith("/plans"))
+      result = typeof listPage === "function" ? listPage(url) : listPage;
     else if (path.endsWith("/plans/p"))
       result = {
         currentVersion: {
@@ -668,4 +669,89 @@ test("Host list readback keeps server progress, correction totals and filtered s
   assert.deepEqual(result.records, [row]);
   assert.deepEqual(result.summary, summary);
   assert.equal(f.writes(), 0);
+});
+
+test("Host serializes full-queue summary IDs without replacing existing list filters", async (t) => {
+  let received;
+  const summary = {
+    targetAmount: "1000.00",
+    planAmount: "900.00",
+    diffAmount: "-100.00",
+    planQty: "90.000",
+  };
+  const groupMetrics = [
+    {
+      dimension: "region",
+      key: "r",
+      ...summary,
+      amountProgress: "60.0",
+      shipAmount: "600.00",
+      shipQty: "60.000",
+    },
+  ];
+  const f = fixture(t, undefined, undefined, {}, (url) => {
+    received = new URL(url);
+    return { records: [], total: 0, size: 20, current: 1, pages: 0, summary, groupMetrics };
+  });
+  const result = await f.business.workbenchQuery(
+    {
+      kind: "list",
+      query: {
+        versionIds: ["11", "22", "11"],
+        summaryOnly: true,
+        periodId: "period",
+        status: 1,
+        orderType: "Z",
+        planTypeCode: "Y",
+      },
+    },
+    new AbortController().signal,
+  );
+  assert.equal(received.pathname, "/sales-plan/plans");
+  assert.equal(received.searchParams.get("versionIds"), "11,22");
+  assert.equal(received.searchParams.get("summaryOnly"), "true");
+  assert.equal(received.searchParams.get("periodId"), "period");
+  assert.equal(received.searchParams.get("status"), "1");
+  assert.equal(received.searchParams.get("orderType"), "Z");
+  assert.equal(received.searchParams.get("planTypeCode"), "Y");
+  assert.deepEqual(result.summary, summary);
+  assert.deepEqual(result.groupMetrics, groupMetrics);
+  assert.equal(f.writes(), 0);
+});
+
+test("Host summary accepts a complete queue longer than the scalar text limit", async (t) => {
+  let received;
+  const f = fixture(t, undefined, undefined, {}, (url) => {
+    received = new URL(url);
+    return { records: [], total: 0, size: 20, current: 1, pages: 0 };
+  });
+  const versionIds = Array.from({ length: 50 }, (_, index) => String(100000 + index));
+  await f.business.workbenchQuery(
+    { kind: "list", query: { versionIds, summaryOnly: true } },
+    new AbortController().signal,
+  );
+  assert.equal(received.searchParams.get("versionIds"), versionIds.join(","));
+});
+
+test("Host summary rejects malformed IDs and boolean flags before sending a list query", async (t) => {
+  let reads = 0;
+  const f = fixture(t, undefined, undefined, {}, () => {
+    reads++;
+    return { records: [], total: 0, size: 20, current: 1, pages: 0 };
+  });
+  for (const query of [
+    { versionIds: [] },
+    { versionIds: "11,22" },
+    { versionIds: [""] },
+    { versionIds: ["11,22"] },
+    { versionIds: [1] },
+    { versionIds: [null] },
+    { versionIds: ["1".repeat(257)] },
+    { summaryOnly: "true" },
+    { summaryOnly: 1 },
+  ])
+    await assert.rejects(
+      f.business.workbenchQuery({ kind: "list", query }, new AbortController().signal),
+    );
+  assert.equal(reads, 0);
 });
