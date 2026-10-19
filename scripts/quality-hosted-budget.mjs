@@ -1,6 +1,15 @@
 /** GitHub run-attempt clocks only; source admission and execution coverage belong to the caller. */
 const budgetMs = 600000;
 
+export const skippedTestShardsJobName =
+  "matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards'";
+
+export const unexpandedSkippedJobNames = [
+  "prepare-${{ matrix.core }}",
+  "macos-${{ matrix.core }}",
+  skippedTestShardsJobName,
+];
+
 export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000, ...input }) {
   if (
     !Number.isSafeInteger(intervalMs) ||
@@ -188,9 +197,11 @@ export function assessHostedBudget({
     new Set(notApplicableJobs).size !== notApplicableJobs.length ||
     notApplicableJobs.some(
       (name) =>
-        !/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
+        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
           name,
-        ) || requiredJobs.includes(name),
+        ) &&
+          !unexpandedSkippedJobNames.includes(name)) ||
+        requiredJobs.includes(name),
     ) ||
     !finalJobName
   )

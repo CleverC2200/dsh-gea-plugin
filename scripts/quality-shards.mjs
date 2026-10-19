@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
 import { executionDigest, verifyExecutionResults } from "./quality-test-execution.mjs";
+import { skippedTestShardsJobName } from "./quality-hosted-budget.mjs";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const json = (file) => JSON.parse(readFileSync(file));
 const write = (file, value) => writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
@@ -161,7 +162,9 @@ export function createShardCatalog({ indexes, expected }) {
     matrix: { include },
     hasShards: include.length > 0,
     notApplicableJobs: [
-      ...(ordered.every((index) => index.execution === "producer") ? ["test-shards"] : []),
+      ...(ordered.every((index) => index.execution === "producer")
+        ? ["test-shards", skippedTestShardsJobName]
+        : []),
       ...(ordered.some((index) => index.plan.binding.dependencyReview === true)
         ? []
         : ["Dependency review"]),

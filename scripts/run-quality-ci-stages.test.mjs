@@ -30,6 +30,7 @@ const fixtureSourceFiles = [
   "run-quality-ci.mjs",
   "quality-ci-stages.mjs",
   "quality-docs.mjs",
+  "quality-hosted-budget.mjs",
   "run-quality-checks.mjs",
   "quality-upstreams.mjs",
   "quality-upstreams.json",
@@ -183,10 +184,18 @@ function fixture(t, { additionalTests = [], docs = false, docsWhitespace = false
     json(join(gea, "docs/agent-knowledge.json"), {
       entries: ["README.md"],
       history: [],
-      peers: ["../../official-latest-standard"],
+      peers: ["../../official-latest-standard", "../dsh-agent-workbench"],
       commandRoots: { "README.md": ["../../official-latest-standard"] },
     });
-    write(join(gea, "README.md"), "Fixture documentation: `pnpm run fixture:core`\n");
+    write(
+      join(gea, "README.md"),
+      "Fixture documentation: `pnpm run fixture:core`\n\n[Index](docs/index.md)\n",
+    );
+    write(
+      join(gea, "docs/index.md"),
+      "[Recovery](../../dsh-agent-workbench/docs/presentation-recovery.md)\n",
+    );
+    write(join(workbench, "docs/presentation-recovery.md"), "Peer recovery documentation\n");
   }
   const workbenchHead = commit(workbench),
     manageHead = commit(manage);
@@ -225,7 +234,7 @@ function fixture(t, { additionalTests = [], docs = false, docsWhitespace = false
   if (docs) {
     write(
       join(gea, "README.md"),
-      `Updated ordinary fixture documentation: \`pnpm run fixture:core\`${docsWhitespace ? "  " : ""}\n`,
+      `Updated ordinary fixture documentation: \`pnpm run fixture:core\`${docsWhitespace ? "  " : ""}\n\n[Index](docs/index.md)\n`,
     );
     git(gea, "add", ".");
     git(
@@ -344,10 +353,23 @@ test("the public documentation stage admits the actual tuple and checks knowledg
     realpathSync(join(f.job, "official-latest-standard")),
     realpathSync(join(f.job, "source/official-core")),
   );
+  assert.equal(
+    realpathSync(join(f.job, "candidate/dsh-agent-workbench")),
+    realpathSync(join(f.job, "source/dsh-agent-workbench")),
+  );
   assert.ok(!existsSync(join(f.job, "official-latest-standard/.git/dsh-sdk-artifacts.json")));
   assert.ok(!existsSync(join(f.job, "tests-executed")));
   appendFileSync(join(f.gea, "README.md"), "uncommitted drift\n");
   assert.equal(f.run("docs", {}, ["--root", f.job, "--docs-results", resultFile]).status, 1);
+});
+
+test("the documentation CLI refuses an existing canonical peer directory from another source", (t) => {
+  const f = fixture(t, { docs: true });
+  mkdirSync(join(f.job, "candidate/dsh-agent-workbench"));
+  const result = f.run("docs", {}, ["--root", f.job, "--docs-results", join(f.job, "docs.json")]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /QUALITY_DOCS_SOURCE_CHANGED/);
+  assert.ok(!existsSync(join(f.job, "commands.jsonl")));
 });
 
 test("the documentation CLI rejects committed whitespace while still checking canonical Core command references", (t) => {

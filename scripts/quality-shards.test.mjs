@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
+import { skippedTestShardsJobName } from "./quality-hosted-budget.mjs";
 import {
   createExecutionPlan,
   executionDigest,
@@ -88,6 +89,7 @@ test("the public planner collects every Core and rejects missing, duplicate or c
   }
   const catalog = createShardCatalog({ indexes, expected });
   assert.equal(catalog.matrix.include.length, 4);
+  assert.ok(!catalog.notApplicableJobs.includes(skippedTestShardsJobName));
   assert.deepEqual(catalog.requiredJobs, [
     "candidate-scope",
     "plan-test-shards",
@@ -294,14 +296,14 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
             ...(hostedSkippedWorker
               ? Array.from({ length: skippedCopies }, (_, offset) => ({
                   id: 1000 + offset,
-                  name: "test-shards",
+                  name: skippedTestShardsJobName,
                   run_id: 7,
                   run_attempt: 2,
                   head_sha: head,
                   status: "completed",
                   conclusion: skippedConclusion,
-                  started_at: null,
-                  completed_at: null,
+                  started_at: at(-500),
+                  completed_at: at(-1500),
                 }))
               : []),
           ],
@@ -627,6 +629,10 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
       assert.equal(green.status, 0, JSON.stringify(green));
       assert.equal(green.coverage.coverage, "complete-exactly-once");
       assert.equal(green.hosted.performance.status, "passed");
+      assert.ok(producerCatalog.notApplicableJobs.includes(skippedTestShardsJobName));
+      assert.ok(
+        !green.hosted.performance.jobs.some((job) => job.name === skippedTestShardsJobName),
+      );
       for (const conclusion of ["failure", "cancelled", "success", null]) {
         skippedConclusion = conclusion;
         assert.equal(

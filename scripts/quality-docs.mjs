@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { verifyExecutionPlan } from "./quality-test-execution.mjs";
+import { unexpandedSkippedJobNames } from "./quality-hosted-budget.mjs";
 
 export function verifyDocsResults({ directory, expected, receipts }) {
   const results =
@@ -67,4 +68,36 @@ export function verifyDocsResults({ directory, expected, receipts }) {
     build: "not-applicable",
     macos: "not-applicable",
   };
+}
+
+export function docsHostedJobScope({ snapshot, cores }) {
+  const skipped = new Set([
+    "gates",
+    "prepare-",
+    "macos-isolation",
+    "macos-",
+    "plan-test-shards",
+    "test-shards",
+    "Dependency review",
+    ...unexpandedSkippedJobNames,
+    ...cores.flatMap((core) => ["prepare-" + core, "macos-" + core]),
+  ]);
+  const notApplicableJobs = snapshot.jobs
+    .filter((job) => skipped.has(job.name))
+    .map((job) => job.name);
+  const requiredJobs = [
+    "candidate-scope",
+    "windows-plugin-update",
+    ...cores.map((core) => "source-plan-" + core),
+  ];
+  if (
+    snapshot.jobs.some(
+      (job) =>
+        job.name !== "candidate-quality" &&
+        !requiredJobs.includes(job.name) &&
+        !notApplicableJobs.includes(job.name),
+    )
+  )
+    throw Error("QUALITY_DOCS_JOB_REJECTED");
+  return { requiredJobs, notApplicableJobs };
 }

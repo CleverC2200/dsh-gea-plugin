@@ -170,7 +170,7 @@ try {
     for (const key of ["QUALITY_SCOPE_RESULT", "QUALITY_GATE_RESULT", "QUALITY_ISOLATION_RESULT"])
       if (process.env[key] !== "success") refuse("QUALITY_COMPATIBILITY_REQUIRED", key);
   } else if (values.phase === "docs-final") {
-    const { verifyDocsResults } = await import("./quality-docs.mjs");
+    const { verifyDocsResults, docsHostedJobScope } = await import("./quality-docs.mjs");
     const { readHostedRun, assessHostedBudget } = await import("./quality-hosted-budget.mjs");
     const expected = {
       cores: JSON.parse(process.env.QUALITY_FINAL_CORES),
@@ -197,33 +197,10 @@ try {
         ? { apiBase: process.env.QUALITY_HOSTED_API_BASE }
         : {}),
     });
-    const skipped = new Set([
-      "gates",
-      "prepare-",
-      "macos-isolation",
-      "macos-",
-      "plan-test-shards",
-      "test-shards",
-      "Dependency review",
-      ...expected.cores.flatMap((core) => ["prepare-" + core, "macos-" + core]),
-    ]);
-    const notApplicableJobs = snapshot.jobs
-      .filter((job) => skipped.has(job.name))
-      .map((job) => job.name);
-    const requiredJobs = [
-      "candidate-scope",
-      "windows-plugin-update",
-      ...expected.cores.map((core) => "source-plan-" + core),
-    ];
-    if (
-      snapshot.jobs.some(
-        (job) =>
-          job.name !== "candidate-quality" &&
-          !requiredJobs.includes(job.name) &&
-          !notApplicableJobs.includes(job.name),
-      )
-    )
-      refuse("QUALITY_DOCS_JOB_REJECTED");
+    const { requiredJobs, notApplicableJobs } = docsHostedJobScope({
+      snapshot,
+      cores: expected.cores,
+    });
     const hosted = assessHostedBudget({
       snapshot,
       requiredJobs,
@@ -485,11 +462,16 @@ try {
         plan.browser
       )
         refuse("QUALITY_DOCS_SCOPE_REQUIRED");
-      const sourceCore = realpathSync(values["core-source"]);
-      const commandCore = resolve(values.root, "official-latest-standard");
-      if (existsSync(commandCore)) {
-        if (realpathSync(commandCore) !== sourceCore) refuse("QUALITY_DOCS_CORE_SOURCE_CHANGED");
-      } else symlinkSync(sourceCore, commandCore, "dir");
+      for (const [canonical, source] of [
+        [resolve(values.root, "official-latest-standard"), values["core-source"]],
+        [resolve(values.root, "candidate/dsh-agent-workbench"), workbench.path],
+      ]) {
+        const admittedSource = realpathSync(source);
+        if (existsSync(canonical)) {
+          if (realpathSync(canonical) !== admittedSource)
+            refuse("QUALITY_DOCS_SOURCE_CHANGED", canonical);
+        } else symlinkSync(admittedSource, canonical, "dir");
+      }
       const checks = runQualityChecks([
         {
           name: "whitespace",
