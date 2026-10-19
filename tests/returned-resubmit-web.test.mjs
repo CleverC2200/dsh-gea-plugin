@@ -23,6 +23,7 @@ const fixture = async (
     unknownOnce = false,
     normalBatch = false,
     sameIdPeriod = false,
+    originalSubmitter = "9007199254740993",
   } = {},
 ) => {
   const app = await profile(t, {
@@ -76,7 +77,7 @@ const fixture = async (
       effective,
       seq: row.seq,
       dealerCode: row.dealerCode,
-      submitter: "9007199254740993",
+      submitter: originalSubmitter,
       returnReason: "请核对数量与继承确认值",
       targetQty: "1.000",
       targetAmount: "12.34",
@@ -460,7 +461,7 @@ for (const mixed of [false, true])
   });
 
 test(
-  "successful submission with incomplete readback only retries reading",
+  "successful submission with incomplete readback survives close and only resumes reading",
   { timeout: 90000 },
   async (t) => {
     const { frame, submitted, allowReadback } = await fixture(t, { readbackFailure: true });
@@ -472,7 +473,18 @@ test(
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(dialog).toContainText("重提已成功");
     await expect(dialog).not.toContainText("未更新");
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await selectPlan(frame);
+    await selectPlan(frame, "济南退回区域");
+    await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(frame.getByText(`计划 ${PLAN_A} 仍有待核对`, { exact: false })).toBeVisible();
+    await frame.getByRole("button", { name: "刷新数据", exact: true }).click();
+    await expect(frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" })).toHaveCount(0);
     allowReadback();
+    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await expect(dialog).toContainText(PLAN_A);
     await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
     await expect(dialog).toContainText("服务端已确认计划");
     assert.equal(submitted.length, 1);
@@ -626,3 +638,39 @@ test(
     assert.equal(approved.length, 0);
   },
 );
+
+test(
+  "unconfirmed customer responsibility is explained on its disabled row",
+  { timeout: 90000 },
+  async (t) => {
+    const { frame, submitted } = await fixture(t, {
+      role: "customer",
+      returnedStatus: 6,
+      originalSubmitter: "other-owner",
+    });
+    const row = frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" }).first();
+    await expect(row.locator('input[type="checkbox"]')).toBeDisabled();
+    await expect(row).toContainText("无法确认修改责任身份");
+    assert.equal(submitted.length, 0);
+  },
+);
+
+test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t) => {
+  const { app, frame, submitted } = await fixture(t, { unknownOnce: true });
+  await selectPlan(frame);
+  await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
+  const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
+  await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
+  await dialog.locator("label.arco-checkbox").click();
+  await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
+  await expect(dialog).toContainText("结果暂时未知");
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  const resume = frame.getByRole("button", { name: "恢复待处理重提", exact: true });
+  await expect(resume).toBeVisible();
+  await app.rpc("logout");
+  await expect(resume).not.toBeVisible();
+  await app.login();
+  await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
+  await expect(resume).toHaveCount(0);
+  assert.equal(submitted.length, 1);
+});
