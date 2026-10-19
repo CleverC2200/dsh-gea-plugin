@@ -48,7 +48,7 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage) {
   const snapshot = "a".repeat(64);
   t.mock.method(globalThis, "fetch", async (url, init) => {
     const path = new URL(url).pathname;
-    if (path.endsWith("/plans/p")) await detailGate?.();
+    if (path.endsWith("/plans/p")) await detailGate?.(url);
     let result;
     if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:category-approve"] };
     else if (path.endsWith("/plans"))
@@ -749,6 +749,93 @@ test("Host summary rejects malformed IDs and boolean flags before sending a list
     { versionIds: ["1".repeat(257)] },
     { summaryOnly: "true" },
     { summaryOnly: 1 },
+  ])
+    await assert.rejects(
+      f.business.workbenchQuery({ kind: "list", query }, new AbortController().signal),
+    );
+  assert.equal(reads, 0);
+});
+
+test("Host sends a unified statuses list without duplicating the correction fallback query", async (t) => {
+  const received = [];
+  const f = fixture(t, undefined, undefined, {}, (url) => {
+    received.push(new URL(url));
+    return { records: [], total: 0, size: 20, current: 1, pages: 0 };
+  });
+  await f.business.workbenchQuery(
+    { kind: "list", query: { orderType: "Z", periodId: "period", statuses: [1, 4, 1] } },
+    new AbortController().signal,
+  );
+  assert.equal(received.length, 1);
+  assert.equal(received[0].searchParams.get("statuses"), "1,4");
+  assert.equal(received[0].searchParams.has("status"), false);
+  assert.equal(received[0].searchParams.get("orderType"), "Z");
+  assert.equal(received[0].searchParams.get("periodId"), "period");
+  assert.equal(f.writes(), 0);
+});
+
+test("Host correction detail forwards Z read intent and preserves the server M read-only baseline", async (t) => {
+  let received;
+  const projection = {
+    currentVersion: {
+      id: "v",
+      planId: "p",
+      status: 5,
+      effective: true,
+      planTypeCode: "Y",
+      orderType: "M",
+    },
+    hasCorrection: false,
+    skus: [
+      {
+        id: "s",
+        versionId: "v",
+        skuCode: "789",
+        qty: "108.000",
+        corrBaseQty: "108.000",
+        amt: "0.55",
+        price: "0.005",
+        editable: false,
+      },
+    ],
+    actionContext: { versionId: "v", status: 5, allowedActions: [] },
+  };
+  const f = fixture(
+    t,
+    undefined,
+    (url) => {
+      received = new URL(url);
+    },
+    projection,
+  );
+  const detail = await f.business.workbenchQuery(
+    { kind: "detail", query: { planId: "p", orderType: "Z" } },
+    new AbortController().signal,
+  );
+  assert.equal(received.pathname, "/sales-plan/plans/p");
+  assert.equal(received.searchParams.get("orderType"), "Z");
+  assert.equal(detail.currentVersion.orderType, "M");
+  assert.equal(detail.hasCorrection, false);
+  assert.deepEqual(detail.skus, projection.skus);
+  assert.deepEqual(detail.actionContext.allowedActions, []);
+  assert.equal(f.writes(), 0);
+});
+
+test("Host statuses reject malformed arrays and a simultaneous scalar status before sending", async (t) => {
+  let reads = 0;
+  const f = fixture(t, undefined, undefined, {}, () => {
+    reads++;
+    return { records: [], total: 0, size: 20, current: 1, pages: 0 };
+  });
+  for (const query of [
+    { statuses: [] },
+    { statuses: "1,4" },
+    { statuses: ["1"] },
+    { statuses: [null] },
+    { statuses: [-1] },
+    { statuses: [1.5] },
+    { statuses: [Number.MAX_SAFE_INTEGER + 1] },
+    { statuses: [1], status: 1 },
   ])
     await assert.rejects(
       f.business.workbenchQuery({ kind: "list", query }, new AbortController().signal),

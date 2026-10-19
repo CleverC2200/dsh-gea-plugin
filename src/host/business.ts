@@ -384,8 +384,9 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
     "pageSize",
     "versionIds",
     "summaryOnly",
+    "statuses",
   ],
-  detail: ["planId"],
+  detail: ["planId", "orderType"],
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
@@ -431,7 +432,7 @@ export function normalizePlanQuery(
       kind === "list"
         ? " For a month, call kind=periods with periodMonth (YYYY-MM) first, then pass the returned periodId together with planTypeCode from that result; never invent periodId or planTypeCode."
         : kind === "detail"
-          ? " kind=detail takes only planId, taken from kind=list or kind=versions output; never pass versionId here and never invent an id."
+          ? " kind=detail takes planId from kind=list or kind=versions output, plus optional orderType; never pass versionId here and never invent an id."
           : kind === "versionSkus"
             ? " kind=versionSkus takes only versionId (detail 的 currentVersion.id，或 list 的 versionId) plus initial pageNo/pageSize or the returned nextQuery; planId is not needed."
             : kind === "periods"
@@ -3098,6 +3099,16 @@ export class Business {
       if (typeof query.summaryOnly !== "boolean") throw new Error("INVALID_QUERY");
       query = { ...query, summaryOnly: String(query.summaryOnly) };
     }
+    if (kind === "list" && query.statuses !== undefined) {
+      if (
+        !Array.isArray(query.statuses) ||
+        query.statuses.length === 0 ||
+        (query.status != null && query.status !== "")
+      )
+        throw new Error("INVALID_QUERY");
+      const statuses = query.statuses.map((value) => integer(value, 0));
+      query = { ...query, statuses: [...new Set(statuses)].join(",") };
+    }
     if (kind === "versionSkus") {
       if (query.offset !== undefined && query.pageNo !== undefined)
         throw new Error("INVALID_QUERY: versionSkus uses either pageNo or offset from nextQuery.");
@@ -3162,7 +3173,7 @@ export class Business {
           String(integer(value, 1, key === "pageSize" ? 1000 : Number.MAX_SAFE_INTEGER)),
         );
       else if (key === "status" && kind !== "periods") params.set(key, String(integer(value, 0)));
-      else if (key === "versionIds") params.set(key, String(value));
+      else if (key === "versionIds" || key === "statuses") params.set(key, String(value));
       else params.set(key, text(value));
     }
     const result = await this.gatewayRequests.read(
