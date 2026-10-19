@@ -185,3 +185,29 @@ test("a user switch during login rejection still cancels the old delegated reque
   });
   assert.equal(business.status().user.id, "user-2");
 });
+
+test("configured SQL uses the authenticated Consumer delegation and forwards one unchanged named request", async (t) => {
+  const business = fixture(t),
+    requests = [];
+  const configured = {
+    consumerCode: "base-safety-stock",
+    sql: "SELECT t.sku AS sku FROM inventory AS t WHERE t.sku IN (:gea_p1) ORDER BY t.sku LIMIT :gea_p2 OFFSET :gea_p3",
+    parameters: { gea_p1: ["A", "B"], gea_p2: 10, gea_p3: 10 },
+    includeTotal: false,
+  };
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, body: JSON.parse(init.body), headers: init.headers });
+    return success(url, init);
+  });
+  const result = await business.pluginSql(configured, new AbortController().signal, true);
+  assert.deepEqual(result.rows, [{ sku: "A" }]);
+  assert.equal(requests.length, 2);
+  assert.match(requests[0].url, /\/agent\/session$/);
+  assert.equal(requests[0].body.agentCode, "base-safety-stock");
+  assert.equal(requests[1].headers["X-Delegation-Token"], "fixture-delegation");
+  const { consumerCode: _consumerCode, ...expected } = configured;
+  assert.deepEqual(requests[1].body, expected);
+  business.logout({});
+  await assert.rejects(business.pluginSql(configured, new AbortController().signal, true));
+  assert.equal(requests.length, 2, "logged-out reads must not reach the gateway");
+});

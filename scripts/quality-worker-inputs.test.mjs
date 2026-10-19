@@ -1961,7 +1961,12 @@ test("worker CLI reaps descendants holding stdio after a successful install lead
   assert.equal(f.produce().status, 0);
   assert.equal(f.exportBundle().status, 0);
   f.clear();
-  const run = f.receiveAsync({ PROCESS_INSTALLS: "1", INSTALL_SCENARIO: "leader-exit" });
+  // Establish both concurrent installs before the leader exits; scheduler speed is not a precondition.
+  const run = f.receiveAsync({
+    PROCESS_INSTALLS: "1",
+    PAIR_BARRIER: "1",
+    INSTALL_SCENARIO: "leader-exit",
+  });
   try {
     const r = await deadline(run.closed);
     assert.equal(r.code, 1, r.stderr);

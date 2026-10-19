@@ -106,6 +106,29 @@ async function fixture(t, options = {}) {
     },
   });
   if (options.resourceRoot) await cp(options.resourceRoot, directory, { recursive: true });
+  if (options.configured) {
+    const manifest = JSON.parse(await readFile(join(directory, "plugin.json"), "utf8"));
+    manifest.sqlConfig = "sql.config.json";
+    await writeFile(join(directory, "plugin.json"), JSON.stringify(manifest));
+    await writeFile(
+      join(directory, "sql.config.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        agentId: id,
+        queries: {
+          "stock.page": {
+            request: {
+              sql: "SELECT t.qty AS qty FROM stock AS t ORDER BY t.qty LIMIT :gea_p1 OFFSET :gea_p2",
+            },
+            parameterSpec: {
+              gea_p1: { name: "page_size", type: "integer", minimum: 1, maximum: 10 },
+              gea_p2: { name: "offset", type: "integer", minimum: 0 },
+            },
+          },
+        },
+      }),
+    );
+  }
   const manifest = JSON.parse(await readFile(join(directory, "plugin.json"), "utf8"));
   const packages = [{ directory, htmlPath: join(directory, "index.html"), manifest }];
   if (options.second) {
@@ -384,4 +407,28 @@ test("the current HTML grant publishes only its owned menu surface and an old re
   h.identities.clear();
   replacement.release();
   assert.equal(h.surfaces.size, 0);
+});
+
+test("configured page grant only resolves installed query IDs and is revoked with its principal", async (t) => {
+  const h = await fixture(t, { configured: true });
+  const grant = await h.authorize();
+  const result = await grant.readSql(
+    { queryId: "stock.page", parameters: { page_size: 10, offset: 10 } },
+    new AbortController().signal,
+  );
+  assert.deepEqual(result.rows, [{ qty: 42 }]);
+  assert.equal(h.queries[0].consumerCode, "inventory-grant-consumer");
+  assert.deepEqual(h.queries[0].parameters, { gea_p1: 10, gea_p2: 10 });
+  assert.equal(h.queries[0].pageNo, undefined);
+  const invalid = await grant.readSql({ sql: "SELECT 1" }, new AbortController().signal);
+  assert.equal(invalid.errorCode, "INVALID_CONFIGURED_QUERY");
+  assert.equal(h.queries.length, 1);
+  h.changeIdentity();
+  await assert.rejects(
+    grant.readSql(
+      { queryId: "stock.page", parameters: { page_size: 10, offset: 0 } },
+      new AbortController().signal,
+    ),
+  );
+  assert.equal(h.queries.length, 1);
 });

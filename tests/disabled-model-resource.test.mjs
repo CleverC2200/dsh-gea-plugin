@@ -864,9 +864,25 @@ for (const entry of ["RPC", "HTML"])
         new AbortController().signal,
       );
     };
-    if (entry === "HTML") await open();
+    const configuredQuery = {
+      queryId: "dealer.customers",
+      parameters: { search_pattern: null, customer: null, page_size: 10, offset: 0 },
+    };
+    if (entry === "HTML") {
+      await open();
+      const rejected = await grant.readSql(query, new AbortController().signal);
+      assert.equal(rejected.success, false);
+      assert.equal(rejected.errorCode, "INVALID_CONFIGURED_QUERY");
+      assert.equal(reads, 0, "raw page SQL never reaches the gateway");
+    }
     const read = async () => {
-      if (entry === "HTML") return grant.readSql(query, new AbortController().signal);
+      if (entry === "HTML") {
+        const result = await grant.readSql(configuredQuery, new AbortController().signal);
+        if (result.success === false)
+          throw Object.assign(Error(result.message), { code: result.errorCode });
+        assert.match(result.configVersion, /^[a-f0-9]{64}$/);
+        return result;
+      }
       const result = await app.route("plugin/sql", {
         consumerCode: "dealer-inventory-replenishment",
         ...query,

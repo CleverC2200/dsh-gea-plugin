@@ -1,0 +1,198 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, writeFile, readFile, rm, symlink } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { readConfiguredHtmlQuery } from "../src/host/configured-html-query.ts";
+import { createGeaSqlDatabase } from "../src/html-sql.ts";
+const signal = () => new AbortController().signal;
+async function resource(t, id) {
+  const directory = await mkdtemp(join(tmpdir(), "configured-gea-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const root = "../dsh-agent-workbench/business/inventory-" + id;
+  const manifest = JSON.parse(await readFile(root + "/plugin.json", "utf8"));
+  const raw = await readFile(root + "/sql.config.json", "utf8");
+  await writeFile(join(directory, "sql.config.json"), raw);
+  return { directory, manifest, config: JSON.parse(raw) };
+}
+for (const id of ["fc", "aqkc", "qll", "dealer", "apsplan"])
+  test(id + ": installed query uses its Consumer and binds fresh ten-row offsets", async (t) => {
+    const r = await resource(t, id),
+      calls = [];
+    const business = {
+      pluginSql: async (request, s, configured) => {
+        s.throwIfAborted();
+        calls.push({ request, configured });
+        return { rows: [], returnedColumns: ["sku"], rejectedColumns: [] };
+      },
+    };
+    const [queryId, q] = Object.entries(r.config.queries).find(([, q]) => q.pagination?.countQuery);
+    const parameters = Object.fromEntries(
+      Object.entries(q.parameterSpec).map(([key, s]) => [s.name, q.request.parameters[key]]),
+    );
+    parameters.page_size = 10;
+    parameters.offset = 0;
+    const first = await readConfiguredHtmlQuery(r, { queryId, parameters }, business, signal());
+    const second = await readConfiguredHtmlQuery(
+      r,
+      { queryId, parameters: { ...parameters, offset: 10 } },
+      business,
+      signal(),
+    );
+    assert.equal(first.success, undefined);
+    assert.equal(first.configVersion, second.configVersion);
+    assert.match(first.configVersion, /^[a-f0-9]{64}$/);
+    assert.equal(calls.length, 2);
+    const offset = Object.entries(q.parameterSpec).find(([, s]) => s.name === "offset")[0];
+    const size = Object.entries(q.parameterSpec).find(([, s]) => s.name === "page_size")[0];
+    assert.equal(calls[0].request.parameters[offset], 0);
+    assert.equal(calls[1].request.parameters[offset], 10);
+    for (const { request, configured } of calls) {
+      assert.equal(configured, true);
+      assert.equal(request.consumerCode, r.manifest.gea.consumerCode);
+      assert.equal(request.sql, q.request.sql);
+      assert.equal(request.parameters[size], 10);
+      assert.equal(request.pageNo, undefined);
+      assert.equal(request.pageSize, undefined);
+      assert.equal(request.includeTotal, false);
+    }
+    const denied = await readConfiguredHtmlQuery(
+      r,
+      { queryId, parameters, consumerCode: "forged" },
+      business,
+      signal(),
+    );
+    assert.equal(denied.success, false);
+    assert.equal(calls.length, 2);
+    const missing = await readConfiguredHtmlQuery(
+      r,
+      { queryId: "unknown", parameters: {} },
+      business,
+      signal(),
+    );
+    assert.equal(missing.errorCode, "QUERY_NOT_REGISTERED");
+    const aborted = new AbortController();
+    aborted.abort();
+    await assert.rejects(
+      readConfiguredHtmlQuery(r, { queryId, parameters }, business, aborted.signal),
+      { name: "AbortError" },
+    );
+  });
+test("configured gateway transport sends named parameters once without appending pagination, preserving permission metadata", async () => {
+  const requests = [];
+  const s = signal();
+  const db = createGeaSqlDatabase(() => "private-fixture-token", {
+    endpoint: "https://fixture.invalid/sql",
+    signal: s,
+    fetch: async (url, init) => {
+      requests.push(JSON.parse(init.body));
+      assert.equal(init.headers["X-Delegation-Token"], "private-fixture-token");
+      return Response.json({
+        success: true,
+        result: {
+          rows: [{ sku: "a" }],
+          returnedColumns: ["sku"],
+          rejectedColumns: [{ outputAlias: "qty", reason: "RETURN_PERMISSION_DENIED" }],
+        },
+      });
+    },
+  });
+  const request = {
+    sql: "SELECT t.sku AS sku FROM published AS t WHERE t.sku IN (:gea_p1) ORDER BY t.sku LIMIT :gea_p2 OFFSET :gea_p3",
+    parameters: { gea_p1: ["a", "b"], gea_p2: 10, gea_p3: 10 },
+    includeTotal: false,
+  };
+  const result = await db.queryConfigured(request);
+  assert.deepEqual(requests, [request]);
+  assert.equal(result.rejectedColumns[0].outputAlias, "qty");
+});
+test("structured permission failures survive configured transport with secret redaction and no retry", async () => {
+  let calls = 0;
+  const db = createGeaSqlDatabase(() => "private-fixture-token", {
+    endpoint: "https://fixture.invalid/sql",
+    signal: signal(),
+    fetch: async () => {
+      calls++;
+      return Response.json(
+        {
+          success: false,
+          errorCode: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+          failure: {
+            stage: "BIND",
+            reasonCode: "NO_RETURN_COLUMN_ALLOWED",
+            statementPath: "select.items[0]",
+            suggestedAction: "Do not expose private-fixture-token",
+          },
+          rejectedColumns: [{ outputAlias: "qty", reason: "RETURN_PERMISSION_DENIED" }],
+        },
+        { status: 403 },
+      );
+    },
+  });
+  await assert.rejects(
+    db.queryConfigured({ sql: "SELECT 1 AS qty", parameters: {}, includeTotal: false }),
+    (e) => {
+      assert.equal(e.code, "NO_RETURN_COLUMN_ALLOWED");
+      assert.equal(e.failure.stage, "BIND");
+      assert.equal(e.failure.statementPath, "select.items[0]");
+      assert.ok(!JSON.stringify(e).includes("private-fixture-token"));
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+});
+test("installed config identity and path are checked before any SQL", async (t) => {
+  const r = await resource(t, "fc");
+  let calls = 0;
+  const b = {
+    pluginSql: async () => {
+      calls++;
+    },
+  };
+  const queryId = Object.keys(r.config.queries)[0];
+  r.config.agentId = "inventory-qll";
+  await writeFile(join(r.directory, "sql.config.json"), JSON.stringify(r.config));
+  assert.equal(
+    (await readConfiguredHtmlQuery(r, { queryId, parameters: {} }, b, signal())).errorCode,
+    "INVALID_AGENT_SQL_CONFIG",
+  );
+  await rm(join(r.directory, "sql.config.json"));
+  await symlink("/etc/hosts", join(r.directory, "sql.config.json"));
+  assert.equal(
+    (await readConfiguredHtmlQuery(r, { queryId, parameters: {} }, b, signal())).errorCode,
+    "INVALID_SQL_CONFIG_PATH",
+  );
+  assert.equal(calls, 0);
+});
+for (const flag of [{ complete: false }, { truncated: true }, { hasMore: true }, { rowCount: 2 }])
+  test("configured results reject incomplete metadata " + JSON.stringify(flag), async () => {
+    const db = createGeaSqlDatabase(() => "fixture-token", {
+      endpoint: "https://fixture.invalid/sql",
+      signal: signal(),
+      fetch: async () => Response.json({ success: true, result: { rows: [{ qty: 1 }], ...flag } }),
+    });
+    await assert.rejects(
+      db.queryConfigured({ sql: "SELECT 1 AS qty", parameters: {}, includeTotal: false }),
+      (e) => ["GEA_SQL_RESULT_INCOMPLETE", "GEA_SQL_RESPONSE_INVALID"].includes(e.code),
+    );
+  });
+test("configured result preserves envelope-level column permissions", async () => {
+  const db = createGeaSqlDatabase(() => "fixture-token", {
+    endpoint: "https://fixture.invalid/sql",
+    signal: signal(),
+    fetch: async () =>
+      Response.json({
+        success: true,
+        returnedColumns: ["qty"],
+        rejectedColumns: ["cost"],
+        result: { rows: [{ qty: 1 }] },
+      }),
+  });
+  const result = await db.queryConfigured({
+    sql: "SELECT 1 AS qty",
+    parameters: {},
+    includeTotal: false,
+  });
+  assert.deepEqual(result.returnedColumns, ["qty"]);
+  assert.deepEqual(result.rejectedColumns, ["cost"]);
+});

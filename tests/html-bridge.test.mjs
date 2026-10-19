@@ -1,22 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { prepareHtmlQuery, readHtmlQuery } from "../src/html-query.ts";
 import { createHtmlSessions } from "../../dsh-agent-workbench/src/html-sessions.ts";
 const session = "session-11111111-1111-1111-1111-111111111111";
-test("active leases renew but idle expiry and wrong-plugin isolation remain enforced", () => {
+test("active leases renew but idle expiry and wrong-plugin isolation remain enforced", async () => {
   const originalNow = Date.now;
   let now = 1000;
   Date.now = () => now;
   const pages = createHtmlSessions();
   try {
-    const lease = pages.open("inventory-aqkc", session, {}, {});
+    const lease = pages.open("inventory-aqkc", session, randomUUID());
     now += 299000;
-    pages.get(lease, "inventory-aqkc");
+    pages.consume(lease);
     now += 299000;
-    assert.ok(pages.get(lease, "inventory-aqkc"));
-    assert.throws(() => pages.get(lease, "inventory-other"), /WRONG_PLUGIN/);
+    assert.deepEqual(pages.consume(lease), []);
+    await assert.rejects(
+      pages.invoke("inventory-other", session, "context", {}, new AbortController().signal),
+      /还没有打开业务页面/,
+    );
     now += 300001;
-    assert.throws(() => pages.get(lease), /PAGE_LEASE_EXPIRED/);
+    assert.throws(() => pages.consume(lease), /PAGE_LEASE_EXPIRED/);
   } finally {
     pages.clear();
     Date.now = originalNow;
@@ -25,16 +29,29 @@ test("active leases renew but idle expiry and wrong-plugin isolation remain enfo
 test("a conversation without an open page reports it instead of a raw failure", async () => {
   const pages = createHtmlSessions();
   try {
-    assert.equal(pages.has("inventory-aqkc", session), false);
     await assert.rejects(
       () => pages.invoke("inventory-aqkc", session, "context", {}, new AbortController().signal),
       /还没有打开业务页面/,
     );
-    const lease = pages.open("inventory-aqkc", session, {}, {});
-    assert.equal(pages.has("inventory-aqkc", session), true);
-    assert.equal(pages.has("inventory-other", session), false);
+    const lease = pages.open("inventory-aqkc", session, randomUUID());
+    pages.syncContext(lease, { sku: "A" });
+    const observed = await pages.invoke(
+      "inventory-aqkc",
+      session,
+      "context",
+      {},
+      new AbortController().signal,
+    );
+    assert.deepEqual(observed.context, { sku: "A" });
+    await assert.rejects(
+      pages.invoke("inventory-other", session, "context", {}, new AbortController().signal),
+      /还没有打开业务页面/,
+    );
     pages.close(lease);
-    assert.equal(pages.has("inventory-aqkc", session), false);
+    await assert.rejects(
+      pages.invoke("inventory-aqkc", session, "context", {}, new AbortController().signal),
+      /还没有打开业务页面/,
+    );
   } finally {
     pages.clear();
   }
@@ -130,8 +147,11 @@ test("full pagination preserves order and checks final total", async () => {
 });
 test("page capabilities cannot cross plugins/conversations; logout rejects queued work", async () => {
   const pages = createHtmlSessions(),
-    lease = pages.open("inventory-fc", session, {}, {});
-  assert.throws(() => pages.get(lease, "inventory-dealer"));
+    lease = pages.open("inventory-fc", session, randomUUID());
+  await assert.rejects(
+    pages.invoke("inventory-dealer", session, "context", {}, new AbortController().signal),
+    /还没有打开业务页面/,
+  );
   await assert.rejects(
     pages.invoke(
       "inventory-fc",
@@ -141,7 +161,7 @@ test("page capabilities cannot cross plugins/conversations; logout rejects queue
       new AbortController().signal,
     ),
   );
-  pages.get(lease).actions = [{ name: "refresh" }];
+  pages.registerAction(lease, "refresh", "Refresh inventory");
   const pending = pages.invoke(
     "inventory-fc",
     session,
@@ -151,12 +171,12 @@ test("page capabilities cannot cross plugins/conversations; logout rejects queue
   );
   pages.clear();
   await assert.rejects(pending, /关闭|登录/);
-  assert.throws(() => pages.get(lease));
+  assert.throws(() => pages.consume(lease));
 });
 test("registered page action returns through correlated reply; cancellation clears queue", async () => {
   const pages = createHtmlSessions(),
-    lease = pages.open("inventory-fc", session, {}, {});
-  pages.get(lease).actions = [{ name: "filter" }];
+    lease = pages.open("inventory-fc", session, randomUUID());
+  pages.registerAction(lease, "filter", "Filter warehouse");
   const response = pages.invoke(
       "inventory-fc",
       session,
@@ -164,14 +184,14 @@ test("registered page action returns through correlated reply; cancellation clea
       { warehouseId: "A" },
       new AbortController().signal,
     ),
-    event = pages.get(lease).queue[0];
+    event = pages.consume(lease)[0];
   pages.reply(lease, { id: event.id, result: { status: "filtered" } });
   assert.deepEqual(await response, { status: "filtered" });
   const abort = new AbortController();
   const cancelled = pages.invoke("inventory-fc", session, "filter", {}, abort.signal);
   abort.abort();
   await assert.rejects(cancelled, /CANCELLED/);
-  assert.equal(pages.get(lease).queue.length, 0);
+  assert.equal(pages.consume(lease).length, 0);
   pages.clear();
 });
 

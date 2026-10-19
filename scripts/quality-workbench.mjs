@@ -78,23 +78,40 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
       // Declaration emission adds regular files; lstat never follows external targets.
       if ((await lstat(join(prepared, file))).isFile()) continue;
     }
-    const workbenchConfig = file === "lib/business/inventory-apsplan/sql.config.json";
     if (
       line.startsWith("?? ") &&
-      (workbenchConfig || (file.startsWith("lib/business/inventory-aqkc/skills/") && manage))
+      /^lib\/business\/inventory-(?:aqkc|fc|qll|apsplan|dealer)\/sql\.config\.json$/.test(file)
     ) {
-      const owner = workbenchConfig ? source : await realpath(manage.path);
-      const ownerHead = workbenchConfig ? head : manage.head;
-      if (!/^[a-f0-9]{40}$/.test(ownerHead) || git(owner, "rev-parse", "HEAD") !== ownerHead)
-        throw Error(
-          workbenchConfig
-            ? "QUALITY_WORKBENCH_SOURCE_MISMATCH"
-            : "QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH",
-        );
-      const resource = workbenchConfig
-        ? file.slice("lib/".length)
-        : file.replace(/^lib\/business\//, "business-resources/");
-      const entry = git(owner, "ls-tree", ownerHead, "--", resource);
+      const resource = file.slice(4);
+      const entry = git(source, "ls-tree", head, "--", resource);
+      const original = join(source, resource),
+        output = join(prepared, file);
+      if (
+        /^100644 blob [a-f0-9]{40}\t/.test(entry) &&
+        (await lstat(output)).isFile() &&
+        (await realpath(output)) === output &&
+        (await lstat(original)).isFile() &&
+        (await realpath(original)) === original
+      ) {
+        const bytes = await readFile(original);
+        const blob = createHash("sha1")
+          .update("blob " + bytes.length + "\0")
+          .update(bytes)
+          .digest("hex");
+        if (entry.split("\t")[0].endsWith(" " + blob) && bytes.equals(await readFile(output)))
+          continue;
+      }
+    }
+    if (
+      line.startsWith("?? ") &&
+      file.startsWith("lib/business/inventory-aqkc/skills/") &&
+      manage
+    ) {
+      const owner = await realpath(manage.path);
+      if (!/^[a-f0-9]{40}$/.test(manage.head) || git(owner, "rev-parse", "HEAD") !== manage.head)
+        throw Error("QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH");
+      const resource = file.replace(/^lib\/business\//, "business-resources/");
+      const entry = git(owner, "ls-tree", manage.head, "--", resource);
       const original = join(owner, resource),
         output = join(prepared, file);
       if (

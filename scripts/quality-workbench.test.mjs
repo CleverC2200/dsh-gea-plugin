@@ -51,6 +51,11 @@ function preparedFixture(t, worktree = false) {
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
     writeFileSync(join(source, "static", id, "page.json"), "{}\n");
   }
+  mkdirSync(join(source, "business/inventory-dealer"), { recursive: true });
+  writeFileSync(
+    join(source, "business/inventory-dealer/sql.config.json"),
+    '{"schemaVersion":1,"agentId":"inventory-dealer"}\n',
+  );
   for (const file of ["host.js", "client.js", "types/host.d.ts", "types/client.d.ts"])
     writeFileSync(join(source, "lib", file), "original output\n");
   const git = (...args) =>
@@ -590,4 +595,20 @@ test("a real prepared worktree asset receipt admits the same five-source caller 
     false,
     "changed prepared bytes are refused before snapshot creation",
   );
+});
+
+test("copied Agent SQL config must equal its frozen Workbench source and cannot be redirected", async (t) => {
+  const fixture = preparedFixture(t);
+  const original = join(fixture.source, "business/inventory-dealer/sql.config.json");
+  const output = join(fixture.prepared, "lib/business/inventory-dealer/sql.config.json");
+  mkdirSync(join(output, ".."), { recursive: true });
+  copyFileSync(original, output);
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(output, "changed SQL config");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  rmSync(output);
+  symlinkSync(original, output);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });

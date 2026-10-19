@@ -13,7 +13,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { readDeployment } from "../scripts/deployment.mjs";
 import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 import { withSourceSetup } from "./fixtures/source-test.mjs";
-import { waitProfileReady } from "./fixtures/profile-ready.mjs";
+import { waitProfileReady, probeProfileBusiness } from "./fixtures/profile-ready.mjs";
 import { fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
@@ -474,6 +474,7 @@ async function createProfile(t, options) {
       process.env.GEA_TEST_SOURCE_CORE === "1" && !options.desktopGraph
         ? { combination: admitted.combination, core: admitted.core, previous: previousHost }
         : undefined;
+    let authenticatedLaunch;
     const launch = await waitProfileReady({
       child,
       runtime,
@@ -491,16 +492,25 @@ async function createProfile(t, options) {
         }
       },
       recordLifecycle,
+      probe: async (url, readySignal) => {
+        const currentOrigin = new URL(url).origin;
+        if (authenticatedLaunch !== url) {
+          const exchange = await fetch(url, { redirect: "manual", signal: readySignal });
+          cookie = exchange.headers
+            .getSetCookie()
+            .map((value) => value.split(";")[0])
+            .join("; ");
+          if (!cookie) throw new Error("Launch authentication failed");
+          authenticatedLaunch = url;
+        }
+        if (options.coreOnly) return true;
+        // Core can expose its URL before Manage's asynchronous services are installed.
+        return probeProfileBusiness(currentOrigin, cookie, readySignal);
+      },
     });
     origin = new URL(launch).origin;
     recordLifecycle({ event: "host-ready", origin });
     t.signal?.throwIfAborted();
-    const exchange = await fetch(launch, { redirect: "manual", signal: t.signal });
-    cookie = exchange.headers
-      .getSetCookie()
-      .map((value) => value.split(";")[0])
-      .join("; ");
-    if (!cookie) throw new Error("Launch authentication failed");
   }
   const api = {
     dir,
@@ -531,7 +541,13 @@ async function createProfile(t, options) {
         },
         body: JSON.stringify(payload),
       });
-      if (response.status !== 200) throw new Error("HTTP " + response.status);
+      if (response.status !== 200) {
+        const diagnostic = output
+          .slice(-12000)
+          .replace(/Bearer\s+[^\s"',}]+/gi, "Bearer <REDACTED>")
+          .replace(/((?:token|password|secret)["']?\s*[:=]\s*["']?)[^\s"',}]+/gi, "$1<REDACTED>");
+        throw new Error(`HTTP ${response.status} at ${endpoint}\nProfile startup: ${diagnostic}`);
+      }
       return response.json();
     },
     async remote(endpoint, request) {
