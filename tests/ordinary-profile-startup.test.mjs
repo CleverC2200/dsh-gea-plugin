@@ -45,7 +45,10 @@ async function start(home, config = {}) {
           },
         },
       });
-      ctx.provide("workbenchPages", { packages: () => [], registerBusinessPage: () => dispose });
+      ctx.provide("workbenchPages", {
+        packages: () => [],
+        registerBusinessPage: () => dispose,
+      });
       ctx.provide("agentResources", {
         register: async (rows) => {
           resources.push(...rows);
@@ -108,7 +111,12 @@ test("ordinary Loader mounts GEA with empty settings and a profile-owned runtime
   assert.equal(f.agentWatchers.size, 1, "Agent selection changes refresh business permissions");
   for (const listener of f.agentWatchers) listener();
   assert.equal((await stat(join(f.dir, "gea"))).isDirectory(), true);
-  assert.equal(f.resources[0].id, "gea-readonly");
+  assert.deepEqual(
+    f.resources.map((resource) => resource.id),
+    ["gea-workbench-tools", "gea-readonly"],
+  );
+  assert.equal(f.resources[0].profile.consumerCode, "workbench");
+  assert.equal(f.resources[0].prompt, undefined);
   assert.deepEqual(f.models, [["gea-analysis"], []]);
   const status = await f.routes.get("/api/gea-proof/status").fetch(
     new Request("http://localhost/api/gea-proof/status", {
@@ -141,7 +149,10 @@ test("ordinary Loader preserves explicit runtime directory and rejects invalid a
   const home = await mkdtemp(join(tmpdir(), "gea-ordinary-explicit-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const runtimeDir = join(home, "custom-data");
-  const f = await start(home, { runtimeDir, geaBaseUrl: "https://explicit.example.test/gea" });
+  const f = await start(home, {
+    runtimeDir,
+    geaBaseUrl: "https://explicit.example.test/gea",
+  });
   assert.equal((await stat(runtimeDir)).isDirectory(), true);
   const status = await (
     await f.routes.get("/api/gea-proof/status").fetch(

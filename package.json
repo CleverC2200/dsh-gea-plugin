@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.166",
+  "version": "0.0.167",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -205,7 +205,7 @@
     "packages/*"
   ],
   "peerDependencies": {
-    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12",
+    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13",
     "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",
@@ -218,6 +218,6 @@
     "@deepseek-ai/dsh-timeout": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1",
-    "dsh-agent-manage": "0.6.3-company.16 || 0.6.3-company.17 || 0.6.3-company.18 || 0.6.3-company.19 || 0.6.3-company.20 || 0.6.3-company.21"
+    "dsh-agent-manage": "0.6.3-company.16 || 0.6.3-company.17 || 0.6.3-company.18 || 0.6.3-company.19 || 0.6.3-company.20 || 0.6.3-company.21 || 0.6.3-company.21.workbench.1 || 0.6.3-company.22"
   }
 }

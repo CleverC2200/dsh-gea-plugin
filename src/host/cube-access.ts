@@ -2,6 +2,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "dsh-agent-manage/user-agent-cube";
 import type { Business } from "./business.ts";
 import { profileFor } from "./prompt-policy.ts";
+import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
 /** Cube-only ownership. A personal reference never enters the business profile registry. */
 export function resolveCubeAccess(ctx: Context, business: Business, sessionId: string) {
@@ -19,11 +20,13 @@ export function resolveCubeAccess(ctx: Context, business: Business, sessionId: s
   source.signal.throwIfAborted();
   const identity = business.identitySignal();
   identity.throwIfAborted();
+  let consumerCode = source.consumerCode;
+  if (association) consumerCode = WORKBENCH_AGENT_CODE;
+  else if (sourceRef === "gea-readonly") consumerCode = business.config.analysisAgentCode;
   return {
     preset,
     sourceRef,
-    consumerCode:
-      sourceRef === "gea-readonly" ? business.config.analysisAgentCode : source.consumerCode,
+    consumerCode,
     sourceSignal: source.signal,
     associationSignal: association?.signal,
     generation: association?.generation,

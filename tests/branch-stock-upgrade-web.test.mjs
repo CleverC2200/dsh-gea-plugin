@@ -251,7 +251,7 @@ test(
       );
       assert.deepEqual(
         resources.map((value) => value.id),
-        ["gea-readonly", "gea-html-inventory-fc"],
+        ["auto-negotiation", "gea-readonly", "gea-html-inventory-fc"],
       );
       const agents = selectedResource.interpreters;
       assert.deepEqual(

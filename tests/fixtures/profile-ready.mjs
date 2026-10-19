@@ -11,6 +11,7 @@ export async function waitProfileReady({
   readOutput,
   readLaunchLog,
   recordLifecycle = () => {},
+  probe,
 }) {
   let deadline = source ? undefined : Date.now() + timeoutMs;
   const observed = new Set();
@@ -58,7 +59,14 @@ export async function waitProfileReady({
     const output = readOutput();
     const log = await readLaunchLog();
     const launch = [...log.matchAll(/dsh web: (http[^\s]+)(?=\r?\n)/g)].at(-1)?.[1];
-    if (launch && deadline !== undefined) return launch;
+    if (launch && deadline !== undefined) {
+      const remaining = Math.max(1, deadline - Date.now());
+      const readySignal = AbortSignal.any([
+        ...(signal ? [signal] : []),
+        AbortSignal.timeout(remaining),
+      ]);
+      if (!probe || (await probe(launch, readySignal))) return launch;
+    }
     if (child.exitCode !== null || child.signalCode !== null)
       throw Error("Profile exited: " + output);
     // Leave another observation before a short startup deadline, without extending it.
@@ -67,4 +75,28 @@ export async function waitProfileReady({
     await delay(interval, undefined, { signal });
   }
   throw Error("Profile not ready: " + readOutput());
+}
+
+/** Prove local routes are installed without refreshing identity or issuing business reads. */
+export async function probeProfileBusiness(origin, cookie, signal, fetcher = fetch) {
+  const response = await fetcher(origin + "/api/gea-proof/api-log/snapshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie, Origin: origin },
+    body: "{}",
+    signal,
+  });
+  if (response.status === 404) {
+    await response.body?.cancel();
+    return false;
+  }
+  if (response.status !== 200)
+    throw new Error("GEA business readiness failed: HTTP " + response.status);
+  const result = await response.json();
+  // Guest and read-only policy errors also prove the business handler is installed.
+  if (
+    result?.ok !== true &&
+    !(result?.ok === false && typeof result.error?.code === "string" && result.error.code)
+  )
+    throw new Error("GEA business readiness failed: invalid response");
+  return true;
 }

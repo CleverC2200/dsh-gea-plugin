@@ -101,3 +101,91 @@ test("the default non-Source readiness clock still starts at wrapper spawn", asy
   assert.equal(result.cleanup.stages.length, 0);
   assert.equal(result.cleanup.childExited, true);
 });
+
+test("Core launch alone cannot admit a business profile while its services are still pending", async () => {
+  const { waitProfileReady } = await import("./fixtures/profile-ready.mjs");
+  let probes = 0;
+  const launch = await waitProfileReady({
+    child: { exitCode: null, signalCode: null },
+    timeoutMs: 500,
+    readOutput: () => "",
+    readLaunchLog: () => "dsh web: http://127.0.0.1:9999/\n",
+    probe: async (url, signal) => {
+      signal.throwIfAborted();
+      assert.equal(url, "http://127.0.0.1:9999/");
+      return ++probes === 2;
+    },
+  });
+  assert.equal(launch, "http://127.0.0.1:9999/");
+  assert.equal(probes, 2);
+});
+test("business readiness keeps the original deadline and cancellation", async () => {
+  const { waitProfileReady } = await import("./fixtures/profile-ready.mjs");
+  const options = {
+    child: { exitCode: null, signalCode: null },
+    timeoutMs: 30,
+    readOutput: () => "business services pending",
+    readLaunchLog: () => "dsh web: http://127.0.0.1:9999/\n",
+    probe: async () => false,
+  };
+  await assert.rejects(waitProfileReady(options), /Profile not ready/);
+  const abort = new AbortController();
+  abort.abort(Error("BUSINESS_START_CANCELLED"));
+  await assert.rejects(
+    waitProfileReady({ ...options, signal: abort.signal }),
+    /BUSINESS_START_CANCELLED/,
+  );
+  await assert.rejects(
+    waitProfileReady({
+      ...options,
+      probe: async () => {
+        throw Error("BUSINESS_START_FAILED");
+      },
+    }),
+    /BUSINESS_START_FAILED/,
+  );
+});
+
+test("business route probe uses only the local log snapshot, including guest profiles", async () => {
+  const { probeProfileBusiness } = await import("./fixtures/profile-ready.mjs");
+  const signal = new AbortController().signal;
+  for (const payload of [
+    { ok: true, value: { entries: [] } },
+    { ok: false, error: { code: "LOGIN_REQUIRED" } },
+  ]) {
+    let requests = 0;
+    assert.equal(
+      await probeProfileBusiness(
+        "http://127.0.0.1:9999",
+        "session=fixture",
+        signal,
+        async (url, init) => {
+          requests++;
+          assert.equal(url, "http://127.0.0.1:9999/api/gea-proof/api-log/snapshot");
+          assert.equal(init.method, "POST");
+          assert.equal(init.body, "{}");
+          assert.equal(init.headers.Cookie, "session=fixture");
+          assert.equal(init.headers.Origin, "http://127.0.0.1:9999");
+          assert.equal(init.signal, signal);
+          return Response.json(payload);
+        },
+      ),
+      true,
+    );
+    assert.equal(requests, 1);
+  }
+});
+test("business route probe retries missing routes but rejects invalid responses", async () => {
+  const { probeProfileBusiness } = await import("./fixtures/profile-ready.mjs");
+  const probe = (response) =>
+    probeProfileBusiness(
+      "http://127.0.0.1:9999",
+      "",
+      new AbortController().signal,
+      async () => response,
+    );
+  assert.equal(await probe(new Response("Not found", { status: 404 })), false);
+  await assert.rejects(probe(new Response("Unavailable", { status: 503 })), /HTTP 503/);
+  for (const invalid of [null, {}, { ok: false }, { ok: false, error: { code: "" } }])
+    await assert.rejects(probe(Response.json(invalid)), /invalid response/);
+});

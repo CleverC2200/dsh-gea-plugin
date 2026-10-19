@@ -6,7 +6,7 @@
 
 [Business](../src/host/business.ts) 持有唯一 GEA 身份、环境、凭据和登录代际。[client](../src/client.tsx) 发布一个 [只读身份 reader](../src/business-identity-client.ts) 与账户动作；Native、HTML 和账户呈现消费这个投影。读取故障保留最后确认身份，不把未知或读取失败当作主动退出。
 
-[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。`sessionConsumer` 在无可信 profile 时使用 `analysisAgentCode` 作为普通模型默认路由；页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
+[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。选用 GEA 来源的个人模式通过实际 Core 声明使用共用 `workbench` 模型路由；其他无可信 profile 的会话仍使用 `analysisAgentCode` 默认路由。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
 
 客户库存页在为 `customer-inventory-preview` 建立 Gateway 委托后，通过当前用户解析工具取得并核对角色/范围回执；回执必须同时匹配用户、会话、对话和 Consumer。`/api/gea-html/identity` 仅投影角色和 `regions`、`provinces`、`customerCodes`、版本/失效时间，绝不投影委托 token 或原始回执。缺少 `customerInventoryScope.status="granted"` 时范围为未配置，不得把页面角色标签解释为全量数据权。受控 SQL 的实际行级授权仍由 GEA Gateway 按当前委托执行，页面展示或筛选不构成授权。
 
@@ -36,7 +36,7 @@ Native 页面授权与当前页面身份投影属于同一个 grant。打开时�
 
 Cube-New 的来源由 Host `cubeMcpCodes` 分别登记生产与测试环境。公司默认值从 `desktop/company.config.json` 读取，仅使用当前环境的已确认来源；缺少配置时不开放查询，也不回退旧 Cube。GEA 登录、业务页面和持久会话继续保留。
 
-个人 Agent 可引用一个 GEA Host 验证的已安装 Cube 来源，仅保存来源 ID 与启停。Manage 将引用声明挂入实际 Core 预设 revision，GEA 用公开 `serviceFor` 读取当前 Session 及其子 Agent 的原声明，再复核当前关联、插件 owner 与身份。该引用只开放两项 Cube 工具，不安装业务 profile，不授予页面动作或业务写入。插件来源只允许启停；显式复制为个人 Agent 只复制获准的提示词、Skill 与 Cube 引用。
+个人 Agent 在现有配置页的 MCP Tab 选择 `GEA Workbench` 共用来源，也可保留既有可信 Cube 引用；所有个人模式的 Cube 和知识库调用统一使用 `workbench` Consumer，业务预设保持原编码。共用来源只提供工具，不发布额外预设或覆盖模式的提示词与 Skill。每个模式仅保存一个来源 ID 与启停。Manage 将引用声明挂入实际 Core 预设 revision，GEA 用公开 `serviceFor` 读取当前 Session 及其子 Agent 的原声明，再复核当前关联、插件 owner 与身份。该引用只开放已接入的 Cube 查询和知识库工具，不安装业务 profile，不授予页面动作或业务写入。插件来源只允许启停；显式复制为个人 Agent 只复制获准的提示词、Skill 与 Cube 引用。
 
 发现与调用共用 [Cube 准入](../src/host/cube-access.ts)。关联停用、删除或来源撤销立即刷新 schema mask 并取消在途调用；返回前比较完整身份与 owner 归属，相同 Consumer 的新 owner 也不能接收旧结果。原生 v2 工具 schema 与首轮 publication 等待保持。
 

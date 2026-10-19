@@ -1,3 +1,4 @@
+import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
   salesPlanDraftSnapshot,
@@ -59,6 +60,7 @@ import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 
 import { createCapabilityRegistry, type CapabilityRegistry } from "../capability/registry.ts";
 import { workbenchContract, effectRank, type CapabilityEffect } from "../capability/contract.ts";
+import { sharedAgentCapability, WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -773,6 +775,7 @@ export class Business {
       () => this.base,
     );
     this.capabilities = createCapabilityRegistry([
+      sharedAgentCapability,
       workbenchContract({
         surface: "gea-workbench",
         pageIds: ["gea-workbench"],
@@ -1951,8 +1954,9 @@ export class Business {
 
   private readonly moduleMcpCache = new Map<string, { token: string; module: GatewayMcpClient }>();
   /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
-  invalidateModuleMcp(consumerCode: string): void {
-    this.moduleMcpCache.delete(consumerCode);
+  invalidateModuleMcp(consumerCode: string, expected?: GatewayMcpClient): void {
+    if (!expected || this.moduleMcpCache.get(consumerCode)?.module === expected)
+      this.moduleMcpCache.delete(consumerCode);
   }
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
@@ -2295,7 +2299,11 @@ export class Business {
   }
 
   /** 为受信任的 HTML 插件提供带用户权限的只读 SQL 查询。SQL 仍由 GEA 网关按 consumerCode 审核。 */
-  async pluginSql(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+  async pluginSql(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+    configured = false,
+  ): Promise<unknown> {
     const query =
       payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
         ? object(payload.query)
@@ -2310,6 +2318,7 @@ export class Business {
       "maxRows",
       "packing",
       "resultShape",
+      "includeTotal",
       "query",
     ]);
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
@@ -2373,14 +2382,22 @@ export class Business {
         this.sqlReadLimit?.assertAvailable(consumerCode);
         const delegation = await getDelegation();
         try {
-          // 统一走分页路径：同一条 SQL 不分页时会报底层错误，模型也不该被要求记住页码。
-          const result = await readHtmlQuery(withDefaultPaging(query), {
+          // 配置查询自带 LIMIT/OFFSET；旧调用继续由适配器管理分页。
+          const transport = {
             endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
             token: delegation.delegationToken,
             fetch: this.apiLog.fetch,
             signal,
             limit: this.sqlReadLimit,
-          });
+          };
+          const result = configured
+            ? await createGeaSqlDatabase(() => delegation.delegationToken, transport)
+                .queryConfigured!({
+                sql: query.sql,
+                parameters: query.parameters,
+                includeTotal: false,
+              } as ConfiguredSqlRequest)
+            : await readHtmlQuery(withDefaultPaging(query), transport);
           return result;
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {
@@ -2433,7 +2450,7 @@ export class Business {
   assertExecutionAllowed(consumerCode: string, effect: CapabilityEffect = "view"): void {
     this.salesReadonly?.assertConsumer(consumerCode, effect);
     const contract =
-      consumerCode === this.config.analysisAgentCode
+      consumerCode === this.config.analysisAgentCode && consumerCode !== WORKBENCH_AGENT_CODE
         ? this.capabilities.get("gea-workbench")
         : this.capabilities.list().find((item) => item.data?.consumerCode === consumerCode);
     let code: string | undefined;

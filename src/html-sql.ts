@@ -6,7 +6,12 @@ type Scalar = string | number | boolean | null;
 type Row = Record<string, unknown>;
 type ColumnMetadata = { returnedColumns?: unknown[]; rejectedColumns?: unknown[] };
 type SqlRows = ColumnMetadata & { rows: Row[]; total?: number | null };
-type QueryOptions = { pageSize: number; pageNo?: number };
+export type ConfiguredSqlRequest = {
+  sql: string;
+  parameters: Record<string, unknown>;
+  includeTotal: false;
+};
+type QueryOptions = { pageSize: number; pageNo?: number; configured?: ConfiguredSqlRequest };
 /** One Host-owned allowance is reused by all queries and renewed delegations. */
 export type SqlReadLimit = { maxRows: number; maxPages: number; beforeRequest(): void };
 export type RowPacking = {
@@ -15,6 +20,7 @@ export type RowPacking = {
   timestamps?: string[];
 };
 export type BusinessDatabase = {
+  queryConfigured?(request: ConfiguredSqlRequest): Promise<SqlRows>;
   query(sql: string, values?: unknown[]): Promise<SqlRows>;
   queryPage(sql: string, values: unknown[], pageNo: number, pageSize: number): Promise<SqlRows>;
   queryPackedRows?(sql: string, values: unknown[], packing: RowPacking): Promise<{ rows: Row[] }>;
@@ -100,6 +106,10 @@ export class GeaSqlError extends Error {
   readonly code: string;
   readonly status: number;
   readonly retryable: boolean;
+  failure?: Record<string, unknown>;
+  gatewayErrorCode?: string;
+  returnedColumns?: unknown[];
+  rejectedColumns?: unknown[];
   constructor(code: string, message: string, status = 503, retryable = false) {
     super(message);
     this.name = "GeaSqlError";
@@ -251,7 +261,7 @@ export function createGeaSqlDatabase(
     values: unknown[] = [],
     options: QueryOptions = { pageSize: 200 },
   ) {
-    const prepared = prepareGeaSql(sql, values);
+    const prepared = options.configured ?? prepareGeaSql(sql, values);
     const { pageSize } = options;
     if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 200) {
       throw new GeaSqlError("GEA_SQL_PARAMETER_INVALID", "业务查询分页大小无效", 400);
@@ -276,6 +286,7 @@ export function createGeaSqlDatabase(
       );
       const timeoutMs = Number.isFinite(configured) && configured > 0 ? configured * 1000 : 30_000;
       let payload: unknown;
+      let metadata: ColumnMetadata = {};
       try {
         const response = await (transport.fetch ?? fetch)(target, {
           method: "POST",
@@ -285,7 +296,15 @@ export function createGeaSqlDatabase(
             "X-Delegation-Token": token,
             "X-Request-Id": randomUUID(),
           },
-          body: JSON.stringify(geaSqlPageRequest(prepared, pageNo, pageSize, includeTotal)),
+          body: JSON.stringify(
+            options.configured ??
+              geaSqlPageRequest(
+                prepared as ReturnType<typeof prepareGeaSql>,
+                pageNo,
+                pageSize,
+                includeTotal,
+              ),
+          ),
           redirect: "error",
           cache: "no-store",
           signal: AbortSignal.any([transport.signal, AbortSignal.timeout(timeoutMs)]),
@@ -322,7 +341,7 @@ export function createGeaSqlDatabase(
                 upstreamCode,
               ));
           const denied = response.status === 403;
-          throw new GeaSqlError(
+          const failure = new GeaSqlError(
             rejected
               ? "GEA_GATEWAY_SESSION_REJECTED"
               : typeof upstreamCode === "string"
@@ -352,11 +371,20 @@ export function createGeaSqlDatabase(
               ) &&
               (response.status === 429 || response.status >= 500),
           );
+          Object.assign(failure, {
+            failure: safeDiagnostic.details.failure,
+            gatewayErrorCode: safeDiagnostic.details.upstreamCode,
+            returnedColumns: columnMetadata(body).returnedColumns,
+            rejectedColumns: columnMetadata(body).rejectedColumns,
+          });
+          throw failure;
         }
         if (!("result" in body))
           throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 查询返回格式无效", 502, true);
         payload = body.result;
+        metadata = columnMetadata(body);
       } catch (error) {
+        transport.signal.throwIfAborted();
         if (error instanceof GeaSqlError) throw error;
         const timeout =
           error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
@@ -370,6 +398,19 @@ export function createGeaSqlDatabase(
       const pageRows = rowsFrom(payload);
       if (!pageRows)
         throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 查询返回格式无效", 502, true);
+      if (options.configured && record(payload)) {
+        if (payload.complete === false || payload.truncated === true || payload.hasMore === true)
+          throw new GeaSqlError(
+            "GEA_SQL_RESULT_INCOMPLETE",
+            "GEA SQL 返回被截断，未生成完整结果",
+            502,
+          );
+        if (
+          "rowCount" in payload &&
+          (!Number.isSafeInteger(payload.rowCount) || payload.rowCount !== pageRows.length)
+        )
+          throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 返回行数不一致", 502);
+      }
       const total = totalFrom(payload);
       if (
         transport.limit &&
@@ -388,7 +429,7 @@ export function createGeaSqlDatabase(
       if (includeTotal && total === null)
         throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 计数页缺少总数", 502, true);
       // Validate metadata whenever supplied; older compatible envelopes may nest only rows/total.
-      if (record(payload))
+      if (!options.configured && record(payload))
         for (const [key, expected] of Object.entries({
           pageNo,
           pageSize,
@@ -397,8 +438,13 @@ export function createGeaSqlDatabase(
           if (key in payload && (payload[key] === null || Number(payload[key]) !== expected))
             throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 分页位置不匹配", 502, true);
         }
-      return { rows: pageRows, total, ...columnMetadata(payload) };
+      return { rows: pageRows, total, ...metadata };
     };
+    if (options.configured) {
+      // The installed query owns LIMIT/OFFSET and its paired count. Exactly one physical request.
+      const result = await fetchPage(1, false);
+      return result;
+    }
     if (options.pageNo !== undefined) return fetchPage(options.pageNo, true);
     const first = await fetchPage(1, true),
       total = first.total;
@@ -472,6 +518,8 @@ export function createGeaSqlDatabase(
   }
   return {
     query,
+    queryConfigured: (request) =>
+      execute(request.sql, [], { pageSize: 200, pageNo: 1, configured: request }),
     queryWithOptions: query,
     queryPackedRows,
     queryPage: (sql, values, pageNo, pageSize) => execute(sql, values, { pageNo, pageSize }),
