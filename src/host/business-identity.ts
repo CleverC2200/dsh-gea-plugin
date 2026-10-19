@@ -1,6 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { Business } from "./business.ts";
 import { profileFor } from "./prompt-policy.ts";
+import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
 /** HTML resource availability comes from Manage's current validated registration, not the retained preset profile. */
 export async function assertBusinessResourceAvailable(
@@ -51,6 +52,7 @@ export function sessionConsumer(ctx: Context, business: Business, sessionId?: st
   const profile = profileFor(preset ?? undefined);
   if (profile)
     return preset === "gea-readonly" ? business.config.analysisAgentCode : profile.consumerCode;
+  if (agent && ctx.userAgents?.cubeFor(agent)) return WORKBENCH_AGENT_CODE;
   return business.config.analysisAgentCode;
 }
 

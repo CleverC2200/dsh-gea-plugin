@@ -40,7 +40,11 @@ test("resource discovery uses the negotiated route and trusted session, handles 
         success: true,
         result: {
           accessDecision: { allowed: true },
-          gatewayContext: { ...consumer, sessionId: "session", conversationId: "conversation" },
+          gatewayContext: {
+            ...consumer,
+            sessionId: "session",
+            conversationId: "conversation",
+          },
           delegationToken: "fixture-secret",
         },
       });
@@ -50,7 +54,14 @@ test("resource discovery uses the negotiated route and trusted session, handles 
         : Response.json(response);
     return Response.json({
       id: 1,
-      result: { tools: [{ name: "query_business_data", _meta: { sourceCode: "cube" } }] },
+      result: {
+        tools: [
+          {
+            name: "query_business_data",
+            _meta: { sourceType: "MCP", sourceCode: "cube" },
+          },
+        ],
+      },
     });
   };
   const signal = new AbortController().signal;
@@ -61,9 +72,13 @@ test("resource discovery uses the negotiated route and trusted session, handles 
     signal,
     1000,
     fake,
+    { cubeMcpCode: "cube" },
   );
   await assert.rejects(t.authorizedResources("query_business_data", signal), /ROUTE_REQUIRED/);
-  await t.fetch(t.url, { method: "POST", body: JSON.stringify({ id: 1, method: "tools/list" }) });
+  await t.fetch(t.url, {
+    method: "POST",
+    body: JSON.stringify({ id: 1, method: "tools/list" }),
+  });
   const result = await t.authorizedResources("query_business_data", signal);
   assert.equal(result.resources.length, 1);
   const sent = calls.at(-1);
