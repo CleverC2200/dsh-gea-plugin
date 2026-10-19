@@ -464,7 +464,9 @@ test(
   "successful submission with incomplete readback survives close and only resumes reading",
   { timeout: 90000 },
   async (t) => {
-    const { frame, submitted, allowReadback } = await fixture(t, { readbackFailure: true });
+    const { frame, page, app, submitted, allowReadback } = await fixture(t, {
+      readbackFailure: true,
+    });
     await selectPlan(frame);
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
     const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
@@ -482,6 +484,7 @@ test(
     await expect(frame.getByText(`计划 ${PLAN_A} 仍有待核对`, { exact: false })).toBeVisible();
     await frame.getByRole("button", { name: "刷新数据", exact: true }).click();
     await expect(frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" })).toHaveCount(0);
+    await captureEvidence(page, app, "pending-receipt-recovery");
     allowReadback();
     await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
     await expect(dialog).toContainText(PLAN_A);
@@ -643,7 +646,7 @@ test(
   "unconfirmed customer responsibility is explained on its disabled row",
   { timeout: 90000 },
   async (t) => {
-    const { frame, submitted } = await fixture(t, {
+    const { frame, page, app, submitted } = await fixture(t, {
       role: "customer",
       returnedStatus: 6,
       originalSubmitter: "other-owner",
@@ -651,6 +654,7 @@ test(
     const row = frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" }).first();
     await expect(row.locator('input[type="checkbox"]')).toBeDisabled();
     await expect(row).toContainText("无法确认修改责任身份");
+    await captureEvidence(page, app, "unconfirmed-customer");
     assert.equal(submitted.length, 0);
   },
 );
