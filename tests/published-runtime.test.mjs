@@ -13,6 +13,9 @@ test("fixed Core and workbench resolve while ordinary patches preserve the offic
   const root = fileURLToPath(new URL("../", import.meta.url));
   const coreRoot = resolve(root, "../../official-latest-standard");
   const manifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+  const workbenchPackage = JSON.parse(
+    await readFile(resolve(root, "../dsh-agent-workbench/package.json"), "utf8"),
+  );
   const lock = parse(await readFile(resolve(root, "pnpm-lock.yaml"), "utf8"));
   const current = JSON.parse(await readFile(resolve(root, "scripts/current-core.json"), "utf8"));
   assert.equal(current.version, "0.2.1-alpha.1");
@@ -41,7 +44,12 @@ test("fixed Core and workbench resolve while ordinary patches preserve the offic
       "link:../../official-latest-standard/packages/client/ui-layout",
       sdkVersion(core, "@deepseek-ai/dsh-client-ui-layout"),
     ],
-    ["dependencies", "@cleverc2200/dsh-agent-workbench", "link:../dsh-agent-workbench", "0.1.10"],
+    [
+      "dependencies",
+      "@cleverc2200/dsh-agent-workbench",
+      "link:../dsh-agent-workbench",
+      workbenchPackage.version,
+    ],
   ]) {
     assert.equal(manifest[section][name], link);
     assert.deepEqual(lock.importers["."][section][name], { specifier: link, version: link });

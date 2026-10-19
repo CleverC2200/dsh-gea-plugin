@@ -73,9 +73,9 @@ test(
         versions["@cleverc2200/dsh-agent-workbench"],
     );
     const workbenchRange = manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"];
-    for (const version of ["0.1.9", "0.1.10"])
+    for (const version of ["0.1.9", "0.1.10", "0.1.11", "0.1.12"])
       assert.equal(semver.satisfies(version, workbenchRange), true, version);
-    for (const version of ["0.1.8", "0.1.11"])
+    for (const version of ["0.1.8", "0.1.13"])
       assert.equal(semver.satisfies(version, workbenchRange), false, version);
     assert.equal(manifest.devDependencies, undefined);
     assert.ok(

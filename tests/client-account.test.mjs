@@ -28,6 +28,11 @@ test("public account actions consume the same GEA Host identity and reject expir
           environment,
           environments: ["production", "test"],
           authenticated,
+          loginState: authenticated
+            ? "authenticated"
+            : pollStatus === "expired"
+              ? "expired"
+              : "signed-out",
           user: authenticated ? { name: "真实Host投影" } : null,
         },
       });
@@ -171,7 +176,12 @@ for (const [desktop, authenticated, expected] of [
           url === "/api/gea-html/identity"
             ? {
                 scope: authenticated ? "host-owned" : null,
-                status: { environment: "production", authenticated, user: null },
+                status: {
+                  environment: "production",
+                  authenticated,
+                  loginState: authenticated ? "authenticated" : "signed-out",
+                  user: null,
+                },
               }
             : { ok: true, value: { loginId: "company", expiresIn: 120 } },
         ),

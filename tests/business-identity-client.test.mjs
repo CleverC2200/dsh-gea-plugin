@@ -3,6 +3,41 @@ import assert from "node:assert/strict";
 import { createBusinessIdentityReader } from "../src/business-identity-client.ts";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
+test("Host user identifiers remain exact strings and notify changes without accepting numeric IDs", async (t) => {
+  const originalFetch = globalThis.fetch,
+    originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  });
+  globalThis.window = new EventTarget();
+  const user = {
+    id: "9007199254740993",
+    tenantId: "0",
+    username: "alice",
+    name: "Alice",
+    avatar: "avatar",
+  };
+  globalThis.fetch = async () =>
+    Response.json({
+      scope: "host-scope",
+      subject: "host-subject",
+      status: { environment: "test", authenticated: true, loginState: "authenticated", user },
+    });
+  const read = createBusinessIdentityReader();
+  let notices = 0;
+  t.after(read.subscribe(() => notices++));
+  await read.refresh();
+  assert.deepEqual(read.getSnapshot().status.user, user);
+  user.id = "9007199254740994";
+  await read.refresh();
+  assert.equal(read.getSnapshot().status.user.id, user.id);
+  assert.equal(notices, 2);
+  user.id = 9007199254740994;
+  await assert.rejects(read.refresh(), { code: "IDENTITY_INVALID_RESPONSE" });
+  assert.equal(read.getSnapshot().status.user.id, "9007199254740994");
+});
+
 test("the read-only identity route exposes configured environment choices without endpoint or credential state", async (t) => {
   const routes = new Map(),
     cleanups = [];

@@ -6,7 +6,12 @@ type IdentityStatus = Readonly<
     "environment" | "environments" | "authenticated" | "loginState"
   > & {
     user: Readonly<
-      Partial<Pick<NonNullable<ReturnType<Business["status"]>["user"]>, "name" | "avatar">>
+      Partial<
+        Pick<
+          NonNullable<ReturnType<Business["status"]>["user"]>,
+          "id" | "tenantId" | "username" | "name" | "avatar"
+        >
+      >
     > | null;
   }
 >;
@@ -109,7 +114,12 @@ async function requestBusinessIdentityScope(
     if (
       (user &&
         (("name" in user && typeof user.name !== "string") ||
-          ("avatar" in user && user.avatar !== undefined && typeof user.avatar !== "string"))) ||
+          ("avatar" in user && user.avatar !== undefined && typeof user.avatar !== "string") ||
+          ("id" in user && typeof user.id !== "string") ||
+          ("tenantId" in user &&
+            user.tenantId !== undefined &&
+            typeof user.tenantId !== "string") ||
+          ("username" in user && typeof user.username !== "string"))) ||
       ("subject" in value && value.subject !== null && typeof value.subject !== "string") ||
       ("environments" in status &&
         (!Array.isArray(status.environments) ||
@@ -131,6 +141,13 @@ async function requestBusinessIdentityScope(
         loginState: String(status.loginState),
         user: user
           ? {
+              ...("id" in user && typeof user.id === "string" ? { id: user.id } : {}),
+              ...("tenantId" in user && typeof user.tenantId === "string"
+                ? { tenantId: user.tenantId }
+                : {}),
+              ...("username" in user && typeof user.username === "string"
+                ? { username: user.username }
+                : {}),
               ...("name" in user && typeof user.name === "string" ? { name: user.name } : {}),
               ...("avatar" in user && typeof user.avatar === "string"
                 ? { avatar: user.avatar }
@@ -207,6 +224,9 @@ export function createBusinessIdentityReader() {
         previous.status?.environment !== next.status?.environment ||
         JSON.stringify(previous.status?.environments) !==
           JSON.stringify(next.status?.environments) ||
+        previous.status?.user?.id !== next.status?.user?.id ||
+        previous.status?.user?.tenantId !== next.status?.user?.tenantId ||
+        previous.status?.user?.username !== next.status?.user?.username ||
         previous.status?.user?.name !== next.status?.user?.name ||
         previous.status?.user?.avatar !== next.status?.user?.avatar
       ) {

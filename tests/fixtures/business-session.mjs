@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
 
+export async function readPluginAgent(app, id) {
+  const response = await fetch(app.origin + "/api/agent-manage/agents/plugins", {
+    headers: { Cookie: app.cookie },
+  });
+  assert.equal(response.ok, true);
+  const agent = (await response.json()).find((agent) => agent.id === id);
+  assert.ok(agent, id);
+  return agent;
+}
+
 /** Exercise the authenticated public HTTP surface of this test's isolated profile. */
 export async function fixtureRequest(app, path, body) {
   const response = await fetch(app.origin + path, {
