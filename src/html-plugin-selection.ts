@@ -17,11 +17,11 @@ export function selectHtmlPlugins<T extends { id: string; replaces?: string[] }>
 
 /** Requested development pages retain their panels and conversation bindings. */
 export function isHtmlPluginRetired(id: string, mock: boolean, hidden: readonly string[]): boolean {
+  if (id === "inventory-orderworkbench") return true;
   const retainedPreview = [
     "inventory-apsplan",
     "inventory-dms",
     "inventory-customer",
-    "inventory-orderworkbench",
     "inventory-orderfulfillment",
     "plan-regional",
     "category-plan",

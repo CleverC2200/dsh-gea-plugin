@@ -122,11 +122,11 @@ test("requested preview pages remain visible while retired modules stay hidden",
     true,
   );
   const entries = groups.flatMap((group) => group.entries);
-  for (const id of [
-    "inventory-orderworkbench",
-    "inventory-orderfulfillment",
-    "inventory-customer",
-  ]) {
+  assert.equal(
+    entries.some((entry) => entry.id === "inventory-orderworkbench"),
+    false,
+  );
+  for (const id of ["inventory-orderfulfillment", "inventory-customer"]) {
     assert.equal(entries.find((entry) => entry.id === id)?.disabled, false);
   }
   assert.equal(
@@ -144,7 +144,6 @@ test("development pages remain registered with shipped preset configuration", as
     "inventory-apsplan",
     "inventory-dms",
     "inventory-customer",
-    "inventory-orderworkbench",
     "inventory-orderfulfillment",
     "plan-regional",
     "category-plan",
@@ -159,4 +158,9 @@ test("development pages remain registered with shipped preset configuration", as
   assert.equal(isHtmlPluginRetired("inventory-personal", true, []), false);
   assert.equal(isHtmlPluginRetired("inventory-other", true, []), true);
   assert.equal(isHtmlPluginRetired("inventory-qll", false, config.hidden), false);
+});
+
+test("removed order workbench stays retired for old mock and non-mock packages", () => {
+  for (const mock of [true, false])
+    assert.equal(isHtmlPluginRetired("inventory-orderworkbench", mock, []), true);
 });
