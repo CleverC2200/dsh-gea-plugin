@@ -5,7 +5,7 @@
 
 2026-10-19 用户明确选择只更新三个插件包及更新频道。本次发布到现有 OSS plugin-release/packages 及 plugin-detail-test、plugin-detail-stable。桌面安装包、GitLab 与 npm 不在本次范围。
 
-旧 GEA 0.0.162 将桌面构建版本与 Core 运行版本直接比较，导致 UPDATE_CORE_VERSION_MISMATCH。修复已随 PR #98 进入 main。此前本机已通过官方 PluginManager 安装三个新包并重启，已安装、Host 和 client 版本一致；当时 stable 仍是 0.0.165 / 0.1.11 / company.20，因此返回 DOWNGRADE_FORBIDDEN。
+旧 GEA 0.0.162 将桌面构建版本与 Core 运行版本直接比较，导致 UPDATE_CORE_VERSION_MISMATCH。修复提交 `7409e184` 已在 main，本次发布的 GEA 0.0.166 包含该修复。此前本机已通过官方 PluginManager 安装三个新包并重启，已安装、Host 和 client 版本一致；当时 stable 仍是 0.0.165 / 0.1.11 / company.20，因此返回 DOWNGRADE_FORBIDDEN。
 
 本次刷新三仓 main 后打包。GEA 的 PR #99 增加运行环境准备检查与固定历史兼容 fixture，源码由 1b6922fa 前进到 64fbd1f6。重新构建后的运行文件及最终 tgz 与此前客户端安装文件一致。Manage、Workbench main 未变化。内容包括 Skill 目录编辑及系统目录选择、智能编排与销售计划资源、库存 Skill 和此前合入的更新。
 
