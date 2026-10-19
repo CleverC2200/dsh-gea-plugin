@@ -9,7 +9,16 @@ test("delivery retains PR main and manual contexts while feature pushes use thei
   assert.deepEqual(Object.keys(workflow.on).sort(), ["pull_request", "push", "workflow_dispatch"]);
   assert.deepEqual(workflow.on.push, { branches: ["main"] });
   assert.equal(workflow.on.pull_request, null);
-  assert.equal(workflow.on.workflow_dispatch, null);
+  const inputs = workflow.on.workflow_dispatch.inputs;
+  assert.deepEqual(Object.keys(inputs).sort(), [
+    "native_acceptance_bundle_sha256",
+    "native_acceptance_bundle_url",
+    "windows_complete_input",
+  ]);
+  for (const input of Object.values(inputs)) {
+    assert.equal(input.type, "string");
+    assert.equal(input.required, false);
+  }
 });
 
 test("standalone delivery retains package Prompt and source checks while candidate quality owns same-repository events", () => {

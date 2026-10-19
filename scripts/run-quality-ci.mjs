@@ -621,6 +621,31 @@ try {
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
     process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
     if (values.phase === "macos-isolation") {
+      if (existsSync(preparedWorkbench))
+        refuse("QUALITY_PREPARED_ALREADY_EXISTS", preparedWorkbench);
+      run("git", [
+        "-C",
+        workbench.path,
+        "worktree",
+        "add",
+        "--detach",
+        preparedWorkbench,
+        workbench.head,
+      ]);
+      run(
+        "npm",
+        ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
+        preparedWorkbench,
+      );
+      run("corepack", [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--ignore-scripts",
+        "--prefer-offline",
+      ]);
+      run(process.execPath, ["scripts/build.mjs", "--target", "host"]);
+      finalGroup.verifyUnchanged();
       const output = resolve(".runtime/quality-isolation");
       mkdirSync(output, { recursive: true });
       writeFileSync(resolve(output, "plan.json"), JSON.stringify(plan, null, 2) + "\n");
@@ -631,6 +656,10 @@ try {
         if (existsSync(file)) sdk[name] = JSON.parse(readFileSync(file));
       }
       if (!sdk.artifacts || !sdk.web) refuse("QUALITY_MACOS_SDK_RECEIPT_REQUIRED");
+      sdk.host = {
+        file: "lib/host.js",
+        sha256: createHash("sha256").update(readFileSync("lib/host.js")).digest("hex"),
+      };
       const buildSha256 = executionDigest(sdk);
       let receipt;
       const checks = runQualityChecks([

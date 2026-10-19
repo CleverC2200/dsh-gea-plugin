@@ -10,10 +10,11 @@ test(
   async (t) => {
     const app = await profile(t);
     const plans = Array.from({ length: 11 }, (_, status) => ({
-      planId: `p${status}`,
+      planId: `p-jxs-2026-09-${String(status).padStart(5, "0")}`,
       versionId: `v${status}`,
       periodId: "20260901",
       planTypeCode: "Y",
+      orderType: "M",
       status,
       baseName: `scope-${status}-row`,
       orgCode: "region-a",
@@ -40,7 +41,13 @@ test(
       if (path.endsWith("/periods"))
         return send({
           records: [
-            { periodId: "20260901", periodMonth: "2026-09", planTypeCode: "Y", status: "OPEN" },
+            {
+              periodId: "20260901",
+              periodMonth: "2026-09",
+              planTypeCode: "Y",
+              orderType: "M",
+              status: "OPEN",
+            },
             { periodId: "20260902", periodMonth: "2026-09", planTypeCode: "DC", status: "OPEN" },
           ],
           total: 2,
@@ -73,7 +80,7 @@ test(
           pages: 1,
         });
       }
-      const match = /\/plans\/(p\d+)(\/versions)?$/.exec(path);
+      const match = /\/plans\/(p-jxs-2026-09-\d{5})(\/versions)?$/.exec(path);
       if (match) {
         const plan = plans.find((p) => p.planId === match[1]);
         const version = { ...plan, id: plan.versionId, effective: true };
@@ -105,7 +112,7 @@ test(
         const body = JSON.parse(req.body);
         writes.push(body);
         return send({
-          planId: "p2",
+          planId: "p-jxs-2026-09-00002",
           versionId: "v2",
           fromStatus: 2,
           toStatus: 2,
@@ -168,14 +175,12 @@ test(
       await expect(table.getByText(`scope-${status}-row`, { exact: true })).toHaveCount(0);
     const returned = table.locator("tr").filter({ hasText: "scope-7-row" });
     await returned.locator("label.arco-checkbox").click();
-    // 当前退回版本按角色重审，不依赖重提服务凭据。
-    await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeEnabled();
+    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toBeEnabled();
     await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
     const tracked = table.locator("tr").filter({ hasText: "scope-6-row" });
     await returned.locator("label.arco-checkbox").click();
     await tracked.locator("label.arco-checkbox").click();
-    // 状态 6 的退回目标是客户；区域审批人员仍可按自己的角色重审。
-    await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeEnabled();
+    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toBeDisabled();
     await region.click();
     await expect(table.getByText("scope-6-row", { exact: true })).toHaveCount(0);
     await expect(region).toHaveAttribute("aria-pressed", "true");

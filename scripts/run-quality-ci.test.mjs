@@ -310,12 +310,18 @@ test("selected package contracts prepare current desktop outputs and bind the ad
   );
 });
 
-test("the Linux plan delegates only the kernel sandbox file to mandatory macOS execution", () => {
+test("Linux and Windows retain Host schema coverage and delegate keychain and sandbox execution to macOS", () => {
   const files = [
     "tests/gateway-handshake.test.mjs",
-    ...macosIsolationTests,
+    "tests/host-config.test.mjs",
+    "scripts/isolated-validation.test.mjs",
+    "tests/host-config-keychain.test.mjs",
     "tests/controlled-execution.test.mjs",
   ];
+  assert.deepEqual(macosIsolationTests, [
+    "scripts/isolated-validation.test.mjs",
+    "tests/host-config-keychain.test.mjs",
+  ]);
   const plan = {
     files,
     runtime: true,
@@ -324,7 +330,7 @@ test("the Linux plan delegates only the kernel sandbox file to mandatory macOS e
   };
   for (const platform of ["linux", "win32"]) {
     const selected = selectPlatformTests(plan, platform);
-    assert.deepEqual(selected.files, [files[0], files[2]]);
+    assert.deepEqual(selected.files, [files[0], files[1], files[4]]);
     assert.deepEqual(selected.reasons, plan.reasons);
     assert.deepEqual(selected.platformTasks, [
       {
@@ -372,7 +378,7 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
       assert.match(source, /--phase compatibility-final/);
     }
   }
-  assert.doesNotMatch(readFileSync("scripts/isolated-validation.test.mjs", "utf8"), /skip:/);
+  for (const file of macosIsolationTests) assert.doesNotMatch(readFileSync(file, "utf8"), /skip:/);
 });
 
 test("Linux preparation exports once and failed checks block executable worker inputs", () => {

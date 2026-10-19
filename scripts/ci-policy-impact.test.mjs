@@ -12,6 +12,7 @@ const businessCore = [
   "tests/business-page-grant.test.mjs",
   "tests/gateway-handshake.test.mjs",
   "scripts/runtime-environment.test.mjs",
+  "tests/plugin-release-preflight.test.mjs",
   "tests/plugin-release.test.mjs",
   "tests/optional-companion-manifest.test.mjs",
 ].sort();
@@ -735,6 +736,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.tests.filter((file) => !file.includes("*")),
     ...policy.browserFixtures,
     "tests/unrelated.test.mjs",
     "scripts/unrelated.test.mjs",
@@ -758,4 +760,31 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
     ),
   );
   assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});
+
+test("Windows complete package inputs select existing release and Windows contracts", async (t) => {
+  const regressions = [
+    "scripts/windows-complete-local/input.test.mjs",
+    "scripts/delivery-events.test.mjs",
+    "scripts/package-desktop.test.mjs",
+    "tests/plugin-release-source.test.mjs",
+  ];
+  for (const source of [
+    "scripts/windows-complete-local/build.mjs",
+    "scripts/windows-complete-local/input.mjs",
+    "scripts/windows-complete-local/input.test.mjs",
+    "scripts/windows-complete-local/released-input.fixture.json",
+    "scripts/windows-complete-local/run-bundle.mjs",
+  ])
+    await t.test(source, (t) => {
+      const fixture = resourceImpactFixture(t);
+      fixture.change(fixture.own, source);
+      const plan = fixture.plan();
+      for (const file of regressions)
+        assert.ok(
+          plan.reasons[fixture.own.repo + "/" + source].includes(file),
+          JSON.stringify(plan),
+        );
+      assert.deepEqual(plan.required, businessCore);
+    });
 });

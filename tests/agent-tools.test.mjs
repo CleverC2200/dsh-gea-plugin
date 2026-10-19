@@ -259,7 +259,7 @@ test(
             success: true,
             result: {
               records: Array.from({ length: 200 }, (_, index) => ({
-                planId: `oversize-${index}`,
+                planId: `p-jxs-2026-10-${String(index).padStart(5, "0")}`,
                 periodId: `202610${String(index).padStart(3, "0")}-${"x".repeat(200)}`,
                 planTypeCode: "Y",
                 orderType: "M",
@@ -276,13 +276,13 @@ test(
             result: {
               records: [
                 {
-                  planId: "period-plan-1",
+                  planId: "p-jxs-2026-10-00001",
                   periodId: "20261001",
                   planTypeCode: "Y",
                   orderType: "M",
                 },
                 {
-                  planId: "period-plan-2",
+                  planId: "p-jxs-2026-09-00002",
                   periodId: "20260901",
                   planTypeCode: "Y",
                   orderType: "M",
@@ -888,7 +888,7 @@ test(
             },
             visibleRows: [
               {
-                planId: "9007199254740993",
+                planId: "p-jxs-2026-09-00001",
                 organization: "当前客户",
                 planTypeCode: "Y",
                 status: 3,
@@ -985,7 +985,7 @@ test(
           },
           visibleRows: [
             {
-              planId: "9007199254740993",
+              planId: "p-jxs-2026-09-00001",
               organization: "当前客户",
               planTypeCode: "Y",
               status: 3,
@@ -1194,7 +1194,7 @@ test(
           },
           visibleRows: [
             {
-              planId: "9007199254740993",
+              planId: "p-jxs-2026-09-00001",
               organization: "当前客户",
               planTypeCode: "Y",
               status: 3,
@@ -2036,7 +2036,7 @@ test(
           },
           visibleRows: [
             {
-              planId: "9007199254740993",
+              planId: "p-jxs-2026-09-00001",
               organization: "河北",
               planTypeCode: "Y",
             },

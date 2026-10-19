@@ -13,7 +13,7 @@ test("default node follows the account role, not every node", { timeout: 90000 }
     roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
   });
   const plan = {
-    planId: "p",
+    planId: "p-jxs-2026-09-00001",
     versionId: "v",
     seq: 1,
     periodId: "period-1",
@@ -78,7 +78,7 @@ test("default node follows the account role, not every node", { timeout: 90000 }
       const records = status === null || ["2", "7", "8"].includes(status) ? [plan] : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
-    if (path.endsWith("/plans/p"))
+    if (path.endsWith("/plans/p-jxs-2026-09-00001"))
       return send({
         currentVersion: { ...plan, id: "v", effective: true },
         skus: [sku],

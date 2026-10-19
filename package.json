@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.169",
+  "version": "0.0.172",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -18,12 +18,13 @@
     "test:window": "node --test tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs",
     "check:environment": "node scripts/runtime-environment.mjs",
     "test:environment": "node --test scripts/runtime-environment.test.mjs",
-    "test:release-contract": "node --test tests/plugin-release.test.mjs tests/optional-companion-manifest.test.mjs",
+    "test:release-contract": "node --test tests/plugin-release.test.mjs tests/optional-companion-manifest.test.mjs tests/plugin-release-preflight.test.mjs scripts/windows-complete-local/input.test.mjs",
     "test:dependencies": "node --test scripts/dependency-lock.test.mjs",
     "observe": "node scripts/dev-observe.mjs",
     "observe:report": "node scripts/dev-observe-report.mjs",
     "test:observe": "node --test scripts/dev-observe.test.mjs",
     "test": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/*.test.mjs scripts/gea-error.test.mjs",
+    "test:desktop:complete-input": "node --test scripts/windows-complete-local/input.test.mjs",
     "test:desktop": "pnpm run test:desktop:unit",
     "test:desktop:unit": "node scripts/build-desktop-tools.mjs && node --test desktop/navigation.test.cjs desktop/packaging-config.test.cjs scripts/package-desktop.test.mjs desktop/config.test.cjs desktop/boot-watch.test.cjs desktop/onboarding.test.mjs desktop/permissions.test.mjs desktop/login-state.test.mjs desktop/company-resources.test.mjs desktop/company-bootstrap.test.mjs desktop/company-gea-refresh.test.mjs desktop/legacy-gea-cleanup.test.mjs desktop/official-startup.test.cjs desktop/html-plugins.test.mjs desktop/copy-graph.test.mjs desktop/graph-relocation.test.mjs desktop/plugin-store.test.mjs desktop/recovery.test.mjs desktop/updates.test.mjs desktop/client-installer.test.mjs desktop/installer-sdk-pruning.test.mjs desktop/installer-timing.test.cjs desktop/startup-copy.test.cjs desktop/verify-client-artifacts.test.cjs desktop/menu-localization.test.cjs desktop/runtime-cookies.test.cjs desktop/plugin-storage.test.mjs desktop/core-layer.test.mjs desktop/windows-directory-installer.test.cjs desktop/installer-cache.test.mjs desktop/installer-differential.test.mjs desktop/installer-signature.test.mjs desktop/runtime-resolution.test.mjs",
     "test:desktop:electron": "node --test desktop/startup-state.test.mjs desktop/electron-recovery.test.mjs desktop/slow-login.test.mjs desktop/business-ready.test.mjs",
@@ -72,7 +73,7 @@
     "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs && pnpm run test:plugin-updates",
     "test:profile-window": "node --test tests/profile-window.test.mjs",
     "test:plugin-updates": "node --expose-internals --test --test-concurrency=1 tests/plugin-update-controller.contract.mjs tests/plugin-update-integration.contract.mjs tests/plugin-update-install.contract.mjs tests/plugin-update-detail.browser.mjs tests/plugin-update-list.browser.mjs",
-    "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs",
+    "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs tests/plugin-release-preflight.test.mjs scripts/windows-complete-local/input.test.mjs",
     "typecheck:plugin-updates": "node scripts/check-plugin-updates-types.mjs",
     "test:package-version": "node --test scripts/package-version-gate.test.mjs scripts/plugin-package-version.test.mjs",
     "test:plugin-updates:desktop": "node --expose-internals --test tests/acceptance/plugin-update-desktop.mjs",
@@ -199,13 +200,14 @@
     "presets/prompt-policy.json",
     "presets/inventory-fc.skill.md",
     "presets/inventory-qll.skill.md",
-    "locale/"
+    "locale/",
+    "src/shared/service-accounts.js"
   ],
   "workspaces": [
     "packages/*"
   ],
   "peerDependencies": {
-    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15",
+    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17",
     "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",

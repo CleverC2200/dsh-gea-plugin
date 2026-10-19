@@ -15,8 +15,10 @@ test(
     const app = await profile(t, {
       roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
     });
+    const planId = (key) =>
+      `p-jxs-2026-09-${String(["a1", "a2", "b1", "b2", "c1", "c2", "d1"].indexOf(key) + 1).padStart(5, "0")}`;
     const plan = (key, province, status) => ({
-      planId: `p-${key}`,
+      planId: planId(key),
       versionId: `v-${key}`,
       seq: 1,
       orderType: "M",
@@ -78,7 +80,7 @@ test(
           pages: 1,
         });
       }
-      const detail = /\/plans\/(p-[a-z0-9]+)$/.exec(path);
+      const detail = /\/plans\/(p-jxs-2026-09-\d{5})$/.exec(path);
       if (detail) {
         const row = plans.find((item) => item.planId === detail[1]);
         return send(
@@ -107,7 +109,7 @@ test(
         }
         const versionId = /\/versions\/([^/]+)\/actions$/.exec(path)?.[1];
         return send({
-          planId: "p",
+          planId: planId(versionId.slice(2)),
           versionId,
           fromStatus: 2,
           toStatus: 2,
@@ -141,10 +143,12 @@ test(
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();
-    await frame.getByTestId("regional-approval-stage-province").click();
-    await page.waitForTimeout(600);
+    const provinceStage = frame.getByTestId("regional-approval-stage-province");
+    await expect(provinceStage).toHaveAttribute("aria-pressed", "true");
+    await provinceStage.click();
+    await expect(provinceStage).toHaveAttribute("aria-pressed", "false");
     await frame.getByRole("tab", { name: "按省区", exact: true }).click();
-    await page.waitForTimeout(2500);
+    await expect(frame.locator("tbody tr")).toHaveCount(4);
 
     const rows = await frame.locator("tbody tr").evaluateAll((nodes) =>
       nodes.map((node) => ({

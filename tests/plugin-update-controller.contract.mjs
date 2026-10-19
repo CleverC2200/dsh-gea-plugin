@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm, realpath } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash, sign } from "node:crypto";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
 // Verify the unchanged public installation and locking source used by this SDK lane.
@@ -507,6 +507,236 @@ test("receipt replacement failure after mutation remains unknown and unreadable 
   await reopened.dispose();
 });
 
+async function bridgeControllerFixture(t, { workbenchFirst = false } = {}) {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, {
+    allUpdates: true,
+    releasePeers: workbenchFirst
+      ? {
+          "@cleverc2200/gea-dsh-prototype": {
+            "@cleverc2200/dsh-agent-workbench": "1.1.0",
+            "dsh-agent-manage": "^2.0.0",
+          },
+        }
+      : {},
+  });
+  const file = join(f.dir, "node_modules/@cleverc2200/gea-dsh-prototype/package.json");
+  const manifest = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(
+    file,
+    JSON.stringify({
+      ...manifest,
+      peerDependencies: {
+        "@cleverc2200/dsh-agent-workbench": workbenchFirst ? "^1.0.0" : "1.0.0",
+        "dsh-agent-manage": "2.0.0",
+      },
+    }),
+  );
+  return f;
+}
+
+test("dependency blocked companions recommend the executable first step of a verified full channel path", async (t) => {
+  const f = await bridgeControllerFixture(t);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const rows = controller.snapshot().items;
+  const gea = rows.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype");
+  assert.equal(gea.state, "available");
+  assert.equal(gea.runningHostVersion, "3.0.0");
+  assert.ok(gea.planId);
+  for (const name of ["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage"]) {
+    const row = rows.find((row) => row.packageName === name);
+    assert.equal(row.state, "blocked");
+    assert.equal(row.problem.kind, "dependencies");
+    assert.deepEqual(row.problem.nextStep, {
+      packageName: "@cleverc2200/gea-dsh-prototype",
+      version: "3.1.0",
+    });
+    assert.equal(row.planId, null);
+  }
+});
+
+test("an available bridge is not recommended when another installed consumer makes the full channel unreachable", async (t) => {
+  const f = await bridgeControllerFixture(t);
+  const consumerDir = join(f.dir, "node_modules/fixed-consumer");
+  await mkdir(consumerDir);
+  await writeFile(
+    join(consumerDir, "package.json"),
+    JSON.stringify({
+      name: "fixed-consumer",
+      version: "1.0.0",
+      peerDependencies: { "@cleverc2200/dsh-agent-workbench": "1.0.0" },
+    }),
+  );
+  const file = join(f.dir, "package.json");
+  const manifest = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(
+    file,
+    JSON.stringify({
+      ...manifest,
+      dependencies: {
+        ...manifest.dependencies,
+        "fixed-consumer": "1.0.0",
+      },
+    }),
+  );
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const rows = controller.snapshot().items;
+  assert.equal(
+    rows.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype").state,
+    "available",
+  );
+  const blocked = rows.filter((row) => row.problem?.kind === "dependencies");
+  assert.equal(blocked.length, 2);
+  assert.ok(blocked.every((row) => row.problem.nextStep === undefined));
+});
+
+test("a planner path whose first update is inactive produces no executable recommendation", async (t) => {
+  const f = await bridgeControllerFixture(t);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  assert.ok(controller.snapshot().items.some((row) => row.problem?.nextStep));
+  f.proofs[2].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  await controller.check();
+  const rows = controller.snapshot().items;
+  const first = rows.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype");
+  assert.equal(first.state, "blocked");
+  assert.equal(first.planId, null);
+  assert.equal(first.problem.code, "inactive");
+  const blocked = rows.filter((row) => row.problem?.kind === "dependencies");
+  assert.equal(blocked.length, 2);
+  assert.ok(blocked.every((row) => row.problem.nextStep === undefined));
+});
+
+test("a different full graph recommends Workbench first when GEA requires its candidate", async (t) => {
+  const f = await bridgeControllerFixture(t, { workbenchFirst: true });
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const rows = controller.snapshot().items;
+  const first = rows.find((row) => row.packageName === "@cleverc2200/dsh-agent-workbench");
+  assert.equal(first.state, "available");
+  assert.ok(first.planId);
+  for (const name of ["@cleverc2200/gea-dsh-prototype", "dsh-agent-manage"]) {
+    const row = rows.find((row) => row.packageName === name);
+    assert.equal(row.state, "blocked");
+    assert.deepEqual(row.problem.nextStep, {
+      packageName: "@cleverc2200/dsh-agent-workbench",
+      version: "1.1.0",
+    });
+  }
+});
+
+test("legacy dependency status remains readable without next-step facts and unsafe recommendations are rejected", async (t) => {
+  const f = await bridgeControllerFixture(t);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const snapshot = controller.snapshot();
+  const value = {
+    revision: snapshot.revision,
+    hostProcessIdentity: "fixture-host",
+    challenge: "fixture-nonce",
+    checkTimeoutMs: 1000,
+    pollIntervalMs: 1000,
+    items: structuredClone(snapshot.items),
+  };
+  const blocked = value.items.find((row) => row.problem?.kind === "dependencies");
+  delete blocked.problem.nextStep;
+  for (const requirement of blocked.problem.requirements) {
+    delete requirement.current;
+    delete requirement.candidate;
+  }
+  const parsed = parseUpdateClientStatus(value).items.find(
+    (row) => row.packageName === blocked.packageName,
+  );
+  assert.equal(parsed.problem.kind, "dependencies");
+  assert.equal(parsed.problem.nextStep, undefined);
+  assert.equal(parsed.problem.requirements[0].current, null);
+  assert.equal(parsed.problem.requirements[0].candidate, null);
+  blocked.problem.nextStep = { packageName: "/private/credential", version: "3.1.0" };
+  assert.throws(() => parseUpdateClientStatus(value), /UPDATE_STATUS_INVALID/);
+  blocked.problem.nextStep = {
+    packageName: "@cleverc2200/gea-dsh-prototype",
+    version: "/private/credential",
+  };
+  assert.throws(() => parseUpdateClientStatus(value), /UPDATE_STATUS_INVALID/);
+});
+
+test("signed same-version replacement reports a content conflict without disclosing source details", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const channelUrl = "https://fixture.invalid/channels/test.json";
+  const channel = JSON.parse(f.files.get(channelUrl));
+  const payload = JSON.parse(Buffer.from(channel.payloadBase64, "base64"));
+  const reference = payload.releases[2];
+  const release = JSON.parse(f.files.get(reference.url));
+  release.artifact.sha256 = "d".repeat(64);
+  release.artifact.url = `https://fixture.invalid/packages/${"d".repeat(64)}/plugin.tgz`;
+  const bytes = Buffer.from(JSON.stringify(release));
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const url = `https://fixture.invalid/releases/${sha256}/release.json`;
+  f.files.set(url, bytes);
+  payload.releases[2] = { ...reference, url, sha256 };
+  payload.revision = 2;
+  const signed = Buffer.from(JSON.stringify(payload));
+  f.files.set(
+    channelUrl,
+    Buffer.from(
+      JSON.stringify({
+        ...channel,
+        payloadBase64: signed.toString("base64"),
+        signatureBase64: sign(null, signed, f.privateKey).toString("base64"),
+      }),
+    ),
+  );
+  await controller.check();
+  const row = controller.snapshot().items.find((item) => item.packageName === release.name);
+  assert.equal(row.diagnostic, "SOURCE_SAME_VERSION_CONTENT_MISMATCH");
+  assert.deepEqual(row.problem, { kind: "policy", code: "content-mismatch" });
+  assert.equal(row.planId, null);
+  assert.equal(controller.snapshot().operation, null);
+  assert.doesNotMatch(JSON.stringify(row.problem), /fixture.invalid|signatureBase64|source-trust/);
+});
+
+test("older channel keeps its candidate and reports a downgrade without accepting an update", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const name = "@cleverc2200/gea-dsh-prototype";
+  const file = join(f.dir, "node_modules", name, "package.json");
+  const manifest = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(file, JSON.stringify({ ...manifest, version: "3.2.0" }));
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller.snapshot().items.find((item) => item.packageName === name);
+  assert.equal(row.state, "blocked");
+  assert.equal(row.diagnostic, "DOWNGRADE_FORBIDDEN");
+  assert.equal(row.installedVersion, "3.2.0");
+  assert.equal(row.candidateVersion, "3.1.0");
+  assert.deepEqual(row.problem, { kind: "policy", code: "channel-older" });
+  assert.equal(row.planId, null);
+  await assert.rejects(
+    controller.submit({ packageName: name, planId: "not-a-plan" }),
+    /UPDATE_PLAN/,
+  );
+  assert.equal(controller.snapshot().operation, null);
+});
+
 test("actual pinned pnpm reachable transitive peer blocks an incompatible independent update", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
@@ -531,6 +761,7 @@ test("actual pinned pnpm reachable transitive peer blocks an incompatible indepe
   assert.equal(row.state, "blocked");
   assert.equal(row.diagnostic, "COMBINATION_INCOMPATIBLE");
   assert.equal(row.planId, null);
+  assert.equal(row.candidateVersion, "3.1.0");
   assert.equal(row.problem.kind, "dependencies");
   assert.deepEqual(row.problem.requirements, [
     {
@@ -538,6 +769,8 @@ test("actual pinned pnpm reachable transitive peer blocks an incompatible indepe
       dependency: row.packageName,
       required: "3.0.0",
       installed: "3.1.0",
+      current: "3.0.0",
+      candidate: "3.1.0",
     },
   ]);
   const selected = graph.packages.find(

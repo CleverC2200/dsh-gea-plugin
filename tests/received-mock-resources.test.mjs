@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
 const session = "session-11111111-1111-4111-8111-111111111111";
-test("the received mock packages publish selectable original resources and only view grants", async (t) => {
+test("the received packages preserve governed customer login and mock view-only grants", async (t) => {
   const definitions = new Map(),
     pages = new Map(),
     cleanups = [];
@@ -78,6 +78,17 @@ test("the received mock packages publish selectable original resources and only 
     assert.deepEqual(definition.profile.skills, [item.manifest.id]);
     const persona = JSON.parse(await readFile(resolve(definition.root, definition.prompt), "utf8"));
     assert.equal(persona.consumerCode, definition.profile.consumerCode);
+    if (item.manifest.id === "inventory-customer") {
+      assert.equal(item.manifest.gea.readonly, true);
+      assert.equal(definition.cube, true);
+      assert.match(persona.persona, /GEA受控读取/);
+      assert.match(persona.persona, /当前只读/);
+      await assert.rejects(
+        pages.get(item.manifest.id)(session, id, new AbortController().signal),
+        /PAGE_REFERENCE_LOGIN_REQUIRED/,
+      );
+      continue;
+    }
     assert.match(persona.persona, /模拟/);
     const grant = await pages.get(item.manifest.id)(session, id, new AbortController().signal);
     assert.equal(grant.access.mode, "mock");

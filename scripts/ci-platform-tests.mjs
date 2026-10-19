@@ -1,5 +1,7 @@
-/** Kernel sandbox execution belongs to macOS; every candidate requires that separate gate. */
-export const macosIsolationTests = Object.freeze(["scripts/isolated-validation.test.mjs"]);
+export const macosIsolationTests = Object.freeze([
+  "scripts/isolated-validation.test.mjs",
+  "tests/host-config-keychain.test.mjs",
+]);
 
 export function selectPlatformTests(plan, platform = process.platform) {
   return {

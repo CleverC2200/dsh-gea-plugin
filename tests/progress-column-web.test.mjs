@@ -15,9 +15,9 @@ test(
   async (t) => {
     const app = await profile(t);
     const plans = [
-      { planId: "p1", versionId: "v1", qty: "50" },
-      { planId: "p2", versionId: "v2", qty: "97" },
-      { planId: "p3", versionId: "v3", qty: "120" },
+      { planId: "p-jxs-2026-09-00001", versionId: "v1", qty: "50" },
+      { planId: "p-jxs-2026-09-00002", versionId: "v2", qty: "97" },
+      { planId: "p-jxs-2026-09-00003", versionId: "v3", qty: "120" },
     ].map((item, index) => ({
       ...item,
       seq: 1,
@@ -39,6 +39,9 @@ test(
       status: 1,
       currentQty: item.qty,
       currentAmount: item.qty,
+      amountProgress: item.qty,
+      shipQty: item.qty,
+      shipAmount: item.qty,
       targetQty: "100",
       targetAmount: "100",
       skuCount: 1,
@@ -141,8 +144,8 @@ const cellInfo = (frame) =>
   frame.locator("tbody tr").evaluateAll((rows) =>
     rows
       .map((row) => {
-        const label = row.querySelector("strong");
         const bar = row.querySelector(".arco-progress-line-inner");
+        const label = bar?.closest("td")?.querySelector("strong");
         if (!label || !bar) return undefined;
         const text = (label.textContent || "").trim();
         return text.endsWith("%")

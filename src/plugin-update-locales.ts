@@ -11,7 +11,7 @@ export const en = {
   installed: "Installed",
   host: "Running in background",
   client: "Running in interface",
-  candidate: "Available version",
+  candidate: "Candidate version",
   unavailable: "Not confirmed",
   restart: "Restart the application to load the installed version.",
   statusError: "Update status is unavailable. Try checking again.",
@@ -40,6 +40,10 @@ export const en = {
   "release-not-published": "This channel has no release for this plugin.",
   "plan-unconfirmed": "Check for updates again before installing.",
   conditions: "This update does not meet the installation requirements.",
+  "channel-older":
+    "The channel version is older than the installed version. Keep the installed version and check again after a newer release is published.",
+  "content-mismatch":
+    "The channel contains different content for the same version. Keep the installed version and ask the publisher to release a new version.",
   inactive: "This plugin is not loaded. Enable it and restart before updating.",
   restoredReason: "The update failed. The previous version was restored.",
   failedReason: "The update failed. Check the installation before trying again.",
@@ -48,6 +52,16 @@ export const en = {
   sourceUnavailable: "Could not read the update source.",
   platform: "Updates are not supported on this platform.",
   core: "This update requires a supported application version.",
+  consumer: "Blocking consumer",
+  dependency: "Dependency",
+  required: "Required version",
+  dependencyCurrent: "Current dependency version",
+  dependencyCandidate: "Candidate dependency version",
+  unchanged: "Not part of this update",
+  dependenciesNextStep:
+    "First update {packageName} to {version}. When installation finishes, restart the application and check for updates again.",
+  dependenciesAction:
+    "Keep the installed versions. Check the listed requirements and wait for a compatible release before checking again.",
   dependencies: "The installed plugin versions are incompatible with this update.",
 } as const;
 export const zh: Record<keyof typeof en, string> = {
@@ -92,6 +106,8 @@ export const zh: Record<keyof typeof en, string> = {
   "release-not-published": "此频道尚未发布该插件。",
   "plan-unconfirmed": "请重新检查更新后再安装。",
   conditions: "此更新不满足安装条件。",
+  "channel-older": "频道版本早于已安装版本。请保留已安装版本，等待较新版本发布后重新检查。",
+  "content-mismatch": "频道中相同版本的内容不一致。请保留已安装版本，并联系发布者发布新版本。",
   inactive: "插件尚未装载，启用并重启后可更新。",
   restoredReason: "更新失败，已恢复原版本。",
   failedReason: "更新失败，请核实安装状态后再操作。",
@@ -100,6 +116,14 @@ export const zh: Record<keyof typeof en, string> = {
   sourceUnavailable: "无法读取更新来源。",
   platform: "当前平台不支持更新。",
   core: "此更新需要受支持的应用版本。",
+  consumer: "阻断更新的消费者",
+  dependency: "依赖插件",
+  required: "所需版本",
+  dependencyCurrent: "当前依赖版本",
+  dependencyCandidate: "候选依赖版本",
+  unchanged: "本次不更新此依赖",
+  dependenciesNextStep: "请先将 {packageName} 更新至 {version}，安装完成后重启应用，再次检查更新。",
+  dependenciesAction: "请保留已安装版本，核对所列依赖要求，等待兼容版本发布后重新检查。",
   dependencies: "已安装的插件版本与此更新不兼容。",
 };
 export const pluginUpdateLocale = "gea.pluginUpdates";

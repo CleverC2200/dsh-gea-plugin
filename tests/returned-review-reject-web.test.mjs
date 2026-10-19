@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import { fixture, PLAN_A, PLAN_C } from "./fixtures/returned-review.mjs";
@@ -18,7 +18,7 @@ test(
     await expect(dialog).toContainText("退回版本继续逐级退回");
     await expect(dialog).toContainText("正常审批退回");
     await dialog.getByRole("textbox", { name: "批量审批备注" }).fill("继续退回客户核对");
-    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await frame.getByRole("button", { name: "确认批量退回", exact: true }).click();
     const result = frame.getByTestId("regional-approval-batch-result");
     await expect(result).toContainText("成功 2 笔", { timeout: 30000 });
@@ -75,3 +75,38 @@ test("queue column headings stay visible while its rows scroll", { timeout: 9000
     `滚动后标题应贴住队列顶部：${JSON.stringify(measured)}`,
   );
 });
+
+test(
+  "an ended returned instance fails honestly while the other batch rejection succeeds",
+  { timeout: 90000 },
+  async (t) => {
+    const { frame, rejected, attempts, submitted, state } = await fixture(t, {
+      endedReject: true,
+    });
+    for (const name of ["乌鲁木齐退回区域", "沈阳待审批"])
+      await frame
+        .locator("tbody tr")
+        .filter({ hasText: name })
+        .first()
+        .locator("label.arco-checkbox")
+        .click();
+    await frame.getByRole("button", { name: "退回", exact: true }).click();
+    const dialog = frame.getByRole("dialog");
+    await dialog.getByRole("textbox", { name: "批量审批备注" }).fill("核对后继续退回");
+    await dialog.getByRole("button", { name: "确认批量退回", exact: true }).press("Enter");
+    await expect(dialog).toContainText("成功 1 笔，失败 1 笔", {
+      timeout: 30000,
+    });
+    await expect(dialog).toContainText("该版本审批实例已经结束");
+    await expect(dialog).not.toContainText("退回重提」重新提交");
+    assert.equal(state.get(PLAN_A).status, 7);
+    assert.equal(state.get(PLAN_C).status, 6);
+    assert.deepEqual(
+      rejected.map(({ planId }) => planId),
+      [PLAN_C],
+    );
+    assert.equal(attempts.length, 2);
+    assert.ok(attempts.every((body) => body.action === "REJECT"));
+    assert.equal(submitted.length, 0);
+  },
+);

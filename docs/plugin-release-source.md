@@ -26,7 +26,50 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 [source publication formatter](../scripts/production-manifest.mjs) 保留源码已有 peer 约束，包括经 GEA 实际消费接口验证的 Manage `.12 || .14 || .15` exact OR。验证覆盖 business-resources、user-agent-cube 与 forecast-source，不声明其它 Manage 版本或全部功能兼容。只有源码没有 companion peer 时才按明确版本输入生成 exact peer；辅助能力仍是 optional。普通三包交付按最终 manifest 完整图验证，不以三个版本相等或 GEA peer 字符串相等代替兼容性。semver 是明确的运行依赖，生产 stage 正常生成的 shrinkwrap 包含它。
 
-`node scripts/create-plugin-release.mjs --archive /absolute/final.tgz --metadata /absolute/metadata.json --destination /absolute/new-output` 从最终归档投影单包 release。metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自归档。destination 必须不存在。输出包含 release 文件路径、摘要和 published=false，不上传 OSS、不更新频道。
+`pnpm release:preflight --input /absolute/preflight.json` 检查本次正式发行候选。`create-plugin-release.mjs --archive /absolute/final.tgz --metadata /absolute/metadata.json --preflight /absolute/preflight.json --destination /absolute/new-output` 在写单包 release 前强制执行同一检查，archive 与 metadata 必须属于该输入。普通 `delivery:packages` 仍只负责三包打包，不要求正式发行的部署或升级起点。
+
+preflight 使用以下文件合同，所有路径为绝对路径。sources、targets 与交付清单必须各含三个唯一公司包。`requiredCommits` 必须非空，记录本版必含的原提交或合并提交；每项必须是实际 source HEAD 的祖先。其它来源的明确排除仍由本票的来源清单说明，不能用排除记录代替必含提交。
+
+```json
+{
+  "schemaVersion": 1,
+  "deliveryManifest": "/absolute/ordinary-delivery/manifest.json",
+  "sources": [
+    {
+      "name": "COMPANY_PACKAGE",
+      "path": "/absolute/source",
+      "head": "FULL_SHA",
+      "requiredCommits": ["REQUIRED_SOURCE_OR_MERGE_SHA"]
+    }
+  ],
+  "targets": [
+    {
+      "archive": "/absolute/ordinary-delivery/packages/final.tgz",
+      "metadata": "/absolute/metadata.json"
+    }
+  ],
+  "deployed": [{ "id": "deployed-profile-or-channel", "installed": ["FULL_INSTALLED_MANIFESTS"] }],
+  "supportedStarts": [
+    {
+      "id": "supported-start",
+      "core": {
+        "head": "FULL_CORE_SHA",
+        "version": "CORE_VERSION",
+        "sdk": { "SDK_PACKAGE": "ACTUAL_VERSION" }
+      },
+      "installed": ["FULL_INSTALLED_MANIFESTS"]
+    }
+  ]
+}
+```
+
+上例只展示每类一项。`deployed` 与 `supportedStarts` 均不可为空，每个 installed 包含完整消费者 manifest，包括非公司包；三个公司 manifest 还必须带实际部署归档的 `artifactSha256`。部署快照由发行 owner 从批准的真实频道、归档和安装图准备，并保留观察时间及来源证据。历史重放若复用当前未变消费者，须在原证据中说明，不能称为历史整图观察。Core 使用实际宿主固定的 head/version/sdk。缺公司包、缺 SDK 或缺归档身份都拒绝，不以三个手填版本替代图。 第三方 manifest 按规划器实际消费的版本、全部 peer 和公司包 dependency 校验；没有对应 peer 的 optional metadata 不形成约束。原始完整图保留，公司发行 manifest 继续严格解析。
+
+门禁核实际 source HEAD 与源码修改范围，复用普通交付对 lib/client 生成输出的允许规则，生成输出仍须逐字节匹配构建回执与最终 TGZ。它读取 `deliveryManifest`，将每包的 archive 路径、sha256、name/version、source.head/path、锁和 buildReceipt 摘要绑定到实际文件。构建回执沿[普通交付合同](package-delivery.md)，每个输出同时核当前源码目录和 tar 内字节；相同版本的旧包不能借新 HEAD 的声明通过。
+
+每个目标版本必须不低于所有 deployed 与 supportedStarts 中该包的版本；同版本必须使用相同归档字节。门禁逐步调用真实 `planPluginUpdate`，最多枚举三个包的六种顺序，每一步保留未替换消费者与 Core SDK，并用 `validatePluginCombination` 核最终图。功能名后缀仍按同一版本比较器处理，无合法路径即拒绝。三包同版同字节的频道提升允许 planner 返回 current。
+
+metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自最终归档。destination 必须不存在。输出包含 release 文件路径、摘要、preflight 输入与交付清单摘要、各起点的合法顺序及 published=false，不上传 OSS、不更新频道。`test:release-contract` 将公开 CLI 的来源、身份和路径回归纳入 `quality:fast --source-only` 与现有 source CI。`release:preflight --desktop --base-tag <tag>` 保留桌面安装包原有版本准备职责，不代替插件发行门禁。
 
 [mergePluginChannelRelease/signPluginChannel](../scripts/plugin-channel.mjs) 用显式旧频道、一个新引用、递增 revision 和时间生成完整的新签名 envelope，保留已有其他包引用，尚未在频道出现的包可独立加入。部署方持有私钥并负责原子替换频道。此处函数只生成对象；没有网络或频道写入能力。真实 OSS 地址、凭据、公钥与部署验收仍需明确输入。
 
@@ -59,7 +102,7 @@ Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 imp
 
 ## 为已批准 desktop 构建生成 release
 
-`create-plugin-release.mjs` 默认继续只接受已登记源码 Core。若要为明确批准的 desktop 构建准备本地 release，可加 `--desktop-core-proof /absolute/proof.json`，并使用 `node --expose-internals` 启动该命令。CLI 复用同一 Core reader 与固定工具 SDK 的公开包解析器，验证安装布局、摘要与 SDK 解析；不会执行证明根内的代码。metadata.supportedCores 中额外的构建必须与验证返回的 head/version 完全匹配。普通来源登记、完整归档图和任意 head 的拒绝保持原规则；同版本不等于同构建。
+`create-plugin-release.mjs` 默认继续只接受已登记源码 Core。若要为明确批准的 desktop 构建准备本地 release，可加 `--desktop-core-proof /absolute/proof.json`，并使用 `node --expose-internals` 启动该命令。`release:preflight --input ... --desktop-core-proof ...` 与投影 CLI 复用同一 Core reader 与固定工具 SDK 的公开包解析器，验证安装布局、摘要与 SDK 解析；不会执行证明根内的代码。metadata.supportedCores 中额外的构建必须与验证返回的 head/version 完全匹配。普通来源登记、完整归档图和任意 head 的拒绝保持原规则；同版本不等于同构建。
 
 输出仍是本地 release JSON 与 `published: false`。签名频道部署、正式 OSS、当前客户端安装、Native 和业务验收需要各自的有效输入与验收记录。
 

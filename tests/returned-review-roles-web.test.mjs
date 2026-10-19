@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import { fixture } from "./fixtures/returned-review.mjs";
@@ -10,7 +10,7 @@ for (const [role, returnedStatus] of [
   ["category", 9],
 ])
   test(
-    `the rejecting role can review a return addressed to the previous node: ${role}/${returnedStatus}`,
+    `the rejecting role cannot approve a return addressed to the previous node: ${role}/${returnedStatus}`,
     { timeout: 90000 },
     async (t) => {
       const { frame, approved, submitted } = await fixture(t, { role, returnedStatus });
@@ -23,10 +23,8 @@ for (const [role, returnedStatus] of [
         .locator("label.arco-checkbox")
         .click();
       await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
-      await frame.getByRole("button", { name: "通过", exact: true }).click();
-      await expect.poll(() => approved.length).toBe(1);
-      assert.equal(approved[0].body.approvalRole, role);
-      assert.equal(approved[0].body.expectedStatus, returnedStatus);
+      await expect(frame.getByRole("button", { name: "通过", exact: true })).toHaveCount(0);
+      assert.deepEqual(approved, []);
       assert.deepEqual(submitted, []);
     },
   );

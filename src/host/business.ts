@@ -7,6 +7,7 @@ import {
   type ApprovalStageId,
   type GeaSalesPlanDetail,
 } from "@cleverc2200/dsh-agent-workbench/sales-plan";
+import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { SalesPlanTransactions } from "./sales-plan-transactions.ts";
 import { object, text, keys } from "./payload.ts";
 export { object } from "./payload.ts";
@@ -384,8 +385,11 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
     "status",
     "pageNo",
     "pageSize",
+    "versionIds",
+    "summaryOnly",
+    "statuses",
   ],
-  detail: ["planId"],
+  detail: ["planId", "orderType"],
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
@@ -431,7 +435,7 @@ export function normalizePlanQuery(
       kind === "list"
         ? " For a month, call kind=periods with periodMonth (YYYY-MM) first, then pass the returned periodId together with planTypeCode from that result; never invent periodId or planTypeCode."
         : kind === "detail"
-          ? " kind=detail takes only planId, taken from kind=list or kind=versions output; never pass versionId here and never invent an id."
+          ? " kind=detail takes planId from kind=list or kind=versions output, plus optional orderType; never pass versionId here and never invent an id."
           : kind === "versionSkus"
             ? " kind=versionSkus takes only versionId (detail 的 currentVersion.id，或 list 的 versionId) plus initial pageNo/pageSize or the returned nextQuery; planId is not needed."
             : kind === "periods"
@@ -2674,6 +2678,10 @@ export class Business {
         "INVALID_QUERY: period status was removed; filter visible plans by plan status instead.",
       );
     const auth = this.authenticated();
+    if (typeof salesPlan.salesPlanPeriodMonthForPlanId !== "function")
+      throw Object.assign(new Error("请先完成 Workbench 更新后再读取销售计划周期"), {
+        code: "GEA_WORKBENCH_UPDATE_REQUIRED",
+      });
     const upstreamPageSize = 200;
     const rows: Record<string, unknown>[] = [];
     let pageNo = 1;
@@ -2699,14 +2707,22 @@ export class Business {
     } while (pageNo <= pageCount);
     if (rows.length < upstreamTotal) throw new Error("GEA_INCOMPLETE_COLLECTION");
 
+    const selectedPlanType =
+      query.planType == null || query.planType === "" ? undefined : text(query.planType);
     const discovered = new Map<string, Row>();
     for (const row of rows) {
       const periodId = text(row.periodId);
       const planTypeCode = text(row.planTypeCode);
-      const match = /^(\d{4})(0[1-9]|1[0-2])/.exec(periodId);
-      const periodMonth = match ? `${match[1]}-${match[2]}` : periodId;
+      const periodMonth = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
+      if (!periodMonth) throw new Error("GEA_PLAN_MONTH_SOURCE_MISSING");
       const orderType = row.orderType == null ? "" : text(row.orderType);
-      const planType = orderType === "Z" ? "CORRECTION" : orderType === "M" ? "MONTHLY" : "UNKNOWN";
+      const planType =
+        orderType === "Z" || (selectedPlanType === "CORRECTION" && orderType === "M")
+          ? "CORRECTION"
+          : orderType === "M"
+            ? "MONTHLY"
+            : "UNKNOWN";
+      if (selectedPlanType != null && planType !== selectedPlanType) continue;
       discovered.set(`${periodId}\u0000${planTypeCode}`, {
         periodId,
         tenantId: auth.tenantId,
@@ -2718,11 +2734,8 @@ export class Business {
     }
     const periodMonth =
       query.periodMonth == null || query.periodMonth === "" ? undefined : text(query.periodMonth);
-    const planType =
-      query.planType == null || query.planType === "" ? undefined : text(query.planType);
     const records = [...discovered.values()]
       .filter((row) => periodMonth == null || row.periodMonth === periodMonth)
-      .filter((row) => planType == null || row.planType === planType)
       .toSorted(
         (left, right) =>
           String(right.periodMonth).localeCompare(String(left.periodMonth)) ||
@@ -3097,6 +3110,27 @@ export class Business {
     const kind = text(payload.kind);
     this.salesReadonly?.assertQuery(kind);
     query = normalizePlanQuery(kind, query);
+    if (kind === "list" && query.versionIds !== undefined) {
+      if (!Array.isArray(query.versionIds) || query.versionIds.length === 0)
+        throw new Error("INVALID_QUERY");
+      const versionIds = query.versionIds.map((value) => text(value));
+      if (versionIds.some((value) => value.includes(","))) throw new Error("INVALID_QUERY");
+      query = { ...query, versionIds: [...new Set(versionIds)].join(",") };
+    }
+    if (kind === "list" && query.summaryOnly !== undefined) {
+      if (typeof query.summaryOnly !== "boolean") throw new Error("INVALID_QUERY");
+      query = { ...query, summaryOnly: String(query.summaryOnly) };
+    }
+    if (kind === "list" && query.statuses !== undefined) {
+      if (
+        !Array.isArray(query.statuses) ||
+        query.statuses.length === 0 ||
+        (query.status != null && query.status !== "")
+      )
+        throw new Error("INVALID_QUERY");
+      const statuses = query.statuses.map((value) => integer(value, 0));
+      query = { ...query, statuses: [...new Set(statuses)].join(",") };
+    }
     if (kind === "versionSkus") {
       if (query.offset !== undefined && query.pageNo !== undefined)
         throw new Error("INVALID_QUERY: versionSkus uses either pageNo or offset from nextQuery.");
@@ -3161,6 +3195,7 @@ export class Business {
           String(integer(value, 1, key === "pageSize" ? 1000 : Number.MAX_SAFE_INTEGER)),
         );
       else if (key === "status" && kind !== "periods") params.set(key, String(integer(value, 0)));
+      else if (key === "versionIds" || key === "statuses") params.set(key, String(value));
       else params.set(key, text(value));
     }
     const result = await this.gatewayRequests.read(

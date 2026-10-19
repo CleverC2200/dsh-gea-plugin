@@ -26,7 +26,7 @@ test(
     });
     let modelCalls = 0;
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -45,6 +45,9 @@ test(
       currentAmount: "200",
       targetQty: "40",
       targetAmount: "400",
+      amountProgress: "25",
+      shipQty: "10",
+      shipAmount: "100",
       skuCount: 1,
     };
     const sku = {
@@ -106,7 +109,7 @@ test(
         });
         return true;
       }
-      if (path.endsWith("/plans/p")) {
+      if (path.endsWith("/plans/p-jxs-2026-09-00001")) {
         reply({
           success: true,
           result: {
@@ -153,7 +156,7 @@ test(
         reply({
           success: true,
           result: {
-            planId: "p",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             fromStatus: 1,
             toStatus: 2,
@@ -214,14 +217,20 @@ test(
     await frame.getByTestId("regional-approval-stage-region").click();
     assert.deepEqual(await readProgress(), before);
     await frame.getByRole("tab", { name: "按区域", exact: true }).click();
-    await expect(frame.getByTestId("regional-approval-status-p")).toHaveText("销售已提报");
+    await expect(frame.getByTestId("regional-approval-status-p-jxs-2026-09-00001")).toHaveText(
+      "销售已提报",
+    );
     await expect(
-      frame.getByTestId("regional-approval-status-p").locator("xpath=ancestor::td[1]"),
+      frame
+        .getByTestId("regional-approval-status-p-jxs-2026-09-00001")
+        .locator("xpath=ancestor::td[1]"),
     ).toContainText("宝阳销售组");
     await expect(
-      frame.getByTestId("regional-approval-status-p").locator("xpath=ancestor::table[1]/thead"),
+      frame
+        .getByTestId("regional-approval-status-p-jxs-2026-09-00001")
+        .locator("xpath=ancestor::table[1]/thead"),
     ).not.toContainText("审批状态");
-    const monthPlan = frame.getByTestId("regional-approval-month-plan-p");
+    const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(monthPlan.locator("span").first()).toHaveText("¥100");
     // 数量带单位：月计划列的数量显示成「10 件」。
     await expect(monthPlan.locator("small").first()).toHaveText("10 件");
@@ -256,8 +265,12 @@ test(
     await expect(
       frame.getByLabel("当前页明细汇总").getByText("¥221.25", { exact: true }),
     ).toBeVisible();
-    await expect(frame.getByTestId("regional-approval-month-plan-p")).toContainText("22.125");
-    await expect(frame.getByTestId("regional-approval-month-plan-p")).toContainText("¥221.25");
+    await expect(
+      frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),
+    ).toContainText("22.125");
+    await expect(
+      frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),
+    ).toContainText("¥221.25");
     await expect(frame.getByRole("status").filter({ hasText: "正在暂存" })).toContainText(
       "正在暂存",
       { timeout: 10000 },
@@ -266,15 +279,21 @@ test(
       timeout: 10000,
     });
     assert.equal(writes, 0);
-    const result = await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" });
+    const result = await app.rpc("sales-plan/draft", {
+      planId: "p-jxs-2026-09-00001",
+      versionId: "v",
+    });
     assert.equal(result.value.draft.adjustments[0].adjustQty, "2.125");
     const forged = await app.rpc("sales-plan/draft", {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       draft: { ...result.value.draft, sourceSnapshot: "forged" },
     });
     assert.equal(forged.ok, false, "伪造的草稿快照必须被拒绝，不能覆盖已验证草稿");
-    const unchanged = await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" });
+    const unchanged = await app.rpc("sales-plan/draft", {
+      planId: "p-jxs-2026-09-00001",
+      versionId: "v",
+    });
     assert.equal(unchanged.value.draft.adjustments[0].adjustQty, "2.125");
     await mkdir(".runtime/v16-feedback", { recursive: true });
     await page.screenshot({ path: ".runtime/v16-feedback/web-desktop.png", fullPage: true });
@@ -290,7 +309,7 @@ test(
     assert.deepEqual(errors, []);
     assert.equal(writes, 0);
     await page.setViewportSize({ width: 1536, height: 920 });
-    await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+    await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     allowApproval = true;
     await frame.getByRole("button", { name: "通过", exact: true }).click();
     await expect.poll(() => writes).toBe(1);

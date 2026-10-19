@@ -12,7 +12,7 @@ import { testBrowser } from "./fixtures/test-browser.mjs";
 test("节点百分比悬停显示分子/分母", { timeout: 90000 }, async (t) => {
   const app = await profile(t);
   const plan = {
-    planId: "p",
+    planId: "p-jxs-2026-09-00001",
     versionId: "v",
     seq: 1,
     periodId: "period-1",
@@ -65,7 +65,7 @@ test("节点百分比悬停显示分子/分母", { timeout: 90000 }, async (t) =
         size,
       });
     }
-    if (path.endsWith("/plans/p"))
+    if (path.endsWith("/plans/p-jxs-2026-09-00001"))
       return send({
         currentVersion: { ...plan, id: "v", effective: true },
         skus: [sku],
