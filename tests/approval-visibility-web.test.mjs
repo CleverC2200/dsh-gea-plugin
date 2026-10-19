@@ -175,12 +175,12 @@ test(
       await expect(table.getByText(`scope-${status}-row`, { exact: true })).toHaveCount(0);
     const returned = table.locator("tr").filter({ hasText: "scope-7-row" });
     await returned.locator("label.arco-checkbox").click();
-    await expect(frame.getByRole("button", { name: "重提计划", exact: true })).toBeEnabled();
+    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toBeEnabled();
     await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
     const tracked = table.locator("tr").filter({ hasText: "scope-6-row" });
     await returned.locator("label.arco-checkbox").click();
     await tracked.locator("label.arco-checkbox").click();
-    await expect(frame.getByRole("button", { name: "重提计划", exact: true })).toBeDisabled();
+    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toBeDisabled();
     await region.click();
     await expect(table.getByText("scope-6-row", { exact: true })).toHaveCount(0);
     await expect(region).toHaveAttribute("aria-pressed", "true");
