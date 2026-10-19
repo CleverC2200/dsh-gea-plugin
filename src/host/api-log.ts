@@ -23,6 +23,17 @@ const STREAM_OMITTED = "[流式响应正文未保存]";
 const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;
 
+const METADATA_ONLY = new Set([
+  "service.submit",
+  "service.token",
+  "plans.list",
+  "plans.detail",
+  "plans.version-skus",
+  "plans.versions",
+  "plans.logs",
+]);
+const METADATA_REPLAY_NOTE = "仅保留接口审计元数据，重试须使用原受控意图";
+
 type CatalogDefinition = ApiCatalogEntry & {
   matches(method: string, path: string): boolean;
 };
@@ -32,6 +43,9 @@ const endpoint = (
   pattern: RegExp,
 ): CatalogDefinition => ({
   ...entry,
+  ...(METADATA_ONLY.has(entry.id)
+    ? { replayPolicy: "blocked" as const, replayNote: METADATA_REPLAY_NOTE }
+    : {}),
   matches: (method, path) => {
     if (method !== entry.method) return false;
     const parts = path.split("/").filter(Boolean);
@@ -394,7 +408,7 @@ const CATALOG: CatalogDefinition[] = [
       name: "交换服务令牌",
       method: "POST",
       path: "/api/v1/internal/auth/token",
-      description: "为一次销售计划重提交换短期服务令牌。",
+      description: "获取销售计划提报所需短期服务令牌。",
       requestFields: ["grant_type", "scope"],
       replayPolicy: "blocked",
       replayNote: blocked,
@@ -409,9 +423,9 @@ const CATALOG: CatalogDefinition[] = [
       method: "POST",
       path: "/api/v1/internal/sales-plans",
       description: "使用服务账号提交一份已完成来源校验的销售计划。",
-      requestFields: ["planId", "versionId", "items", "periodMonth", "planTypeCode"],
-      replayPolicy: "idempotent",
-      replayNote: idempotent,
+      requestFields: [],
+      replayPolicy: "blocked",
+      replayNote: "重提仅可从原受控提交意图重试，日志中心不保存或重发业务载荷",
     },
     /^\/api\/v1\/internal\/sales-plans$/,
   ),
@@ -528,6 +542,33 @@ async function responsePreview(response: Response): Promise<unknown> {
   }
 }
 
+function auditMetadata(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const data = value as Record<string, unknown>;
+  const result =
+    data.result && typeof data.result === "object" && !Array.isArray(data.result)
+      ? (data.result as Record<string, unknown>)
+      : {};
+  return Object.fromEntries(
+    ["errorCode", "requestId", "traceId", "auditId"].flatMap((key) => {
+      const field = data[key] ?? result[key];
+      return typeof field === "string" && /^[A-Za-z0-9:._-]{1,128}$/.test(field)
+        ? [[key, field]]
+        : [];
+    }),
+  );
+}
+
+function auditHeaders(headers: Headers): Record<string, string> {
+  return Object.fromEntries(
+    [...headers].filter(
+      ([key, value]) =>
+        ["x-request-id", "x-trace-id", "x-audit-id"].includes(key) &&
+        /^[A-Za-z0-9:._-]{1,128}$/.test(value),
+    ),
+  );
+}
+
 function replayableBody(body: BodyInit | null | undefined): BodyInit | undefined | false {
   if (body == null) return undefined;
   if (typeof body === "string") return Buffer.byteLength(body, "utf8") <= BODY_LIMIT ? body : false;
@@ -607,6 +648,8 @@ export class GeaApiLogCenter {
     const requestBody = init?.body;
     const safeUrl = sanitizeUrl(rawUrl);
     const catalog = CATALOG.find((entry) => entry.matches(method, safeUrl.path));
+    const metadataOnly = catalog && METADATA_ONLY.has(catalog.id);
+    const loggedUrl = metadataOnly ? { url: catalog.path, path: catalog.path, query: {} } : safeUrl;
     const started = Date.now();
     const record: PrivateRecord = {
       ...context,
@@ -624,15 +667,16 @@ export class GeaApiLogCenter {
       ...(replayedFrom ? { replayedFrom } : {}),
       request: {
         method,
-        ...safeUrl,
-        headers: sanitizeHeaders(requestHeaders),
-        body:
-          catalog?.id === "model.chat"
+        ...loggedUrl,
+        headers: metadataOnly ? auditHeaders(requestHeaders) : sanitizeHeaders(requestHeaders),
+        body: metadataOnly
+          ? null
+          : catalog?.id === "model.chat"
             ? "[模型请求正文未保存]"
             : bodyPreview(requestBody, requestHeaders),
       },
     };
-    const body = replayableBody(requestBody);
+    const body = metadataOnly ? false : replayableBody(requestBody);
     if (
       catalog &&
       catalog.replayPolicy !== "blocked" &&
@@ -658,8 +702,9 @@ export class GeaApiLogCenter {
         );
     }
     if (!record.replayAvailable)
-      record.replayUnavailableReason =
-        catalog?.replayPolicy === "blocked"
+      record.replayUnavailableReason = metadataOnly
+        ? METADATA_REPLAY_NOTE
+        : catalog?.replayPolicy === "blocked"
           ? catalog.replayNote
           : !catalog
             ? "该调用未登记，不能重发"
@@ -673,9 +718,10 @@ export class GeaApiLogCenter {
       record.response = {
         status: response.status,
         statusText: response.statusText,
-        headers: sanitizeHeaders(response.headers),
-        body:
-          catalog?.id === "model.chat"
+        headers: metadataOnly ? auditHeaders(response.headers) : sanitizeHeaders(response.headers),
+        body: metadataOnly
+          ? auditMetadata(await responsePreview(response))
+          : catalog?.id === "model.chat"
             ? response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")
               ? STREAM_OMITTED
               : "[模型响应正文未保存]"
@@ -689,7 +735,9 @@ export class GeaApiLogCenter {
       record.outcome = "error";
       record.error = {
         name: error instanceof Error ? error.name : "Error",
-        message: sanitizeString(error instanceof Error ? error.message : String(error)),
+        message: metadataOnly
+          ? "请求未返回有效响应"
+          : sanitizeString(error instanceof Error ? error.message : String(error)),
       };
       this.finish(record, started);
       // 线上实测：这类失败原样抛出去，界面只有 `fetch failed` + UNKNOWN（真实原因在 cause 里）。

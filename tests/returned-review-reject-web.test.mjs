@@ -1,4 +1,4 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import { fixture, PLAN_A, PLAN_C } from "./fixtures/returned-review.mjs";
