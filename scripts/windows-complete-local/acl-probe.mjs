@@ -115,12 +115,12 @@ $ErrorActionPreference='Stop';
 function Emit($key,$value) { [Console]::Out.WriteLine($key+'='+[string]$value) }
 $stage='environment';
 try {
-Emit 'psVersion' $PSVersionTable.PSVersion.ToString(); Emit 'psEdition' $PSVersionTable.PSEdition; Emit 'clrVersion' ([string]$PSVersionTable.CLRVersion);
+Emit 'psVersion' ($PSVersionTable.PSVersion.ToString()); Emit 'psEdition' $PSVersionTable.PSEdition; Emit 'clrVersion' ([string]$PSVersionTable.CLRVersion);
 $parts=@($env:PSModulePath -split ';'); $homeModules=[IO.Path]::Combine($PSHOME,'Modules'); $hasHome=$false;
 foreach($part in $parts) { if([string]::Equals($part.TrimEnd([IO.Path]::DirectorySeparatorChar),$homeModules,[StringComparison]::OrdinalIgnoreCase)) { $hasHome=$true } }
 Emit 'modulePathEntryCount' $parts.Count; Emit 'modulePathHasPsHomeModules' $hasHome;
 $stage='parser';
- $tokens=$null; $errors=$null; [void][Management.Automation.Language.Parser]::ParseInput($env:R9_VERIFY_COMMAND,[ref]$tokens,[ref]$errors); Emit 'parserErrorCount' @($errors).Count;
+ $tokens=$null; $errors=$null; [void][Management.Automation.Language.Parser]::ParseInput($env:R9_VERIFY_COMMAND,[ref]$tokens,[ref]$errors); Emit 'parserErrorCount' (@($errors).Count);
  $stage='get-acl-resolve'; $command=Get-Command -Name Get-Acl -ErrorAction Stop; Emit 'getAclResolvable' $true; Emit 'getAclSource' $command.Source;
  $stage='get-acl'; $acl=Get-Acl -LiteralPath $env:R9_PRIVATE_PATH; Emit 'aclRead' $true; Emit 'aclProtected' $acl.AreAccessRulesProtected;
  $stage='current-sid'; $me=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; Emit 'currentSidObserved' $true;
@@ -134,7 +134,7 @@ $stage='parser';
   }
  }
  Emit 'allowCount' $allowed; Emit 'currentAllowCount' $current; Emit 'systemAllowCount' $system; Emit 'forbiddenAllowCount' $other; Emit 'inheritedCount' $inherited; Emit 'classificationComplete' $true;
-} catch { if($stage -eq 'get-acl-resolve') { Emit 'getAclResolvable' $false }; Emit 'failureStage' $stage; Emit 'exceptionType' $_.Exception.GetType().FullName; Emit 'category' $_.CategoryInfo.Category; Emit 'fullyQualifiedErrorId' $_.FullyQualifiedErrorId; Emit 'classificationComplete' $false }
+} catch { if($stage -eq 'get-acl-resolve') { Emit 'getAclResolvable' $false }; Emit 'failureStage' $stage; Emit 'exceptionType' ($_.Exception.GetType().FullName); Emit 'category' $_.CategoryInfo.Category; Emit 'fullyQualifiedErrorId' $_.FullyQualifiedErrorId; Emit 'classificationComplete' $false }
 `;
 export function readClassification(text) {
   const fields = Object.fromEntries(
