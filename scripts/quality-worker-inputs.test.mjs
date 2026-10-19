@@ -95,6 +95,7 @@ function fixture(
     "quality-workbench.mjs",
     "source-combination-integrity.mjs",
     "quality-test-execution.mjs",
+    "quality-hosted-budget.mjs",
     "quality-worker-control.mjs",
     "quality-ci-stages.mjs",
   ])
@@ -102,7 +103,6 @@ function fixture(
   if (publicQuality) {
     for (const file of [
       "run-quality-ci.mjs",
-      "business-profile-ci.mjs",
       "run-quality-checks.mjs",
       "source-profile.mjs",
       "source-composition.mjs",
@@ -140,7 +140,7 @@ function fixture(
       "candidate/dsh-agent-manage/scripts/" + file,
       readFileSync(join(manageSource, "scripts", file)),
     );
-  for (const file of ["candidate-input.mjs", "ci-test-plan.mjs", "ci-source-policy.mjs"])
+  for (const file of ["candidate-input.mjs", "ci-test-plan.mjs"])
     put(
       "source/dsh-agent-workbench/scripts/" + file,
       readFileSync(join(workbenchSource, "scripts", file)),
@@ -1449,6 +1449,8 @@ test("the real selector maps only the worker implementation to its public CLI co
   });
   const ownRepo = repositories[2];
   const policy = JSON.parse(readFileSync(join(own, "scripts/ci-test-policy.json")));
+  policy.tests = policy.tests.filter((file) => !file.startsWith("desktop/"));
+  delete policy.testOwners;
   policy.required = ["tests/required.test.mjs"];
   put(ownRepo.path, "scripts/ci-test-policy.json", JSON.stringify(policy));
   put(ownRepo.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
@@ -1459,6 +1461,7 @@ test("the real selector maps only the worker implementation to its public CLI co
     "scripts/quality-prepared-inputs.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
+    "tests/unrelated.browser.mjs",
   ])
     put(ownRepo.path, file, "export const fixture=true;");
   ownRepo.head = commit(ownRepo.path);
@@ -1474,6 +1477,7 @@ test("the real selector maps only the worker implementation to its public CLI co
   ]);
   assert.ok(plan.files.includes("scripts/quality-worker-inputs.test.mjs"));
   assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+  assert.ok(!plan.files.includes("tests/unrelated.browser.mjs"));
   put(ownRepo.path, "scripts/quality-runner-environment.mjs", "export const environment=true;");
   ownRepo.head = commit(ownRepo.path);
   const environmentPlan = selectCiTests({ repositories, repo: ownRepo.repo, base });
@@ -1776,23 +1780,77 @@ test("worker CLI rechecks all fresh dependency roots after managers are ready be
   assert.equal(f.read("quality-worker-inputs.json").status, "failed");
 });
 
-function fileReady(file, timeoutMs = 5000) {
+function fileReady(file, timeoutMs = 5000, signal) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      watcher.close();
-      reject(Error("fixture process did not become ready"));
-    }, timeoutMs);
-    const check = () => {
-      if (existsSync(file)) {
-        clearTimeout(timer);
-        watcher.close();
-        resolve();
-      }
+    let timer, watcher;
+    const finish = (error) => {
+      clearTimeout(timer);
+      watcher?.close();
+      signal?.removeEventListener("abort", onAbort);
+      if (error) reject(error);
+      else resolve();
     };
-    const watcher = watch(dirname(file), check);
+    const onAbort = () => finish(signal.reason);
+    if (signal?.aborted) return onAbort();
+    timer = setTimeout(
+      () => finish(Error("fixture process did not become ready: " + file)),
+      timeoutMs,
+    );
+    const check = () => {
+      if (existsSync(file)) finish();
+    };
+    watcher = watch(dirname(file), check);
+    watcher.on("error", finish);
+    signal?.addEventListener("abort", onAbort, { once: true });
     check();
   });
 }
+
+async function installFixturesReady(f, run) {
+  const waiting = new AbortController();
+  try {
+    await deadline(
+      Promise.race([
+        Promise.all([
+          fileReady(join(f.root, "grandchild-ready"), 5000, waiting.signal),
+          fileReady(join(f.root, "second-install-ready"), 5000, waiting.signal),
+        ]),
+        run.closed.then((result) => {
+          throw Error("worker exited before install fixtures became ready", { cause: result });
+        }),
+      ]),
+    );
+  } finally {
+    waiting.abort();
+  }
+}
+
+test("worker readiness preserves an early CLI failure instead of masking it as a readiness timeout", async (t) => {
+  const f = fixture(t, { runtime: true });
+  assert.equal(f.produce().status, 0);
+  assert.equal(f.exportBundle().status, 0);
+  f.clear();
+  const run = f.receiveAsync({
+    PROCESS_INSTALLS: "1",
+    INSTALL_SCENARIO: "cancel",
+    WRONG_MANAGER: "1",
+  });
+  try {
+    await assert.rejects(installFixturesReady(f, run), (error) => {
+      assert.equal(error.message, "worker exited before install fixtures became ready");
+      assert.equal(error.cause.code, 1);
+      assert.equal(error.cause.signal, null);
+      assert.match(error.cause.stderr, /actual package manager changed: dsh-agent-manage/);
+      assert.equal(existsSync(join(f.root, "grandchild-ready")), false);
+      assert.equal(existsSync(join(f.root, "second-install-ready")), false);
+      return true;
+    });
+  } finally {
+    cleanupInstallFixture(f, run.child);
+    await run.closed;
+  }
+});
+
 for (const signal of ["SIGTERM", "SIGINT"]) {
   test(
     "worker CLI cancellation by " +
@@ -1804,13 +1862,9 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
       assert.equal(f.exportBundle().status, 0);
       f.clear();
       const run = f.receiveAsync({ PROCESS_INSTALLS: "1", INSTALL_SCENARIO: "cancel" });
+      let failure;
       try {
-        await deadline(
-          Promise.all([
-            fileReady(join(f.root, "grandchild-ready")),
-            fileReady(join(f.root, "second-install-ready")),
-          ]),
-        );
+        await installFixturesReady(f, run);
         run.child.kill(signal);
         const r = await deadline(run.closed);
         assert.equal(r.code, 1, r.stderr);
@@ -1828,9 +1882,28 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
         writeFileSync(join(f.root, "release-grandchild"), "release");
         assert.ok(!existsSync(join(f.root, "late-write")));
         assert.ok(!receipt.steps.some((x) => x.name === "sdk-cache"));
+      } catch (error) {
+        failure = error;
+        throw error;
       } finally {
         cleanupInstallFixture(f, run.child);
-        await run.closed;
+        const worker = await run.closed;
+        if (failure)
+          t.diagnostic(
+            JSON.stringify({
+              signal,
+              ready: Object.fromEntries(
+                ["grandchild-ready", "second-install-ready"].map((name) => [
+                  name,
+                  existsSync(join(f.root, name)),
+                ]),
+              ),
+              events: existsSync(join(f.root, "install-processes.jsonl"))
+                ? readFileSync(join(f.root, "install-processes.jsonl"), "utf8")
+                : "",
+              worker,
+            }),
+          );
       }
     },
   );

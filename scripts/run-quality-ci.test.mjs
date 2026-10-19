@@ -13,7 +13,11 @@ import {
 import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
-import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
+import {
+  macosIsolationTests,
+  selectPlatformTests,
+  requiresDependencyReview,
+} from "./ci-platform-tests.mjs";
 import { parse } from "yaml";
 
 test("all admitted quality lanes reuse the same fixed SDK cache without weakening source admission", () => {
@@ -114,11 +118,17 @@ test("the workflow binds full source history and the same public quality command
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --prepare-sdk.*--prepare-inputs/);
   assert.match(readFileSync("scripts/run-quality-ci.mjs", "utf8"), /APS_BUILD_MODE: ["']mock["']/);
   assert.match(workflow, /if: always\(\)/);
-  assert.match(
-    workflow,
-    /needs: \[candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation\]/,
-  );
-  assert.match(workflow, /run: node scripts\/run-quality-ci.mjs --phase final/);
+  assert.deepEqual(parse(workflow).jobs["candidate-quality"].needs, [
+    "candidate-scope",
+    "source-plan",
+    "gates",
+    "plan-test-shards",
+    "test-shards",
+    "macos-isolation",
+    "windows-plugin-update",
+    "dependency-review",
+  ]);
+  assert.match(workflow, /node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
   assert.match(workflow, /ciCores\(["']required["']\)\.map\(core => core\.head\)/);
@@ -342,7 +352,7 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
       source.indexOf("  candidate-", source.indexOf("  macos-isolation:\n")),
     );
     assert.match(macos, /runs-on: macos-latest/);
-    assert.match(macos, /needs: candidate-scope/);
+    assert.match(macos, /needs: (?:\[)?candidate-scope/);
     for (const entry of ["gea", "manage", "workbench"])
       assert.ok(macos.includes(`needs.candidate-scope.outputs.${entry}-sha`));
     assert.match(macos, /fromJSON\(needs.candidate-scope.outputs.cores\)/);
@@ -356,10 +366,7 @@ test("both source and compatibility workflows require actual same-tuple macOS ex
     if (file === "quality") {
       assert.match(macos, /sdk-artifact-cache\.mjs.*--github-paths/);
       assert.match(macos, /path: quality-macos-result\.json/);
-      assert.match(
-        source,
-        /needs: \[candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation\]/,
-      );
+      assert.ok(parse(source).jobs["candidate-quality"].needs.includes("macos-isolation"));
     } else {
       assert.match(source, /QUALITY_ISOLATION_RESULT: \$\{\{ needs\.macos-isolation\.result \}\}/);
       assert.match(source, /--phase compatibility-final/);
@@ -382,7 +389,7 @@ test("Linux preparation exports once and failed checks block executable worker i
   for (const stage of ["prepare", "build", "checks", "tests"]) {
     const step = steps.find((entry) => entry.includes(`id: quality-${stage}\n`));
     assert.ok(step, stage);
-    assert.match(step, new RegExp(`--stage ${stage}(?:\n|$)`));
+    assert.match(step, new RegExp(`--stage ${stage}(?:\\s|$)`));
     assert.match(step, /--final-group-sha256 "\$INPUT_SHA256"/);
     assert.doesNotMatch(step, /continue-on-error/);
   }
@@ -400,9 +407,19 @@ test("Linux preparation exports once and failed checks block executable worker i
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: cache-path"));
   assert.ok(linux.indexOf("id: quality-source") < linux.indexOf("id: quality-build"));
   assert.match(linux, /quality:fast --source-only/);
+  assert.match(
+    linux,
+    /--source-receipt-out \.runtime\/quality-source-checks\.json --input-sha256 "\$INPUT_SHA256"/,
+  );
+  assert.match(
+    linux,
+    /--stage checks --source-check-receipt \.runtime\/quality-source-checks\.json/,
+  );
   assert.match(sourcePlan, /GITHUB_STEP_SUMMARY/);
   assert.ok(linux.indexOf("id: quality-plan") < linux.indexOf("id: sdk-paths"));
-  assert.match(linux, /--stage plan.*--test-shards auto/);
+  assert.match(sourcePlan, /--stage plan.*--test-shards auto/);
+  assert.match(linux, /const plan=control\.plan/);
+  assert.doesNotMatch(linux, /--stage plan/);
   assert.match(linux, /QUALITY_TEST_SHARDS: \$\{\{ steps\.quality-plan\.outputs\.shards \}\}/);
   assert.match(linux, /--stage tests/);
   const localTests = steps.find((step) => step.includes("id: quality-tests"));
@@ -507,9 +524,11 @@ test("the current source impact maps changed paths without feature history and s
     ["dsh-gea-plugin", source],
   ]) {
     const path = join(directory, repo);
-    // Use current authored bytes, excluding writable builds and untracked concurrent fixtures.
-    for (const file of git(input, "ls-files", "-z").split("\0").filter(Boolean)) {
+    for (const file of git(input, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+      .split("\0")
+      .filter(Boolean)) {
       if (
+        !existsSync(join(input, file)) ||
         file.startsWith("lib/") ||
         (!/\.(?:[cm]?[jt]sx?|css|html|json|ya?ml)$/.test(file) && !changedPaths.includes(file))
       )
@@ -544,7 +563,10 @@ test("the current source impact maps changed paths without feature history and s
   const { selectCiTests } = await import(
     pathToFileURL(join(directory, "dsh-agent-workbench/scripts/ci-test-plan.mjs"))
   );
-  const request = { repositories, repo: "dsh-gea-plugin", base };
+  const testOwners = JSON.parse(
+    readFileSync(join(gea.path, "scripts/ci-test-policy.json")),
+  ).testOwners;
+  const request = { repositories, repo: "dsh-gea-plugin", base, testOwners };
   const plan = selectCiTests(request);
   assert.deepEqual(plan.changes.map((entry) => entry.file).sort(), changedPaths);
   for (const entry of plan.changes.filter((entry) => !entry.file.endsWith(".md")))
@@ -552,6 +574,8 @@ test("the current source impact maps changed paths without feature history and s
   for (const file of ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"])
     assert.ok(plan.reasons[`dsh-gea-plugin/${contract}`].includes(file));
   for (const file of plan.required) assert.ok(plan.files.includes(file));
+  for (const file of Object.keys(testOwners)) assert.ok(!plan.files.includes(file), file);
+  assert.equal(new Set(plan.files).size, plan.files.length);
   t.diagnostic(
     JSON.stringify({
       base,
@@ -597,4 +621,38 @@ test("compatibility keeps its own status summary while required final still dema
     for (const result of ["failure", "skipped", "cancelled", ""])
       assert.equal(run(["--phase", "compatibility-final"], { ...good, [key]: result }).status, 1);
   assert.equal(run(["--phase", "final"], good).status, 1);
+});
+
+test("dependency review applies only to consumed GEA dependency inputs on PRs and remains required when selected", () => {
+  for (const file of [
+    "package.json",
+    "pnpm-lock.yaml",
+    "npm-shrinkwrap.json",
+    "desktop/package.json",
+    "desktop/diagnostic-package.json",
+    "desktop/tools/package.json",
+    "desktop/tools/package-lock.json",
+  ]) {
+    const changes = [{ repo: "dsh-gea-plugin", file }];
+    assert.equal(requiresDependencyReview(changes, "pull_request"), true, file);
+    assert.equal(requiresDependencyReview(changes, "push"), false, file);
+  }
+  for (const file of ["docs/README.md", "src/style.css", "tests/fixtures/package.json"])
+    assert.equal(
+      requiresDependencyReview([{ repo: "dsh-gea-plugin", file }], "pull_request"),
+      false,
+      file,
+    );
+  assert.equal(
+    requiresDependencyReview([{ repo: "dsh-agent-manage", file: "package.json" }], "pull_request"),
+    false,
+  );
+  const job = parse(readFileSync(".github/workflows/quality.yml", "utf8")).jobs[
+    "dependency-review"
+  ];
+  assert.match(job.if, /pull_request.*dependency-review-applicable/);
+  assert.equal(job.needs, "source-plan");
+  const action = job.steps.find((step) => step.uses === "actions/dependency-review-action@v5");
+  assert.equal(action.with["fail-on-severity"], "high");
+  assert.equal(action["continue-on-error"], undefined);
 });

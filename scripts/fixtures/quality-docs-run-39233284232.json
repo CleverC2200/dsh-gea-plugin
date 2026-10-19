@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "source": "https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/39233284232",
+  "expected": {
+    "repository": "CleverC2200/dsh-gea-plugin",
+    "runId": 39233284232,
+    "runAttempt": 1,
+    "headSha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51"
+  },
+  "run": {
+    "id": 39233284232,
+    "run_attempt": 1,
+    "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+    "status": "completed",
+    "conclusion": "failure",
+    "created_at": "2026-10-19T09:52:19Z",
+    "run_started_at": "2026-10-19T09:52:18Z",
+    "updated_at": "2026-10-19T09:53:42Z"
+  },
+  "jobs": [
+    {
+      "id": 117996185022,
+      "name": "candidate-scope",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-19T09:52:21Z",
+      "completed_at": "2026-10-19T09:52:30Z"
+    },
+    {
+      "id": 117996255233,
+      "name": "windows-plugin-update",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-19T09:52:32Z",
+      "completed_at": "2026-10-19T09:52:38Z"
+    },
+    {
+      "id": 117996255278,
+      "name": "source-plan-a0d854bd72b1d052fe24005cf10b8e72bb8f17f8",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-10-19T09:52:32Z",
+      "completed_at": "2026-10-19T09:53:27Z"
+    },
+    {
+      "id": 117996642147,
+      "name": "Dependency review",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-10-19T09:53:27Z",
+      "completed_at": "2026-10-19T09:53:27Z"
+    },
+    {
+      "id": 117996642418,
+      "name": "prepare-${{ matrix.core }}",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-10-19T09:53:27Z",
+      "completed_at": "2026-10-19T09:53:27Z"
+    },
+    {
+      "id": 117996642492,
+      "name": "candidate-quality",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-10-19T09:53:30Z",
+      "completed_at": "2026-10-19T09:53:41Z"
+    },
+    {
+      "id": 117996643202,
+      "name": "macos-${{ matrix.core }}",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-10-19T09:53:28Z",
+      "completed_at": "2026-10-19T09:53:27Z"
+    },
+    {
+      "id": 117996643537,
+      "name": "plan-test-shards",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-10-19T09:53:28Z",
+      "completed_at": "2026-10-19T09:53:27Z"
+    },
+    {
+      "id": 117996643852,
+      "name": "matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards'",
+      "run_id": 39233284232,
+      "run_attempt": 1,
+      "head_sha": "71348a4378dc0dc317aa70f2f27f2c03a2df4f51",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-10-19T09:53:28Z",
+      "completed_at": "2026-10-19T09:53:27Z"
+    }
+  ],
+  "pagination": {
+    "complete": true,
+    "totalCount": 9,
+    "pageCount": 1,
+    "perPage": 100
+  },
+  "observedAt": "2026-10-19T09:56:43.773952+00:00"
+}

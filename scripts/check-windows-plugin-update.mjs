@@ -9,15 +9,13 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { extractAll } from "@electron/asar";
+import { windowsNativeEntrypoints, windowsNativeInput } from "./ci-windows-update.mjs";
 if (process.platform !== "win32") throw Error("WINDOWS_NATIVE_REQUIRED");
 const root = resolve(".runtime/windows-update-native"),
   installer = join(root, "gea157.exe");
 await mkdir(root, { recursive: true });
-const expected = "9ab0cbdfdeb57d4227671a2b4f25f4b2793f9d3f7f5894fc6bf7cfbf39f93ba9";
-const response = await fetch(
-  "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/556e9381b39cf271b5227fdbfacbaa3584cf9cc7/desktop/GEA-Desktop-0.2.0-rc.2-win-x64-gea157-local-unsigned.exe",
-  { redirect: "error" },
-);
+const expected = windowsNativeInput.installerSha256;
+const response = await fetch(windowsNativeInput.installerUrl, { redirect: "error" });
 if (!response.ok) throw Error("WINDOWS_FIXED_RUNTIME_DOWNLOAD_FAILED");
 const hash = createHash("sha256");
 await pipeline(
@@ -50,10 +48,7 @@ execFileSync(seven, ["x", payload, "-o" + app, "-y"], { stdio: "ignore" });
 const runtime = join(root, "runtime");
 extractAll(join(app, "resources/app.asar"), runtime);
 const manifest = JSON.parse(await readFile(join(runtime, "package.json"), "utf8"));
-if (
-  manifest.dshBuildCommit !== "639ed015397290b3745d163aafe02ffee4aa3f84" ||
-  manifest.dshBuildDirty !== false
-)
+if (manifest.dshBuildCommit !== windowsNativeInput.coreHead || manifest.dshBuildDirty !== false)
   throw Error("WINDOWS_FIXED_CORE_MISMATCH");
 const load = createRequire(join(runtime, "dsh/package.json")),
   controller = join(root, "controller.mjs");
@@ -63,7 +58,7 @@ const sdk = new Set([
   "@deepseek-ai/dsh-plugin-manager/operations",
 ]);
 await build({
-  entryPoints: ["src/host/plugin-update-controller.ts"],
+  entryPoints: [windowsNativeEntrypoints.controller],
   outfile: controller,
   bundle: true,
   packages: "external",
@@ -87,12 +82,7 @@ let exitCode = 0;
 try {
   execFileSync(
     executable,
-    [
-      "--expose-internals",
-      "--test",
-      "--test-concurrency=1",
-      "tests/plugin-update-windows.native.mjs",
-    ],
+    ["--expose-internals", "--test", "--test-concurrency=1", windowsNativeEntrypoints.fixture],
     {
       stdio: "inherit",
       timeout: 120000,
@@ -116,6 +106,7 @@ await writeFile(
       sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
       coreHead: manifest.dshBuildCommit,
       runtimeInstallerSha256: expected,
+      acceptance: windowsNativeInput.acceptance,
       exitCode,
       nativeUIAcceptance: false,
     },

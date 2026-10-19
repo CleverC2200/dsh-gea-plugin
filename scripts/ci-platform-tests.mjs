@@ -16,3 +16,16 @@ export function selectPlatformTests(plan, platform = process.platform) {
     ],
   };
 }
+
+export function requiresDependencyReview(changes, event) {
+  return (
+    event === "pull_request" &&
+    changes.some(
+      ({ repo, file }) =>
+        repo === "dsh-gea-plugin" &&
+        /^(?:package\.json|pnpm-lock\.yaml|npm-shrinkwrap\.json|desktop\/(?:package\.json|diagnostic-package\.json|tools\/(?:package\.json|package-lock\.json)))$/.test(
+          file,
+        ),
+    )
+  );
+}
