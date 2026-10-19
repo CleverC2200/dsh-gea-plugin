@@ -192,13 +192,35 @@ export function parsePluginRelease(value) {
 
 /** Parse final publication graph once; unknown wire objects do not enter planning. */
 export function parsePluginManifest(value) {
-  if (!record(value) || !companyPackageNames.includes(value.name) || !semver.valid(value.version))
+  return parseManifest(value, true);
+}
+export function parseInstalledPluginManifest(value) {
+  return parseManifest(value, false);
+}
+function parseManifest(value, publication) {
+  if (
+    !record(value) ||
+    typeof value.name !== "string" ||
+    !value.name ||
+    (publication && !companyPackageNames.includes(value.name)) ||
+    !semver.valid(value.version)
+  )
     fail();
+  if (!record(value.dependencies ?? {})) fail();
   const peerDependencies = ranges(value.peerDependencies ?? {}),
-    dependencies = ranges(value.dependencies ?? {});
+    dependencies = ranges(
+      publication
+        ? (value.dependencies ?? {})
+        : Object.fromEntries(
+            Object.entries(value.dependencies ?? {}).filter(([name]) =>
+              companyPackageNames.includes(name),
+            ),
+          ),
+    );
   const peerDependenciesMeta = {};
   if (!record(value.peerDependenciesMeta ?? {})) fail();
   for (const [name, meta] of Object.entries(value.peerDependenciesMeta ?? {})) {
+    if (!publication && !Object.hasOwn(peerDependencies, name)) continue;
     if (
       !record(meta) ||
       typeof meta.optional !== "boolean" ||
@@ -215,6 +237,7 @@ export function parsePluginManifest(value) {
     dependencies,
   };
 }
+
 export function comparePluginVersions(left, right) {
   return semver.compare(left, right);
 }

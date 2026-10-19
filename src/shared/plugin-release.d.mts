@@ -62,6 +62,9 @@ export function parsePluginManifest(
     "name" | "version" | "dependencies" | "peerDependencies" | "peerDependenciesMeta"
   >
 >;
+export function parseInstalledPluginManifest(
+  value: unknown,
+): ReturnType<typeof parsePluginManifest>;
 export function comparePluginVersions(left: string, right: string): number;
 export type PluginReleaseReference = {
   name: CompanyPackageName;
