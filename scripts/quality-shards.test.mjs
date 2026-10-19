@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { skippedTestShardsJobName } from "./quality-hosted-budget.mjs";
+import { windowsNativeInput } from "./ci-windows-update.mjs";
 import {
   createExecutionPlan,
   executionDigest,
@@ -258,9 +259,20 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   writeFileSync(join(root, "catalog.json"), JSON.stringify(catalog));
   mkdirSync(join(root, "workers"));
   mkdirSync(join(root, "macos"));
+  mkdirSync(join(root, "windows"));
   for (const [i, worker] of workers.entries())
     writeFileSync(join(root, "workers", i + ".json"), JSON.stringify(worker));
   writeFileSync(join(root, "macos", "result.json"), JSON.stringify(macos[0]));
+  writeFileSync(
+    join(root, "windows", "windows-update-scope.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      applicable: false,
+      sourceHead: "b".repeat(40),
+      group: { groupId: "group", repositories: candidate.repositories },
+      runtime: windowsNativeInput,
+    }),
+  );
   let age = 30000,
     wrongHead = false,
     hostedRequiredJobs = catalog.requiredJobs,
@@ -324,7 +336,7 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => server.close());
-  const invoke = async (suffix, extra = []) => {
+  const invoke = async (suffix, extra = [], withWindows = true) => {
     const child = spawn(
       process.execPath,
       [
@@ -337,6 +349,7 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
         join(root, "workers"),
         "--macos-results",
         join(root, "macos"),
+        ...(withWindows ? ["--windows-results", join(root, "windows")] : []),
         "--final-output",
         join(root, suffix),
         ...extra,
@@ -344,6 +357,8 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
       {
         env: {
           ...process.env,
+          GITHUB_ACTIONS: "true",
+          GITHUB_TOKEN: "fixture-read-token",
           GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
           GITHUB_RUN_ID: "7",
           GITHUB_RUN_ATTEMPT: "2",
@@ -375,6 +390,9 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   const green = await invoke("final-green");
   assert.equal(green.status, 0, green.stderr);
   assert.equal(green.hosted.completedMeasurement, false, "in-gate is not completed acceptance");
+  const missingWindows = await invoke("final-missing-windows", [], false);
+  assert.equal(missingWindows.status, 1, missingWindows.stderr);
+  assert.equal(missingWindows.coverage.error, "QUALITY_WINDOWS_RECEIPT_REQUIRED");
   for (const conclusion of ["failure", "cancelled", "skipped"]) {
     hostedNativeConclusion = conclusion;
     const failed = await invoke("native-" + conclusion);
