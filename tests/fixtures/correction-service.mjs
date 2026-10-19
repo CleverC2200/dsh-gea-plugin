@@ -140,7 +140,14 @@ export function correctionService() {
         ];
         const from = status;
         if (body.action === "REJECT") {
-          for (const suffix of ["AdjAddQty", "AdjCutQty", "ConfirmedQty", "ConfirmedAmount"])
+          for (const suffix of [
+            "AdjAddQty",
+            "AdjCutQty",
+            "AdjAddAmount",
+            "AdjCutAmount",
+            "ConfirmedQty",
+            "ConfirmedAmount",
+          ])
             sku[node + suffix] = null;
           status = (status >= 6 ? status - 6 : status) + 5;
         } else {
@@ -152,6 +159,8 @@ export function correctionService() {
           }
           sku[node + "AdjAddQty"] = String(Math.max(0, delta));
           sku[node + "AdjCutQty"] = String(Math.max(0, -delta));
+          sku[node + "AdjAddAmount"] = (Math.max(0, delta) * 2).toFixed(2);
+          sku[node + "AdjCutAmount"] = (Math.max(0, -delta) * 2).toFixed(2);
           if (body.action === "APPROVE") {
             sku[node + "ConfirmedQty"] = String(30 + delta);
             sku[node + "ConfirmedAmount"] = String((30 + delta) * 2);
