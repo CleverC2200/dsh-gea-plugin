@@ -18,7 +18,7 @@ ctx.slots.installScope("session", {
 const locale = new LocaleRuntime(ctx);
 ctx.provide("locale", locale);
 ctx.slots.installLocale(locale);
-ctx.provide("settingsNavigation", { open() {} });
+ctx.provide("pluginNavigation", { openBundle() {} });
 let subject = {
   kind: "bundle",
   pkg: {

@@ -56,6 +56,8 @@ test("official installed list checks once, keeps actions beside content, submits
   let phase = "idle",
     checks = 0,
     batches = 0,
+    singles = 0,
+    singleTarget,
     revision = 0;
   const status = () => ({
     revision: ++revision,
@@ -65,7 +67,7 @@ test("official installed list checks once, keeps actions beside content, submits
     pollIntervalMs: 1000,
     items: names.map((packageName) => ({
       packageName,
-      state: phase,
+      state: singleTarget && packageName !== singleTarget ? "current" : phase,
       installedVersion: phase === "pending-restart" ? "1.2.4" : "1.2.3",
       runningHostVersion: "1.2.3",
       runningClientVersion: "1.2.3",
@@ -83,6 +85,15 @@ test("official installed list checks once, keeps actions beside content, submits
         checks++;
         await new Promise((resolve) => setTimeout(resolve, 120));
         phase = "available";
+      }
+      if (req.url.endsWith("/update")) {
+        singles++;
+        assert.deepEqual(payload, {
+          packageName: names[1],
+          planId: "plan-" + names[1],
+        });
+        singleTarget = names[1];
+        phase = "installing";
       }
       if (req.url.endsWith("/update-all")) {
         batches++;
@@ -177,10 +188,10 @@ test("official installed list checks once, keeps actions beside content, submits
   if (process.env.GEA_LIST_SCREENSHOT)
     await page.locator("[data-plugin-panel]").screenshot({ path: process.env.GEA_LIST_SCREENSHOT });
   await page.getByRole("button", { name: "全部更新", exact: true }).click();
-  const progress = page
-    .getByRole("alert")
-    .filter({ hasText: "插件正在更新，可返回插件管理查看进度。" });
+  const progress = page.getByRole("alert").filter({ hasText: "插件正在更新，可查看更新状态。" });
   await progress.waitFor();
+  await page.getByRole("button", { name: "查看 dsh-agent-manage", exact: true }).click();
+  await page.locator('[data-plugin-detail="dsh-agent-manage"]').waitFor();
   await page.evaluate(() => window.fixture.closeSettings());
   await cards.first().waitFor({ state: "detached" });
   await progress.waitFor();
@@ -193,7 +204,9 @@ test("official installed list checks once, keeps actions beside content, submits
     .getByRole("alert")
     .filter({ hasText: "插件更新已安装，需要重启应用后生效。" });
   await pending.waitFor();
-  await pending.getByRole("button", { name: "返回插件管理", exact: true }).click();
+  await pending.getByRole("button", { name: "查看更新状态", exact: true }).click();
+  await page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]').waitFor();
+  await page.getByRole("button", { name: "返回插件列表", exact: true }).click();
   await cards.first().waitFor();
   assert.deepEqual(await page.evaluate(() => window.fixture.openedSections), ["plugin-manager"]);
   const restart = page
@@ -206,6 +219,44 @@ test("official installed list checks once, keeps actions beside content, submits
   assert.equal(await page.evaluate(() => window.restartCalls), 1);
   await pending.getByRole("button", { name: "一键重启", exact: true }).click();
   assert.equal(await page.evaluate(() => window.restartCalls), 2);
+  phase = "available";
+  await page
+    .locator('[data-plugin-package="dsh-agent-manage"]')
+    .getByRole("button", { name: "更新", exact: true })
+    .click();
+  await progress.waitFor();
+  await page.getByRole("button", { name: "查看 dsh-agent-workbench", exact: true }).click();
+  await page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]').waitFor();
+  phase = "pending-restart";
+  await pending.waitFor();
+  await page.evaluate(() => window.fixture.locale("en"));
+  await page
+    .getByRole("alert")
+    .filter({
+      hasText: "Plugin updates are installed. Restart the application to apply them.",
+    })
+    .getByRole("button", { name: "View update status", exact: true })
+    .click();
+  const manageDetail = page.locator('[data-plugin-detail="dsh-agent-manage"]');
+  await manageDetail.waitFor();
+  assert.equal(await manageDetail.locator("[data-plugin-name]").textContent(), "dsh-agent-manage");
+  await manageDetail
+    .getByRole("status")
+    .filter({
+      hasText: "Restart the application to load the installed version.",
+    })
+    .waitFor();
+  await manageDetail.getByRole("button", { name: "Back to plugins", exact: true }).click();
+  await page.evaluate(() => window.fixture.locale("zh"));
+  await page
+    .locator('[data-plugin-package="dsh-agent-manage"]')
+    .getByRole("status")
+    .filter({ hasText: "需要重启" })
+    .waitFor();
+  await restart.click();
+  assert.equal(await page.evaluate(() => window.restartCalls), 3);
+  assert.equal(singles, 1);
+  assert.equal(batches, 1);
   await page.addInitScript(() => {
     Object.defineProperty(window, "dshDesktop", { value: undefined, writable: false });
   });

@@ -337,6 +337,7 @@ test("a remounted client recovers the actual Host operation without a detail or 
   const close = old.retain();
   await new Promise(setImmediate);
   await old.update(name);
+  assert.equal(old.getSnapshot().notice.packageName, name);
   close();
   await old.dispose();
   const recovered = createPluginDetailUpdates(ctx);
@@ -344,15 +345,54 @@ test("a remounted client recovers the actual Host operation without a detail or 
   await recovered.resume();
   assert.equal(recovered.getSnapshot().items[0].state, "installing");
   assert.equal(recovered.getSnapshot().notice.kind, "progress");
+  assert.equal(recovered.getSnapshot().notice.packageName, "@cleverc2200/dsh-agent-workbench");
   phase = "pending-restart";
   t.mock.timers.tick(1000);
   await new Promise(setImmediate);
   assert.equal(recovered.getSnapshot().notice.kind, "pending-restart");
+  assert.equal(recovered.getSnapshot().notice.packageName, "@cleverc2200/dsh-agent-workbench");
   const stoppedAt = statuses;
   t.mock.timers.tick(5000);
   await new Promise(setImmediate);
   assert.equal(statuses, stoppedAt, "a hidden pending operation stops polling");
   assert.equal(updates, 1);
+});
+
+test("successive pending notices keep their own operation target after status changes", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let phase = "available";
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/status")) return Response.json({ ok: true, value: status(rows(phase)) });
+    if (url.endsWith("/check")) phase = "available";
+    else {
+      assert(url.endsWith("/update"));
+      phase = "pending-restart";
+    }
+    return Response.json({ ok: true, value: {} });
+  };
+  const ctx = new Context(),
+    owner = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  t.after(() => owner.dispose());
+  owner.retain();
+  await new Promise(setImmediate);
+  await owner.update("dsh-agent-manage");
+  const previous = owner.getSnapshot().notice;
+  assert.equal(previous.kind, "pending-restart");
+  assert.equal(previous.packageName, "dsh-agent-manage");
+  phase = "completed";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  await owner.check();
+  assert.equal(owner.getSnapshot().notice.packageName, "dsh-agent-manage");
+  await owner.update("@cleverc2200/dsh-agent-workbench");
+  const next = owner.getSnapshot().notice;
+  assert.equal(next.kind, "pending-restart");
+  assert.equal(next.packageName, "@cleverc2200/dsh-agent-workbench");
+  assert(next.sequence > previous.sequence);
 });
 
 test("closing a detail cancels its check while a mount recovery probe remains alive", async (t) => {
