@@ -13,3 +13,9 @@
 修改异步工具结果、证据持久化或回读时，读 [执行链](docs/execution-logic.md) 的执行归属合同与 [本地检查](docs/local-development.md)。迟到结果只归原执行；身份、轮次或资源变化后，保持原数据与失败证据，按当前归属决定能否发布。
 
 CI Core 的阻断与兼容范围由 `scripts/ci-core-policy.json` 维护；调整门禁或核验合并条件时读 [CI Core 策略](docs/ci-core-policy.md)。
+
+## 规则与执行机制
+
+| 规则 | 执行机制 |
+| --- | --- |
+| 已登记的 Core 仍须具备本次用途所需的当前运行依赖；源码检查不强制准备运行环境 | `check:environment`；三包 reception 与直接 install/observe 强制调用；`test:environment` 接入现有 source-only 快检与 CI |

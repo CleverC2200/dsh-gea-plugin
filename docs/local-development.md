@@ -41,6 +41,14 @@ GEA_TEST_CANDIDATE_INPUTS=/absolute/candidate-input.json node --test tests/windo
 
 第一条是 Node-only 的前置拒绝检查，不需要 Core、依赖安装或服务。第二条要求实际固定 Core、三仓和历史证据，沿原 Window admission 及预算保护验证本地 fixture 行为。两者都不代替源码全量 profile、Native、业务或模型验收；完整 `test` 的失败状态继续按原回执记录。
 
+## 执行前检查选定环境
+
+运行 `corepack pnpm check:environment --core /absolute/fixed/core --purpose reception`，核登记源码后在独立子进程中加载 Boot、官方安装操作与 CLI profile 入口。`--purpose source` 另核本 checkout 声明的 GenUI 与 Sidebar 输入。普通三包接收不要求安装这两项可选增强。
+
+三包接收及其直接 install/observe 入口强制执行同一检查。检查每次读取当前依赖，历史通过结果不缓存；删除依赖后，同一提交也会在创建安装 Home 前被拒绝。失败按错误指定入口，在有归属的固定 checkout 准备所需输入，再重新选择；共享 SDK 保持只读。源码检查与类型检查继续使用各自较小的输入要求。
+
+`corepack pnpm test:environment` 通过实际 Node 子进程覆盖本轮缺失运行依赖、缺失 CLI 产物、用途不同的伴随依赖要求，以及公开诊断脱敏。它由 `quality:fast --source-only` 调用，因此本地与既有 CI 使用同一命令。
+
 ## Codex Local environments
 
 仓内 `.codex/environments/environment.toml` 是实际配置。默认 setup 只核工具，安装由明确选择的 Action 执行，不自动构建。Actions 的命令、cwd 与是否持续 watch 按该文件核对，需要不同范围时运行公开命令，不新增任务识别或编排器。

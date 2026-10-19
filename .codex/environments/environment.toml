@@ -48,3 +48,13 @@ command = "node scripts/dev-observe.mjs --task build:host --source codex-action"
 name = "本地采样报告"
 icon = "tool"
 command = "node scripts/dev-observe-report.mjs"
+
+[[actions]]
+name = "检查选定运行环境"
+icon = "tool"
+command = """
+set -eu
+: "${DSH_CORE_CHECKOUT:?请指定本票固定 Core 的绝对路径}"
+: "${DSH_ENVIRONMENT_PURPOSE:?请指定 reception 或 source}"
+corepack pnpm check:environment --core "$DSH_CORE_CHECKOUT" --purpose "$DSH_ENVIRONMENT_PURPOSE"
+"""
