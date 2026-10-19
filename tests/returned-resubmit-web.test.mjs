@@ -1,17 +1,23 @@
-import test from "node:test";
+import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-/** 审批人员重审当前退回版本：不依赖客户重提凭据，不生成新版本。 */
 const PLAN_A = "p-jxs-2026-10-00001";
 const PLAN_B = "p-jxs-2026-10-00002";
 const PLAN_C = "p-jxs-2026-10-00003";
 
-const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = false } = {}) => {
-  const app = await profile(t, { roles: [{ code: `sales_plan_${role}_approver`, name: role }] });
+const fixture = async (t, { role = "region", returnedStatus = 7, denySubmit = false, readbackFailure = false, serviceReady = true } = {}) => {
+  const app = await profile(t, {
+    roles: role === 'customer' ? [] : [{ code: `sales_plan_${role}_approver`, name: role }],
+    config: serviceReady ? { serviceAccounts: { production: {
+      clientIdEnv: "GEA_SUBMIT_CLIENT", clientSecretEnv: "GEA_SUBMIT_SECRET", tenantId: "0",
+      allowedUserIds: ["9007199254740993"],
+    } } } : {},
+    env: { GEA_SUBMIT_CLIENT: "fixture", GEA_SUBMIT_SECRET: "fixture-secret" },
+  });
   const state = new Map([
     [
       PLAN_A,
@@ -27,6 +33,9 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
     [PLAN_C, { versionId: "v3", seq: 1, status: 1, dealerCode: "458", name: "沈阳待审批" }],
   ]);
   const submitted = [];
+  const logs = [];
+  let readbackBlocked = readbackFailure;
+  let submittedQty = "2.000";
   const approved = [];
   const rejected = [];
   const attempts = [];
@@ -42,6 +51,7 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
       effective,
       seq: row.seq,
       dealerCode: row.dealerCode,
+      submitter: "9007199254740993",
       targetQty: "1.000",
       targetAmount: "12.34",
     };
@@ -52,11 +62,20 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
     skuCode: "789",
     productCategName: "Category",
     baseQty: "1.000",
-    qty: "2.000",
+    qty: planId === PLAN_A ? submittedQty : "2.000",
+    regionConfirmedQty: returnedStatus >= 7 ? "1.250" : null,
+    regionConfirmedAmount: returnedStatus >= 7 ? "15.43" : null,
+    provinceConfirmedQty: returnedStatus >= 8 ? "1.500" : null,
+    provinceConfirmedAmount: returnedStatus >= 8 ? "18.51" : null,
+    areaConfirmedQty: returnedStatus >= 9 ? "1.750" : null,
+    areaConfirmedAmount: returnedStatus >= 9 ? "21.60" : null,
     price: "12.3400",
-    amt: "24.68",
+    amt: planId === PLAN_A && submittedQty === "3.000" ? "37.02" : "24.68",
     amtBase: "12.34",
   });
+  const rowVersions = (planId, current) => current.seq === 1 ? [current] : [current, {
+    ...current, id: "v1", seq: 1, status: returnedStatus, effective: false,
+  }];
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
     const send = (result) => {
@@ -113,9 +132,9 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
       const current = version(planId);
       return send({
         currentVersion: current,
-        versions: [current],
-        skus: [sku(planId)],
-        logs: [],
+        versions: rowVersions(planId, current),
+        skus: readbackBlocked && submitted.length && planId === PLAN_A ? [] : [sku(planId)],
+        logs,
         actionContext: {
           versionId: current.id,
           status: current.status,
@@ -142,7 +161,7 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
       assert.equal(body.expectedSnapshot, "a".repeat(64));
       assert.equal(body.expectedStatus, row.status);
       attempts.push(body);
-      if (denyApproval && body.action === "APPROVE") {
+      if (body.action === "APPROVE" && row.status >= 6) {
         reply({ success: false, message: "当前用户不具备审批权限" }, 403);
         return true;
       }
@@ -162,22 +181,31 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
         replayed: false,
       });
     }
-    if (
-      path.endsWith("/api/v1/internal/sales-plans") ||
-      path.endsWith("/api/v1/internal/auth/token")
-    ) {
-      submitted.push(path);
-      reply({ success: false }, 403);
-      return true;
+    if (path.endsWith("/api/v1/internal/auth/token")) return send({
+      access_token: "fixture-service", token_type: "Bearer", expires_in: 600, scope: "sales-plan:write",
+    });
+    if (path.endsWith("/api/v1/internal/sales-plans")) {
+      const body = JSON.parse(req.body);
+      submitted.push({ body, key: req.headers["idempotency-key"], requestId: req.headers["x-request-id"] });
+      if (denySubmit) {
+        reply({ success: false, message: "提报窗口已关闭，请联系业务管理员" }, 403);
+        return true;
+      }
+      assert.equal(body.status, returnedStatus - 5);
+      assert.equal(body.items.length, 1);
+      assert.equal(body.items[0].price, "12.3400");
+      const row = state.get(PLAN_A);
+      row.versionId = "v-new";
+      row.seq = 2;
+      row.status = body.status;
+      submittedQty = body.items[0].qty;
+      logs.push({ planId: PLAN_A, versionId: "v-new", actionCode: "RESUBMIT", requestId: req.headers["x-request-id"] });
+      return send({ planId: PLAN_A, versionId: "v-new", seq: 2, status: body.status,
+        requestId: req.headers["x-request-id"], traceId: "t", auditId: "a", replayed: false });
     }
     return false;
   });
   await app.login();
-  assert.equal(
-    (await app.rpc("status")).value.resubmitConnected,
-    false,
-    "审批重审不应依赖重提服务凭据",
-  );
   const browser = await testBrowser(t, () =>
     chromium.launch({ channel: "chrome", headless: true }),
   );
@@ -198,108 +226,68 @@ const fixture = async (t, { role = "region", returnedStatus = 7, denyApproval = 
   const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   await expect(frame.getByTestId("regional-approval-flow-toggle")).toBeVisible();
-  return { frame, submitted, approved, rejected, attempts };
+  return { app, frame, page, submitted, approved, rejected, attempts, state, allowReadback: () => { readbackBlocked = false; } };
 };
 
-test(
-  "a returned plan approves its current version without service credentials",
-  { timeout: 90000 },
-  async (t) => {
-    const { frame, submitted, approved } = await fixture(t);
-    await frame
-      .locator("tbody tr")
-      .filter({ hasText: "乌鲁木齐退回区域" })
-      .first()
-      .locator("label.arco-checkbox")
-      .click();
-    await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
-    await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeEnabled();
-    await frame.getByRole("button", { name: "通过", exact: true }).click();
-    await expect.poll(() => approved.length).toBe(1);
-    await expect(
-      frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true }),
-    ).toHaveCount(0);
-    assert.equal(approved[0].body.expectedStatus, 7);
-    assert.deepEqual(submitted, []);
-  },
-);
+const selectPlan = (frame, name = "乌鲁木齐退回区域") => frame.locator("tbody tr").filter({ hasText: name }).first().locator("label.arco-checkbox").click();
 
-test(
-  "upstream refusal of a returned approval never falls back to service-account resubmission",
-  { timeout: 90000 },
-  async (t) => {
-    const { frame, submitted, approved, attempts } = await fixture(t, { denyApproval: true });
-    await frame
-      .locator("tbody tr")
-      .filter({ hasText: "乌鲁木齐退回区域" })
-      .first()
-      .locator("label.arco-checkbox")
-      .click();
-    const approve = frame.getByRole("button", { name: "通过", exact: true });
-    await approve.click();
-    await expect(approve).toBeDisabled();
-    await expect(approve).toHaveAttribute("title", /服务端.*拒绝/);
-    assert.equal(attempts.length, 1);
+for (const [role, returnedStatus] of [["region", 7], ["province", 8], ["area", 9], ["customer", 6]])
+  test(`returned ${returnedStatus} edits and submits one successor with fixed status`, { timeout: 90000 }, async (t) => {
+    const { frame, submitted, approved, state } = await fixture(t, { role, returnedStatus });
+    await selectPlan(frame);
+    const edit = frame.getByRole("button", { name: "修改后提交", exact: true });
+    await expect(edit).toBeEnabled();
+    await edit.click();
+    const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
+    await dialog.getByRole("textbox", { name: "提报数量 789" }).fill("3.000");
+    if (returnedStatus >= 7) await expect(dialog).toContainText("1.250");
+    await expect(dialog).toContainText("37.02");
+    await dialog.locator("label.arco-checkbox").click();
+    await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
+    await expect(dialog).toContainText("服务端已确认计划");
+    assert.equal(submitted.length, 1);
+    assert.equal(submitted[0].body.status, returnedStatus - 5);
+    assert.equal(submitted[0].body.items[0].qty, "3.000");
+    assert.equal(state.get(PLAN_A).seq, 2);
     assert.deepEqual(approved, []);
-    assert.deepEqual(submitted, []);
-  },
-);
+  });
 
 for (const mixed of [false, true])
-  test(
-    `batch approves returned plans on their current versions; mixed=${mixed}`,
-    { timeout: 90000 },
-    async (t) => {
-      const { frame, submitted, approved } = await fixture(t);
-      for (const name of ["乌鲁木齐退回区域", mixed ? "沈阳待审批" : "济南退回区域"])
-        await frame
-          .locator("tbody tr")
-          .filter({ hasText: name })
-          .first()
-          .locator("label.arco-checkbox")
-          .click();
-      await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeEnabled();
-      await frame.getByRole("button", { name: "通过", exact: true }).click();
-      const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
-      await expect(dialog).not.toContainText("生成新版本");
-      await dialog.locator("label.arco-checkbox").click();
-      await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
-      await expect(frame.getByTestId("regional-approval-batch-result")).toContainText("成功 2 笔", {
-        timeout: 30000,
-      });
-      assert.deepEqual(approved.map((x) => x.planId).sort(), [PLAN_A, mixed ? PLAN_C : PLAN_B]);
-      assert.deepEqual(approved.map((x) => x.body.expectedStatus).sort(), mixed ? [1, 7] : [7, 7]);
-      assert.deepEqual(submitted, []);
-    },
-  );
+  test(`returned selection requires one plan; mixed=${mixed}`, { timeout: 90000 }, async (t) => {
+    const { frame, submitted, approved } = await fixture(t);
+    await selectPlan(frame);
+    await selectPlan(frame, mixed ? "沈阳待审批" : "济南退回区域");
+    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toBeDisabled();
+    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toHaveAttribute("title", /逐笔/);
+    assert.deepEqual(submitted, []);
+    assert.deepEqual(approved, []);
+  });
 
-for (const [role, returnedStatus] of [
-  ["region", 6],
-  ["province", 7],
-  ["area", 8],
-  ["category", 9],
-])
-  test(
-    `the rejecting role can review a return addressed to the previous node: ${role}/${returnedStatus}`,
-    { timeout: 90000 },
-    async (t) => {
-      const { frame, approved, submitted } = await fixture(t, { role, returnedStatus });
-      await frame.getByTestId("regional-approval-flow-toggle").click();
-      await frame.getByTestId(`regional-approval-stage-${role}`).click();
-      await frame
-        .locator("tbody tr")
-        .filter({ hasText: "乌鲁木齐退回区域" })
-        .first()
-        .locator("label.arco-checkbox")
-        .click();
-      await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
-      await frame.getByRole("button", { name: "通过", exact: true }).click();
-      await expect.poll(() => approved.length).toBe(1);
-      assert.equal(approved[0].body.approvalRole, role);
-      assert.equal(approved[0].body.expectedStatus, returnedStatus);
-      assert.deepEqual(submitted, []);
-    },
-  );
+test("successful submission with incomplete readback only retries reading", { timeout: 90000 }, async (t) => {
+  const { frame, submitted, allowReadback } = await fixture(t, { readbackFailure: true });
+  await selectPlan(frame);
+  await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
+  const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
+  await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
+  await dialog.locator("label.arco-checkbox").click();
+  await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
+  await expect(dialog).toContainText("重提已成功");
+  await expect(dialog).not.toContainText("未更新");
+  allowReadback();
+  await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
+  await expect(dialog).toContainText("服务端已确认计划");
+  assert.equal(submitted.length, 1);
+});
+
+test("service configuration unavailable permits review but blocks submission", { timeout: 90000 }, async (t) => {
+  const { frame, submitted } = await fixture(t, { serviceReady: false });
+  await selectPlan(frame);
+  await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
+  const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
+  await expect(dialog).toContainText("服务凭据或用户授权未就绪");
+  await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeDisabled();
+  assert.equal(submitted.length, 0);
+});
 
 test(
   "returned and pending plans can be rejected together, each from its own status",
