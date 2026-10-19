@@ -136,7 +136,6 @@ test(
     await input.fill("22.125");
     await expect(input.locator("xpath=ancestor::tr").locator("td").last()).toHaveText("221.25");
     await frame.getByRole("button", { name: "通过", exact: true }).click();
-    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes.length, { timeout: 15000 }).toBe(1);
     assert.equal(writes[0].action, "APPROVE");
     assert.deepEqual(
@@ -170,7 +169,6 @@ test(
     await input.fill("20");
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame.getByRole("button", { name: "通过", exact: true }).click();
-    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes.length, { timeout: 15000 }).toBe(1);
     assert.equal(writes[0].action, "APPROVE");
     assert.equal(writes[0].adjustments, undefined, "改回原值后不能再提交草稿里的旧调整量");

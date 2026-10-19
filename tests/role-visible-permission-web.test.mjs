@@ -125,7 +125,6 @@ test(
     const approve = frame.getByRole("button", { name: "通过", exact: true });
     await expect(approve).toBeEnabled();
     await approve.click();
-    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
     await expect(frame.getByRole("dialog", { name: "销售计划审批", exact: true })).toHaveCount(0);
     assert.equal(writes[0].action, "APPROVE");

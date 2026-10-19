@@ -214,12 +214,18 @@ test(
     await frame.getByTestId("regional-approval-stage-region").click();
     assert.deepEqual(await readProgress(), before);
     await frame.getByRole("tab", { name: "按区域", exact: true }).click();
-    await expect(frame.getByTestId("regional-approval-status-p")).toHaveText("销售已提报");
+    await expect(frame.getByTestId("regional-approval-status-p-jxs-2026-09-00001")).toHaveText(
+      "销售已提报",
+    );
     await expect(
-      frame.getByTestId("regional-approval-status-p").locator("xpath=ancestor::td[1]"),
+      frame
+        .getByTestId("regional-approval-status-p-jxs-2026-09-00001")
+        .locator("xpath=ancestor::td[1]"),
     ).toContainText("宝阳销售组");
     await expect(
-      frame.getByTestId("regional-approval-status-p").locator("xpath=ancestor::table[1]/thead"),
+      frame
+        .getByTestId("regional-approval-status-p-jxs-2026-09-00001")
+        .locator("xpath=ancestor::table[1]/thead"),
     ).not.toContainText("审批状态");
     const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(monthPlan.locator("span").first()).toHaveText("¥100");
@@ -303,9 +309,7 @@ test(
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     allowApproval = true;
     await frame.getByRole("button", { name: "通过", exact: true }).click();
-    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes).toBe(1);
-    await frame.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).click();
     await expect(frame.getByRole("dialog")).toHaveCount(0);
     assert.deepEqual(errors, []);
   },

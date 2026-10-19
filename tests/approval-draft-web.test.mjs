@@ -141,8 +141,6 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
           });
       });
       await approve.click();
-      const confirmation = frame.getByRole("dialog");
-      const submit = confirmation.getByRole("button", { name: "确认提交", exact: true });
       await expect.poll(() => draftCalls).toBe(1);
       assert.equal(
         writes.length,
@@ -151,15 +149,17 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
       );
       if (scenario === "delayed") {
         release();
-        await expect(submit).toBeEnabled();
-        await submit.click();
         await expect.poll(() => writes.length).toBe(1);
         assert.deepEqual(writes[0].adjustments, [{ skuCode: "1001", adjustQty: "2.125" }]);
         assert.equal(writes[0].approvalRole, undefined, "上游报文只发接口文档声明的字段");
         assert.equal(writes[0].expectedSnapshot, undefined);
       } else {
-        await expect(confirmation).toBeVisible();
-        await expect(submit).toBeDisabled();
+        await expect(
+          frame.getByText("操作请求失败且未更新本地状态；请刷新权威队列后再决定。", {
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(approve).toBeEnabled();
         assert.equal(writes.length, 0);
         const retained = await app.rpc("sales-plan/draft", {
           planId: "p-jxs-2026-09-00001",
@@ -169,7 +169,6 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
           { skuCode: "1001", adjustQty: "2.125" },
         ]);
       }
-      await confirmation.getByRole("button", { name: "关闭", exact: true }).click();
       await expect(frame.getByRole("dialog")).toHaveCount(0);
       assert.deepEqual(errors, []);
     },

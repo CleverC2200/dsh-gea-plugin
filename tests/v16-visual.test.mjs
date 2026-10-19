@@ -340,9 +340,7 @@ test(
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     allowApproval = true;
     await frame.getByRole("button", { name: "通过", exact: true }).click();
-    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes).toBe(1);
-    await frame.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).click();
     await expect(frame.getByRole("dialog")).toHaveCount(0);
     await shot("01-approval-completed");
     plan.status = 1;

@@ -13,18 +13,18 @@ import { openSalesPlan } from "./fixtures/business-page.mjs";
  */
 const plan = (id, provinceCode) => ({
   planId: id,
-  versionId: "v" + id.slice(1),
+  versionId: "v" + id.slice(-1),
   seq: 1,
   periodId: "period-1",
   planTypeCode: "Y",
   orderType: "M",
-  dealerCode: "d" + id.slice(1),
-  dealerName: "客户" + id.slice(1),
-  baseName: "base-" + id.slice(1),
-  areaCode: "area-" + id.slice(1),
-  areaName: "大区" + id.slice(1),
-  orgCode: "org-" + id.slice(1),
-  orgName: "组织" + id.slice(1),
+  dealerCode: "d" + id.slice(-1),
+  dealerName: "客户" + id.slice(-1),
+  baseName: "base-" + id.slice(-1),
+  areaCode: "area-" + id.slice(-1),
+  areaName: "大区" + id.slice(-1),
+  orgCode: "org-" + id.slice(-1),
+  orgName: "组织" + id.slice(-1),
   provinceCode,
   provinceName: "省区" + provinceCode,
   status: 1,
@@ -90,7 +90,7 @@ const openWorkbench = async (t) => {
         actionable: true,
       },
     }));
-    const notification = /\/notifications\/(n-p\d)$/.exec(path);
+    const notification = /\/notifications\/(n-p-jxs-2026-09-\d{5})$/.exec(path);
     if (notification) {
       const item = notifications.find((row) => row.id === notification[1]);
       return send(item);

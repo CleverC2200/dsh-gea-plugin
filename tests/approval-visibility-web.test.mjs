@@ -175,14 +175,12 @@ test(
       await expect(table.getByText(`scope-${status}-row`, { exact: true })).toHaveCount(0);
     const returned = table.locator("tr").filter({ hasText: "scope-7-row" });
     await returned.locator("label.arco-checkbox").click();
-    // 当前退回版本按角色重审，不依赖重提服务凭据。
-    await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeEnabled();
+    await expect(frame.getByRole("button", { name: "重提计划", exact: true })).toBeEnabled();
     await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
     const tracked = table.locator("tr").filter({ hasText: "scope-6-row" });
     await returned.locator("label.arco-checkbox").click();
     await tracked.locator("label.arco-checkbox").click();
-    // 状态 6 的退回目标是客户；区域审批人员仍可按自己的角色重审。
-    await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeEnabled();
+    await expect(frame.getByRole("button", { name: "重提计划", exact: true })).toBeDisabled();
     await region.click();
     await expect(table.getByText("scope-6-row", { exact: true })).toHaveCount(0);
     await expect(region).toHaveAttribute("aria-pressed", "true");
@@ -206,7 +204,6 @@ test(
     const regionCanReview = table.locator("tr").filter({ hasText: "scope-2-row" });
     await regionCanReview.locator("label.arco-checkbox").click();
     await frame.getByRole("button", { name: "通过", exact: true }).click();
-    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect(frame.getByRole("dialog", { name: "销售计划审批", exact: true })).toHaveCount(0);
     await expect.poll(() => writes.length).toBe(1);
     assert.equal(writes.length, 1);
