@@ -1,5 +1,6 @@
+import { verifyRuntimeModules } from "../runtime-environment.mjs";
 import { artifactSetSha256 } from "./contract.mjs";
-import { findSupportedCore } from "../supported-cores.mjs";
+import { readSupportedCore } from "../supported-cores.mjs";
 /** Install only three ordinary artifacts in a new explicit profile, then observe in a clean child. */
 import assert from "node:assert/strict";
 import { parseArgs } from "node:util";
@@ -25,8 +26,7 @@ assert(
   !["desktop", "web", "headless", "acp", "sdk", "sdk-minimal"].includes(basename(v.profile)),
   "CUSTOM_RECEPTION_PROFILE_REQUIRED",
 );
-const receiptDir = dirname(v.receipt),
-  anchor = join(v.core, "apps/cli/package.json");
+const receiptDir = dirname(v.receipt);
 const receiptLocation = relative(v.home, v.receipt);
 assert(
   receiptLocation === ".." || receiptLocation.startsWith(".." + sep),
@@ -65,13 +65,10 @@ await writeFile(v.receipt, JSON.stringify({ ...base, pending: true }) + "\n", {
   flag: "wx",
 });
 try {
-  const coreManifest = await readJson(anchor);
-  base.coreVersion = coreManifest.version;
-  base.coreHead = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: v.core,
-    encoding: "utf8",
-  }).trim();
-  assert(findSupportedCore({ head: base.coreHead, version: base.coreVersion }), "UNSUPPORTED_CORE");
+  const coreIdentity = await readSupportedCore(v.core);
+  base.coreVersion = coreIdentity.version;
+  base.coreHead = coreIdentity.head;
+  verifyRuntimeModules({ core: v.core });
   if (v.mode === "install") {
     for (const key of ["pnpm", "workbench", "manage", "gea"])
       assert(isAbsolute(v[key] ?? ""), `${key.toUpperCase()}_ABSOLUTE_REQUIRED`);

@@ -183,45 +183,68 @@ test("independent channel projection retains the other two references and advanc
   );
 });
 
-test("GEA permits declared Manage .16 through .21 releases and rejects undeclared versions", async () => {
+test("historical companion upgrades require an explicit declaration and preserve its boundary", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  const combination = (version) =>
-    validatePluginCombination({
-      core,
-      manifests: [
-        { name: W, version: "1.0.0" },
-        { name: M, version },
-        { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
-      ],
-    });
-  assert.deepEqual(combination("0.6.3-company.21"), []);
-  assert.deepEqual(combination("0.6.3-company.20"), []);
-  assert.deepEqual(combination("0.6.3-company.19"), []);
-  assert.deepEqual(combination("0.6.3-company.18"), []);
-  assert.deepEqual(combination("0.6.3-company.17"), []);
-  assert.deepEqual(combination("0.6.3-company.16"), []);
-  for (const version of [
-    "0.6.3-company.11",
-    "0.6.3-company.12",
-    "0.6.3-company.13",
-    "0.6.3-company.14",
-    "0.6.3-company.15",
-    "0.6.3-company.22",
-  ])
+  for (const [name, previous, added, undeclared] of [
+    [W, ["0.1.9", "0.1.10"], "0.1.11", "0.1.12"],
+    [
+      M,
+      ["0.6.3-company.16", "0.6.3-company.17", "0.6.3-company.18", "0.6.3-company.19"],
+      "0.6.3-company.20",
+      "0.6.3-company.21",
+    ],
+  ]) {
+    const issues = (declared, version) => {
+      const range = declared.join(" || ");
+      const manifest = productionManifest(
+        { ...source, peerDependencies: { ...source.peerDependencies, [name]: range } },
+        {
+          [W]: "0.1.10",
+          [M]: "0.6.3-company.19",
+          "@changfenhuang/dsh-genui": "0.11.3",
+          "dsh-better-sidebar": "0.24.1",
+        },
+      );
+      assert.equal(manifest.peerDependencies[name], range);
+      return validatePluginCombination({
+        core,
+        manifests: [
+          { name, version },
+          {
+            name: G,
+            version: manifest.version,
+            peerDependencies: { [name]: manifest.peerDependencies[name] },
+          },
+        ],
+      });
+    };
+    assert.ok(issues(previous, added).some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+    for (const version of [...previous, added])
+      assert.deepEqual(issues([...previous, added], version), []);
     assert.ok(
-      combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
-      version,
+      issues([...previous, added], undeclared).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
     );
+  }
 });
 
 test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 and Manage .18 to .19", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  const manifest = productionManifest(source, {
-    [W]: "0.1.10",
-    [M]: "0.6.3-company.19",
-    "@changfenhuang/dsh-genui": "0.11.3",
-    "dsh-better-sidebar": "0.24.1",
-  });
+  const manifest = productionManifest(
+    {
+      ...source,
+      peerDependencies: {
+        ...source.peerDependencies,
+        [W]: "0.1.9 || 0.1.10",
+        [M]: "0.6.3-company.16 || 0.6.3-company.17 || 0.6.3-company.18 || 0.6.3-company.19",
+      },
+    },
+    {
+      [W]: "0.1.10",
+      [M]: "0.6.3-company.19",
+      "@changfenhuang/dsh-genui": "0.11.3",
+      "dsh-better-sidebar": "0.24.1",
+    },
+  );
   const nextGea = {
     name: G,
     version: manifest.version,

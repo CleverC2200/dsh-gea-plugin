@@ -1,12 +1,13 @@
 /** Receive an existing three-package delivery in one new official profile. Never rebuild or publish. */
 import assert from "node:assert/strict";
+import { verifyRuntimeModules } from "./runtime-environment.mjs";
 import { readFile, writeFile, mkdir, lstat, realpath } from "node:fs/promises";
 import { join, dirname, basename, isAbsolute, relative } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import {
-  findSupportedCore,
+  readSupportedCore,
   coreIdentity,
   supportsRegisteredCores,
   validSdkPeers,
@@ -19,7 +20,6 @@ import {
   bindReception,
 } from "./plugin-reception/contract.mjs";
 
-const json = async (file) => JSON.parse(await readFile(file, "utf8"));
 const within = (root, path) => {
   const rel = relative(root, path);
   return rel === "" || (!rel.startsWith("../") && rel !== ".." && !isAbsolute(rel));
@@ -62,16 +62,8 @@ export async function receiveDelivery(input) {
     deliveryStates.includes(manifest.status) && supportsRegisteredCores(manifest),
     "RECEPTION_DELIVERY_CORE_INVALID",
   );
-  const actualHead = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: core,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  }).trim();
-  const actualCore = findSupportedCore({
-    head: actualHead,
-    version: (await json(join(core, "apps/cli/package.json"))).version,
-  });
-  assert(actualCore, "RECEPTION_CORE_INVALID");
+  const actualCore = await readSupportedCore(core);
+  verifyRuntimeModules({ core });
   assert(
     manifest.packages?.length === 3 &&
       pluginNames.every(
