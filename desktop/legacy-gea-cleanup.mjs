@@ -7,18 +7,6 @@ import { collectPluginStorage } from "./plugin-storage.mjs";
 import { withPluginStoreLock } from "./plugin-store-lock.mjs";
 
 const gea = "@cleverc2200/gea-dsh-prototype";
-const company = new Set([
-  gea,
-  "@cleverc2200/dsh-agent-workbench",
-  "dsh-agent-manage",
-  "dsh-plugin",
-  "dsh-agent-plugins-market",
-  "@changfenhuang/dsh-genui",
-  "dsh-better-sidebar",
-  "@deepseek-ai/dsh",
-  "@deepseek-ai/dsh-base",
-  "@deepseek-ai/dsh-web-app",
-]);
 const graphFiles = new Set([
   "package.json",
   "pnpm-lock.yaml",
@@ -80,11 +68,22 @@ async function ownedGraph(path, id, receipt) {
   )
     return false;
   const manifest = await json(join(path, "package.json"));
+  const packageNames = new Set([
+    ...["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].flatMap(
+      (field) => Object.keys(manifest[field] ?? {}),
+    ),
+    ...Object.keys(receipt.dependencies ?? {}),
+    ...Object.keys(receipt.versions ?? {}),
+  ]);
   if (
     manifest.name !== "gea-desktop-runtime" ||
     !manifest.dependencies?.[gea] ||
-    Object.keys(manifest.dependencies).some((name) => !company.has(name))
+    packageNames.size !== 1 ||
+    !packageNames.has(gea)
   )
+    return false;
+  const bundles = manifest.dsh?.profile?.bundles;
+  if (bundles !== undefined && (!Array.isArray(bundles) || bundles.some((name) => name !== gea)))
     return false;
   if ((await readdir(path)).some((file) => !graphFiles.has(file))) return false;
   const metadata = await lstat(join(path, "pnpm-lock.yaml"));

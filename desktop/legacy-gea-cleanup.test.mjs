@@ -171,3 +171,34 @@ test("a current home linked into the old directory and a linked report destinati
   assert.equal((await cleanupLegacyGea({ ...f, apply: true })).skipped, "unsafe-report-root");
   assert.equal((await readdir(f.versions)).length, 4);
 });
+
+test("mixed GEA caches retain company-named user plugins regardless of where they are declared", async (t) => {
+  for (const variant of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+    "bundles",
+    "receipt",
+  ]) {
+    const f = await fixture(t);
+    const path = join(f.versions, id(1));
+    const manifest = JSON.parse(await readFile(join(path, "package.json")));
+    if (variant === "receipt") {
+      const receipt = JSON.parse(await readFile(join(path, "version.json")));
+      receipt.versions["dsh-agent-manage"] = "0.6.3-company.19";
+      await writeFile(join(path, "version.json"), JSON.stringify(receipt));
+    } else if (variant === "bundles") {
+      manifest.dsh = { profile: { bundles: [gea, "dsh-agent-manage"] } };
+      await writeFile(join(path, "package.json"), JSON.stringify(manifest));
+    } else {
+      manifest[variant] = { ...manifest[variant], "dsh-agent-manage": "0.6.3-company.19" };
+      await writeFile(join(path, "package.json"), JSON.stringify(manifest));
+    }
+    const preview = await cleanupLegacyGea(f);
+    assert.deepEqual(preview.candidates, [id(2)], variant);
+    const result = await cleanupLegacyGea({ ...f, apply: true });
+    assert.deepEqual(result.removed, [id(2)], variant);
+    await access(path);
+  }
+});
