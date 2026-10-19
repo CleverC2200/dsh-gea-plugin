@@ -251,7 +251,7 @@ const fixture = async (
           readbackBlocked && submitted.length && planId === PLAN_A
             ? []
             : [sku(planId)],
-        logs,
+        logs: logs.filter((log) => log.planId === planId),
         actionContext: {
           versionId: current.id,
           status: current.status,
@@ -576,14 +576,14 @@ for (const mixed of [false, true])
         name: "乌鲁木齐退回区域",
         exact: true,
       });
-      await returned.locator("summary").click();
+      await returned.locator("summary").press("Enter");
       await returned
         .getByRole("textbox", { name: "提报数量 789" })
         .fill("3.000");
       await expect(returned).toContainText("24.68");
       await expect(returned).toContainText("37.02");
       await expect(dialog).not.toContainText("9007199254740993");
-      if (mixed) {
+      if (mixed && process.env.S1_EVIDENCE_DIR) {
         await page.setViewportSize({ width: 1280, height: 900 });
         await captureEvidence(page, app, "mixed-comparison-desktop");
         await page.setViewportSize({ width: 820, height: 900 });
