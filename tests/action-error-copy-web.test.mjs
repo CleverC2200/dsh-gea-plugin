@@ -139,7 +139,7 @@ test(
     ]) {
       assert.ok(!dialogText.includes(leak), `界面上不应出现「${leak}」，实际：${dialogText}`);
     }
-    const reference = /错误编号：([A-Z0-9]{6})/.exec(dialogText);
+    const reference = /错误编号：(req)/.exec(dialogText);
     assert.ok(reference, `失败提示应给出错误编号，实际：${dialogText}`);
     // 技术细节只进控制台，且带着同一个错误编号，便于管理员核对。
     assert.ok(

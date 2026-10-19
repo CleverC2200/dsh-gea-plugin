@@ -103,7 +103,7 @@ test(
                     arguments: JSON.stringify(
                       reading
                         ? { id: referenceId }
-                        : { kind: "invoke", target: "row:p", action: "expand" },
+                        : { kind: "invoke", target: "row:p-jxs-2026-09-00001", action: "expand" },
                     ),
                   },
                 },

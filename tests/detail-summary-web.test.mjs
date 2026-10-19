@@ -45,6 +45,9 @@ test(
       currentAmount: "200",
       targetQty: "40",
       targetAmount: "400",
+      amountProgress: "37.5",
+      shipQty: "15",
+      shipAmount: "150",
       skuCount: 1,
     };
     const sku = {
@@ -217,7 +220,7 @@ test(
     await expect(frame.getByText(/数量 .*%/)).toHaveCount(0);
     await expect(frame.locator("thead")).not.toContainText("AI 核对意见");
     await frame.getByRole("switch").first().click();
-    const category = frame.getByTestId("regional-approval-category-row-p-汤圆");
+    const category = frame.getByTestId("regional-approval-category-row-p-jxs-2026-09-00001-汤圆");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveText("汤圆 · 1 SKU");
     await expect(frame.locator("tbody")).toContainText(["黑芝麻汤圆 500g"]);

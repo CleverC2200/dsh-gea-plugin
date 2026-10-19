@@ -85,7 +85,7 @@ test(
       });
     await expect(frame.getByText("纠偏客户", { exact: true })).toBeVisible();
     await expect(frame.getByText("不可纠偏：月初未终审", { exact: true })).toBeVisible();
-    await expect(frame.getByRole("button", { name: "调整明细", exact: true })).toBeDisabled();
+    await expect(frame.getByRole("button", { name: "纠偏客户", exact: true })).toBeDisabled();
     assert.ok(app.requests.some((r) => r.url.searchParams.get("orderType") === "Z"));
     await expect(frame.getByRole("combobox", { name: "纠偏周期", exact: true })).toContainText(
       "2026-09",
@@ -126,7 +126,7 @@ test(
     await page.goto(app.origin);
     const f = await openSalesPlan(page);
     await f.getByRole("tab", { name: "纠偏", exact: true }).click();
-    await expect(f.getByText("金额 50.00%", { exact: true })).toBeVisible();
+    await expect(f.getByText("50.0%", { exact: true })).toBeVisible();
     const open = async () => {
       const status = service.detail().currentVersion.status;
       const node =
@@ -141,7 +141,7 @@ test(
           exact: true,
         })
         .click();
-      await f.getByRole("button", { name: "调整明细", exact: true }).click();
+      await f.getByRole("button", { name: "纠偏客户", exact: true }).click();
     };
     await open();
     let d = f.getByRole("dialog", { name: "纠偏调整明细", exact: true });

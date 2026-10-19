@@ -110,7 +110,11 @@ for (const [role, returnedStatus] of [
       await expect(dialog).toContainText("37.02");
       if (returnedStatus === 7) await captureEvidence(page, app, "inheritance-confirmation");
       await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
-      await dialog.getByRole("button", { name: "确认重提", exact: true }).dblclick();
+      await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
+      await dialog.getByRole("button", { name: "确认重提", exact: true }).evaluate((button) => {
+        button.click();
+        button.click();
+      });
       await expect(dialog).toContainText("提交成功");
       assert.equal(submitted.length, 1);
       assert.equal(submitted[0].body.status, returnedStatus - 5);
@@ -438,3 +442,36 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await expect(resume).toHaveCount(0);
   assert.equal(submitted.length, 1);
 });
+
+test(
+  "readback retry preserves a newly reselected prior successful row",
+  { timeout: 90000 },
+  async (t) => {
+    const { frame, approved, submitted, allowReadback } = await fixture(t, {
+      normalBatch: true,
+      readbackFailure: true,
+    });
+    await frame.getByTestId("regional-approval-flow-toggle").click();
+    await frame.getByTestId("regional-approval-stage-region").click();
+    const rowBox = (id) =>
+      frame.locator(`tbody label.arco-checkbox:has(input[value="${id}"])`).first();
+    await rowBox(PLAN_A).click();
+    await rowBox(PLAN_B).click();
+    await frame.getByRole("button", { name: "提交所选", exact: true }).click();
+    const dialog = frame.getByRole("dialog");
+    await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
+    await expect(dialog).toContainText("成功 1 笔");
+    await expect(dialog).toContainText("待核实 1 笔");
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await rowBox(PLAN_B).click();
+    await expect(rowBox(PLAN_B).locator("input")).toBeChecked();
+    allowReadback();
+    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
+    await expect(dialog).toContainText("成功 2 笔");
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(rowBox(PLAN_B).locator("input")).toBeChecked();
+    assert.equal(approved.length, 1);
+    assert.equal(submitted.length, 1);
+  },
+);

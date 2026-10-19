@@ -259,7 +259,7 @@ test(
     assert.equal(combined.scope.planType, "mixed");
     assert.deepEqual(
       combined.visibleRows.map((row) => row.planId).toSorted(),
-      ["p-jxs-2026-10-00002", "p-jxs-2026-10-00001"],
+      ["p-jxs-2026-10-00001", "p-jxs-2026-10-00002"],
       JSON.stringify(listResponses),
     );
     await expect(frame.locator("tbody").first()).toContainText("大仓计划客户");

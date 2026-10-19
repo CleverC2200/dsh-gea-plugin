@@ -22,7 +22,7 @@ export function correctionService() {
   };
   const version = () => ({
     id: "v",
-    planId: "z",
+    planId: "p-jxs-2026-09-00001",
     seq: 1,
     periodId: "20260901",
     planTypeCode: "Y",
@@ -102,6 +102,7 @@ export function correctionService() {
                 mPlanAmount: "60",
                 mPlanQty: "30",
                 shipAmount: "30",
+                amountProgress: "50",
                 shipQty: "10",
                 corrPlanAmount: "64",
               },
@@ -114,7 +115,7 @@ export function correctionService() {
         });
         return true;
       }
-      if (path.endsWith("/plans/z")) {
+      if (path.endsWith("/plans/p-jxs-2026-09-00001")) {
         reply({ success: true, result: detail() });
         return true;
       }
@@ -161,7 +162,7 @@ export function correctionService() {
         writes.push(body);
         const log = {
           id: String(revision),
-          planId: "z",
+          planId: "p-jxs-2026-09-00001",
           versionId: "v",
           fromStatus: from,
           toStatus: status,
@@ -175,7 +176,7 @@ export function correctionService() {
         logs.push(log);
         if (status === 5)
           mock = new MockDmsWriteback({
-            planId: "z",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             typeCode: "Y",
             orderType: "Z",
@@ -192,7 +193,7 @@ export function correctionService() {
         reply({
           success: true,
           result: {
-            planId: "z",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             fromStatus: from,
             toStatus: status,

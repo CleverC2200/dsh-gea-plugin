@@ -204,7 +204,7 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
   const result = frame.getByRole("dialog");
   await expect(result).toContainText("成功 0 笔");
   await expect(result).toContainText("失败 3 笔");
-  for (const name of ["客户3", "客户4", "客户5"]) await expect(result).toContainText(name);
+  for (const name of ["组织3", "组织4", "组织5"]) await expect(result).toContainText(name);
 
   // 关键结论：客户端五次提交的报文完全一致，唯一差别是目标版本（在 URL 上）。
   assert.equal(writes.length, 5);

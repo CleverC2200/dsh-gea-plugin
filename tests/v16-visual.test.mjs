@@ -48,6 +48,9 @@ test(
       currentAmount: "200",
       targetQty: "40",
       targetAmount: "400",
+      amountProgress: "25",
+      shipQty: "10",
+      shipAmount: "100",
       skuCount: 1,
     };
     const sku = {
