@@ -2684,6 +2684,8 @@ export class Business {
     } while (pageNo <= pageCount);
     if (rows.length < upstreamTotal) throw new Error("GEA_INCOMPLETE_COLLECTION");
 
+    const selectedPlanType =
+      query.planType == null || query.planType === "" ? undefined : text(query.planType);
     const discovered = new Map<string, Row>();
     for (const row of rows) {
       const periodId = text(row.periodId);
@@ -2691,7 +2693,13 @@ export class Business {
       const match = /^(\d{4})(0[1-9]|1[0-2])/.exec(periodId);
       const periodMonth = match ? `${match[1]}-${match[2]}` : periodId;
       const orderType = row.orderType == null ? "" : text(row.orderType);
-      const planType = orderType === "Z" ? "CORRECTION" : orderType === "M" ? "MONTHLY" : "UNKNOWN";
+      const planType =
+        orderType === "Z" || (selectedPlanType === "CORRECTION" && orderType === "M")
+          ? "CORRECTION"
+          : orderType === "M"
+            ? "MONTHLY"
+            : "UNKNOWN";
+      if (selectedPlanType != null && planType !== selectedPlanType) continue;
       discovered.set(`${periodId}\u0000${planTypeCode}`, {
         periodId,
         tenantId: auth.tenantId,
@@ -2703,11 +2711,8 @@ export class Business {
     }
     const periodMonth =
       query.periodMonth == null || query.periodMonth === "" ? undefined : text(query.periodMonth);
-    const planType =
-      query.planType == null || query.planType === "" ? undefined : text(query.planType);
     const records = [...discovered.values()]
       .filter((row) => periodMonth == null || row.periodMonth === periodMonth)
-      .filter((row) => planType == null || row.planType === planType)
       .toSorted(
         (left, right) =>
           String(right.periodMonth).localeCompare(String(left.periodMonth)) ||
