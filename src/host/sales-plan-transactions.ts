@@ -386,6 +386,10 @@ export class SalesPlanTransactions {
         detail.correctionContext.monthlyApproved !== true ||
         detail.correctionContext.approvalOpen !== true ||
         !access ||
+        detail.actionContext?.nodeOrder !== access.nodeOrder ||
+        !detail.actionContext?.allowedActions.includes(
+          request.action as GeaSalesPlanActionRequest["action"],
+        ) ||
         !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest["action"]) ||
         !detail.currentVersion.submitter ||
         detail.currentVersion.submitter === auth.id
