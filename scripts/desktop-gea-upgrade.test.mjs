@@ -1,0 +1,9 @@
+import "../desktop/company-bootstrap.test.mjs";
+import "../desktop/company-gea-refresh.test.mjs";
+import "../desktop/legacy-gea-cleanup.test.mjs";
+import "../desktop/official-branding.test.mjs";
+import "../desktop/official-startup.test.cjs";
+import "../desktop/plugin-storage.test.mjs";
+import "../desktop/plugin-store.test.mjs";
+import "../desktop/recovery.test.mjs";
+import "../desktop/runtime-resolution.test.mjs";

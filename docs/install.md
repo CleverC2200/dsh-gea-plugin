@@ -2,7 +2,6 @@
 
 同一组三包支持 [登记的官方 Core](../scripts/supported-cores.json) 中的两版客户端及各自 exact SDK peers。三个普通插件为 Workbench、Manage、GEA，具体包版本、SHA256SUMS 和安装说明由 [三包交付入口](package-delivery.md) 同次生成。SDK peer 仅声明登记两版固定 SDK 的精确版本 OR；实际接收必须使用对应宿主提供的唯一实例。
 
-
 在客户端侧栏“插件”选择“添加插件”，在包名输入框填写 tgz 的本地绝对路径。按 Workbench、Manage、GEA 顺序逐个安装，每次完成后“立即启用”。已安装同名包时按官方升级提示操作，保留 Session、草稿、用户配置与历史。需要联网获取普通 npm 运行依赖。
 
 宿主 installation 提供 SDK，三个包不含另一套 CLI、SDK 或用户数据，不要求源码 checkout 或本机 link。GenUI/Sidebar 为可选已安装增强，不强制安装；只有实际安装并启用的辅助能力才可用。安装不自动登录或发起业务、模型任务。GEA Host 仍为唯一身份与凭据 owner。
@@ -26,5 +25,19 @@ freeze 拒绝 immutable source-combination 模块链接、另一张同目录 pac
 
 本项目只做隔离开发，不向正式 GitLab、npm、OSS 或频道写入，不改正式 App 或已有用户数据。之前的五包与 source-link 操作材料按原字节保存在 [历史安装说明](history/install-before-installable-delivery.md)，仅供追溯。
 
-
 官方插件列表中的公司包更新由 GEA Host 校验签名来源、固定 Core 与安装图。缺少已批准来源或部署证明时显示更新条件未满足；不会沿旧 unsigned 频道更新。检查失败保留已安装内容，页面关闭不撤销已接受安装。安装成功后需要重启，只有新 Host 与客户端实际装载版本均已观察确认后才完成更新回执。普通包交付与 Native 更新接收分别验收，详见 [签名来源与接线](plugin-release-source.md)。
+
+## 公司客户端的旧 GEA 处理
+
+带公司安装种子的客户端在启动前检查已启用的旧 GEA，只用校验过的随包 GEA 替换更低的正式版本，不降级、不恢复用户停用的能力、不替换开发链接或自定义来源。安装使用严格 peer 校验，不自动补装其他插件。升级前保存原安装声明、锁和配置，失败后保留材料并停止自动重试，由维护者恢复。
+
+旧壳目录只回收有 GEA 安装收据且无引用的 GEA 单包版本缓存。安装声明、版本收据或启用清单中出现其他包时保留整个目录，包括与公司配套插件同名的包；历史混合运行版本因缺少逐项来源证明而保留。当前、上一可用、待重启、固定、手动和迁移引用保留；未知文件、被修改的锁及无法确认闲置的目录保留。用户插件、MCP、Skill、凭据、会话、草稿、资源与工作区不作批量删除，也不卸载旧客户端程序。清理已执行项的记录位于当前 profile 的 `gea/legacy-cleanup/`。
+
+维护者可从本票 GEA checkout 先运行只读预览，核对输出后再用同一入口执行：
+
+```sh
+node desktop/legacy-gea-cleanup.mjs --legacy-data /absolute/dsh-gea-desktop --home /absolute/current-dsh-home
+# 执行时追加 --apply。旧客户端与后台进程需已退出，状态不明时入口保留文件。
+```
+
+这些处理不证明登录、身份或业务异常由旧版本引起。Windows 实机及原故障复测需单独验收。

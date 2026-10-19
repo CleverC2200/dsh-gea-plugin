@@ -4,6 +4,8 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
+import { refreshBundledGea } from "./company-gea-refresh.mjs";
+import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
 
 const names = [
   "@cleverc2200/dsh-agent-workbench",
@@ -244,6 +246,7 @@ export async function installCompanyPackages({
   offline,
   beforeInstall,
   complete,
+  strictPeers = false,
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
   const require = createRequire(anchor);
@@ -283,6 +286,9 @@ export async function installCompanyPackages({
           "add",
           ...packages,
           ...offlineArguments,
+          ...(strictPeers
+            ? ["--strict-peer-dependencies", "--config.auto-install-peers=false"]
+            : []),
           "--registry=https://registry.npmjs.org",
           "--store-dir=" + selectedStore,
           "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),
@@ -478,7 +484,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [root, support, seed] = process.argv.slice(2);
+  const [root, support, seed, legacyData] = process.argv.slice(2);
   const require = createRequire(join(root, "dsh/package.json"));
   const { resolveDshHome } = await import(
     pathToFileURL(require.resolve("@deepseek-ai/dsh-home-paths"))
@@ -491,4 +497,29 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     home,
   });
   await refreshCompanyCore({ root, seed, home });
+  const manifest = await readCompanySeed(seed);
+  console.log(
+    "GEA_BUNDLED_REFRESH",
+    JSON.stringify(
+      await refreshBundledGea({
+        root,
+        support,
+        seed,
+        home,
+        manifest,
+        install: installCompanyPackages,
+      }),
+    ),
+  );
+  if (legacyData)
+    console.log(
+      "GEA_LEGACY_CLEANUP",
+      JSON.stringify(
+        await cleanupLegacyGea({
+          data: legacyData,
+          home,
+          apply: true,
+        }),
+      ),
+    );
 }
