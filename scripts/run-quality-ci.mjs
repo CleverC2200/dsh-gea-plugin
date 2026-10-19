@@ -20,6 +20,7 @@ import {
   existsSync,
   mkdirSync,
   appendFileSync,
+  symlinkSync,
 } from "node:fs";
 import { resolve, dirname, relative, isAbsolute, sep } from "node:path";
 import { createHash } from "node:crypto";
@@ -38,17 +39,12 @@ import {
 import { resolveSourceInputs } from "./source-profile.mjs";
 import { resourceDigests } from "./source-combination-integrity.mjs";
 import { supportedCores } from "./supported-cores.mjs";
-import { macosIsolationTests, selectPlatformTests } from "./ci-platform-tests.mjs";
-const candidatePhases = new Set([
-  "quality",
-  "business-profile",
-  "mcp-client-repair",
-  "knowledge-merge",
-  "plugin-update-pr",
-  "prepare",
-  "verify-input",
-  "macos-isolation",
-]);
+import {
+  macosIsolationTests,
+  selectPlatformTests,
+  requiresDependencyReview,
+} from "./ci-platform-tests.mjs";
+const candidatePhases = new Set(["quality", "prepare", "verify-input", "macos-isolation"]);
 let finalGroup;
 let stages;
 let profileTestsSelected = false;
@@ -113,6 +109,7 @@ try {
       "test-shards": { type: "string", default: "1" },
       "test-file-concurrency": { type: "string", default: "2" },
       "test-timings": { type: "string" },
+      "source-check-receipt": { type: "string" },
       "test-results": { type: "string" },
       "execution-plan": { type: "string" },
       "test-shard": { type: "string" },
@@ -122,6 +119,8 @@ try {
       "worker-results": { type: "string" },
       "macos-results": { type: "string" },
       "final-output": { type: "string" },
+      "docs-results": { type: "string" },
+      "windows-results": { type: "string" },
     },
   });
   if (
@@ -133,21 +132,20 @@ try {
     refuse("QUALITY_TEST_CONCURRENCY_REQUIRED");
   const testFileConcurrency = Number(values["test-file-concurrency"]);
   if (
-    !["full", "plan", "verify-tests", "prepare", "build", "checks", "tests", "summary"].includes(
-      values.stage,
-    )
+    ![
+      "full",
+      "plan",
+      "docs",
+      "verify-tests",
+      "prepare",
+      "build",
+      "checks",
+      "tests",
+      "summary",
+    ].includes(values.stage)
   )
     refuse("QUALITY_STAGE_REQUIRED", values.stage);
-  if (
-    values.stage !== "full" &&
-    ![
-      "quality",
-      "business-profile",
-      "mcp-client-repair",
-      "knowledge-merge",
-      "plugin-update-pr",
-    ].includes(values.phase)
-  )
+  if (values.stage !== "full" && values.phase !== "quality")
     refuse("QUALITY_STAGE_PHASE", values.phase);
   if (
     candidatePhases.has(values.phase) ||
@@ -171,6 +169,77 @@ try {
   } else if (values.phase === "compatibility-final") {
     for (const key of ["QUALITY_SCOPE_RESULT", "QUALITY_GATE_RESULT", "QUALITY_ISOLATION_RESULT"])
       if (process.env[key] !== "success") refuse("QUALITY_COMPATIBILITY_REQUIRED", key);
+  } else if (values.phase === "docs-final") {
+    const { verifyDocsResults } = await import("./quality-docs.mjs");
+    const { readHostedRun, assessHostedBudget } = await import("./quality-hosted-budget.mjs");
+    const expected = {
+      cores: JSON.parse(process.env.QUALITY_FINAL_CORES),
+      runId: process.env.GITHUB_RUN_ID,
+      runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      node: process.versions.node,
+      groupId: process.env.QUALITY_FINAL_GROUP_ID,
+      sources: [
+        { repo: "dsh-gea-plugin", head: process.env.QUALITY_EXPECTED_WORKFLOW_SHA },
+        { repo: "dsh-agent-manage", head: process.env.QUALITY_FINAL_MANAGE_SHA },
+        { repo: "dsh-agent-workbench", head: process.env.QUALITY_FINAL_WORKBENCH_SHA },
+      ],
+    };
+    const windows = await import("./ci-windows-update.mjs");
+    windows.verifyWindowsUpdateResult({ directory: values["windows-results"], expected });
+    const result = verifyDocsResults({ directory: values["docs-results"], expected });
+    const snapshot = await readHostedRun({
+      repository: process.env.GITHUB_REPOSITORY,
+      runId: expected.runId,
+      runAttempt: expected.runAttempt,
+      headSha: process.env.QUALITY_EXPECTED_WORKFLOW_SHA,
+      token: process.env.GITHUB_TOKEN,
+      ...(process.env.QUALITY_HOSTED_API_BASE
+        ? { apiBase: process.env.QUALITY_HOSTED_API_BASE }
+        : {}),
+    });
+    const skipped = new Set([
+      "gates",
+      "prepare-",
+      "macos-isolation",
+      "macos-",
+      "plan-test-shards",
+      "test-shards",
+      "Dependency review",
+      ...expected.cores.flatMap((core) => ["prepare-" + core, "macos-" + core]),
+    ]);
+    const notApplicableJobs = snapshot.jobs
+      .filter((job) => skipped.has(job.name))
+      .map((job) => job.name);
+    const requiredJobs = [
+      "candidate-scope",
+      "windows-plugin-update",
+      ...expected.cores.map((core) => "source-plan-" + core),
+    ];
+    if (
+      snapshot.jobs.some(
+        (job) =>
+          job.name !== "candidate-quality" &&
+          !requiredJobs.includes(job.name) &&
+          !notApplicableJobs.includes(job.name),
+      )
+    )
+      refuse("QUALITY_DOCS_JOB_REJECTED");
+    const hosted = assessHostedBudget({
+      snapshot,
+      requiredJobs,
+      notApplicableJobs,
+      finalJobName: "candidate-quality",
+      mode: "in-gate",
+    });
+    const output = resolve(values["final-output"]);
+    mkdirSync(output, { recursive: true });
+    for (const [name, data] of Object.entries({
+      coverage: result,
+      "hosted-budget": hosted,
+      "hosted-snapshot": snapshot,
+    }))
+      writeFileSync(resolve(output, name + ".json"), JSON.stringify(data, null, 2) + "\n");
+    if (hosted.functional.status !== "passed") refuse("QUALITY_DOCS_FINAL_REJECTED");
   } else if (values.phase === "final") {
     if (
       !values.catalog ||
@@ -198,6 +267,10 @@ try {
           { repo: "dsh-agent-workbench", head: process.env.QUALITY_FINAL_WORKBENCH_SHA },
         ],
       };
+      if (values["windows-results"]) {
+        const windows = await import("./ci-windows-update.mjs");
+        windows.verifyWindowsUpdateResult({ directory: values["windows-results"], expected });
+      } else if (process.env.GITHUB_ACTIONS === "true") refuse("QUALITY_WINDOWS_RECEIPT_REQUIRED");
       const frozenCatalog = values["early-controls"]
         ? await (
             await import("./quality-worker-control.mjs")
@@ -314,41 +387,6 @@ try {
           refuse("QUALITY_PRIVATE_PEER_REQUIRED", entry.repo);
     const workbench = candidate.repositories.find((entry) => entry.repo === "dsh-agent-workbench"),
       manage = candidate.repositories.find((entry) => entry.repo === "dsh-agent-manage");
-    process.env.QUALITY_POLICY_WORKBENCH = workbench.path;
-    let pluginPlan;
-    if (values.phase === "plugin-update-pr") {
-      const { pluginUpdateLane, validatePluginUpdateGroup, pluginUpdatePlanFor } =
-        await import("./plugin-update-pr-lane.mjs");
-      if (!pluginUpdateLane(process.cwd())) refuse("PLUGIN_UPDATE_EVENT_REQUIRED");
-      validatePluginUpdateGroup(candidate.repositories);
-      pluginPlan = pluginUpdatePlanFor(candidate.repositories);
-    }
-    let knowledgePlan;
-    if (values.phase === "knowledge-merge") {
-      const {
-        knowledgeMergeLane,
-        validateKnowledgeMergeGroup,
-        knowledgeMergeTests,
-        knowledgeMergeAuthorization,
-      } = await import("./knowledge-merge-ci.mjs");
-      if (!knowledgeMergeLane(process.cwd())) refuse("KNOWLEDGE_MERGE_EVENT_REQUIRED");
-      validateKnowledgeMergeGroup(candidate.repositories);
-      knowledgePlan = {
-        lane: "knowledge-merge",
-        runtime: false,
-        browser: false,
-        acceptance: "targeted; 205-file selection not run",
-        authorization: knowledgeMergeAuthorization,
-        files: knowledgeMergeTests,
-      };
-    }
-    if (values.phase === "business-profile" || values.phase === "mcp-client-repair") {
-      const { loadBusinessProfilePolicy } = await import("./business-profile-ci.mjs");
-      const policy = await loadBusinessProfilePolicy(workbench.path);
-      if (values.phase === "business-profile")
-        policy.validateBusinessProfileGroup(candidate.repositories);
-      else policy.validateMcpClientGroup(candidate.repositories);
-    }
     if (values.phase === "macos-isolation" && process.platform !== "darwin")
       refuse("QUALITY_MACOS_ISOLATION_REQUIRED");
     const { selectCiTests } = await import(
@@ -356,76 +394,38 @@ try {
     );
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json"));
     const selectedPlan =
-      pluginPlan ??
-      knowledgePlan ??
-      (values.phase === "macos-isolation"
+      values.phase === "macos-isolation"
         ? {
             lane: "macos-isolation",
             runtime: false,
             browser: false,
             files: [...macosIsolationTests],
           }
-        : values.phase === "mcp-client-repair"
-          ? {
-              lane: "mcp-client-repair",
-              runtime: false,
-              browser: false,
-              files: [
-                "tests/cube-direct-mcp.test.mjs",
-                "tests/cube-new.test.mjs",
-                "tests/mcp-response.test.mjs",
-                "tests/gateway-mcp.test.mjs",
-                "tests/gateway-handshake.test.mjs",
-                "tests/host-config.test.mjs",
-                "tests/business-identity-client.test.mjs",
-                "tests/controlled-execution.test.mjs",
-                "tests/plugin-sql-cancel.test.mjs",
-                "scripts/business-profile-ci.test.mjs",
-                "scripts/run-quality-ci.test.mjs",
-                "scripts/run-quality-checks.test.mjs",
-              ],
-            }
-          : values.phase === "business-profile"
-            ? {
-                lane: "business-profile",
-                runtime: false,
-                browser: false,
-                files: [
-                  "tests/api-log.test.mjs",
-                  "tests/gea-messages.test.mjs",
-                  "tests/gea-reasoning.test.mjs",
-                  "tests/gea-stream.test.mjs",
-                  "tests/prompt-runtime.test.mjs",
-                  "tests/controlled-execution.test.mjs",
-                  "tests/cube-new.test.mjs",
-                  "tests/cube-direct-mcp.test.mjs",
-                  "tests/model-http.test.mjs",
-                  "tests/gateway-mcp.test.mjs",
-                  "scripts/business-profile-ci.test.mjs",
-                  "tests/plugin-update-controller.contract.mjs",
-                  "tests/plugin-update-integration.contract.mjs",
-                  "scripts/build.test.mjs",
-                  "scripts/deliver-packages.test.mjs",
-                  "scripts/package-version-gate.test.mjs",
-                  "scripts/plugin-package-version.test.mjs",
-                  "tests/plugin-release.test.mjs",
-                  "tests/plugin-release-source.test.mjs",
-                  "tests/optional-companion-manifest.test.mjs",
-                ],
-              }
-            : selectCiTests({
-                repositories: candidate.repositories,
-                repo: "dsh-gea-plugin",
-                base:
-                  process.env.QUALITY_BASE_SHA ||
-                  baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
-              }));
+        : selectCiTests({
+            repositories: candidate.repositories,
+            repo: "dsh-gea-plugin",
+            testOwners: JSON.parse(readFileSync("scripts/ci-test-policy.json")).testOwners,
+            base:
+              process.env.QUALITY_BASE_SHA ||
+              baseline.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head,
+          });
     const plan =
       values.phase === "macos-isolation"
         ? { ...selectedPlan, platformTasks: [] }
-        : selectPlatformTests(selectedPlan);
+        : selectedPlan.applicability === "docs"
+          ? { ...selectedPlan, platformTasks: [] }
+          : selectPlatformTests(selectedPlan);
     const timings = values["test-timings"]
-      ? JSON.parse(readFileSync(values["test-timings"]))
+      ? (await import("./quality-test-timings.mjs")).currentTestTimings({
+          timings: JSON.parse(readFileSync(values["test-timings"])),
+          root: process.cwd(),
+          environment: {
+            platform: process.platform,
+            node: process.versions.node,
+            core: candidate.core,
+            fileConcurrency: testFileConcurrency,
+          },
+        })
       : undefined;
     const shardCount =
       values["test-shards"] === "auto"
@@ -450,6 +450,10 @@ try {
         platform: process.platform,
         arch: process.arch,
         node: process.versions.node,
+        dependencyReview: requiresDependencyReview(
+          selectedPlan.changes ?? [],
+          process.env.GITHUB_EVENT_NAME,
+        ),
       },
     });
     let executionPlan = computedExecutionPlan;
@@ -466,8 +470,58 @@ try {
     if (values.stage === "plan") {
       finalGroup.verifyUnchanged();
       if (process.env.GITHUB_OUTPUT)
-        appendFileSync(process.env.GITHUB_OUTPUT, `browser=${plan.browser === true}\n`);
+        appendFileSync(
+          process.env.GITHUB_OUTPUT,
+          `browser=${plan.browser === true}\napplicability=${selectedPlan.applicability ?? "source"}\ndependency-review-applicable=${executionPlan.binding.dependencyReview}\n`,
+        );
       console.log(JSON.stringify(executionPlan));
+      process.exit(0);
+    }
+    if (values.stage === "docs") {
+      if (
+        selectedPlan.applicability !== "docs" ||
+        plan.files.length ||
+        plan.runtime ||
+        plan.browser
+      )
+        refuse("QUALITY_DOCS_SCOPE_REQUIRED");
+      const sourceCore = realpathSync(values["core-source"]);
+      const commandCore = resolve(values.root, "official-latest-standard");
+      if (existsSync(commandCore)) {
+        if (realpathSync(commandCore) !== sourceCore) refuse("QUALITY_DOCS_CORE_SOURCE_CHANGED");
+      } else symlinkSync(sourceCore, commandCore, "dir");
+      const checks = runQualityChecks([
+        {
+          name: "whitespace",
+          execute: () => run("git", ["diff", "--check", selectedPlan.diffBase, own.head]),
+        },
+        {
+          name: "knowledge",
+          execute: () =>
+            run(process.execPath, [
+              resolve(workbench.path, "scripts/check-agent-knowledge.mjs"),
+              "--root",
+              process.cwd(),
+              "--config",
+              "docs/agent-knowledge.json",
+            ]),
+        },
+      ]);
+      finalGroup.verifyUnchanged();
+      const group = JSON.parse(readFileSync(resolve(values.root, "candidate-group.json")));
+      const result = {
+        schemaVersion: 1,
+        status: checks.every((check) => check.status === "passed") ? "passed" : "failed",
+        applicability: "docs",
+        groupId: group.groupId,
+        plan: executionPlan,
+        admission: finalGroup.receipt,
+        checks,
+      };
+      const file = resolve(values["docs-results"]);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, JSON.stringify(result, null, 2) + "\n");
+      if (result.status !== "passed") refuse("QUALITY_DOCS_CHECKS_FAILED");
       process.exit(0);
     }
     const executionResultFile =
@@ -515,13 +569,7 @@ try {
     const core = resolve(dirname(dirname(process.cwd())), "official-latest-standard"),
       upstream = resolve(dirname(dirname(process.cwd())), "quality-upstreams");
     const jobRoot = dirname(dirname(process.cwd()));
-    const stagedPhase = [
-      "quality",
-      "business-profile",
-      "mcp-client-repair",
-      "knowledge-merge",
-      "plugin-update-pr",
-    ].includes(values.phase);
+    const stagedPhase = values.phase === "quality";
     if (stagedPhase) {
       stages = qualityStageRun({
         file: resolve(jobRoot, "quality-stages.json"),
@@ -587,8 +635,6 @@ try {
     ]);
     if (needsCoreWeb && !existsSync(resolve(core, "apps/web/dist/index.html")))
       refuse("QUALITY_CORE_WEB_REQUIRED");
-    if (building && values.phase === "business-profile" && process.platform !== "win32")
-      run(process.execPath, ["native/system/scripts/build.ts", "--host-addon-only"], core);
     finalGroup?.verifyUnchanged();
     process.env.GEA_PLUGIN_UPDATE_SDK = core;
     process.env.GEA_PLUGIN_UPDATE_CANDIDATE_CORE = core;
@@ -938,7 +984,20 @@ try {
           },
           {
             name: "fast",
-            execute: () => run("corepack", ["pnpm", "quality:fast", "--checks-only"]),
+            execute: () =>
+              run("corepack", [
+                "pnpm",
+                "quality:fast",
+                "--checks-only",
+                ...(values["source-check-receipt"]
+                  ? [
+                      "--source-receipt-in",
+                      values["source-check-receipt"],
+                      "--input-sha256",
+                      finalGroup.receipt.inputSha256,
+                    ]
+                  : []),
+              ]),
           },
         ]);
         stages.record.checks.push(...checks);
@@ -963,15 +1022,9 @@ try {
                 reporter: resolve("scripts/quality-test-reporter.mjs"),
                 buildSha256: executionDigest(stages.record.artifacts),
                 verifyUnchanged: () => finalGroup.verifyUnchanged(),
-                nodeArgs: [
-                  ...(values.phase === "business-profile" ||
-                  plan.files.some((file) => file.endsWith(".contract.mjs"))
-                    ? ["--expose-internals"]
-                    : []),
-                  ...(values.phase === "mcp-client-repair"
-                    ? ["--experimental-transform-types"]
-                    : []),
-                ],
+                nodeArgs: plan.files.some((file) => file.endsWith(".contract.mjs"))
+                  ? ["--expose-internals"]
+                  : [],
               }),
           },
         ]);

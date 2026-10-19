@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -11,14 +11,65 @@ const businessCore = [
   "tests/plugin-sql-cancel.test.mjs",
   "tests/business-page-grant.test.mjs",
   "tests/gateway-handshake.test.mjs",
+  "scripts/runtime-environment.test.mjs",
+  "tests/plugin-release.test.mjs",
+  "tests/optional-companion-manifest.test.mjs",
 ].sort();
 
-test("a docs-only change keeps the four business contracts without unrelated engineering fixtures", (t) => {
+test("desktop unit changes select their real CJS or MJS behavior without enabling Electron acceptance", async (t) => {
+  for (const [source, regression] of [
+    ["desktop/runtime-cookies.cjs", "desktop/runtime-cookies.test.cjs"],
+    ["desktop/navigation.cjs", "desktop/navigation.test.cjs"],
+    ["desktop/permissions.cjs", "desktop/permissions.test.mjs"],
+    ["desktop/updates.mjs", "desktop/updates.test.mjs"],
+    ["desktop/optimize-client-artifacts.mjs", "desktop/optimize-client-artifacts.test.mjs"],
+  ])
+    await t.test(source, (t) => {
+      const fixture = resourceImpactFixture(t, ["scripts/desktop-gea-upgrade.test.mjs"], {
+        desktop: true,
+      });
+      fixture.change(
+        fixture.own,
+        source,
+        readFileSync(new URL("../" + source, import.meta.url), "utf8") + "\n",
+      );
+      const plan = fixture.plan();
+      assert.equal(
+        plan.files.filter((file) => file === regression).length,
+        1,
+        JSON.stringify(plan),
+      );
+      assert.ok(plan.reasons[`${fixture.own.repo}/${source}`].includes(regression));
+      assert.ok(!plan.files.includes("desktop/startup-state.test.mjs"));
+      assert.ok(!plan.files.includes("desktop/business-ready.test.mjs"));
+      assert.ok(!plan.files.includes("desktop/update-speed-smoke.mjs"));
+    });
+});
+
+test("desktop wrapper children have one execution owner instead of a second independent run", (t) => {
+  const child = "desktop/company-bootstrap.test.mjs",
+    owner = "scripts/desktop-gea-upgrade.test.mjs";
+  const fixture = resourceImpactFixture(t, [owner], { desktop: true });
+  fixture.change(
+    fixture.own,
+    child,
+    readFileSync(new URL("../" + child, import.meta.url), "utf8") + "\n",
+  );
+  const plan = fixture.plan();
+  assert.equal(plan.files.filter((file) => file === owner).length, 1);
+  assert.ok(!plan.files.includes(child));
+  assert.equal(plan.executedBy[child], owner);
+});
+
+test("a docs-only change declares no source, browser or runtime obligation", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "README.md", "Changed documentation\n");
   const plan = fixture.plan();
+  assert.equal(plan.applicability, "docs");
   assert.deepEqual(plan.required, businessCore);
-  assert.deepEqual(plan.files, businessCore);
+  assert.deepEqual(plan.files, []);
+  assert.equal(plan.browser, false);
+  assert.equal(plan.runtime, false);
 });
 
 test("engineering source, dynamic commands and configuration reselect the original contracts", async (t) => {
@@ -36,6 +87,7 @@ test("engineering source, dynamic commands and configuration reselect the origin
         ...(entry.repo === "dsh-gea-plugin"
           ? [
               "tests",
+              "desktop",
               ".github",
               "package.json",
               "pnpm-lock.yaml",
@@ -52,7 +104,9 @@ test("engineering source, dynamic commands and configuration reselect the origin
     )
       .trim()
       .split("\n");
-    for (const file of files) put(entry.path, file, readFileSync(new URL(file, source)));
+    for (const file of files)
+      if (existsSync(new URL(file, source)))
+        put(entry.path, file, readFileSync(new URL(file, source)));
     entry.head = commit(entry.path);
   }
   const own = repositories[2];
@@ -105,11 +159,7 @@ test("engineering source, dynamic commands and configuration reselect the origin
     ],
     [2, "scripts/source-combination-integrity.mjs", ["tests/source-integrity.test.mjs"]],
     [2, "scripts/delivery-check.mjs", delivery],
-    [
-      2,
-      "scripts/run-quality-fast.mjs",
-      ["scripts/run-quality-checks.test.mjs", "scripts/run-quality-full.test.mjs"],
-    ],
+    [2, "scripts/run-quality-fast.mjs", ["scripts/run-quality-checks.test.mjs"]],
     [
       2,
       "scripts/quality-ci-stages.mjs",
@@ -186,7 +236,6 @@ test("engineering source, dynamic commands and configuration reselect the origin
         "tests/source-selection-start.test.mjs",
       ],
     ],
-    [0, "scripts/ci-source-policy.mjs", ["scripts/business-profile-ci.test.mjs"]],
     [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
   ];
@@ -201,46 +250,6 @@ test("engineering source, dynamic commands and configuration reselect the origin
         assert.ok(selected.includes(regression), JSON.stringify({ file, regression, selected }));
       assert.deepEqual(plan.required, businessCore);
     });
-});
-
-test("a dynamic Workbench source-policy change selects the GEA adapter contract", (t) => {
-  const { repositories, put, commit } = temporaryGitRepositories(t);
-  for (const entry of repositories) {
-    put(entry.path, "scripts/ci-source-policy.mjs", "export const revision = 1;");
-    entry.head = commit(entry.path);
-  }
-  const own = repositories[2];
-  const policy = JSON.parse(readFileSync(new URL("./ci-test-policy.json", import.meta.url)));
-  policy.required = ["tests/required.test.mjs"];
-  put(own.path, "scripts/ci-test-policy.json", JSON.stringify(policy));
-  put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
-  for (const file of [
-    "tests/required.test.mjs",
-    ...policy.browserFixtures,
-    "scripts/run-quality-ci.test.mjs",
-    "tests/window-launch-admission.test.mjs",
-    "scripts/business-profile-ci.test.mjs",
-    "tests/unrelated.test.mjs",
-    "tests/unrelated.contract.mjs",
-    "tests/plugin-update-detail.browser.mjs",
-  ])
-    put(own.path, file, "export const fixture = true;");
-  own.head = commit(own.path);
-  const base = own.head;
-  const peer = repositories[0];
-  put(peer.path, "scripts/ci-source-policy.mjs", "export const revision = 2;");
-  peer.head = commit(peer.path);
-  const plan = selectCiTests({ repositories, repo: own.repo, base });
-  assert.deepEqual(plan.changes, [{ repo: peer.repo, file: "scripts/ci-source-policy.mjs" }]);
-  assert.ok(
-    plan.reasons[peer.repo + "/scripts/ci-source-policy.mjs"].includes(
-      "scripts/business-profile-ci.test.mjs",
-    ),
-    JSON.stringify(plan),
-  );
-  assert.ok(plan.files.includes("tests/required.test.mjs"));
-  assert.ok(plan.files.includes("scripts/run-quality-ci.test.mjs"));
-  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
 });
 
 function temporaryGitRepositories(t) {
@@ -275,7 +284,7 @@ function temporaryGitRepositories(t) {
   return { repositories, put, commit };
 }
 
-function resourceImpactFixture(t, authoredFiles = []) {
+function resourceImpactFixture(t, authoredFiles = [], { desktop = false } = {}) {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {
     put(entry.path, "README.md", "Fixture source\n");
@@ -283,10 +292,15 @@ function resourceImpactFixture(t, authoredFiles = []) {
   }
   const own = repositories[2];
   const policy = JSON.parse(readFileSync(new URL("./ci-test-policy.json", import.meta.url)));
+  if (!desktop) {
+    policy.tests = policy.tests.filter((pattern) => !pattern.startsWith("desktop/"));
+    delete policy.testOwners;
+  }
   put(own.path, "scripts/ci-test-policy.json", JSON.stringify(policy));
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     ...policy.required,
+    ...policy.tests.filter((file) => file.startsWith("desktop/")),
     ...policy.rules.flatMap((rule) => rule.tests),
     ...policy.browserFixtures,
     "scripts/ci-policy-impact.test.mjs",
@@ -302,7 +316,7 @@ function resourceImpactFixture(t, authoredFiles = []) {
     put(
       own.path,
       file,
-      authoredFiles.includes(file)
+      authoredFiles.includes(file) || (desktop && file.startsWith("desktop/"))
         ? readFileSync(new URL("../" + file, import.meta.url))
         : "export const fixture = true;\n",
     );
@@ -317,9 +331,92 @@ function resourceImpactFixture(t, authoredFiles = []) {
       put(entry.path, file, value);
       entry.head = commit(entry.path);
     },
-    plan: () => selectCiTests({ repositories, repo: own.repo, base }),
+    plan: () =>
+      selectCiTests({ repositories, repo: own.repo, base, testOwners: policy.testOwners }),
   };
 }
+
+const workbenchBuildContracts = [
+  "scripts/quality-prepared-inputs.test.mjs",
+  "scripts/quality-workbench.test.mjs",
+  "scripts/run-quality-ci-stages.test.mjs",
+];
+
+test("Workbench build commands select prepared assets, frozen transport and build failure contracts", async (t) => {
+  for (const name of [
+    "build",
+    "build-aps-metrics",
+    "build-customer-prototype",
+    "build-dms-prototype",
+    "build-inventory",
+    "build-order-fulfillment",
+    "build-output",
+    "build-static-authors",
+  ]) {
+    await t.test(name, (t) => {
+      const fixture = resourceImpactFixture(t);
+      const file = `scripts/${name}.mjs`;
+      assert.equal(existsSync(join(fixture.peer.path, file)), false);
+      fixture.change(fixture.peer, file, "export const fixture = true;\n");
+      const plan = fixture.plan();
+      assert.deepEqual(plan.changes, [{ repo: fixture.peer.repo, file }]);
+      assert.deepEqual(plan.reasons[fixture.peer.repo + "/" + file], workbenchBuildContracts);
+      assert.deepEqual(plan.required, businessCore);
+      assert.deepEqual(plan.files, [...businessCore, ...workbenchBuildContracts].sort());
+    });
+  }
+});
+
+test("Manage private CI commands select the GEA dynamic peer source contract", async (t) => {
+  for (const name of ["download-cache", "run-quality-ci"]) {
+    await t.test(name, (t) => {
+      const fixture = resourceImpactFixture(t);
+      const peer = fixture.repositories.find((entry) => entry.repo === "dsh-agent-manage");
+      const file = `scripts/${name}.mjs`;
+      assert.equal(existsSync(join(peer.path, file)), false);
+      fixture.change(peer, file, "export const fixture = true;\n");
+      const plan = fixture.plan();
+      assert.deepEqual(plan.changes, [{ repo: peer.repo, file }]);
+      assert.deepEqual(plan.reasons[peer.repo + "/" + file], ["scripts/ci-policy-impact.test.mjs"]);
+      assert.deepEqual(plan.required, businessCore);
+      assert.deepEqual(plan.files, [...businessCore, "scripts/ci-policy-impact.test.mjs"].sort());
+    });
+  }
+});
+
+test("explicit peer CI mappings preserve additional executable GEA import consumers", async (t) => {
+  for (const [repo, file, contracts] of [
+    ["dsh-agent-workbench", "scripts/build-output.mjs", workbenchBuildContracts],
+    ["dsh-agent-manage", "scripts/download-cache.mjs", ["scripts/ci-policy-impact.test.mjs"]],
+  ]) {
+    await t.test(repo + "/" + file, (t) => {
+      const fixture = resourceImpactFixture(t);
+      const peer = fixture.repositories.find((entry) => entry.repo === repo);
+      const consumer = "tests/additional-peer-consumer.test.mjs";
+      fixture.change(peer, file, "export const fixture = true;\n");
+      fixture.change(fixture.own, consumer, `import "../../${repo}/${file}";\n`);
+      const plan = fixture.plan();
+      assert.deepEqual(plan.reasons[repo + "/" + file], [...contracts, consumer].sort());
+      assert.deepEqual(plan.required, businessCore);
+      assert.deepEqual(plan.files, [...businessCore, ...contracts, consumer].sort());
+    });
+  }
+});
+
+test("peer CI mappings reject unowned adjacent command names", (t) => {
+  for (const [repo, file] of [
+    ["dsh-agent-workbench", "scripts/build-unowned.mjs"],
+    ["dsh-agent-manage", "scripts/download-cache-unowned.mjs"],
+    ["dsh-agent-manage", "scripts/run-quality-ci-unowned.mjs"],
+  ]) {
+    const fixture = resourceImpactFixture(t);
+    const peer = fixture.repositories.find((entry) => entry.repo === repo);
+    fixture.change(peer, file, "export const fixture = true;\n");
+    assert.throws(() => fixture.plan(), {
+      message: "CI_TEST_IMPACT_UNMAPPED: " + repo + "/" + file,
+    });
+  }
+});
 
 test("Workbench page resources select GEA page grants and admitted asset integrity without unrelated tests", async (t) => {
   for (const [file, extra] of [
@@ -523,6 +620,57 @@ test("detail contributions select the built browser and actual installer contrac
   assert.equal(plan.browser, true);
 });
 
+test("browser-only changes and their dedicated fixtures select their browser consumer", async (t) => {
+  for (const changed of [
+    "tests/plugin-update-list.browser.mjs",
+    "tests/fixtures/plugin-updates/list-browser.tsx",
+  ]) {
+    await t.test(changed, (t) => {
+      const file = "tests/plugin-update-list.browser.mjs";
+      const fixture = resourceImpactFixture(t, [
+        file,
+        "tests/fixtures/plugin-updates/list-browser.tsx",
+      ]);
+      fixture.change(
+        fixture.own,
+        changed,
+        readFileSync(new URL("../" + changed, import.meta.url), "utf8") + "\n",
+      );
+      const plan = fixture.plan();
+      assert.ok(plan.files.includes(file), JSON.stringify(plan));
+      assert.ok(plan.reasons[fixture.own.repo + "/" + changed].includes(file));
+      assert.equal(plan.browser, true);
+      assert.deepEqual(plan.required, businessCore);
+      assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+    });
+  }
+});
+
+test("the shared returned-review fixture selects every isolated browser scenario", (t) => {
+  const consumers = [
+    "tests/returned-resubmit-web.test.mjs",
+    "tests/returned-review-roles-web.test.mjs",
+    "tests/returned-review-reject-web.test.mjs",
+  ];
+  const shared = "tests/fixtures/returned-review.mjs";
+  const fixture = resourceImpactFixture(t, [...consumers, shared, "tests/profile.mjs"]);
+  fixture.change(
+    fixture.own,
+    shared,
+    readFileSync(new URL("../" + shared, import.meta.url), "utf8") + "\n",
+  );
+  const plan = fixture.plan();
+  assert.ok(
+    consumers.every((file) => plan.files.includes(file)),
+    JSON.stringify(plan),
+  );
+  assert.equal(plan.browser, true);
+  assert.ok(
+    consumers.every((file) => plan.runtimeFiles.includes(file)),
+    JSON.stringify(plan),
+  );
+});
+
 test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {
@@ -531,6 +679,8 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   }
   const own = repositories[2];
   const policy = JSON.parse(readFileSync(new URL("./ci-test-policy.json", import.meta.url)));
+  policy.tests = policy.tests.filter((pattern) => !pattern.startsWith("desktop/"));
+  delete policy.testOwners;
   policy.required = ["tests/required.test.mjs"];
   policy.rules = policy.rules.filter((rule) => rule.tests.includes("tests/knowledge-mcp.test.mjs"));
   put(own.path, "scripts/ci-test-policy.json", JSON.stringify(policy));
@@ -561,16 +711,4 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
     ),
   );
   assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
-});
-
-test("desktop GEA changes select the upgrade and user-content preservation regressions", (t) => {
-  const fixture = resourceImpactFixture(t);
-  fixture.change(fixture.own, "desktop/legacy-gea-cleanup.mjs", "export const changed = true;\n");
-  const plan = fixture.plan();
-  assert.ok(
-    plan.reasons[fixture.own.repo + "/desktop/legacy-gea-cleanup.mjs"].includes(
-      "scripts/desktop-gea-upgrade.test.mjs",
-    ),
-  );
-  assert.deepEqual(plan.required, businessCore);
 });

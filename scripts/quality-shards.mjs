@@ -160,15 +160,22 @@ export function createShardCatalog({ indexes, expected }) {
     indexes: ordered,
     matrix: { include },
     hasShards: include.length > 0,
-    notApplicableJobs: ordered.every((index) => index.execution === "producer")
-      ? ["test-shards"]
-      : [],
+    notApplicableJobs: [
+      ...(ordered.every((index) => index.execution === "producer") ? ["test-shards"] : []),
+      ...(ordered.some((index) => index.plan.binding.dependencyReview === true)
+        ? []
+        : ["Dependency review"]),
+    ],
     producerChecks: ordered.every((x) => x.stages.stages.checks.status === "passed")
       ? "passed"
       : "failed",
     requiredJobs: [
       "candidate-scope",
       "plan-test-shards",
+      "windows-plugin-update",
+      ...(ordered.some((index) => index.plan.binding.dependencyReview === true)
+        ? ["Dependency review"]
+        : []),
       ...ordered.flatMap((index) => [
         `prepare-${index.core}`,
         ...(index.execution === "producer"

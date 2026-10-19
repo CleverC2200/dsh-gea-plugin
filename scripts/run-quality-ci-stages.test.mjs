@@ -28,8 +28,8 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sourceRoot = resolve(import.meta.dirname, "..");
 const fixtureSourceFiles = [
   "run-quality-ci.mjs",
-  "business-profile-ci.mjs",
   "quality-ci-stages.mjs",
+  "quality-docs.mjs",
   "run-quality-checks.mjs",
   "quality-upstreams.mjs",
   "quality-upstreams.json",
@@ -41,6 +41,7 @@ const fixtureSourceFiles = [
   "ci-platform-tests.mjs",
   "quality-test-reporter.mjs",
   "quality-test-execution.mjs",
+  "quality-test-timings.mjs",
   "quality-shards.mjs",
   "quality-worker-inputs.mjs",
   "quality-worker-control.mjs",
@@ -51,7 +52,7 @@ const fixtureSourceFiles = [
   "fixtures/quality-ci-commands.mjs",
   "fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
 ];
-function fixture(t, { additionalTests = [] } = {}) {
+function fixture(t, { additionalTests = [], docs = false, docsWhitespace = false } = {}) {
   const job = realpathSync(mkdtempSync(join(tmpdir(), "gea-ci-stages-")));
   t.after(() => rmSync(job, { recursive: true, force: true }));
   const write = (file, value) => {
@@ -91,7 +92,7 @@ function fixture(t, { additionalTests = [] } = {}) {
     process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? resolve(sourceRoot, "../dsh-agent-workbench");
   const manageSource =
     process.env.GEA_FINAL_GROUP_MANAGE_SOURCE ?? resolve(sourceRoot, "../dsh-agent-manage");
-  for (const file of ["candidate-input.mjs", "ci-test-plan.mjs", "ci-source-policy.mjs"]) {
+  for (const file of ["candidate-input.mjs", "ci-test-plan.mjs"]) {
     mkdirSync(join(workbench, "scripts"), { recursive: true });
     copyFileSync(join(workbenchSource, "scripts", file), join(workbench, "scripts", file));
   }
@@ -100,7 +101,10 @@ function fixture(t, { additionalTests = [] } = {}) {
     copyFileSync(join(manageSource, "scripts", file), join(manage, "scripts", file));
   }
   write(join(core, "pnpm-lock.yaml"), "fixture original core lock\n");
-  json(join(core, "package.json"), { packageManager: "pnpm@11.11.0" });
+  json(join(core, "package.json"), {
+    packageManager: "pnpm@11.11.0",
+    ...(docs ? { scripts: { "fixture:core": "node --version" } } : {}),
+  });
   const coreHead = commit(core);
   json(join(gea, "scripts/supported-cores.json"), [
     {
@@ -171,6 +175,19 @@ function fixture(t, { additionalTests = [] } = {}) {
       },
     },
   });
+  if (docs) {
+    write(
+      join(workbench, "scripts/check-agent-knowledge.mjs"),
+      readFileSync(join(workbenchSource, "scripts/check-agent-knowledge.mjs")),
+    );
+    json(join(gea, "docs/agent-knowledge.json"), {
+      entries: ["README.md"],
+      history: [],
+      peers: ["../../official-latest-standard"],
+      commandRoots: { "README.md": ["../../official-latest-standard"] },
+    });
+    write(join(gea, "README.md"), "Fixture documentation: `pnpm run fixture:core`\n");
+  }
   const workbenchHead = commit(workbench),
     manageHead = commit(manage);
   const baseline = {
@@ -189,7 +206,7 @@ function fixture(t, { additionalTests = [] } = {}) {
   });
   write(
     join(gea, "scripts/stage-fixture.test.mjs"),
-    `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; import { loadBusinessProfilePolicy } from './business-profile-ci.mjs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.QUALITY_POLICY_WORKBENCH, ${JSON.stringify(workbench)}); const policy = await loadBusinessProfilePolicy(process.env.QUALITY_POLICY_WORKBENCH); assert.equal(policy.matchesProductSource(true, ['scripts/run-quality-ci.mjs']), true); assert.equal(policy.matchesProductSource(true, ['src/host.ts']), false); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
+    `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
   );
   for (const file of additionalTests)
     write(
@@ -205,6 +222,29 @@ function fixture(t, { additionalTests = [] } = {}) {
       { repo: "dsh-gea-plugin", path: gea, head: geaHead },
     ],
   };
+  if (docs) {
+    write(
+      join(gea, "README.md"),
+      `Updated ordinary fixture documentation: \`pnpm run fixture:core\`${docsWhitespace ? "  " : ""}\n`,
+    );
+    git(gea, "add", ".");
+    git(
+      gea,
+      "-c",
+      "user.name=fixture",
+      "-c",
+      "user.email=fixture@invalid",
+      "commit",
+      "-qm",
+      "ordinary documentation",
+    );
+    manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head = git(
+      gea,
+      "rev-parse",
+      "HEAD",
+    );
+    json(join(job, "candidate-group.json"), { groupId: "docs-fixture" });
+  }
   const input = join(job, "candidate-input.json");
   json(input, manifest);
   // Only OS command boundaries are controlled. Admission, Git, plan, receipts and tests execute real code.
@@ -284,6 +324,48 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
   assert.equal(commands.filter((entry) => entry.command === "sdk").length, 5);
 });
 
+test("the public documentation stage admits the actual tuple and checks knowledge without SDK, install, build or tests", (t) => {
+  const f = fixture(t, { docs: true });
+  const resultFile = join(f.job, "docs.json");
+  const result = f.run("docs", {}, ["--root", f.job, "--docs-results", resultFile]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const receipt = JSON.parse(readFileSync(resultFile));
+  assert.equal(receipt.applicability, "docs");
+  assert.deepEqual(receipt.plan.files, []);
+  assert.deepEqual(receipt.plan.platformTasks, []);
+  assert.deepEqual(
+    receipt.checks.map((check) => check.name),
+    ["whitespace", "knowledge"],
+  );
+  assert.equal(receipt.admission.status, "passed");
+  assert.ok(!existsSync(f.stageFile));
+  assert.ok(!existsSync(join(f.job, "commands.jsonl")));
+  assert.equal(
+    realpathSync(join(f.job, "official-latest-standard")),
+    realpathSync(join(f.job, "source/official-core")),
+  );
+  assert.ok(!existsSync(join(f.job, "official-latest-standard/.git/dsh-sdk-artifacts.json")));
+  assert.ok(!existsSync(join(f.job, "tests-executed")));
+  appendFileSync(join(f.gea, "README.md"), "uncommitted drift\n");
+  assert.equal(f.run("docs", {}, ["--root", f.job, "--docs-results", resultFile]).status, 1);
+});
+
+test("the documentation CLI rejects committed whitespace while still checking canonical Core command references", (t) => {
+  const f = fixture(t, { docs: true, docsWhitespace: true });
+  const resultFile = join(f.job, "docs.json");
+  const result = f.run("docs", {}, ["--root", f.job, "--docs-results", resultFile]);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  const receipt = JSON.parse(readFileSync(resultFile));
+  assert.equal(receipt.status, "failed");
+  assert.deepEqual(
+    receipt.checks.map(({ name, status }) => ({ name, status })),
+    [
+      { name: "whitespace", status: "failed" },
+      { name: "knowledge", status: "passed" },
+    ],
+  );
+});
+
 test("one producer executes the existing tests stage and indexes its original receipt without transport", (t) => {
   const f = fixture(t);
   const hosted = {
@@ -303,7 +385,10 @@ test("one producer executes the existing tests stage and indexes its original re
   const output = join(f.job, "github-output");
   const planned = f.run("plan", { ...hosted, GITHUB_OUTPUT: output }, ["--root", f.job]);
   assert.equal(planned.status, 0, planned.stdout + planned.stderr);
-  assert.equal(readFileSync(output, "utf8"), "browser=false\n");
+  assert.equal(
+    readFileSync(output, "utf8"),
+    "browser=false\napplicability=source\ndependency-review-applicable=false\n",
+  );
   for (const stage of ["prepare", "build", "checks", "tests", "verify-tests"]) {
     const result = f.run(stage, hosted);
     assert.equal(result.status, 0, stage + ": " + result.stdout + result.stderr);
@@ -461,10 +546,27 @@ test("the public plan keeps unknown timings and every selected file in nonempty 
   writeFileSync(
     timings,
     JSON.stringify({
-      source: { runId: "measured-fixture", platform: process.platform, concurrency: 2 },
+      schemaVersion: 2,
+      source: {
+        runId: "measured-fixture",
+        platform: process.platform,
+        node: process.versions.node,
+        core: JSON.parse(readFileSync(f.input)).core,
+        fileConcurrency: 2,
+      },
       files: [
-        { file: "tests/slow.test.mjs", durationMs: 300 },
-        { file: "scripts/stage-fixture.test.mjs", durationMs: 100 },
+        {
+          file: "tests/slow.test.mjs",
+          durationMs: 300,
+          sha256: hash(readFileSync(join(f.gea, "tests/slow.test.mjs"))),
+          fixtures: [],
+        },
+        {
+          file: "scripts/stage-fixture.test.mjs",
+          durationMs: 100,
+          sha256: hash(readFileSync(join(f.gea, "scripts/stage-fixture.test.mjs"))),
+          fixtures: [],
+        },
       ],
     }),
   );

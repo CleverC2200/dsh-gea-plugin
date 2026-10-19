@@ -185,8 +185,13 @@ export function assessHostedBudget({
     requiredJobs.includes(finalJobName) ||
     !requiredJobs.every((name) => typeof name === "string" && name.length) ||
     !Array.isArray(notApplicableJobs) ||
-    notApplicableJobs.length > 1 ||
-    notApplicableJobs.some((name) => name !== "test-shards" || requiredJobs.includes(name)) ||
+    new Set(notApplicableJobs).size !== notApplicableJobs.length ||
+    notApplicableJobs.some(
+      (name) =>
+        !/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
+          name,
+        ) || requiredJobs.includes(name),
+    ) ||
     !finalJobName
   )
     throw Error("HOSTED_BUDGET_INPUT_REQUIRED");

@@ -24,6 +24,8 @@ import {
   clientEntry,
   componentArtifactEntries,
   dependencyDigests,
+  resourceDigests as snapshotResourceDigests,
+  publishedResourceDigests,
   readSourceCombination,
 } from "./source-combination-integrity.mjs";
 export { readSourceCombination } from "./source-combination-integrity.mjs";
@@ -99,17 +101,10 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
         throw Error("SOURCE_PLUGIN_UNMERGED: " + repo);
     }
     const expectedCommit = input.commit;
-    if (expectedCommit) {
-      const commit = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-        cwd: source,
-        encoding: "utf8",
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }).trim();
-      if (commit !== expectedCommit)
-        throw Error(
-          `SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`,
-        );
-    }
+    if (expectedCommit && commit !== expectedCommit)
+      throw Error(
+        `SOURCE_PLUGIN_COMMIT_MISMATCH: ${repo} expected ${expectedCommit}, got ${commit}`,
+      );
     const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
     if (manifest.name !== plugin.name) throw Error("SOURCE_PLUGIN_IDENTITY_MISMATCH: " + repo);
     const assetRoot = input.assets ? await realpath(input.assets) : source;
@@ -161,74 +156,50 @@ export async function prepareSourcePlugins(
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const snapshot = join(runtime, "source-combinations", id);
   const modules = join(snapshot, "node_modules");
-  await readSupportedCore(core);
+  const supportedCore = await readSupportedCore(core);
   await mkdir(join(runtime, "source-combinations"), { recursive: true });
   await mkdir(snapshot, { recursive: false });
   await mkdir(modules, { recursive: true });
   const packages = new Map(
     (await corePackages(core)).map(({ manifest, directory }) => [manifest.name, directory]),
   );
-  const plugins = new Map();
-  for (const plugin of sourcePlugins) {
-    const repo = plugin.repo;
-    const input = entries.find((entry) => entry.repo === repo);
-    const { source, assetRoot, manifest } = input;
-    const target = join(modules, manifest.name);
-    await mkdir(target, { recursive: true });
-    for (const file of plugin.resources) {
-      try {
-        await cp(join(assetRoot, file), join(target, file), {
-          recursive: true,
-          filter: (path) => !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
-        });
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
+  const copies = await Promise.allSettled(
+    sourcePlugins.map(async (plugin) => {
+      const repo = plugin.repo;
+      const input = entries.find((entry) => entry.repo === repo);
+      const { source, assetRoot, manifest } = input;
+      const target = join(modules, manifest.name);
+      await mkdir(target, { recursive: true });
+      for (const file of plugin.resources) {
+        try {
+          await cp(join(assetRoot, file), join(target, file), {
+            recursive: true,
+            filter: (path) => !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
+          });
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
       }
-    }
-    await readFile(
-      join(target, manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js"),
-    );
-    await readFile(join(target, clientEntry(manifest)));
-    plugins.set(manifest.name, {
-      source,
-      assetRoot,
-      dependencyRoot: await realpath(input.dependencies ?? join(source, "node_modules")),
-      target,
-      version: manifest.version,
-      plugin,
-    });
-  }
-  const snapshots = {};
-  for (const [name, { source, target, version, plugin }] of plugins) {
-    const manifest = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
-    const files = [...componentArtifactEntries(manifest), ...plugin.digests];
-    const digests = {};
-    for (const file of files)
-      digests[file] = createHash("sha256")
-        .update(await readFile(join(target, file)))
-        .digest("hex");
-    snapshots[name] = {
-      version,
-      source,
-      origin: execFileSync("/usr/bin/git", ["remote", "get-url", "source"], {
-        cwd: source,
-        encoding: "utf8",
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }).trim(),
-      commit: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-        cwd: source,
-        encoding: "utf8",
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }).trim(),
-      dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
-        cwd: source,
-        encoding: "utf8",
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }).trim(),
-      digests,
-    };
-  }
-  await writeFile(join(snapshot, "company-plugins.json"), JSON.stringify(snapshots, null, 2));
+      await readFile(
+        join(target, manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js"),
+      );
+      await readFile(join(target, clientEntry(manifest)));
+      return [
+        manifest.name,
+        {
+          source,
+          assetRoot,
+          dependencyRoot: await realpath(input.dependencies ?? join(source, "node_modules")),
+          target,
+          version: manifest.version,
+          plugin,
+        },
+      ];
+    }),
+  );
+  const failedCopy = copies.find((copy) => copy.status === "rejected");
+  if (failedCopy) throw failedCopy.reason;
+  const plugins = new Map(copies.map((copy) => copy.value));
   const externalDirectories = new Set();
   for (const { dependencyRoot, target } of plugins.values()) {
     const dependencies = new Map(packages);
@@ -339,6 +310,37 @@ export async function prepareSourcePlugins(
     profileDefaults: join(snapshot, "profile-defaults.json"),
   };
   const files = await resourceDigests(snapshot);
+  const snapshots = {};
+  for (const [name, { source, target, version, plugin }] of plugins) {
+    const manifest = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
+    const artifactEntries = [...componentArtifactEntries(manifest), ...plugin.digests];
+    const digests = {};
+    for (const file of artifactEntries)
+      digests[file] =
+        files[`node_modules/${name}/${file}`] ?? (await fileDigest(join(target, file)));
+    snapshots[name] = {
+      version,
+      source,
+      origin: execFileSync("/usr/bin/git", ["remote", "get-url", "source"], {
+        cwd: source,
+        encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      }).trim(),
+      commit: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
+        cwd: source,
+        encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      }).trim(),
+      dirty: execFileSync("/usr/bin/git", ["status", "--porcelain"], {
+        cwd: source,
+        encoding: "utf8",
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      }).trim(),
+      digests,
+    };
+  }
+  await writeFile(join(snapshot, "company-plugins.json"), JSON.stringify(snapshots, null, 2));
+  files["company-plugins.json"] = await fileDigest(join(snapshot, "company-plugins.json"));
   externalDirectories.add(join(core, "apps/web/dist"));
   const externalFiles = await dependencyDigests(externalDirectories);
   const locks = {},
@@ -367,13 +369,7 @@ export async function prepareSourcePlugins(
           [...plugins.keys()].map((name) => [
             name,
             {
-              core: [
-                execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-                  cwd: core,
-                  encoding: "utf8",
-                  env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-                }).trim(),
-              ],
+              core: [supportedCore.head],
               interface: "current-unified-v2",
               workbench: [composition.dependencies["@cleverc2200/dsh-agent-workbench"]],
             },
@@ -384,11 +380,7 @@ export async function prepareSourcePlugins(
         externalRoots: [...externalDirectories],
         externalLockFiles,
         locks,
-        core: execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], {
-          cwd: core,
-          encoding: "utf8",
-          env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-        }).trim(),
+        core: supportedCore.head,
         assembler: await fileDigest(new URL(import.meta.url)),
       },
       null,
@@ -400,18 +392,9 @@ export async function prepareSourcePlugins(
 
 /** Hash shipped resources; prepared assets exclude dependencies and local Git metadata. */
 export async function resourceDigests(directory, prefix = "", excludeDependencies = false) {
-  const files = {};
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (excludeDependencies && ["node_modules", ".git"].includes(entry.name)) continue;
-    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-    const file = join(directory, entry.name);
-    if (entry.isDirectory())
-      Object.assign(files, await resourceDigests(file, relative, excludeDependencies));
-    else if (entry.isSymbolicLink()) files[relative] = "link:" + (await realpath(file));
-    else if (entry.isFile() && (excludeDependencies || relative !== "combination.json"))
-      files[relative] = await fileDigest(file);
-  }
-  return files;
+  return excludeDependencies
+    ? publishedResourceDigests(directory, prefix)
+    : snapshotResourceDigests(directory, prefix);
 }
 
 /** Select a verified local combination only while its Host is stopped. */

@@ -4,13 +4,50 @@
     "tests/controlled-execution.test.mjs",
     "tests/plugin-sql-cancel.test.mjs",
     "tests/business-page-grant.test.mjs",
-    "tests/gateway-handshake.test.mjs"
+    "tests/gateway-handshake.test.mjs",
+    "scripts/runtime-environment.test.mjs",
+    "tests/plugin-release.test.mjs",
+    "tests/optional-companion-manifest.test.mjs"
   ],
-  "tests": ["tests/*.test.mjs", "scripts/*.test.mjs", "tests/*.contract.mjs"],
+  "tests": [
+    "tests/*.test.mjs",
+    "scripts/*.test.mjs",
+    "tests/*.contract.mjs",
+    "tests/*.browser.mjs",
+    "desktop/boot-watch.test.cjs",
+    "desktop/client-installer.test.mjs",
+    "desktop/company-bootstrap.test.mjs",
+    "desktop/company-gea-refresh.test.mjs",
+    "desktop/company-resources.test.mjs",
+    "desktop/config.test.cjs",
+    "desktop/copy-graph.test.mjs",
+    "desktop/core-layer.test.mjs",
+    "desktop/graph-relocation.test.mjs",
+    "desktop/html-plugins.test.mjs",
+    "desktop/installer-cache.test.mjs",
+    "desktop/installer-sdk-pruning.test.mjs",
+    "desktop/installer-signature.test.mjs",
+    "desktop/legacy-gea-cleanup.test.mjs",
+    "desktop/login-state.test.mjs",
+    "desktop/menu-localization.test.cjs",
+    "desktop/navigation.test.cjs",
+    "desktop/official-branding.test.mjs",
+    "desktop/official-startup.test.cjs",
+    "desktop/onboarding.test.mjs",
+    "desktop/optimize-client-artifacts.test.mjs",
+    "desktop/packaging-config.test.cjs",
+    "desktop/permissions.test.mjs",
+    "desktop/plugin-storage.test.mjs",
+    "desktop/plugin-store.test.mjs",
+    "desktop/recovery.test.mjs",
+    "desktop/runtime-cookies.test.cjs",
+    "desktop/runtime-resolution.test.mjs",
+    "desktop/startup-copy.test.cjs",
+    "desktop/updates.test.mjs",
+    "desktop/verify-client-artifacts.test.cjs"
+  ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
-    "scripts/knowledge-merge-ci.test.mjs",
-    "scripts/plugin-update-pr-lane.test.mjs",
     "scripts/quality-shards.test.mjs",
     "scripts/quality-worker-control.test.mjs",
     "scripts/quality-worker-inputs.test.mjs",
@@ -122,15 +159,6 @@
       "tests": ["tests/sales-plan-action.test.mjs"]
     },
     {
-      "repo": "dsh-agent-workbench",
-      "pattern": "^scripts/ci-source-policy\\.mjs$",
-      "tests": [
-        "scripts/business-profile-ci.test.mjs",
-        "scripts/run-quality-ci.test.mjs",
-        "scripts/run-quality-ci-stages.test.mjs"
-      ]
-    },
-    {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/(?:host\\.ts|host/(?:api-log|business|debug-run))",
       "tests": [
@@ -197,12 +225,6 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^desktop/",
       "tests": ["tests/window-launch-admission.test.mjs"]
-    },
-    {
-      "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/plugin-update-pr-lane\\.",
-      "tests": ["scripts/run-quality-ci.test.mjs"],
-      "exclusive": true
     },
     {
       "repo": "dsh-gea-plugin",
@@ -280,18 +302,38 @@
       ]
     },
     {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-output|build-static-authors)\\.mjs$",
+      "tests": [
+        "scripts/quality-workbench.test.mjs",
+        "scripts/quality-prepared-inputs.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/(?:prepare-official-sdk|sdk-artifact-cache)\\.mjs$",
       "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     },
     {
-      "pattern": "^scripts/quality-peer-baseline\\.json$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/(?:download-cache|run-quality-ci)\\.mjs$",
+      "tests": ["scripts/ci-policy-impact.test.mjs"]
     },
     {
-      "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:company-(?:bootstrap|gea-refresh)|legacy-gea-cleanup|official-(?:main|branding|startup)|plugin-(?:storage|store)|runtime-resolution|recovery)(?:\\.|/)",
-      "tests": ["scripts/desktop-gea-upgrade.test.mjs"]
+      "pattern": "^scripts/quality-peer-baseline\\.json$",
+      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     }
-  ]
+  ],
+  "testOwners": {
+    "desktop/company-bootstrap.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/company-gea-refresh.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/legacy-gea-cleanup.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/official-branding.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/official-startup.test.cjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/plugin-storage.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/plugin-store.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/recovery.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
+  }
 }
