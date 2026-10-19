@@ -143,6 +143,36 @@ function fixture(t, actionReply, detailGate) {
   };
 }
 
+test("unavailable employee resubmission refuses before token exchange, internal submission or approval", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    f.business.salesPlanSubmit(
+      {
+        source: { planId: "p", versionId: "v" },
+        requestId: "resubmit-unavailable",
+        idempotencyKey: "resubmit-unavailable",
+        request: {
+          orderType: "M",
+          status: 2,
+          periodId: "20261001",
+          periodMonth: "2026-10",
+          planTypeCode: "Y",
+          channelCode: "jxs",
+          dealerCode: "456",
+          targetQty: "1.000",
+          targetAmount: "12.34",
+          submitterCode: "user-1",
+          submitterName: "Test",
+          items: [{ skuCode: "789", baseQty: "1.000", qty: "2.000", price: "12.34" }],
+        },
+      },
+      new AbortController().signal,
+    ),
+    (error) => error.code === "GEA_HTTP_403" && /重提入口尚未就绪|权限不足/.test(error.message),
+  );
+  assert.equal(globalThis.fetch.mock.callCount(), 0);
+});
+
 test("SAVE refuses 0, 5 and 10 even when the server advertises matching SAVE capabilities", async (t) => {
   const f = fixture(t);
   for (const status of [0, 5, 10]) {

@@ -99,7 +99,7 @@ export class SalesPlanTransactions {
     const config = scope.serviceAccount;
     if (!config || !serviceAccountReady(config, auth))
       throw new GeaResponseError(403, {
-        message: "当前环境尚未配置当前用户可用的重提服务账号",
+        message: "当前账号的修改重提入口尚未就绪或权限不足，暂不发送重提",
       });
     const source = object(payload.source);
     keys(source, ["planId", "versionId"]);
