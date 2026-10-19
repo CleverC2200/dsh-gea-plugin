@@ -1,13 +1,13 @@
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
-  salesPlanPeriodMonthForPlanId,
   salesPlanDraftSnapshot,
   type SalesPlanLocalDraft,
   type SalesPlanApprovalRole,
   type ApprovalStageId,
   type GeaSalesPlanDetail,
 } from "@cleverc2200/dsh-agent-workbench/sales-plan";
+import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { SalesPlanTransactions } from "./sales-plan-transactions.ts";
 import { object, text, keys } from "./payload.ts";
 export { object } from "./payload.ts";
@@ -2678,6 +2678,10 @@ export class Business {
         "INVALID_QUERY: period status was removed; filter visible plans by plan status instead.",
       );
     const auth = this.authenticated();
+    if (typeof salesPlan.salesPlanPeriodMonthForPlanId !== "function")
+      throw Object.assign(new Error("请先完成 Workbench 更新后再读取销售计划周期"), {
+        code: "GEA_WORKBENCH_UPDATE_REQUIRED",
+      });
     const upstreamPageSize = 200;
     const rows: Record<string, unknown>[] = [];
     let pageNo = 1;
@@ -2709,7 +2713,7 @@ export class Business {
     for (const row of rows) {
       const periodId = text(row.periodId);
       const planTypeCode = text(row.planTypeCode);
-      const periodMonth = salesPlanPeriodMonthForPlanId(text(row.planId));
+      const periodMonth = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
       if (!periodMonth) throw new Error("GEA_PLAN_MONTH_SOURCE_MISSING");
       const orderType = row.orderType == null ? "" : text(row.orderType);
       const planType =

@@ -8,7 +8,6 @@ import {
   salesPlanWorkflow,
   validateSalesPlanActionInput,
   prepareSalesPlanResubmit,
-  salesPlanCanResubmit,
   type SalesPlanApprovalRole,
   type SalesPlanWorkflowRow,
   type GeaSalesPlanActionRequest,
@@ -16,6 +15,7 @@ import {
   type GeaSalesPlanPeriod,
   type GeaSalesPlanSku,
 } from "@cleverc2200/dsh-agent-workbench/sales-plan";
+import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { isDeepStrictEqual } from "node:util";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { object, text, keys } from "./payload.ts";
@@ -121,6 +121,10 @@ export class SalesPlanTransactions {
       throw new GeaResponseError(409, { message: "幂等键已绑定其他重提请求" });
     if (entry?.receipt) return entry.receipt;
     if (entry?.flight) return entry.flight;
+    if (typeof salesPlan.salesPlanCanResubmit !== "function")
+      throw Object.assign(new Error("请先完成 Workbench 更新后再修改重提销售计划"), {
+        code: "GEA_WORKBENCH_UPDATE_REQUIRED",
+      });
     if (!entry) {
       entry = { fingerprint };
       this.resubmissions.set(idempotencyKey, entry);
@@ -148,7 +152,9 @@ export class SalesPlanTransactions {
           });
         if (version.status > 6) {
           await this.host.permissions(signal);
-          if (!salesPlanCanResubmit(version, salesPlanStagesForRoles(auth.roles), auth.id))
+          if (
+            !salesPlan.salesPlanCanResubmit(version, salesPlanStagesForRoles(auth.roles), auth.id)
+          )
             throw new GeaResponseError(403, {
               message: "当前用户不是该退回版本的修改责任人，请由对应责任人修改后提交",
             });
