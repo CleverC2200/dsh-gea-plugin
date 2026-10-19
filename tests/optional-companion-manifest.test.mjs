@@ -67,8 +67,8 @@ test("production manifest accepts Manage company.20 and the previously supported
 test("production manifest accepts Workbench .9 and .10 but rejects undeclared versions", () => {
   const manifest = productionManifest(source, versions);
   const range = manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"];
-  for (const version of ["0.1.9", "0.1.10"])
+  for (const version of ["0.1.9", "0.1.10", "0.1.11"])
     assert.equal(semver.satisfies(version, range), true, version);
-  for (const version of ["0.1.8", "0.1.11"])
+  for (const version of ["0.1.8", "0.1.12"])
     assert.equal(semver.satisfies(version, range), false, version);
 });
