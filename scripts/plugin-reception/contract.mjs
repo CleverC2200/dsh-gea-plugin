@@ -6,7 +6,7 @@ import {
   sdkVersion,
   sdkPeerRange,
 } from "../supported-cores.mjs";
-import { isAbsolute } from "node:path";
+import { isAbsolute, sep } from "node:path";
 
 export const pluginNames = [
   "@cleverc2200/dsh-agent-workbench",
@@ -261,6 +261,27 @@ export function bindReception(manifest, install, observe, bindings = {}) {
     modelTasks: 0,
     businessQueries: 0,
   };
+}
+
+export function projectOrchestrationStandard(baseline, { prompt, skillDirectory, managed }) {
+  const expected = structuredClone(baseline);
+  if (prompt === undefined) {
+    assert(!managed, "ORCHESTRATION_PROMPT_REQUIRED");
+    return expected;
+  }
+  assert(prompt.trim(), "ORCHESTRATION_PROMPT_REQUIRED");
+  const persona = expected.find((row) => row.name === "@deepseek-ai/dsh-persona");
+  assert(persona, "ORCHESTRATION_STANDARD_CAPABILITIES_REQUIRED");
+  persona.config.prefix += "\n\n" + prompt;
+  if (!managed) {
+    const filesystem = expected.find((row) => row.name === "@deepseek-ai/dsh-skill-filesystem");
+    assert(filesystem, "ORCHESTRATION_STANDARD_CAPABILITIES_REQUIRED");
+    filesystem.config = {
+      ...filesystem.config,
+      customSkillDirs: [skillDirectory + sep, ...(filesystem.config?.customSkillDirs ?? [])],
+    };
+  }
+  return expected;
 }
 
 export function retainStandard(expectedRows, actualRows, id, allowedChanges, path = "") {

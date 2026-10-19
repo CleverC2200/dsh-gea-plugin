@@ -9,6 +9,7 @@ import {
   validateRuntimeObservation,
   bindReception,
   retainStandard,
+  projectOrchestrationStandard,
 } from "./plugin-reception/contract.mjs";
 
 const fixture = async (name) =>
@@ -342,4 +343,38 @@ test("company capability retention accepts a persona prefix but rejects missing 
     () => retainStandard(baseline, changed, "business", []),
     /STANDARD_ENTRY_CONFIG_CHANGED/,
   );
+});
+
+test("orchestration reception follows packaged declarations across unmanaged and configured resources", () => {
+  const baseline = [
+    {
+      id: "persona",
+      name: "@deepseek-ai/dsh-persona",
+      config: { prefix: "Standard", suffix: "", complete: true },
+    },
+    { id: "skill-filesystem", name: "@deepseek-ai/dsh-skill-filesystem" },
+    { id: "tools", name: "standard-tools" },
+  ];
+  const input = { prompt: "COO prompt", skillDirectory: "/fixed/skills" };
+  const managed = projectOrchestrationStandard(baseline, { ...input, managed: true });
+  assert.deepEqual(managed[0].config, {
+    prefix: "Standard\n\nCOO prompt",
+    suffix: "",
+    complete: true,
+  });
+  assert.deepEqual(managed.slice(1), baseline.slice(1));
+  const filesystem = projectOrchestrationStandard(baseline, { ...input, managed: false });
+  assert.deepEqual(filesystem[1].config, {
+    customSkillDirs: [input.skillDirectory + (process.platform === "win32" ? "\\" : "/")],
+  });
+  assert.deepEqual(projectOrchestrationStandard(baseline, { managed: false }), baseline);
+  assert.throws(
+    () => projectOrchestrationStandard(baseline, { managed: true }),
+    /ORCHESTRATION_PROMPT_REQUIRED/,
+  );
+  assert.throws(
+    () => projectOrchestrationStandard(baseline, { ...input, prompt: " ", managed: true }),
+    /ORCHESTRATION_PROMPT_REQUIRED/,
+  );
+  assert.equal(baseline[0].config.prefix, "Standard");
 });
