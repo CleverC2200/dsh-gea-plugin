@@ -95,10 +95,7 @@ test(
     const query = () =>
       app.rpc("plugin/sql", {
         consumerCode: "branch-inventory",
-        sql:
-          consumerCode === "customer-inventory-preview"
-            ? "SELECT COUNT(*) AS records FROM agents_scm_cust_jxc_ai_daliy_d"
-            : "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
+        sql: "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
         parameters: {},
         resultShape: "rows",
       });
