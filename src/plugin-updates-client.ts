@@ -103,6 +103,7 @@ export function createPluginDetailUpdates(ctx: Context) {
         poll?: Promise<void>;
         recovering: number;
         check?: AbortController;
+        awaitingClient?: boolean;
         observation?: { names: readonly string[]; timer: ReturnType<typeof setTimeout> };
       }
     | undefined;
@@ -163,6 +164,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       snapshot.items.find((row) => row.packageName === name),
     );
     if (
+      !owner.awaitingClient &&
       rows.every(
         (row) => row && ["pending-restart", "completed", "restored", "failed"].includes(row.state),
       )
@@ -177,13 +179,15 @@ export function createPluginDetailUpdates(ctx: Context) {
               : "completed",
       );
       endObservation(owner);
-    } else notify(rows.some((row) => row?.state === "unknown") ? "unconfirmed" : "progress");
+    } else
+      notify(
+        rows.some((row) => row?.state === "unknown") ||
+          !rows.some((row) => row && operationStages.includes(row.state))
+          ? "unconfirmed"
+          : "progress",
+      );
   };
-  const refresh = async (owner: NonNullable<typeof page>, signal = signalFor(owner)) => {
-    const next = parseUpdateClientStatus(
-      await request("status", { pageIdentity: owner.identity }, signal),
-    );
-    if (page !== owner) return;
+  const publishStatus = (next: UpdateClientStatus) => {
     if (
       !status ||
       status.hostProcessIdentity !== next.hostProcessIdentity ||
@@ -191,9 +195,37 @@ export function createPluginDetailUpdates(ctx: Context) {
     ) {
       status = next;
       publish({ items: next.items, transportError: null });
+      return true;
     }
+    return false;
+  };
+  const refresh = async (
+    owner: NonNullable<typeof page>,
+    signal = signalFor(owner),
+    recovering = false,
+  ) => {
+    const next = parseUpdateClientStatus(
+      await request("status", { pageIdentity: owner.identity }, signal),
+    );
+    if (page !== owner) return;
+    publishStatus(next);
+    if (recovering && owner.recovering) {
+      owner.recovering = 0;
+      const names = snapshot.items
+        .filter((row) => operationStages.includes(row.state))
+        .map((row) => row.packageName);
+      if (names.length) observe(owner, names);
+    }
+    const confirming = snapshot.items.filter(
+      (row) =>
+        row.state === "pending-restart" &&
+        row.candidateVersion !== null &&
+        row.runningHostVersion === row.candidateVersion,
+    );
+    owner.awaitingClient = confirming.length > 0;
     const modules = readClientPluginModules(ctx);
-    if (modules.length && next.items.some((row) => row.runningHostVersion !== null))
+    let acknowledged = false;
+    if (modules.length && next.items.some((row) => row.runningHostVersion !== null)) {
       await request(
         "observed",
         {
@@ -203,23 +235,36 @@ export function createPluginDetailUpdates(ctx: Context) {
           modules,
         },
         signal,
-      ).catch(() => {
-        signal.throwIfAborted();
-      });
+      )
+        .then(() => {
+          acknowledged = true;
+        })
+        .catch(() => {
+          signal.throwIfAborted();
+        });
+    }
+    if (
+      acknowledged &&
+      confirming.length &&
+      confirming.every((row) =>
+        modules.some(
+          (module) =>
+            module.stamp.name === row.packageName && module.stamp.version === row.candidateVersion,
+        ),
+      )
+    ) {
+      const confirmed = parseUpdateClientStatus(
+        await request("status", { pageIdentity: owner.identity }, signal),
+      );
+      if (page !== owner) return;
+      if (publishStatus(confirmed)) owner.awaitingClient = false;
+    }
     reflectObservation(owner);
   };
   const tick = async (owner: NonNullable<typeof page>) => {
     try {
-      await refresh(owner);
+      await refresh(owner, signalFor(owner), true);
       if (page !== owner) return;
-      if (owner.recovering) {
-        owner.recovering = 0;
-        const names = snapshot.items
-          .filter((row) => operationStages.includes(row.state))
-          .map((row) => row.packageName);
-        if (names.length) observe(owner, names);
-        reflectObservation(owner);
-      }
     } catch {
       if (!owner.lifetime.signal.aborted) {
         publish({ transportError: "status" });

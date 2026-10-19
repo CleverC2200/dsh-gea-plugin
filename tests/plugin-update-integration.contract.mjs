@@ -509,6 +509,12 @@ test("submitted transport failures immediately become unconfirmed and recover on
   assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
   assert.equal(owner.getSnapshot().items.find((row) => row.packageName === name).state, "unknown");
   failure = null;
+  for (const inactive of ["available", "idle", "blocked"]) {
+    phase = inactive;
+    t.mock.timers.tick(1000);
+    await new Promise(setImmediate);
+    assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  }
   phase = "installing";
   t.mock.timers.tick(1000);
   await new Promise(setImmediate);
@@ -533,6 +539,138 @@ test("submitted transport failures immediately become unconfirmed and recover on
   await ordinary.check();
   assert.equal(ordinary.getSnapshot().notice, null);
   release();
+});
+
+test("new Host recovery waits for client Loader proof and reads status after the observed ACK", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const { validateClientObservation } = await subject(t, "src/host/plugin-updates.ts");
+  const { ClientModuleSystem } = await import(
+    pathToFileURL(join(sdk, "packages/client/modules/lib/types/client/index.js"))
+  );
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  for (const ready of ["active", "later", "unavailable"])
+    await t.test(`Loader ${ready}`, async (t) => {
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const module = {
+        id: name,
+        url: "plugins/gea?rev=target",
+        initialUrl: "plugins/gea?rev=target",
+        rev: "target",
+        inject: [],
+        external: [],
+      };
+      const modules = new ClientModuleSystem({
+        manifest: {
+          rev: "target",
+          modules: [module],
+          plugins: [{ id: name, inject: [], immediately: false }],
+        },
+        staticModules: {},
+        registrationTarget: {
+          mode: "queue",
+          pendingQueue: [
+            {
+              id: name,
+              factory: () => ({
+                pluginPackageVersion: Object.freeze({ name, version: "1.2.4" }),
+                apply() {},
+              }),
+            },
+          ],
+        },
+        bootstrapModule: { id: "@deepseek-ai/dsh-client-modules", exports: {} },
+      });
+      const ctx = new Context();
+      await ctx.plugin(Loader);
+      ctx.loader.internal = modules;
+      ctx.provide("modules", modules);
+      if (ready === "active") await modules.entries.start(ctx.loader, modules.manifest);
+      let phase = "pending-restart",
+        reads = 0,
+        acknowledged = 0,
+        pageIdentity;
+      globalThis.fetch = async (url, options) => {
+        const payload = JSON.parse(options.body);
+        if (url.endsWith("/status")) {
+          pageIdentity = payload.pageIdentity;
+          reads++;
+          return Response.json({
+            ok: true,
+            value: {
+              ...status(
+                rows("idle").map((row) =>
+                  row.packageName === name
+                    ? {
+                        ...row,
+                        state: phase,
+                        installedVersion: "1.2.4",
+                        runningHostVersion: "1.2.4",
+                        runningClientVersion: acknowledged ? "1.2.4" : null,
+                      }
+                    : row,
+                ),
+              ),
+              revision: reads,
+            },
+          });
+        }
+        assert(url.endsWith("/observed"), "recovery must not check or resubmit");
+        validateClientObservation(
+          payload,
+          {
+            hostProcessIdentity: "host-fixture",
+            pageIdentity,
+            nonce: "nonce-fixture",
+            expires: Date.now() + 10000,
+          },
+          [{ name, host: { kind: "active", stamp: { name, version: "1.2.4" } } }],
+          { entries: [{ id: name, rev: "target" }] },
+        );
+        acknowledged++;
+        phase = "completed";
+        return Response.json({ ok: true, value: null });
+      };
+      const owner = createPluginDetailUpdates(ctx);
+      t.after(async () => {
+        await owner.dispose();
+        await ctx.fiber.dispose();
+      });
+      await owner.resume();
+      if (ready !== "active") {
+        assert.equal(owner.getSnapshot().notice.kind, "progress");
+        assert.equal(acknowledged, 0);
+        if (ready === "unavailable") {
+          t.mock.timers.tick(120000);
+          await new Promise(setImmediate);
+          assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+          assert.equal(
+            owner.getSnapshot().items.find((row) => row.packageName === name).state,
+            "pending-restart",
+          );
+          assert.equal(acknowledged, 0);
+          const stoppedAt = reads;
+          t.mock.timers.tick(5000);
+          await new Promise(setImmediate);
+          assert.equal(reads, stoppedAt);
+          return;
+        }
+        await modules.entries.start(ctx.loader, modules.manifest);
+        t.mock.timers.tick(1000);
+        await new Promise(setImmediate);
+      }
+      assert.equal(
+        owner.getSnapshot().items.find((row) => row.packageName === name).state,
+        "completed",
+      );
+      assert.equal(owner.getSnapshot().notice.kind, "completed");
+      assert.equal(acknowledged, 1);
+      assert(reads >= 2);
+      const stoppedAt = reads;
+      t.mock.timers.tick(5000);
+      await new Promise(setImmediate);
+      assert.equal(reads, stoppedAt);
+    });
 });
 
 test("a submitted update keeps observing after detail close and releases on each real terminal state", async (t) => {

@@ -88,7 +88,7 @@ metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility �
 
 GEA client 使用官方既有的 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，向 Workbench、Manage、GEA 三个 bundle 的详情贡献检查、单包更新、状态与版本；公司 Core 的列表扩展见下文。它等待公开 slots、locale、modules 与 settingsNavigation 服务，不要求额外的 Core 更新 provider。中英文随官方 locale 切换；按钮和状态使用官方公共组件与主题，样式随贡献生命周期装载和释放。非目标 bundle、row 与 item 不贡献内容。Host 通过已认证的 `connection.fetch` 注册 status/check/update/update-all/observed 五个 POST 路由，不另建业务登录权威。普通详情关闭中止本页检查与轮询；已提交更新另持有最长两分钟的客户端观察，到真实待重启、完成、恢复、失败或观察到期时释放，安装仍由 Host 生命周期持有。官方列表、详情卸载等控件继续由官方锁和更新前后的基线检查保护。
 
-每次 GEA client 挂载以新 pageIdentity 调用公开 status，按原 nonce 与真实 Loader 观察合同读取 Host 的持久状态。仅实际进行中或待重启的操作恢复上述有界观察，不重发 check/update；无操作即结束，初始状态读取失败最多尝试三次。GEA 自有 shell.overlay 使用公共 Toast 呈现进度、待重启与未确认结果，提供返回插件管理及适用的一键重启；浮层本身不保活轮询。观察超时只提示未确认，不修改 Host 状态。
+每次 GEA client 挂载以新 pageIdentity 调用公开 status，按原 nonce 与真实 Loader 观察合同读取 Host 的持久状态。仅实际进行中或待重启的操作恢复上述有界观察，不重发 check/update；无操作即结束，初始状态读取失败最多尝试三次。新 Host 已装载目标而 client 尚未真实就绪时继续有界观察；合法 observed ACK 后再次读取同一 page 的 status，以 Host 最新状态判断是否完成，原 Host 仍为旧版本时照常提示重启。GEA 自有 shell.overlay 使用公共 Toast 呈现进度、待重启与未确认结果，提供返回插件管理及适用的一键重启；浮层本身不保活轮询。传输失败或观察超时只提示未确认，不修改 Host 状态；只有真实活动状态才能恢复进度提示。
 
 `pluginUpdates` 是可选部署配置，省略或配置不完整时三包状态为 blocked，不使用旧 unsigned 频道、默认生产地址或凭据。有效配置包含 `source`（上述来源配置）、`core`（下面的显式来源证明）、`checkTimeoutMs`（1000–120000）和 `pollIntervalMs`（1000–30000）。本接线只支持 `source.authenticationRef="anonymous"`，认证解析器返回空 headers；公网 OSS origin/prefix 也必须显式填写。已核旧 OSS 匿名读取能力不提供新签名频道 URL 或公钥，二者仍需部署输入。
 
