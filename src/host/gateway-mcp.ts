@@ -3,7 +3,7 @@ import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
 import { KNOWLEDGE_METHODS, KNOWLEDGE_SOURCE } from "./knowledge-mcp.ts";
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
-import { readMcpResponseText } from "./mcp-response.ts";
+import { readMcpResponseText, readMcpHttpFailure } from "./mcp-response.ts";
 import { readableError, throwIfAborted } from "../shared/abort.ts";
 import { parseAuthorizedResources, type ResourceReader } from "./authorized-resources.ts";
 export type GatewayMcpTransport = {
@@ -50,7 +50,11 @@ export async function prepareGatewayMcp(
   identity: AbortSignal,
   timeoutMs: number,
   fetchImpl: typeof fetch = fetch,
-  routing: { cubeMcpCode?: string; setupSignal?: AbortSignal; maxResponseBytes?: number } = {},
+  routing: {
+    cubeMcpCode?: string;
+    setupSignal?: AbortSignal;
+    maxResponseBytes?: number;
+  } = {},
 ): Promise<GatewayMcpTransport> {
   // Setup and each request can stop without poisoning a login-owned cached connection.
   const setup = AbortSignal.any([identity, ...(routing.setupSignal ? [routing.setupSignal] : [])]);
@@ -179,7 +183,11 @@ export function gatewayMcpTransport(
         if (message.method === "tools/call") {
           const mcpCode = routeFor(message.params.name);
           message.params._meta = { ...meta, mcpCode };
-          invocation = { id: message.id, code: mcpCode, name: message.params.name };
+          invocation = {
+            id: message.id,
+            code: mcpCode,
+            name: message.params.name,
+          };
         } else if (message.method === "resources/read") {
           const code = artifactRoutes.get(message.params.uri);
           if (code) message.params._meta = { ...meta, mcpCode: code };
@@ -227,7 +235,18 @@ export function gatewayMcpTransport(
       const gatewayTrace = KNOWLEDGE_METHODS.some((name) => name === invocation?.name)
         ? readMcpTrace(res.headers)
         : {};
-      await res.body?.cancel();
+      const businessFailure = await readMcpHttpFailure(
+        res,
+        AbortSignal.any([identity, ...(init?.signal ? [init.signal] : [])]),
+        routing.maxResponseBytes,
+      );
+      if (businessFailure) {
+        if (res.status === 429 && !("retryAfterMs" in businessFailure)) {
+          const waitMs = retryAfterMs(res.headers);
+          if (waitMs !== undefined) Object.assign(businessFailure, { retryAfterMs: waitMs });
+        }
+        throw withMcpTrace(businessFailure, gatewayTrace);
+      }
       // 限流是"等一下还能用"，不是"连接坏了"：规约 §14 要求按 Retry-After 等待，
       // 并降低并发/缩小查询范围，不能原样立刻重试。REST /call 会回 429 + Retry-After；
       // 这里的 MCP 入口同样要认。
@@ -242,6 +261,7 @@ export function gatewayMcpTransport(
             ),
             {
               code: "GEA_MCP_RATE_LIMITED",
+              httpStatus: res.status,
               retryable: true,
               ...(waitMs === undefined ? {} : { retryAfterMs: waitMs }),
             },
@@ -250,8 +270,13 @@ export function gatewayMcpTransport(
         );
       }
       throw withMcpTrace(
-        new Error(
-          `GEA_MCP_HTTP_${res.status}: 网关请求被拒绝，请检查连接或重新登录；不要原样重复调用。`,
+        Object.assign(
+          new Error(`GEA_MCP_HTTP_${res.status}: 网关请求失败，未取得有效结果，不自动重试。`),
+          {
+            code: `GEA_MCP_HTTP_${res.status}`,
+            httpStatus: res.status,
+            retryable: false,
+          },
         ),
         gatewayTrace,
       );

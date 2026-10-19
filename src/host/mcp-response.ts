@@ -1,4 +1,5 @@
 import { throwIfAborted } from "../shared/abort.ts";
+import { readableMessage } from "./error-envelope.ts";
 
 // The wire can carry both structured JSON and its escaped text representation.
 export const DEFAULT_MCP_RESPONSE_BYTES = 320 * 1024 * 1024;
@@ -43,4 +44,59 @@ export async function readMcpResponseText(
     signal.removeEventListener("abort", cancel);
     reader.releaseLock();
   }
+}
+
+export async function readMcpHttpFailure(
+  response: Response,
+  signal: AbortSignal,
+  maxBytes?: number,
+): Promise<Error | undefined> {
+  let value: unknown;
+  try {
+    const text = await readMcpResponseText(
+      response,
+      signal,
+      Math.min(maxBytes ?? DEFAULT_MCP_RESPONSE_BYTES, 64 * 1024),
+    );
+    value = JSON.parse(text);
+  } catch {
+    throwIfAborted(signal);
+    return;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  if (!("success" in value) || value.success !== false) return;
+  if (
+    !("code" in value) ||
+    typeof value.code !== "string" ||
+    !/^[A-Z][A-Z0-9_]{0,99}$/.test(value.code)
+  )
+    return;
+  const message = "message" in value ? readableMessage(value.message) : undefined;
+  if (!message || /[<>]|authorization|cookie|token|delegation/i.test(message)) return;
+  const ids = Object.fromEntries(
+    ["requestId", "traceId", "auditId"].flatMap((key) => {
+      const id = Reflect.get(value, key);
+      return typeof id === "string" && /^[A-Za-z0-9._:-]{1,200}$/.test(id) ? [[key, id]] : [];
+    }),
+  );
+  const retryable = "retryable" in value && value.retryable === true;
+  const retryAfter = "retryAfterMs" in value ? value.retryAfterMs : undefined;
+  return Object.assign(
+    Error(
+      `${value.code}: ${message}（HTTP ${response.status}）。本次请求已停止，不自动重试。${Object.entries(
+        ids,
+      )
+        .map(([key, id]) => ` ${key}=${id}`)
+        .join("")}`,
+    ),
+    {
+      code: value.code,
+      httpStatus: response.status,
+      retryable,
+      ...(typeof retryAfter === "number" && Number.isSafeInteger(retryAfter) && retryAfter >= 0
+        ? { retryAfterMs: retryAfter }
+        : {}),
+      ...ids,
+    },
+  );
 }
