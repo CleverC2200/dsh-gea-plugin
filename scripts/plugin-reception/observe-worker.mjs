@@ -2,7 +2,7 @@ import { artifactSetSha256, businessIds, documentIds, retainStandard } from "./c
 /** In-process ordinary Web profile boot. Real Loader/resolver/services, with all outgoing transports denied. */
 import assert from "node:assert/strict";
 import { readFile, writeFile, realpath } from "node:fs/promises";
-import { join, basename } from "node:path";
+import { join, basename, dirname, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import http from "node:http";
@@ -62,7 +62,9 @@ try {
   const profile = boot.loadProfileDirectory("reception", v.profile, anchor);
   assert.equal(profile.skippedBundles.length, 0, "PROFILE_BUNDLE_SKIPPED");
   assert.deepEqual(
-    load(await readFile(join(v.profile, "cordis.patch.yml"), "utf8"), { schema: entryListSchema }),
+    load(await readFile(join(v.profile, "cordis.patch.yml"), "utf8"), {
+      schema: entryListSchema,
+    }),
     [],
     "EMPTY_PROFILE_PATCH_REQUIRED",
   );
@@ -273,7 +275,10 @@ try {
   for (const id of ids) {
     assert.equal((await ctx.agentPresets.resolve(id)).broken, undefined, "PRESET_BROKEN");
     const doc = await ctx.agentPresets.readDocument(id);
-    docs.set(id, { content: doc.content, rows: load(doc.content, { schema: entryListSchema }) });
+    docs.set(id, {
+      content: doc.content,
+      rows: load(doc.content, { schema: entryListSchema }),
+    });
     assert(Array.isArray(docs.get(id).rows), "PRESET_DOCUMENT_NOT_PLUGIN_LIST");
   }
   const standard = docs.get("standard").rows;
@@ -283,16 +288,48 @@ try {
   );
   const companyStandard = (await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET))
     .plugins;
-  for (const id of ["auto-negotiation", "agent-resource-skill"])
-    assert.deepEqual(
-      docs.get(id).rows,
-      companyStandard,
-      "GENERAL_PRESET_DIFFERS_FROM_COMPANY_STANDARD",
+  const manageRoot = dirname(manageRequire.resolve("dsh-agent-manage/package.json"));
+  const manageManifest = await readJson(join(manageRoot, "package.json"));
+  const orchestrationStandard = structuredClone(companyStandard);
+  if (manageManifest.version === "0.6.3-company.20") {
+    const persona = orchestrationStandard.find((row) => row.name === "@deepseek-ai/dsh-persona");
+    const filesystem = orchestrationStandard.find(
+      (row) => row.name === "@deepseek-ai/dsh-skill-filesystem",
     );
+    assert(persona && filesystem, "ORCHESTRATION_STANDARD_CAPABILITIES_REQUIRED");
+    const prompt = await readFile(
+      join(manageRoot, "business-resources/orchestration/prompt.md"),
+      "utf8",
+    );
+    assert(prompt.trim(), "ORCHESTRATION_PROMPT_REQUIRED");
+    persona.config.prefix += "\n\n" + prompt;
+    filesystem.config = {
+      ...filesystem.config,
+      customSkillDirs: [
+        join(manageRoot, "business-resources/orchestration/skills") + sep,
+        ...(filesystem.config?.customSkillDirs ?? []),
+      ],
+    };
+  }
+  assert.deepEqual(
+    docs.get("auto-negotiation").rows,
+    orchestrationStandard,
+    "ORCHESTRATION_PRESET_DIFFERS_FROM_DECLARATION",
+  );
+  assert.deepEqual(
+    docs.get("agent-resource-skill").rows,
+    companyStandard,
+    "GENERAL_PRESET_DIFFERS_FROM_COMPANY_STANDARD",
+  );
   projected.documents = ids.map((id) => {
     const doc = docs.get(id),
       additions = [];
-    const baseline = id === "standard" ? standard : companyStandard;
+    const baseline =
+      id === "standard"
+        ? standard
+        : id === "auto-negotiation"
+          ? orchestrationStandard
+          : companyStandard;
     retainStandard(baseline, doc.rows, id, additions);
     return {
       id,
@@ -347,7 +384,12 @@ async function privateDiagnostic(phase, error) {
     v.receipt + `.private.${phase}.diagnostic.log`,
     inspect(
       { checkpoint: projected.checkpoint, error },
-      { depth: 12, customInspect: false, maxArrayLength: 1000, maxStringLength: null },
+      {
+        depth: 12,
+        customInspect: false,
+        maxArrayLength: 1000,
+        maxStringLength: null,
+      },
     ) + "\n",
     { mode: 0o600, flag: "wx" },
   );

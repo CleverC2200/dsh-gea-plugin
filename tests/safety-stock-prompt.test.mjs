@@ -27,7 +27,7 @@ test(
     );
     const maintained = {};
     for (const [file, sha256] of Object.entries({
-      "prompt.json": "68fe496185a9af92883ce54ca8733b5219a4930ccd402335981b36e195175a54",
+      "prompt.json": "6d2ef0ee1c39c07c0920d5c223839d166eebaa53451bceda5e06eb48b0e7738c",
       "capability.json": "6429c5a2fa2d0da45c1e5e194ff8795575730e3aa60d338b1e87b5784ba67273",
       "skills/aqkc/SKILL.md": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
     })) {
