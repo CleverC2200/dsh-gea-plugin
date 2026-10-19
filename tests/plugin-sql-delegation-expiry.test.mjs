@@ -31,7 +31,10 @@ test(
         sessions++;
         reply({
           success: true,
-          result: { accessDecision: { allowed: true }, delegationToken: `delegation-${sessions}` },
+          result: {
+            accessDecision: { allowed: true },
+            delegationToken: `delegation-${sessions}`,
+          },
         });
         return true;
       }
@@ -79,7 +82,12 @@ test(
         else
           reply({
             success: true,
-            result: { rows: [{ records: 1 }], total: 1, pageNo: 1, pageSize: 200 },
+            result: {
+              rows: [{ records: 1 }],
+              total: 1,
+              pageNo: 1,
+              pageSize: 200,
+            },
           });
         return true;
       }
@@ -87,7 +95,10 @@ test(
     const query = () =>
       app.rpc("plugin/sql", {
         consumerCode: "branch-inventory",
-        sql: "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
+        sql:
+          consumerCode === "customer-inventory-preview"
+            ? "SELECT COUNT(*) AS records FROM agents_scm_cust_jxc_ai_daliy_d"
+            : "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
         parameters: {},
         resultShape: "rows",
       });
@@ -117,6 +128,14 @@ test(
       ),
     );
     assert.equal(aps.data.mock, true, "the CI APS build is explicitly mock-only");
+    const customer = JSON.parse(
+      await readFile(
+        resolve("../dsh-agent-workbench/lib/business/inventory-customer/capability.json"),
+        "utf8",
+      ),
+    );
+    assert.notEqual(customer.data.mock, true, "customer inventory is a governed reader");
+    assert.ok(customer.data.tables.includes("agents_scm_cust_jxc_ai_daliy_d"));
     for (const consumerCode of [
       "base-safety-stock",
       "dealer-inventory-replenishment",
@@ -129,13 +148,14 @@ test(
         queriesBefore = sqlTokens.length;
       const current = await app.rpc("plugin/sql", {
         consumerCode,
-        sql: "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
+        sql:
+          consumerCode === "customer-inventory-preview"
+            ? "SELECT COUNT(*) AS records FROM agents_scm_cust_jxc_ai_daliy_d"
+            : "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
         parameters: {},
         resultShape: "rows",
       });
-      if (
-        ["aps", "customer-inventory-preview", "orderfulfillment-preview"].includes(consumerCode)
-      ) {
+      if (["aps", "orderfulfillment-preview"].includes(consumerCode)) {
         assert.equal(current.error?.code, "GEA_CAPABILITY_MOCK_ONLY");
         assert.equal(sessions, sessionsBefore);
         assert.equal(sqlTokens.length, queriesBefore);
@@ -146,7 +166,7 @@ test(
       assert.equal(sessions, sessionsBefore + 2);
       assert.equal(sqlTokens.length, queriesBefore + 2);
     }
-    assert.equal(sessions, sessionBase + 6);
+    assert.equal(sessions, sessionBase + 8);
     failureMode = "login-expired";
     assert.equal((await query()).error?.code, "GEA_HTTP_401");
     assert.equal((await app.rpc("status")).value.authenticated, false);
