@@ -1,0 +1,42 @@
+✖ absolute correction SAVE sends its mode, snapshot and node role to GEA (33.249625ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 319.207917
+
+✖ failing tests:
+
+test at tests/sales-plan-action.test.mjs:468:1
+✖ absolute correction SAVE sends its mode, snapshot and node role to GEA (33.249625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+      action: 'SAVE',
+  -   adjustmentMode: 'ABSOLUTE_NET',
+      adjustments: [
+        {
+          adjustQty: '8',
+          skuCode: '789'
+        }
+      ],
+  -   approvalRole: 'category',
+  -   expectedSnapshot: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      expectedStatus: 4
+    }
+  
+      at TestContext.<anonymous> (file:///Users/synear/Documents/ChatGPT/%E6%8F%92%E4%BB%B6%E6%8B%86%E5%88%86/.parallel/sales-plan-approval-correction-20261019/implementers/h1/dsh-gea-plugin/tests/sales-plan-action.test.mjs:477:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { action: 'SAVE', expectedStatus: 4, adjustments: [ [Object] ] },
+    expected: { action: 'SAVE', expectedStatus: 4, adjustments: [ [Object] ], adjustmentMode: 'ABSOLUTE_NET', approvalRole: 'category', expectedSnapshot: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

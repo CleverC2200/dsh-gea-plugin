@@ -19,7 +19,7 @@ new Function("require", "module", "exports", output.outputFiles[0].text)(
   module.exports,
 );
 
-function fixture(t, actionReply, detailGate) {
+function fixture(t, actionReply, detailGate, detailPatch = {}, listPage) {
   const business = new module.exports.Business({
     geaBaseUrl: "https://localhost",
     analysisAgentCode: "sales_forecast",
@@ -51,6 +51,7 @@ function fixture(t, actionReply, detailGate) {
     if (path.endsWith("/plans/p")) await detailGate?.();
     let result;
     if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:category-approve"] };
+    else if (path.endsWith("/plans")) result = listPage;
     else if (path.endsWith("/plans/p"))
       result = {
         currentVersion: {
@@ -72,6 +73,7 @@ function fixture(t, actionReply, detailGate) {
           policy: "role-visible-v1",
           roleActions: [{ role: "category", allowedActions: ["SAVE"] }],
         },
+        ...detailPatch,
       };
     else if (path.endsWith("/actions")) {
       writes++;
@@ -413,4 +415,257 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
   assert.deepEqual(await f.business.salesPlanAction(payload, signal), current);
   assert.equal(f.business.status().user.id, "user-2");
   assert.equal(f.writes(), 2);
+});
+
+function correctionFixture(t, actionReply) {
+  const detail = {
+    currentVersion: {
+      id: "v",
+      planId: "p",
+      status: 4,
+      effective: true,
+      planTypeCode: "Y",
+      orderType: "Z",
+      submitter: "other-user",
+    },
+    skus: [
+      {
+        id: "s",
+        versionId: "v",
+        skuCode: "789",
+        qty: "100.000",
+        corrBaseQty: "100.000",
+        price: "0.005",
+        amt: "0.51",
+        adjAddQty: "2.000",
+        adjCutQty: "0.000",
+      },
+    ],
+    actionContext: {
+      versionId: "v",
+      status: 4,
+      nodeOrder: 5,
+      allowedActions: ["SAVE", "APPROVE", "REJECT"],
+      snapshotHash: "a".repeat(64),
+    },
+    correctionContext: {
+      contract: "absolute-net-v1",
+      monthlyApproved: true,
+      approvalOpen: true,
+    },
+  };
+  const f = fixture(t, actionReply, undefined, detail);
+  return {
+    ...f,
+    detail,
+    payload: (patch = {}) =>
+      f.payload({
+        adjustmentMode: "ABSOLUTE_NET",
+        approvalRole: "category",
+        adjustments: [{ skuCode: "789", adjustQty: "8" }],
+        ...patch,
+      }),
+  };
+}
+
+test("absolute correction SAVE sends its mode, snapshot and node role to GEA", async (t) => {
+  let body;
+  const f = correctionFixture(t, async (_url, init) => {
+    body = JSON.parse(init.body);
+    return Response.json({ success: true, result: { saved: true } });
+  });
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  assert.deepEqual(await f.business.salesPlanAction(f.payload(), signal), { saved: true });
+  assert.deepEqual(body, {
+    action: "SAVE",
+    expectedStatus: 4,
+    adjustments: [{ skuCode: "789", adjustQty: "8" }],
+    adjustmentMode: "ABSOLUTE_NET",
+    approvalRole: "category",
+    expectedSnapshot: "a".repeat(64),
+  });
+});
+
+test("absolute correction binds an omitted role to the sole authorized node before sending", async (t) => {
+  let body;
+  const f = correctionFixture(t, async (_url, init) => {
+    body = JSON.parse(init.body);
+    return Response.json({ success: true, result: { approved: true } });
+  });
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  await f.business.salesPlanAction(
+    f.payload({ action: "APPROVE", approvalRole: undefined }),
+    signal,
+  );
+  assert.equal(body.approvalRole, "category");
+  assert.equal(body.adjustmentMode, "ABSOLUTE_NET");
+});
+
+test("correction readback preserves frozen amounts, all six node fields and server capabilities", async (t) => {
+  const f = correctionFixture(t);
+  Object.assign(f.detail.skus[0], {
+    regionAdjAddQty: "8.000",
+    regionAdjCutQty: "0.000",
+    regionAdjAddAmount: "0.04",
+    regionAdjCutAmount: "0.00",
+    regionConfirmedQty: "108.000",
+    regionConfirmedAmount: "0.55",
+    provinceAdjAddQty: "0.000",
+    provinceAdjCutQty: "3.000",
+    provinceAdjAddAmount: "0.00",
+    provinceAdjCutAmount: "0.02",
+    provinceConfirmedQty: "97.000",
+    provinceConfirmedAmount: "0.49",
+    areaAdjAddQty: null,
+    areaAdjCutQty: null,
+    areaAdjAddAmount: null,
+    areaAdjCutAmount: null,
+    areaConfirmedQty: null,
+    areaConfirmedAmount: null,
+    categoryAdjAddQty: "0.000",
+    categoryAdjCutQty: "0.000",
+    categoryAdjAddAmount: "0.00",
+    categoryAdjCutAmount: "0.00",
+    categoryConfirmedQty: null,
+    categoryConfirmedAmount: null,
+    editable: false,
+  });
+  const signal = new AbortController().signal;
+  const detail = await f.business.workbenchQuery(
+    { kind: "detail", query: { planId: "p" } },
+    signal,
+  );
+  assert.deepEqual(detail.skus, f.detail.skus);
+  assert.deepEqual(detail.actionContext, f.detail.actionContext);
+  assert.deepEqual(detail.correctionContext, f.detail.correctionContext);
+  assert.equal(f.writes(), 0);
+});
+
+test("unknown correction write retries its frozen body and key without revalidating changed source", async (t) => {
+  const bodies = [];
+  const f = correctionFixture(t, async (_url, init) => {
+    bodies.push({ key: init.headers["Idempotency-Key"], body: init.body });
+    if (bodies.length === 1) throw new TypeError("isolated response lost");
+    return Response.json({ success: true, result: { replayed: true } });
+  });
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  const payload = f.payload({ approvalRole: undefined });
+  await assert.rejects(f.business.salesPlanAction(payload, signal), /isolated response lost/);
+  f.detail.actionContext.snapshotHash = "b".repeat(64);
+  f.detail.actionContext.allowedActions = [];
+  assert.deepEqual(await f.business.salesPlanAction(payload, signal), { replayed: true });
+  assert.deepEqual(bodies[0], bodies[1]);
+  assert.equal(JSON.parse(bodies[1].body).approvalRole, "category");
+  assert.equal(JSON.parse(bodies[1].body).expectedSnapshot, "a".repeat(64));
+});
+
+test("correction input rejects incomplete, duplicate, unknown, negative and overprecision decisions", async (t) => {
+  const f = correctionFixture(t);
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  for (const adjustments of [
+    [],
+    [{ skuCode: "789", adjustQty: "-100.001" }],
+    [{ skuCode: "789", adjustQty: "0.0001" }],
+    [{ skuCode: "999", adjustQty: "8" }],
+    [
+      { skuCode: "789", adjustQty: "8" },
+      { skuCode: "789", adjustQty: "8" },
+    ],
+  ]) {
+    await assert.rejects(f.business.salesPlanAction(f.payload({ adjustments }), signal));
+  }
+  assert.equal(f.writes(), 0);
+});
+
+test("correction refuses unconfirmed window, node and action capabilities at the Host write entry", async (t) => {
+  const f = correctionFixture(t);
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  const context = structuredClone(f.detail.actionContext);
+  const capability = structuredClone(f.detail.correctionContext);
+  const cases = [
+    { correctionContext: { ...capability, approvalOpen: false } },
+    { correctionContext: { ...capability, monthlyApproved: false } },
+    { correctionContext: undefined },
+    { actionContext: { ...context, nodeOrder: 2 } },
+    { actionContext: { ...context, allowedActions: [] } },
+    { actionContext: undefined, expectedSnapshot: undefined },
+    { submitter: "user-1" },
+  ];
+  for (const denied of cases) {
+    f.detail.actionContext = Object.hasOwn(denied, "actionContext")
+      ? denied.actionContext
+      : context;
+    f.detail.correctionContext = Object.hasOwn(denied, "correctionContext")
+      ? denied.correctionContext
+      : capability;
+    f.detail.currentVersion.submitter = denied.submitter ?? "other-user";
+    await assert.rejects(
+      f.business.salesPlanAction(
+        f.payload({
+          action: "APPROVE",
+          ...(Object.hasOwn(denied, "expectedSnapshot")
+            ? { expectedSnapshot: denied.expectedSnapshot }
+            : {}),
+        }),
+        signal,
+      ),
+      JSON.stringify(denied),
+    );
+  }
+  assert.equal(f.writes(), 0);
+});
+
+test("Host list readback keeps server progress, correction totals and filtered summary", async (t) => {
+  const row = {
+    planId: "p",
+    versionId: "v",
+    targetAmount: "1000.00",
+    mPlanQty: "100.000",
+    mPlanAmount: "800.00",
+    shipQty: "60.000",
+    shipAmount: "600.00",
+    corrPlanQty: "120.000",
+    corrPlanAmount: "1000.00",
+    prevAdjAddQty: "20.000",
+    prevAdjCutQty: "0.000",
+    amountProgress: "60.0",
+    correctionProgress: "100.0",
+    monthlyApproved: true,
+    hasCorrection: true,
+  };
+  const summary = {
+    targetAmount: "2000.00",
+    planAmount: "1900.00",
+    diffAmount: "-100.00",
+    planQty: "230.000",
+  };
+  const f = fixture(
+    t,
+    undefined,
+    undefined,
+    {},
+    {
+      records: [row],
+      total: 1,
+      size: 20,
+      current: 1,
+      pages: 1,
+      summary,
+    },
+  );
+  const result = await f.business.workbenchQuery(
+    {
+      kind: "list",
+      query: { periodId: "period", orderType: "Z", planTypeCode: "Y" },
+    },
+    new AbortController().signal,
+  );
+  assert.deepEqual(result.records, [row]);
+  assert.deepEqual(result.summary, summary);
+  assert.equal(f.writes(), 0);
 });

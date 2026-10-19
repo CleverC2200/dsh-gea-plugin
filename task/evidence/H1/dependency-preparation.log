@@ -1,0 +1,84 @@
+✓ Lockfile passes supply-chain policies (verified 2d ago)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +238
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Packages are cloned from the content-addressable store to the virtual store.
+  Content-addressable store is at: /Users/synear/Library/pnpm/store/v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 238, reused 238, downloaded 0, added 236
+Progress: resolved 238, reused 238, downloaded 0, added 237
+Progress: resolved 238, reused 238, downloaded 0, added 238, done
+
+dependencies:
++ @changfenhuang/dsh-genui 0.11.2 <- ../../upstream-inputs/genui
++ @cleverc2200/dsh-agent-workbench 0.1.12 <- ../dsh-agent-workbench
++ decimal.js 10.6.0
++ dsh-better-sidebar 0.24.1 <- ../../upstream-inputs/sidebar
++ esbuild 0.25.9
++ eventsource-parser 3.1.1
++ qrcode 1.5.4
++ semver 7.7.4
++ yaml 2.9.0
+
+devDependencies:
++ @arco-design/web-react 2.66.1
++ @deepseek-ai/cordis 4.0.4 <- ../../official-latest-standard/vendor/cordis
++ @deepseek-ai/cordis-plugin-loader 1.0.5 <- ../../official-latest-standard/vendor/loader
++ @deepseek-ai/dsh 0.2.0-rc.2 <- ../../official-latest-standard/apps/cli
++ @deepseek-ai/dsh-agent 0.2.0-rc.2 <- ../../official-latest-standard/packages/core/agent
++ @deepseek-ai/dsh-agent-default-model 0.2.0-rc.2 <- ../../official-latest-standard/packages/core/agent-default-model
++ @deepseek-ai/dsh-api-remotes 0.2.0-rc.2 <- ../../official-latest-standard/packages/api/remotes
++ @deepseek-ai/dsh-api-session-controller 0.2.0-rc.2 <- ../../official-latest-standard/packages/api/session-controller
++ @deepseek-ai/dsh-app-boot 0.2.0-rc.2 <- ../../official-latest-standard/packages/boot/app-boot
++ @deepseek-ai/dsh-atomic-write 0.2.0-rc.2 <- ../../official-latest-standard/packages/util/atomic-write
++ @deepseek-ai/dsh-brand 0.2.0-rc.2 <- ../../official-latest-standard/packages/util/brand
++ @deepseek-ai/dsh-client-connection 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/connection
++ @deepseek-ai/dsh-client-locale 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/locale
++ @deepseek-ai/dsh-client-modules 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/modules
++ @deepseek-ai/dsh-client-store 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/store
++ @deepseek-ai/dsh-client-ui-layout 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-layout
++ @deepseek-ai/dsh-client-ui-plugin-manager 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-plugin-manager
++ @deepseek-ai/dsh-client-ui-primitives 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-primitives
++ @deepseek-ai/dsh-client-ui-renderer 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-renderer
++ @deepseek-ai/dsh-client-ui-session 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-session
++ @deepseek-ai/dsh-client-ui-settings 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-settings
++ @deepseek-ai/dsh-client-ui-sidebar 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-sidebar
++ @deepseek-ai/dsh-client-ui-slots 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-slots
++ @deepseek-ai/dsh-client-ui-theme 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-theme
++ @deepseek-ai/dsh-client-ui-workspace 0.2.0-rc.2 <- ../../official-latest-standard/packages/client/ui-workspace
++ @deepseek-ai/dsh-cmdline 0.2.0-rc.2 <- ../../official-latest-standard/packages/boot/cmdline
++ @deepseek-ai/dsh-fs 0.2.0-rc.2 <- ../../official-latest-standard/packages/fs/fs
++ @deepseek-ai/dsh-llm 0.2.0-rc.2 <- ../../official-latest-standard/packages/llm/llm
++ @deepseek-ai/dsh-llm-pi-ai 0.2.0-rc.2 <- ../../official-latest-standard/packages/llm/llm-pi-ai
++ @deepseek-ai/dsh-persona 0.2.0-rc.2 <- ../../official-latest-standard/packages/preset/persona
++ @deepseek-ai/dsh-plugin-manager 0.2.0-rc.2 <- ../../official-latest-standard/packages/boot/plugin-manager
++ @deepseek-ai/dsh-session 0.2.0-rc.2 <- ../../official-latest-standard/packages/core/session
++ @deepseek-ai/dsh-skill 0.2.0-rc.2 <- ../../official-latest-standard/packages/skill/skill
++ @deepseek-ai/dsh-timeout 0.2.0-rc.2 <- ../../official-latest-standard/packages/util/timeout
++ @deepseek-ai/dsh-tools 0.2.0-rc.2 <- ../../official-latest-standard/packages/core/tools
++ @deepseek-ai/schemastery 3.18.4 <- ../../official-latest-standard/vendor/schemastery
++ @electron/asar 3.4.1
++ @icon-park/react 1.4.2
++ @modelcontextprotocol/sdk 1.31.0
++ @playwright/test 1.58.2
++ @types/node 24.3.1
++ @types/qrcode 1.5.6
++ @types/react 18.3.31
++ @types/react-dom 18.3.7
++ @types/semver 7.8.0
++ builder-util-runtime 9.7.0
++ dsh-agent-manage 0.6.3-company.21 <- ../dsh-agent-manage
++ electron-updater 6.8.9
++ i18next 23.7.16
++ oxfmt 0.72.0
++ oxlint 1.87.0
++ pnpm 11.7.0
++ prettier 3.6.2
++ react 18.3.1
++ react-dom 18.3.1
++ react-grab 0.2.0
++ typescript 5.9.3
++ xlsx-republish 0.20.3
+
+Done in 2.6s using pnpm v11.27.0

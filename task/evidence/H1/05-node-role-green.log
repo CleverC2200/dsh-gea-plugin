@@ -1,0 +1,10 @@
+✔ absolute correction SAVE sends its mode, snapshot and node role to GEA (25.960833ms)
+✔ absolute correction binds an omitted role to the sole authorized node before sending (1.527625ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 243.749333
