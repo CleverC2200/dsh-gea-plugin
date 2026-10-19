@@ -384,8 +384,9 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
     "pageSize",
     "versionIds",
     "summaryOnly",
+    "statuses",
   ],
-  detail: ["planId"],
+  detail: ["planId", "orderType"],
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
@@ -431,7 +432,7 @@ export function normalizePlanQuery(
       kind === "list"
         ? " For a month, call kind=periods with periodMonth (YYYY-MM) first, then pass the returned periodId together with planTypeCode from that result; never invent periodId or planTypeCode."
         : kind === "detail"
-          ? " kind=detail takes only planId, taken from kind=list or kind=versions output; never pass versionId here and never invent an id."
+          ? " kind=detail takes planId from kind=list or kind=versions output, plus optional orderType; never pass versionId here and never invent an id."
           : kind === "versionSkus"
             ? " kind=versionSkus takes only versionId (detail 的 currentVersion.id，或 list 的 versionId) plus initial pageNo/pageSize or the returned nextQuery; planId is not needed."
             : kind === "periods"
@@ -2684,6 +2685,8 @@ export class Business {
     } while (pageNo <= pageCount);
     if (rows.length < upstreamTotal) throw new Error("GEA_INCOMPLETE_COLLECTION");
 
+    const selectedPlanType =
+      query.planType == null || query.planType === "" ? undefined : text(query.planType);
     const discovered = new Map<string, Row>();
     for (const row of rows) {
       const periodId = text(row.periodId);
@@ -2691,7 +2694,13 @@ export class Business {
       const match = /^(\d{4})(0[1-9]|1[0-2])/.exec(periodId);
       const periodMonth = match ? `${match[1]}-${match[2]}` : periodId;
       const orderType = row.orderType == null ? "" : text(row.orderType);
-      const planType = orderType === "Z" ? "CORRECTION" : orderType === "M" ? "MONTHLY" : "UNKNOWN";
+      const planType =
+        orderType === "Z" || (selectedPlanType === "CORRECTION" && orderType === "M")
+          ? "CORRECTION"
+          : orderType === "M"
+            ? "MONTHLY"
+            : "UNKNOWN";
+      if (selectedPlanType != null && planType !== selectedPlanType) continue;
       discovered.set(`${periodId}\u0000${planTypeCode}`, {
         periodId,
         tenantId: auth.tenantId,
@@ -2703,11 +2712,8 @@ export class Business {
     }
     const periodMonth =
       query.periodMonth == null || query.periodMonth === "" ? undefined : text(query.periodMonth);
-    const planType =
-      query.planType == null || query.planType === "" ? undefined : text(query.planType);
     const records = [...discovered.values()]
       .filter((row) => periodMonth == null || row.periodMonth === periodMonth)
-      .filter((row) => planType == null || row.planType === planType)
       .toSorted(
         (left, right) =>
           String(right.periodMonth).localeCompare(String(left.periodMonth)) ||
@@ -3093,6 +3099,16 @@ export class Business {
       if (typeof query.summaryOnly !== "boolean") throw new Error("INVALID_QUERY");
       query = { ...query, summaryOnly: String(query.summaryOnly) };
     }
+    if (kind === "list" && query.statuses !== undefined) {
+      if (
+        !Array.isArray(query.statuses) ||
+        query.statuses.length === 0 ||
+        (query.status != null && query.status !== "")
+      )
+        throw new Error("INVALID_QUERY");
+      const statuses = query.statuses.map((value) => integer(value, 0));
+      query = { ...query, statuses: [...new Set(statuses)].join(",") };
+    }
     if (kind === "versionSkus") {
       if (query.offset !== undefined && query.pageNo !== undefined)
         throw new Error("INVALID_QUERY: versionSkus uses either pageNo or offset from nextQuery.");
@@ -3157,7 +3173,7 @@ export class Business {
           String(integer(value, 1, key === "pageSize" ? 1000 : Number.MAX_SAFE_INTEGER)),
         );
       else if (key === "status" && kind !== "periods") params.set(key, String(integer(value, 0)));
-      else if (key === "versionIds") params.set(key, String(value));
+      else if (key === "versionIds" || key === "statuses") params.set(key, String(value));
       else params.set(key, text(value));
     }
     const result = await this.gatewayRequests.read(
