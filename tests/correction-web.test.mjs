@@ -103,7 +103,13 @@ test(
       0,
     );
     await expect(frame.getByText("纠偏客户", { exact: true })).toHaveCount(0);
-    await expect(frame.getByText(/当前页目标 —/)).toBeVisible();
+    await expect(frame.getByTestId("correction-summary")).toContainText("目标金额");
+    await expect(frame.getByTestId("correction-summary").locator("strong")).toHaveText([
+      "—",
+      "—",
+      "—",
+      "—",
+    ]);
   },
 );
 
@@ -140,8 +146,10 @@ test(
       const status = service.detail().currentVersion.status;
       const node =
         status >= 5 && status <= 10 && status !== 9
-          ? "品类"
-          : { 1: "区域", 2: "省区", 3: "大区", 4: "品类", 9: "大区" }[status];
+          ? "品类计划审批"
+          : { 1: "城市经理", 2: "省区经理", 3: "大区总监", 4: "品类计划审批", 9: "大区总监" }[
+              status
+            ];
       const toggle = f.locator('button[aria-controls="correction-stage-lane"]');
       if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
       const lane = f.getByRole("navigation", { name: "纠偏查看节点", exact: true });
