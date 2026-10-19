@@ -343,6 +343,23 @@ const workbenchBuildContracts = [
   "scripts/run-quality-ci-stages.test.mjs",
 ];
 
+test("Workbench compiled version changes select loaded Host and client identity contracts", (t) => {
+  const fixture = resourceImpactFixture(t);
+  const file = "src/plugin-package-version.ts";
+  fixture.change(
+    fixture.peer,
+    file,
+    'export const pluginPackageVersion = Object.freeze({ name: "@cleverc2200/dsh-agent-workbench", version: "0.1.13" });\n',
+  );
+  const plan = fixture.plan();
+  const contract = "tests/plugin-update-integration.contract.mjs";
+  assert.deepEqual(plan.changes, [{ repo: fixture.peer.repo, file }]);
+  assert.deepEqual(plan.reasons[fixture.peer.repo + "/" + file], [contract]);
+  assert.deepEqual(plan.files, [...businessCore, contract].sort());
+  fixture.change(fixture.peer, "src/plugin-package-version-extra.ts");
+  assert.throws(() => fixture.plan(), /CI_TEST_IMPACT_UNMAPPED/);
+});
+
 test("Workbench build commands select prepared assets, frozen transport and build failure contracts", async (t) => {
   for (const name of [
     "build",

@@ -159,6 +159,11 @@
       "tests": ["tests/sales-plan-action.test.mjs"]
     },
     {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/plugin-package-version\\.ts$",
+      "tests": ["tests/plugin-update-integration.contract.mjs"]
+    },
+    {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/(?:host\\.ts|host/(?:api-log|business|debug-run))",
       "tests": [
