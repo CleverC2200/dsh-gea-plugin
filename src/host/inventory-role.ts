@@ -79,7 +79,12 @@ export function verifiedRoleProfile(
   const configured = rawScope?.status === "granted";
   return {
     roleCodes: [...roles.keys()],
-    roleNames: [...new Set([...names, ...[...roles.values()].flatMap((role) => (role.name ? [role.name] : []))])],
+    roleNames: [
+      ...new Set([
+        ...names,
+        ...[...roles.values()].flatMap((role) => (role.name ? [role.name] : [])),
+      ]),
+    ],
     roles: [...roles.values()],
     customerInventoryScope: {
       status: configured ? "granted" : "unconfigured",
@@ -94,7 +99,12 @@ export function verifiedRoleProfile(
 
 export async function resolveInventoryRoles(
   base: string,
-  credentials: { sessionId: string; conversationId: string; delegationToken: string; agentCode?: string },
+  credentials: {
+    sessionId: string;
+    conversationId: string;
+    delegationToken: string;
+    agentCode?: string;
+  },
   userId: string,
   signal: AbortSignal,
   timeoutMs: number,
@@ -103,7 +113,9 @@ export async function resolveInventoryRoles(
   const connection = gatewayMcpTransport(base, credentials, signal, timeoutMs, fetchImpl);
   const client = new Client({ name: "inventory-workbench-role", version: "1.0.0" });
   try {
-    await client.connect(new StreamableHTTPClientTransport(new URL(connection.url), { fetch: connection.fetch }));
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(connection.url), { fetch: connection.fetch }),
+    );
     let cursor: string | undefined;
     let found = false;
     do {
@@ -113,11 +125,16 @@ export async function resolveInventoryRoles(
       if (found) break;
     } while (cursor);
     if (!found) throw Error("GEA_CURRENT_USER_TOOL_UNAVAILABLE");
-    const result = await client.callTool({ name: "gateway.session.currentUser.resolve", arguments: {} });
+    const result = await client.callTool({
+      name: "gateway.session.currentUser.resolve",
+      arguments: {},
+    });
     if (result.isError) throw Error("GEA_CURRENT_USER_RESOLVE_FAILED");
     const payload =
       result.structuredContent ??
-      JSON.parse((result.content as any[])?.find((content) => content.type === "text")?.text ?? "null");
+      JSON.parse(
+        (result.content as any[])?.find((content) => content.type === "text")?.text ?? "null",
+      );
     signal.throwIfAborted();
     return verifiedRoleProfile(payload, credentials, userId);
   } finally {

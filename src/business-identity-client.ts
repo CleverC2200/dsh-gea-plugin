@@ -54,9 +54,7 @@ export interface BusinessIdentityProjection {
 }
 
 /** Read the Host-owned authority; clients never derive a scope from user labels. */
-async function requestBusinessIdentityScope(
-  signal?: AbortSignal,
-): Promise<{
+async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
   scope: string | null;
   subject: string | null;
   status: IdentityStatus | null;
@@ -188,7 +186,13 @@ async function requestBusinessIdentityScope(
 
 /** One read-only projection per GEA client. The Host remains the authority. */
 export function createBusinessIdentityReader() {
-  let snapshot: IdentitySnapshot = { state: "unknown", scope: null, subject: null, status: null, customerInventory: null };
+  let snapshot: IdentitySnapshot = {
+    state: "unknown",
+    scope: null,
+    subject: null,
+    status: null,
+    customerInventory: null,
+  };
   let issued = 0;
   let observed = false;
   let startupDeadline: number | undefined;
