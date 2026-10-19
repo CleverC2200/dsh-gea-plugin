@@ -243,7 +243,10 @@ export function gatewayMcpTransport(
       if (businessFailure) {
         if (res.status === 429 && !("retryAfterMs" in businessFailure)) {
           const waitMs = retryAfterMs(res.headers);
-          if (waitMs !== undefined) Object.assign(businessFailure, { retryAfterMs: waitMs });
+          if (waitMs !== undefined) {
+            Object.assign(businessFailure, { retryAfterMs: waitMs });
+            businessFailure.message += ` 服务端提示等待${Math.ceil(waitMs / 1000)}秒。`;
+          }
         }
         throw withMcpTrace(businessFailure, gatewayTrace);
       }

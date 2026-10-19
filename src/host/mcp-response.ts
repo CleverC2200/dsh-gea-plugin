@@ -79,11 +79,24 @@ export async function readMcpHttpFailure(
       return typeof id === "string" && /^[A-Za-z0-9._:-]{1,200}$/.test(id) ? [[key, id]] : [];
     }),
   );
-  const retryable = "retryable" in value && value.retryable === true;
+  const declaredRetryable = "retryable" in value ? value.retryable : undefined;
+  const retryable =
+    typeof declaredRetryable === "boolean" ? declaredRetryable : response.status === 429;
   const retryAfter = "retryAfterMs" in value ? value.retryAfterMs : undefined;
+  const retryAfterMs =
+    typeof retryAfter === "number" && Number.isSafeInteger(retryAfter) && retryAfter >= 0
+      ? retryAfter
+      : undefined;
+  const retryHint = retryable
+    ? "允许明确重试，请先处理原失败原因。"
+    : declaredRetryable === false
+      ? "服务端明确标记不可重试。"
+      : "服务端未声明可重试。";
+  const waitHint =
+    retryAfterMs === undefined ? "" : `服务端提示等待${Math.ceil(retryAfterMs / 1000)}秒。`;
   return Object.assign(
     Error(
-      `${value.code}: ${message}（HTTP ${response.status}）。本次请求已停止，不自动重试。${Object.entries(
+      `${value.code}: ${message}（HTTP ${response.status}${response.status === 429 ? "，网关限流" : ""}）。本次请求已停止，不自动重试。${retryHint}${waitHint}${Object.entries(
         ids,
       )
         .map(([key, id]) => ` ${key}=${id}`)
@@ -93,9 +106,7 @@ export async function readMcpHttpFailure(
       code: value.code,
       httpStatus: response.status,
       retryable,
-      ...(typeof retryAfter === "number" && Number.isSafeInteger(retryAfter) && retryAfter >= 0
-        ? { retryAfterMs: retryAfter }
-        : {}),
+      ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
       ...ids,
     },
   );

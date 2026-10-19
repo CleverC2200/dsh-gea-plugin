@@ -847,3 +847,62 @@ test("expired knowledge connections retain HTTP and business trace and recover o
   assert.equal(count(f, "weknora_ask"), 2);
   assert.equal(f.calls.filter(({ wire }) => wire.method === "initialize").length, 2);
 });
+
+for (const [label, retry, expected, absent] of [
+  ["HTTP 429 default with header wait", {}, ["允许明确重试", "等待60秒"], []],
+  [
+    "body wait takes precedence",
+    { retryable: true, retryAfterMs: 2500 },
+    ["允许明确重试", "等待3秒"],
+    ["等待60秒"],
+  ],
+  [
+    "explicit business retry denial",
+    { retryable: false },
+    ["服务端明确标记不可重试", "等待60秒"],
+    ["允许明确重试"],
+  ],
+])
+  test(`structured knowledge rate limits expose ${label} through Core Tools`, async (t) => {
+    const f = await fixture(t, {
+      handler: () =>
+        Response.json(
+          {
+            success: false,
+            code: "AI_GATEWAY_RATE_LIMITED",
+            message: "请求过多，请降低并发",
+            requestId: "business-rate-request",
+            ...retry,
+          },
+          { status: 429, headers: { "Retry-After": "60", "x-trace-id": "gateway-rate-trace" } },
+        ),
+    });
+    const result = await invoke(f, ask, args);
+    assert.equal(result.isError, true);
+    const message = result.error.message;
+    for (const text of [
+      "HTTP 429",
+      "限流",
+      "AI_GATEWAY_RATE_LIMITED",
+      "请求过多，请降低并发",
+      "business-rate-request",
+      "gateway.traceId=gateway-rate-trace",
+      "不自动重试",
+      ...expected,
+    ])
+      assert.ok(message.includes(text), message);
+    for (const text of absent) assert.ok(!message.includes(text), message);
+    assert.equal(count(f, "weknora_ask"), 1);
+    assert.equal(f.business.status().authenticated, true);
+    f.setHandler((wire, _init, reply) =>
+      reply({
+        structuredContent:
+          wire.params.name === "weknora_list_knowledge_bases"
+            ? [library("current-library")]
+            : answer(),
+      }),
+    );
+    successful(await invoke(f, ask, args));
+    assert.equal(count(f, "weknora_ask"), 2);
+    assert.equal(f.calls.filter(({ wire }) => wire.method === "initialize").length, 1);
+  });
