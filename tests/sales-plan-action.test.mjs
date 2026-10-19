@@ -444,3 +444,209 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
   assert.equal(f.business.status().user.id, "user-2");
   assert.equal(f.writes(), 2);
 });
+
+test("public Business resubmits returned M with opaque period 17, separate service identity and nullable audit receipt", async (t) => {
+  process.env.GEA_CONTRACT_CLIENT = "contract-client";
+  process.env.GEA_CONTRACT_SECRET = "contract-secret";
+  t.after(() => {
+    delete process.env.GEA_CONTRACT_CLIENT;
+    delete process.env.GEA_CONTRACT_SECRET;
+  });
+  const business = new module.exports.Business({
+    geaBaseUrl: "https://localhost",
+    analysisAgentCode: "sales_forecast",
+    requestTimeoutMs: 2000,
+    inputByteBudget: 30000,
+    pageSize: 20,
+    periodPageSize: 100,
+    serviceAccounts: {
+      production: {
+        clientIdEnv: "GEA_CONTRACT_CLIENT",
+        clientSecretEnv: "GEA_CONTRACT_SECRET",
+        tenantId: "1",
+        allowedUserIds: ["user-1"],
+      },
+    },
+  });
+  business.restoreDesktopLogin({
+    schema: 1,
+    environment: "production",
+    base: "https://localhost",
+    auth: {
+      token: "employee-token",
+      tenantId: "1",
+      name: "Test",
+      id: "user-1",
+      username: "test",
+      roles: [{ code: "sales_plan_region_approver", name: "区域审批" }],
+    },
+  });
+  t.after(() => business.dispose());
+  const planId = "p-jxs-2026-10-00001";
+  const version = {
+    id: "v1",
+    planId,
+    periodId: "17",
+    planTypeCode: "Y",
+    orderType: "M",
+    status: 7,
+    effective: true,
+    seq: 1,
+    dealerCode: "456",
+    targetQty: "1.000",
+    targetAmount: "12.34",
+  };
+  const sku = {
+    id: "s1",
+    versionId: "v1",
+    skuCode: "789",
+    productCategName: "Category",
+    baseQty: "1.000",
+    qty: "2.000",
+    price: "12.3400",
+    amt: "24.68",
+    amtBase: "12.34",
+  };
+  const request = {
+    orderType: "M",
+    status: 2,
+    periodId: "17",
+    periodMonth: "2026-10",
+    planTypeCode: "Y",
+    channelCode: "jxs",
+    dealerCode: "456",
+    targetQty: "1.000",
+    targetAmount: "12.34",
+    submitterCode: "user-1",
+    submitterName: "test",
+    items: [
+      {
+        skuCode: "789",
+        productCategName: "Category",
+        baseQty: "1.000",
+        qty: "2.000",
+        price: "12.3400",
+      },
+    ],
+  };
+  let tokens = 0,
+    writes = 0,
+    refuse = false;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    const path = new URL(url).pathname;
+    if (path.endsWith("/api/v1/internal/auth/token")) {
+      tokens++;
+      assert.equal(init.headers["X-Access-Token"], undefined);
+      return Response.json({
+        success: true,
+        result: {
+          access_token: "service-" + tokens,
+          token_type: "Bearer",
+          expires_in: 600,
+          scope: "sales-plan:write",
+        },
+      });
+    }
+    if (path.endsWith("/api/v1/internal/sales-plans")) {
+      writes++;
+      assert.equal(init.headers.Authorization, "Bearer service-" + tokens);
+      assert.equal(init.headers["X-Access-Token"], undefined);
+      assert.deepEqual(JSON.parse(init.body), request);
+      if (refuse)
+        return Response.json(
+          { errorCode: "UNAUTHORIZED", message: "服务授权失效", traceId: "service-failure" },
+          { status: 401 },
+        );
+      return Response.json({
+        success: true,
+        result: {
+          planId,
+          versionId: "v2",
+          seq: 2,
+          status: 2,
+          replayed: false,
+          requestId: init.headers["X-Request-Id"],
+          traceId: "trace",
+          auditId: null,
+        },
+      });
+    }
+    if (!path.endsWith("/sql/execute"))
+      assert.equal(init.headers["X-Access-Token"], "employee-token");
+    assert.equal(init.headers.Authorization, undefined);
+    let result;
+    if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:region-approve"] };
+    else if (path.endsWith("/plans/" + planId))
+      result = { currentVersion: version, versions: [version], skus: [sku], logs: [] };
+    else if (path.endsWith("/versions/v1/skus")) result = [sku];
+    else if (path.endsWith("/plans"))
+      result = {
+        records: [{ ...version, versionId: "v1" }],
+        total: 1,
+        pages: 1,
+        current: 1,
+        size: 200,
+      };
+    else if (path.endsWith("/agent/session"))
+      result = {
+        accessDecision: { allowed: true },
+        delegationToken: "delegation",
+        gatewayContext: { sessionId: "session" },
+      };
+    else if (path.endsWith("/current-user/resolve"))
+      result = { success: true, roles: [{ code: "sales_plan_region_approver", name: "区域审批" }] };
+    else if (path.endsWith("/sql/execute")) {
+      const body = JSON.parse(init.body);
+      const rows = ["0", "1", "2", "3", "4", "Y"].map((node, level) => ({
+        id: level + 1,
+        type_code: "Y",
+        examine_level: String(level),
+        node_num: node,
+      }));
+      result = {
+        requestId: init.headers["X-Request-Id"],
+        operation: "SELECT",
+        tables: ["agents_scm_plan_workflow_config"],
+        total: rows.length,
+        pageNo: body.pageNo,
+        pageSize: body.pageSize,
+        rows,
+      };
+    } else throw Error("Unexpected contract route: " + path);
+    return Response.json({ success: true, code: 200, result });
+  });
+  const command = (id) => ({
+    source: { planId, versionId: "v1" },
+    request,
+    requestId: id,
+    idempotencyKey: id,
+  });
+  const signal = new AbortController().signal;
+  await business.refreshApprovalRoles(signal);
+  const receipt = await business.salesPlanSubmit(command("first"), signal);
+  assert.equal(receipt.auditId, null);
+  assert.equal(receipt.status, 2);
+  await business.salesPlanSubmit(command("second"), signal);
+  assert.equal(tokens, 1);
+  assert.equal(writes, 2);
+  refuse = true;
+  await assert.rejects(
+    business.salesPlanSubmit(command("service-failure"), signal),
+    (error) => error.details.authentication === "service",
+  );
+  assert.equal(writes, 4);
+  assert.equal(tokens, 2);
+  assert.equal(business.status().loginState, "authenticated");
+  const records = business
+    .apiLogSnapshot({})
+    .records.filter((record) =>
+      ["service.submit", "plans.detail", "plans.version-skus"].includes(record.catalogId),
+    );
+  assert.ok(records.length > 0);
+  assert.equal(
+    records.some((record) => record.replayAvailable),
+    false,
+  );
+  assert.equal(JSON.stringify(records).includes('"789"'), false);
+  assert.equal(JSON.stringify(records).includes("contract-secret"), false);
+});

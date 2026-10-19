@@ -1,5 +1,6 @@
 import {
   salesPlanDraftMatches,
+  salesPlanPeriodMonthForPlanId,
   salesPlanDraftSnapshot,
   type SalesPlanLocalDraft,
   type SalesPlanApprovalRole,
@@ -2686,8 +2687,8 @@ export class Business {
     for (const row of rows) {
       const periodId = text(row.periodId);
       const planTypeCode = text(row.planTypeCode);
-      const match = /^(\d{4})(0[1-9]|1[0-2])/.exec(periodId);
-      const periodMonth = match ? `${match[1]}-${match[2]}` : periodId;
+      const periodMonth = salesPlanPeriodMonthForPlanId(text(row.planId));
+      if (!periodMonth) throw new Error("GEA_PLAN_MONTH_SOURCE_MISSING");
       const orderType = row.orderType == null ? "" : text(row.orderType);
       const planType = orderType === "Z" ? "CORRECTION" : orderType === "M" ? "MONTHLY" : "UNKNOWN";
       discovered.set(`${periodId}\u0000${planTypeCode}`, {

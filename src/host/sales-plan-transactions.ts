@@ -21,7 +21,7 @@ import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { object, text, keys } from "./payload.ts";
 import {
   serviceAccountReady,
-  submitWithServiceAccount,
+  ServiceAccountSession,
   type ServiceAccountConfig,
 } from "./service-account.ts";
 
@@ -84,9 +84,11 @@ function upstreamActionBody(request: Record<string, unknown>): Record<string, un
 export class SalesPlanTransactions {
   constructor(private readonly host: SalesPlanHost) {}
   clear(): void {
+    this.serviceAccount.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
   }
+  private readonly serviceAccount = new ServiceAccountSession();
   /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
   private readonly resubmissions = new Map<string, WriteIntent>();
 
@@ -218,7 +220,7 @@ export class SalesPlanTransactions {
         signal.throwIfAborted();
         attempt.body = JSON.stringify(prepared.request);
       }
-      const receipt = await submitWithServiceAccount(
+      const receipt = await this.serviceAccount.submit(
         config,
         scope.base,
         attempt.body,
