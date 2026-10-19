@@ -10,9 +10,35 @@ export const PLAN_C = "p-jxs-2026-10-00003";
 
 export const fixture = async (
   t,
-  { role = "region", returnedStatus = 7, denyApproval = false } = {},
+  {
+    role = "region",
+    returnedStatus = 7,
+    denySubmit = false,
+    readbackFailure = false,
+    serviceReady = true,
+    shortened = false,
+    unknownOnce = false,
+    normalBatch = false,
+    sameIdPeriod = false,
+    originalSubmitter = "9007199254740993",
+  } = {},
 ) => {
-  const app = await profile(t, { roles: [{ code: `sales_plan_${role}_approver`, name: role }] });
+  const app = await profile(t, {
+    roles: role === "customer" ? [] : [{ code: `sales_plan_${role}_approver`, name: role }],
+    config: serviceReady
+      ? {
+          serviceAccounts: {
+            production: {
+              clientIdEnv: "GEA_SUBMIT_CLIENT",
+              clientSecretEnv: "GEA_SUBMIT_SECRET",
+              tenantId: "0",
+              allowedUserIds: ["9007199254740993"],
+            },
+          },
+        }
+      : {},
+    env: { GEA_SUBMIT_CLIENT: "fixture", GEA_SUBMIT_SECRET: "fixture-secret" },
+  });
   const state = new Map([
     [
       PLAN_A,
@@ -28,6 +54,11 @@ export const fixture = async (
     [PLAN_C, { versionId: "v3", seq: 1, status: 1, dealerCode: "458", name: "沈阳待审批" }],
   ]);
   const submitted = [];
+  const logs = [];
+  let readbackBlocked = readbackFailure;
+  let submittedQty = "2.000";
+  let submitReceipt;
+  if (normalBatch) state.get(PLAN_B).status = 1;
   const approved = [];
   const rejected = [];
   const attempts = [];
@@ -43,6 +74,8 @@ export const fixture = async (
       effective,
       seq: row.seq,
       dealerCode: row.dealerCode,
+      submitter: originalSubmitter,
+      returnReason: "请核对数量与继承确认值",
       targetQty: "1.000",
       targetAmount: "12.34",
     };
@@ -53,13 +86,55 @@ export const fixture = async (
     skuCode: "789",
     productCategName: "Category",
     baseQty: "1.000",
-    qty: "2.000",
+    qty: planId === PLAN_A ? submittedQty : "2.000",
+    regionConfirmedQty: returnedStatus >= 7 ? "1.250" : null,
+    regionConfirmedAmount: returnedStatus >= 7 ? "15.43" : null,
+    provinceConfirmedQty: returnedStatus >= 8 ? "1.500" : null,
+    provinceConfirmedAmount: returnedStatus >= 8 ? "18.51" : null,
+    areaConfirmedQty: returnedStatus >= 9 ? "1.750" : null,
+    areaConfirmedAmount: returnedStatus >= 9 ? "21.60" : null,
     price: "12.3400",
-    amt: "24.68",
+    amt: planId === PLAN_A && submittedQty === "3.000" ? "37.02" : "24.68",
     amtBase: "12.34",
   });
+  const rowVersions = (planId, current) =>
+    current.seq === 1
+      ? [current]
+      : [
+          current,
+          {
+            ...current,
+            id: "v1",
+            seq: 1,
+            status: returnedStatus,
+            effective: false,
+          },
+        ];
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
+    if (shortened && path.endsWith("/ai/gateway/sql/execute")) {
+      const body = JSON.parse(req.body);
+      const rows = ["0", "1", "3", "4", "Y"].map((node, index) => ({
+        id: index + 1,
+        type_code: "Y",
+        examine_level: String(index),
+        node_num: node,
+      }));
+      reply({
+        success: true,
+        code: 200,
+        result: {
+          requestId: req.headers["x-request-id"],
+          operation: "SELECT",
+          tables: ["agents_scm_plan_workflow_config"],
+          total: rows.length,
+          pageNo: body.pageNo,
+          pageSize: body.pageSize,
+          rows,
+        },
+      });
+      return true;
+    }
     const send = (result) => {
       reply({ success: true, result });
       return true;
@@ -69,16 +144,24 @@ export const fixture = async (
     if (path.endsWith("/periods"))
       return send({
         records: [
+          ...(sameIdPeriod
+            ? [{ periodId: "20261001", periodMonth: "2026-10", planTypeCode: "DC", status: "OPEN" }]
+            : []),
           { periodId: "20261001", periodMonth: "2026-10", planTypeCode: "Y", status: "OPEN" },
         ],
-        total: 1,
+        total: sameIdPeriod ? 2 : 1,
         current: 1,
         size: 100,
       });
     if (path.endsWith("/plans")) {
       const status = req.url.searchParams.get("status");
+      const type = req.url.searchParams.get("planTypeCode");
       const records = [...state.keys()]
-        .filter((planId) => status === null || status === String(state.get(planId).status))
+        .filter(
+          (planId) =>
+            (!type || type === "Y") &&
+            (status === null || status === String(state.get(planId).status)),
+        )
         .map((planId) => {
           const row = state.get(planId);
           return {
@@ -93,12 +176,25 @@ export const fixture = async (
             dealerName: row.name,
             orgName: row.name,
             orgCode: "org-" + planId,
+            provinceCode: "province-" + planId,
+            provinceName: row.name,
+            areaCode: "area-" + planId,
+            areaName: row.name,
             currentQty: "2.000",
             currentAmount: "24.68",
             targetQty: "1.000",
             targetAmount: "12.34",
             skuCount: 1,
           };
+        });
+      if (sameIdPeriod && !type && status === null)
+        records.unshift({
+          ...records[0],
+          planId: "p-jxs-2026-10-99999",
+          versionId: "other-type-version",
+          planTypeCode: "DC",
+          orgName: "DC周期来源",
+          dealerName: "DC周期来源",
         });
       return send({
         records,
@@ -114,9 +210,9 @@ export const fixture = async (
       const current = version(planId);
       return send({
         currentVersion: current,
-        versions: [current],
-        skus: [sku(planId)],
-        logs: [],
+        versions: rowVersions(planId, current),
+        skus: readbackBlocked && submitted.length && planId === PLAN_A ? [] : [sku(planId)],
+        logs,
         actionContext: {
           versionId: current.id,
           status: current.status,
@@ -143,7 +239,7 @@ export const fixture = async (
       assert.equal(body.expectedSnapshot, "a".repeat(64));
       assert.equal(body.expectedStatus, row.status);
       attempts.push(body);
-      if (denyApproval && body.action === "APPROVE") {
+      if (body.action === "APPROVE" && row.status >= 6) {
         reply({ success: false, message: "当前用户不具备审批权限" }, 403);
         return true;
       }
@@ -163,22 +259,62 @@ export const fixture = async (
         replayed: false,
       });
     }
-    if (
-      path.endsWith("/api/v1/internal/sales-plans") ||
-      path.endsWith("/api/v1/internal/auth/token")
-    ) {
-      submitted.push(path);
-      reply({ success: false }, 403);
-      return true;
+    if (path.endsWith("/api/v1/internal/auth/token"))
+      return send({
+        access_token: "fixture-service",
+        token_type: "Bearer",
+        expires_in: 600,
+        scope: "sales-plan:write",
+      });
+    if (path.endsWith("/api/v1/internal/sales-plans")) {
+      const body = JSON.parse(req.body);
+      submitted.push({
+        body,
+        key: req.headers["idempotency-key"],
+        requestId: req.headers["x-request-id"],
+      });
+      if (submitReceipt) return send({ ...submitReceipt, replayed: true });
+      if (denySubmit) {
+        reply({ success: false, message: "提报窗口已关闭，请联系业务管理员" }, 403);
+        return true;
+      }
+      assert.equal(body.status, returnedStatus - 5);
+      assert.equal(body.items.length, 1);
+      assert.equal(body.items[0].price, "12.3400");
+      const row = state.get(PLAN_A);
+      row.versionId = "v-new";
+      row.seq = 2;
+      row.status = body.status;
+      const nodes = shortened ? [1, 3, 4] : [1, 2, 3, 4];
+      row.nextActor = { 1: "region", 2: "province", 3: "area", 4: "category" }[
+        nodes.find((node) => node >= body.status)
+      ];
+      submittedQty = body.items[0].qty;
+      logs.push({
+        planId: PLAN_A,
+        versionId: "v-new",
+        actionCode: "RESUBMIT",
+        requestId: req.headers["x-request-id"],
+      });
+      submitReceipt = {
+        planId: PLAN_A,
+        versionId: "v-new",
+        seq: 2,
+        status: body.status,
+        requestId: req.headers["x-request-id"],
+        traceId: "t",
+        auditId: "a",
+        replayed: false,
+      };
+      if (unknownOnce) {
+        reply({ message: "结果暂时未知" }, 502);
+        return true;
+      }
+      return send(submitReceipt);
     }
     return false;
   });
   await app.login();
-  assert.equal(
-    (await app.rpc("status")).value.resubmitConnected,
-    false,
-    "审批重审不应依赖重提服务凭据",
-  );
   const browser = await testBrowser(t, () =>
     chromium.launch({ channel: "chrome", headless: true }),
   );
@@ -199,5 +335,17 @@ export const fixture = async (
   const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   await expect(frame.getByTestId("regional-approval-flow-toggle")).toBeVisible();
-  return { frame, submitted, approved, rejected, attempts };
+  return {
+    app,
+    frame,
+    page,
+    submitted,
+    approved,
+    rejected,
+    attempts,
+    state,
+    allowReadback: () => {
+      readbackBlocked = false;
+    },
+  };
 };

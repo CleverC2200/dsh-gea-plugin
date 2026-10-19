@@ -65,7 +65,9 @@ test(
       },
       env: { GEA_SUBMIT_CLIENT: "fixture-client", GEA_SUBMIT_SECRET: "fixture-secret" },
     });
+    let expectedRequest = request;
     let writes = 0;
+    let upstreamActions = 0;
     app.route((req, res, reply) => {
       const path = req.url.pathname;
       if (path.endsWith("/plans")) {
@@ -104,6 +106,11 @@ test(
         reply({ success: true, result: [sku] });
         return true;
       }
+      if (path.endsWith("/versions/v1/actions")) {
+        upstreamActions++;
+        reply({ success: true, result: {} });
+        return true;
+      }
       if (path.endsWith("/api/v1/internal/auth/token")) {
         assert.equal(req.headers["x-access-token"], undefined);
         reply({
@@ -120,14 +127,14 @@ test(
       if (path.endsWith("/api/v1/internal/sales-plans")) {
         writes++;
         assert.equal(req.headers.authorization, "Bearer fixture-service");
-        assert.deepEqual(JSON.parse(req.body), request);
+        assert.deepEqual(JSON.parse(req.body), expectedRequest);
         reply({
           success: true,
           result: {
             planId,
             versionId: "v2",
             seq: 2,
-            status: 2,
+            status: expectedRequest.status,
             replayed: false,
             requestId: req.headers["x-request-id"],
             traceId: "trace",
@@ -140,7 +147,6 @@ test(
     });
     await app.login();
     assert.equal((await app.rpc("status")).value.resubmitConnected, true);
-    // V1.6 removed the monthly toolbar entry; the retained Host contract is tested directly.
     const detail = await app.rpc("workbench/query", { kind: "detail", query: { planId } });
     assert.equal(detail.ok, true);
     assert.equal(detail.value.currentVersion.id, "v1");
@@ -151,6 +157,31 @@ test(
       requestId: "request",
       idempotencyKey: "idem",
     };
+    const returnedApprove = await app.rpc("sales-plan/action", {
+      planId,
+      versionId: "v1",
+      idempotencyKey: "old-approve",
+      requestId: "old-approve",
+      request: { action: "APPROVE", expectedStatus: 7, approvalRole: "region" },
+    });
+    assert.equal(returnedApprove.ok, false);
+    assert.equal(upstreamActions, 0);
+    version.status = 8;
+    const wrongRole = await app.rpc("sales-plan/submit", {
+      ...command,
+      idempotencyKey: "wrong-role",
+      request: { ...request, status: 3 },
+    });
+    assert.equal(wrongRole.ok, false);
+    assert.equal(writes, 0);
+    version.status = 7;
+    const stale = await app.rpc("sales-plan/submit", {
+      ...command,
+      source: { planId, versionId: "old-version" },
+      idempotencyKey: "stale-version",
+    });
+    assert.equal(stale.ok, false);
+    assert.equal(writes, 0);
     const forged = await app.rpc("sales-plan/submit", {
       ...command,
       idempotencyKey: "forged",
@@ -174,6 +205,17 @@ test(
       (await app.rpc("sales-plan/submit", { ...command, request: { ...request, status: 3 } })).ok,
       false,
     );
+    version.status = 6;
+    version.submitter = "original-customer-owner";
+    expectedRequest = { ...request, status: 1 };
+    const customerSubmission = await app.rpc("sales-plan/submit", {
+      ...command,
+      request: expectedRequest,
+      idempotencyKey: "customer-resubmit",
+      requestId: "customer-resubmit",
+    });
+    assert.equal(customerSubmission.ok, true, JSON.stringify(customerSubmission));
+    assert.equal(writes, 2);
     await app.rpc("logout");
     assert.equal((await app.rpc("sales-plan/submit", command)).ok, false);
   },

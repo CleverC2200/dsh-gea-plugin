@@ -22,6 +22,7 @@ export class GeaResponseError extends Error {
         httpStatus: status,
         upstreamCode: clean(data?.errorCode),
         category: clean(data?.category),
+        retryable: typeof data?.retryable === "boolean" ? data.retryable : undefined,
         requestId: clean(data?.requestId),
         traceId: clean(data?.traceId),
         failure: (() => {
