@@ -53,7 +53,22 @@ export type PluginDetailUpdateSnapshot = {
   checking: boolean;
   submitting: string | null;
   transportError: "check" | "status" | "unknown" | null;
+  notice: {
+    kind: "progress" | "pending-restart" | "completed" | "restored" | "failed" | "unconfirmed";
+    sequence: number;
+  } | null;
 };
+export const pluginUpdateObservationMs = 120_000;
+const operationStages: PluginUpdateRow["state"][] = [
+  "downloading",
+  "waiting-lock",
+  "snapshotting",
+  "accepted",
+  "installing",
+  "verifying",
+  "restoring",
+  "pending-restart",
+];
 const activeStages: PluginUpdateRow["state"][] = [
   "checking",
   "downloading",
@@ -69,7 +84,6 @@ const activeStages: PluginUpdateRow["state"][] = [
 export const pluginUpdateBusy = (items: PluginUpdateRow[]) =>
   items.some((row) => activeStages.includes(row.state));
 
-/** Detail views share requests; closing the last view releases its check and polling. */
 export function createPluginDetailUpdates(ctx: Context) {
   const listeners = new Set<() => void>();
   let snapshot: PluginDetailUpdateSnapshot = {
@@ -77,6 +91,7 @@ export function createPluginDetailUpdates(ctx: Context) {
     checking: false,
     submitting: null,
     transportError: null,
+    notice: null,
   };
   let status: UpdateClientStatus | undefined;
   let page:
@@ -86,10 +101,16 @@ export function createPluginDetailUpdates(ctx: Context) {
         refs: number;
         timer?: ReturnType<typeof setTimeout>;
         poll?: Promise<void>;
+        recovering: number;
+        check?: AbortController;
+        observation?: { names: readonly string[]; timer: ReturnType<typeof setTimeout> };
       }
     | undefined;
   let checking: Promise<void> | undefined, submitting: Promise<void> | undefined;
   let disposed = false;
+  let resumed = false;
+  let noticeKind: NonNullable<PluginDetailUpdateSnapshot["notice"]>["kind"] | undefined;
+  let noticeSequence = 0;
   const publish = (patch: Partial<PluginDetailUpdateSnapshot>) => {
     if (disposed) return;
     snapshot = { ...snapshot, ...patch };
@@ -115,6 +136,49 @@ export function createPluginDetailUpdates(ctx: Context) {
   };
   const signalFor = (owner: NonNullable<typeof page>) =>
     AbortSignal.any([owner.lifetime.signal, AbortSignal.timeout(status?.checkTimeoutMs ?? 5000)]);
+  const notify = (kind: NonNullable<PluginDetailUpdateSnapshot["notice"]>["kind"]) => {
+    if (noticeKind === kind) return;
+    noticeKind = kind;
+    publish({ notice: { kind, sequence: ++noticeSequence } });
+  };
+  const endObservation = (owner: NonNullable<typeof page>) => {
+    clearTimeout(owner.observation?.timer);
+    owner.observation = undefined;
+    if (!owner.refs && !owner.recovering) close(owner);
+  };
+  const observe = (owner: NonNullable<typeof page>, names: readonly string[]) => {
+    if (owner.observation || disposed) return;
+    noticeKind = undefined;
+    owner.observation = {
+      names,
+      timer: setTimeout(() => {
+        notify("unconfirmed");
+        endObservation(owner);
+      }, pluginUpdateObservationMs),
+    };
+  };
+  const reflectObservation = (owner: NonNullable<typeof page>) => {
+    if (!owner.observation || page !== owner) return;
+    const rows = owner.observation.names.map((name) =>
+      snapshot.items.find((row) => row.packageName === name),
+    );
+    if (
+      rows.every(
+        (row) => row && ["pending-restart", "completed", "restored", "failed"].includes(row.state),
+      )
+    ) {
+      notify(
+        rows.some((row) => row?.state === "pending-restart")
+          ? "pending-restart"
+          : rows.some((row) => row?.state === "failed")
+            ? "failed"
+            : rows.some((row) => row?.state === "restored")
+              ? "restored"
+              : "completed",
+      );
+      endObservation(owner);
+    } else notify(rows.some((row) => row?.state === "unknown") ? "unconfirmed" : "progress");
+  };
   const refresh = async (owner: NonNullable<typeof page>, signal = signalFor(owner)) => {
     const next = parseUpdateClientStatus(
       await request("status", { pageIdentity: owner.identity }, signal),
@@ -142,13 +206,25 @@ export function createPluginDetailUpdates(ctx: Context) {
       ).catch(() => {
         signal.throwIfAborted();
       });
+    reflectObservation(owner);
   };
   const tick = async (owner: NonNullable<typeof page>) => {
     try {
       await refresh(owner);
+      if (page !== owner) return;
+      if (owner.recovering) {
+        owner.recovering = 0;
+        const names = snapshot.items
+          .filter((row) => operationStages.includes(row.state))
+          .map((row) => row.packageName);
+        if (names.length) observe(owner, names);
+        reflectObservation(owner);
+      }
     } catch {
       if (!owner.lifetime.signal.aborted) publish({ transportError: "status" });
+      if (owner.recovering) owner.recovering--;
     }
+    if (!owner.refs && !owner.observation && !owner.recovering) close(owner);
     if (page === owner && !owner.lifetime.signal.aborted)
       owner.timer = setTimeout(() => {
         owner.poll = tick(owner);
@@ -157,6 +233,7 @@ export function createPluginDetailUpdates(ctx: Context) {
   const close = (owner: NonNullable<typeof page>) => {
     if (page !== owner) return;
     clearTimeout(owner.timer);
+    clearTimeout(owner.observation?.timer);
     owner.lifetime.abort();
     page = undefined;
     publish({ checking: false });
@@ -178,6 +255,8 @@ export function createPluginDetailUpdates(ctx: Context) {
     )
       return Promise.resolve();
     publish({ submitting: names.join(","), transportError: null });
+    observe(page, names);
+    notify("progress");
     const run = async () => {
       try {
         await request(
@@ -220,6 +299,22 @@ export function createPluginDetailUpdates(ctx: Context) {
         listeners.delete(listener);
       };
     },
+    dismissNotice() {
+      publish({ notice: null });
+    },
+    resume(): Promise<void> {
+      if (resumed || disposed) return Promise.resolve();
+      resumed = true;
+      if (page) return page.poll ?? Promise.resolve();
+      page = {
+        lifetime: new AbortController(),
+        identity: crypto.randomUUID(),
+        refs: 0,
+        recovering: 3,
+      };
+      page.poll = tick(page);
+      return page.poll;
+    },
     retain() {
       if (disposed) return () => {};
       if (!page) {
@@ -227,29 +322,37 @@ export function createPluginDetailUpdates(ctx: Context) {
           lifetime: new AbortController(),
           identity: crypto.randomUUID(),
           refs: 0,
+          recovering: 0,
         };
         page.poll = tick(page);
       }
       const owner = page;
       owner.refs++;
       return () => {
-        if (--owner.refs === 0) close(owner);
+        if (--owner.refs === 0) {
+          owner.check?.abort();
+          if (!owner.observation && !owner.recovering) close(owner);
+        }
       };
     },
     check(): Promise<void> {
       if (checking) return checking;
       const owner = page;
       if (!owner || submitting || pluginUpdateBusy(snapshot.items)) return Promise.resolve();
+      const cancellation = new AbortController();
+      owner.check = cancellation;
+      const signal = () => AbortSignal.any([signalFor(owner), cancellation.signal]);
       publish({ checking: true, transportError: null });
       const run = async () => {
         try {
-          if (!status) await refresh(owner);
-          await request("check", {}, signalFor(owner));
-          await refresh(owner);
+          if (!status) await refresh(owner, signal());
+          await request("check", {}, signal());
+          await refresh(owner, signal());
         } catch {
-          if (!owner.lifetime.signal.aborted && page === owner)
+          if (!cancellation.signal.aborted && !owner.lifetime.signal.aborted && page === owner)
             publish({ transportError: "check" });
         } finally {
+          if (owner.check === cancellation) owner.check = undefined;
           if (page === owner) publish({ checking: false });
         }
       };

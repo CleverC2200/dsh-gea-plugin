@@ -313,6 +313,207 @@ test("detail checks deduplicate and cancel on close while an accepted submission
   await updating;
 });
 
+test("a remounted client recovers the actual Host operation without a detail or resubmission", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let phase = "available",
+    statuses = 0,
+    updates = 0;
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/status")) {
+      statuses++;
+      return Response.json({ ok: true, value: status(rows(phase)) });
+    }
+    assert(url.endsWith("/update"), "recovery must not check or resubmit updates");
+    updates++;
+    phase = "installing";
+    return Response.json({ ok: true, value: {} });
+  };
+  const ctx = new Context(),
+    old = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  const close = old.retain();
+  await new Promise(setImmediate);
+  await old.update(name);
+  close();
+  await old.dispose();
+  const recovered = createPluginDetailUpdates(ctx);
+  t.after(() => recovered.dispose());
+  await recovered.resume();
+  assert.equal(recovered.getSnapshot().items[0].state, "installing");
+  assert.equal(recovered.getSnapshot().notice.kind, "progress");
+  phase = "pending-restart";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(recovered.getSnapshot().notice.kind, "pending-restart");
+  const stoppedAt = statuses;
+  t.mock.timers.tick(5000);
+  await new Promise(setImmediate);
+  assert.equal(statuses, stoppedAt, "a hidden pending operation stops polling");
+  assert.equal(updates, 1);
+});
+
+test("closing a detail cancels its check while a mount recovery probe remains alive", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  let statuses = 0,
+    checkSignal,
+    releaseProbe;
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/status")) {
+      if (++statuses === 1)
+        return new Promise((resolve) => {
+          releaseProbe = resolve;
+        });
+      return Response.json({ ok: true, value: status() });
+    }
+    assert(url.endsWith("/check"));
+    checkSignal = options.signal;
+    return new Promise((_, reject) =>
+      options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true }),
+    );
+  };
+  const ctx = new Context(),
+    owner = createPluginDetailUpdates(ctx);
+  t.after(async () => {
+    releaseProbe(Response.json({ ok: true, value: status(rows("installing")) }));
+    await owner.dispose();
+    await ctx.fiber.dispose();
+  });
+  const probing = owner.resume();
+  const close = owner.retain();
+  const checking = owner.check();
+  await new Promise(setImmediate);
+  assert(checkSignal);
+  close();
+  assert.equal(checkSignal.aborted, true);
+  await checking;
+  assert.equal(owner.getSnapshot().transportError, null);
+  releaseProbe(Response.json({ ok: true, value: status(rows("installing")) }));
+  await probing;
+  assert.equal(owner.getSnapshot().notice.kind, "progress");
+});
+
+test("mount recovery stops on idle and hidden operation observation expires without changing its state", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let phase = "idle",
+    statuses = 0;
+  globalThis.fetch = async (url) => {
+    assert(url.endsWith("/status"));
+    statuses++;
+    return Response.json({ ok: true, value: status(rows(phase)) });
+  };
+  const ctx = new Context(),
+    idle = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  await idle.resume();
+  await idle.resume();
+  assert.equal(statuses, 1);
+  assert.equal(idle.getSnapshot().notice, null);
+  t.mock.timers.tick(10000);
+  await new Promise(setImmediate);
+  assert.equal(statuses, 1);
+  await idle.dispose();
+  phase = "installing";
+  const active = createPluginDetailUpdates(ctx);
+  t.after(() => active.dispose());
+  await active.resume();
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(active.getSnapshot().notice.kind, "unconfirmed");
+  assert.equal(active.getSnapshot().items[0].state, "installing");
+  const stoppedAt = statuses;
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(statuses, stoppedAt);
+});
+
+test("loading and disconnected startup probes neither invent an operation nor resubmit one", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let attempts = 0,
+    recover = false;
+  globalThis.fetch = async (url) => {
+    assert(url.endsWith("/status"), "startup recovery only reads status");
+    attempts++;
+    if (attempts === 1) return new Response("not found", { status: 404 });
+    if (!recover) throw Error("offline");
+    return Response.json({ ok: true, value: status(rows("installing")) });
+  };
+  const ctx = new Context(),
+    unknown = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  await unknown.resume();
+  for (let count = 0; count < 2; count++) {
+    t.mock.timers.tick(2000);
+    await new Promise(setImmediate);
+  }
+  assert.equal(attempts, 3);
+  assert.deepEqual(unknown.getSnapshot().items, []);
+  assert.equal(unknown.getSnapshot().notice, null);
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(attempts, 3);
+  await unknown.dispose();
+  attempts = 0;
+  const reloaded = createPluginDetailUpdates(ctx);
+  await reloaded.resume();
+  assert.equal(reloaded.getSnapshot().notice, null);
+  recover = true;
+  t.mock.timers.tick(2000);
+  await new Promise(setImmediate);
+  assert.equal(reloaded.getSnapshot().notice.kind, "progress");
+  await reloaded.dispose();
+  const disposedAt = attempts;
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(attempts, disposedAt);
+});
+
+test("a submitted update keeps observing after detail close and releases on each real terminal state", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ctx = new Context();
+  t.after(() => ctx.fiber.dispose());
+  for (const terminal of ["completed", "restored", "failed"]) {
+    let phase = "available",
+      statuses = 0;
+    globalThis.fetch = async (url) => {
+      if (url.endsWith("/status")) {
+        statuses++;
+        return Response.json({ ok: true, value: status(rows(phase)) });
+      }
+      assert(url.endsWith("/update"));
+      phase = "verifying";
+      return Response.json({ ok: true, value: {} });
+    };
+    const owner = createPluginDetailUpdates(ctx);
+    const close = owner.retain();
+    await new Promise(setImmediate);
+    await owner.update(name);
+    close();
+    phase = terminal;
+    t.mock.timers.tick(1000);
+    await new Promise(setImmediate);
+    assert.equal(owner.getSnapshot().notice.kind, terminal);
+    const stoppedAt = statuses;
+    t.mock.timers.tick(10000);
+    await new Promise(setImmediate);
+    assert.equal(statuses, stoppedAt);
+    await owner.dispose();
+  }
+});
+
 test("explicit Core deployment input is cross-checked against Git, launcher, SDK resolution and artifact bytes", async (t) => {
   const { readPluginUpdateCore } = await subject(t, "src/host/plugin-update-core.ts");
   const root = await mkdtemp(join(tmpdir(), "admitted-core-fixture-"));

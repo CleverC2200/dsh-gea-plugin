@@ -165,6 +165,12 @@ test("durable accepted operation installs one existing package under official lo
     planId: row.planId,
   });
   assert.equal(accepted.stage, "accepted");
+  const revisionBeforeRecoveryProbe = controller.snapshot().revision;
+  await Promise.all([controller.initialize(), controller.initialize()]);
+  assert.equal(controller.snapshot().revision, revisionBeforeRecoveryProbe);
+  assert.equal(controller.snapshot().operation.id, accepted.id);
+  assert.equal(controller.snapshot().operation.stage, "accepted");
+  assert.equal(controller.snapshot().operation.diagnostic, null);
   assert.equal(
     JSON.parse(await readFile(join(f.options.runtimeDirectory, "latest.json"), "utf8")).id,
     accepted.id,
