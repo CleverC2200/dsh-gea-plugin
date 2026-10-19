@@ -7,7 +7,7 @@ import {
 /** In-process ordinary Web profile boot. Real Loader/resolver/services, with all outgoing transports denied. */
 import assert from "node:assert/strict";
 import { readFile, writeFile, realpath } from "node:fs/promises";
-import { join, basename, dirname } from "node:path";
+import { join, basename, dirname, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import http from "node:http";
@@ -360,7 +360,7 @@ try {
     filesystem.config = {
       ...filesystem.config,
       customSkillDirs: [
-        join(manageRoot, "business-resources/orchestration/skills") + "/",
+        join(manageRoot, "business-resources/orchestration/skills") + sep,
         ...(filesystem.config?.customSkillDirs ?? []),
       ],
     };
