@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { loadServiceAccountCredentials } from "../src/shared/service-accounts.js";
 import { resolveEnvironments } from "../src/shared/environments.js";
 import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
 import { validateSalesReadonly } from "../src/shared/sales-readonly.js";
@@ -21,20 +21,6 @@ function httpsEndpoint(value, code) {
   return url;
 }
 
-function readServiceAccountKeychain(service) {
-  try {
-    return JSON.parse(
-      execFileSync(
-        "/usr/bin/security",
-        ["find-generic-password", "-a", "service-account", "-s", service, "-w"],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 30000 },
-      ),
-    );
-  } catch {
-    throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING");
-  }
-}
-
 /**
  * Read and normalize deployment before Host launch. resolveCredentials:false skips keychain
  * resolution; checkDirectCredential:false permits admission's structural comparison without
@@ -45,7 +31,7 @@ export async function readDeployment(
   {
     credentialEnv = process.env,
     platform = process.platform,
-    readKeychain = readServiceAccountKeychain,
+    readKeychain,
     resolveCredentials = true,
     checkDirectCredential = true,
   } = {},
@@ -119,62 +105,12 @@ export async function readDeployment(
     }
     config.analysis = a;
   }
-  const serviceAccounts = config.serviceAccounts;
-  if (
-    serviceAccounts !== undefined &&
-    (!serviceAccounts || typeof serviceAccounts !== "object" || Array.isArray(serviceAccounts))
-  )
-    throw new Error("INVALID_SERVICE_ACCOUNTS");
-  const credentials = {};
-  for (const [environment, account] of Object.entries(serviceAccounts ?? {})) {
-    if (
-      !["production", "test"].includes(environment) ||
-      !account ||
-      typeof account !== "object" ||
-      Array.isArray(account) ||
-      Object.keys(account).some(
-        (key) =>
-          ![
-            "clientIdEnv",
-            "clientSecretEnv",
-            "keychainService",
-            "tenantId",
-            "allowedUserIds",
-          ].includes(key),
-      ) ||
-      ![account.clientIdEnv, account.clientSecretEnv].every((name) =>
-        /^GEA_[A-Z0-9_]+$/.test(name ?? ""),
-      ) ||
-      account.clientIdEnv === account.clientSecretEnv ||
-      typeof account.tenantId !== "string" ||
-      !/^\d+$/.test(account.tenantId) ||
-      !Array.isArray(account.allowedUserIds) ||
-      !account.allowedUserIds.length ||
-      account.allowedUserIds.some((id) => typeof id !== "string" || !id.trim()) ||
-      (account.keychainService !== undefined &&
-        (typeof account.keychainService !== "string" ||
-          !/^[a-zA-Z0-9._-]+$/.test(account.keychainService)))
-    )
-      throw new Error("INVALID_SERVICE_ACCOUNTS");
-    if (!account.keychainService || !resolveCredentials) continue;
-    if (platform !== "darwin") throw new Error("GEA_KEYCHAIN_UNAVAILABLE");
-    let loaded;
-    try {
-      loaded = await readKeychain(account.keychainService);
-    } catch {
-      throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING");
-    }
-    if (
-      typeof loaded?.clientId !== "string" ||
-      !loaded.clientId.trim() ||
-      typeof loaded?.secret !== "string" ||
-      !loaded.secret.trim()
-    )
-      throw new Error("GEA_KEYCHAIN_CREDENTIAL_INVALID");
-    credentials[account.clientIdEnv] = loaded.clientId;
-    credentials[account.clientSecretEnv] = loaded.secret;
-  }
-  Object.assign(credentialEnv, credentials);
+  await loadServiceAccountCredentials(config.serviceAccounts, {
+    credentialEnv,
+    platform,
+    readKeychain,
+    resolveCredentials,
+  });
   return { ...config, geaBaseUrl: url.href.replace(/\/$/, "") };
 }
 

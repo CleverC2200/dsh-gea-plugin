@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.171-resubmit.1",
+  "version": "0.0.171-resubmit.2",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -199,7 +199,8 @@
     "presets/prompt-policy.json",
     "presets/inventory-fc.skill.md",
     "presets/inventory-qll.skill.md",
-    "locale/"
+    "locale/",
+    "src/shared/service-accounts.js"
   ],
   "workspaces": [
     "packages/*"

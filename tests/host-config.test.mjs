@@ -76,3 +76,130 @@ test("MCP inline delivery has configurable wire budget and query timeout without
   for (const invalid of [0, -1, 1.5, 1024 * 1024 * 1024 + 1])
     assert.throws(() => Config({ mcpMaxResponseBytes: invalid }));
 });
+
+test(
+  "ordinary Host preserves configured service references and loads credentials before initializing business",
+  { skip: process.platform !== "darwin" },
+  async (t) => {
+    const { apply } = await import("../lib/host.js");
+    const childProcess = (await import("node:child_process")).default;
+    const { syncBuiltinESMExports } = await import("node:module");
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const runtimeDir = await mkdtemp(join(tmpdir(), "gea-host-service-fixture-"));
+    t.after(() => rm(runtimeDir, { recursive: true, force: true }));
+    const clientIdEnv = "GEA_HOST_SERVICE_FIXTURE_CLIENT";
+    const clientSecretEnv = "GEA_HOST_SERVICE_FIXTURE_SECRET";
+    const before = [process.env[clientIdEnv], process.env[clientSecretEnv]];
+    t.after(() => {
+      for (const [key, value] of [
+        [clientIdEnv, before[0]],
+        [clientSecretEnv, before[1]],
+      ]) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      syncBuiltinESMExports();
+    });
+    let reads = 0;
+    t.mock.method(childProcess, "execFileSync", (file, args) => {
+      reads++;
+      assert.equal(file, "/usr/bin/security");
+      assert.deepEqual(args, [
+        "find-generic-password",
+        "-a",
+        "service-account",
+        "-s",
+        "gea-host-service-fixture",
+        "-w",
+      ]);
+      return JSON.stringify({ clientId: "fixture-client", secret: "fixture-secret" });
+    });
+    syncBuiltinESMExports();
+    t.after(() => {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    });
+    const serviceAccounts = {
+      production: {
+        clientIdEnv,
+        clientSecretEnv,
+        keychainService: "gea-host-service-fixture",
+        tenantId: "0",
+        allowedUserIds: ["user-1"],
+      },
+    };
+    const value = Config({ ...input, runtimeDir, serviceAccounts });
+    assert.deepEqual(value.serviceAccounts, serviceAccounts);
+    const initialized = Error("fixture-initialization-boundary");
+    await assert.rejects(
+      apply(
+        {
+          effect() {
+            throw initialized;
+          },
+        },
+        value,
+      ),
+      (error) => error === initialized,
+    );
+    assert.equal(reads, 1);
+    assert.equal(process.env[clientIdEnv], "fixture-client");
+    assert.equal(process.env[clientSecretEnv], "fixture-secret");
+    assert.equal(JSON.stringify(value).includes("fixture-secret"), false);
+  },
+);
+
+test("ordinary Host never probes unconfigured credentials and rejects inline secrets before credential access", async (t) => {
+  const { apply } = await import("../lib/host.js");
+  const childProcess = (await import("node:child_process")).default;
+  const { syncBuiltinESMExports } = await import("node:module");
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const runtimeDir = await mkdtemp(join(tmpdir(), "gea-host-service-absent-"));
+  t.after(() => rm(runtimeDir, { recursive: true, force: true }));
+  let reads = 0;
+  t.mock.method(childProcess, "execFileSync", () => {
+    reads++;
+    throw Error("unexpected credential access");
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  const initialized = Error("fixture-initialization-boundary");
+  const ctx = {
+    effect() {
+      throw initialized;
+    },
+  };
+  await assert.rejects(
+    apply(ctx, Config({ ...input, runtimeDir })),
+    (error) => error === initialized,
+  );
+  const account = {
+    clientIdEnv: "GEA_HOST_ABSENT_CLIENT",
+    clientSecretEnv: "GEA_HOST_ABSENT_SECRET",
+    keychainService: "gea-host-absent-fixture",
+    tenantId: "0",
+    allowedUserIds: ["user-1"],
+  };
+  await assert.rejects(
+    apply(
+      ctx,
+      Config({
+        ...input,
+        runtimeDir,
+        serviceAccounts: {
+          production: account,
+          test: { ...account, secret: "not-permitted-in-config" },
+        },
+      }),
+    ),
+    /INVALID_SERVICE_ACCOUNTS/,
+  );
+  assert.equal(reads, 0);
+});

@@ -1,3 +1,4 @@
+import { validateServiceAccounts as validateServiceAccountReferences } from "../shared/service-accounts.js";
 /** 服务账号只在 Host 内按当前环境、租户和用户白名单使用销售计划重提；浏览器永远拿不到客户端密钥。 */
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 
@@ -10,47 +11,10 @@ export type ServiceAccountConfig = {
 };
 export type ServiceAccounts = Partial<Record<"production" | "test", ServiceAccountConfig>>;
 
-/** 只校验环境变量引用；部署 JSON 中不得出现任何凭证值。 */
 export function validateServiceAccounts(
   value: unknown,
 ): asserts value is ServiceAccounts | undefined {
-  if (value === undefined) return;
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("INVALID_SERVICE_ACCOUNTS");
-  for (const [environment, raw] of Object.entries(value)) {
-    if (
-      !["production", "test"].includes(environment) ||
-      !raw ||
-      typeof raw !== "object" ||
-      Array.isArray(raw)
-    )
-      throw new Error("INVALID_SERVICE_ACCOUNTS");
-    const config = raw as Record<string, unknown>;
-    if (
-      Object.keys(config).some(
-        (key) =>
-          ![
-            "clientIdEnv",
-            "clientSecretEnv",
-            "keychainService",
-            "tenantId",
-            "allowedUserIds",
-          ].includes(key),
-      ) ||
-      !/^GEA_[A-Z0-9_]+$/.test(String(config.clientIdEnv ?? "")) ||
-      !/^GEA_[A-Z0-9_]+$/.test(String(config.clientSecretEnv ?? "")) ||
-      config.clientIdEnv === config.clientSecretEnv ||
-      (config.keychainService !== undefined &&
-        (typeof config.keychainService !== "string" ||
-          !/^[a-zA-Z0-9._-]+$/.test(config.keychainService))) ||
-      typeof config.tenantId !== "string" ||
-      !/^\d+$/.test(config.tenantId) ||
-      !Array.isArray(config.allowedUserIds) ||
-      !config.allowedUserIds.length ||
-      config.allowedUserIds.some((id) => typeof id !== "string" || !id.trim())
-    )
-      throw new Error("INVALID_SERVICE_ACCOUNTS");
-  }
+  validateServiceAccountReferences(value);
 }
 
 /** 读取凭证是否可用，但不暴露凭证内容。 */
