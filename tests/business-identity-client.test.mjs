@@ -82,6 +82,7 @@ test("the read-only identity route exposes configured environment choices withou
       loginState: "signed-out",
       user: null,
     },
+    customerInventory: null,
   });
 });
 

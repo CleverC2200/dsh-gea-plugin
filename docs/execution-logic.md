@@ -8,6 +8,8 @@
 
 [业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。`sessionConsumer` 在无可信 profile 时使用 `analysisAgentCode` 作为普通模型默认路由；页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
 
+客户库存页在为 `customer-inventory-preview` 建立 Gateway 委托后，通过当前用户解析工具取得并核对角色/范围回执；回执必须同时匹配用户、会话、对话和 Consumer。`/api/gea-html/identity` 仅投影角色和 `regions`、`provinces`、`customerCodes`、版本/失效时间，绝不投影委托 token 或原始回执。缺少 `customerInventoryScope.status="granted"` 时范围为未配置，不得把页面角色标签解释为全量数据权。受控 SQL 的实际行级授权仍由 GEA Gateway 按当前委托执行，页面展示或筛选不构成授权。
+
 登录环境只接受 [Host 配置](../src/shared/environments.js) 已登记的名称；client 通过 `businessAccount.startLogin` 将所选名称交给 Host，切环境会清旧二维码、凭据、预览并取消旧身份任务。只读投影同时提供当前环境与可选环境清单，端点/默认值从 [Host Config](../src/host.ts) 和公司产品配置读取，不从浏览器标签推断。
 
 [能力声明](capability-contract.md) 定义模块可用、影响等级与 mock 边界。GEA 使用 Workbench 包登记与 Manage 资源入口，不扫描 HTML SQL、DOM 或 Skill 正文来派生权限。

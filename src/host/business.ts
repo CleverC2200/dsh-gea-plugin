@@ -17,7 +17,7 @@ import { resolve } from "node:path";
  * Host 侧业务门面：集中维护 GEA 身份、查询选择、权限校验和只读快照。
  * 浏览器只能提交资源标识与用户意图，凭证、来源数据和最终写入校验都留在这里。
  */
-import { resolveInventoryRoles } from "./inventory-role.ts";
+import { resolveInventoryRoles, type InventoryRoleProfile } from "./inventory-role.ts";
 import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
 import { readHtmlQuery } from "../html-query.ts";
@@ -704,6 +704,8 @@ export class Business {
     string,
     { authToken: string; delegationToken: string }
   >();
+  /** Last verified customer-inventory scope for the current login only. */
+  private customerInventoryAccess?: { authToken: string; profile: InventoryRoleProfile };
   /** 受管表列清单的短缓存：同一张表不重复探查。 */
   private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
   private capabilities: CapabilityRegistry;
@@ -729,6 +731,17 @@ export class Business {
   /** Opaque authority for browser page associations; changes on logout and environment switches. */
   pageSessionScope(): string | undefined {
     return this.auth ? `${this.runId}:${this.pageIdentityGeneration}` : undefined;
+  }
+
+  /**
+   * Safe browser projection of the customer-inventory authorization receipt.
+   * It is available only after the gateway has verified the current delegated
+   * session; delegation credentials and raw receipts never leave the Host.
+   */
+  customerInventoryIdentity(): InventoryRoleProfile | null {
+    const auth = this.auth;
+    const access = this.customerInventoryAccess;
+    return auth && access?.authToken === auth.token ? access.profile : null;
   }
 
   /** 选择已配置环境，并立即丢弃凭证、二维码和预览。 */
@@ -911,6 +924,7 @@ export class Business {
     this.epoch = new AbortController();
     this.pageIdentityGeneration = randomUUID();
     this.auth = undefined;
+    this.customerInventoryAccess = undefined;
     this.modelRoutes.clear();
     this.pluginDelegations.clear();
     this.moduleMcpCache.clear();
@@ -1868,7 +1882,9 @@ export class Business {
       this.fetchExternal.bind(this),
       conversationId,
     );
-    if (agentCode !== "inventory-personal-workbench") return credentials;
+    const inventoryRoleConsumer =
+      agentCode === "inventory-personal-workbench" || agentCode === "customer-inventory-preview";
+    if (!inventoryRoleConsumer) return credentials;
     try {
       const roleProfile = await resolveInventoryRoles(
         this.base,
@@ -1879,17 +1895,33 @@ export class Business {
         this.fetchExternal.bind(this),
       );
       identity.throwIfAborted();
+      if (agentCode === "customer-inventory-preview" && this.auth === auth) {
+        this.customerInventoryAccess = { authToken: auth.token, profile: roleProfile };
+        this.notifyIdentity();
+      }
       return { ...credentials, roleProfile };
     } catch {
       identity.throwIfAborted();
+      const roleProfile: InventoryRoleProfile = {
+        roleCodes: [],
+        roleNames: [],
+        roles: [],
+        customerInventoryScope: {
+          status: "unconfigured",
+          regions: [],
+          provinces: [],
+          customerCodes: [],
+          version: null,
+          expiresAt: null,
+        },
+      };
+      if (agentCode === "customer-inventory-preview" && this.auth === auth) {
+        this.customerInventoryAccess = { authToken: auth.token, profile: roleProfile };
+        this.notifyIdentity();
+      }
       return {
         ...credentials,
-        roleProfile: {
-          roleCodes: [],
-          roleNames: [],
-          roles: [],
-          roleLookupFailed: true,
-        },
+        roleProfile: { ...roleProfile, roleLookupFailed: true },
       };
     }
   }

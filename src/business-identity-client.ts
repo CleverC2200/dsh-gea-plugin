@@ -30,8 +30,22 @@ export type IdentitySnapshot = Readonly<{
   scope: string | null;
   subject: string | null;
   status: IdentityStatus | null;
+  customerInventory: CustomerInventoryIdentity | null;
   error?: string;
   errorCode?: string;
+}>;
+export type CustomerInventoryIdentity = Readonly<{
+  roleCodes: string[];
+  roleNames: string[];
+  roles: Array<{ code: string; name: string | null }>;
+  customerInventoryScope: {
+    status: "granted" | "unconfigured";
+    regions: string[];
+    provinces: string[];
+    customerCodes: string[];
+    version: string | null;
+    expiresAt: string | null;
+  };
 }>;
 export interface BusinessIdentityProjection {
   getSnapshot(): IdentitySnapshot;
@@ -42,7 +56,12 @@ export interface BusinessIdentityProjection {
 /** Read the Host-owned authority; clients never derive a scope from user labels. */
 async function requestBusinessIdentityScope(
   signal?: AbortSignal,
-): Promise<{ scope: string | null; subject: string | null; status: IdentityStatus | null }> {
+): Promise<{
+  scope: string | null;
+  subject: string | null;
+  status: IdentityStatus | null;
+  customerInventory: CustomerInventoryIdentity | null;
+}> {
   signal?.throwIfAborted();
   const timeout = AbortSignal.timeout(5000);
   try {
@@ -155,6 +174,10 @@ async function requestBusinessIdentityScope(
             }
           : null,
       },
+      customerInventory:
+        value.customerInventory && typeof value.customerInventory === "object"
+          ? (value.customerInventory as CustomerInventoryIdentity)
+          : null,
     };
   } catch (error) {
     if (timeout.aborted && !signal?.aborted)
@@ -165,7 +188,7 @@ async function requestBusinessIdentityScope(
 
 /** One read-only projection per GEA client. The Host remains the authority. */
 export function createBusinessIdentityReader() {
-  let snapshot: IdentitySnapshot = { state: "unknown", scope: null, subject: null, status: null };
+  let snapshot: IdentitySnapshot = { state: "unknown", scope: null, subject: null, status: null, customerInventory: null };
   let issued = 0;
   let observed = false;
   let startupDeadline: number | undefined;
@@ -228,16 +251,23 @@ export function createBusinessIdentityReader() {
         previous.status?.user?.tenantId !== next.status?.user?.tenantId ||
         previous.status?.user?.username !== next.status?.user?.username ||
         previous.status?.user?.name !== next.status?.user?.name ||
-        previous.status?.user?.avatar !== next.status?.user?.avatar
+        previous.status?.user?.avatar !== next.status?.user?.avatar ||
+        JSON.stringify(previous.customerInventory) !== JSON.stringify(next.customerInventory)
       ) {
         for (const listener of listeners) listener();
         if (
           previous.status !== null &&
-          (previous.scope !== next.scope || previous.subject !== next.subject)
+          (previous.scope !== next.scope ||
+            previous.subject !== next.subject ||
+            JSON.stringify(previous.customerInventory) !== JSON.stringify(next.customerInventory))
         )
           window.dispatchEvent(
             new CustomEvent("gea-business-identity-changed", {
-              detail: { scope: next.scope, subject: next.subject },
+              detail: {
+                scope: next.scope,
+                subject: next.subject,
+                customerInventory: next.customerInventory,
+              },
             }),
           );
       }

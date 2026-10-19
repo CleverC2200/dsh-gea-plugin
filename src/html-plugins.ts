@@ -256,6 +256,10 @@ export async function registerHtmlPlugins(
         scope: business.pageSessionScope() ?? null,
         subject: businessIdentityKey(business) ?? null,
         status: { environment, environments, authenticated, loginState, user },
+        // A projection of the gateway-verified receipt. It is intentionally
+        // absent until the customer-inventory page has requested its own
+        // delegated session; page labels never manufacture an access range.
+        customerInventory: business.customerInventoryIdentity?.() ?? null,
       });
     },
     false,
