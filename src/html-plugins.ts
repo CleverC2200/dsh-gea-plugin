@@ -1,3 +1,4 @@
+import { readConfiguredHtmlQuery } from "./host/configured-html-query.ts";
 import { profileFor, installPromptProfile, type PromptProfile } from "./host/prompt-policy.ts";
 import {
   businessIdentityKey,
@@ -388,6 +389,14 @@ export async function registerHtmlPlugins(
               readSql: async (parameters: any, requestSignal: AbortSignal) => {
                 if (item.mock) throw Error("MOCK_DATA_ONLY");
                 const activeSignal = AbortSignal.any([requestSignal, grantSignal]);
+                activeSignal.throwIfAborted();
+                if (item.sqlConfig !== undefined)
+                  return readConfiguredHtmlQuery(
+                    { directory: item.htmlDirectory, manifest: item },
+                    parameters,
+                    business,
+                    activeSignal,
+                  );
                 if (parameters?.queries !== undefined)
                   return readHtmlBatch(
                     parameters.queries,
