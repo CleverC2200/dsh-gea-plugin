@@ -8,6 +8,7 @@ import {
   salesPlanWorkflow,
   validateSalesPlanActionInput,
   prepareSalesPlanResubmit,
+  salesPlanCanResubmit,
   type SalesPlanApprovalRole,
   type SalesPlanWorkflowRow,
   type GeaSalesPlanActionRequest,
@@ -142,6 +143,11 @@ export class SalesPlanTransactions {
         )
           throw new GeaResponseError(409, {
             message: "计划已变化，请刷新后核对重提版本",
+          });
+        await this.host.permissions(signal);
+        if (!salesPlanCanResubmit(version, salesPlanStagesForRoles(auth.roles), auth.id))
+          throw new GeaResponseError(403, {
+            message: "当前用户不是该退回版本的修改责任人，请由对应责任人修改后提交",
           });
         const periods = object(
           await this.host.query(
@@ -279,6 +285,14 @@ export class SalesPlanTransactions {
     ]);
     if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action)))
       throw new Error("INVALID_ACTION");
+    if (
+      request.action === "APPROVE" &&
+      Number(request.expectedStatus) >= 6 &&
+      Number(request.expectedStatus) <= 9
+    )
+      throw new GeaResponseError(409, {
+        message: "退回版本不能直接审批通过，请修改后重新提交新版本",
+      });
     const auth = scope.auth;
     const signal = AbortSignal.any([caller, scope.signal]);
     if (![1, 2, 3, 4, 6, 7, 8, 9].includes(request.expectedStatus as number))
@@ -320,7 +334,6 @@ export class SalesPlanTransactions {
         throw new GeaResponseError(409, {
           message: "该计划版本或审批状态已变化，请刷新权威队列后重试",
         });
-      // 退回版本按本次账号角色重审；退回目标不授予或撤销审批权限。
       const access = salesPlanAccessForRow(
         row,
         detail,

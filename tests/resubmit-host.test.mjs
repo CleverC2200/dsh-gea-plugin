@@ -157,14 +157,19 @@ test(
       idempotencyKey: "idem",
     };
     const returnedApprove = await app.rpc("sales-plan/action", {
-      planId, versionId: "v1", idempotencyKey: "old-approve", requestId: "old-approve",
+      planId,
+      versionId: "v1",
+      idempotencyKey: "old-approve",
+      requestId: "old-approve",
       request: { action: "APPROVE", expectedStatus: 7, approvalRole: "region" },
     });
     assert.equal(returnedApprove.ok, false);
     assert.equal(upstreamActions, 0);
     version.status = 8;
     const wrongRole = await app.rpc("sales-plan/submit", {
-      ...command, idempotencyKey: "wrong-role", request: { ...request, status: 3 },
+      ...command,
+      idempotencyKey: "wrong-role",
+      request: { ...request, status: 3 },
     });
     assert.equal(wrongRole.ok, false);
     assert.equal(writes, 0);
