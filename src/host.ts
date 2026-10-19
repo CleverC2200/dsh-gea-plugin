@@ -37,6 +37,11 @@ import { mountSidebarToolVisibility } from "./host/sidebar-tool-visibility.ts";
 import { registerHtmlPlugins } from "./html-plugins.ts";
 import { registerGeaTools } from "./host/agent-tools.ts";
 import { createGatewayMcpService } from "./host/gateway-mcp-service.ts";
+import {
+  sharedAgentCapability,
+  WORKBENCH_AGENT_CODE,
+  WORKBENCH_SOURCE_REF,
+} from "./host/shared-agent.ts";
 import { DEFAULT_MCP_RESPONSE_BYTES } from "./host/mcp-response.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { workbenchContract } from "./capability/contract.ts";
@@ -204,6 +209,17 @@ export async function apply(
     .filter((item) => item.manifest.gea?.contract === "gea-html-v2");
   const releaseOriginalResources = await ctx.agentResources.register([
     {
+      id: WORKBENCH_SOURCE_REF,
+      cube: true,
+      label: sharedAgentCapability.label,
+      root: fileURLToPath(new URL("../", import.meta.url)),
+      profile: {
+        label: sharedAgentCapability.label,
+        consumerCode: WORKBENCH_AGENT_CODE,
+        skills: [],
+      },
+    },
+    {
       id: "gea-readonly",
       cube: true,
       enabled: config.workbenchCapability?.enabled !== false,
@@ -221,6 +237,7 @@ export async function apply(
   const htmlPlugins = await registerHtmlPlugins(ctx, business, htmlPackages);
   // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
   const capability = createCapabilityRegistry([
+    sharedAgentCapability,
     ...htmlPlugins.capabilityContracts,
     workbenchContract({
       ...config.workbenchCapability,
