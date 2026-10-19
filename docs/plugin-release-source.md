@@ -63,7 +63,7 @@ preflight 使用以下文件合同，所有路径为绝对路径。sources、tar
 }
 ```
 
-上例只展示每类一项。`deployed` 与 `supportedStarts` 均不可为空，每个 installed 包含完整消费者 manifest，包括非公司包；三个公司 manifest 还必须带实际部署归档的 `artifactSha256`。部署快照由发行 owner 从批准的真实频道、归档和安装图准备，并保留观察时间及来源证据。历史重放若复用当前未变消费者，须在原证据中说明，不能称为历史整图观察。Core 使用实际宿主固定的 head/version/sdk。缺公司包、缺 SDK 或缺归档身份都拒绝，不以三个手填版本替代图。
+上例只展示每类一项。`deployed` 与 `supportedStarts` 均不可为空，每个 installed 包含完整消费者 manifest，包括非公司包；三个公司 manifest 还必须带实际部署归档的 `artifactSha256`。部署快照由发行 owner 从批准的真实频道、归档和安装图准备，并保留观察时间及来源证据。历史重放若复用当前未变消费者，须在原证据中说明，不能称为历史整图观察。Core 使用实际宿主固定的 head/version/sdk。缺公司包、缺 SDK 或缺归档身份都拒绝，不以三个手填版本替代图。 第三方 manifest 按规划器实际消费的版本、全部 peer 和公司包 dependency 校验；没有对应 peer 的 optional metadata 不形成约束。原始完整图保留，公司发行 manifest 继续严格解析。
 
 门禁核实际 source HEAD 与源码修改范围，复用普通交付对 lib/client 生成输出的允许规则，生成输出仍须逐字节匹配构建回执与最终 TGZ。它读取 `deliveryManifest`，将每包的 archive 路径、sha256、name/version、source.head/path、锁和 buildReceipt 摘要绑定到实际文件。构建回执沿[普通交付合同](package-delivery.md)，每个输出同时核当前源码目录和 tar 内字节；相同版本的旧包不能借新 HEAD 的声明通过。
 

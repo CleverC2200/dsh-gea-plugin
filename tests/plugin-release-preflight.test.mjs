@@ -156,3 +156,32 @@ test("generated output renames into source remain uncommitted source edits", asy
   execFileSync("git", ["-C", source.path, "mv", "lib/compiler.txt", "source.txt"]);
   assert.match((await f.run()).stderr, /RELEASE_SOURCE_DIRTY/);
 });
+
+test("the actual debug 4.4.3 npm shape permits orphan optional metadata and retains declared consumer peers", async (t) => {
+  const f = await fixture(t);
+  const debug = {
+    name: "debug",
+    version: "4.4.3",
+    peerDependencies: {},
+    peerDependenciesMeta: { "supports-color": { optional: true } },
+    dependencies: { ms: "^2.1.3" },
+  };
+  for (const snapshot of [...f.input.deployed, ...f.input.supportedStarts])
+    snapshot.installed.push(structuredClone(debug));
+  const accepted = await f.run();
+  assert.equal(accepted.status, 0, accepted.stderr);
+  f.input.supportedStarts[0].installed.find(
+    (manifest) => manifest.name === "debug",
+  ).peerDependencies[G] = "0.0.167";
+  const blocked = await f.run();
+  assert.notEqual(blocked.status, 0);
+  assert.match(blocked.stderr, /RELEASE_UPGRADE_PATH_MISSING/);
+  const consumer = f.input.supportedStarts[0].installed.find(
+    (manifest) => manifest.name === "debug",
+  );
+  delete consumer.peerDependencies[G];
+  consumer.dependencies = { ms: "npm:ms@^2.1.3", [G]: "0.0.167" };
+  assert.match((await f.run()).stderr, /RELEASE_UPGRADE_PATH_MISSING/);
+  consumer.version = "invalid-version";
+  assert.match((await f.run()).stderr, /RELEASE_INVALID/);
+});

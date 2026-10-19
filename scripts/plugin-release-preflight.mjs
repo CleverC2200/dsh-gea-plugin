@@ -12,6 +12,7 @@ import {
   validatePluginCombination,
   comparePluginVersions,
   parsePluginManifest,
+  parseInstalledPluginManifest,
 } from "../src/shared/plugin-release.mjs";
 import { sourceChanges, verifyPackageBuild, builtArchive } from "./package-source-integrity.mjs";
 import { findSupportedCore } from "./supported-cores.mjs";
@@ -59,7 +60,8 @@ function validateGraph(manifests) {
   for (const manifest of manifests) {
     if (typeof manifest?.name !== "string" || !manifest.name)
       fail("RELEASE_INSTALLED_GRAPH_INCOMPLETE");
-    parsePluginManifest({ ...manifest, name: companyPackageNames[0] });
+    if (companyPackageNames.includes(manifest.name)) parsePluginManifest(manifest);
+    else parseInstalledPluginManifest(manifest);
     if (
       companyPackageNames.includes(manifest.name) &&
       !/^[a-f0-9]{64}$/.test(manifest.artifactSha256)
