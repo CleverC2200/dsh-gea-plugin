@@ -183,7 +183,7 @@ test("independent channel projection retains the other two references and advanc
   );
 });
 
-test("GEA permits declared Manage .16 through .19 releases and rejects undeclared versions", async () => {
+test("GEA permits declared Manage .16 through .20 releases and rejects undeclared versions", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const combination = (version) =>
     validatePluginCombination({
@@ -194,6 +194,7 @@ test("GEA permits declared Manage .16 through .19 releases and rejects undeclare
         { name: G, version: source.version, peerDependencies: { [M]: source.peerDependencies[M] } },
       ],
     });
+  assert.deepEqual(combination("0.6.3-company.20"), []);
   assert.deepEqual(combination("0.6.3-company.19"), []);
   assert.deepEqual(combination("0.6.3-company.18"), []);
   assert.deepEqual(combination("0.6.3-company.17"), []);
@@ -204,7 +205,7 @@ test("GEA permits declared Manage .16 through .19 releases and rejects undeclare
     "0.6.3-company.13",
     "0.6.3-company.14",
     "0.6.3-company.15",
-    "0.6.3-company.20",
+    "0.6.3-company.21",
   ])
     assert.ok(
       combination(version).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
