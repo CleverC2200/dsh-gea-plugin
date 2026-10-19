@@ -151,7 +151,7 @@ const fixture = async (
             : []),
           { periodId: "20261001", periodMonth: "2026-10", planTypeCode: "Y", status: "OPEN" },
         ],
-        total: 1,
+        total: sameIdPeriod ? 2 : 1,
         current: 1,
         size: 100,
       });
@@ -188,6 +188,15 @@ const fixture = async (
             targetAmount: "12.34",
             skuCount: 1,
           };
+        });
+      if (sameIdPeriod && !type && status === null)
+        records.unshift({
+          ...records[0],
+          planId: "p-jxs-2026-10-99999",
+          versionId: "other-type-version",
+          planTypeCode: "DC",
+          orgName: "DC周期来源",
+          dealerName: "DC周期来源",
         });
       return send({
         records,
@@ -403,6 +412,13 @@ for (const [role, returnedStatus] of [
         shortened: returnedStatus === 7,
         sameIdPeriod: returnedStatus === 7,
       });
+      if (returnedStatus === 7) {
+        const periods = await app.rpc("workbench/query", { kind: "periods", query: {} });
+        assert.deepEqual(
+          periods.value.records.map((period) => period.planTypeCode),
+          ["DC", "Y"],
+        );
+      }
       await selectPlan(frame);
       const edit = frame.getByRole("button", { name: "修改后提交", exact: true });
       await expect(edit).toBeEnabled();
