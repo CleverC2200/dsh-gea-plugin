@@ -435,7 +435,7 @@ test("switching to another enabled business Agent rejects the previous Consumer'
   assert.equal(count(f, "weknora_ask"), 1);
 });
 
-test("current personal Agent exposes knowledge tools under its retained Consumer and source lifetime", async (t) => {
+test("current personal Agent exposes knowledge tools under shared workbench and its own source lifetime", async (t) => {
   const f = await fixture(t, { personal: true, prompts: true });
   const names = f.ctx.tools.schemas(f.agents.get("personal")).map((tool) => tool.name);
   assert.ok(names.includes(catalog));
@@ -451,7 +451,7 @@ test("current personal Agent exposes knowledge tools under its retained Consumer
   ]);
   assert.deepEqual(successful(await invoke(f, ask, args, "personal")), answer());
   const calls = f.calls.filter(({ wire }) => wire.method === "tools/call");
-  assert.ok(calls.every(({ wire }) => wire.params._meta.agentCode === "sales_forecast"));
+  assert.ok(calls.every(({ wire }) => wire.params._meta.agentCode === "workbench"));
   assert.ok(!names.includes("gea_plugin_page_apply"));
   f.setEnabled(false);
   const refused = await invoke(f, ask, args, "personal");
@@ -463,10 +463,10 @@ test("personal Agent diagnostics report retained Consumer and revoked source wit
   const f = await fixture(t, { personal: true, prompts: true });
   const diagnose = async () => successful(await invoke(f, "gea_runtime_diagnose", {}, "personal"));
   const active = await diagnose();
-  assert.equal(active.consumerCode, "sales_forecast");
+  assert.equal(active.consumerCode, "workbench");
   assert.deepEqual(active.mcpAccess, {
     sourceRef: "gea-readonly",
-    consumerCode: "sales_forecast",
+    consumerCode: "workbench",
   });
   assert.equal(active.businessProfileDeclared, false);
   assert.equal(active.businessAuthorization, "not-checked");

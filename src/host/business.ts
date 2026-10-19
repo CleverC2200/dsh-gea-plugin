@@ -59,6 +59,7 @@ import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 
 import { createCapabilityRegistry, type CapabilityRegistry } from "../capability/registry.ts";
 import { workbenchContract, effectRank, type CapabilityEffect } from "../capability/contract.ts";
+import { sharedAgentCapability, WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -760,6 +761,7 @@ export class Business {
       () => this.base,
     );
     this.capabilities = createCapabilityRegistry([
+      sharedAgentCapability,
       workbenchContract({
         surface: "gea-workbench",
         pageIds: ["gea-workbench"],
@@ -2401,7 +2403,7 @@ export class Business {
   assertExecutionAllowed(consumerCode: string, effect: CapabilityEffect = "view"): void {
     this.salesReadonly?.assertConsumer(consumerCode, effect);
     const contract =
-      consumerCode === this.config.analysisAgentCode
+      consumerCode === this.config.analysisAgentCode && consumerCode !== WORKBENCH_AGENT_CODE
         ? this.capabilities.get("gea-workbench")
         : this.capabilities.list().find((item) => item.data?.consumerCode === consumerCode);
     let code: string | undefined;

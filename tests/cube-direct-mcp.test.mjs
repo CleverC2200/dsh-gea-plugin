@@ -912,7 +912,7 @@ test("personal Cube resolves a trusted owner and rejects same-Consumer replaceme
       : undefined;
   assert.equal(f.service.allows("personal"), true);
   await f.service.call("personal", "inspect_cube_model", {}, new AbortController().signal);
-  assert.equal(f.calls[0].consumer, "trusted-consumer");
+  assert.equal(f.calls[0].consumer, "workbench");
   f.module.call = async () => {
     source = new AbortController();
     return "stale";
