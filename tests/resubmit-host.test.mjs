@@ -175,6 +175,13 @@ test(
     assert.equal(wrongRole.ok, false);
     assert.equal(writes, 0);
     version.status = 7;
+    const stale = await app.rpc("sales-plan/submit", {
+      ...command,
+      source: { planId, versionId: "old-version" },
+      idempotencyKey: "stale-version",
+    });
+    assert.equal(stale.ok, false);
+    assert.equal(writes, 0);
     const forged = await app.rpc("sales-plan/submit", {
       ...command,
       idempotencyKey: "forged",
