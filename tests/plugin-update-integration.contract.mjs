@@ -313,6 +313,402 @@ test("detail checks deduplicate and cancel on close while an accepted submission
   await updating;
 });
 
+test("a remounted client recovers the actual Host operation without a detail or resubmission", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let phase = "available",
+    statuses = 0,
+    updates = 0;
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/status")) {
+      statuses++;
+      return Response.json({ ok: true, value: status(rows(phase)) });
+    }
+    assert(url.endsWith("/update"), "recovery must not check or resubmit updates");
+    updates++;
+    phase = "installing";
+    return Response.json({ ok: true, value: {} });
+  };
+  const ctx = new Context(),
+    old = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  const close = old.retain();
+  await new Promise(setImmediate);
+  await old.update(name);
+  close();
+  await old.dispose();
+  const recovered = createPluginDetailUpdates(ctx);
+  t.after(() => recovered.dispose());
+  await recovered.resume();
+  assert.equal(recovered.getSnapshot().items[0].state, "installing");
+  assert.equal(recovered.getSnapshot().notice.kind, "progress");
+  phase = "pending-restart";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(recovered.getSnapshot().notice.kind, "pending-restart");
+  const stoppedAt = statuses;
+  t.mock.timers.tick(5000);
+  await new Promise(setImmediate);
+  assert.equal(statuses, stoppedAt, "a hidden pending operation stops polling");
+  assert.equal(updates, 1);
+});
+
+test("closing a detail cancels its check while a mount recovery probe remains alive", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  let statuses = 0,
+    checkSignal,
+    releaseProbe;
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/status")) {
+      if (++statuses === 1)
+        return new Promise((resolve) => {
+          releaseProbe = resolve;
+        });
+      return Response.json({ ok: true, value: status() });
+    }
+    assert(url.endsWith("/check"));
+    checkSignal = options.signal;
+    return new Promise((_, reject) =>
+      options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true }),
+    );
+  };
+  const ctx = new Context(),
+    owner = createPluginDetailUpdates(ctx);
+  t.after(async () => {
+    releaseProbe(Response.json({ ok: true, value: status(rows("installing")) }));
+    await owner.dispose();
+    await ctx.fiber.dispose();
+  });
+  const probing = owner.resume();
+  const close = owner.retain();
+  const checking = owner.check();
+  await new Promise(setImmediate);
+  assert(checkSignal);
+  close();
+  assert.equal(checkSignal.aborted, true);
+  await checking;
+  assert.equal(owner.getSnapshot().transportError, null);
+  releaseProbe(Response.json({ ok: true, value: status(rows("installing")) }));
+  await probing;
+  assert.equal(owner.getSnapshot().notice.kind, "progress");
+});
+
+test("mount recovery stops on idle and hidden operation observation expires without changing its state", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let phase = "idle",
+    statuses = 0;
+  globalThis.fetch = async (url) => {
+    assert(url.endsWith("/status"));
+    statuses++;
+    return Response.json({ ok: true, value: status(rows(phase)) });
+  };
+  const ctx = new Context(),
+    idle = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  await idle.resume();
+  await idle.resume();
+  assert.equal(statuses, 1);
+  assert.equal(idle.getSnapshot().notice, null);
+  t.mock.timers.tick(10000);
+  await new Promise(setImmediate);
+  assert.equal(statuses, 1);
+  await idle.dispose();
+  phase = "installing";
+  const active = createPluginDetailUpdates(ctx);
+  t.after(() => active.dispose());
+  await active.resume();
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(active.getSnapshot().notice.kind, "unconfirmed");
+  assert.equal(active.getSnapshot().items[0].state, "installing");
+  const stoppedAt = statuses;
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(statuses, stoppedAt);
+});
+
+test("loading and disconnected startup probes neither invent an operation nor resubmit one", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let attempts = 0,
+    recover = false;
+  globalThis.fetch = async (url) => {
+    assert(url.endsWith("/status"), "startup recovery only reads status");
+    attempts++;
+    if (attempts === 1) return new Response("not found", { status: 404 });
+    if (!recover) throw Error("offline");
+    return Response.json({ ok: true, value: status(rows("installing")) });
+  };
+  const ctx = new Context(),
+    unknown = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  await unknown.resume();
+  for (let count = 0; count < 2; count++) {
+    t.mock.timers.tick(2000);
+    await new Promise(setImmediate);
+  }
+  assert.equal(attempts, 3);
+  assert.deepEqual(unknown.getSnapshot().items, []);
+  assert.equal(unknown.getSnapshot().notice, null);
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(attempts, 3);
+  await unknown.dispose();
+  attempts = 0;
+  const reloaded = createPluginDetailUpdates(ctx);
+  await reloaded.resume();
+  assert.equal(reloaded.getSnapshot().notice, null);
+  recover = true;
+  t.mock.timers.tick(2000);
+  await new Promise(setImmediate);
+  assert.equal(reloaded.getSnapshot().notice.kind, "progress");
+  await reloaded.dispose();
+  const disposedAt = attempts;
+  t.mock.timers.tick(120000);
+  await new Promise(setImmediate);
+  assert.equal(attempts, disposedAt);
+});
+
+test("submitted transport failures immediately become unconfirmed and recover only from actual status", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let phase = "available",
+    failure = null,
+    updates = 0;
+  globalThis.fetch = async (url) => {
+    if (url.endsWith("/status")) {
+      if (failure === "offline") throw TypeError("offline");
+      if (failure === "timeout") throw new DOMException("request timed out", "TimeoutError");
+      return Response.json({ ok: true, value: status(rows(phase)) });
+    }
+    if (url.endsWith("/check")) throw TypeError("ordinary check failed");
+    assert(url.endsWith("/update"));
+    updates++;
+    failure = "offline";
+    throw TypeError("submission disconnected");
+  };
+  const ctx = new Context(),
+    owner = createPluginDetailUpdates(ctx);
+  t.after(() => ctx.fiber.dispose());
+  const close = owner.retain();
+  await new Promise(setImmediate);
+  const submitting = owner.update(name);
+  close();
+  await submitting;
+  assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  assert.equal(owner.getSnapshot().items.find((row) => row.packageName === name).state, "unknown");
+  failure = null;
+  for (const inactive of ["available", "idle", "blocked"]) {
+    phase = inactive;
+    t.mock.timers.tick(1000);
+    await new Promise(setImmediate);
+    assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  }
+  phase = "installing";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "progress");
+  failure = "timeout";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  assert.equal(owner.getSnapshot().items[0].state, "installing");
+  failure = null;
+  phase = "pending-restart";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "pending-restart");
+  assert.equal(updates, 1);
+  await owner.dispose();
+  phase = "available";
+  const ordinary = createPluginDetailUpdates(ctx);
+  t.after(() => ordinary.dispose());
+  const release = ordinary.retain();
+  await new Promise(setImmediate);
+  await ordinary.check();
+  assert.equal(ordinary.getSnapshot().notice, null);
+  release();
+});
+
+test("new Host recovery waits for client Loader proof and reads status after the observed ACK", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const { validateClientObservation } = await subject(t, "src/host/plugin-updates.ts");
+  const { ClientModuleSystem } = await import(
+    pathToFileURL(join(sdk, "packages/client/modules/lib/types/client/index.js"))
+  );
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  for (const ready of ["active", "later", "unavailable"])
+    await t.test(`Loader ${ready}`, async (t) => {
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const module = {
+        id: name,
+        url: "plugins/gea?rev=target",
+        initialUrl: "plugins/gea?rev=target",
+        rev: "target",
+        inject: [],
+        external: [],
+      };
+      const modules = new ClientModuleSystem({
+        manifest: {
+          rev: "target",
+          modules: [module],
+          plugins: [{ id: name, inject: [], immediately: false }],
+        },
+        staticModules: {},
+        registrationTarget: {
+          mode: "queue",
+          pendingQueue: [
+            {
+              id: name,
+              factory: () => ({
+                pluginPackageVersion: Object.freeze({ name, version: "1.2.4" }),
+                apply() {},
+              }),
+            },
+          ],
+        },
+        bootstrapModule: { id: "@deepseek-ai/dsh-client-modules", exports: {} },
+      });
+      const ctx = new Context();
+      await ctx.plugin(Loader);
+      ctx.loader.internal = modules;
+      ctx.provide("modules", modules);
+      if (ready === "active") await modules.entries.start(ctx.loader, modules.manifest);
+      let phase = "pending-restart",
+        reads = 0,
+        acknowledged = 0,
+        pageIdentity;
+      globalThis.fetch = async (url, options) => {
+        const payload = JSON.parse(options.body);
+        if (url.endsWith("/status")) {
+          pageIdentity = payload.pageIdentity;
+          reads++;
+          return Response.json({
+            ok: true,
+            value: {
+              ...status(
+                rows("idle").map((row) =>
+                  row.packageName === name
+                    ? {
+                        ...row,
+                        state: phase,
+                        installedVersion: "1.2.4",
+                        runningHostVersion: "1.2.4",
+                        runningClientVersion: acknowledged ? "1.2.4" : null,
+                      }
+                    : row,
+                ),
+              ),
+              revision: reads,
+            },
+          });
+        }
+        assert(url.endsWith("/observed"), "recovery must not check or resubmit");
+        validateClientObservation(
+          payload,
+          {
+            hostProcessIdentity: "host-fixture",
+            pageIdentity,
+            nonce: "nonce-fixture",
+            expires: Date.now() + 10000,
+          },
+          [{ name, host: { kind: "active", stamp: { name, version: "1.2.4" } } }],
+          { entries: [{ id: name, rev: "target" }] },
+        );
+        acknowledged++;
+        phase = "completed";
+        return Response.json({ ok: true, value: null });
+      };
+      const owner = createPluginDetailUpdates(ctx);
+      t.after(async () => {
+        await owner.dispose();
+        await ctx.fiber.dispose();
+      });
+      await owner.resume();
+      if (ready !== "active") {
+        assert.equal(owner.getSnapshot().notice.kind, "progress");
+        assert.equal(acknowledged, 0);
+        if (ready === "unavailable") {
+          t.mock.timers.tick(120000);
+          await new Promise(setImmediate);
+          assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+          assert.equal(
+            owner.getSnapshot().items.find((row) => row.packageName === name).state,
+            "pending-restart",
+          );
+          assert.equal(acknowledged, 0);
+          const stoppedAt = reads;
+          t.mock.timers.tick(5000);
+          await new Promise(setImmediate);
+          assert.equal(reads, stoppedAt);
+          return;
+        }
+        await modules.entries.start(ctx.loader, modules.manifest);
+        t.mock.timers.tick(1000);
+        await new Promise(setImmediate);
+      }
+      assert.equal(
+        owner.getSnapshot().items.find((row) => row.packageName === name).state,
+        "completed",
+      );
+      assert.equal(owner.getSnapshot().notice.kind, "completed");
+      assert.equal(acknowledged, 1);
+      assert(reads >= 2);
+      const stoppedAt = reads;
+      t.mock.timers.tick(5000);
+      await new Promise(setImmediate);
+      assert.equal(reads, stoppedAt);
+    });
+});
+
+test("a submitted update keeps observing after detail close and releases on each real terminal state", async (t) => {
+  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+  const original = globalThis.fetch;
+  t.after(() => (globalThis.fetch = original));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ctx = new Context();
+  t.after(() => ctx.fiber.dispose());
+  for (const terminal of ["completed", "restored", "failed"]) {
+    let phase = "available",
+      statuses = 0;
+    globalThis.fetch = async (url) => {
+      if (url.endsWith("/status")) {
+        statuses++;
+        return Response.json({ ok: true, value: status(rows(phase)) });
+      }
+      assert(url.endsWith("/update"));
+      phase = "verifying";
+      return Response.json({ ok: true, value: {} });
+    };
+    const owner = createPluginDetailUpdates(ctx);
+    const close = owner.retain();
+    await new Promise(setImmediate);
+    await owner.update(name);
+    close();
+    phase = terminal;
+    t.mock.timers.tick(1000);
+    await new Promise(setImmediate);
+    assert.equal(owner.getSnapshot().notice.kind, terminal);
+    const stoppedAt = statuses;
+    t.mock.timers.tick(10000);
+    await new Promise(setImmediate);
+    assert.equal(statuses, stoppedAt);
+    await owner.dispose();
+  }
+});
+
 test("explicit Core deployment input is cross-checked against Git, launcher, SDK resolution and artifact bytes", async (t) => {
   const { readPluginUpdateCore } = await subject(t, "src/host/plugin-update-core.ts");
   const root = await mkdtemp(join(tmpdir(), "admitted-core-fixture-"));

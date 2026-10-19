@@ -2,13 +2,19 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
+import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
+import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
-import { Button, Tag, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Tag, Toast, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
 import { companyPackageNames } from "./shared/plugin-release.mjs";
 import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
-import { createPluginDetailUpdates, pluginUpdateBusy } from "./plugin-updates-client.ts";
+import {
+  createPluginDetailUpdates,
+  pluginUpdateBusy,
+  pluginUpdateObservationMs,
+} from "./plugin-updates-client.ts";
 import { en, zh, pluginUpdateLocale } from "./plugin-update-locales.ts";
 import css from "./plugin-detail-updates.css";
 
@@ -336,8 +342,62 @@ function desktopRestart(): (() => Promise<unknown>) | undefined {
   return async () => restart();
 }
 
+function UpdateNotice({
+  updates,
+  openManager,
+  t,
+}: PropsLocale<typeof pluginUpdateLocale> & {
+  updates: Owner;
+  openManager: () => void;
+}): ReactNode {
+  const state = useSyncExternalStore(updates.subscribe, updates.getSnapshot);
+  const [restarting, setRestarting] = useState(false);
+  const [restartFailed, setRestartFailed] = useState(false);
+  const notice = state.notice;
+  const bridge = desktopRestart();
+  const restartBusy =
+    state.checking ||
+    state.submitting !== null ||
+    state.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
+  if (!notice) return null;
+  const actions = [{ label: t("openManager"), onClick: openManager }];
+  if (notice.kind === "pending-restart" && bridge && !restartBusy && !restarting) {
+    actions.unshift({
+      label: t("restartNow"),
+      onClick: () => {
+        setRestarting(true);
+        setRestartFailed(false);
+        void bridge()
+          .catch(() => setRestartFailed(true))
+          .finally(() => setRestarting(false));
+      },
+    });
+  }
+  const text =
+    notice.kind === "progress"
+      ? t("progressNotice")
+      : notice.kind === "pending-restart"
+        ? t(bridge ? "pendingNotice" : "pendingWebNotice")
+        : notice.kind === "completed"
+          ? t("completed")
+          : notice.kind === "restored"
+            ? t("restoredReason")
+            : notice.kind === "failed"
+              ? t("failedReason")
+              : t("unconfirmedNotice");
+  return (
+    <Toast
+      key={notice.sequence}
+      text={restartFailed ? t("restartError") : text}
+      actions={actions}
+      holdMs={notice.kind === "progress" ? pluginUpdateObservationMs : 15000}
+      onDone={updates.dismissNotice}
+    />
+  );
+}
+
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
-  const fiber = ctx.inject(["slots", "locale", "modules"], (scope) => {
+  const fiber = ctx.inject(["slots", "locale", "modules", "settingsNavigation"], (scope) => {
     scope.effect(() => {
       const style = document.createElement("style");
       style.textContent = css;
@@ -346,7 +406,24 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
     });
     const updates = createPluginDetailUpdates(scope);
     scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
-    scope.effect(() => () => updates.dispose());
+    scope.effect(() => {
+      void updates.resume();
+      return () => updates.dispose();
+    });
+    scope.slots.inject("shell.overlay", () =>
+      scope.slots.register(
+        {
+          name: "shell.overlay",
+          id: "gea.plugin-updates.notice",
+          locale: pluginUpdateLocale,
+          inject: () => ({
+            updates,
+            openManager: () => scope.settingsNavigation.open("plugin-manager"),
+          }),
+        },
+        UpdateNotice,
+      ),
+    );
     scope.slots.inject("plugins.list.badge", () =>
       scope.slots.register(
         {

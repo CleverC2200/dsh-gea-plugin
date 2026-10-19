@@ -90,7 +90,7 @@ test("official installed list checks once, keeps actions beside content, submits
           payload.plans,
           names.map((packageName) => ({ packageName, planId: "plan-" + packageName })),
         );
-        phase = "pending-restart";
+        phase = "installing";
       }
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ ok: true, value: req.url.endsWith("/status") ? status() : null }));
@@ -177,12 +177,35 @@ test("official installed list checks once, keeps actions beside content, submits
   if (process.env.GEA_LIST_SCREENSHOT)
     await page.locator("[data-plugin-panel]").screenshot({ path: process.env.GEA_LIST_SCREENSHOT });
   await page.getByRole("button", { name: "全部更新", exact: true }).click();
-  const restart = page.getByRole("button", { name: "一键重启", exact: true });
+  const progress = page
+    .getByRole("alert")
+    .filter({ hasText: "插件正在更新，可返回插件管理查看进度。" });
+  await progress.waitFor();
+  await page.evaluate(() => window.fixture.closeSettings());
+  await cards.first().waitFor({ state: "detached" });
+  await progress.waitFor();
+  await page.evaluate(() => window.fixture.reloadGea());
+  await progress.waitFor();
+  assert.equal(checks, 1);
+  assert.equal(batches, 1);
+  phase = "pending-restart";
+  const pending = page
+    .getByRole("alert")
+    .filter({ hasText: "插件更新已安装，需要重启应用后生效。" });
+  await pending.waitFor();
+  await pending.getByRole("button", { name: "返回插件管理", exact: true }).click();
+  await cards.first().waitFor();
+  assert.deepEqual(await page.evaluate(() => window.fixture.openedSections), ["plugin-manager"]);
+  const restart = page
+    .locator("[data-plugin-panel]")
+    .getByRole("button", { name: "一键重启", exact: true });
   await restart.waitFor();
   assert.equal(await restart.isEnabled(), true);
   assert.equal(batches, 1);
   await restart.click();
   assert.equal(await page.evaluate(() => window.restartCalls), 1);
+  await pending.getByRole("button", { name: "一键重启", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.restartCalls), 2);
   await page.addInitScript(() => {
     Object.defineProperty(window, "dshDesktop", { value: undefined, writable: false });
   });
