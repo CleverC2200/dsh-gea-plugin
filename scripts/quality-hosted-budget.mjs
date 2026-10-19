@@ -1,6 +1,15 @@
 /** GitHub run-attempt clocks only; source admission and execution coverage belong to the caller. */
 const budgetMs = 600000;
 
+export const skippedTestShardsJobName =
+  "matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards'";
+
+export const unexpandedSkippedJobNames = [
+  "prepare-${{ matrix.core }}",
+  "macos-${{ matrix.core }}",
+  skippedTestShardsJobName,
+];
+
 export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000, ...input }) {
   if (
     !Number.isSafeInteger(intervalMs) ||
@@ -185,8 +194,15 @@ export function assessHostedBudget({
     requiredJobs.includes(finalJobName) ||
     !requiredJobs.every((name) => typeof name === "string" && name.length) ||
     !Array.isArray(notApplicableJobs) ||
-    notApplicableJobs.length > 1 ||
-    notApplicableJobs.some((name) => name !== "test-shards" || requiredJobs.includes(name)) ||
+    new Set(notApplicableJobs).size !== notApplicableJobs.length ||
+    notApplicableJobs.some(
+      (name) =>
+        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
+          name,
+        ) &&
+          !unexpandedSkippedJobNames.includes(name)) ||
+        requiredJobs.includes(name),
+    ) ||
     !finalJobName
   )
     throw Error("HOSTED_BUDGET_INPUT_REQUIRED");

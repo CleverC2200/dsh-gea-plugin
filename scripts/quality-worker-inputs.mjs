@@ -246,7 +246,7 @@ function baseMetadata(p, manifest) {
       ],
     ],
     [p.manage, ["prepare-official-sdk.mjs", "sdk-artifact-cache.mjs"]],
-    [p.wb, ["candidate-input.mjs", "ci-test-plan.mjs", "ci-source-policy.mjs"]],
+    [p.wb, ["candidate-input.mjs", "ci-test-plan.mjs"]],
   ])
     for (const file of files) {
       const path = join(base, "scripts", file);

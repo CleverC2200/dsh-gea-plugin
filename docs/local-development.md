@@ -41,14 +41,6 @@ GEA_TEST_CANDIDATE_INPUTS=/absolute/candidate-input.json node --test tests/windo
 
 第一条是 Node-only 的前置拒绝检查，不需要 Core、依赖安装或服务。第二条要求实际固定 Core、三仓和历史证据，沿原 Window admission 及预算保护验证本地 fixture 行为。两者都不代替源码全量 profile、Native、业务或模型验收；完整 `test` 的失败状态继续按原回执记录。
 
-## 执行前检查选定环境
-
-运行 `corepack pnpm check:environment --core /absolute/fixed/core --purpose reception`，核登记源码后在独立子进程中加载 Boot、官方安装操作与 CLI profile 入口。`--purpose source` 另核本 checkout 声明的 GenUI 与 Sidebar 输入。普通三包接收不要求安装这两项可选增强。
-
-三包接收及其直接 install/observe 入口强制执行同一检查。检查每次读取当前依赖，历史通过结果不缓存；删除依赖后，同一提交也会在创建安装 Home 前被拒绝。失败按错误指定入口，在有归属的固定 checkout 准备所需输入，再重新选择；共享 SDK 保持只读。源码检查与类型检查继续使用各自较小的输入要求。
-
-`corepack pnpm test:environment` 通过实际 Node 子进程覆盖本轮缺失运行依赖、缺失 CLI 产物、用途不同的伴随依赖要求，以及公开诊断脱敏。它由 `quality:fast --source-only` 调用，因此本地与既有 CI 使用同一命令。
-
 ## Codex Local environments
 
 仓内 `.codex/environments/environment.toml` 是实际配置。默认 setup 只核工具，安装由明确选择的 Action 执行，不自动构建。Actions 的命令、cwd 与是否持续 watch 按该文件核对，需要不同范围时运行公开命令，不新增任务识别或编排器。
@@ -87,13 +79,13 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 `node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
 
-提交昂贵的候选 CI 前，先用本仓 `corepack pnpm quality:fast --source-only <改动文件...>`。它复用 lint、format:check、知识及 Prompt 执行合同检查，不准备 SDK、不构建、不启动测试；省略文件则沿用仓内默认扫描范围。默认 fast 在源码检查失败时记录跳过依赖 SDK 的检查与测试，并返回失败。
+提交昂贵的候选 CI 前，先用本仓 `corepack pnpm quality:fast --source-only <改动文件...>`。它复用 lint、format:check、知识及 Prompt 声明检查，并执行环境与发行兼容 fixture，不准备 SDK或构建；省略文件则沿用仓内默认扫描范围。默认 fast 在源码检查失败时记录跳过依赖 SDK 的检查与测试，并返回失败。
 
 冷 runner 直接调用 `node scripts/run-quality-ci.mjs --input <三仓冻结 JSON> --final-group-sha256 <原始字节 SHA256> --final-group-workbench <绝对 Workbench 源路径> --prepare-sdk --prepare-inputs --core-source <已观察固定 Git 源>`；本地 `pnpm quality:ci --` 传入相同参数。公开 Workbench reader 先核实际三仓 HEAD、包身份、锁和 Core，缺少显式输入或原字节哈希立即拒绝；旧 `--phase input` 不再写历史 peer。普通 push/PR 通过 committed baseline 仅替换 own event，dispatch 必须声明完整三仓 tuple，两类验收回执分别记录。质量阶段保存 fast 与 required-and-affected 状态到 `quality-checks.json`，选择依据保存 `quality-test-plan.json`。GitHub 不再执行全量集合；Profile 准备仅在受影响集合需要时执行。具体规则与缓存拒绝条件见[当前 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。独立源码检查保留各自结果；checks 失败会阻断后续测试，整体仍非零。输入或准备失败立即拒绝。
 
-Linux [quality workflow](../.github/workflows/quality.yml) 在 scope 后并行启动 source-plan、producer 与 Mac。source-plan 仅 checkout 同组三仓/Core、写原候选并运行公开 `--stage plan --test-shards auto --test-file-concurrency 3 --test-timings scripts/quality-test-timings.json`，不安装或编译；小 control 只有计划与来源，没有产物或依赖准入权。early planner 收齐每个 required Core 后生成原正式计划的全部非空片，最多14个 worker、`max-parallel: 14`，不填空片。普通入口文件并发仍为2，Linux 各阶段显式3、Mac保持默认2；算法、容量拒绝和历史来源见 [测试执行合同](ci-test-execution.md)。历史样本未知耗时仍为 null，不证明新候选的性能通过。
+Linux [quality workflow](../.github/workflows/quality.yml) 在 scope 后由 source-plan 冻结适用范围和正式计划，再启动适用的 producer 与 Mac。source-plan 仅 checkout 同组三仓/Core、写原候选并运行公开 `--stage plan --test-shards auto --test-file-concurrency 3 --test-timings scripts/quality-test-timings.json`，不安装或编译；小 control 只有计划与来源，没有产物或依赖准入权。early planner 收齐每个 required Core 后生成原正式计划的全部非空片，最多14个 worker、`max-parallel: 14`，不填空片。普通入口文件并发仍为2，Linux 各阶段显式3、Mac保持默认2；算法、容量拒绝和历史来源见 [测试执行合同](ci-test-execution.md)。历史样本未知耗时仍为 null，不证明新候选的性能通过。
 
-每个 required Core 的 producer 只执行一次 `prepare`、`build`、`checks`，用原输入哈希、lane、完整三仓和执行计划形成 `quality-stages.json`。准备安装声明的原锁、SDK及私有 Workbench worktree；构建生成候选包、资产和必要浏览器/桌面输出。GEA/Manage 输出按字节摘要冻结。`checks` 收集 final-group 与 fast；producer 在依赖准备后、候选构建前先调用现有 fast 的 source-only 检查。checks 失败阻断 Chrome 快照与准备物导出，worker 不会收到可执行输入，最终结果保留原失败。准备或构建失败也不能发布可执行输入。
+每个 required Core 的 producer 只执行一次 `prepare`、`build`、`checks`，用原输入哈希、lane、完整三仓和执行计划形成 `quality-stages.json`。准备安装声明的原锁、SDK及私有 Workbench worktree；构建生成候选包、资产和必要浏览器/桌面输出。GEA/Manage 输出按字节摘要冻结。producer 复用 source-plan 的正式计划，在候选构建前用 --source-only --checks-only 执行 lint、format、knowledge、prompt-execution 四项静态检查，并以 `--source-receipt-out .runtime/quality-source-checks.json --input-sha256 <原候选哈希>` 保存完整结果。`checks --source-check-receipt FILE` 继续核 final-group，fast 只在原输入 SHA、实际 HEAD、全部源码字节、Node 与平台相同且四项均通过时复用回执，然后执行官方类型检查；失败、缺项、部分文件检查或源码漂移均拒绝。环境与发行兼容合同的三个实际文件纳入 required 池，由构建后的严格执行器各执行一次，失败仍拒绝，真实运行窗口与环境准入没有退场。普通本地 source-only 不带 checks-only 时仍执行六项检查。checks 失败阻断 Chrome 快照与准备物导出，worker 不会收到可执行输入，最终结果保留原失败。准备或构建失败也不能发布可执行输入。
 
 producer 将原 candidate、阶段/执行计划、来源回执、binding 原字节及准备物摘要发布为小 index；大 bundle 每 Core 只导出、上传一次，保留1天。worker 在 producer 构建期间以一次活调用准备固定源码和独立的五组锁，保留最多双安装及 Workbench→inventory 顺序。GEA 依赖所需 GenUI 产物留到接收后；没有可重放的 source-ready token 或第二次调用接受旧 modules。新增 source-plan 的四仓 checkout 与小 control 传输都计入真实成本，不假称提前启动必然更快。
 
@@ -133,3 +125,15 @@ macOS 对每个 required Core 保留独立原生隔离测试，通过本机 SDK 
 | Window输入拒绝与原行为                    | `test:fixture-inputs` 只核输入；`test:window` 使用明确冻结Core、三仓和历史证据，保留原准入和预算门禁                                                                                                                                  |
 
 上述 Node-only 检查由 [delivery fixture CI](../.github/workflows/delivery-fixtures.yml) 登记。workflow配置、局部检查通过、真实Host集成、当前窗口装载和业务验收分别留证；脚本存在不证明已经运行。
+
+普通文档只有在同组三仓的实际非空差分全为导航或 docs Markdown，且无运行源码或测试消费者时，才进入 docs 范围。source-plan 仍核原候选字节、实际三仓 HEAD、包、锁和 Core，并核差分空白与知识声明；同 tuple 的回执声明构建、测试、Mac 不适用。最终聚合拒绝缺失回执、来源变化、检查失败或被误执行的任务。其他输入继续普通 required-and-affected，不能用 Markdown 扩展名豁免 Prompt、Skill 或业务资源。
+
+桌面可独立执行的现有 CJS/MJS unit 回归进入受影响候选池，已有聚合入口的子测试通过 testOwners 只执行一次。Electron、完整包、真实 Loader 接收及在线更新仍使用各自手动验收入口。`test:full` 明确运行全部顶层源码测试、contract 与 browser 文件；旧 `test:ci-full` 余集入口已退役。该手动入口需要相应用途的完整冻结环境，不能把未准备环境的失败解释为产品失败。
+
+同仓 PR/main 的 delivery 合同归 candidate-quality 精确选择，独立 delivery job 明确跳过，不重复启动 runner 或运行整组 fixture；手动及外仓 PR 仍保留普通离线 fixture 入口。已封存票的 branch/SHA 定向分派及纯路由测试已退役，历史授权和失败证据保持。
+
+Profile 准备在一次调用内复用已准入的 Core 身份与资产摘要，独立资源复制和无 readScope 的文件读取局部并行。每个 case 仍有独立 runtime、配置、selection、窗口、预算、Host、Session 和清理。没有跨 case 授权缓存；源码、锁、外部依赖及接收后的完整性检查仍执行。实际准备、执行、队列和完整600秒测量分别留证。
+
+`installer-timing.test.cjs`、`windows-directory-installer.test.cjs` 与 `installer-differential.test.mjs` 需要显式固定的 GEA_BUILDER_LIB，保留在原手动 desktop unit 入口，不纳入普通候选池。Electron、layered smoke、installer-portability 同样保留实际产物前置，不能用条件 skip 产生源码 CI 通过。
+
+依赖审查只对 PR 中实际消费的 GEA manifest/lock 变化运行，与 Manage 使用同版 dependency-review-action v5 和 high 阻断级别。适用性来自同一实际变化计划并绑定正式 plan，最终聚合在适用时要求成功，无关文档/CSS 的明确不适用不能借用缺失或取消的适用结果。

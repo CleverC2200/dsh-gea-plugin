@@ -32,7 +32,6 @@ jobs:
   candidate-scope:
     runs-on: ubuntu-latest
     outputs:
-      business-lane: ${{ steps.business.outputs.lane }}
       cores: ${{ steps.cores.outputs.cores }}
       node-version: ${{ steps.node.outputs.node-version }}
       gea-sha: ${{ steps.group.outputs.gea-sha }}
@@ -41,6 +40,7 @@ jobs:
       group-id: ${{ steps.group.outputs.group-id }}
       source-kind: ${{ steps.group.outputs.source-kind }}
       baseline-id: ${{ steps.group.outputs.baseline-id }}
+      windows-applicable: ${{ steps.windows.outputs.applicable }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -111,18 +111,71 @@ jobs:
           QUALITY_GROUP_WORKBENCH: ${{ inputs.workbench_sha }}
           QUALITY_GROUP_MANAGE: ${{ inputs.manage_sha }}
         run: node "$GITHUB_WORKSPACE/scope-peer/dsh-agent-workbench/scripts/read-hosted-peer-input.mjs" --repo dsh-gea-plugin
-      - name: Select the authorized business repair lane
-        id: business
-        env:
-          QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          QUALITY_PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          QUALITY_PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-        run: node scripts/business-profile-ci.mjs --workbench "$GITHUB_WORKSPACE/scope-peer/dsh-agent-workbench"
       - name: Read the registered official baselines
         id: cores
         run: node --input-type=module -e 'import fs from "node:fs"; import {ciCores} from "./scripts/ci-core-policy.mjs"; fs.appendFileSync(process.env.GITHUB_OUTPUT, "cores=" + JSON.stringify(ciCores("required").map(core => core.head)) + "\n")'
+      - name: Select affected native Windows installer regression
+        id: windows
+        env:
+          QUALITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          QUALITY_GROUP_ID: ${{ steps.group.outputs.group-id }}
+          QUALITY_GROUP_GEA: ${{ steps.group.outputs.gea-sha }}
+          QUALITY_GROUP_MANAGE: ${{ steps.group.outputs.manage-sha }}
+          QUALITY_GROUP_WORKBENCH: ${{ steps.group.outputs.workbench-sha }}
+        run: node scripts/ci-windows-update.mjs
+
+  windows-plugin-update:
+    needs: candidate-scope
+    runs-on: ${{ needs.candidate-scope.outputs.windows-applicable == 'true' && 'windows-2025' || 'ubuntu-latest' }}
+    timeout-minutes: 12
+    env:
+      QUALITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      QUALITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      QUALITY_WINDOWS_APPLICABLE: ${{ needs.candidate-scope.outputs.windows-applicable }}
+      QUALITY_GROUP_ID: ${{ needs.candidate-scope.outputs.group-id }}
+      QUALITY_GROUP_GEA: ${{ needs.candidate-scope.outputs.gea-sha }}
+      QUALITY_GROUP_MANAGE: ${{ needs.candidate-scope.outputs.manage-sha }}
+      QUALITY_GROUP_WORKBENCH: ${{ needs.candidate-scope.outputs.workbench-sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ needs.candidate-scope.outputs.node-version }}
+      - name: Verify scope and record explicit not-applicable decisions
+        run: node scripts/ci-windows-update.mjs
+      - name: Check native Windows installer using the fixed regression runtime
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        shell: pwsh
+        run: |
+          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1
+          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
+          node scripts/check-windows-plugin-update.mjs
+      - name: Preserve Windows scope and native outcome
+        if: always()
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          fs.mkdirSync('windows-result',{recursive:true});
+          for (const [source,target] of [['windows-update-scope.json','windows-update-scope.json'],['.runtime/windows-update-native/result.json','result.json']])
+            if(fs.existsSync(source)) fs.copyFileSync(source,'windows-result/'+target);
+          NODE
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-plugin-update-a${{ github.run_attempt }}-${{ github.sha }}
+          path: windows-result/
+          if-no-files-found: error
 
   source-plan:
+    outputs:
+      applicability: ${{ steps.quality-plan.outputs.applicability }}
+      dependency-review-applicable: ${{ steps.quality-plan.outputs.dependency-review-applicable }}
     name: source-plan-${{ matrix.core }}
     needs: candidate-scope
     runs-on: ubuntu-latest
@@ -198,9 +251,8 @@ jobs:
         env:
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
         run: |
-          node scripts/run-quality-ci.mjs --phase "$QUALITY_PHASE" --stage plan --root "$GITHUB_WORKSPACE" --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --test-file-concurrency 3 --test-shards auto --test-timings scripts/quality-test-timings.json > "$GITHUB_WORKSPACE/quality-test-execution-plan.json"
+          node scripts/run-quality-ci.mjs --phase quality --stage plan --root "$GITHUB_WORKSPACE" --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --test-file-concurrency 3 --test-shards auto --test-timings scripts/quality-test-timings.json > "$GITHUB_WORKSPACE/quality-test-execution-plan.json"
           node --input-type=module -e 'import fs from "node:fs"; const plan=JSON.parse(fs.readFileSync(process.env.GITHUB_WORKSPACE+"/quality-test-execution-plan.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT,"shards="+Math.max(1,plan.shards.length)+"\n"); console.log(JSON.stringify({stage:"frozen-plan",planSha256:plan.planSha256,shards:plan.shards.length,...plan.estimates}));'
           node --input-type=module <<'NODE'
           import {readFileSync, appendFileSync} from 'node:fs';
@@ -208,20 +260,28 @@ jobs:
           const e=plan.estimates;
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Preparation-free test plan\n\nSelected ${e.selectedFiles} files; required ${e.requiredFiles}; Profile ${e.profileFiles}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Estimated test execution: ${e.estimatedMs === null ? 'unknown' : e.estimatedMs+' ms'}. This excludes preparation, scheduling and job cleanup.\n\nPlan: ${plan.planSha256}. Full file selection and assignments are in the source artifact.\n`);
           NODE
+      - name: Check admitted documentation without SDK preparation
+        if: steps.quality-plan.outputs.applicability == 'docs'
+        env:
+          CORE_HEAD: ${{ matrix.core }}
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+        run: node scripts/run-quality-ci.mjs --phase quality --stage docs --root "$GITHUB_WORKSPACE" --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --docs-results "$GITHUB_WORKSPACE/early-control/docs.json" --test-file-concurrency 3 --test-shards auto --test-timings scripts/quality-test-timings.json
       - name: Freeze source-only worker controls
+        if: steps.quality-plan.outputs.applicability != 'docs'
         run: |
           mkdir -p "$GITHUB_WORKSPACE/early-control"
           node scripts/quality-worker-control.mjs --mode freeze --root "$GITHUB_WORKSPACE" --output "$GITHUB_WORKSPACE/early-control/control.json"
       - uses: actions/upload-artifact@v7
         with:
           name: quality-a${{ github.run_attempt }}-source-${{ matrix.core }}
-          path: early-control/control.json
+          path: early-control/
           if-no-files-found: error
           retention-days: 1
 
   gates:
+    if: needs.source-plan.outputs.applicability == 'source'
     name: prepare-${{ matrix.core }}
-    needs: candidate-scope
+    needs: [candidate-scope, source-plan]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -294,15 +354,20 @@ jobs:
         env:
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
         run: node scripts/run-quality-ci.mjs --phase verify-input --root "$GITHUB_WORKSPACE" --input "$QUALITY_CANDIDATE" --core-source "$GITHUB_WORKSPACE/source/official-core" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench"
-      - name: Freeze the complete plan before owned preparation
+      - uses: actions/download-artifact@v8
+        with:
+          name: quality-a${{ github.run_attempt }}-source-${{ matrix.core }}
+          path: frozen-source-plan
+      - name: Reuse the frozen source plan before owned preparation
         id: quality-plan
-        env:
-          CORE_HEAD: ${{ matrix.core }}
-          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
         run: |
-          node scripts/run-quality-ci.mjs --phase "$QUALITY_PHASE" --stage plan --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --test-file-concurrency 3 --test-shards auto --test-timings scripts/quality-test-timings.json > "$GITHUB_WORKSPACE/quality-test-execution-plan.json"
-          node --input-type=module -e 'import fs from "node:fs"; const plan=JSON.parse(fs.readFileSync(process.env.GITHUB_WORKSPACE+"/quality-test-execution-plan.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT,"shards="+Math.max(1,plan.shards.length)+"\n"); console.log(JSON.stringify({stage:"frozen-plan",planSha256:plan.planSha256,shards:plan.shards.length,...plan.estimates}));'
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const control=JSON.parse(fs.readFileSync(process.env.GITHUB_WORKSPACE+'/frozen-source-plan/control.json'));
+          const plan=control.plan;
+          fs.writeFileSync(process.env.GITHUB_WORKSPACE+'/quality-test-execution-plan.json',JSON.stringify(plan,null,2)+'\n');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,`shards=${Math.max(1,plan.shards.length)}\nbrowser=${plan.browser === true}\n`);
+          NODE
       - name: Locate package download cache
         id: cache-path
         working-directory: candidate/dsh-agent-manage
@@ -350,8 +415,7 @@ jobs:
           QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage prepare
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase quality --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage prepare
 
       - name: Save package downloads within the measured job wall clock
         if: ${{ !cancelled() && steps.quality-prepare.outcome == 'success' && steps.download-cache.outputs.cache-hit != 'true' }}
@@ -366,7 +430,9 @@ jobs:
 
       - name: Check source before candidate builds and tests
         id: quality-source
-        run: corepack pnpm quality:fast --source-only
+        env:
+          INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
+        run: corepack pnpm quality:fast --source-only --checks-only --source-receipt-out .runtime/quality-source-checks.json --input-sha256 "$INPUT_SHA256"
 
       - name: Build frozen candidate packages
         id: quality-build
@@ -375,18 +441,16 @@ jobs:
           QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage build
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase quality --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage build
 
-      - name: Run independent source checks
+      - name: Verify frozen source receipt and SDK-dependent checks
         id: quality-checks
         if: steps.quality-build.outcome == 'success'
         env:
           QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage checks
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase quality --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage checks --source-check-receipt .runtime/quality-source-checks.json
 
       - name: Execute the single shard in its producer
         id: quality-tests
@@ -395,8 +459,7 @@ jobs:
           QUALITY_TEST_SHARDS: ${{ steps.quality-plan.outputs.shards }}
           CORE_HEAD: ${{ matrix.core }}
           INPUT_SHA256: ${{ steps.group.outputs.input-sha256 }}
-          QUALITY_PHASE: ${{ needs.candidate-scope.outputs.business-lane == 'full' && 'quality' || needs.candidate-scope.outputs.business-lane }}
-        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage tests
+        run: node scripts/run-quality-ci.mjs --prepare-sdk --core-source "$GITHUB_WORKSPACE/source/official-core" --prepare-inputs --core-head "$CORE_HEAD" --input "$QUALITY_CANDIDATE" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase quality --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json --root "$GITHUB_WORKSPACE" --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --stage tests
 
       - name: Freeze the actual system Chrome distribution
         if: ${{ !cancelled() && steps.quality-build.outcome == 'success' && steps.quality-checks.outcome == 'success' && steps.quality-plan.outputs.shards != '1' && steps.quality-plan.outputs.browser == 'true' }}
@@ -460,10 +523,11 @@ jobs:
             quality-source-admission.json
             system-chrome-preparation.json
             candidate/dsh-gea-plugin/.runtime/quality-fast.json
+            candidate/dsh-gea-plugin/.runtime/quality-source-checks.json
           if-no-files-found: warn
 
   plan-test-shards:
-    if: ${{ always() && !cancelled() && needs.candidate-scope.result == 'success' && needs.source-plan.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.candidate-scope.result == 'success' && needs.source-plan.result == 'success' && needs.source-plan.outputs.applicability == 'source' }}
     needs: [candidate-scope, source-plan]
     runs-on: ubuntu-latest
     outputs:
@@ -580,9 +644,8 @@ jobs:
           CORE_HEAD: ${{ matrix.core }}
           SHARD_ID: ${{ matrix.shard }}
           INPUT_SHA256: ${{ matrix.inputSha256 }}
-          QUALITY_PHASE: ${{ matrix.phase }}
           GEA_TEST_LIFECYCLE_RECEIPT: ${{ github.workspace }}/quality-profile-lifecycle.jsonl
-        run: node scripts/run-quality-ci.mjs --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$GITHUB_WORKSPACE/candidate-input.json" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase "$QUALITY_PHASE" --stage tests --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --test-shard "$SHARD_ID" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json
+        run: node scripts/run-quality-ci.mjs --core-source "$GITHUB_WORKSPACE/source/official-core" --core-head "$CORE_HEAD" --input "$GITHUB_WORKSPACE/candidate-input.json" --final-group-sha256 "$INPUT_SHA256" --final-group-workbench "$GITHUB_WORKSPACE/source/dsh-agent-workbench" --phase quality --stage tests --execution-plan "$GITHUB_WORKSPACE/quality-test-execution-plan.json" --test-shard "$SHARD_ID" --test-file-concurrency 3 --test-shards "$QUALITY_TEST_SHARDS" --test-timings scripts/quality-test-timings.json
       - name: Verify and unmount this job's fixed system Chrome
         if: always()
         run: node scripts/quality-system-chrome.mjs cleanup --root "$GITHUB_WORKSPACE"
@@ -609,8 +672,9 @@ jobs:
           if-no-files-found: warn
 
   macos-isolation:
+    if: needs.source-plan.outputs.applicability == 'source'
     name: macos-${{ matrix.core }}
-    needs: candidate-scope
+    needs: [candidate-scope, source-plan]
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -742,12 +806,41 @@ jobs:
             candidate/dsh-gea-plugin/.runtime/quality-isolation/
           if-no-files-found: warn
 
+  dependency-review:
+    name: Dependency review
+    needs: source-plan
+    if: github.event_name == 'pull_request' && needs.source-plan.outputs.dependency-review-applicable == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+
   candidate-quality:
     permissions:
       contents: read
       actions: read
     if: always()
-    needs: [candidate-scope, source-plan, gates, plan-test-shards, test-shards, macos-isolation]
+    needs:
+      [
+        candidate-scope,
+        source-plan,
+        gates,
+        plan-test-shards,
+        test-shards,
+        macos-isolation,
+        windows-plugin-update,
+        dependency-review,
+      ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -760,6 +853,7 @@ jobs:
         with:
           node-version: ${{ needs.candidate-scope.outputs.node-version }}
       - uses: actions/download-artifact@v8
+        if: needs.source-plan.outputs.applicability == 'source'
         with:
           name: quality-a${{ github.run_attempt }}-allocation
           path: final/allocation
@@ -769,7 +863,7 @@ jobs:
           pattern: quality-a${{ github.run_attempt }}-worker-*
           path: final/workers
       - uses: actions/download-artifact@v8
-        if: always()
+        if: ${{ always() && needs.source-plan.outputs.applicability == 'source' }}
         with:
           pattern: quality-a${{ github.run_attempt }}-macos-*
           path: final/macos
@@ -779,25 +873,36 @@ jobs:
           pattern: quality-a${{ github.run_attempt }}-source-*
           path: final/controls
       - uses: actions/download-artifact@v8
-        if: always()
+        if: ${{ always() && needs.source-plan.outputs.applicability == 'source' }}
         with:
           pattern: quality-a${{ github.run_attempt }}-index-*
           path: final/indexes
-      - name: Reconcile early allocation with every original producer index
+      - uses: actions/download-artifact@v8
         if: always()
+        with:
+          name: windows-plugin-update-a${{ github.run_attempt }}-${{ github.sha }}
+          path: final/windows
+      - name: Reconcile early allocation with every original producer index
+        if: ${{ always() && needs.source-plan.outputs.applicability == 'source' }}
         run: |
           mkdir -p final/catalog final/workers
           node scripts/quality-worker-control.mjs --mode catalog --controls final/controls --indexes final/indexes --allocation final/allocation/allocation.json --output final/catalog/catalog.json
       - name: Verify exact coverage and independently measure the hosted attempt
         if: always()
         env:
+          QUALITY_APPLICABILITY: ${{ needs.source-plan.outputs.applicability }}
           GITHUB_TOKEN: ${{ github.token }}
           QUALITY_EXPECTED_WORKFLOW_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           QUALITY_FINAL_CORES: ${{ needs.candidate-scope.outputs.cores }}
           QUALITY_FINAL_GROUP_ID: ${{ needs.candidate-scope.outputs.group-id }}
           QUALITY_FINAL_MANAGE_SHA: ${{ needs.candidate-scope.outputs.manage-sha }}
           QUALITY_FINAL_WORKBENCH_SHA: ${{ needs.candidate-scope.outputs.workbench-sha }}
-        run: node scripts/run-quality-ci.mjs --phase final --early-controls final/controls --early-allocation final/allocation/allocation.json --catalog final/catalog/catalog.json --worker-results final/workers --macos-results final/macos --final-output final/results
+        run: |
+          if [[ "$QUALITY_APPLICABILITY" == "docs" ]]; then
+            node scripts/run-quality-ci.mjs --phase docs-final --docs-results final/controls --final-output final/results --windows-results final/windows
+          else
+            node scripts/run-quality-ci.mjs --phase final --early-controls final/controls --early-allocation final/allocation/allocation.json --catalog final/catalog/catalog.json --worker-results final/workers --macos-results final/macos --final-output final/results --windows-results final/windows
+          fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:

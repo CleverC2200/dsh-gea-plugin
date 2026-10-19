@@ -4,6 +4,10 @@
 
 `candidate-quality` 只运行 required 基线。rc.2 的质量、适用的 Windows 归档及安全检查仍是合并条件。最终门禁继续拒绝失败、取消、缺失或跳过的必需任务。
 
+Windows 插件更新原生回归由 [`ci-windows-update.mjs`](../scripts/ci-windows-update.mjs) 按实际 event HEAD 与 base 的完整 diff 判定，覆盖更新 Host/共享实现、安装 fixture、原生入口、依赖锁与工作流。适用时在 `windows-2025` 执行；其他改动在轻量 Linux job 写明确 `not-applicable` 回执。`windows-plugin-update` 始终属于最终聚合依赖和必需 job，失败、取消、缺失或跳过不能放行，不再依赖单次任务分支名。
+
+该原生检查只验证本次源码对固定 GEA 157 unsigned Windows runtime / Core `639ed015397290b3745d163aafe02ffee4aa3f84` 的安装事务行为；下载的安装器原 SHA256、URL 和证据范围集中在上述模块，并在运行回执中保留。它不证明当前 required Core 的联合验收，也不证明桌面 UI、正式签名或发行。当前 Core 的 Linux/macOS 质量仍按原冻结三仓输入独立判定。
+
 `candidate-compatibility` 通过 `workflow_dispatch` 独立运行 alpha，仍使用冻结的三仓完整 SHA 和同一必需检查与受影响测试命令。失败保留在该工作流的日志、产物及结论中。它不作为 required merge context，也不要求它完成或成功后才接收 rc.2。
 
 合并核验必须绑定候选组或实际 main 的完整三仓输入，核 rc.2 必需任务和适用的安全检查。按工作流身份单独记录 alpha，不再以“所有 check-run 一律成功”判断。alpha 未运行或失败不能记成兼容通过；只凭任务名包含 alpha 也不能豁免其他检查。
@@ -14,9 +18,13 @@ GitHub 全量集合的停用、受影响选择与缓存规则见[当前 CI 规�
 
 2026-10-14 的 [PR 59](https://github.com/CleverC2200/dsh-gea-plugin/pull/59) 曾按固定产品提交 `99067baee958a2260ef3735c6b82818253e4906b` 使用单票定向接收例外。该 PR 已合并，本轮统一选择入口替代其临时路由。后续 PR、main 与手动兼容运行均不恢复 GitHub 全量集合；更新事务、签名来源、包版本及公共 Loader 测试按实际改动选择，业务断言保持原样。
 
+普通文档范围由同组 Workbench 的实际影响选择器判定。只有非空且无运行或测试消费者的导航/docs Markdown 差分才不准备 SDK、不构建及不跑 Mac；来源、差分空白、知识和绑定同 tuple 的明确不适用回执仍是最终条件。源码范围继续必需检查和精确一次执行覆盖。
+
+以下单票例外仅保留历史授权、冻结输入和原失败记录。对应的当前可执行 branch/SHA 分派与纯授权路由测试已经退役，后续候选统一走普通受影响选择，不再使用历史阶段例外。
+
 ## Frozen business repair exception
 
-The user authorized merging the 2026-10-14 business repair group without full tests. The `business-profile` lane is limited to the reviewed product commits declared in `scripts/business-profile-ci.mjs`, plus the listed CI and evidence files. It validates all three actual source checkouts against those commits. A different product source rejects this lane; other PR branches keep the normal gates. Same-tree main and explicit main dispatch can use the targeted lane. The existing final aggregate still rejects failed, cancelled, skipped or missing jobs, and branch protection is unchanged.
+The user authorized merging the 2026-10-14 business repair group without full tests. The `business-profile` lane is limited to the reviewed product commits declared in [原 business-profile-ci 实现](https://github.com/CleverC2200/dsh-gea-plugin/blob/25860b5d73fca73238acc6365c33e848bacaa905/scripts/business-profile-ci.mjs), plus the listed CI and evidence files. It validates all three actual source checkouts against those commits. A different product source rejects this lane; other PR branches keep the normal gates. Same-tree main and explicit main dispatch can use the targeted lane. The existing final aggregate still rejects failed, cancelled, skipped or missing jobs, and branch protection is unchanged.
 
 Targeted checks retain static gates and builds. Workbench runs the new-conversation/inventory/company/version cases and the sidebar browser file. Manage runs business resources, raw MCP scope, bundled tools and the real Core business-admission file; existing Windows archive and security lanes remain. GEA runs reasoning, history, identity/budgets, Cube-New, HTTP errors and plugin-update regressions. This is source acceptance, not real model, business, Native or release acceptance. The separate CI optimization and new query direct-return work are excluded.
 

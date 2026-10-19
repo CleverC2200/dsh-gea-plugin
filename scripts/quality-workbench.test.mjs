@@ -41,6 +41,11 @@ function preparedFixture(t, worktree = false) {
   writeFileSync(join(source, ".gitignore"), "node_modules/\n");
   writeFileSync(join(source, "cordis.patch.yml"), "- insert: []\n");
   writeFileSync(join(source, "src/input.ts"), "export const input = true;\n");
+  mkdirSync(join(source, "business/inventory-apsplan"), { recursive: true });
+  writeFileSync(
+    join(source, "business/inventory-apsplan/sql.config.json"),
+    '{"agentId":"inventory-apsplan"}\n',
+  );
   for (const id of ["category", "mps", "regional"]) {
     mkdirSync(join(source, "static", id), { recursive: true });
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
@@ -82,6 +87,62 @@ function preparedFixture(t, worktree = false) {
   writeFileSync(join(prepared, "lib/host.js"), "built output\n");
   return { source, prepared, head, receipt, git };
 }
+
+function copiedSqlFixture(t) {
+  const fixture = preparedFixture(t);
+  const resource = "business/inventory-apsplan/sql.config.json";
+  const output = "lib/" + resource;
+  mkdirSync(join(fixture.prepared, output, ".."), { recursive: true });
+  copyFileSync(join(fixture.source, resource), join(fixture.prepared, output));
+  return { ...fixture, resource, output };
+}
+
+test("the APS SQL config copy is admitted only from the frozen Workbench blob and remains frozen in assets", async (t) => {
+  const fixture = copiedSqlFixture(t);
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  const assets = join(fixture.source, "..", "copied-assets");
+  await prepareWorkbenchAssets({ ...fixture, assets });
+  assert.deepEqual(
+    readFileSync(join(assets, fixture.output)),
+    readFileSync(join(fixture.source, fixture.resource)),
+  );
+  writeFileSync(join(fixture.prepared, fixture.output), "changed SQL config\n");
+  await assert.rejects(
+    verifyPreparedWorkbench(fixture),
+    /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+  );
+});
+
+test("the APS config exception rejects altered sources, staging, redirects and unknown generated configs", async (t) => {
+  for (const change of [
+    (f) => writeFileSync(join(f.source, f.resource), "changed source\n"),
+    (f) => writeFileSync(join(f.prepared, f.resource), "changed prepared source\n"),
+    (f) => f.git("-C", f.prepared, "add", f.output),
+    (f) => {
+      rmSync(join(f.prepared, f.output));
+      symlinkSync(join(f.source, f.resource), join(f.prepared, f.output));
+    },
+    (f) => {
+      const parent = join(f.prepared, f.output, "..");
+      rmSync(parent, { recursive: true });
+      symlinkSync(join(f.source, f.resource, ".."), parent, "dir");
+    },
+    (f) =>
+      copyFileSync(
+        join(f.source, f.resource),
+        join(f.prepared, f.output.replace("sql.config.json", "unknown.config.json")),
+      ),
+  ]) {
+    const fixture = copiedSqlFixture(t);
+    change(fixture);
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_(?:SOURCE_DIRTY|SOURCE_BLOB_MISMATCH|PREPARED_SOURCE_CHANGED)/,
+    );
+  }
+});
 
 function copiedSkillFixture(t) {
   const fixture = preparedFixture(t);

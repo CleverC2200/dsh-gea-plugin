@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
 import { executionDigest, verifyExecutionResults } from "./quality-test-execution.mjs";
+import { skippedTestShardsJobName } from "./quality-hosted-budget.mjs";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const json = (file) => JSON.parse(readFileSync(file));
 const write = (file, value) => writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
@@ -160,15 +161,24 @@ export function createShardCatalog({ indexes, expected }) {
     indexes: ordered,
     matrix: { include },
     hasShards: include.length > 0,
-    notApplicableJobs: ordered.every((index) => index.execution === "producer")
-      ? ["test-shards"]
-      : [],
+    notApplicableJobs: [
+      ...(ordered.every((index) => index.execution === "producer")
+        ? ["test-shards", skippedTestShardsJobName]
+        : []),
+      ...(ordered.some((index) => index.plan.binding.dependencyReview === true)
+        ? []
+        : ["Dependency review"]),
+    ],
     producerChecks: ordered.every((x) => x.stages.stages.checks.status === "passed")
       ? "passed"
       : "failed",
     requiredJobs: [
       "candidate-scope",
       "plan-test-shards",
+      "windows-plugin-update",
+      ...(ordered.some((index) => index.plan.binding.dependencyReview === true)
+        ? ["Dependency review"]
+        : []),
       ...ordered.flatMap((index) => [
         `prepare-${index.core}`,
         ...(index.execution === "producer"
