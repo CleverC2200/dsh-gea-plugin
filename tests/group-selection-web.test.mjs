@@ -7,7 +7,7 @@ import { testBrowser } from "./fixtures/test-browser.mjs";
 
 const plans = [
   {
-    planId: "p1",
+    planId: "p-jxs-2026-09-00001",
     versionId: "v1",
     seq: 1,
     periodId: "period-1",
@@ -29,7 +29,7 @@ const plans = [
     skuCount: 1,
   },
   {
-    planId: "p2",
+    planId: "p-jxs-2026-09-00002",
     versionId: "v2",
     seq: 1,
     periodId: "period-1",
@@ -51,7 +51,7 @@ const plans = [
     skuCount: 1,
   },
   {
-    planId: "p3",
+    planId: "p-jxs-2026-09-00003",
     versionId: "v3",
     seq: 1,
     periodId: "period-1",
@@ -85,7 +85,7 @@ const skuFor = (versionId) => ({
   price: "10",
 });
 /** 回执必须带真实身份：客户端会按 planId/versionId/状态链逐项核对，拼接错就会被判成“结果未知”。 */
-const planIdForVersion = (versionId) => "p" + versionId.slice(1);
+const planIdForVersion = (versionId) => "p-jxs-2026-09-0000" + versionId.slice(1);
 
 const openWorkbench = async (t) => {
   const app = await profile(t);
@@ -104,7 +104,7 @@ const openWorkbench = async (t) => {
       const records = status === null || status === "1" ? plans : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
-    const detail = /\/plans\/(p\d)$/.exec(path);
+    const detail = /\/plans\/(p-jxs-2026-09-\d{5})$/.exec(path);
     if (detail) {
       const plan = plans.find((row) => row.planId === detail[1]);
       return send({
@@ -126,7 +126,7 @@ const openWorkbench = async (t) => {
         },
       });
     }
-    const versions = /\/plans\/(p\d)\/versions$/.exec(path);
+    const versions = /\/plans\/(p-jxs-2026-09-\d{5})\/versions$/.exec(path);
     if (versions) {
       const plan = plans.find((row) => row.planId === versions[1]);
       return send([{ ...plan, id: plan.versionId, effective: true }]);
@@ -181,7 +181,9 @@ const openWorkbench = async (t) => {
 
 test("多选批量通过：勾选 3 笔一次性逐笔提交", { timeout: 90000 }, async (t) => {
   const { frame, groupBox, writes } = await openWorkbench(t);
-  const single = frame.locator('tbody label.arco-checkbox:has(input[value="p3"])').first();
+  const single = frame
+    .locator('tbody label.arco-checkbox:has(input[value="p-jxs-2026-09-00003"])')
+    .first();
   await expect(single).toBeVisible();
   await single.click();
   await groupBox.click();
@@ -219,7 +221,7 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
       const records = status === null || status === "1" ? plans : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
-    const detail = /\/plans\/(p\d)$/.exec(path);
+    const detail = /\/plans\/(p-jxs-2026-09-\d{5})$/.exec(path);
     if (detail) {
       const plan = plans.find((row) => row.planId === detail[1]);
       return send({
@@ -241,7 +243,7 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
         },
       });
     }
-    const versions = /\/plans\/(p\d)\/versions$/.exec(path);
+    const versions = /\/plans\/(p-jxs-2026-09-\d{5})\/versions$/.exec(path);
     if (versions) {
       const plan = plans.find((row) => row.planId === versions[1]);
       return send([{ ...plan, id: plan.versionId, effective: true }]);

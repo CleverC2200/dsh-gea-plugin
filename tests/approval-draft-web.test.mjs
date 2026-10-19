@@ -11,10 +11,11 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
     async (t) => {
       const app = await profile(t);
       const plan = {
-        planId: "p",
+        planId: "p-jxs-2026-09-00001",
         versionId: "v",
         periodId: "period-1",
         planTypeCode: "Y",
+        orderType: "M",
         status: 1,
         baseName: "草稿测试",
         orgCode: "region",
@@ -47,7 +48,7 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
           return send({ codeList: ["sales-plan:plan:region-approve"] });
         if (path.endsWith("/plans"))
           return send({ records: [plan], total: 1, current: 1, size: 20, pages: 1 });
-        if (path.endsWith("/plans/p"))
+        if (path.endsWith("/plans/p-jxs-2026-09-00001"))
           return send({
             currentVersion: { ...plan, id: "v", effective: true },
             skus: [sku],
@@ -66,7 +67,7 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
         if (path.endsWith("/versions/v/actions")) {
           writes.push(JSON.parse(req.body));
           return send({
-            planId: "p",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             fromStatus: 1,
             toStatus: 2,
@@ -79,13 +80,16 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
         return false;
       });
       await app.login();
-      const source = await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" });
+      const source = await app.rpc("sales-plan/draft", {
+        planId: "p-jxs-2026-09-00001",
+        versionId: "v",
+      });
       assert.equal(source.ok, true);
       const saved = await app.rpc("sales-plan/draft", {
-        planId: "p",
+        planId: "p-jxs-2026-09-00001",
         versionId: "v",
         draft: {
-          planId: "p",
+          planId: "p-jxs-2026-09-00001",
           versionId: "v",
           status: 1,
           sourceSnapshot: source.value.sourceSnapshot,
@@ -111,7 +115,7 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
       );
       await page.goto(app.origin);
       const frame = await openSalesPlan(page);
-      await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+      await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
       const approve = frame.getByRole("button", { name: "通过", exact: true });
       await expect(approve).toBeEnabled();
       let draftCalls = 0;
@@ -137,6 +141,8 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
           });
       });
       await approve.click();
+      const confirmation = frame.getByRole("dialog");
+      const submit = confirmation.getByRole("button", { name: "确认提交", exact: true });
       await expect.poll(() => draftCalls).toBe(1);
       assert.equal(
         writes.length,
@@ -145,23 +151,25 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
       );
       if (scenario === "delayed") {
         release();
+        await expect(submit).toBeEnabled();
+        await submit.click();
         await expect.poll(() => writes.length).toBe(1);
         assert.deepEqual(writes[0].adjustments, [{ skuCode: "1001", adjustQty: "2.125" }]);
         assert.equal(writes[0].approvalRole, undefined, "上游报文只发接口文档声明的字段");
         assert.equal(writes[0].expectedSnapshot, undefined);
       } else {
-        await expect(
-          frame.getByText("操作请求失败且未更新本地状态；请刷新权威队列后再决定。", {
-            exact: true,
-          }),
-        ).toBeVisible();
-        await expect(approve).toBeEnabled();
+        await expect(confirmation).toBeVisible();
+        await expect(submit).toBeDisabled();
         assert.equal(writes.length, 0);
-        const retained = await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" });
+        const retained = await app.rpc("sales-plan/draft", {
+          planId: "p-jxs-2026-09-00001",
+          versionId: "v",
+        });
         assert.deepEqual(retained.value.draft.adjustments, [
           { skuCode: "1001", adjustQty: "2.125" },
         ]);
       }
+      await confirmation.getByRole("button", { name: "关闭", exact: true }).click();
       await expect(frame.getByRole("dialog")).toHaveCount(0);
       assert.deepEqual(errors, []);
     },

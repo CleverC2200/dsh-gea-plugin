@@ -26,7 +26,7 @@ test(
     });
     let modelCalls = 0;
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -117,7 +117,7 @@ test(
         });
         return true;
       }
-      if (path.endsWith("/plans/p")) {
+      if (path.endsWith("/plans/p-jxs-2026-09-00001")) {
         reply({
           success: true,
           result: {
@@ -164,7 +164,7 @@ test(
         reply({
           success: true,
           result: {
-            planId: "p",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             fromStatus: 1,
             toStatus: 2,
@@ -210,7 +210,7 @@ test(
     await expect(totals).toContainText("¥500");
     await expect(totals).toContainText("50 件");
     await expect(totals).not.toContainText("¥200");
-    const monthPlan = frame.getByTestId("regional-approval-month-plan-p");
+    const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(monthPlan.locator("span").first()).toHaveText("¥150");
     // V1.8 #09：达成率改为「细进度条 + 百分比」，百分比前不再带「金额」。
     await expect(frame.locator("tbody").first()).toContainText("37.5%");

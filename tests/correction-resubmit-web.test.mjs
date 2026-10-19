@@ -237,7 +237,6 @@ test(
       throw error;
     }
     const d = f.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
-    await d.locator("summary").first().click();
     const input = d.getByRole("textbox", { name: "纠偏调整量 789" });
     await expect(input).toHaveValue("2");
     await input.fill("5");

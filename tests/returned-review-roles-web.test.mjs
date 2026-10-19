@@ -23,7 +23,7 @@ for (const [role, returnedStatus] of [
         .locator("label.arco-checkbox")
         .click();
       await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
-      await expect(frame.getByRole("button", { name: "通过", exact: true })).toBeDisabled();
+      await expect(frame.getByRole("button", { name: "通过", exact: true })).toHaveCount(0);
       assert.deepEqual(approved, []);
       assert.deepEqual(submitted, []);
     },

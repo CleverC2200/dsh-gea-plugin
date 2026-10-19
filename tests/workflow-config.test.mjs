@@ -68,7 +68,7 @@ test("live configuration preserves level gaps and projects no credentials", asyn
   const flow = salesPlanWorkflow("JD", value);
   assert.equal(flow.rolesKnown, true);
   assert.deepEqual(flow.pendingStatuses("category"), [4]);
-  assert.equal(flow.resubmit(6), 4);
+  assert.equal(flow.resubmit(6), 1);
   assert.equal(flow.transition(4, "REJECT"), 6);
 });
 test("configuration rejects incomplete, mismatched, duplicate and malformed responses", async () => {
@@ -107,7 +107,7 @@ test("cancelled and superseded loads cannot reinstall old configuration; failure
   await load();
   release([]);
   await assert.rejects(old, /STALE_SELECTION/);
-  assert.equal(salesPlanWorkflow("XN").resubmit(6), 2);
+  assert.equal(salesPlanWorkflow("XN").resubmit(6), 1);
   assert.equal(salesPlanWorkflow("XN").transition(2, "REJECT"), 6);
   const controller = new AbortController();
   const cancelled = createWorkflowLoader(async () => {

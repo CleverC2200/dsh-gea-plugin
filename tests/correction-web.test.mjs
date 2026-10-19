@@ -31,7 +31,7 @@ test(
           result: {
             records: [
               {
-                planId: "z",
+                planId: "p-jxs-2026-09-00001",
                 versionId: "v",
                 seq: 1,
                 periodId: "20260901",

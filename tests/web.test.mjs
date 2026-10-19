@@ -10,11 +10,12 @@ import {
 } from "./fixtures/business-page.mjs";
 
 const plan = {
-  planId: "9007199254740993",
+  planId: "p-jxs-2026-09-00001",
   versionId: "version-1",
   seq: 1,
   periodId: "period-1",
   planTypeCode: "Y",
+  orderType: "M",
   dealerCode: "dealer-a",
   status: 1,
   currentQty: "26445.000",

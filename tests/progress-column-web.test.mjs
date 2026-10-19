@@ -15,9 +15,9 @@ test(
   async (t) => {
     const app = await profile(t);
     const plans = [
-      { planId: "p1", versionId: "v1", qty: "50" },
-      { planId: "p2", versionId: "v2", qty: "97" },
-      { planId: "p3", versionId: "v3", qty: "120" },
+      { planId: "p-jxs-2026-09-00001", versionId: "v1", qty: "50" },
+      { planId: "p-jxs-2026-09-00002", versionId: "v2", qty: "97" },
+      { planId: "p-jxs-2026-09-00003", versionId: "v3", qty: "120" },
     ].map((item, index) => ({
       ...item,
       seq: 1,

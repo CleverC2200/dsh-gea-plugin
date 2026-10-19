@@ -9,7 +9,7 @@ import { testBrowser } from "./fixtures/test-browser.mjs";
 const fixture = async (t) => {
   const app = await profile(t);
   const plan = {
-    planId: "p",
+    planId: "p-jxs-2026-09-00001",
     versionId: "v",
     seq: 1,
     periodId: "period-1",
@@ -57,7 +57,7 @@ const fixture = async (t) => {
       const records = status === null || status === "1" ? [plan] : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
-    if (path.endsWith("/plans/p"))
+    if (path.endsWith("/plans/p-jxs-2026-09-00001"))
       return send({
         currentVersion: { ...plan, id: "v", effective: true },
         skus: [sku],
@@ -76,7 +76,7 @@ const fixture = async (t) => {
     if (path.endsWith("/versions/v/actions")) {
       writes.push(JSON.parse(req.body));
       return send({
-        planId: "p",
+        planId: "p-jxs-2026-09-00001",
         versionId: "v",
         fromStatus: 1,
         toStatus: 2,
@@ -123,7 +123,7 @@ test(
   { timeout: 90000 },
   async (t) => {
     const { frame, writes, errors } = await fixture(t);
-    await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+    await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame
       .getByRole("button", { name: /宝阳销售组/ })
       .first()
@@ -136,6 +136,7 @@ test(
     await input.fill("22.125");
     await expect(input.locator("xpath=ancestor::tr").locator("td").last()).toHaveText("221.25");
     await frame.getByRole("button", { name: "通过", exact: true }).click();
+    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes.length, { timeout: 15000 }).toBe(1);
     assert.equal(writes[0].action, "APPROVE");
     assert.deepEqual(
@@ -167,8 +168,9 @@ test(
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
     // 再改回原值，然后立刻通过：这次不该带任何调整量。
     await input.fill("20");
-    await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+    await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame.getByRole("button", { name: "通过", exact: true }).click();
+    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes.length, { timeout: 15000 }).toBe(1);
     assert.equal(writes[0].action, "APPROVE");
     assert.equal(writes[0].adjustments, undefined, "改回原值后不能再提交草稿里的旧调整量");

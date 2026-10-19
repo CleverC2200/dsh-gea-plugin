@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
-import { fixture, PLAN_A, PLAN_B } from "./fixtures/returned-review.mjs";
+import { fixture, PLAN_A, PLAN_B, PLAN_C } from "./fixtures/returned-review.mjs";
 
 const captureEvidence = async (page, app, name) => {
   const directory = process.env.S1_EVIDENCE_DIR;
@@ -289,8 +289,11 @@ test(
     await selectPlan(frame);
     await selectPlan(frame, "济南退回区域");
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    await expect(frame.getByText(`计划 ${PLAN_A} 仍有待核对`, { exact: false })).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("乌鲁木齐退回区域");
+    await expect(dialog).not.toContainText("济南退回区域");
+    assert.equal(submitted.length, 1);
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await frame.getByRole("button", { name: "刷新数据", exact: true }).click();
     await expect(frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" })).toHaveCount(0);
     await captureEvidence(page, app, "pending-receipt-recovery");

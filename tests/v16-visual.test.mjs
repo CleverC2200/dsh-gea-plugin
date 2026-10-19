@@ -27,7 +27,7 @@ test(
     });
     let _modelCalls = 0;
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -116,7 +116,7 @@ test(
         });
         return true;
       }
-      if (path.endsWith("/plans/p")) {
+      if (path.endsWith("/plans/p-jxs-2026-09-00001")) {
         reply({
           success: true,
           result: {
@@ -163,7 +163,7 @@ test(
         reply({
           success: true,
           result: {
-            planId: "p",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             fromStatus: 1,
             toStatus: 2,
@@ -250,7 +250,7 @@ test(
     assert.deepEqual(await readProgress(), before);
     await frame.getByTestId("regional-approval-stage-region").click();
     await frame.getByRole("tab", { name: "按区域", exact: true }).click();
-    const monthPlan = frame.getByTestId("regional-approval-month-plan-p");
+    const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(monthPlan.locator("span").first()).toHaveText("¥100");
     // 数量带单位：月计划列的数量显示成「10 件」。
     await expect(monthPlan.locator("small").first()).toHaveText("10 件");
@@ -289,16 +289,22 @@ test(
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
     await shot("06-autosaved");
     assert.equal(writes, 0);
-    const result = await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" });
+    const result = await app.rpc("sales-plan/draft", {
+      planId: "p-jxs-2026-09-00001",
+      versionId: "v",
+    });
     assert.equal(result.value.draft.adjustments[0].adjustQty, "2.125");
     const forged = await app.rpc("sales-plan/draft", {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       draft: { ...result.value.draft, sourceSnapshot: "f".repeat(64) },
     });
     assert.equal(forged.ok, false, "草稿必须绑定当前版本快照，伪造快照不能保存");
     assert.equal(forged.error.code, "STALE_DRAFT");
-    const unchanged = await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" });
+    const unchanged = await app.rpc("sales-plan/draft", {
+      planId: "p-jxs-2026-09-00001",
+      versionId: "v",
+    });
     assert.equal(unchanged.value.draft.adjustments[0].adjustQty, "2.125");
     await mkdir(".runtime/v16-feedback", { recursive: true });
     await page.screenshot({ path: ".runtime/v16-feedback/web-desktop.png", fullPage: true });
@@ -331,10 +337,12 @@ test(
     await expect(page.locator(".gea-shell-navigation [data-nav-icon]")).toHaveCount(0);
     await shot("10-sidebar-restored");
     await expect(page.getByRole("button", { name: "全屏展示", exact: true })).toHaveCount(0);
-    await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+    await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     allowApproval = true;
     await frame.getByRole("button", { name: "通过", exact: true }).click();
+    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes).toBe(1);
+    await frame.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).click();
     await expect(frame.getByRole("dialog")).toHaveCount(0);
     await shot("01-approval-completed");
     plan.status = 1;

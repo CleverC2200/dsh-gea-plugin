@@ -15,8 +15,10 @@ test(
     const app = await profile(t, {
       roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
     });
+    const planId = (key) =>
+      `p-jxs-2026-09-${String(["a1", "a2", "b1", "b2", "c1", "c2", "d1"].indexOf(key) + 1).padStart(5, "0")}`;
     const plan = (key, province, status) => ({
-      planId: `p-${key}`,
+      planId: planId(key),
       versionId: `v-${key}`,
       seq: 1,
       orderType: "M",
@@ -78,7 +80,7 @@ test(
           pages: 1,
         });
       }
-      const detail = /\/plans\/(p-[a-z0-9]+)$/.exec(path);
+      const detail = /\/plans\/(p-jxs-2026-09-\d{5})$/.exec(path);
       if (detail) {
         const row = plans.find((item) => item.planId === detail[1]);
         return send(

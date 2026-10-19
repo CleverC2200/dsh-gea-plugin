@@ -36,11 +36,11 @@ const plan = (id, provinceCode) => ({
 });
 const SUCCESS_PROVINCES = ["0013"];
 const plans = [
-  plan("p1", "0013"),
-  plan("p2", "0013"),
-  plan("p3", "0055"),
-  plan("p4", "0034"),
-  plan("p5", "0041"),
+  plan("p-jxs-2026-09-00001", "0013"),
+  plan("p-jxs-2026-09-00002", "0013"),
+  plan("p-jxs-2026-09-00003", "0055"),
+  plan("p-jxs-2026-09-00004", "0034"),
+  plan("p-jxs-2026-09-00005", "0041"),
 ];
 const skuFor = (versionId) => ({
   id: "s-" + versionId,
@@ -97,7 +97,7 @@ const openWorkbench = async (t) => {
     }
     if (path.endsWith("/notifications"))
       return send({ items: notifications, total: notifications.length });
-    const detail = /\/plans\/(p\d)$/.exec(path);
+    const detail = /\/plans\/(p-jxs-2026-09-\d{5})$/.exec(path);
     if (detail) {
       const row = plans.find((item) => item.planId === detail[1]);
       return send({
@@ -119,7 +119,7 @@ const openWorkbench = async (t) => {
         },
       });
     }
-    const versions = /\/plans\/(p\d)\/versions$/.exec(path);
+    const versions = /\/plans\/(p-jxs-2026-09-\d{5})\/versions$/.exec(path);
     if (versions) {
       const row = plans.find((item) => item.planId === versions[1]);
       return send([{ ...row, id: row.versionId, effective: true }]);
@@ -170,7 +170,7 @@ const openWorkbench = async (t) => {
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   const rowBox = (planId) =>
     frame.locator(`tbody label.arco-checkbox:has(input[value="${planId}"])`).first();
-  await expect(rowBox("p1")).toBeVisible();
+  await expect(rowBox("p-jxs-2026-09-00001")).toBeVisible();
   return { frame, rowBox, writes };
 };
 
@@ -190,13 +190,17 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
   const { frame, writes } = ctx;
 
   // 第一轮：省区 0013 的两笔——上游接受。
-  await batchApprove(ctx, ["p1", "p2"], "456");
+  await batchApprove(ctx, ["p-jxs-2026-09-00001", "p-jxs-2026-09-00002"], "456");
   await expect(frame.getByRole("dialog")).toContainText("成功 2 笔");
   await frame.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(frame.getByRole("dialog")).toBeHidden();
 
   // 第二轮：另外三个省区的三笔——上游以通知 payload 校验失败拒绝。
-  await batchApprove(ctx, ["p3", "p4", "p5"], "456");
+  await batchApprove(
+    ctx,
+    ["p-jxs-2026-09-00003", "p-jxs-2026-09-00004", "p-jxs-2026-09-00005"],
+    "456",
+  );
   const result = frame.getByRole("dialog");
   await expect(result).toContainText("成功 0 笔");
   await expect(result).toContainText("失败 3 笔");

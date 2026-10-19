@@ -16,7 +16,7 @@ test(
     const roles = [{ code: "sales_plan_region_approver", name: "区域审批" }];
     const app = await profile(t, { roles });
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -65,7 +65,7 @@ test(
         const records = status === null || status === "1" ? [plan] : [];
         return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
       }
-      if (path.endsWith("/plans/p"))
+      if (path.endsWith("/plans/p-jxs-2026-09-00001"))
         return send({
           currentVersion: { ...plan, id: "v", effective: true },
           skus: [sku],

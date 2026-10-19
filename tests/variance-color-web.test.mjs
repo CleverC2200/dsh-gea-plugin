@@ -12,7 +12,7 @@ import { testBrowser } from "./fixtures/test-browser.mjs";
 const both = async (t, planAmount, targetAmount) => {
   const app = await profile(t);
   const plan = {
-    planId: "p1",
+    planId: "p-jxs-2026-09-00001",
     versionId: "v1",
     seq: 1,
     periodId: "period-1",

@@ -11,10 +11,11 @@ test(
   async (t) => {
     const app = await profile(t);
     const plan = {
-      planId: "p-role-visible",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v-role-visible",
       periodId: "20260901",
       planTypeCode: "Y",
+      orderType: "M",
       status: 2,
       baseName: "跨节点区域审批",
       orgCode: "region-a",
@@ -39,7 +40,13 @@ test(
       if (path.endsWith("/periods"))
         return send({
           records: [
-            { periodId: "20260901", periodMonth: "2026-09", planTypeCode: "Y", status: "CLOSED" },
+            {
+              periodId: "20260901",
+              periodMonth: "2026-09",
+              planTypeCode: "Y",
+              orderType: "M",
+              status: "CLOSED",
+            },
           ],
           total: 1,
           current: 1,
@@ -118,6 +125,7 @@ test(
     const approve = frame.getByRole("button", { name: "通过", exact: true });
     await expect(approve).toBeEnabled();
     await approve.click();
+    await frame.getByRole("dialog").getByRole("button", { name: "确认提交", exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
     await expect(frame.getByRole("dialog", { name: "销售计划审批", exact: true })).toHaveCount(0);
     assert.equal(writes[0].action, "APPROVE");

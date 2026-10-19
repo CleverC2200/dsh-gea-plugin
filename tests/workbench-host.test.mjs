@@ -7,7 +7,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
-    const planId = "9007199254740993";
+    const planId = "p-jxs-2026-09-00001";
     let amount = "12.3000";
     let incomplete = false;
     let expired = false;
@@ -29,7 +29,7 @@ test(
       } else if (path.endsWith("/plans")) {
         const discovery = req.url.searchParams.get("pageSize") === "200";
         res.end(
-          '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' +
+          '{"success":true,"result":{"records":[{"planId":"p-jxs-2026-09-00001","versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' +
             (discovery ? "1" : "11") +
             ',"current":1,"size":' +
             (discovery ? "200" : "10") +
@@ -44,7 +44,7 @@ test(
         });
       } else if (path.endsWith("/logs")) {
         res.end(
-          '{"success":true,"result":{"records":[{"id":9007199254740999,"planId":"9007199254740993","versionId":"version/a","actionCode":"SAVE"}],"total":1}}',
+          '{"success":true,"result":{"records":[{"id":9007199254740999,"planId":"p-jxs-2026-09-00001","versionId":"version/a","actionCode":"SAVE"}],"total":1}}',
         );
       } else if (path.endsWith("/skus")) {
         const versionId = decodeURIComponent(path.split("/").slice(-2)[0]);
@@ -252,7 +252,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
-    const planId = "9007199254740993";
+    const planId = "p-jxs-2026-09-00001";
     const detail = {
       currentVersion: { id: "version-1", planId, targetAmount: "12.3000" },
       versions: [{ id: "version-1", planId }],
@@ -369,7 +369,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t, { config: { maxSnapshotBytes: 6000 } });
-    const planId = "9007199254740993";
+    const planId = "p-jxs-2026-09-00001";
     const versionId = "9007199254740995";
     const dealerCode = "9007199254740997";
     let huge = true;

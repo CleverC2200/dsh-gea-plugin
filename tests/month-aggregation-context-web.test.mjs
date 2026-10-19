@@ -15,11 +15,12 @@ test(
     });
     const plans = {
       20261001: {
-        planId: "plan-y",
+        planId: "p-jxs-2026-10-00001",
         versionId: "version-y",
         seq: 1,
         periodId: "20261001",
         planTypeCode: "Y",
+        orderType: "M",
         status: 2,
         baseName: "月度计划客户",
         dealerCode: "dealer-y",
@@ -37,11 +38,12 @@ test(
         skuCount: 0,
       },
       20261002: {
-        planId: "plan-dc",
+        planId: "p-jxs-2026-10-00002",
         versionId: "version-dc",
         seq: 1,
         periodId: "20261002",
         planTypeCode: "DC",
+        orderType: "M",
         status: 2,
         baseName: "大仓计划客户",
         dealerCode: "dealer-dc",
@@ -59,11 +61,12 @@ test(
         skuCount: 0,
       },
       20260901: {
-        planId: "plan-history",
+        planId: "p-jxs-2026-09-00003",
         versionId: "version-history",
         seq: 1,
         periodId: "20260901",
         planTypeCode: "Y",
+        orderType: "M",
         status: 10,
         baseName: "历史计划客户",
         dealerCode: "dealer-history",
@@ -256,13 +259,15 @@ test(
     assert.equal(combined.scope.planType, "mixed");
     assert.deepEqual(
       combined.visibleRows.map((row) => row.planId).toSorted(),
-      ["plan-dc", "plan-y"],
+      ["p-jxs-2026-10-00002", "p-jxs-2026-10-00001"],
       JSON.stringify(listResponses),
     );
     await expect(frame.locator("tbody").first()).toContainText("大仓计划客户");
 
-    await frame.locator('label.arco-checkbox:has(input[value="plan-dc"])').click();
-    await expect.poll(() => readContexts().at(-1)?.selectedPlanIds).toEqual(["plan-dc"]);
+    await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-10-00002"])').click();
+    await expect
+      .poll(() => readContexts().at(-1)?.selectedPlanIds)
+      .toEqual(["p-jxs-2026-10-00002"]);
     const planRequests = app.requests.filter((req) => req.url.pathname.endsWith("/plans"));
     assert.ok(
       planRequests.some(
