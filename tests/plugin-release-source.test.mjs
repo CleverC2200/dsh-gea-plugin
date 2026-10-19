@@ -497,3 +497,59 @@ test("partial signed channels still reject empty, duplicate and unknown referenc
     await assert.rejects(f.source.check(), /SOURCE_CHANNEL_INVALID/);
   }
 });
+
+test("signed companion releases share archive verification, allowlist and durable version approvals", async (t) => {
+  const f = await fixture(t),
+    G = "@cleverc2200/gea-dsh-prototype";
+  resign(f, (p) => {
+    p.companionReleases = p.releases.filter((row) => row.name !== G);
+    p.releases = p.releases.filter((row) => row.name === G);
+  });
+  const releases = await f.source.check();
+  assert.deepEqual(
+    releases.map((row) => row.name),
+    [G, ...companyPackageNames.filter((name) => name !== G)],
+  );
+  const companion = releases.find((row) => row.name === companyPackageNames[0]);
+  const archive = await f.source.download(companion, join(f.dir, "cache"));
+  assert.equal(digest(await readFile(archive)), companion.artifact.sha256);
+  const approval = JSON.parse(await readFile(join(f.dir, "trust/approved-channel.json"), "utf8"));
+  assert.equal(approval.releases.length, 3);
+  const reference = f.releases[0],
+    original = JSON.parse(f.objects.get(reference.url));
+  for (const [change, expected] of [
+    [
+      (release) => {
+        release.version = "1.0.0";
+      },
+      /SOURCE_VERSION_ROLLBACK/,
+    ],
+    [
+      (release) => {
+        release.artifact.sha256 = "d".repeat(64);
+        release.artifact.url = `https://fixture.invalid/releases/${release.artifact.sha256}/plugin.tgz`;
+      },
+      /SOURCE_SAME_VERSION_CONTENT_MISMATCH/,
+    ],
+  ]) {
+    const changed = structuredClone(original);
+    change(changed);
+    const bytes = Buffer.from(JSON.stringify(changed)),
+      sha256 = digest(bytes),
+      url = `https://fixture.invalid/releases/${sha256}/release.json`;
+    f.objects.set(url, bytes);
+    resign(f, (p) => {
+      p.revision = 2;
+      p.companionReleases[0] = { ...reference, url, sha256 };
+    });
+    await assert.rejects(f.source.check(), expected);
+  }
+  resign(f, (p) => {
+    p.companionReleases[0] = {
+      ...reference,
+      url: `https://outside.invalid/releases/${reference.sha256}/release.json`,
+    };
+  });
+  await assert.rejects(f.source.check(), /SOURCE_URL_FORBIDDEN/);
+  assert(!f.calls.some((row) => new URL(row.url).hostname === "outside.invalid"));
+});

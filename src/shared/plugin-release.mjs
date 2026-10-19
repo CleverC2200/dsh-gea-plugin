@@ -292,7 +292,7 @@ export function parsePluginChannel(value) {
   }
   if (Date.parse(value.expiresAt) <= Date.parse(value.issuedAt))
     throw Error("SOURCE_CHANNEL_TIME_INVALID");
-  const releases = value.releases.map((reference) => {
+  const parseReference = (reference) => {
     if (
       !record(reference) ||
       !companyPackageNames.includes(reference.name) ||
@@ -316,8 +316,24 @@ export function parsePluginChannel(value) {
       url: reference.url,
       sha256: reference.sha256,
     };
-  });
-  if (new Set(releases.map((reference) => reference.name)).size !== releases.length)
+  };
+  const releases = value.releases.map(parseReference);
+  let companionReleases;
+  if (value.companionReleases !== undefined) {
+    if (
+      !Array.isArray(value.companionReleases) ||
+      !value.companionReleases.length ||
+      releases.length !== 1 ||
+      releases[0].name !== "@cleverc2200/gea-dsh-prototype"
+    )
+      throw Error("SOURCE_CHANNEL_INVALID");
+    companionReleases = value.companionReleases.map(parseReference);
+  }
+  const combined = [...releases, ...(companionReleases ?? [])];
+  if (
+    combined.length > companyPackageNames.length ||
+    new Set(combined.map((reference) => reference.name)).size !== combined.length
+  )
     throw Error("SOURCE_CHANNEL_INVALID");
   return {
     schema: 1,
@@ -326,6 +342,7 @@ export function parsePluginChannel(value) {
     issuedAt: value.issuedAt,
     expiresAt: value.expiresAt,
     releases,
+    ...(companionReleases ? { companionReleases } : {}),
   };
 }
 /** Produce the complete next signed payload locally; publishing owns the atomic channel replacement. */
@@ -333,14 +350,19 @@ export function mergePluginChannelRelease({ previous, release, revision, issuedA
   const channel = parsePluginChannel(previous);
   if (!Number.isSafeInteger(revision) || revision <= channel.revision)
     throw Error("CHANNEL_REVISION_REQUIRED");
+  const selected =
+    channel.companionReleases && release.name !== "@cleverc2200/gea-dsh-prototype"
+      ? "companionReleases"
+      : "releases";
+  const references = channel[selected];
   return parsePluginChannel({
     ...channel,
     revision,
     issuedAt,
     expiresAt,
-    releases: channel.releases.some((reference) => reference.name === release.name)
-      ? channel.releases.map((reference) => (reference.name === release.name ? release : reference))
-      : [...channel.releases, release],
+    [selected]: references.some((reference) => reference.name === release.name)
+      ? references.map((reference) => (reference.name === release.name ? release : reference))
+      : [...references, release],
   });
 }
 export function satisfiesPluginVersion(version, range) {

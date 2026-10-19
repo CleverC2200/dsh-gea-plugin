@@ -376,7 +376,7 @@ export function createPluginReleaseSource(
       )
         return fail("SOURCE_CHANNEL_REPLAY");
       const releases: PluginRelease[] = [];
-      for (const row of channel.releases) {
+      for (const row of [...channel.releases, ...(channel.companionReleases ?? [])]) {
         const reference = object(row),
           name = text(reference.name),
           releaseHash = sha(reference.sha256);
