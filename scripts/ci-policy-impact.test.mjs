@@ -736,6 +736,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
   for (const file of [
     "tests/required.test.mjs",
+    ...policy.tests.filter((file) => !file.includes("*")),
     ...policy.browserFixtures,
     "tests/unrelated.test.mjs",
     "scripts/unrelated.test.mjs",
