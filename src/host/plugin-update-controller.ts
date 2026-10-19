@@ -570,6 +570,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       }
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
+        row(release.name, { candidateVersion: release.version });
         const selected = profile.packages.find((pkg) => pkg.root && pkg.name === release.name);
         if (!selected) {
           row(release.name, {
@@ -599,10 +600,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           });
           continue;
         }
+        const installed = await combinationManifests(profile, options.core, options.profile.dir);
         const plan = planPluginUpdate({
           release,
           core: options.core,
-          installed: await combinationManifests(profile, options.core, options.profile.dir),
+          installed,
         });
         if (generation !== checking || closed) return snapshot();
         if (plan.kind === "ready") {
@@ -619,7 +621,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             state: plan.kind === "current" ? "current" : "blocked",
             diagnostic: plan.kind === "blocked" ? plan.code : null,
             problem:
-              plan.kind === "blocked" ? planUpdateProblem(plan, release, options.core) : undefined,
+              plan.kind === "blocked"
+                ? planUpdateProblem(plan, release, options.core, installed)
+                : undefined,
           });
       }
     } catch (error) {

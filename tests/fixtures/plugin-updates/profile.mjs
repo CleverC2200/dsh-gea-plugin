@@ -208,6 +208,8 @@ export async function controllerFixture(
   }));
   return {
     root,
+    files,
+    privateKey,
     dir,
     profile,
     source,

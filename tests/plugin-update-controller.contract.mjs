@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm, realpath } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash, sign } from "node:crypto";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
 // Verify the unchanged public installation and locking source used by this SDK lane.
@@ -507,6 +507,71 @@ test("receipt replacement failure after mutation remains unknown and unreadable 
   await reopened.dispose();
 });
 
+test("signed same-version replacement reports a content conflict without disclosing source details", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const channelUrl = "https://fixture.invalid/channels/test.json";
+  const channel = JSON.parse(f.files.get(channelUrl));
+  const payload = JSON.parse(Buffer.from(channel.payloadBase64, "base64"));
+  const reference = payload.releases[2];
+  const release = JSON.parse(f.files.get(reference.url));
+  release.artifact.sha256 = "d".repeat(64);
+  release.artifact.url = `https://fixture.invalid/packages/${"d".repeat(64)}/plugin.tgz`;
+  const bytes = Buffer.from(JSON.stringify(release));
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const url = `https://fixture.invalid/releases/${sha256}/release.json`;
+  f.files.set(url, bytes);
+  payload.releases[2] = { ...reference, url, sha256 };
+  payload.revision = 2;
+  const signed = Buffer.from(JSON.stringify(payload));
+  f.files.set(
+    channelUrl,
+    Buffer.from(
+      JSON.stringify({
+        ...channel,
+        payloadBase64: signed.toString("base64"),
+        signatureBase64: sign(null, signed, f.privateKey).toString("base64"),
+      }),
+    ),
+  );
+  await controller.check();
+  const row = controller.snapshot().items.find((item) => item.packageName === release.name);
+  assert.equal(row.diagnostic, "SOURCE_SAME_VERSION_CONTENT_MISMATCH");
+  assert.deepEqual(row.problem, { kind: "policy", code: "content-mismatch" });
+  assert.equal(row.planId, null);
+  assert.equal(controller.snapshot().operation, null);
+  assert.doesNotMatch(JSON.stringify(row.problem), /fixture.invalid|signatureBase64|source-trust/);
+});
+
+test("older channel keeps its candidate and reports a downgrade without accepting an update", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const name = "@cleverc2200/gea-dsh-prototype";
+  const file = join(f.dir, "node_modules", name, "package.json");
+  const manifest = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(file, JSON.stringify({ ...manifest, version: "3.2.0" }));
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller.snapshot().items.find((item) => item.packageName === name);
+  assert.equal(row.state, "blocked");
+  assert.equal(row.diagnostic, "DOWNGRADE_FORBIDDEN");
+  assert.equal(row.installedVersion, "3.2.0");
+  assert.equal(row.candidateVersion, "3.1.0");
+  assert.deepEqual(row.problem, { kind: "policy", code: "channel-older" });
+  assert.equal(row.planId, null);
+  await assert.rejects(
+    controller.submit({ packageName: name, planId: "not-a-plan" }),
+    /UPDATE_PLAN/,
+  );
+  assert.equal(controller.snapshot().operation, null);
+});
+
 test("actual pinned pnpm reachable transitive peer blocks an incompatible independent update", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
@@ -531,6 +596,7 @@ test("actual pinned pnpm reachable transitive peer blocks an incompatible indepe
   assert.equal(row.state, "blocked");
   assert.equal(row.diagnostic, "COMBINATION_INCOMPATIBLE");
   assert.equal(row.planId, null);
+  assert.equal(row.candidateVersion, "3.1.0");
   assert.equal(row.problem.kind, "dependencies");
   assert.deepEqual(row.problem.requirements, [
     {
@@ -538,6 +604,8 @@ test("actual pinned pnpm reachable transitive peer blocks an incompatible indepe
       dependency: row.packageName,
       required: "3.0.0",
       installed: "3.1.0",
+      current: "3.0.0",
+      candidate: "3.1.0",
     },
   ]);
   const selected = graph.packages.find(

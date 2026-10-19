@@ -65,6 +65,7 @@ test("official detail slots check, update, close and reenter through controlled 
     statuses = 0,
     holdCheck = false,
     sourceMissing = false,
+    problem,
     checkAborted = false,
     updateAborted = false,
     updateResponded = false,
@@ -86,6 +87,7 @@ test("official detail slots check, update, close and reenter through controlled 
       diagnostic: "/private/secret-credential",
       ...(phase === "check-failed" ? { problem: { kind: "source", code: "signature" } } : {}),
       ...(sourceMissing ? { problem: { kind: "policy", code: "source-not-configured" } } : {}),
+      ...(problem ? { problem } : {}),
     })),
   });
   const server = createServer(async (req, res) => {
@@ -281,6 +283,91 @@ test("official detail slots check, update, close and reenter through controlled 
     .filter({ hasText: "The update source could not be verified." })
     .waitFor();
   assert.doesNotMatch(await page.locator("main").textContent(), /private|secret-credential/);
+  phase = "blocked";
+  problem = {
+    kind: "dependencies",
+    requirements: [
+      {
+        consumer: "dsh-agent-manage",
+        dependency: names[2],
+        required: "1.2.3",
+        installed: "1.2.4",
+        current: "1.2.3",
+        candidate: "1.2.4",
+        path: "/private/secret-credential",
+      },
+    ],
+  };
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "The installed plugin versions are incompatible with this update." })
+    .waitFor();
+  const requirement = page.locator(".gea-plugin-update-requirements");
+  await requirement.getByText("dsh-agent-manage", { exact: true }).waitFor();
+  assert.equal(await requirement.getByText(names[2], { exact: true }).count(), 1);
+  for (const label of [
+    "Required version",
+    "Current dependency version",
+    "Candidate dependency version",
+  ])
+    assert.equal(await requirement.getByText(label, { exact: true }).count(), 1);
+  assert.match(await requirement.textContent(), /1.2.3.*1.2.3.*1.2.4/);
+  await page
+    .getByText(
+      "Keep the installed versions. Check the listed requirements and wait for a compatible release before checking again.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(), 0);
+  assert.equal(
+    await page.getByRole("button", { name: "Check for updates", exact: true }).isEnabled(),
+    true,
+  );
+  await page.evaluate(() => window.fixture.locale("zh"));
+  await requirement.getByText("当前依赖版本", { exact: true }).waitFor();
+  await page
+    .getByText("请保留已安装版本，核对所列依赖要求，等待兼容版本发布后重新检查。", { exact: true })
+    .waitFor();
+  assert.doesNotMatch(await page.locator("main").textContent(), /private|secret-credential/);
+  if (process.env.GEA_DETAIL_SCREENSHOT) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: process.env.GEA_DETAIL_SCREENSHOT + "-blocked-desktop.png" });
+    await page.setViewportSize({ width: 390, height: 840 });
+    await page.screenshot({ path: process.env.GEA_DETAIL_SCREENSHOT + "-blocked-mobile.png" });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+    );
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  await page.evaluate(() => window.fixture.locale("en"));
+  for (const [code, english, chinese] of [
+    [
+      "channel-older",
+      "The channel version is older than the installed version. Keep the installed version and check again after a newer release is published.",
+      "频道版本早于已安装版本。请保留已安装版本，等待较新版本发布后重新检查。",
+    ],
+    [
+      "content-mismatch",
+      "The channel contains different content for the same version. Keep the installed version and ask the publisher to release a new version.",
+      "频道中相同版本的内容不一致。请保留已安装版本，并联系发布者发布新版本。",
+    ],
+  ]) {
+    problem = { kind: "policy", code };
+    await page.getByRole("alert").filter({ hasText: english }).waitFor();
+    assert.equal(
+      await page.locator(".gea-plugin-update-versions dd").nth(3).textContent(),
+      "1.2.4",
+    );
+    assert.equal(
+      await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(),
+      0,
+    );
+    await page.evaluate(() => window.fixture.locale("zh"));
+    await page.getByRole("alert").filter({ hasText: chinese }).waitFor();
+    await page.evaluate(() => window.fixture.locale("en"));
+  }
+  problem = undefined;
   phase = "unknown";
   await page.getByRole("alert").filter({ hasText: "The update result is unknown." }).waitFor();
   phase = "available";
