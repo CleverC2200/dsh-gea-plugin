@@ -7,7 +7,8 @@
     "tests/gateway-handshake.test.mjs",
     "scripts/runtime-environment.test.mjs",
     "tests/plugin-release.test.mjs",
-    "tests/optional-companion-manifest.test.mjs"
+    "tests/optional-companion-manifest.test.mjs",
+    "tests/plugin-release-preflight.test.mjs"
   ],
   "tests": [
     "tests/*.test.mjs",
@@ -338,6 +339,11 @@
     {
       "pattern": "^scripts/quality-peer-baseline\\.json$",
       "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:plugin-release-preflight|release-preflight|package-source-integrity|deliver-packages)\\.mjs$",
+      "tests": ["scripts/deliver-packages.test.mjs", "tests/plugin-release-preflight.test.mjs"]
     }
   ],
   "testOwners": {

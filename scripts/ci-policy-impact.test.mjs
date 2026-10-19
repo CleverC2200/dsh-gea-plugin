@@ -12,6 +12,7 @@ const businessCore = [
   "tests/business-page-grant.test.mjs",
   "tests/gateway-handshake.test.mjs",
   "scripts/runtime-environment.test.mjs",
+  "tests/plugin-release-preflight.test.mjs",
   "tests/plugin-release.test.mjs",
   "tests/optional-companion-manifest.test.mjs",
 ].sort();

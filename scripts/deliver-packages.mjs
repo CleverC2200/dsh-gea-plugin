@@ -1,5 +1,5 @@
 /** Assemble ordinary plugin artifacts from explicit, already built owner inputs. */
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   access,
@@ -25,6 +25,7 @@ import {
 
 import { validatePluginCombination } from "../src/shared/plugin-release.mjs";
 import { sdkVersion } from "./supported-cores.mjs";
+import { sourceChanges, verifyPackageBuild, builtArchive } from "./package-source-integrity.mjs";
 
 const names = {
   "dsh-agent-workbench": "@cleverc2200/dsh-agent-workbench",
@@ -135,19 +136,6 @@ function archive(path, expectedName, raw = false) {
   }
   return manifest;
 }
-function builtArchive(path, manifest, outputs) {
-  for (const key of [".", "./client"]) {
-    const target = runtimeExport(manifest.exports[key]).slice(2);
-    if (!outputs.some((output) => output.path === target)) fail("DELIVERY_BUILD_RECEIPT_INVALID");
-  }
-  for (const output of outputs) {
-    const bytes = execFileSync("tar", ["-xOf", path, `package/${output.path}`], {
-      stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    if (digest(bytes) !== output.sha256) fail("DELIVERY_STALE_BUILD_ARCHIVE");
-  }
-}
 
 async function preflight(input, destination) {
   const supported = findSupportedCore(input.core);
@@ -169,17 +157,7 @@ async function preflight(input, destination) {
     const row = rows[0],
       path = await realpath(absolute(row.path));
     if (git(path, ["rev-parse", "HEAD"]) !== row.head) fail("DELIVERY_SOURCE_HEAD_MISMATCH");
-    // Owners retain generated output changes; source edits must already be committed.
-    const changes = command(
-      "git",
-      ["-C", path, "status", "--porcelain", "--untracked-files=all"],
-      path,
-    )
-      .trimEnd()
-      .split("\n")
-      .filter(Boolean);
-    if (changes.some((line) => !/^(?:lib\/|client\/)/.test(line.slice(3))))
-      fail("DELIVERY_SOURCE_DIRTY");
+    if (sourceChanges(path).length) fail("DELIVERY_SOURCE_DIRTY");
     const manifest = await json(join(path, "package.json"));
     if (manifest.name !== names[repo]) fail("DELIVERY_PACKAGE_IDENTITY_MISMATCH");
     sdkPeers(manifest);
@@ -192,39 +170,12 @@ async function preflight(input, destination) {
       [join(path, "scripts/generate-plugin-package-version.mjs"), "--check"],
       path,
     );
-    const lock = repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml";
-    const lockBytes = await readFile(join(path, lock));
-    if (
-      digest(lockBytes) !==
-      digest(
-        execFileSync("git", ["-C", path, "show", `HEAD:${lock}`], {
-          stdio: ["ignore", "pipe", "pipe"],
-        }),
-      )
-    )
-      fail("DELIVERY_SOURCE_LOCK_MISMATCH");
-    const buildPath = absolute(row.buildReceipt),
-      build = await json(buildPath);
-    if (
-      build.exitCode !== 0 ||
-      build.sourceHead !== row.head ||
-      build.lockSha256 !== digest(lockBytes) ||
-      !build.command?.file ||
-      !Array.isArray(build.command.args) ||
-      (await realpath(absolute(build.command.cwd))) !== path ||
-      !Array.isArray(build.outputs) ||
-      !build.outputs.length
-    )
-      fail("DELIVERY_BUILD_RECEIPT_INVALID");
-    for (const output of build.outputs) {
-      if (
-        typeof output.path !== "string" ||
-        isAbsolute(output.path) ||
-        !within(path, resolve(path, output.path)) ||
-        digest(await readFile(join(path, output.path))) !== output.sha256
-      )
-        fail("DELIVERY_BUILD_OUTPUT_MISMATCH");
-    }
+    const build = await verifyPackageBuild({
+      path,
+      head: row.head,
+      buildReceipt: row.buildReceipt,
+      lock: repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml",
+    });
     if (repo !== "dsh-gea-plugin") {
       const rawManifest = archive(absolute(row.archive), manifest.name, true);
       builtArchive(row.archive, rawManifest, build.outputs);
@@ -258,8 +209,8 @@ async function preflight(input, destination) {
       path,
       manifest,
       outputs: build.outputs,
-      buildReceiptSha256: digest(await readFile(buildPath)),
-      lockSha256: digest(lockBytes),
+      buildReceiptSha256: build.buildReceiptSha256,
+      lockSha256: build.lockSha256,
     });
   }
   try {
