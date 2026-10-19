@@ -87,8 +87,13 @@ export function parseUpdateProblem(value: unknown) {
           : {}),
         requirements: row.requirements.map((raw) => {
           const item = record(raw),
-            required = text(item.required);
-          if (!/^[\w.*+^~<>=| -]*$/.test(required) || !semver.validRange(required))
+            required = item.required;
+          if (
+            typeof required !== "string" ||
+            required.length > 4096 ||
+            !/^[\w.*+^~<>=| -]*$/.test(required) ||
+            !semver.validRange(required)
+          )
             throw Error("UPDATE_STATUS_INVALID");
           return {
             consumer: npmName(item.consumer),

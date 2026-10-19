@@ -84,6 +84,7 @@ export type PluginChannel = {
   issuedAt: string;
   expiresAt: string;
   releases: PluginReleaseReference[];
+  companionReleases?: PluginReleaseReference[];
 };
 export function parsePluginChannel(value: unknown): PluginChannel;
 export function mergePluginChannelRelease(input: {

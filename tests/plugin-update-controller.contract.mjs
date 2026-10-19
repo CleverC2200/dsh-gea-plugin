@@ -558,6 +558,48 @@ test("dependency blocked companions recommend the executable first step of a ver
   }
 });
 
+test("signed bridge keeps the GEA plan while long companion incompatibility remains explicitly blocked", async (t) => {
+  const f = await bridgeControllerFixture(t);
+  const G = "@cleverc2200/gea-dsh-prototype",
+    W = "@cleverc2200/dsh-agent-workbench";
+  const file = join(f.dir, "node_modules", G, "package.json");
+  const manifest = JSON.parse(await readFile(file, "utf8"));
+  const required = Array.from({ length: 25 }, (_, index) => `1.0.${index}`).join(" || ");
+  manifest.peerDependencies[W] = required;
+  await writeFile(file, JSON.stringify(manifest));
+  const channel = "https://fixture.invalid/channels/test.json";
+  const envelope = JSON.parse(f.files.get(channel));
+  const payload = JSON.parse(Buffer.from(envelope.payloadBase64, "base64"));
+  payload.companionReleases = payload.releases.filter((row) => row.name !== G);
+  payload.releases = payload.releases.filter((row) => row.name === G);
+  const bytes = Buffer.from(JSON.stringify(payload));
+  f.files.set(
+    channel,
+    Buffer.from(
+      JSON.stringify({
+        ...envelope,
+        payloadBase64: bytes.toString("base64"),
+        signatureBase64: sign(null, bytes, f.privateKey).toString("base64"),
+      }),
+    ),
+  );
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const rows = controller.snapshot().items;
+  assert.equal(rows.find((row) => row.packageName === G).state, "available");
+  assert(rows.find((row) => row.packageName === G).planId);
+  const workbench = rows.find((row) => row.packageName === W);
+  assert.equal(workbench.state, "blocked");
+  assert.equal(workbench.diagnostic, "COMBINATION_INCOMPATIBLE");
+  assert.equal(workbench.problem.requirements[0].required, required);
+  assert.deepEqual(workbench.problem.nextStep, {
+    packageName: G,
+    version: "3.1.0",
+  });
+});
+
 test("an available bridge is not recommended when another installed consumer makes the full channel unreachable", async (t) => {
   const f = await bridgeControllerFixture(t);
   const consumerDir = join(f.dir, "node_modules/fixed-consumer");
@@ -663,7 +705,10 @@ test("legacy dependency status remains readable without next-step facts and unsa
   assert.equal(parsed.problem.nextStep, undefined);
   assert.equal(parsed.problem.requirements[0].current, null);
   assert.equal(parsed.problem.requirements[0].candidate, null);
-  blocked.problem.nextStep = { packageName: "/private/credential", version: "3.1.0" };
+  blocked.problem.nextStep = {
+    packageName: "/private/credential",
+    version: "3.1.0",
+  };
   assert.throws(() => parseUpdateClientStatus(value), /UPDATE_STATUS_INVALID/);
   blocked.problem.nextStep = {
     packageName: "@cleverc2200/gea-dsh-prototype",
@@ -1000,7 +1045,10 @@ test("Windows accepts pnpm file separators only for the selected exact archive",
     const release = { name: "selected-plugin" },
       archive = String.raw`C:\GEA\cache\signed.tgz`;
     const before = {
-      manifest: { dependencies: { other: "1.0.0", "selected-plugin": "1.0.0" }, retained: "keep" },
+      manifest: {
+        dependencies: { other: "1.0.0", "selected-plugin": "1.0.0" },
+        retained: "keep",
+      },
     };
     const after = structuredClone(before);
     after.manifest.dependencies[release.name] = "file:" + archive.replaceAll("\\", "/");
@@ -1090,7 +1138,9 @@ test("inactive package is excluded from batch plans and cannot be disabled after
   );
   assert.equal((await readPluginProfile(f.dir)).sha256, before);
   assert.equal(controller.snapshot().operation, null);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+    code: "ENOENT",
+  });
 });
 
 test("same-version inactive package reports its load diagnosis before current status", async (t) => {

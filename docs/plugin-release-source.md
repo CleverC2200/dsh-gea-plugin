@@ -6,9 +6,13 @@ Host 使用 [createPluginReleaseSource](../src/host/plugin-release-source.ts) �
 
 频道 envelope 为 `keyId/payloadBase64/signatureBase64`，签名验证原始 payload 字节。payload 使用 [PluginChannel](../src/shared/plugin-release.d.mts)，包含 schema 1、channel、正整数 revision、ISO issuedAt/expiresAt 和一至三个唯一公司包的 release 引用。未来时间容差五分钟，过期频道拒绝。release URL 的路径必须包含 release JSON 的 sha256 独立段，tgz URL 同样包含 tgz sha256。来源依次验证可信 key、频道签名、release hash、tgz size/hash、tar 路径及链接、最终 manifest 与 release 安装图。系统 tar 仅列表或读取 manifest，接受调用取消并对每次读取限时 30 秒，不解压归档到目录；归档不得含 node_modules、链接或越界路径。
 
+schema 1 可附带 `companionReleases`，此时 `releases` 只包含 GEA，companions 包含 Workbench/Manage 引用，两数组合计仍不超过三个包且不得重复。旧 GEA 忽略此字段，仅获得可独立安装的 GEA 更新；支持此字段的 GEA 验签后合并检查同一 payload 的全部引用，保持完整图与各包的来源、摘要和版本高水位保护。频道无需临时切换或修改客户端 URL。签名和单包 merge 保留分区，不能把 companions 平铺回旧 reader 的 `releases`。
+
 trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替换。它保存频道 revision/payload 摘要和各包已批准版本/摘要，暂时从频道省略的包仍保留历史准入，不能借此重置回退或同版换内容保护，不含凭据。重建 source 后继续拒绝旧 revision、相同 revision 的不同 payload、包版本回退与同版换内容。损坏回执报错，不重置为首次检查。单 Host 持有该目录，调用者应保持这个归属。缓存目录为 0700，tgz 为 0600；下载失败移除本次 partial，已验证 tgz 保留供官方安装器的 file 引用和恢复使用。
 
 [planPluginUpdate](../src/shared/plugin-release.mjs) 接收 release、实际固定 Core 的 head/version/sdk 及已安装 manifest。Core SDK 版本由可信宿主读取，不从频道选择。被替换包必须已安装；更新不降级，不执行同版本替换。`dataCompatibility.kind=preserve` 才能自动计划，migration-required 必须先完成独立迁移。计划用替换后的完整图检查 candidate 与所有已安装消费者的必需/可选 peers，以及公司包 dependencies；可选 peer 缺席可接受，已安装时必须满足。结果为 ready/current/blocked；没有静默更新依赖。
+
+不兼容诊断保留实际 semver 范围。`requirements.required` 限4096字符并校验真实 semver 范围；包名和版本继续限160字符。较长的有效 exact OR 不得使其它可执行更新计划失效，真实不兼容仍显示 blocked。
 
 ## 列表与批量更新
 
@@ -48,7 +52,12 @@ preflight 使用以下文件合同，所有路径为绝对路径。sources、tar
       "metadata": "/absolute/metadata.json"
     }
   ],
-  "deployed": [{ "id": "deployed-profile-or-channel", "installed": ["FULL_INSTALLED_MANIFESTS"] }],
+  "deployed": [
+    {
+      "id": "deployed-profile-or-channel",
+      "installed": ["FULL_INSTALLED_MANIFESTS"]
+    }
+  ],
   "supportedStarts": [
     {
       "id": "supported-start",
