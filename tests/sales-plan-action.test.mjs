@@ -785,7 +785,12 @@ test("Host correction detail forwards Z read intent and preserves the server M r
       planTypeCode: "Y",
       orderType: "M",
     },
-    hasCorrection: false,
+    correctionContext: {
+      contract: "absolute-net-v1",
+      monthlyApproved: true,
+      approvalOpen: true,
+      hasCorrection: false,
+    },
     skus: [
       {
         id: "s",
@@ -815,7 +820,7 @@ test("Host correction detail forwards Z read intent and preserves the server M r
   assert.equal(received.pathname, "/sales-plan/plans/p");
   assert.equal(received.searchParams.get("orderType"), "Z");
   assert.equal(detail.currentVersion.orderType, "M");
-  assert.equal(detail.hasCorrection, false);
+  assert.deepEqual(detail.correctionContext, projection.correctionContext);
   assert.deepEqual(detail.skus, projection.skus);
   assert.deepEqual(detail.actionContext.allowedActions, []);
   assert.equal(f.writes(), 0);
