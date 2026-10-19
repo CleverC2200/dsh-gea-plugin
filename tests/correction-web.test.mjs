@@ -115,7 +115,7 @@ test(
 
 import { correctionService } from "./fixtures/correction-service.mjs";
 test(
-  "correction saves absolute drafts, approves inherited values, returns only its node, then reconciles DMS mock",
+  "correction saves absolute drafts, blocks returned approvals, and reconciles legal terminal DMS mock",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
@@ -124,7 +124,7 @@ test(
         name: role,
       })),
     });
-    const service = correctionService();
+    let service = correctionService();
     app.route(service.route);
     await app.login();
     const browser = await testBrowser(t, () =>
@@ -141,7 +141,13 @@ test(
     await page.goto(app.origin);
     const f = await openSalesPlan(page);
     await f.getByRole("tab", { name: "纠偏", exact: true }).click();
-    await expect(f.getByText("50.0%", { exact: true })).toBeVisible();
+    await expect(f.getByRole("tab", { name: "纠偏", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(
+      f.getByTestId("correction-workbench").getByText("50.0%", { exact: true }),
+    ).toBeVisible();
     const open = async () => {
       const status = service.detail().currentVersion.status;
       const node =
@@ -160,57 +166,86 @@ test(
         .click();
       await f.getByRole("button", { name: "纠偏客户", exact: true }).click();
     };
-    await open();
-    let d = f.getByRole("dialog", { name: "纠偏调整明细", exact: true });
-    await expect(d.getByRole("textbox", { name: "调整量 123" })).toHaveValue("2");
-    await mkdir(".runtime/correction-evidence", { recursive: true });
-    await page.screenshot({
-      path: ".runtime/correction-evidence/detail.png",
-      fullPage: true,
-      animations: "disabled",
-    });
-    await d.getByRole("textbox", { name: "调整量 123" }).fill("8");
-    await d.getByRole("button", { name: "保存调整", exact: true }).click();
-    await expect(d).toHaveCount(0);
-    assert.equal(service.detail().skus[0].regionAdjAddQty, "8");
-    assert.equal(service.detail().skus[0].regionConfirmedQty, undefined);
-    assert.equal(service.detail().currentVersion.status, 1);
-    for (const _stage of [1, 2]) {
+    for (const outcome of ["reject", "approve"]) {
+      if (outcome === "approve") {
+        service = correctionService();
+        app.route(service.route);
+        await f.getByRole("button", { name: "刷新纠偏", exact: true }).click();
+      }
       await open();
-      await expect(d.getByRole("textbox", { name: "调整量 123" })).toHaveValue("8");
+      const d = f.getByRole("dialog", { name: "纠偏调整明细", exact: true });
+      await expect(d.getByRole("textbox", { name: "调整量 123" })).toHaveValue("2");
+      await mkdir(".runtime/correction-evidence", { recursive: true });
+      await page.screenshot({
+        path: ".runtime/correction-evidence/detail.png",
+        fullPage: true,
+        animations: "disabled",
+      });
+      await d.getByRole("textbox", { name: "调整量 123" }).fill("8");
+      await d.getByRole("button", { name: "保存调整", exact: true }).click();
+      await expect(d).toHaveCount(0);
+      assert.equal(service.detail().skus[0].regionAdjAddQty, "8");
+      assert.equal(service.detail().skus[0].regionAdjAddAmount, "16.00");
+      assert.equal(service.detail().skus[0].regionAdjCutAmount, "0.00");
+      assert.equal(service.detail().skus[0].regionConfirmedQty, undefined);
+      assert.equal(service.detail().currentVersion.status, 1);
+      for (const _stage of [1, 2]) {
+        await open();
+        await expect(d.getByRole("textbox", { name: "调整量 123" })).toHaveValue("8");
+        await d.getByRole("button", { name: "通过", exact: true }).click();
+        await expect(d).toHaveCount(0);
+      }
+      assert.equal(service.detail().skus[0].provinceConfirmedQty, "38");
+      await open();
+      await d.getByRole("textbox", { name: "调整量 123" }).fill("-31");
+      await expect(d.getByRole("button", { name: "通过", exact: true })).toBeDisabled();
+      await d.getByRole("textbox", { name: "调整量 123" }).fill("-3");
       await d.getByRole("button", { name: "通过", exact: true }).click();
       await expect(d).toHaveCount(0);
-    }
-    assert.equal(service.detail().skus[0].provinceConfirmedQty, "38");
-    await open();
-    await d.getByRole("textbox", { name: "调整量 123" }).fill("-31");
-    await expect(d.getByRole("button", { name: "通过", exact: true })).toBeDisabled();
-    await d.getByRole("textbox", { name: "调整量 123" }).fill("-3");
-    await d.getByRole("button", { name: "通过", exact: true }).click();
-    await expect(d).toHaveCount(0);
-    assert.equal(service.detail().skus[0].areaConfirmedQty, "27");
-    await open();
-    await d.getByRole("textbox", { name: "退回原因" }).fill("重新核对");
-    await d.getByRole("button", { name: "退回", exact: true }).click();
-    await expect(d).toHaveCount(0);
-    assert.equal(service.detail().currentVersion.status, 9);
-    assert.equal(service.detail().skus[0].areaAdjCutQty, "3");
-    assert.equal(service.detail().skus[0].categoryAdjCutQty, null);
-    for (const _stage of [9, 4]) {
+      assert.equal(service.detail().skus[0].areaConfirmedQty, "27");
       await open();
+      if (outcome === "reject") {
+        await d.getByRole("textbox", { name: "退回原因" }).fill("重新核对");
+        await d.getByRole("button", { name: "退回", exact: true }).click();
+        await expect(d).toHaveCount(0);
+        assert.equal(service.detail().currentVersion.status, 9);
+        assert.equal(service.detail().skus[0].areaAdjCutQty, "3");
+        for (const suffix of [
+          "AdjAddQty",
+          "AdjCutQty",
+          "AdjAddAmount",
+          "AdjCutAmount",
+          "ConfirmedQty",
+          "ConfirmedAmount",
+        ])
+          assert.equal(service.detail().skus[0]["category" + suffix], null);
+        const writes = service.writes.length;
+        const requests = app.requests.filter((r) => r.url.pathname.endsWith("/actions")).length;
+        await open();
+        for (const name of ["保存调整", "通过", "退回"])
+          await expect(d.getByRole("button", { name, exact: true })).toBeDisabled();
+        await d.getByRole("button", { name: "关闭", exact: true }).click();
+        assert.equal(service.writes.length, writes);
+        assert.equal(
+          app.requests.filter((r) => r.url.pathname.endsWith("/actions")).length,
+          requests,
+        );
+        assert.equal(service.detail().currentVersion.status, 9);
+        continue;
+      }
       await d.getByRole("button", { name: "通过", exact: true }).click();
       await expect(d).toHaveCount(0);
+      assert.equal(service.detail().currentVersion.status, 5);
+      service.deliver("partial");
+      await open();
+      await expect(d.getByText("DMS mock · UNKNOWN", { exact: true })).toBeVisible();
+      await d.getByRole("button", { name: "关闭", exact: true }).click();
+      service.reconcile();
+      service.deliver("success");
+      await f.getByRole("button", { name: "刷新纠偏", exact: true }).click();
+      await open();
+      await expect(d.getByText("DMS mock · SYNCED", { exact: true })).toBeVisible();
+      assert.equal(service.detail().currentVersion.status, 10);
     }
-    assert.equal(service.detail().currentVersion.status, 5);
-    service.deliver("partial");
-    await open();
-    await expect(d.getByText("DMS mock · UNKNOWN", { exact: true })).toBeVisible();
-    await d.getByRole("button", { name: "关闭", exact: true }).click();
-    service.reconcile();
-    service.deliver("success");
-    await f.getByRole("button", { name: "刷新纠偏", exact: true }).click();
-    await open();
-    await expect(d.getByText("DMS mock · SYNCED", { exact: true })).toBeVisible();
-    assert.equal(service.detail().currentVersion.status, 10);
   },
 );
