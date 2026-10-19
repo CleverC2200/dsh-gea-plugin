@@ -173,7 +173,9 @@ async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
           : null,
       },
       customerInventory:
-        value.customerInventory && typeof value.customerInventory === "object"
+        "customerInventory" in value &&
+        value.customerInventory &&
+        typeof value.customerInventory === "object"
           ? (value.customerInventory as CustomerInventoryIdentity)
           : null,
     };
