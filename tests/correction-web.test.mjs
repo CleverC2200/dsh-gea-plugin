@@ -3,7 +3,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan, openSalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 
 test(
@@ -139,7 +139,7 @@ test(
       })),
     );
     await page.goto(app.origin);
-    const f = await openSalesPlan(page);
+    const f = await openReadySalesPlan(page);
     await f.getByRole("tab", { name: "纠偏", exact: true }).click();
     await expect(f.getByRole("tab", { name: "纠偏", exact: true })).toHaveAttribute(
       "aria-selected",
@@ -159,11 +159,11 @@ test(
       const toggle = f.locator('button[aria-controls="correction-stage-lane"]');
       if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
       const lane = f.getByRole("navigation", { name: "纠偏查看节点", exact: true });
-      const selectedStage = lane.getByRole("button", {
-        name: new RegExp((status === 5 || status === 10 ? "当前节点" : node) + "$"),
-      });
-      if ((await selectedStage.getAttribute("aria-pressed")) !== "true")
-        await selectedStage.click();
+      await lane
+        .getByRole("button", {
+          name: new RegExp((status === 5 || status === 10 ? "当前节点" : node) + "$"),
+        })
+        .click();
       await f.getByRole("button", { name: "纠偏客户", exact: true }).click();
     };
     for (const outcome of ["reject", "approve"]) {
@@ -175,6 +175,14 @@ test(
       await open();
       const d = f.getByRole("dialog", { name: "纠偏调整明细", exact: true });
       await expect(d.getByRole("textbox", { name: "调整量 123" })).toHaveValue("2");
+      await d.getByRole("button", { name: "关闭", exact: true }).click();
+      const activeStage = f
+        .getByRole("navigation", { name: "纠偏查看节点", exact: true })
+        .getByRole("button", { name: /城市经理$/ });
+      await expect(activeStage).toHaveAttribute("aria-pressed", "true");
+      await activeStage.click();
+      await expect(f.getByRole("button", { name: "纠偏客户", exact: true })).toBeVisible();
+      await open();
       await mkdir(".runtime/correction-evidence", { recursive: true });
       await page.screenshot({
         path: ".runtime/correction-evidence/detail.png",
