@@ -469,6 +469,37 @@ function correctionFixture(t, actionReply) {
   };
 }
 
+test("existing correction approval reuses the original action body without new context fields", async (t) => {
+  let sent;
+  const f = correctionFixture(t, async (url, init) => {
+    sent = { path: new URL(url).pathname, body: JSON.parse(init.body) };
+    return Response.json({ success: true, result: { approved: true } });
+  });
+  f.detail.actionContext = undefined;
+  f.detail.correctionContext = undefined;
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  assert.deepEqual(
+    await f.business.salesPlanAction(
+      f.payload({
+        action: "APPROVE",
+        adjustmentMode: undefined,
+        expectedSnapshot: undefined,
+      }),
+      signal,
+    ),
+    { approved: true },
+  );
+  assert.deepEqual(sent, {
+    path: "/sales-plan/plans/versions/v/actions",
+    body: {
+      action: "APPROVE",
+      expectedStatus: 4,
+      adjustments: [{ skuCode: "789", adjustQty: "8" }],
+    },
+  });
+});
+
 test("absolute correction SAVE sends its mode, snapshot and node role to GEA", async (t) => {
   let body;
   const f = correctionFixture(t, async (_url, init) => {

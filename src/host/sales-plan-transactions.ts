@@ -382,6 +382,9 @@ export class SalesPlanTransactions {
         salesPlanStagesForRoles(auth.roles),
       );
       if (
+        detail.correctionContext?.contract !== "absolute-net-v1" ||
+        detail.correctionContext.monthlyApproved !== true ||
+        detail.correctionContext.approvalOpen !== true ||
         !access ||
         !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest["action"]) ||
         !detail.currentVersion.submitter ||
