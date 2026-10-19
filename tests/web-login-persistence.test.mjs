@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "esbuild";
@@ -73,13 +73,18 @@ test("ordinary plugin login survives a controlled process stop and restart witho
   const { execFileSync } = await import("node:child_process");
   const { writeFile } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "gea-login-process-"));
-  const moduleDir = await mkdtemp(join(process.cwd(), ".scratch-login-process-"));
+  await mkdir(".scratch", { recursive: true });
+  const moduleDir = await mkdtemp(join(process.cwd(), ".scratch", "login-process-"));
   t.after(async () => {
     await rm(dir, { recursive: true, force: true });
     await rm(moduleDir, { recursive: true, force: true });
   });
   const moduleFile = join(moduleDir, "login.cjs");
   await writeFile(moduleFile, outputFiles[0].text);
+  assert.equal(
+    execFileSync("git", ["status", "--porcelain", "--", moduleDir], { encoding: "utf8" }),
+    "",
+  );
   const worker = `
     const {Business,attachWebLogin}=require(process.argv[1]);
     globalThis.fetch=async()=>{throw Error('UNEXPECTED_NETWORK');};

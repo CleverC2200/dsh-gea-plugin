@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile, readFile, access } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { prepareSourcePlugins, readSourceCombination } from "../scripts/source-profile.mjs";
+import {
+  prepareSourcePlugins,
+  readSourceCombination,
+  resolveSourceInputs,
+} from "../scripts/source-profile.mjs";
 import { sourceAssemblyFixture, names } from "./fixtures/source-assembly.mjs";
 
 test(
@@ -50,3 +54,13 @@ test(
     );
   },
 );
+
+test("dirty source rejection reports the changed paths without weakening source admission", async (t) => {
+  const { sources } = await sourceAssemblyFixture(t);
+  await writeFile(join(sources[0].source, "cordis.patch.yml"), "changed fixture input\n");
+  await assert.rejects(resolveSourceInputs(sources), (error) => {
+    assert.equal(error.message, "SOURCE_PLUGIN_DIRTY: dsh-agent-workbench");
+    assert.deepEqual(error.changes, ["M cordis.patch.yml"]);
+    return true;
+  });
+});

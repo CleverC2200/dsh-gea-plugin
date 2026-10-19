@@ -8,7 +8,7 @@ import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import { readFile, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { isHtmlPluginRetired } from "./html-plugin-selection.ts";
+import { isHtmlPluginRemoved, isHtmlPluginRetired } from "./html-plugin-selection.ts";
 import { readHtmlBatch } from "./html-query-batch.ts";
 import type { Business } from "./host/business.ts";
 import { contractFromPlugin, type CapabilityContract } from "./capability/contract.ts";
@@ -69,6 +69,7 @@ export async function registerHtmlPlugins(
   })();
   for (const resource of packages) {
     const { directory, htmlPath: path, manifest } = resource;
+    if (isHtmlPluginRemoved(manifest.id)) continue;
     const mock = manifest.mode === "mock";
     const pages = manifest.pages ?? [{ id: manifest.id, name: manifest.name, view: "" }];
     if (

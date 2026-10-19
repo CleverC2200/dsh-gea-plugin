@@ -33,7 +33,15 @@ export function officialGeaBranding(config, { companySeed } = {}) {
             {
               from: fileURLToPath(new URL(".", import.meta.url)),
               to: ".",
-              filter: ["official-main.cjs", "company-bootstrap.mjs"],
+              filter: [
+                "official-main.cjs",
+                "company-bootstrap.mjs",
+                "company-gea-refresh.mjs",
+                "legacy-gea-cleanup.mjs",
+                "plugin-storage.mjs",
+                "plugin-store-lock.mjs",
+                "physical-fs.mjs",
+              ],
             },
           ]
         : []),

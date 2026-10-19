@@ -113,7 +113,7 @@ test("Windows update scope is bound to its own PR and frozen source", (t) => {
   );
   assert.equal(selectPluginUpdateLane({ ...input, branch: "unrelated" }, a), false);
   const frozen = mkdtempSync(join(tmpdir(), "gea-frozen-bootstrap-"));
-  t.after(() => rmSync(frozen, { recursive: true, force: true }));
+  t.after(() => rmSync(frozen, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
   const git = (...args) => {
     const result = spawnSync("git", args, { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);

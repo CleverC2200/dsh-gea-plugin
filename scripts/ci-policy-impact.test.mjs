@@ -562,3 +562,15 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   );
   assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
 });
+
+test("desktop GEA changes select the upgrade and user-content preservation regressions", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.own, "desktop/legacy-gea-cleanup.mjs", "export const changed = true;\n");
+  const plan = fixture.plan();
+  assert.ok(
+    plan.reasons[fixture.own.repo + "/desktop/legacy-gea-cleanup.mjs"].includes(
+      "scripts/desktop-gea-upgrade.test.mjs",
+    ),
+  );
+  assert.deepEqual(plan.required, businessCore);
+});

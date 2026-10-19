@@ -73,14 +73,15 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
       encoding: "utf8",
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     }).trim();
-    if (
-      execFileSync("git", ["status", "--porcelain"], {
-        cwd: source,
-        encoding: "utf8",
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }).trim()
-    )
-      throw Error("SOURCE_PLUGIN_DIRTY: " + repo);
+    const changes = execFileSync("git", ["status", "--porcelain"], {
+      cwd: source,
+      encoding: "utf8",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+    }).trim();
+    if (changes)
+      throw Object.assign(Error("SOURCE_PLUGIN_DIRTY: " + repo), {
+        changes: changes.split("\n"),
+      });
     if (input.integration) {
       const integration = await realpath(input.integration);
       if (
