@@ -17,6 +17,7 @@ const fixture = async (
     role = "region",
     returnedStatus = 7,
     denySubmit = false,
+    endedReject = false,
     readbackFailure = false,
     serviceReady = true,
     shortened = false,
@@ -282,6 +283,22 @@ const fixture = async (
       assert.equal(body.expectedSnapshot, "a".repeat(64));
       assert.equal(body.expectedStatus, row.status);
       attempts.push(body);
+      if (endedReject && planId === PLAN_A && body.action === "REJECT") {
+        reply(
+          {
+            success: false,
+            code: 409,
+            message: "该版本审批实例已经结束",
+            errorCode: "SALES_PLAN_APPROVAL_STATE_INVALID",
+            category: "CONFLICT",
+            retryable: false,
+            requestId: req.headers["x-request-id"],
+            traceId: req.headers["x-request-id"],
+          },
+          409,
+        );
+        return true;
+      }
       if (body.action === "APPROVE" && row.status >= 6) {
         reply({ success: false, message: "当前用户不具备审批权限" }, 403);
         return true;
@@ -1013,5 +1030,39 @@ test(
     ).toBeVisible();
     await expect(resume).toHaveCount(0);
     assert.equal(submitted.length, 1);
+  },
+);
+
+test(
+  "an ended returned instance fails honestly while the other batch rejection succeeds",
+  { timeout: 90000 },
+  async (t) => {
+    const { frame, rejected, attempts, submitted, state } = await fixture(t, {
+      endedReject: true,
+    });
+    await selectPlan(frame);
+    await selectPlan(frame, "沈阳待审批");
+    await frame.getByRole("button", { name: "退回", exact: true }).click();
+    const dialog = frame.getByRole("dialog");
+    await dialog
+      .getByRole("textbox", { name: "批量审批备注" })
+      .fill("核对后继续退回");
+    await dialog
+      .getByRole("button", { name: "确认批量退回", exact: true })
+      .press("Enter");
+    await expect(dialog).toContainText("成功 1 笔，失败 1 笔", {
+      timeout: 30000,
+    });
+    await expect(dialog).toContainText("该版本审批实例已经结束");
+    await expect(dialog).not.toContainText("退回重提」重新提交");
+    assert.equal(state.get(PLAN_A).status, 7);
+    assert.equal(state.get(PLAN_C).status, 6);
+    assert.deepEqual(
+      rejected.map(({ planId }) => planId),
+      [PLAN_C],
+    );
+    assert.equal(attempts.length, 2);
+    assert.ok(attempts.every((body) => body.action === "REJECT"));
+    assert.equal(submitted.length, 0);
   },
 );
