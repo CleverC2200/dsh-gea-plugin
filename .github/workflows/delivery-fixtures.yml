@@ -6,6 +6,11 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      probe_only:
+        description: "Diagnose the frozen Native owner ACL guard without Core, build or App execution"
+        required: false
+        type: boolean
+        default: false
       windows_complete_input:
         description: "Fixed desktop version, Core8cf, merged GEA SHA and three immutable published package identities as JSON"
         required: false
@@ -24,7 +29,7 @@ permissions:
 
 jobs:
   delivery-fixtures:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    if: (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && !inputs.probe_only
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +50,7 @@ jobs:
       - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
 
   windows-complete-package:
-    if: github.event_name == 'workflow_dispatch' && (inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
+    if: github.event_name == 'workflow_dispatch' && !inputs.probe_only && (inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
     runs-on: windows-2025
     timeout-minutes: 90
     env:
@@ -128,3 +133,30 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/bundle-binding.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/public/**
+
+  windows-acl-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.probe_only
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Diagnose the original Native private owner guard
+        run: |
+          $outputPath = Join-Path $env:RUNNER_TEMP 'native-acl-probe.safe.json'
+          node scripts/windows-complete-local/acl-probe.mjs --output $outputPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Keep only safe ACL classification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-acl-probe-${{ github.run_id }}-${{ github.sha }}
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/native-acl-probe.safe.json
