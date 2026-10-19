@@ -80,6 +80,30 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
+      /^lib\/business\/inventory-(?:aqkc|fc|qll|apsplan|dealer)\/sql\.config\.json$/.test(file)
+    ) {
+      const resource = file.slice(4);
+      const entry = git(source, "ls-tree", head, "--", resource);
+      const original = join(source, resource),
+        output = join(prepared, file);
+      if (
+        /^100644 blob [a-f0-9]{40}\t/.test(entry) &&
+        (await lstat(output)).isFile() &&
+        (await realpath(output)) === output &&
+        (await lstat(original)).isFile() &&
+        (await realpath(original)) === original
+      ) {
+        const bytes = await readFile(original);
+        const blob = createHash("sha1")
+          .update("blob " + bytes.length + "\0")
+          .update(bytes)
+          .digest("hex");
+        if (entry.split("\t")[0].endsWith(" " + blob) && bytes.equals(await readFile(output)))
+          continue;
+      }
+    }
+    if (
+      line.startsWith("?? ") &&
       file.startsWith("lib/business/inventory-aqkc/skills/") &&
       manage
     ) {
