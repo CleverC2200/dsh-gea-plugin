@@ -83,6 +83,27 @@ for (const transition of ["user", "tenant", "environment"])
       if (transition === "tenant") identity.tenantId = "1";
       await app.login();
       await page.reload();
+      let projection;
+      const subject = JSON.stringify(["production", identity.tenantId, identity.userId]);
+      await expect
+        .poll(async () => {
+          projection = await page.evaluate(
+            async () => await (await fetch("/api/gea-html/identity")).json(),
+          );
+          return (
+            projection.status?.authenticated === true &&
+            typeof projection.scope === "string" &&
+            Boolean(projection.scope) &&
+            projection.subject === subject
+          );
+        })
+        .toBe(true);
+      await expect(
+        page
+          .getByRole("button", { name: "账户菜单", exact: true })
+          .getByText("测试用户", { exact: true }),
+      ).toBeVisible();
+      const authority = projection.scope;
       await openBusinessPage(page, "gea-proof");
       try {
         await expect.poll(binding).toBeTruthy();
@@ -106,6 +127,8 @@ for (const transition of ["user", "tenant", "environment"])
       }
       try {
         await expect.poll(async () => (await binding())?.sessionId).not.toBe(session);
+        await expect.poll(async () => (await binding())?.sessionId).toMatch(/^session-/);
+        await expect.poll(async () => (await binding())?.ownerScope).toBe(authority);
       } finally {
         const after = await binding();
         const oldMarkerVisible = await page.getByText(marker, { exact: true }).last().isVisible();

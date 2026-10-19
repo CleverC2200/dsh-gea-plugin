@@ -3,7 +3,6 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
 import { Button, Tag, Toast, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
@@ -344,11 +343,11 @@ function desktopRestart(): (() => Promise<unknown>) | undefined {
 
 function UpdateNotice({
   updates,
-  openManager,
+  openStatus,
   t,
 }: PropsLocale<typeof pluginUpdateLocale> & {
   updates: Owner;
-  openManager: () => void;
+  openStatus: (packageName: string) => void;
 }): ReactNode {
   const state = useSyncExternalStore(updates.subscribe, updates.getSnapshot);
   const [restarting, setRestarting] = useState(false);
@@ -360,7 +359,10 @@ function UpdateNotice({
     state.submitting !== null ||
     state.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
   if (!notice) return null;
-  const actions = [{ label: t("openManager"), onClick: openManager }];
+  const packageName = notice.packageName;
+  const actions = packageName
+    ? [{ label: t("viewStatus"), onClick: () => openStatus(packageName) }]
+    : [];
   if (notice.kind === "pending-restart" && bridge && !restartBusy && !restarting) {
     actions.unshift({
       label: t("restartNow"),
@@ -397,7 +399,7 @@ function UpdateNotice({
 }
 
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
-  const fiber = ctx.inject(["slots", "locale", "modules", "settingsNavigation"], (scope) => {
+  const fiber = ctx.inject(["slots", "locale", "modules", "pluginNavigation"], (scope) => {
     scope.effect(() => {
       const style = document.createElement("style");
       style.textContent = css;
@@ -418,7 +420,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           locale: pluginUpdateLocale,
           inject: () => ({
             updates,
-            openManager: () => scope.settingsNavigation.open("plugin-manager"),
+            openStatus: (packageName: string) => scope.pluginNavigation.openBundle(packageName),
           }),
         },
         UpdateNotice,

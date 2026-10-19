@@ -56,6 +56,7 @@ export type PluginDetailUpdateSnapshot = {
   notice: {
     kind: "progress" | "pending-restart" | "completed" | "restored" | "failed" | "unconfirmed";
     sequence: number;
+    packageName?: string;
   } | null;
 };
 export const pluginUpdateObservationMs = 120_000;
@@ -104,13 +105,18 @@ export function createPluginDetailUpdates(ctx: Context) {
         recovering: number;
         check?: AbortController;
         awaitingClient?: boolean;
-        observation?: { names: readonly string[]; timer: ReturnType<typeof setTimeout> };
+        observation?: {
+          names: readonly string[];
+          timer: ReturnType<typeof setTimeout>;
+        };
       }
     | undefined;
   let checking: Promise<void> | undefined, submitting: Promise<void> | undefined;
   let disposed = false;
   let resumed = false;
-  let noticeKind: NonNullable<PluginDetailUpdateSnapshot["notice"]>["kind"] | undefined;
+  let notified:
+    | Pick<NonNullable<PluginDetailUpdateSnapshot["notice"]>, "kind" | "packageName">
+    | undefined;
   let noticeSequence = 0;
   const publish = (patch: Partial<PluginDetailUpdateSnapshot>) => {
     if (disposed) return;
@@ -137,10 +143,14 @@ export function createPluginDetailUpdates(ctx: Context) {
   };
   const signalFor = (owner: NonNullable<typeof page>) =>
     AbortSignal.any([owner.lifetime.signal, AbortSignal.timeout(status?.checkTimeoutMs ?? 5000)]);
-  const notify = (kind: NonNullable<PluginDetailUpdateSnapshot["notice"]>["kind"]) => {
-    if (noticeKind === kind) return;
-    noticeKind = kind;
-    publish({ notice: { kind, sequence: ++noticeSequence } });
+  const notify = (
+    owner: NonNullable<typeof page>,
+    kind: NonNullable<PluginDetailUpdateSnapshot["notice"]>["kind"],
+  ) => {
+    const packageName = owner.observation?.names[0];
+    if (notified?.kind === kind && notified.packageName === packageName) return;
+    notified = { kind, packageName };
+    publish({ notice: { ...notified, sequence: ++noticeSequence } });
   };
   const endObservation = (owner: NonNullable<typeof page>) => {
     clearTimeout(owner.observation?.timer);
@@ -149,11 +159,11 @@ export function createPluginDetailUpdates(ctx: Context) {
   };
   const observe = (owner: NonNullable<typeof page>, names: readonly string[]) => {
     if (owner.observation || disposed) return;
-    noticeKind = undefined;
+    notified = undefined;
     owner.observation = {
       names,
       timer: setTimeout(() => {
-        notify("unconfirmed");
+        notify(owner, "unconfirmed");
         endObservation(owner);
       }, pluginUpdateObservationMs),
     };
@@ -170,6 +180,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       )
     ) {
       notify(
+        owner,
         rows.some((row) => row?.state === "pending-restart")
           ? "pending-restart"
           : rows.some((row) => row?.state === "failed")
@@ -181,6 +192,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       endObservation(owner);
     } else
       notify(
+        owner,
         rows.some((row) => row?.state === "unknown") ||
           !rows.some((row) => row && operationStages.includes(row.state))
           ? "unconfirmed"
@@ -268,7 +280,7 @@ export function createPluginDetailUpdates(ctx: Context) {
     } catch {
       if (!owner.lifetime.signal.aborted) {
         publish({ transportError: "status" });
-        if (owner.observation) notify("unconfirmed");
+        if (owner.observation) notify(owner, "unconfirmed");
       }
       if (owner.recovering) owner.recovering--;
     }
@@ -304,7 +316,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       return Promise.resolve();
     publish({ submitting: names.join(","), transportError: null });
     observe(page, names);
-    notify("progress");
+    notify(page, "progress");
     const run = async () => {
       try {
         await request(
@@ -320,7 +332,7 @@ export function createPluginDetailUpdates(ctx: Context) {
           AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
         );
       } catch {
-        if (page?.observation) notify("unconfirmed");
+        if (page?.observation) notify(page, "unconfirmed");
         publish({
           transportError: "unknown",
           items: snapshot.items.map((item) =>
@@ -333,7 +345,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       if (page)
         await refresh(page).catch(() => {
           publish({ transportError: "status" });
-          if (page?.observation) notify("unconfirmed");
+          if (page?.observation) notify(page, "unconfirmed");
         });
     };
     submitting = run().finally(() => {

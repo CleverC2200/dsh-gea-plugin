@@ -111,6 +111,9 @@ Object.assign(window, {
       closeSettings();
     },
     openedSections,
+    locale(value: string) {
+      locale.setLocale(value);
+    },
     async reloadGea() {
       await gea.dispose();
       gea = ctx.plugin(built);
