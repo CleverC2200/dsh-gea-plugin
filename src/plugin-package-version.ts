@@ -1,5 +1,5 @@
 /** Package identity captured at build time; immutable after module loading. */
 export const pluginPackageVersion = Object.freeze({
   name: "@cleverc2200/gea-dsh-prototype",
-  version: "0.0.170-sales.1",
+  version: "0.0.171-sales.1",
 } as const);
