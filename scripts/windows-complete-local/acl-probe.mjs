@@ -118,6 +118,22 @@ export function aclCasePassed(facts, expectedCode) {
     facts.ownerOnlyOutput === (expectedCode === 0)
   );
 }
+export const commandNames = [
+  "Get-NetTCPConnection",
+  "Get-CimInstance",
+  "Where-Object",
+  "Select-Object",
+  "ConvertTo-Json",
+];
+export function readCommandAvailability(text) {
+  const lines = new Map(text.split(/\r?\n/).map((line) => line.split("=")));
+  return Object.fromEntries(
+    commandNames.map((name) => [
+      name,
+      lines.get(name) === "True" ? true : lines.get(name) === "False" ? false : null,
+    ]),
+  );
+}
 async function main() {
   assert.equal(process.platform, "win32", "ACL_PROBE_WINDOWS_REQUIRED");
   assert.equal(process.version, "v24.14.1", "ACL_PROBE_FIXED_NODE_REQUIRED");
@@ -185,14 +201,43 @@ async function main() {
       ...subprocessFacts(error, performance.now() - setupStarted, error.stdout ?? ""),
     };
   }
-  const passed = !setupFailure && cases.length === 5 && cases.every((entry) => entry.passed);
+  const commandAvailabilityCommand =
+    "$ErrorActionPreference='Stop'; foreach($name in @('Get-NetTCPConnection','Get-CimInstance','Where-Object','Select-Object','ConvertTo-Json')){try{ $null=Get-Command -Name $name -ErrorAction Stop; [Console]::Out.WriteLine($name+'=True') }catch{ [Console]::Out.WriteLine($name+'=False') }}";
+  let existingNativeCommands = readCommandAvailability("");
+  let commandResolutionFailure;
+  const resolutionStarted = performance.now();
+  diagnosticPhase = "readonly-command-resolution";
+  try {
+    const result = await execute(
+      join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe"),
+      ["-NoProfile", "-NonInteractive", "-Command", commandAvailabilityCommand],
+      { windowsHide: true, timeout: 10000 },
+    );
+    existingNativeCommands = readCommandAvailability(result.stdout);
+  } catch (error) {
+    commandResolutionFailure = subprocessFacts(
+      error,
+      performance.now() - resolutionStarted,
+      error.stdout ?? "",
+    );
+  }
+  const aclCasesPassed =
+    !setupFailure && cases.length === 5 && cases.every((entry) => entry.passed);
+  const existingNativeCommandsAvailable = Object.values(existingNativeCommands).every(
+    (value) => value === true,
+  );
+  const passed = aclCasesPassed && existingNativeCommandsAvailable;
   const receipt = {
     schemaVersion: 2,
     status: passed
-      ? "canonical-private-guard-cases-passed"
-      : "canonical-private-guard-cases-failed",
+      ? "canonical-private-guard-and-native-commands-passed"
+      : "canonical-private-guard-or-native-commands-failed",
     actualNativeAcceptance: false,
     cases,
+    existingNativeCommands,
+    existingNativeCommandsAvailable,
+    commandResolutionFailure,
+    aclCasesPassed,
     setupFailure,
     calls,
     sourceBindings,
