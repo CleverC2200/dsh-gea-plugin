@@ -59,8 +59,8 @@ const fixture = async (
   const submitted = [];
   const logs = [];
   let readbackBlocked = readbackFailure;
-  let submittedQty = "2.000";
-  let submitReceipt;
+  const submittedQuantities = new Map();
+  const submitReceipts = new Map();
   if (normalBatch) state.get(PLAN_B).status = 1;
   const approved = [];
   const rejected = [];
@@ -89,7 +89,7 @@ const fixture = async (
     skuCode: "789",
     productCategName: "Category",
     baseQty: "1.000",
-    qty: planId === PLAN_A ? submittedQty : "2.000",
+    qty: submittedQuantities.get(planId) ?? "2.000",
     regionConfirmedQty: returnedStatus >= 7 ? "1.250" : null,
     regionConfirmedAmount: returnedStatus >= 7 ? "15.43" : null,
     provinceConfirmedQty: returnedStatus >= 8 ? "1.500" : null,
@@ -97,7 +97,7 @@ const fixture = async (
     areaConfirmedQty: returnedStatus >= 9 ? "1.750" : null,
     areaConfirmedAmount: returnedStatus >= 9 ? "21.60" : null,
     price: "12.3400",
-    amt: planId === PLAN_A && submittedQty === "3.000" ? "37.02" : "24.68",
+    amt: submittedQuantities.get(planId) === "3.000" ? "37.02" : "24.68",
     amtBase: "12.34",
   });
   const rowVersions = (planId, current) =>
@@ -107,7 +107,7 @@ const fixture = async (
           current,
           {
             ...current,
-            id: "v1",
+            id: { [PLAN_A]: "v1", [PLAN_B]: "v2", [PLAN_C]: "v3" }[planId],
             seq: 1,
             status: returnedStatus,
             effective: false,
@@ -276,7 +276,8 @@ const fixture = async (
         key: req.headers["idempotency-key"],
         requestId: req.headers["x-request-id"],
       });
-      if (submitReceipt) return send({ ...submitReceipt, replayed: true });
+      const prior = submitReceipts.get(body.planId);
+      if (prior) return send({ ...prior, replayed: true });
       if (denySubmit) {
         reply({ success: false, message: "提报窗口已关闭，请联系业务管理员" }, 403);
         return true;
@@ -284,24 +285,24 @@ const fixture = async (
       assert.equal(body.status, returnedStatus - 5);
       assert.equal(body.items.length, 1);
       assert.equal(body.items[0].price, "12.3400");
-      const row = state.get(PLAN_A);
-      row.versionId = "v-new";
+      const row = state.get(body.planId);
+      row.versionId = body.planId === PLAN_A ? "v-new" : "v-new-b";
       row.seq = 2;
       row.status = body.status;
       const nodes = shortened ? [1, 3, 4] : [1, 2, 3, 4];
       row.nextActor = { 1: "region", 2: "province", 3: "area", 4: "category" }[
         nodes.find((node) => node >= body.status)
       ];
-      submittedQty = body.items[0].qty;
+      submittedQuantities.set(body.planId, body.items[0].qty);
       logs.push({
-        planId: PLAN_A,
-        versionId: "v-new",
+        planId: body.planId,
+        versionId: row.versionId,
         actionCode: "RESUBMIT",
         requestId: req.headers["x-request-id"],
       });
-      submitReceipt = {
-        planId: PLAN_A,
-        versionId: "v-new",
+      const submitReceipt = {
+        planId: body.planId,
+        versionId: row.versionId,
         seq: 2,
         status: body.status,
         requestId: req.headers["x-request-id"],
@@ -309,7 +310,8 @@ const fixture = async (
         auditId: "a",
         replayed: false,
       };
-      if (unknownOnce) {
+      submitReceipts.set(body.planId, submitReceipt);
+      if (unknownOnce && body.planId === PLAN_A) {
         reply({ message: "结果暂时未知" }, 502);
         return true;
       }
@@ -427,11 +429,9 @@ for (const [role, returnedStatus] of [
       await edit.click();
       const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
       await dialog.getByRole("textbox", { name: "提报数量 789" }).fill("3.000");
-      await expect(dialog).toContainText("请核对数量与继承确认值");
-      if (returnedStatus >= 7) await expect(dialog).toContainText("1.250");
       await expect(dialog).toContainText("37.02");
       if (returnedStatus === 7) await captureEvidence(page, app, "inheritance-confirmation");
-      await dialog.locator("label.arco-checkbox").click();
+      await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
       await dialog.getByRole("button", { name: "确认重提", exact: true }).dblclick();
       await expect(dialog).toContainText("服务端已确认计划");
       assert.equal(submitted.length, 1);
@@ -447,17 +447,25 @@ for (const [role, returnedStatus] of [
   );
 
 for (const mixed of [false, true])
-  test(`returned selection requires one plan; mixed=${mixed}`, { timeout: 90000 }, async (t) => {
-    const { frame, submitted, approved } = await fixture(t);
+  test(`returned and pending selections submit with one confirmation; mixed=${mixed}`, { timeout: 90000 }, async (t) => {
+    const { frame, submitted, approved, state } = await fixture(t);
     await selectPlan(frame);
     await selectPlan(frame, mixed ? "沈阳待审批" : "济南退回区域");
-    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toBeDisabled();
-    await expect(frame.getByRole("button", { name: "修改后提交", exact: true })).toHaveAttribute(
-      "title",
-      /逐笔/,
-    );
-    assert.deepEqual(submitted, []);
-    assert.deepEqual(approved, []);
+    const submit = frame.getByRole("button", { name: "批量提交", exact: true });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    const dialog = frame.getByRole("dialog");
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
+    await expect(dialog).toContainText("乌鲁木齐退回区域");
+    await expect(dialog).toContainText(mixed ? "沈阳待审批" : "济南退回区域");
+    await dialog.getByRole("button", { name: "确认提交", exact: true }).dblclick();
+    await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
+    assert.deepEqual(submitted.map(({ body }) => body.planId).sort(), mixed ? [PLAN_A] : [PLAN_A, PLAN_B]);
+    assert.ok(submitted.every(({ body }) => body.status === 2 && body.items.length === 1));
+    assert.deepEqual(approved.map(({ planId }) => planId), mixed ? [PLAN_C] : []);
+    assert.equal(state.get(PLAN_A).seq, 2);
+    if (!mixed) assert.equal(state.get(PLAN_B).seq, 2);
+    if (mixed) assert.equal(state.get(PLAN_C).seq, 1);
   });
 
 test(
@@ -471,7 +479,7 @@ test(
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
     const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
     await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
-    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(dialog).toContainText("重提已成功");
     await expect(dialog).not.toContainText("未更新");
@@ -524,7 +532,7 @@ test(
     await expect(dialog).toContainText("退回版本继续逐级退回");
     await expect(dialog).toContainText("正常审批退回");
     await dialog.getByRole("textbox", { name: "批量审批备注" }).fill("继续退回客户核对");
-    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await frame.getByRole("button", { name: "确认批量退回", exact: true }).click();
     const result = frame.getByTestId("regional-approval-batch-result");
     await expect(result).toContainText("成功 2 笔", { timeout: 30000 });
@@ -591,7 +599,7 @@ test(
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
     const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
     await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
-    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(dialog).toContainText("结果暂时未知");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
@@ -615,7 +623,7 @@ test(
     await selectPlan(frame, "沈阳待审批");
     await frame.getByRole("button", { name: "通过", exact: true }).click();
     const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
-    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
     await expect(frame.getByTestId("regional-approval-batch-result")).toContainText("成功 2 笔", {
       timeout: 30000,
@@ -634,7 +642,7 @@ test(
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
     const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
     await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
-    await dialog.locator("label.arco-checkbox").click();
+    await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(dialog).toContainText("提报窗口已关闭，请联系业务管理员");
     assert.equal(submitted.length, 1);
@@ -665,7 +673,7 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
   const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
   await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
-  await dialog.locator("label.arco-checkbox").click();
+  await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
   await expect(dialog).toContainText("结果暂时未知");
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
