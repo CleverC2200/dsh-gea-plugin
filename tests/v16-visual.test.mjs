@@ -254,9 +254,13 @@ test(
     await frame.getByTestId("regional-approval-stage-region").click();
     await frame.getByRole("tab", { name: "按区域", exact: true }).click();
     const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
-    await expect(monthPlan.locator("span").first()).toHaveText("¥100");
-    // 数量带单位：月计划列的数量显示成「10 件」。
-    await expect(monthPlan.locator("small").first()).toHaveText("10 件");
+    await expect(monthPlan.locator("span").first(), "月计划采用列表 mPlanAmount").toHaveText(
+      "¥200",
+    );
+    await expect(
+      monthPlan.locator("small").first(),
+      "月计划采用列表 mPlanQty 并显示单位",
+    ).toHaveText("20 件");
     await expect(frame.locator("tbody").first()).toContainText("25.0%");
     await expect(frame.locator("tbody").first()).not.toContainText("版本②：¥100 / 10");
     await expect(frame.locator("tbody").first()).not.toContainText("该版本不含月度目标");
@@ -268,6 +272,9 @@ test(
       "饺子 · 1 SKU",
     ]);
     const inline = frame.locator('div[role="region"][tabindex="0"]');
+    const skuRow = inline.getByRole("row").filter({ hasText: "黑芝麻汤圆 500g" });
+    await expect(skuRow.locator("td").nth(1)).toHaveText("10");
+    await expect(skuRow.locator("td").nth(3)).toHaveText("100");
     assert.ok(await inline.evaluate((el) => getComputedStyle(el).maxHeight === "360px"));
     const nav = page.locator(".gea-shell-navigation");
     for (const width of ["64px", "240px", "64px", "240px"]) {
