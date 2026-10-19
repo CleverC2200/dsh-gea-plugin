@@ -292,7 +292,11 @@ test(
     await expect(dialog).not.toBeVisible();
     await selectPlan(frame);
     await selectPlan(frame, "济南退回区域");
-    await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
+    for (const name of ["乌鲁木齐退回区域", "济南退回区域"])
+      await expect(
+        frame.locator("tbody tr").filter({ hasText: name }).first().getByRole("checkbox"),
+      ).toBeChecked();
+    await frame.getByRole("button", { name: "提交所选", exact: true }).click();
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("乌鲁木齐退回区域");
     await expect(dialog).not.toContainText("济南退回区域");
