@@ -568,7 +568,7 @@ test("queue column headings stay visible while its rows scroll", { timeout: 9000
 });
 
 test(
-  "unknown submission retries the original intent without creating another version",
+  "unknown submission survives close and reopens the original intent without another version",
   { timeout: 90000 },
   async (t) => {
     const { frame, submitted, state } = await fixture(t, { unknownOnce: true });
@@ -579,6 +579,10 @@ test(
     await dialog.locator("label.arco-checkbox").click();
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(dialog).toContainText("结果暂时未知");
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toHaveValue("2.000");
     await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
     await expect(dialog).toContainText("服务端已确认计划");
     assert.equal(submitted.length, 2);
