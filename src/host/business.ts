@@ -1921,8 +1921,9 @@ export class Business {
 
   private readonly moduleMcpCache = new Map<string, { token: string; module: GatewayMcpClient }>();
   /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
-  invalidateModuleMcp(consumerCode: string): void {
-    this.moduleMcpCache.delete(consumerCode);
+  invalidateModuleMcp(consumerCode: string, expected?: GatewayMcpClient): void {
+    if (!expected || this.moduleMcpCache.get(consumerCode)?.module === expected)
+      this.moduleMcpCache.delete(consumerCode);
   }
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
