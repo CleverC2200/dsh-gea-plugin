@@ -531,7 +531,13 @@ async function createProfile(t, options) {
         },
         body: JSON.stringify(payload),
       });
-      if (response.status !== 200) throw new Error("HTTP " + response.status);
+      if (response.status !== 200) {
+        const diagnostic = output
+          .slice(-12000)
+          .replace(/Bearer\s+[^\s"',}]+/gi, "Bearer <REDACTED>")
+          .replace(/((?:token|password|secret)["']?\s*[:=]\s*["']?)[^\s"',}]+/gi, "$1<REDACTED>");
+        throw new Error(`HTTP ${response.status} at ${endpoint}\nProfile startup: ${diagnostic}`);
+      }
       return response.json();
     },
     async remote(endpoint, request) {
