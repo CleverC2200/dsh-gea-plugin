@@ -8,8 +8,7 @@ import { inspectPluginArchive } from "../src/host/plugin-release-source.ts";
 import {
   companyPackageNames,
   projectPluginRelease,
-  planPluginUpdate,
-  validatePluginCombination,
+  findPluginUpdatePath,
   comparePluginVersions,
   parsePluginManifest,
   parseInstalledPluginManifest,
@@ -24,31 +23,6 @@ const read = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const absolute = (path) =>
   typeof path === "string" && isAbsolute(path) ? path : fail("RELEASE_ABSOLUTE_INPUTS_REQUIRED");
-
-function findPath(core, installed, remaining, order = []) {
-  if (!remaining.length)
-    return validatePluginCombination({ core, manifests: installed }).length ? null : order;
-  for (const release of remaining) {
-    const plan = planPluginUpdate({ release, core, installed });
-    if (!["ready", "current"].includes(plan.kind)) continue;
-    const next =
-      plan.kind === "current"
-        ? installed
-        : installed.map((manifest) =>
-            manifest.name === release.name
-              ? { ...release, artifactSha256: release.artifact.sha256 }
-              : manifest,
-          );
-    const result = findPath(
-      core,
-      next,
-      remaining.filter((entry) => entry !== release),
-      [...order, release.name],
-    );
-    if (result) return result;
-  }
-  return null;
-}
 
 function validateGraph(manifests) {
   if (
@@ -234,11 +208,11 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
   }
   const paths = input.supportedStarts.map((start) => {
     validateCore(start.core);
-    const order = findPath(
-      start.core,
-      start.installed,
-      targets.map(({ release }) => release),
-    );
+    const order = findPluginUpdatePath({
+      core: start.core,
+      installed: start.installed,
+      releases: targets.map(({ release }) => release),
+    });
     if (!order) fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
     return { id: start.id, order };
   });

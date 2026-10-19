@@ -1,4 +1,5 @@
 import semver from "semver";
+import { companyPackageNames } from "./plugin-release.mjs";
 import type {
   FixedCore,
   PluginManifest,
@@ -74,8 +75,16 @@ export function parseUpdateProblem(value: unknown) {
     case "dependencies": {
       if (!Array.isArray(row.requirements) || !row.requirements.length)
         throw Error("UPDATE_STATUS_INVALID");
+      const nextStep = row.nextStep === undefined ? undefined : record(row.nextStep);
+      const packageName = nextStep
+        ? companyPackageNames.find((name) => name === nextStep.packageName)
+        : undefined;
+      if (nextStep && !packageName) throw Error("UPDATE_STATUS_INVALID");
       return {
         kind: "dependencies",
+        ...(nextStep && packageName
+          ? { nextStep: { packageName, version: version(nextStep.version) } }
+          : {}),
         requirements: row.requirements.map((raw) => {
           const item = record(raw),
             required = text(item.required);

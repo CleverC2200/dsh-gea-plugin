@@ -13,6 +13,7 @@ import {
   companyPackageNames,
   parsePluginRelease,
   planPluginUpdate,
+  findPluginUpdatePath,
   validatePluginCombination,
   type FixedCore,
   type CompanyPackageName,
@@ -568,6 +569,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             problem: { kind: "policy", code: "release-not-published" },
           });
       }
+      const installed = await combinationManifests(profile, options.core, options.profile.dir);
+      if (generation !== checking || closed) return snapshot();
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
         row(release.name, { candidateVersion: release.version });
@@ -600,7 +603,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           });
           continue;
         }
-        const installed = await combinationManifests(profile, options.core, options.profile.dir);
         const plan = planPluginUpdate({
           release,
           core: options.core,
@@ -626,6 +628,27 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                 : undefined,
           });
       }
+      const next = state.items.find(
+        (item) =>
+          item.state === "available" &&
+          item.planId !== null &&
+          proofs.find((proof) => proof.name === item.packageName)?.host.kind === "active" &&
+          findPluginUpdatePath({
+            core: options.core,
+            installed,
+            releases,
+            firstStep: item.packageName,
+          }) !== null,
+      );
+      if (next && next.candidateVersion)
+        for (const item of state.items)
+          if (item.state === "blocked" && item.problem?.kind === "dependencies")
+            row(item.packageName, {
+              problem: {
+                ...item.problem,
+                nextStep: { packageName: next.packageName, version: next.candidateVersion },
+              },
+            });
     } catch (error) {
       if (generation === checking && !closed) {
         plans.clear();

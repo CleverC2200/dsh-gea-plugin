@@ -47,6 +47,12 @@ export function planPluginUpdate(input: {
   core: FixedCore;
   installed: PluginManifest[];
 }): PluginUpdatePlan;
+export function findPluginUpdatePath(input: {
+  core: FixedCore;
+  installed: PluginManifest[];
+  releases: PluginRelease[];
+  firstStep?: CompanyPackageName;
+}): CompanyPackageName[] | null;
 export function projectPluginRelease(input: {
   manifest: PluginManifest;
   artifact: PluginRelease["artifact"];
