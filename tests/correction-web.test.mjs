@@ -159,11 +159,11 @@ test(
       const toggle = f.locator('button[aria-controls="correction-stage-lane"]');
       if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
       const lane = f.getByRole("navigation", { name: "纠偏查看节点", exact: true });
-      await lane
-        .getByRole("button", {
-          name: new RegExp((status === 5 || status === 10 ? "当前节点" : node) + "$"),
-        })
-        .click();
+      const selectedStage = lane.getByRole("button", {
+        name: new RegExp((status === 5 || status === 10 ? "当前节点" : node) + "$"),
+      });
+      if ((await selectedStage.getAttribute("aria-pressed")) !== "true")
+        await selectedStage.click();
       await f.getByRole("button", { name: "纠偏客户", exact: true }).click();
     };
     for (const outcome of ["reject", "approve"]) {
