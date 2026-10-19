@@ -11,11 +11,7 @@ test("waits for a pending Host to finish asynchronous service initialization", a
   };
   const loader = { entries: () => [entry] };
   let settled = false;
-  const observation = waitForMainPlugins(
-    loader,
-    ["gea"],
-    Date.now() + 5000,
-  ).then(() => {
+  const observation = waitForMainPlugins(loader, ["gea"], Date.now() + 5000).then(() => {
     settled = true;
   });
   await setTimeout(40);
@@ -27,9 +23,7 @@ test("waits for a pending Host to finish asynchronous service initialization", a
 
 test("a Host that never activates still fails within the original deadline", async () => {
   const loader = {
-    entries: () => [
-      { options: { name: "gea" }, disabled: false, fiber: { state: 0 } },
-    ],
+    entries: () => [{ options: { name: "gea" }, disabled: false, fiber: { state: 0 } }],
   };
   await assert.rejects(
     waitForMainPlugins(loader, ["gea"], Date.now() + 30),
@@ -45,11 +39,7 @@ test("missing, duplicate and disabled mounts keep their original failures", asyn
   };
   for (const entries of [[], [entry, entry]]) {
     await assert.rejects(
-      waitForMainPlugins(
-        { entries: () => entries },
-        ["gea"],
-        Date.now() + 5000,
-      ),
+      waitForMainPlugins({ entries: () => entries }, ["gea"], Date.now() + 5000),
       /MAIN_PLUGIN_NOT_SINGLE_MOUNT/,
     );
   }

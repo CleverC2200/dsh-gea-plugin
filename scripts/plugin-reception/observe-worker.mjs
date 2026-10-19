@@ -61,16 +61,10 @@ try {
   const official = (name) => import(pathToFileURL(coreRequire.resolve(name)));
   const boot = await official("@deepseek-ai/dsh-app-boot");
   const { provideCmdline } = await official("@deepseek-ai/dsh-cmdline");
-  const { createLaunchEnvironmentSnapshot } = await official(
-    "@deepseek-ai/dsh-launch-environment",
-  );
+  const { createLaunchEnvironmentSnapshot } = await official("@deepseek-ai/dsh-launch-environment");
   const { load } = await official("js-yaml");
-  const { entryListSchema } = await official(
-    "@deepseek-ai/cordis-plugin-include",
-  );
-  const semver = createRequire(
-    coreRequire.resolve("@deepseek-ai/dsh-app-boot"),
-  )("semver");
+  const { entryListSchema } = await official("@deepseek-ai/cordis-plugin-include");
+  const semver = createRequire(coreRequire.resolve("@deepseek-ai/dsh-app-boot"))("semver");
   const profile = boot.loadProfileDirectory("reception", v.profile, anchor);
   assert.equal(profile.skippedBundles.length, 0, "PROFILE_BUNDLE_SKIPPED");
   assert.deepEqual(
@@ -109,9 +103,7 @@ try {
       host.provide("profileContext", facts);
       host.provide(
         "launchEnvironment",
-        createLaunchEnvironmentSnapshot([
-          { source: "process", values: { ...process.env } },
-        ]),
+        createLaunchEnvironmentSnapshot([{ source: "process", values: { ...process.env } }]),
       );
       await host.plugin(boot.PluginPackages, { resolution });
       provideCmdline(host, {
@@ -182,21 +174,11 @@ try {
   projected.clients = names.map((name) => {
     const found = graph.entries.filter((entry) => entry.id === name);
     assert.equal(found.length, 1, "MAIN_CLIENT_ENTRY_NOT_SINGLE");
-    const batches = graph.batches.filter((batch) =>
-      batch.entries.includes(name),
-    );
+    const batches = graph.batches.filter((batch) => batch.entries.includes(name));
     assert.equal(batches.length, 1, "MAIN_CLIENT_BATCH_NOT_SINGLE");
-    assert.equal(
-      typeof found[0].url,
-      "string",
-      "MAIN_CLIENT_SCRIPT_PATH_MISSING",
-    );
+    assert.equal(typeof found[0].url, "string", "MAIN_CLIENT_SCRIPT_PATH_MISSING");
     assert(found[0].url.length > 0, "MAIN_CLIENT_SCRIPT_PATH_MISSING");
-    assert.equal(
-      typeof batches[0].url,
-      "string",
-      "MAIN_CLIENT_BATCH_PATH_MISSING",
-    );
+    assert.equal(typeof batches[0].url, "string", "MAIN_CLIENT_BATCH_PATH_MISSING");
     assert(batches[0].url.length > 0, "MAIN_CLIENT_BATCH_PATH_MISSING");
     return {
       id: name,
@@ -215,15 +197,10 @@ try {
     const installed = join(v.profile, "node_modules", artifact.name),
       manifest = await readJson(join(installed, "package.json"));
     const exports = manifest.exports?.["."];
-    const entry =
-      typeof exports === "string"
-        ? exports
-        : (exports?.default ?? manifest.main);
+    const entry = typeof exports === "string" ? exports : (exports?.default ?? manifest.main);
     assert(entry, "PLUGIN_ROOT_EXPORT_MISSING");
     const parent = pathToFileURL(join(installed, entry)).href;
-    for (const [name, range] of Object.entries(
-      manifest.peerDependencies ?? {},
-    )) {
+    for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
       if (!name.startsWith("@deepseek-ai/")) continue;
       const actual = ctx.pluginPackages.packageOf(name, parent);
       assert(actual, `SDK_NOT_ROUTED:${name}`);
@@ -254,10 +231,7 @@ try {
   checkpoint("resources");
   const handler = ctx.connection.createSharedFetchHandler("/api");
   const response = await handler.fetch(
-    new Request(
-      "http://localhost/api/agent-manage/resources?cwd=" +
-        encodeURIComponent(v.home),
-    ),
+    new Request("http://localhost/api/agent-manage/resources?cwd=" + encodeURIComponent(v.home)),
   );
   assert.equal(response.status, 200, "RESOURCE_ROUTE_FAILED");
   const resources = await response.json();
@@ -286,18 +260,11 @@ try {
     "gea-html-inventory-orderworkbench",
     "gea-html-inventory-orderfulfillment",
   ])
-    assert(
-      !projected.initialPresets.some((row) => row.id === id),
-      `PREVIEW_PRESET_VISIBLE:${id}`,
-    );
+    assert(!projected.initialPresets.some((row) => row.id === id), `PREVIEW_PRESET_VISIBLE:${id}`);
   for (const id of businessIds) {
     assert(
       resources.some(
-        (row) =>
-          row.id === id &&
-          row.enabled &&
-          !row.error &&
-          !row.missingSkills?.length,
+        (row) => row.id === id && row.enabled && !row.error && !row.missingSkills?.length,
       ),
       `BUSINESS_RESOURCE_NOT_READY:${id}`,
     );
@@ -305,11 +272,7 @@ try {
     assert.equal(selected.preset, id, "BUSINESS_RESOURCE_PRESET_MISMATCH");
   }
   const skill = resources.find(
-    (row) =>
-      row.kind === "skill" &&
-      row.enabled &&
-      !row.error &&
-      row.id.startsWith("skill:"),
+    (row) => row.kind === "skill" && row.enabled && !row.error && row.id.startsWith("skill:"),
   );
   assert(skill, "INSTALLED_INVOCABLE_SKILL_REQUIRED");
   assert.equal(
@@ -321,11 +284,7 @@ try {
   checkpoint("documents");
   const docs = new Map();
   for (const id of ids) {
-    assert.equal(
-      (await ctx.agentPresets.resolve(id)).broken,
-      undefined,
-      "PRESET_BROKEN",
-    );
+    assert.equal((await ctx.agentPresets.resolve(id)).broken, undefined, "PRESET_BROKEN");
     const doc = await ctx.agentPresets.readDocument(id);
     docs.set(id, {
       content: doc.content,
@@ -338,12 +297,9 @@ try {
   const { composeStandardPreset, ORCHESTRATION_PRESET } = await import(
     pathToFileURL(manageRequire.resolve("dsh-agent-manage/standard-preset"))
   );
-  const companyStandard = (
-    await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET)
-  ).plugins;
-  const manageRoot = dirname(
-    manageRequire.resolve("dsh-agent-manage/package.json"),
-  );
+  const companyStandard = (await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET))
+    .plugins;
+  const manageRoot = dirname(manageRequire.resolve("dsh-agent-manage/package.json"));
   let orchestrationPrompt;
   try {
     orchestrationPrompt = await readFile(
@@ -362,11 +318,7 @@ try {
       orchestrationPrompt,
       "ORCHESTRATION_SOURCE_PROMPT_DIFFERS",
     );
-    assert.equal(
-      managedOrchestration.customized,
-      false,
-      "ORCHESTRATION_FRESH_PROFILE_REQUIRED",
-    );
+    assert.equal(managedOrchestration.customized, false, "ORCHESTRATION_FRESH_PROFILE_REQUIRED");
   }
   const orchestrationStandard = projectOrchestrationStandard(companyStandard, {
     prompt: orchestrationPrompt,
@@ -412,11 +364,7 @@ try {
   }));
   projected.actualDefault = (await ctx.agentPresets.resolve()).id;
   // Observe the installed default; do not write a legacy selectedDefault patch to make it pass.
-  assert.equal(
-    projected.actualDefault,
-    "auto-negotiation",
-    "DEFAULT_ORCHESTRATION_NOT_EFFECTIVE",
-  );
+  assert.equal(projected.actualDefault, "auto-negotiation", "DEFAULT_ORCHESTRATION_NOT_EFFECTIVE");
   projected.workbenchPageCount = ctx.workbenchPages.list().length;
   assert.equal(
     Object.values(projected.outgoingAttempts).reduce((a, b) => a + b, 0),
@@ -428,9 +376,8 @@ try {
 } catch (error) {
   // Only explicit leading harness codes are public; incidental enum/text fragments are not codes.
   projected.failure =
-    String(error?.message ?? "").match(
-      /^([A-Z][A-Z0-9_]{4,})(?=:|\n|$)/,
-    )?.[1] ?? "RUNTIME_RECEPTION_FAILED";
+    String(error?.message ?? "").match(/^([A-Z][A-Z0-9_]{4,})(?=:|\n|$)/)?.[1] ??
+    "RUNTIME_RECEPTION_FAILED";
   await privateDiagnostic("observation", error);
   process.exitCode = 1;
 } finally {
@@ -462,17 +409,10 @@ async function privateDiagnostic(phase, error) {
   );
 }
 async function save() {
-  await writeFile(
-    v.receipt + ".runtime.json",
-    JSON.stringify(projected, null, 2) + "\n",
-    {
-      mode: 0o600,
-    },
-  );
+  await writeFile(v.receipt + ".runtime.json", JSON.stringify(projected, null, 2) + "\n", {
+    mode: 0o600,
+  });
 }
 function flatten(rows) {
-  return rows.flatMap((row) => [
-    row,
-    ...(row.group === true ? flatten(row.config) : []),
-  ]);
+  return rows.flatMap((row) => [row, ...(row.group === true ? flatten(row.config) : [])]);
 }

@@ -4,12 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import {
-  supportedCores,
-  coreIdentity,
-  sdkPeerRange,
-  sdkVersion,
-} from "./supported-cores.mjs";
+import { supportedCores, coreIdentity, sdkPeerRange, sdkVersion } from "./supported-cores.mjs";
 import {
   artifactSetSha256,
   validateRuntimeObservation,
@@ -20,10 +15,7 @@ import {
 
 const fixture = async (name) =>
   JSON.parse(
-    await readFile(
-      new URL(`./fixtures/plugin-reception/${name}.json`, import.meta.url),
-      "utf8",
-    ),
+    await readFile(new URL(`./fixtures/plugin-reception/${name}.json`, import.meta.url), "utf8"),
   );
 test("actual first package candidate cannot pass with its missing APS resource", async () => {
   const runtime = await fixture("observe-02");
@@ -50,19 +42,11 @@ test("actual final candidate passes semantic checks, without inventing historica
   const runtime = await fixture("observe-03");
   validateRuntimeObservation(runtime);
   assert.equal(runtime.artifactSetSha256, undefined);
-  assert.throws(
-    () => bindReception({}, {}, { observation: runtime }),
-    /RECEPTION_BINDING_INVALID/,
-  );
+  assert.throws(() => bindReception({}, {}, { observation: runtime }), /RECEPTION_BINDING_INVALID/);
 });
 test("artifact binding ignores paths but includes identities, versions and digests", () => {
-  const set = [
-    { name: "x", version: "1", sha256: "a".repeat(64), file: "/private/one" },
-  ];
-  assert.equal(
-    artifactSetSha256(set),
-    artifactSetSha256([{ ...set[0], file: "/private/two" }]),
-  );
+  const set = [{ name: "x", version: "1", sha256: "a".repeat(64), file: "/private/one" }];
+  assert.equal(artifactSetSha256(set), artifactSetSha256([{ ...set[0], file: "/private/two" }]));
   assert.notEqual(
     artifactSetSha256(set),
     artifactSetSha256([{ ...set[0], sha256: "b".repeat(64) }]),
@@ -76,10 +60,7 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
     sha256: String(i + 1).repeat(64),
   }));
   const setHash = artifactSetSha256(packages);
-  const core = {
-    head: "5badb15009ae1756c3afe0ae0cef1faafc290ccc",
-    version: "0.2.1-alpha.1",
-  };
+  const core = { head: "5badb15009ae1756c3afe0ae0cef1faafc290ccc", version: "0.2.1-alpha.1" };
   const manifest = {
     status: "packaged",
     core,
@@ -149,16 +130,9 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
   const rc2 = supportedCores.find((core) => core.version === "0.2.0-rc.2");
   const rcRuntime = {
     ...observe.observation,
-    sdk: runtime.sdk.map((row) => ({
-      ...row,
-      version: sdkVersion(rc2, row.name),
-    })),
+    sdk: runtime.sdk.map((row) => ({ ...row, version: sdkVersion(rc2, row.name) })),
   };
-  const rcInstall = {
-    ...install,
-    coreHead: rc2.head,
-    coreVersion: rc2.version,
-  };
+  const rcInstall = { ...install, coreHead: rc2.head, coreVersion: rc2.version };
   const rcObserve = {
     ...observe,
     coreHead: rc2.head,
@@ -176,13 +150,7 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
     bindReception(manifest, install, observe, bindings).artifactSetSha256,
   );
   assert.throws(
-    () =>
-      bindReception(
-        manifest,
-        { ...rcInstall, coreVersion: core.version },
-        rcObserve,
-        bindings,
-      ),
+    () => bindReception(manifest, { ...rcInstall, coreVersion: core.version }, rcObserve, bindings),
     /RECEPTION_CORE_INVALID/,
   );
   assert.throws(
@@ -190,13 +158,7 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
     /RECEPTION_PROFILE_CORE_MISMATCH/,
   );
   assert.throws(
-    () =>
-      bindReception(
-        { ...manifest, supportedCores: [core] },
-        install,
-        observe,
-        bindings,
-      ),
+    () => bindReception({ ...manifest, supportedCores: [core] }, install, observe, bindings),
     /RECEPTION_CORE_INVALID/,
   );
   for (const change of [
@@ -205,9 +167,7 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
     { peerSatisfied: false },
     { sameInstallationInstance: false },
   ]) {
-    const badSdk = runtime.sdk.map((row, index) =>
-      index === 0 ? { ...row, ...change } : row,
-    );
+    const badSdk = runtime.sdk.map((row, index) => (index === 0 ? { ...row, ...change } : row));
     assert.throws(
       () =>
         bindReception(
@@ -229,21 +189,11 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
     "installed-and-host-observed",
   );
   assert.throws(
-    () =>
-      bindReception(
-        { ...manifest, status: "ready" },
-        install,
-        observe,
-        bindings,
-      ),
+    () => bindReception({ ...manifest, status: "ready" }, install, observe, bindings),
     /RECEPTION_BINDING_INVALID/,
   );
   assert.throws(
-    () =>
-      bindReception(manifest, install, observe, {
-        ...bindings,
-        packageManifests: undefined,
-      }),
+    () => bindReception(manifest, install, observe, { ...bindings, packageManifests: undefined }),
     /RECEPTION_DECLARED_SDK_REQUIRED/,
   );
   assert.throws(
@@ -257,13 +207,7 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
     /RECEPTION_CORE_INVALID/,
   );
   assert.throws(
-    () =>
-      bindReception(
-        manifest,
-        install,
-        { ...observe, profile: "/another/profile" },
-        bindings,
-      ),
+    () => bindReception(manifest, install, { ...observe, profile: "/another/profile" }, bindings),
     /RECEPTION_PROFILE_CORE_MISMATCH/,
   );
   for (const value of [undefined, "", "relative/path"]) {
@@ -300,13 +244,7 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
       bindReception(
         manifest,
         install,
-        {
-          ...observe,
-          observation: {
-            ...observe.observation,
-            artifactSetSha256: "f".repeat(64),
-          },
-        },
+        { ...observe, observation: { ...observe.observation, artifactSetSha256: "f".repeat(64) } },
         bindings,
       ),
     /RECEPTION_ARTIFACT_BINDING_MISSING/,
@@ -316,22 +254,13 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
       bindReception(
         manifest,
         install,
-        {
-          ...observe,
-          observation: { ...observe.observation, sdk: runtime.sdk.slice(1) },
-        },
+        { ...observe, observation: { ...observe.observation, sdk: runtime.sdk.slice(1) } },
         bindings,
       ),
     /RECEPTION_SDK_INCOMPLETE/,
   );
   assert.throws(
-    () =>
-      bindReception(
-        manifest,
-        { ...install, success: false },
-        observe,
-        bindings,
-      ),
+    () => bindReception(manifest, { ...install, success: false }, observe, bindings),
     /RECEPTION_RECEIPT_FAILED/,
   );
   for (const field of ["timedOut", "killSent", "cleanupTimedOut"])
@@ -346,23 +275,11 @@ test("one bound receipt set passes; a different package, profile, or SDK closure
       /RECEPTION_PROCESS_UNSAFE/,
     );
   assert.throws(
-    () =>
-      bindReception(
-        manifest,
-        { ...install, installProcess: undefined },
-        observe,
-        bindings,
-      ),
+    () => bindReception(manifest, { ...install, installProcess: undefined }, observe, bindings),
     /RECEPTION_PROCESS_UNSAFE/,
   );
   assert.throws(
-    () =>
-      bindReception(
-        manifest,
-        install,
-        { ...observe, credentialsReadOrCopied: true },
-        bindings,
-      ),
+    () => bindReception(manifest, install, { ...observe, credentialsReadOrCopied: true }, bindings),
     /RECEPTION_SCOPE_CHANGED/,
   );
 });
@@ -388,13 +305,8 @@ test("company preset reception accepts the approved persona projection and still
     if (["auto-negotiation", "agent-resource-skill"].includes(doc.id))
       doc.byteEqualStandard = false;
   validateRuntimeObservation(runtime);
-  runtime.documents.find(
-    (doc) => doc.id === "auto-negotiation",
-  ).fullStandardRetained = false;
-  assert.throws(
-    () => validateRuntimeObservation(runtime),
-    /RECEPTION_STANDARD_INCOMPLETE/,
-  );
+  runtime.documents.find((doc) => doc.id === "auto-negotiation").fullStandardRetained = false;
+  assert.throws(() => validateRuntimeObservation(runtime), /RECEPTION_STANDARD_INCOMPLETE/);
 });
 
 test("company capability retention accepts a persona prefix but rejects missing tools and changed compaction", () => {
@@ -445,40 +357,24 @@ test("orchestration reception follows packaged declarations across unmanaged and
     { id: "tools", name: "standard-tools" },
   ];
   const input = { prompt: "COO prompt", skillDirectory: "/fixed/skills" };
-  const managed = projectOrchestrationStandard(baseline, {
-    ...input,
-    managed: true,
-  });
+  const managed = projectOrchestrationStandard(baseline, { ...input, managed: true });
   assert.deepEqual(managed[0].config, {
     prefix: "Standard\n\nCOO prompt",
     suffix: "",
     complete: true,
   });
   assert.deepEqual(managed.slice(1), baseline.slice(1));
-  const filesystem = projectOrchestrationStandard(baseline, {
-    ...input,
-    managed: false,
-  });
+  const filesystem = projectOrchestrationStandard(baseline, { ...input, managed: false });
   assert.deepEqual(filesystem[1].config, {
-    customSkillDirs: [
-      input.skillDirectory + (process.platform === "win32" ? "\\" : "/"),
-    ],
+    customSkillDirs: [input.skillDirectory + (process.platform === "win32" ? "\\" : "/")],
   });
-  assert.deepEqual(
-    projectOrchestrationStandard(baseline, { managed: false }),
-    baseline,
-  );
+  assert.deepEqual(projectOrchestrationStandard(baseline, { managed: false }), baseline);
   assert.throws(
     () => projectOrchestrationStandard(baseline, { managed: true }),
     /ORCHESTRATION_PROMPT_REQUIRED/,
   );
   assert.throws(
-    () =>
-      projectOrchestrationStandard(baseline, {
-        ...input,
-        prompt: " ",
-        managed: true,
-      }),
+    () => projectOrchestrationStandard(baseline, { ...input, prompt: " ", managed: true }),
     /ORCHESTRATION_PROMPT_REQUIRED/,
   );
   assert.equal(baseline[0].config.prefix, "Standard");
