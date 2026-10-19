@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 import { createPluginReleaseSource } from "../../../src/host/plugin-release-source.ts";
 import { companyPackageNames, projectPluginRelease } from "../../../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
-export async function controllerFixture(t, { mode = "success", sourceFailure, fileCommit } = {}) {
+export async function controllerFixture(
+  t,
+  { mode = "success", sourceFailure, fileCommit, allUpdates = false } = {},
+) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "plugin-update-real-profile-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, "profile"),
@@ -31,7 +34,11 @@ export async function controllerFixture(t, { mode = "success", sourceFailure, fi
   for (const [index, name] of companyPackageNames.entries()) {
     const contract = contracts.find((row) => row.name === name),
       oldVersion = oldVersions[index],
-      version = index === 2 ? "3.1.0" : oldVersion;
+      version = allUpdates
+        ? ["1.1.0", "2.1.0", "3.1.0"][index]
+        : index === 2
+          ? "3.1.0"
+          : oldVersion;
     const manifest = {
       name,
       version,
@@ -39,8 +46,8 @@ export async function controllerFixture(t, { mode = "success", sourceFailure, fi
       peerDependencies:
         index === 2
           ? {
-              [companyPackageNames[0]]: "1.0.0",
-              [companyPackageNames[1]]: "2.0.0",
+              [companyPackageNames[0]]: allUpdates ? "^1.0.0" : "1.0.0",
+              [companyPackageNames[1]]: allUpdates ? "^2.0.0" : "2.0.0",
             }
           : {},
       exports: contract.exports,
@@ -80,7 +87,7 @@ export async function controllerFixture(t, { mode = "success", sourceFailure, fi
     const target = join(dir, "node_modules", name);
     await mkdir(target, { recursive: true });
     execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
-    if (index === 2) {
+    if (allUpdates || index === 2) {
       await writeFile(
         join(target, "package.json"),
         JSON.stringify({ ...manifest, version: oldVersion }),

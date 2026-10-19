@@ -781,3 +781,99 @@ test("Windows accepts pnpm file separators only for the selected exact archive",
     Object.defineProperty(process, "platform", descriptor);
   }
 });
+
+for (const mode of ["success", "fail-after-first"]) {
+  test(`batch update uses one owner and ${mode === "success" ? "installs all packages" : "restores all packages after a partial install"}`, async (t) => {
+    const { controllerFixture, waitForStage } =
+      await import("./fixtures/plugin-updates/profile.mjs");
+    const f = await controllerFixture(t, { mode, allUpdates: true });
+    const before = await readPluginProfile(f.dir);
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    const requests = controller
+      .snapshot()
+      .items.map(({ packageName, planId }) => ({ packageName, planId }));
+    assert.equal(requests.length, 3);
+    assert.ok(requests.every((row) => row.planId));
+    const accepted = await controller.submitBatch(requests);
+    assert.equal(accepted.targets.length, 3);
+    await assert.rejects(controller.submitBatch(requests), /UPDATE_OPERATION_BLOCKED/);
+    const operation = await waitForStage(controller, ["pending-restart", "restored", "unknown"]);
+    assert.equal(operation.stage, mode === "success" ? "pending-restart" : "restored");
+    const calls = (await readFile(join(f.dir, "invocations.ndjson"), "utf8"))
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].args.filter((arg) => arg.startsWith("file:")).length, 3);
+    const after = await readPluginProfile(f.dir);
+    if (mode === "success") {
+      assert.deepEqual(
+        controller.snapshot().items.map((row) => row.state),
+        Array(3).fill("pending-restart"),
+      );
+      assert.deepEqual(
+        controller.snapshot().items.map((row) => row.installedVersion),
+        ["1.1.0", "2.1.0", "3.1.0"],
+      );
+      assert.deepEqual(after.manifest.retained, before.manifest.retained);
+      await controller.dispose();
+      const reopened = createPluginUpdateController(f.options);
+      t.after(() => reopened.dispose());
+      await reopened.initialize();
+      assert.deepEqual(
+        reopened.snapshot().items.map((row) => row.state),
+        Array(3).fill("pending-restart"),
+      );
+    } else {
+      assert.equal(after.ownedSha256, before.ownedSha256);
+      assert.deepEqual(after.manifest, before.manifest);
+    }
+  });
+}
+
+test("inactive package is excluded from batch plans and cannot be disabled after checking", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { allUpdates: true });
+  const inactive = f.proofs[1];
+  inactive.host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const blocked = controller.snapshot().items.find((row) => row.packageName === inactive.name);
+  assert.equal(blocked.state, "blocked");
+  assert.equal(blocked.planId, null);
+  assert.deepEqual(blocked.problem, { kind: "policy", code: "inactive" });
+  const selected = controller.snapshot().items.filter((row) => row.state === "available");
+  assert.equal(selected.length, 2);
+  const before = (await readPluginProfile(f.dir)).sha256;
+  f.proofs[0].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  await assert.rejects(
+    controller.submitBatch(selected.map(({ packageName, planId }) => ({ packageName, planId }))),
+    /UPDATE_PACKAGE_INACTIVE/,
+  );
+  assert.equal((await readPluginProfile(f.dir)).sha256, before);
+  assert.equal(controller.snapshot().operation, null);
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+});
+
+test("same-version inactive package reports its load diagnosis before current status", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const inactive = f.proofs[1];
+  inactive.host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller.snapshot().items.find((item) => item.packageName === inactive.name);
+  assert.equal(row.installedVersion, "2.0.0");
+  assert.equal(row.state, "blocked");
+  assert.equal(row.candidateVersion, "2.0.0");
+  assert.equal(row.planId, null);
+  assert.equal(row.diagnostic, "UPDATE_PACKAGE_INACTIVE");
+  assert.deepEqual(row.problem, { kind: "policy", code: "inactive" });
+});

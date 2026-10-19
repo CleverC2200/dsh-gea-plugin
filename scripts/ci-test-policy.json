@@ -230,6 +230,7 @@
         "tests/plugin-release-source.test.mjs",
         "tests/plugin-release.test.mjs",
         "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-list.browser.mjs",
         "tests/plugin-update-detail.browser.mjs"
       ]
     },
@@ -239,6 +240,7 @@
       "tests": [
         "scripts/build.test.mjs",
         "tests/plugin-update-install.contract.mjs",
+        "tests/plugin-update-list.browser.mjs",
         "tests/plugin-update-detail.browser.mjs",
         "tests/plugin-release-source.test.mjs"
       ]

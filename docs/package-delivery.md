@@ -98,3 +98,7 @@ corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json
 Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开发来源记录，companion curation 会从新包移除这些文件。原 raw tar 与 source 文件保持不变，收据记录每个 excludedProvenanceFiles 的路径/摘要及 raw archive SHA；页面 HTML、代码与公共 exports 仍逐项核验。来源 metadata 不作为运行资产随用户包交付。
 
 独立单包 release、签名频道和完整组合计划见 [签名插件来源](plugin-release-source.md)。三包交付沿最终 manifest 检查所有消费者的实际 peer ranges，保留已有 exact 约束；版本号独立不代表组合自动兼容。
+
+## 公司桌面构建
+
+公司完整桌面包可只携带三个必要插件，GenUI 仍为可选第四包，现有配置和卸载选择保留。构建版本使用用户确认的完整版本号；Core 身份仍由实际 launcher/runtime 的产品版本、App 的干净提交与完整字节证明确定，不能把带日期的桌面构建版本当成 Core runtime 版本。当前明确登记公司 Core `8cfb899ccf21d3662421b99b5f4627842ef712ea`，允许原 `639ed015397290b3745d163aafe02ffee4aa3f84` 的证明刷新，未知 Core 继续拒绝。

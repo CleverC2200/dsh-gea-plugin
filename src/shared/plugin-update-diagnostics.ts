@@ -31,6 +31,7 @@ export function parseUpdateProblem(value: unknown) {
         "release-not-published",
         "plan-unconfirmed",
         "conditions",
+        "inactive",
         "restored",
         "failed",
       ] as const;

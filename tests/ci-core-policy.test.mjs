@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ciCores } from "../scripts/ci-core-policy.mjs";
 
-const rc2 = "639ed015397290b3745d163aafe02ffee4aa3f84";
+const rc2 = "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8";
 const alpha = "5badb15009ae1756c3afe0ae0cef1faafc290ccc";
 
-test("required and compatibility select disjoint official Core inputs", () => {
+test("required and compatibility select disjoint company and upstream Core inputs", () => {
   assert.deepEqual(
     ciCores("required").map((core) => [core.head, core.version]),
     [[rc2, "0.2.0-rc.2"]],

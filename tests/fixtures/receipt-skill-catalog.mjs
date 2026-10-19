@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { profile } from "../profile.mjs";
+import { findSupportedCore } from "../../scripts/supported-cores.mjs";
 
 // Independent author metadata shared with the complete catalog scene; only this fixture's canary differs.
 const declaration = JSON.parse(
@@ -22,7 +23,10 @@ const bodyCanary = "RECEIPT_SKILL_BODY_MUST_NOT_AUTOLOAD_R39_6d341cbf";
 /** Retain the business profile and give every filesystem Skill source a private root. */
 export async function receiptProfile(t) {
   const { core } = JSON.parse(await readFile(process.env.GEA_TEST_CANDIDATE, "utf8"));
-  assert.ok([rc2, alpha].includes(core), "Unsupported receipt Core input");
+  assert.ok(
+    core === alpha || findSupportedCore({ head: core, version: "0.2.0-rc.2" }),
+    "Unsupported receipt Core input",
+  );
   const env = { GEA_WEB_LOGIN_PERSIST: "0" };
   const app = await profile(t, {
     env,
@@ -73,7 +77,6 @@ export function assertReceiptCatalog(rows) {
   );
 }
 
-const rc2 = "639ed015397290b3745d163aafe02ffee4aa3f84";
 const alpha = "5badb15009ae1756c3afe0ae0cef1faafc290ccc";
 
 function assertSnapshot(source, names) {
@@ -92,7 +95,10 @@ function assertSnapshot(source, names) {
 
 /** Validate the Core-declared metadata and retain exactly one receipt proof. */
 export function assertReceiptMessages(rows, core) {
-  assert.ok([rc2, alpha].includes(core), "Unsupported receipt Core input");
+  assert.ok(
+    core === alpha || findSupportedCore({ head: core, version: "0.2.0-rc.2" }),
+    "Unsupported receipt Core input",
+  );
   assertReceiptCatalog(rows);
   const messages = rows.filter((row) => row.type === "user/message");
   const proofs = [];

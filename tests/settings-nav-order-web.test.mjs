@@ -40,7 +40,7 @@ const settingsClient = `window.__ModuleLoader__.load({
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 /** Native General/Models and Sidebar retain their real order while a public registrant changes. */
-test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeout: 90000 }, async (t) => {
+test("设置扩展保持顺序且插件管理位于末尾", { timeout: 90000 }, async (t) => {
   let fixtureFiles, profilePatch;
   const app = await profile(t, {
     async beforeStart({ runtime }) {
@@ -139,9 +139,11 @@ test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeou
     (await labels()).map((label) => label.trim()).filter((label) => relevant.has(label));
   const unchanged = ["通用设置", "模型", "侧边卡片", "软件更新"];
   await expect.poll(order).toEqual(unchanged);
-  assert.deepEqual((await labels()).map((label) => label.trim()).slice(-2), [
+  assert.deepEqual((await labels()).map((label) => label.trim()).slice(-4), [
     "侧边卡片",
     "软件更新",
+    "GEA 接口日志",
+    "插件管理",
   ]);
   await navigation.getByRole("button", { name: "软件更新", exact: true }).click();
   const fixture = dialog.getByRole("region", { name: "软件更新夹具", exact: true });
@@ -152,9 +154,9 @@ test("设置左栏把「侧边卡片」排在「软件更新」前面", { timeou
     await fixture.getByRole("button", { name: "移除测试导航", exact: true }).click();
     await expect.poll(order).toEqual(unchanged);
     assert.deepEqual(
-      (await labels()).map((label) => label.trim()).slice(-2),
-      ["侧边卡片", "软件更新"],
-      "卡片不能继续上移",
+      (await labels()).map((label) => label.trim()).slice(-4),
+      ["侧边卡片", "软件更新", "GEA 接口日志", "插件管理"],
+      "注册与移除扩展后保留原顺序及插件管理末位",
     );
   }
   for (const file of fixtureFiles)
