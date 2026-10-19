@@ -125,19 +125,27 @@ export function correctionService() {
       }
       if (path.endsWith("/versions/v/actions")) {
         const body = JSON.parse(req.body);
-        // 此夹具模拟旧版动作接口，只接收基础字段。快照与绝对净量契约由 Host
-        // 在出站前校验，拒绝过期快照的场景由 correction-host 覆盖。
-        assert.equal(body.expectedSnapshot, undefined);
-        assert.equal(body.adjustmentMode, undefined);
+        assert.equal(body.expectedSnapshot, revision.toString(16).padStart(64, "0"));
+        assert.equal(body.adjustmentMode, "ABSOLUTE_NET");
         assert.ok(
           Object.keys(body).every((key) =>
-            ["action", "expectedStatus", "remark", "adjustments", "notification"].includes(key),
+            [
+              "action",
+              "expectedStatus",
+              "remark",
+              "adjustments",
+              "notification",
+              "expectedSnapshot",
+              "adjustmentMode",
+              "approvalRole",
+            ].includes(key),
           ),
         );
         assert.equal(body.expectedStatus, status);
         const node = ["", "region", "province", "area", "category"][
           status >= 6 ? status - 6 : status
         ];
+        assert.equal(body.approvalRole, node);
         const from = status;
         if (body.action === "REJECT") {
           for (const suffix of [
