@@ -114,7 +114,14 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
+    await expect(frame.getByRole("combobox", { name: "销售计划周期", exact: true })).toContainText(
+      "2026-09",
+    );
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
+    await expect(
+      frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
+    ).toBeChecked();
+    await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
     // 退回弹窗不会在失败时自动关闭，正好用来核对失败提示文案。
     await frame.getByRole("button", { name: "退回", exact: true }).click();
     const dialog = frame.getByRole("dialog");

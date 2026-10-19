@@ -45,7 +45,8 @@
     "desktop/runtime-resolution.test.mjs",
     "desktop/startup-copy.test.cjs",
     "desktop/updates.test.mjs",
-    "desktop/verify-client-artifacts.test.cjs"
+    "desktop/verify-client-artifacts.test.cjs",
+    "scripts/windows-complete-local/input.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -344,6 +345,16 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:plugin-release-preflight|release-preflight|package-source-integrity|deliver-packages)\\.mjs$",
       "tests": ["scripts/deliver-packages.test.mjs", "tests/plugin-release-preflight.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/windows-complete-local/(?:(?:build|input|run-bundle)\\.mjs|input\\.test\\.mjs|released-input\\.fixture\\.json)$",
+      "tests": [
+        "scripts/windows-complete-local/input.test.mjs",
+        "scripts/delivery-events.test.mjs",
+        "scripts/package-desktop.test.mjs",
+        "tests/plugin-release-source.test.mjs"
+      ]
     }
   ],
   "testOwners": {

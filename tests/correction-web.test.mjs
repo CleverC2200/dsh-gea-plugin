@@ -11,7 +11,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
-    let legacyResponse = false;
+    let responseMode = "normal";
     app.route((req, res, reply) => {
       if (req.url.pathname.endsWith("/getPermCode")) {
         reply({ success: true, result: { codeList: ["sales-plan:plan:region-approve"] } });
@@ -34,9 +34,10 @@ test(
                 planId: "p-jxs-2026-09-00001",
                 versionId: "v",
                 seq: 1,
-                periodId: "20260901",
+                periodId: responseMode === "wrong-period" ? "20260902" : "20260901",
                 planTypeCode: "Y",
-                orderType: legacyResponse ? "M" : (req.url.searchParams.get("orderType") ?? "Z"),
+                orderType:
+                  responseMode === "monthly" ? "M" : (req.url.searchParams.get("orderType") ?? "Z"),
                 dealerCode: "123",
                 dealerName: "纠偏客户",
                 status: 1,
@@ -90,9 +91,17 @@ test(
     await expect(frame.getByRole("combobox", { name: "纠偏周期", exact: true })).toContainText(
       "2026-09",
     );
-    legacyResponse = true;
+    responseMode = "monthly";
     await frame.getByRole("button", { name: "刷新纠偏", exact: true }).click();
-    await expect(frame.getByText(/非纠偏数据/)).toBeVisible();
+    await expect(frame.getByRole("button", { name: "纠偏客户", exact: true })).toBeDisabled();
+    await expect(frame.getByText("不可纠偏：月初未终审", { exact: true })).toBeVisible();
+    responseMode = "wrong-period";
+    await frame.getByRole("button", { name: "刷新纠偏", exact: true }).click();
+    await expect(frame.getByText(/其他周期或非纠偏数据/)).toBeVisible();
+    assert.equal(
+      app.requests.filter((request) => request.url.pathname.endsWith("/actions")).length,
+      0,
+    );
     await expect(frame.getByText("纠偏客户", { exact: true })).toHaveCount(0);
     await expect(frame.getByText(/当前页目标 —/)).toBeVisible();
   },
@@ -133,12 +142,12 @@ test(
         status >= 5 && status <= 10 && status !== 9
           ? "品类"
           : { 1: "区域", 2: "省区", 3: "大区", 4: "品类", 9: "大区" }[status];
-      // 多角色账号明确选择本次查看/审批角色；不再由状态冒充账号身份。
-      await f.getByRole("combobox", { name: "纠偏查看节点", exact: true }).click();
-      await f
-        .getByRole("option", {
-          name: status === 5 || status === 10 ? "当前节点" : node,
-          exact: true,
+      const toggle = f.locator('button[aria-controls="correction-stage-lane"]');
+      if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+      const lane = f.getByRole("navigation", { name: "纠偏查看节点", exact: true });
+      await lane
+        .getByRole("button", {
+          name: new RegExp((status === 5 || status === 10 ? "当前节点" : node) + "$"),
         })
         .click();
       await f.getByRole("button", { name: "纠偏客户", exact: true }).click();
