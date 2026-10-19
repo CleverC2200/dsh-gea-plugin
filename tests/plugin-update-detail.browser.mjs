@@ -341,6 +341,45 @@ test("official detail slots check, update, close and reenter through controlled 
     await page.setViewportSize({ width: 1280, height: 900 });
   }
   await page.evaluate(() => window.fixture.locale("en"));
+  problem = {
+    ...problem,
+    nextStep: { packageName: "@cleverc2200/dsh-agent-workbench", version: "1.2.4" },
+  };
+  await page
+    .getByText(
+      "First update @cleverc2200/dsh-agent-workbench to 1.2.4. When installation finishes, restart the application and check for updates again.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(
+    await page
+      .getByText(
+        "Keep the installed versions. Check the listed requirements and wait for a compatible release before checking again.",
+        { exact: true },
+      )
+      .count(),
+    0,
+  );
+  assert.equal(await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(), 0);
+  await page.evaluate(() => window.fixture.locale("zh"));
+  await page
+    .getByText(
+      "请先将 @cleverc2200/dsh-agent-workbench 更新至 1.2.4，安装完成后重启应用，再次检查更新。",
+      { exact: true },
+    )
+    .waitFor();
+  if (process.env.GEA_DETAIL_SCREENSHOT) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({ path: process.env.GEA_DETAIL_SCREENSHOT + "-next-step-desktop.png" });
+    await page.setViewportSize({ width: 390, height: 840 });
+    await page.screenshot({ path: process.env.GEA_DETAIL_SCREENSHOT + "-next-step-mobile.png" });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+    );
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  await page.evaluate(() => window.fixture.locale("en"));
   for (const [code, english, chinese] of [
     [
       "channel-older",

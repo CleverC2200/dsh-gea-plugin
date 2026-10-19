@@ -192,7 +192,14 @@ function DetailSection({
               <dd>{requirement.candidate ?? t("unchanged")}</dd>
             </dl>
           ))}
-          <p className="gea-plugin-update-notice">{t("dependenciesAction")}</p>
+          <p className="gea-plugin-update-notice">
+            {row.problem.nextStep
+              ? t("dependenciesNextStep", {
+                  packageName: row.problem.nextStep.packageName,
+                  version: row.problem.nextStep.version,
+                })
+              : t("dependenciesAction")}
+          </p>
         </div>
       ) : null}
       {row?.state === "restored" && !error ? (

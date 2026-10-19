@@ -58,6 +58,8 @@ export const en = {
   dependencyCurrent: "Current dependency version",
   dependencyCandidate: "Candidate dependency version",
   unchanged: "Not part of this update",
+  dependenciesNextStep:
+    "First update {packageName} to {version}. When installation finishes, restart the application and check for updates again.",
   dependenciesAction:
     "Keep the installed versions. Check the listed requirements and wait for a compatible release before checking again.",
   dependencies: "The installed plugin versions are incompatible with this update.",
@@ -120,6 +122,7 @@ export const zh: Record<keyof typeof en, string> = {
   dependencyCurrent: "当前依赖版本",
   dependencyCandidate: "候选依赖版本",
   unchanged: "本次不更新此依赖",
+  dependenciesNextStep: "请先将 {packageName} 更新至 {version}，安装完成后重启应用，再次检查更新。",
   dependenciesAction: "请保留已安装版本，核对所列依赖要求，等待兼容版本发布后重新检查。",
   dependencies: "已安装的插件版本与此更新不兼容。",
 };
