@@ -313,14 +313,19 @@ const fixture = async (
       });
     if (path.endsWith("/api/v1/internal/sales-plans")) {
       const body = JSON.parse(req.body);
+      const planId = [...state.entries()].find(
+        ([, row]) => row.dealerCode === body.dealerCode,
+      )?.[0];
+      assert.ok(planId);
       submitted.push({
+        planId,
         body,
         key: req.headers["idempotency-key"],
         requestId: req.headers["x-request-id"],
       });
-      const prior = submitReceipts.get(body.planId);
+      const prior = submitReceipts.get(planId);
       if (prior) return send({ ...prior, replayed: true });
-      if (denySubmit === true || denySubmit === body.planId) {
+      if (denySubmit === true || denySubmit === planId) {
         reply(
           { success: false, message: "提报窗口已关闭，请联系业务管理员" },
           403,
@@ -330,23 +335,23 @@ const fixture = async (
       assert.equal(body.status, returnedStatus - 5);
       assert.equal(body.items.length, 1);
       assert.equal(body.items[0].price, "12.3400");
-      const row = state.get(body.planId);
-      row.versionId = body.planId === PLAN_A ? "v-new" : "v-new-b";
+      const row = state.get(planId);
+      row.versionId = planId === PLAN_A ? "v-new" : "v-new-b";
       row.seq = 2;
       row.status = body.status;
       const nodes = shortened ? [1, 3, 4] : [1, 2, 3, 4];
       row.nextActor = { 1: "region", 2: "province", 3: "area", 4: "category" }[
         nodes.find((node) => node >= body.status)
       ];
-      submittedQuantities.set(body.planId, body.items[0].qty);
+      submittedQuantities.set(planId, body.items[0].qty);
       logs.push({
-        planId: body.planId,
+        planId: planId,
         versionId: row.versionId,
         actionCode: "RESUBMIT",
         requestId: req.headers["x-request-id"],
       });
       const submitReceipt = {
-        planId: body.planId,
+        planId: planId,
         versionId: row.versionId,
         seq: 2,
         status: body.status,
@@ -355,8 +360,8 @@ const fixture = async (
         auditId: "a",
         replayed: false,
       };
-      submitReceipts.set(body.planId, submitReceipt);
-      if (unknownOnce && body.planId === PLAN_A) {
+      submitReceipts.set(planId, submitReceipt);
+      if (unknownOnce && planId === PLAN_A) {
         reply({ message: "结果暂时未知" }, 502);
         return true;
       }
@@ -411,6 +416,25 @@ const captureEvidence = async (page, app, name) => {
     fullPage: true,
     animations: "disabled",
   });
+  await writeFile(
+    resolve(directory, name + ".layout.json"),
+    JSON.stringify(
+      await page
+        .frameLocator('iframe[src^="/api/agent-workbench/native?"]')
+        .locator("body")
+        .evaluate((body) => {
+          const node = body.querySelector('[role="dialog"]');
+          if (!node) return { viewport: window.innerWidth };
+          const rect = node.getBoundingClientRect();
+          return {
+            viewport: window.innerWidth,
+            x: rect.x,
+            width: rect.width,
+            right: rect.right,
+          };
+        }),
+    ),
+  );
   await writeFile(
     resolve(directory, name + ".aria.txt"),
     await page
@@ -571,7 +595,7 @@ for (const mixed of [false, true])
         .dblclick();
       await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
       assert.deepEqual(
-        submitted.map(({ body }) => body.planId).sort(),
+        submitted.map(({ planId }) => planId).sort(),
         mixed ? [PLAN_A] : [PLAN_A, PLAN_B],
       );
       assert.ok(
@@ -743,7 +767,9 @@ test(
       name: "真实销售计划退回重提",
       exact: true,
     });
-    await expect(dialog).toContainText("服务凭据或用户授权未就绪");
+    await expect(dialog).toContainText(
+      "当前账号的修改重提入口尚未就绪或权限不足",
+    );
     await expect(
       dialog.getByRole("button", { name: "确认重提", exact: true }),
     ).toBeDisabled();
