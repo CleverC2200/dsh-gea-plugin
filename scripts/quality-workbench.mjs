@@ -78,16 +78,23 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
       // Declaration emission adds regular files; lstat never follows external targets.
       if ((await lstat(join(prepared, file))).isFile()) continue;
     }
+    const workbenchConfig = file === "lib/business/inventory-apsplan/sql.config.json";
     if (
       line.startsWith("?? ") &&
-      file.startsWith("lib/business/inventory-aqkc/skills/") &&
-      manage
+      (workbenchConfig || (file.startsWith("lib/business/inventory-aqkc/skills/") && manage))
     ) {
-      const owner = await realpath(manage.path);
-      if (!/^[a-f0-9]{40}$/.test(manage.head) || git(owner, "rev-parse", "HEAD") !== manage.head)
-        throw Error("QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH");
-      const resource = file.replace(/^lib\/business\//, "business-resources/");
-      const entry = git(owner, "ls-tree", manage.head, "--", resource);
+      const owner = workbenchConfig ? source : await realpath(manage.path);
+      const ownerHead = workbenchConfig ? head : manage.head;
+      if (!/^[a-f0-9]{40}$/.test(ownerHead) || git(owner, "rev-parse", "HEAD") !== ownerHead)
+        throw Error(
+          workbenchConfig
+            ? "QUALITY_WORKBENCH_SOURCE_MISMATCH"
+            : "QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH",
+        );
+      const resource = workbenchConfig
+        ? file.slice("lib/".length)
+        : file.replace(/^lib\/business\//, "business-resources/");
+      const entry = git(owner, "ls-tree", ownerHead, "--", resource);
       const original = join(owner, resource),
         output = join(prepared, file);
       if (
