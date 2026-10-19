@@ -43,7 +43,14 @@ syncBuiltinESMExports();
   assert.equal(failed.child.status, 1, failed.child.stderr);
   assert.deepEqual(
     failed.commands.map((args) => args[1]),
-    ["lint", "format:check", "check:knowledge", "check:prompt-execution", "test:environment"],
+    [
+      "lint",
+      "format:check",
+      "check:knowledge",
+      "check:prompt-execution",
+      "test:environment",
+      "test:release-contract",
+    ],
   );
   assert.deepEqual(
     failed.checks.slice(-2).map((entry) => entry.status),
@@ -54,7 +61,7 @@ syncBuiltinESMExports();
   assert.deepEqual(source.commands[0], ["pnpm", "lint", "scripts/example.mjs"]);
   assert.deepEqual(source.commands[1], ["pnpm", "format:check", "scripts/example.mjs"]);
   assert.ok(source.checks.every((entry) => entry.status === "passed"));
-  assert.equal(source.commands.length, 5);
+  assert.equal(source.commands.length, 6);
 });
 
 test("a failed early gate preserves later behavioral observations and final failure", () => {

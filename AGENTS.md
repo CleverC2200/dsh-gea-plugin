@@ -19,3 +19,4 @@ CI Core 的阻断与兼容范围由 `scripts/ci-core-policy.json` 维护；调�
 | 规则 | 执行机制 |
 | --- | --- |
 | 已登记的 Core 仍须具备本次用途所需的当前运行依赖；源码检查不强制准备运行环境 | `check:environment`；三包 reception 与直接 install/observe 强制调用；`test:environment` 接入现有 source-only 快检与 CI |
+| 当前兼容范围只在包声明中维护，历史升级案例使用固定输入 | 包烟测核产物与锁保留声明；`test:release-contract` 验证声明的升级边界并接入 source-only 快检与 CI |

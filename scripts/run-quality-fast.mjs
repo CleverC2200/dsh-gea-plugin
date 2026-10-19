@@ -23,9 +23,14 @@ function check(name) {
   };
 }
 const checks = runQualityChecks(
-  ["lint", "format:check", "check:knowledge", "check:prompt-execution", "test:environment"].map(
-    check,
-  ),
+  [
+    "lint",
+    "format:check",
+    "check:knowledge",
+    "check:prompt-execution",
+    "test:environment",
+    "test:release-contract",
+  ].map(check),
 );
 if (!values["source-only"]) {
   const dependent = ["typecheck:official", ...(!values["checks-only"] ? ["test:quality"] : [])];

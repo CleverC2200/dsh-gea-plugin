@@ -18,6 +18,7 @@
     "test:window": "node --test tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs",
     "check:environment": "node scripts/runtime-environment.mjs",
     "test:environment": "node --test scripts/runtime-environment.test.mjs",
+    "test:release-contract": "node --test tests/plugin-release.test.mjs tests/optional-companion-manifest.test.mjs",
     "test:dependencies": "node --test scripts/dependency-lock.test.mjs",
     "observe": "node scripts/dev-observe.mjs",
     "observe:report": "node scripts/dev-observe-report.mjs",

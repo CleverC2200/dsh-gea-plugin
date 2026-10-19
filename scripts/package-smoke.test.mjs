@@ -4,7 +4,6 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
-import semver from "semver";
 
 const root = resolve(import.meta.dirname, "..");
 const pnpm = process.env.GEA_PACKAGE_PNPM;
@@ -72,11 +71,6 @@ test(
       source.peerDependencies["@cleverc2200/dsh-agent-workbench"] ??
         versions["@cleverc2200/dsh-agent-workbench"],
     );
-    const workbenchRange = manifest.peerDependencies["@cleverc2200/dsh-agent-workbench"];
-    for (const version of ["0.1.9", "0.1.10", "0.1.11", "0.1.12"])
-      assert.equal(semver.satisfies(version, workbenchRange), true, version);
-    for (const version of ["0.1.8", "0.1.13"])
-      assert.equal(semver.satisfies(version, workbenchRange), false, version);
     assert.equal(manifest.devDependencies, undefined);
     assert.ok(
       !files.some((file) => file.includes("node_modules/") || file.includes("scripts/start.mjs")),
@@ -91,6 +85,7 @@ test(
       "the official installation provides the SDK singleton",
     );
     assert.deepEqual(lock.packages[""].dependencies, manifest.dependencies);
+    assert.deepEqual(lock.packages[""].peerDependencies, manifest.peerDependencies);
     lock.packages[""].dependencies["@modelcontextprotocol/sdk"] = "0.0.0";
     await writeFile(join(input, "npm-shrinkwrap.json"), JSON.stringify(lock));
     assert.throws(
