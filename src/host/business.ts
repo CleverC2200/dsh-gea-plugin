@@ -59,6 +59,7 @@ import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
 
 import { createCapabilityRegistry, type CapabilityRegistry } from "../capability/registry.ts";
 import { workbenchContract, effectRank, type CapabilityEffect } from "../capability/contract.ts";
+import { sharedAgentCapability, WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
@@ -763,6 +764,7 @@ export class Business {
       () => this.base,
     );
     this.capabilities = createCapabilityRegistry([
+      sharedAgentCapability,
       workbenchContract({
         surface: "gea-workbench",
         pageIds: ["gea-workbench"],
@@ -1922,8 +1924,9 @@ export class Business {
 
   private readonly moduleMcpCache = new Map<string, { token: string; module: GatewayMcpClient }>();
   /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
-  invalidateModuleMcp(consumerCode: string): void {
-    this.moduleMcpCache.delete(consumerCode);
+  invalidateModuleMcp(consumerCode: string, expected?: GatewayMcpClient): void {
+    if (!expected || this.moduleMcpCache.get(consumerCode)?.module === expected)
+      this.moduleMcpCache.delete(consumerCode);
   }
   /**
    * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
@@ -2404,7 +2407,7 @@ export class Business {
   assertExecutionAllowed(consumerCode: string, effect: CapabilityEffect = "view"): void {
     this.salesReadonly?.assertConsumer(consumerCode, effect);
     const contract =
-      consumerCode === this.config.analysisAgentCode
+      consumerCode === this.config.analysisAgentCode && consumerCode !== WORKBENCH_AGENT_CODE
         ? this.capabilities.get("gea-workbench")
         : this.capabilities.list().find((item) => item.data?.consumerCode === consumerCode);
     let code: string | undefined;

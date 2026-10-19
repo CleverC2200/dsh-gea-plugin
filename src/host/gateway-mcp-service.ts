@@ -3,9 +3,10 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Business } from "./business.ts";
 import { cubeAllowed, resolveCubeAccess, sameCubeAccess } from "./cube-access.ts";
 import { throwIfAborted, readableError } from "../shared/abort.ts";
-import { stopExpiredGateway } from "./agent-tools.ts";
+import { gatewaySessionExpired, stopExpiredGateway } from "./agent-tools.ts";
 import type { GatewayMcpTool } from "./gateway-mcp-client.ts";
 import { isDeepStrictEqual } from "node:util";
+import { knowledgeArguments, knowledgeSelection } from "./knowledge-mcp.ts";
 
 export function createGatewayMcpService(ctx: Context, business: Business) {
   return {
@@ -79,13 +80,20 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
       const consumer = access.consumerCode;
       const stopped = business.turnStopped(sessionId);
       if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
-      if (name === "inspect_cube_model" || name === "weknora_list_knowledge_bases")
-        business.invalidateModuleMcp(consumer);
+      if (name === "inspect_cube_model") business.invalidateModuleMcp(consumer);
       const module = await business.moduleMcp(consumer, signal);
       signal.throwIfAborted();
       if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
         throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
       try {
+        if (name === "weknora_ask") {
+          knowledgeArguments(name, args);
+          const catalog = await module.call("weknora_list_knowledge_bases", {}, signal);
+          throwIfAborted(signal);
+          if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
+            throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
+          knowledgeSelection(catalog, args);
+        }
         const result = await module.call(name, args, signal);
         throwIfAborted(signal);
         if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
@@ -96,8 +104,14 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
           !signal.aborted &&
           cubeAllowed(ctx, business, sessionId) &&
           sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId));
+        if (
+          name === "weknora_ask" &&
+          ((error instanceof Error && "code" in error && error.code === "GEA_MCP_HTTP_404") ||
+            gatewaySessionExpired(error))
+        )
+          business.invalidateModuleMcp(consumer, module);
         const expired = current
-          ? stopExpiredGateway(business, consumer, sessionId, error)
+          ? stopExpiredGateway(business, consumer, sessionId, error, module)
           : undefined;
         if (expired) throw expired;
         throw readableError(error);
