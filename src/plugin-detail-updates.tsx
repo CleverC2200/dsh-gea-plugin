@@ -176,6 +176,25 @@ function DetailSection({
           {error}
         </p>
       ) : null}
+      {row?.problem?.kind === "dependencies" ? (
+        <div className="gea-plugin-update-requirements">
+          {row.problem.requirements.map((requirement, index) => (
+            <dl className="gea-plugin-update-versions" key={index}>
+              <dt>{t("consumer")}</dt>
+              <dd>{requirement.consumer}</dd>
+              <dt>{t("dependency")}</dt>
+              <dd>{requirement.dependency}</dd>
+              <dt>{t("required")}</dt>
+              <dd>{requirement.required}</dd>
+              <dt>{t("dependencyCurrent")}</dt>
+              <dd>{requirement.current ?? t("unavailable")}</dd>
+              <dt>{t("dependencyCandidate")}</dt>
+              <dd>{requirement.candidate ?? t("unchanged")}</dd>
+            </dl>
+          ))}
+          <p className="gea-plugin-update-notice">{t("dependenciesAction")}</p>
+        </div>
+      ) : null}
       {row?.state === "restored" && !error ? (
         <p className="gea-plugin-update-notice">{t("restoredReason")}</p>
       ) : null}

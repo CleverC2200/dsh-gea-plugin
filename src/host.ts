@@ -1,3 +1,5 @@
+import { loadServiceAccountCredentials } from "./shared/service-accounts.js";
+import type { ServiceAccounts } from "./host/service-account.ts";
 import { GeaModelAdapter, geaKeptReasoningEffort } from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
 import type {} from "./shared/message-source.ts";
@@ -71,6 +73,7 @@ export const inject = [
 const environmentSchema = z.union(["production", "test"]);
 export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
+  serviceAccounts: z.any<ServiceAccounts>(),
   environment: environmentSchema.default(
     z.resolve(companyDefaults.environment, environmentSchema, {})[0],
   ),
@@ -199,6 +202,7 @@ export async function apply(
         ? companyDefaults.geaEnvironments
         : undefined),
   };
+  await loadServiceAccountCredentials(config.serviceAccounts);
   ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config));
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);

@@ -33,6 +33,9 @@
   margin: 16px 0 0;
   font-size: 13px;
 }
+.gea-plugin-update-requirements .gea-plugin-update-versions {
+  margin-top: 16px;
+}
 .gea-plugin-update-error {
   color: var(--dsw-alias-state-error-primary);
 }
