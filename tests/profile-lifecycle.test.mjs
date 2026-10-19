@@ -24,14 +24,22 @@ test(
     process.on('SIGTERM',()=>{});child.on('exit',code=>process.exit(code??1));`,
     );
     let cleanup;
-    const app = await profile(
-      {
-        after: (fn) => {
-          cleanup = fn;
+    let app;
+    try {
+      app = await profile(
+        {
+          signal: t.signal,
+          after: (fn) => {
+            cleanup = fn;
+          },
         },
-      },
-      { execArgv: [script], desktopGraph: directory },
-    );
+        // This fixture owns a minimal Core HTTP server, not the GEA business routes.
+        { execArgv: [script], desktopGraph: directory, coreOnly: true },
+      );
+    } catch (error) {
+      await cleanup?.();
+      throw error;
+    }
     const started = Date.now();
     await cleanup();
     assert.ok(Date.now() - started < 15000, "server child survived the forced launcher stop");
@@ -68,6 +76,7 @@ test("profile cancellation before launch never starts its owned launcher", async
         {
           execArgv: [script],
           desktopGraph: directory,
+          coreOnly: true,
           beforeStart: () => controller.abort(reason),
         },
       ),
