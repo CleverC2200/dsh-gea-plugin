@@ -16,6 +16,7 @@ import https from "node:https";
 import net from "node:net";
 import { createHash } from "node:crypto";
 import { inspect } from "node:util";
+import { FIBER_ACTIVE, waitForMainPlugins } from "./readiness.mjs";
 
 const v = JSON.parse(await readFile(process.argv[2], "utf8"));
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
@@ -32,8 +33,6 @@ const projected = {
 const checkpoint = (phase) => {
   projected.checkpoint = phase;
 };
-// Cordis exports FiberState as a const enum; app-boot's own JS audit uses this value.
-const FIBER_ACTIVE = 2;
 const deny = (kind) => {
   projected.outgoingAttempts[kind]++;
   throw Error("OUTGOING_TRANSPORT_DENIED");
@@ -45,6 +44,7 @@ net.Socket.prototype.connect = function () {
   return deny("socket");
 };
 syncBuiltinESMExports();
+const observationDeadline = Date.now() + 100000;
 const watchdog = setTimeout(() => {
   projected.failure = "RUNTIME_OBSERVATION_TIMEOUT";
   void save().then(() => process.exit(1));
@@ -126,6 +126,11 @@ try {
   assert(ctx.get("loader") !== undefined, "HOST_LOADER_MISSING");
   for (const listener of readyListeners) listener();
   await ctx.loader.await();
+  await waitForMainPlugins(
+    ctx.loader,
+    owner.artifacts.map((row) => row.name),
+    observationDeadline,
+  );
   checkpoint("main-active");
   const names = owner.artifacts.map((row) => row.name);
   const entries = [...ctx.loader.entries()];
