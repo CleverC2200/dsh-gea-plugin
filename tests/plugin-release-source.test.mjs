@@ -307,7 +307,7 @@ test("signed release cannot lie about the final tar peer graph", async (t) => {
   const { readdir } = await import("node:fs/promises");
   assert.deepEqual(await readdir(join(f.dir, "cache")), []);
 });
-test("single release CLI reads final conditional tar manifest and accepts only registered Core identities", async (t) => {
+test("single release CLI requires release preflight and rejects unregistered Core identities", async (t) => {
   const f = await fixture(t),
     releases = await f.source.check(),
     release = releases[0];
@@ -326,28 +326,22 @@ test("single release CLI reads final conditional tar manifest and accepts only r
     }),
   );
   const entry = fileURLToPath(new URL("../scripts/create-plugin-release.mjs", import.meta.url));
-  const receipt = JSON.parse(
-    execFileSync(
-      process.execPath,
-      [
-        entry,
-        "--archive",
-        archive,
-        "--metadata",
-        metadata,
-        "--destination",
-        join(f.dir, "release-output"),
-      ],
-      { encoding: "utf8" },
-    ),
+  const { spawnSync } = await import("node:child_process");
+  const missing = spawnSync(
+    process.execPath,
+    [
+      entry,
+      "--archive",
+      archive,
+      "--metadata",
+      metadata,
+      "--destination",
+      join(f.dir, "release-output"),
+    ],
+    { encoding: "utf8" },
   );
-  const content = await readFile(receipt.path),
-    projected = JSON.parse(content);
-  assert.equal(receipt.sha256, digest(content));
-  assert.equal(projected.name, release.name);
-  assert.equal(projected.version, release.version);
-  assert.deepEqual(projected.requires, {});
-  assert.equal(receipt.published, false);
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /RELEASE_PREFLIGHT_INPUT_REQUIRED/);
   await writeFile(
     metadata,
     JSON.stringify({
@@ -357,11 +351,12 @@ test("single release CLI reads final conditional tar manifest and accepts only r
       notes: "invalid fixed input",
     }),
   );
-  const { spawnSync } = await import("node:child_process");
   const failed = spawnSync(
     process.execPath,
     [
       entry,
+      "--preflight",
+      join(f.dir, "required-preflight.json"),
       "--archive",
       archive,
       "--metadata",

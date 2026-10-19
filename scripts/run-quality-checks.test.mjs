@@ -193,6 +193,7 @@ test("the CI static receipt and mandatory environment and release fixtures have 
   assert.deepEqual(files.sort(), [
     "scripts/runtime-environment.test.mjs",
     "tests/optional-companion-manifest.test.mjs",
+    "tests/plugin-release-preflight.test.mjs",
     "tests/plugin-release.test.mjs",
   ]);
   for (const file of files)
