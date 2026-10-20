@@ -320,13 +320,13 @@ function fixture(
   };
 }
 
-test("static quality emits current Workbench declarations and rejects declaration failures before GEA build", (t) => {
-  for (const failed of [false, true]) {
+test("static quality builds current Workbench types and pure model, rejecting either failure before GEA build", (t) => {
+  for (const failure of [null, "declarations", "workbench-model"]) {
     const f = fixture(t);
     const prepared = f.run("prepare");
     assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
-    const built = f.run("build", failed ? { FIXTURE_FAIL: "declarations" } : {});
-    assert.equal(built.status, failed ? 1 : 0, built.stdout + built.stderr);
+    const built = f.run("build", failure ? { FIXTURE_FAIL: failure } : {});
+    assert.equal(built.status, failure ? 1 : 0, built.stdout + built.stderr);
     const commands = readFileSync(join(f.job, "commands.jsonl"), "utf8")
       .trim()
       .split("\n")
@@ -343,9 +343,24 @@ test("static quality emits current Workbench declarations and rejects declaratio
       "--emitDeclarationOnly",
       "true",
     ]);
+    const model = commands.findIndex((entry) => entry.command === "workbench-model");
+    if (failure === "declarations") assert.equal(model, -1);
+    else {
+      assert.ok(model > declarations);
+      assert.equal(commands[model].cwd, join(f.job, "candidate/dsh-agent-workbench"));
+      assert.deepEqual(commands[model].args, [
+        "node_modules/esbuild/bin/esbuild",
+        "src/sales-plan.ts",
+        "--bundle",
+        "--format=esm",
+        "--platform=node",
+        "--packages=external",
+        "--outfile=lib/sales-plan.js",
+      ]);
+    }
     const geaBuild = commands.findIndex((entry) => entry.args.includes("build:plugin"));
-    if (failed) assert.equal(geaBuild, -1);
-    else assert.ok(geaBuild > declarations);
+    if (failure) assert.equal(geaBuild, -1);
+    else assert.ok(geaBuild > model);
     assert.equal(
       commands.some((entry) => entry.args.includes("build:core")),
       false,

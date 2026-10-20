@@ -24,6 +24,11 @@ commands.spawnSync = (command, args, options = {}) => {
     if (process.env.FIXTURE_FAIL === "declarations") return { ...success, status: 1 };
     return success;
   }
+  if (command === process.execPath && args[0] === "node_modules/esbuild/bin/esbuild") {
+    log("workbench-model", args, cwd);
+    if (process.env.FIXTURE_FAIL === "workbench-model") return { ...success, status: 1 };
+    return success;
+  }
   if (command === process.execPath && args[0]?.endsWith("/prepare-official-sdk.mjs")) {
     log("sdk", args, cwd);
     const core = args[args.indexOf("--core") + 1];
