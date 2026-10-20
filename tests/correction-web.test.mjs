@@ -90,14 +90,11 @@ test(
         ),
       )
       .toBe(true);
-    await expect(
-      frame.getByText("销售计划数据读取失败；不会自动无限重试。", { exact: true }),
-    ).toBeVisible();
+    await expect(frame.getByRole("alert").filter({ hasText: "审批队列读取失败" })).toBeVisible();
     await expect(frame.getByRole("row").filter({ hasText: "纠偏客户" })).toHaveCount(0);
-    for (const label of ["目标金额", "计划金额", "差额（计划 − 目标）", "计划数量"])
-      await expect(
-        workbench.getByText(label, { exact: true }).locator("..").locator("strong"),
-      ).toHaveText("—");
+    await expect(
+      frame.getByRole("region", { name: "当前页明细汇总", exact: true }).locator("strong"),
+    ).toHaveText(["—", "—", "—", "—"]);
     assert.equal(actionRequests(app).length, 0);
     assert.equal(service.writes.length, 0);
   },

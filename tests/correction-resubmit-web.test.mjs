@@ -202,6 +202,9 @@ test(
     await correctionTab.click();
     await expect(correctionTab).toHaveAttribute("aria-selected", "true");
     await f.getByRole("tab", { name: "按客户", exact: true }).click();
+    await f.getByRole("button", { name: "筛选条件", exact: true }).click();
+    await f.getByLabel("审批状态", { exact: true }).click();
+    await f.getByRole("option", { name: "退回销售", exact: true }).click();
     const customerRow = f.getByRole("row").filter({ hasText: old.dealerName }).first();
     await expect(customerRow).toBeVisible();
     const rowSelection = customerRow.getByRole("checkbox");

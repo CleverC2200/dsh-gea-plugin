@@ -141,6 +141,9 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
     "true",
   );
   await frame.getByRole("tab", { name: "按客户", exact: true }).click();
+  await frame.getByRole("button", { name: "筛选条件", exact: true }).click();
+  await frame.getByLabel("审批状态", { exact: true }).click();
+  await frame.getByRole("option", { name: "退回销售", exact: true }).click();
   const customerRow = frame.getByRole("row").filter({ hasText: plan.dealerName }).first();
   await expect(customerRow).toBeVisible();
   const rowSelection = customerRow.getByRole("checkbox");
