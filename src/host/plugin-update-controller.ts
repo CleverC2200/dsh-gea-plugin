@@ -39,7 +39,6 @@ import {
   retainsUnmanagedManifestFields,
   validateActualProfile,
   within,
-  sha256,
   type ProfileSnapshot,
 } from "./plugin-update-profile.ts";
 import { writePluginRecoveryNotes } from "./plugin-update-recovery-notes.ts";

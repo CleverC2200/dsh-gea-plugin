@@ -33,15 +33,11 @@ test("rejects installed symlinks and honors cancellation", async (t) => {
   const f = await fixture(t);
   const controller = new AbortController();
   controller.abort();
-  await assert.rejects(
-    archiveMatches(f.archive, f.installed, controller.signal),
-    { name: "AbortError" },
-  );
+  await assert.rejects(archiveMatches(f.archive, f.installed, controller.signal), {
+    name: "AbortError",
+  });
   await rm(join(f.installed, "index.js"));
-  await symlink(
-    join(f.source, "package/index.js"),
-    join(f.installed, "index.js"),
-  );
+  await symlink(join(f.source, "package/index.js"), join(f.installed, "index.js"));
   assert.equal(await archiveMatches(f.archive, f.installed), false);
 });
 
