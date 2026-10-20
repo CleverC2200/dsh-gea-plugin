@@ -151,6 +151,9 @@ jobs:
       - name: Inspect Manage archive file verification
         run: |
           $outputPath = Join-Path $env:RUNNER_TEMP 'native-acl-probe.safe.json'
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund tar@7.5.16
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
           node scripts/windows-complete-local/native-manage-archive-probe.mjs --output $outputPath
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Keep only safe ACL classification
