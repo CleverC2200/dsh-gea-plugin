@@ -22,9 +22,33 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
+
+test("formal customer Consumer keeps underscores through normalization and registry lookup", () => {
+  const contract = m.contractFromPlugin({
+    id: "inventory-customer",
+    label: "客户库存",
+    consumerCode: "customer_inventory",
+    pageIds: ["inventory-customer"],
+    maxEffect: "view",
+    sources: [],
+  });
+  const normalized = m.normalizeContract(contract);
+  const registry = m.createCapabilityRegistry([normalized]);
+  assert.equal(registry.byConsumer("customer_inventory").id, "inventory-customer");
+  assert.equal(registry.byConsumer("customer-inventory-preview"), undefined);
+  for (const consumerCode of [
+    "customer inventory",
+    "customer/inventory",
+    "customer.inventory",
+    "customer@inventory",
+  ]) {
+    const invalid = { ...contract, data: { ...contract.data, consumerCode } };
+    assert.throws(() => m.normalizeContract(invalid), /INVALID_CAPABILITY_CONTRACT/);
+    assert.throws(() => m.createCapabilityRegistry([invalid]), /INVALID_CONSUMER_CODE/);
+  }
+});
 
 test("只从模块自己的 SQL 里提取受管业务表，CTE 与函数不算表", () => {
   const html = [
@@ -45,10 +69,7 @@ test("只从模块自己的 SQL 里提取受管业务表，CTE 与函数不算�
 });
 
 test("别的 schema 与非法输入不产生表", () => {
-  assert.deepEqual(
-    m.tablesFromSource("SELECT * FROM other_schema.agents_scm_x", ""),
-    [],
-  );
+  assert.deepEqual(m.tablesFromSource("SELECT * FROM other_schema.agents_scm_x", ""), []);
   assert.deepEqual(m.tablesFromSource(undefined, "SELECT 1"), []);
 });
 
@@ -136,10 +157,7 @@ test("注册表只由契约产出白名单与只读模块清单", () => {
     "gea-html-inventory-aqkc",
     "gea-html-inventory-fc",
   ]);
-  assert.deepEqual(registry.draftSurfaces(), [
-    "gea-workbench",
-    "gea-html-inventory-fc",
-  ]);
+  assert.deepEqual(registry.draftSurfaces(), ["gea-workbench", "gea-html-inventory-fc"]);
   assert.equal(registry.allows("gea-html-inventory-aqkc", "draft"), false);
   assert.equal(registry.allows("gea-html-inventory-fc", "draft"), true);
   assert.equal(registry.allows("gea-html-inventory-fc", "approve"), false);
@@ -173,10 +191,7 @@ test("关键词能把用户问题路由到模块", () => {
 });
 
 test("模块自己交的契约形状不对就整份丢掉", () => {
-  assert.throws(
-    () => m.normalizeContract({ id: "x" }),
-    /INVALID_CAPABILITY_CONTRACT/,
-  );
+  assert.throws(() => m.normalizeContract({ id: "x" }), /INVALID_CAPABILITY_CONTRACT/);
   assert.throws(
     () =>
       m.normalizeContract({
