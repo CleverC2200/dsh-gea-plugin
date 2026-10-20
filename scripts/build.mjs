@@ -1,3 +1,4 @@
+import { holdBuildAdmission } from "./build-admission.mjs";
 import { build, context } from "esbuild";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -16,6 +17,7 @@ for (const name of selected) {
     throw new Error("UNKNOWN_BUILD_TARGET: " + name);
   }
 }
+holdBuildAdmission({ operation: values.watch ? "watch" : "build" });
 execFileSync(process.execPath, ["scripts/generate-plugin-package-version.mjs"], {
   stdio: "inherit",
 });

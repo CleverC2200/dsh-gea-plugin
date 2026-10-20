@@ -54,6 +54,8 @@ async function requestFixture(
   }).trim();
   const copiedScripts = join(work, "cli");
   await mkdir(copiedScripts);
+  for (const file of ["build-admission.mjs", "development-repositories.mjs"])
+    await copyFile(join(import.meta.dirname, file), join(copiedScripts, file));
   const fixtureEntry = join(copiedScripts, "deliver-packages.mjs");
   const cliSource = await readFile(entry, "utf8");
   await copyFile(
@@ -122,6 +124,7 @@ async function requestFixture(
       await writeFile(join(path, "scripts/supported-cores.json"), JSON.stringify(supported));
       for (const file of [
         "production-manifest.mjs",
+        "build-admission.mjs",
         "prepare-package.mjs",
         "package.mjs",
         "package-companion.mjs",
