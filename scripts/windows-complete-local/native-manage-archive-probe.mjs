@@ -40,7 +40,7 @@ await t({file:archive,strict:true,onReadEntry(entry){
 }});
 assert.equal(indexed.length,new Set(indexed).size);
 const missing=indexed.filter(n=>!actual.includes(n)),unlisted=actual.filter(n=>!indexed.includes(n));
-report.candidate={format:'node-tar-7.5.16',files:indexed.length,missingCount:missing.length,unlistedCount:unlisted.length,allFileBytesMatch:false};
+report.candidate={format:'node-tar-7.5.22',files:indexed.length,missingCount:missing.length,unlistedCount:unlisted.length,allFileBytesMatch:false};
 await writeFile(values.output,JSON.stringify(report,null,2)+'\n');
 assert.equal(missing.length,0);assert.equal(unlisted.length,0);
 for(const name of indexed)assert.equal(createHash('sha256').update(await readFile(join(target,name))).digest('hex'),hashes.get(name),'ARCHIVE_FILE_BYTES_MISMATCH');
