@@ -152,7 +152,7 @@ jobs:
         if: needs.candidate-scope.outputs.windows-applicable == 'true'
         shell: pwsh
         run: |
-          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1
+          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1 tar@7.5.22
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
           node scripts/check-windows-plugin-update.mjs
       - name: Preserve Windows scope and native outcome

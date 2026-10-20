@@ -1,14 +1,13 @@
+import { archiveMatches } from "./plugin-update-archive.mjs";
 import { sourceUpdateProblem, planUpdateProblem } from "../shared/plugin-update-diagnostics.ts";
 import { withFileLock } from "@deepseek-ai/dsh-atomic-write";
 import { runProfilePnpm } from "@deepseek-ai/dsh-plugin-manager/operations";
 import { resolveBundleDir } from "@deepseek-ai/dsh-app-boot";
 import type { ProfileContext } from "@deepseek-ai/dsh-app-boot";
-import { mkdir, open, readFile, realpath, rename, rm, lstat } from "node:fs/promises";
+import { mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import {
   companyPackageNames,
   parsePluginRelease,
@@ -42,7 +41,6 @@ import {
   retainsUnmanagedManifestFields,
   validateActualProfile,
   within,
-  sha256,
   type ProfileSnapshot,
 } from "./plugin-update-profile.ts";
 import { writePluginRecoveryNotes } from "./plugin-update-recovery-notes.ts";
@@ -89,7 +87,6 @@ function fail(code: string): never {
 }
 const code = (error: unknown, fallback: string) =>
   error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message) ? error.message : fallback;
-const run = promisify(execFile);
 
 async function durableJson(path: string, value: unknown, commit?: PluginUpdateFileCommit) {
   const temp = path + "." + randomUUID() + ".partial",
@@ -250,31 +247,6 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
 }
 function operationTargets(operation: PluginUpdateOperation) {
   return operation.targets ?? [operation];
-}
-async function archiveMatches(archive: string, packageDirectory: string, signal?: AbortSignal) {
-  const options = {
-    maxBuffer: 32 * 1024 * 1024,
-    timeout: 30_000,
-    signal,
-    encoding: "utf8" as const,
-  };
-  const files = (await run("tar", ["-tzf", archive], options)).stdout.trim().split(/\r?\n/);
-  for (const name of files) {
-    if (name.endsWith("/")) continue;
-    signal?.throwIfAborted();
-    const relative = name.slice("package/".length),
-      path = join(packageDirectory, relative);
-    if (!within(packageDirectory, path) || (await lstat(path)).isSymbolicLink()) return false;
-    const bytes = (
-      await run("tar", ["-xOf", archive, name], {
-        ...options,
-        encoding: "buffer",
-      })
-    ).stdout;
-    const installed = await readFile(path);
-    if (sha256(bytes) !== sha256(installed)) return false;
-  }
-  return true;
 }
 
 /** One Host owner holds the official lock through verification, receipt commit and confirmed-safe recovery. */

@@ -19,6 +19,7 @@ export const windowsNativeEntrypoints = Object.freeze({
 });
 
 const affected = [
+  /^src\/host\/plugin-update-archive\.mjs$/,
   /^src\/host\/plugin-(?:update[^/]*|release-source)\.ts$/,
   /^src\/shared\/plugin-(?:update[^/]*\.ts|release\.(?:mjs|d\.mts))$/,
   /^tests\/(?:plugin-update[^/]*\.(?:contract|native)\.mjs|fixtures\/plugin-updates\/)/,
