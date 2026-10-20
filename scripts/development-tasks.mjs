@@ -41,7 +41,7 @@ function sources(root) {
     .filter(
       (file) =>
         !/^(?:lib|client|tests|docs|docs-site|\.agents|\.github|\.codex)\//.test(file) &&
-        !/\.(?:test|spec|contract|browser)\.[cm]?[jt]sx?$/.test(file) &&
+        !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file) &&
         !/^(?:README|AGENTS|CLAUDE|QUALITY|CONTRIBUTING|CHANGELOG|SECURITY)/.test(file),
     )
     .sort()
