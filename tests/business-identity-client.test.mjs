@@ -82,6 +82,7 @@ test("the read-only identity route exposes configured environment choices withou
       loginState: "signed-out",
       user: null,
     },
+    customerInventory: null,
   });
 });
 
@@ -395,6 +396,7 @@ test("first connection failure stays unknown until Host recovery without emittin
     scope: null,
     subject: null,
     status: null,
+    customerInventory: null,
   });
   globalThis.fetch = async () =>
     Response.json({
@@ -411,6 +413,11 @@ test("first connection failure stays unknown until Host recovery without emittin
   await reader.refresh();
   assert.equal(reader.getSnapshot().status.user.name, "Alice");
   assert.equal(reader.getSnapshot().error, undefined);
+  assert.equal(
+    reader.getSnapshot().customerInventory,
+    null,
+    "recovery cannot invent customer grants",
+  );
   assert.deepEqual(events, [], "initial recovery must not invalidate restored Sessions or drafts");
 });
 
