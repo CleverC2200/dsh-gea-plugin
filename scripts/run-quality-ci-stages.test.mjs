@@ -320,6 +320,54 @@ function fixture(
   };
 }
 
+test("static quality builds current Workbench types and pure model, rejecting either failure before GEA build", (t) => {
+  for (const failure of [null, "declarations", "workbench-model"]) {
+    const f = fixture(t);
+    const prepared = f.run("prepare");
+    assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+    const built = f.run("build", failure ? { FIXTURE_FAIL: failure } : {});
+    assert.equal(built.status, failure ? 1 : 0, built.stdout + built.stderr);
+    const commands = readFileSync(join(f.job, "commands.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    const declarations = commands.findIndex((entry) => entry.command === "workbench-declarations");
+    assert.ok(declarations >= 0);
+    assert.equal(commands[declarations].cwd, join(f.job, "candidate/dsh-agent-workbench"));
+    assert.deepEqual(commands[declarations].args, [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "tsconfig.official.json",
+      "--noEmit",
+      "false",
+      "--emitDeclarationOnly",
+      "true",
+    ]);
+    const model = commands.findIndex((entry) => entry.command === "workbench-model");
+    if (failure === "declarations") assert.equal(model, -1);
+    else {
+      assert.ok(model > declarations);
+      assert.equal(commands[model].cwd, join(f.job, "candidate/dsh-agent-workbench"));
+      assert.deepEqual(commands[model].args, [
+        "node_modules/esbuild/bin/esbuild",
+        "src/sales-plan.ts",
+        "--bundle",
+        "--format=esm",
+        "--platform=node",
+        "--packages=external",
+        "--outfile=lib/sales-plan.js",
+      ]);
+    }
+    const geaBuild = commands.findIndex((entry) => entry.args.includes("build:plugin"));
+    if (failure) assert.equal(geaBuild, -1);
+    else assert.ok(geaBuild > model);
+    assert.equal(
+      commands.some((entry) => entry.args.includes("build:core")),
+      false,
+    );
+  }
+});
+
 test("the public macOS task prepares only fixed Host dependencies before executing both native contracts", (t) => {
   const f = fixture(t, { macos: true });
   const result = f.run(undefined, {}, ["--phase", "macos-isolation"]);
@@ -387,7 +435,7 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
   );
   assert.equal(commands.filter((entry) => entry.command === "sdk").length, 5);
   assert.equal(commands.filter((entry) => entry.command === "workbench-declarations").length, 1);
-  assert.equal(commands.filter((entry) => entry.command === "workbench-sales-plan").length, 1);
+  assert.equal(commands.filter((entry) => entry.command === "workbench-model").length, 1);
 });
 
 test("the public documentation stage admits the actual tuple and checks knowledge without SDK, install, build or tests", (t) => {

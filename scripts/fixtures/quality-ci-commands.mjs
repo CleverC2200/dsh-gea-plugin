@@ -19,6 +19,20 @@ commands.execFileSync = (command, args, options = {}) => {
 };
 commands.spawnSync = (command, args, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
+  if (command === process.execPath && args[0] === "node_modules/typescript/bin/tsc") {
+    log("workbench-declarations", args, cwd);
+    if (process.env.FIXTURE_FAIL === "declarations") return { ...success, status: 1 };
+    mkdirSync(resolve(cwd, "lib/types"), { recursive: true });
+    writeFileSync(resolve(cwd, "lib/types/host.d.ts"), "export declare const prepared: true;\n");
+    return success;
+  }
+  if (command === process.execPath && args[0] === "node_modules/esbuild/bin/esbuild") {
+    log("workbench-model", args, cwd);
+    if (process.env.FIXTURE_FAIL === "workbench-model") return { ...success, status: 1 };
+    mkdirSync(resolve(cwd, "lib"), { recursive: true });
+    writeFileSync(resolve(cwd, "lib/sales-plan.js"), "export const prepared = true;\n");
+    return success;
+  }
   if (command === process.execPath && args[0]?.endsWith("/prepare-official-sdk.mjs")) {
     log("sdk", args, cwd);
     const core = args[args.indexOf("--core") + 1];
@@ -40,19 +54,6 @@ commands.spawnSync = (command, args, options = {}) => {
       for (const kind of ["artifacts", "web"])
         writeFileSync(resolve(core, ".git/dsh-sdk-" + kind + ".json"), "{}\n");
     }
-    return success;
-  }
-  if (command === process.execPath && args[0]?.endsWith("/typescript/bin/tsc")) {
-    log("workbench-declarations", args, cwd);
-    if (process.env.FIXTURE_FAIL === "build") return { ...success, status: 1 };
-    mkdirSync(resolve(cwd, "lib/types"), { recursive: true });
-    writeFileSync(resolve(cwd, "lib/types/host.d.ts"), "export declare const prepared: true;\n");
-    return success;
-  }
-  if (command === process.execPath && args[0]?.endsWith("/esbuild/bin/esbuild")) {
-    log("workbench-sales-plan", args, cwd);
-    mkdirSync(resolve(cwd, "lib"), { recursive: true });
-    writeFileSync(resolve(cwd, "lib/sales-plan.js"), "export const prepared = true;\n");
     return success;
   }
   if (command === process.execPath && args[0] === "scripts/build.mjs") {

@@ -2,7 +2,6 @@
 
 `delivery:packages` 为 [支持的官方 Core](../scripts/supported-cores.json) 生成同一组三个普通插件包、SHA256SUMS、manifest.json 和面向用户的 INSTALL.md。两版固定 Core 与各自 exact SDK peers 由该声明统一登记，不能据旧单版说明排除其中一版。用户安装与升级步骤见 [安装说明](install.md)；同次生成的 INSTALL.md 绑定具体包集合。
 
-
 此入口只做当前明确的三包交付。它不构建 owner 源码，不安装 profile、不启动客户端、不登录、不访问模型或业务，也不发布到远端。GenUI/Sidebar 是可选增强，三核心正常安装不得强制要求它们。未安装或未启用辅助插件时不具备其专用工具。三个 tgz 仍需要联网获取普通 npm 运行依赖，不能称为离线自包含。
 
 ## 准备输入
@@ -27,9 +26,26 @@ request.json 的所有输入路径须为绝对路径，destination 必须是不�
     "dsh-better-sidebar": "0.24.1"
   },
   "repositories": [
-    {"repo": "dsh-agent-workbench", "path": "/absolute/workbench", "head": "FULL_SOURCE_SHA", "archive": "/absolute/workbench-raw.tgz", "buildReceipt": "/absolute/workbench-build.json"},
-    {"repo": "dsh-agent-manage", "path": "/absolute/manage", "head": "FULL_SOURCE_SHA", "archive": "/absolute/manage-raw.tgz", "buildReceipt": "/absolute/manage-build.json"},
-    {"repo": "dsh-gea-plugin", "path": "/absolute/gea", "head": "FULL_SOURCE_SHA", "buildReceipt": "/absolute/gea-build.json"}
+    {
+      "repo": "dsh-agent-workbench",
+      "path": "/absolute/workbench",
+      "head": "FULL_SOURCE_SHA",
+      "archive": "/absolute/workbench-raw.tgz",
+      "buildReceipt": "/absolute/workbench-build.json"
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "path": "/absolute/manage",
+      "head": "FULL_SOURCE_SHA",
+      "archive": "/absolute/manage-raw.tgz",
+      "buildReceipt": "/absolute/manage-build.json"
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "path": "/absolute/gea",
+      "head": "FULL_SOURCE_SHA",
+      "buildReceipt": "/absolute/gea-build.json"
+    }
   ]
 }
 ```
@@ -44,13 +60,17 @@ versions 的两个辅助版本是 optional peer 的 exact 发布元数据，复�
 
 ```json
 {
-  "command": {"file": "corepack", "args": ["pnpm", "run", "build:plugin"], "cwd": "/absolute/gea"},
+  "command": {
+    "file": "corepack",
+    "args": ["pnpm", "run", "build:plugin"],
+    "cwd": "/absolute/gea"
+  },
   "exitCode": 0,
   "sourceHead": "FULL_SOURCE_SHA",
   "lockSha256": "SHA256_OF_PNPM_LOCK",
   "outputs": [
-    {"path": "lib/host.js", "sha256": "ACTUAL_SHA256"},
-    {"path": "lib/client.js", "sha256": "ACTUAL_SHA256"}
+    { "path": "lib/host.js", "sha256": "ACTUAL_SHA256" },
+    { "path": "lib/client.js", "sha256": "ACTUAL_SHA256" }
   ]
 }
 ```
@@ -81,7 +101,7 @@ corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json
 
 五个参数都是绝对路径，Home 和 evidence 的父目录已存在，而这两个目标目录必须不存在并互不包含。入口先核所选固定 Core、manifest.supportedCores 和三份 tar 的名称、版本及摘要，再独占新 Home 和独立 evidence。同一 manifest.core 保留构建来源，两次接收的 ACCEPTANCE.core 分别记录实际宿主，两次 artifactSetSha256 必须一致。它复用已验证的普通 profile harness，顺序执行官方安装及实际 Loader/公共服务观察，不复用旧用户 patch、辅助包、SDK source link 或凭据。不启动 Native，不调用模型或业务，对观察过程的出网尝试直接拒绝。
 
-安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、六个业务资源、九文档完整 standard 和智能编排默认。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
+安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、七个业务资源（含受控只读客户库存）、十份文档的完整 standard 和智能编排默认。客户库存已按正式受控只读声明发布预设；订单工作台和订单履约模拟预览仍不得出现在初始预设清单。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
 
 仅成功接收在新 evidence 中生成 ACCEPTANCE.json，绑定交付 manifest、实际三 tar 集合、安装及观察回执 SHA，以及同一个 Core/Profile。`result.json` 为本次入口结果。接收入口不改原 tgz、manifest 或已有交付文件，打包仍只称 packaged。浏览器执行、Native、业务和真实模型不在这个接收结论内。
 

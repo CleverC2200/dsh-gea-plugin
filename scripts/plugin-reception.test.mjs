@@ -12,6 +12,30 @@ import {
   retainStandard,
   projectOrchestrationStandard,
 } from "./plugin-reception/contract.mjs";
+import {
+  currentBusinessIds,
+  validateInitialPresets,
+} from "./plugin-reception/preset-discovery.mjs";
+
+test("governed customer inventory is discoverable while mock order previews remain hidden", () => {
+  const presets = currentBusinessIds.map((id) => ({ id, broken: false }));
+  validateInitialPresets(presets);
+  const customer = "gea-html-inventory-customer";
+  for (const invalid of [
+    presets.filter((row) => row.id !== customer),
+    presets.map((row) => (row.id === customer ? { ...row, broken: true } : row)),
+    [...presets, { id: customer, broken: false }],
+  ])
+    assert.throws(
+      () => validateInitialPresets(invalid),
+      /BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:gea-html-inventory-customer/,
+    );
+  for (const id of ["gea-html-inventory-orderworkbench", "gea-html-inventory-orderfulfillment"])
+    assert.throws(
+      () => validateInitialPresets([...presets, { id, broken: false }]),
+      /PREVIEW_PRESET_VISIBLE/,
+    );
+});
 
 const fixture = async (name) =>
   JSON.parse(
