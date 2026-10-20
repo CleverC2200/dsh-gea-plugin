@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.176",
+  "version": "0.0.177",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -207,7 +207,7 @@
     "packages/*"
   ],
   "peerDependencies": {
-    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17",
+    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17 || 0.1.18",
     "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",
