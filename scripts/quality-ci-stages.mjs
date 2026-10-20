@@ -17,8 +17,9 @@ const buildOutputs = [
   { path: "candidate/dsh-agent-manage/lib" },
   { path: "candidate/dsh-agent-manage/client", files: ["client.js", "client.js.map"] },
 ];
+const workbenchDeclarations = { path: "candidate/dsh-agent-workbench/lib/types" };
 export function isQualityBuildOutput(file) {
-  return buildOutputs.some(({ path, files }) =>
+  return [...buildOutputs, workbenchDeclarations].some(({ path, files }) =>
     files ? files.some((name) => file === path + "/" + name) : file.startsWith(path + "/"),
   );
 }
@@ -28,7 +29,10 @@ export function qualityBuildOutputs(root) {
   );
   if (manifest.name !== "dsh-agent-manage" || clientEntry(manifest) !== "./client/client.js")
     throw Error("QUALITY_STAGE_CLIENT_DECLARATION_CHANGED");
-  return buildOutputs.map(({ path, ...entry }) => ({ root: resolve(root, path), ...entry }));
+  const plan = JSON.parse(readFileSync(resolve(root, "quality-test-plan.json")));
+  return [...buildOutputs, ...(plan.runtime ? [] : [workbenchDeclarations])].map(
+    ({ path, ...entry }) => ({ root: resolve(root, path), ...entry }),
+  );
 }
 export function verifyQualityBuildInventory(root, artifacts) {
   const outputs = qualityBuildOutputs(root);

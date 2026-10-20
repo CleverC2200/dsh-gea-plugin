@@ -810,6 +810,20 @@ try {
           DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
           APS_BUILD_MODE: "mock",
         });
+      else
+        run(
+          process.execPath,
+          [
+            resolve(preparedWorkbench, "node_modules/typescript/bin/tsc"),
+            "-p",
+            "tsconfig.official.json",
+            "--noEmit",
+            "false",
+            "--emitDeclarationOnly",
+            "true",
+          ],
+          preparedWorkbench,
+        );
       run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", ["pnpm", "build:plugin"]);
       if (plan.runtime) {

@@ -42,6 +42,13 @@ commands.spawnSync = (command, args, options = {}) => {
     }
     return success;
   }
+  if (command === process.execPath && args[0]?.endsWith("/typescript/bin/tsc")) {
+    log("workbench-declarations", args, cwd);
+    if (process.env.FIXTURE_FAIL === "build") return { ...success, status: 1 };
+    mkdirSync(resolve(cwd, "lib/types"), { recursive: true });
+    writeFileSync(resolve(cwd, "lib/types/host.d.ts"), "export declare const prepared: true;\n");
+    return success;
+  }
   if (command === process.execPath && args[0] === "scripts/build.mjs") {
     log("host-build", args, cwd);
     if (process.env.FIXTURE_FAIL === "build") return { ...success, status: 1 };

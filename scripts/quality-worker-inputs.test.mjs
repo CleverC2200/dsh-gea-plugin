@@ -411,6 +411,13 @@ function fixture(
   git(root, "clone", "--no-hardlinks", coreSource, core);
   git(core, "config", "--local", "dsh.sdkPreparation", "independent-fixed-core");
   git(wb, "worktree", "add", "--detach", join(root, "candidate/dsh-agent-workbench"), wbHead);
+  if (!runtime) {
+    put("candidate/dsh-agent-workbench/lib/types/host.d.ts", "fixed Workbench declarations");
+    stages.artifacts[join(root, "candidate/dsh-agent-workbench/lib/types")] = {
+      "host.d.ts": hash("fixed Workbench declarations"),
+    };
+    json("quality-stages.json", stages);
+  }
   put("official-latest-standard/packages/core/test/lib/index.js", "fixed SDK");
   const sdkIdentity = {
     coreCommit: coreHead,
