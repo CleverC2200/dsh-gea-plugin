@@ -19,6 +19,8 @@
 
 首次读取若自身 Fiber 仍 loading，Host proof 保持未验证。后续安装前读取到 ACTIVE 后才固定；发生安装变更后不能用磁盘或新 import 升级旧 Host proof。进程身份采用 `node:perf_hooks` 的 `performance.timeOrigin` 与 pid，同一进程中的模块重载和控制器重建不会冒充重启。旧 browser 或缺失 client proof 保持 pending；新进程内错误 ACTIVE Host stamp 进入 unknown。
 
+客户端启动恢复在既有 120 秒窗口内重试 Host 状态读取，避免 Host 尚未就绪时连续三次失败便停止。首次成功读取后结束该恢复窗口；待确认操作沿既有观察窗口等待真实 Loader 及 Host/client 证明。打开详情不是自动确认的前提，超时不冒充 completed，也不重新提交安装。
+
 ## 安装与恢复
 
 操作只更新已在 profile manifest 注册的公司包。实际安装所有者必须来自该 profile 的 node_modules；installAnchor 阴影解析或外部公司包链接阻断安装。执行参数是 `add file:<verified archive> --save-exact --ignore-scripts --ignore-pnpmfile --config.auto-install-peers=false`，`activateNewBundles: false`。不触发 HMR、自动重启或生产写入。

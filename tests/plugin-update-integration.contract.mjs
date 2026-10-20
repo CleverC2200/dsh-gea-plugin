@@ -501,7 +501,11 @@ test("loading and disconnected startup probes neither invent an operation nor re
   assert.equal(unknown.getSnapshot().notice, null);
   t.mock.timers.tick(120000);
   await new Promise(setImmediate);
-  assert.equal(attempts, 3);
+  assert(attempts > 3);
+  const stoppedAt = attempts;
+  t.mock.timers.tick(10000);
+  await new Promise(setImmediate);
+  assert.equal(attempts, stoppedAt);
   await unknown.dispose();
   attempts = 0;
   const reloaded = createPluginDetailUpdates(ctx);
@@ -589,7 +593,7 @@ test("new Host recovery waits for client Loader proof and reads status after the
   );
   const original = globalThis.fetch;
   t.after(() => (globalThis.fetch = original));
-  for (const ready of ["active", "later", "unavailable"])
+  for (const ready of ["active", "later", "host-later", "unavailable"])
     await t.test(`Loader ${ready}`, async (t) => {
       t.mock.timers.enable({ apis: ["setTimeout"] });
       const module = {
@@ -625,7 +629,8 @@ test("new Host recovery waits for client Loader proof and reads status after the
       await ctx.plugin(Loader);
       ctx.loader.internal = modules;
       ctx.provide("modules", modules);
-      if (ready === "active") await modules.entries.start(ctx.loader, modules.manifest);
+      if (["active", "host-later"].includes(ready))
+        await modules.entries.start(ctx.loader, modules.manifest);
       let phase = "pending-restart",
         reads = 0,
         acknowledged = 0,
@@ -635,6 +640,11 @@ test("new Host recovery waits for client Loader proof and reads status after the
         if (url.endsWith("/status")) {
           pageIdentity = payload.pageIdentity;
           reads++;
+          if (ready === "host-later" && reads <= 4)
+            return Response.json(
+              { ok: false, error: { code: "UPDATE_HOST_STARTING" } },
+              { status: 409 },
+            );
           return Response.json({
             ok: true,
             value: {
@@ -677,7 +687,13 @@ test("new Host recovery waits for client Loader proof and reads status after the
         await ctx.fiber.dispose();
       });
       await owner.resume();
-      if (ready !== "active") {
+      if (ready === "host-later") {
+        for (let count = 0; count < 4; count++) {
+          t.mock.timers.tick(2000);
+          await new Promise(setImmediate);
+        }
+      }
+      if (!["active", "host-later"].includes(ready)) {
         assert.equal(owner.getSnapshot().notice.kind, "progress");
         assert.equal(acknowledged, 0);
         if (ready === "unavailable") {
