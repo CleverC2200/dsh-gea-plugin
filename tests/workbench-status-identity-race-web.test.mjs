@@ -114,7 +114,11 @@ test(
       "roles and scope must come from the same Host status",
     );
     holdIdentity = false;
-    await expect.poll(async () => (await projected())?.scope).toBe(authorityB.scope);
+    // Identity changes revoke the old owner and can replace its iframe while
+    // this read is in flight. Retry the read against the current frame owner.
+    await expect(async () => {
+      assert.equal((await projected())?.scope, authorityB.scope);
+    }).toPass({ timeout: 15000 });
     await expect(
       page.getByRole("alert").and(page.getByTitle(warning, { exact: true })),
     ).toHaveCount(0);
