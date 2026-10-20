@@ -18,6 +18,7 @@ export function correctionService({ versionId = "v", monthlyApproved = true } = 
   const logs = [];
   const writes = [];
   const receipts = [];
+  const listResponses = [];
   const replay = new Map();
   const sku = {
     id: "1",
@@ -89,6 +90,7 @@ export function correctionService({ versionId = "v", monthlyApproved = true } = 
     detail,
     writes,
     receipts,
+    listResponses,
     setResponseMode(mode) {
       assert.ok(["normal", "monthly", "wrong-period"].includes(mode));
       responseMode = mode;
@@ -144,6 +146,7 @@ export function correctionService({ versionId = "v", monthlyApproved = true } = 
                   mPlanQty: "30",
                 },
               ];
+        listResponses.push({ query: Object.fromEntries(query), records: structuredClone(records) });
         reply({
           success: true,
           result: { records, total: records.length, size: 200, current: 1, pages: 1 },

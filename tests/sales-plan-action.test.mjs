@@ -948,6 +948,7 @@ test("Host list preserves plan totals and summary while unavailable shipment sou
   const row = {
     planId: "p",
     versionId: "v",
+    periodId: "period",
     targetAmount: "1000.00",
     mPlanQty: "100.000",
     mPlanAmount: "800.00",

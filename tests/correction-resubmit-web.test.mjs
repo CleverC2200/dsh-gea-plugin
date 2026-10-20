@@ -31,6 +31,7 @@ test(
       planTypeCode: "Y",
       orderType: "Z",
       dealerCode: "456",
+      dealerName: "重提纠偏客户",
       status: 6,
       effective: true,
       targetQty: "30.000",
@@ -201,12 +202,12 @@ test(
     await correctionTab.click();
     await expect(correctionTab).toHaveAttribute("aria-selected", "true");
     await f.getByRole("tab", { name: "按客户", exact: true }).click();
-    const rowSelection = f
-      .locator(`tbody label.arco-checkbox:has(input[value="${planId}"])`)
-      .first();
-    await expect(rowSelection).toBeVisible();
-    await expect(rowSelection.locator("input")).toBeEnabled();
-    await rowSelection.click();
+    const customerRow = f.getByRole("row").filter({ hasText: old.dealerName }).first();
+    await expect(customerRow).toBeVisible();
+    const rowSelection = customerRow.getByRole("checkbox");
+    await expect(rowSelection).toBeEnabled();
+    await rowSelection.locator("..").click();
+    await expect(rowSelection).toBeChecked();
     const resubmit = f.getByRole("button", { name: "修改后提交", exact: true });
     await expect(resubmit).toBeEnabled();
     await resubmit.click();

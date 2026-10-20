@@ -17,6 +17,7 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
     monthlyApproved: true,
     hasCorrection: true,
     dealerCode: "456",
+    dealerName: "Returned customer",
     submitter: "9007199254740993",
     status: 6,
     currentQty: "1",
@@ -140,12 +141,12 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
     "true",
   );
   await frame.getByRole("tab", { name: "按客户", exact: true }).click();
-  const rowSelection = frame
-    .locator(`tbody label.arco-checkbox:has(input[value="${plan.planId}"])`)
-    .first();
-  await expect(rowSelection).toBeVisible();
-  await expect(rowSelection.locator("input")).toBeEnabled();
-  await rowSelection.click();
+  const customerRow = frame.getByRole("row").filter({ hasText: plan.dealerName }).first();
+  await expect(customerRow).toBeVisible();
+  const rowSelection = customerRow.getByRole("checkbox");
+  await expect(rowSelection).toBeEnabled();
+  await rowSelection.locator("..").click();
+  await expect(rowSelection).toBeChecked();
   const resubmit = frame.getByRole("button", { name: "修改后提交", exact: true });
   await expect(resubmit).toBeEnabled();
   await resubmit.click();

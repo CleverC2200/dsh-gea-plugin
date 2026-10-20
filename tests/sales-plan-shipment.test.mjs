@@ -18,7 +18,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module.exports,
 );
 
-function fixture(t, sqlResult) {
+function fixture(t, sqlResult, planRows) {
   const business = new module.exports.Business({
     geaBaseUrl: "https://gea.test",
     analysisAgentCode: "sales_forecast",
@@ -39,7 +39,7 @@ function fixture(t, sqlResult) {
     const path = new URL(url).pathname;
     if (path.endsWith("/plans"))
       result = {
-        records: [
+        records: planRows ?? [
           {
             planId: "p-jxs-2026-10-00001",
             periodId: "17",
@@ -78,7 +78,7 @@ function fixture(t, sqlResult) {
           },
         ],
         summary: { targetAmount: "3000", planAmount: "1100", planQty: "220", diffAmount: "-1900" },
-        total: 3,
+        total: planRows?.length ?? 3,
         size: 20,
         current: 1,
         pages: 1,
@@ -210,4 +210,94 @@ test("an unavailable amount source preserves shipment quantities and original pl
   assert.equal(page.records[0].amountProgress, null);
   assert.equal(page.records[0].currentAmount, "500");
   assert.match(page.records[0].shipmentError, /发货金额.*查询服务暂时不可用/);
+});
+
+test("M and Z lists reject every wrong or missing requested period before shipment queries", async (t) => {
+  const rows = [
+    { planId: "p-jxs-2026-10-00001", periodId: "17", dealerCode: "001" },
+    { planId: "p-jxs-2026-10-00002", periodId: "18", dealerCode: "002" },
+  ];
+  const { business, sqlRequests } = fixture(t, Error("must-not-query-shipments"), rows);
+  for (const orderType of ["M", "Z"]) {
+    for (const periodId of ["18", undefined, null]) {
+      rows[1].periodId = periodId;
+      await assert.rejects(
+        business.workbenchQuery(
+          { kind: "list", query: { orderType, periodId: "17" } },
+          new AbortController().signal,
+        ),
+        /GEA_PLAN_PERIOD_MISMATCH/,
+      );
+      assert.equal(sqlRequests.length, 0);
+    }
+  }
+});
+
+test("M and Z matching periods preserve original plan values with string and numeric response IDs", async (t) => {
+  const rows = [
+    {
+      planId: "p-jxs-2026-10-00001",
+      periodId: 17,
+      dealerCode: "001",
+      currentQty: "100",
+      currentAmount: "500",
+    },
+    {
+      planId: "p-jxs-2026-10-00002",
+      periodId: "17",
+      dealerCode: "002",
+      currentQty: "70",
+      currentAmount: "400",
+    },
+  ];
+  const { business } = fixture(t, Error("fixture-source-unavailable"), rows);
+  for (const orderType of ["M", "Z"]) {
+    const page = await business.workbenchQuery(
+      { kind: "list", query: { orderType, periodId: "17" } },
+      new AbortController().signal,
+    );
+    assert.equal(page.total, 2);
+    for (let index = 0; index < rows.length; index++)
+      for (const field of ["planId", "currentQty", "currentAmount"])
+        assert.equal(page.records[index][field], rows[index][field]);
+    assert.deepEqual(
+      page.records.map((row) => row.periodId),
+      ["17", "17"],
+    );
+    assert.deepEqual(page.summary, {
+      targetAmount: "3000",
+      planAmount: "1100",
+      planQty: "220",
+      diffAmount: "-1900",
+    });
+  }
+});
+
+test("unfiltered period discovery and an empty filtered summary keep their existing contracts", async (t) => {
+  const rows = [
+    { planId: "p-jxs-2026-10-00001", periodId: "17", dealerCode: "001" },
+    { planId: "p-jxs-2026-11-00001", periodId: "18", dealerCode: "001" },
+  ];
+  const { business, sqlRequests } = fixture(t, Error("must-not-query-shipments"), rows);
+  const discovered = await business.workbenchQuery(
+    { kind: "list", query: {} },
+    new AbortController().signal,
+  );
+  assert.deepEqual(
+    discovered.records.map((row) => row.periodId),
+    ["17", "18"],
+  );
+  rows.length = 0;
+  const summary = await business.workbenchQuery(
+    { kind: "list", query: { orderType: "Z", periodId: "17", summaryOnly: true } },
+    new AbortController().signal,
+  );
+  assert.deepEqual(summary.records, []);
+  assert.deepEqual(summary.summary, {
+    targetAmount: "3000",
+    planAmount: "1100",
+    planQty: "220",
+    diffAmount: "-1900",
+  });
+  assert.equal(sqlRequests.length, 0);
 });

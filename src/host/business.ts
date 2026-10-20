@@ -3385,6 +3385,17 @@ export class Business {
       const total = integer(page.total, page.records.length);
       const pageSize = integer(page.size ?? size, 1);
       const planRows = page.records.map(kind === "list" ? listRecord : object);
+      if (
+        kind === "list" &&
+        query.periodId != null &&
+        query.periodId !== "" &&
+        planRows.some(
+          (row) =>
+            (typeof row.periodId !== "string" && typeof row.periodId !== "number") ||
+            String(row.periodId) !== query.periodId,
+        )
+      )
+        throw new Error("GEA_PLAN_PERIOD_MISMATCH");
       return {
         ...page,
         ...(kind === "list" && query.orderType === "Z" && Array.isArray(page.groupMetrics)

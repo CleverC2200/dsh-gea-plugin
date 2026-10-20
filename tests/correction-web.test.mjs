@@ -80,7 +80,19 @@ test(
     service.setResponseMode("wrong-period");
     await frame.getByRole("tab", { name: "月初", exact: true }).click();
     await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
-    await expect(frame.getByText("审批队列读取失败", { exact: true })).toBeVisible();
+    await expect
+      .poll(() =>
+        service.listResponses.some(
+          ({ query, records }) =>
+            query.orderType === "Z" &&
+            query.periodId === "20260901" &&
+            records.some((record) => record.periodId === "20260902"),
+        ),
+      )
+      .toBe(true);
+    await expect(
+      frame.getByText("销售计划数据读取失败；不会自动无限重试。", { exact: true }),
+    ).toBeVisible();
     await expect(frame.getByRole("row").filter({ hasText: "纠偏客户" })).toHaveCount(0);
     for (const label of ["目标金额", "计划金额", "差额（计划 − 目标）", "计划数量"])
       await expect(
