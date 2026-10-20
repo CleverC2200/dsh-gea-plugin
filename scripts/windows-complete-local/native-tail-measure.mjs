@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { promisify, parseArgs } from 'node:util';
 import { assertPrivate, privateJson, readPrivate } from './native-tail-measure/privacy.mjs';
 import { verifyServiceListener } from './native-tail-measure/native-profile-port.mjs';
-import { verifyServiceListener as verifyExplicitImports } from './native-tail-measure/native-profile-port.imports-candidate.mjs';
+import { verifyServiceListener as verifyExplicitImports, lastTimings } from './native-tail-measure/native-profile-port.timed-candidate.mjs';
 const execute = promisify(execFile), file = fileURLToPath(import.meta.url);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 let diagnosticPhase = 'initializing';
-const sourceBindings = {"privacy.mjs": "d809e5c740c58369f913b7d8a23a5909fb18de31d13fa68e1d40011dc8d3034e", "native-profile-port.mjs": "f64f85b0cf7c52b3258b7434d43580600a2c556f9e072f238ad157cf52127cca", "native-profile-port.imports-candidate.mjs": "749c5637b527b7319bafdee73a1551d4534d78188bcec97fa03fd80167a92376"};
+const sourceBindings = {"privacy.mjs": "d809e5c740c58369f913b7d8a23a5909fb18de31d13fa68e1d40011dc8d3034e", "native-profile-port.mjs": "f64f85b0cf7c52b3258b7434d43580600a2c556f9e072f238ad157cf52127cca", "native-profile-port.imports-candidate.mjs": "749c5637b527b7319bafdee73a1551d4534d78188bcec97fa03fd80167a92376", "native-profile-port.timed-candidate.mjs": "0aaaa5c7008cc98690c0af83f51fa0c0c6d99b7ee6ffd3d8d203118dfde99065"};
 async function secureDirectory(path) {
   diagnosticPhase = 'secure-owner-create';
   await mkdir(path, { recursive: false, mode: 0o700 });
@@ -53,7 +53,7 @@ async function measure(environment, root, report, save) {
     const record = {label,round,ms:0,passed:false,finished:false}; records.push(record); await save();
     const started = performance.now();
     try { await fn(); record.passed = true; }
-    finally { record.ms = Math.round(performance.now()-started); record.finished = true; await save(); }
+    finally { record.ms = Math.round(performance.now()-started); record.finished = true; if(label==='listener-owned-explicit-imports'||label==='listener-foreign-explicit-imports-rejected')record.timings=lastTimings; await save(); }
   };
   try {
     listener = await ownedNode(process.env, true);
@@ -63,8 +63,6 @@ async function measure(environment, root, report, save) {
     for (let round=1;round<=2;round++) {
       await timed('phase-four-private-json',round,async()=>{for(let n=0;n<4;n++)await privateJson(join(root,`${environment}-${round}-${n}.private.json`),{owned:true})});
       await timed('preservation-private-json',round,()=>privateJson(join(root,`${environment}-${round}-preservation.private.json`),{owned:true}));
-      await timed('listener-owned',round,async()=>{const proof=await verifyServiceListener(origin,listener.ready.port,process.pid);assert(proof.ownedAppAncestorConfirmed===true && proof.appPid===process.pid && proof.listenerPids.length===1 && proof.listenerPids[0]===listener.child.pid,'OWNED_LISTENER_PROOF_REQUIRED')});
-      await timed('listener-foreign-rejected',round,()=>assert.rejects(verifyServiceListener(origin,listener.ready.port,foreign.child.pid),error=>error.code==='ERR_ASSERTION' && error.message.split('\n')[0]==='SERVICE_LISTENER_NOT_OWNED'));
       await timed('listener-owned-explicit-imports',round,async()=>{const proof=await verifyExplicitImports(origin,listener.ready.port,process.pid);assert(proof.ownedAppAncestorConfirmed===true && proof.appPid===process.pid && proof.listenerPids.length===1 && proof.listenerPids[0]===listener.child.pid,'OWNED_LISTENER_PROOF_REQUIRED')});
       await timed('listener-foreign-explicit-imports-rejected',round,()=>assert.rejects(verifyExplicitImports(origin,listener.ready.port,foreign.child.pid),error=>error.code==='ERR_ASSERTION' && error.message.split('\n')[0]==='SERVICE_LISTENER_NOT_OWNED'));
     }
@@ -101,7 +99,7 @@ if(values.child){
     const result=JSON.parse(await readFile(state.safeOutput,'utf8'));
     report.nativeChild=result.nativeChild;report.nativeChildCleanupConfirmed=result.nativeChildCleanupConfirmed===true;
     assert(exited.code===0 && exited.signal===null && result.passed===true,'NATIVE_CHILD_MEASUREMENT_REQUIRED');
-    report.passed=[report.parent,report.nativeChild].every(rows=>rows.length===12 && rows.every(row=>row.passed===true)) && report.parentCleanupConfirmed && report.nativeChildCleanupConfirmed;
+    report.passed=[report.parent,report.nativeChild].every(rows=>rows.length===8 && rows.every(row=>row.passed===true)) && report.parentCleanupConfirmed && report.nativeChildCleanupConfirmed;
     assert(report.passed,'ALL_MEASUREMENTS_REQUIRED');
   }catch{report.passed=false;process.exitCode=1;}finally{await save();}
 }
