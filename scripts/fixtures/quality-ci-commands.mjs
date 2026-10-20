@@ -19,6 +19,11 @@ commands.execFileSync = (command, args, options = {}) => {
 };
 commands.spawnSync = (command, args, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
+  if (command === process.execPath && args[0] === "node_modules/typescript/bin/tsc") {
+    log("workbench-declarations", args, cwd);
+    if (process.env.FIXTURE_FAIL === "declarations") return { ...success, status: 1 };
+    return success;
+  }
   if (command === process.execPath && args[0]?.endsWith("/prepare-official-sdk.mjs")) {
     log("sdk", args, cwd);
     const core = args[args.indexOf("--core") + 1];

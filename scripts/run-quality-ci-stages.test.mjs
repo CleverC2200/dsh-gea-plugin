@@ -320,6 +320,39 @@ function fixture(
   };
 }
 
+test("static quality emits current Workbench declarations and rejects declaration failures before GEA build", (t) => {
+  for (const failed of [false, true]) {
+    const f = fixture(t);
+    const prepared = f.run("prepare");
+    assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+    const built = f.run("build", failed ? { FIXTURE_FAIL: "declarations" } : {});
+    assert.equal(built.status, failed ? 1 : 0, built.stdout + built.stderr);
+    const commands = readFileSync(join(f.job, "commands.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    const declarations = commands.findIndex((entry) => entry.command === "workbench-declarations");
+    assert.ok(declarations >= 0);
+    assert.equal(commands[declarations].cwd, join(f.job, "candidate/dsh-agent-workbench"));
+    assert.deepEqual(commands[declarations].args, [
+      "node_modules/typescript/bin/tsc",
+      "-p",
+      "tsconfig.official.json",
+      "--noEmit",
+      "false",
+      "--emitDeclarationOnly",
+      "true",
+    ]);
+    const geaBuild = commands.findIndex((entry) => entry.args.includes("build:plugin"));
+    if (failed) assert.equal(geaBuild, -1);
+    else assert.ok(geaBuild > declarations);
+    assert.equal(
+      commands.some((entry) => entry.args.includes("build:core")),
+      false,
+    );
+  }
+});
+
 test("the public macOS task prepares only fixed Host dependencies before executing both native contracts", (t) => {
   const f = fixture(t, { macos: true });
   const result = f.run(undefined, {}, ["--phase", "macos-isolation"]);
