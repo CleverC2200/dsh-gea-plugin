@@ -1,2 +1,3 @@
 native-tail-measure.mjs text eol=lf
 native-tail-measure/*.mjs text eol=lf
+native-manage-archive-probe/archive-matches.mjs text eol=lf
