@@ -82,8 +82,8 @@ function fixture(t) {
     binding: { inputSha256, plan },
     stages: { prepare: { status: "passed" }, build: { status: "passed" } },
     artifacts: {
-      [join(root, "candidate/dsh-agent-workbench/lib/types")]: {
-        "host.d.ts": hash("generated Workbench declarations\n"),
+      [join(root, "candidate/dsh-agent-workbench/lib")]: {
+        "types/host.d.ts": hash("generated Workbench declarations\n"),
       },
       ...Object.fromEntries(
         ["dsh-gea-plugin", "dsh-agent-manage"].map((repo) => [
@@ -159,7 +159,7 @@ function fixture(t) {
       for (const file of [
         "candidate/dsh-gea-plugin/lib",
         "candidate/dsh-agent-manage/lib",
-        "candidate/dsh-agent-workbench/lib/types",
+        "candidate/dsh-agent-workbench/lib",
         "candidate/dsh-agent-manage/client",
         "official-latest-standard/packages/core/test/lib",
         "official-latest-standard/.git/dsh-sdk-artifacts.json",
@@ -233,7 +233,7 @@ test("runtime exports cover generated Workbench, upstream, native and browser by
   f.json("quality-test-plan.json", plan);
   const stages = JSON.parse(readFileSync(join(f.root, "quality-stages.json")));
   stages.binding.plan = plan;
-  delete stages.artifacts[join(f.root, "candidate/dsh-agent-workbench/lib/types")];
+  delete stages.artifacts[join(f.root, "candidate/dsh-agent-workbench/lib")];
   f.json("quality-stages.json", stages);
   const workbenchFiles = {};
   for (const file of [
@@ -319,7 +319,6 @@ test("runtime exports cover generated Workbench, upstream, native and browser by
   assert.equal(exported.status, 0, exported.stderr);
   f.clearOutputs();
   for (const file of [
-    "candidate/dsh-agent-workbench/lib",
     "candidate/dsh-agent-workbench/static",
     "quality-upstreams",
     "official-latest-standard/apps/web/dist",

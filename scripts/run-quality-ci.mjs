@@ -810,7 +810,7 @@ try {
           DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
           APS_BUILD_MODE: "mock",
         });
-      else
+      else {
         run(
           process.execPath,
           [
@@ -824,6 +824,20 @@ try {
           ],
           preparedWorkbench,
         );
+        run(
+          process.execPath,
+          [
+            resolve(preparedWorkbench, "node_modules/esbuild/bin/esbuild"),
+            "src/sales-plan.ts",
+            "--bundle",
+            "--format=esm",
+            "--platform=node",
+            "--outdir=lib",
+            "--packages=external",
+          ],
+          preparedWorkbench,
+        );
+      }
       run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", ["pnpm", "build:plugin"]);
       if (plan.runtime) {

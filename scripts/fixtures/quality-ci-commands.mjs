@@ -49,6 +49,12 @@ commands.spawnSync = (command, args, options = {}) => {
     writeFileSync(resolve(cwd, "lib/types/host.d.ts"), "export declare const prepared: true;\n");
     return success;
   }
+  if (command === process.execPath && args[0]?.endsWith("/esbuild/bin/esbuild")) {
+    log("workbench-sales-plan", args, cwd);
+    mkdirSync(resolve(cwd, "lib"), { recursive: true });
+    writeFileSync(resolve(cwd, "lib/sales-plan.js"), "export const prepared = true;\n");
+    return success;
+  }
   if (command === process.execPath && args[0] === "scripts/build.mjs") {
     log("host-build", args, cwd);
     if (process.env.FIXTURE_FAIL === "build") return { ...success, status: 1 };

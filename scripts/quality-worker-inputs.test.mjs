@@ -413,8 +413,8 @@ function fixture(
   git(wb, "worktree", "add", "--detach", join(root, "candidate/dsh-agent-workbench"), wbHead);
   if (!runtime) {
     put("candidate/dsh-agent-workbench/lib/types/host.d.ts", "fixed Workbench declarations");
-    stages.artifacts[join(root, "candidate/dsh-agent-workbench/lib/types")] = {
-      "host.d.ts": hash("fixed Workbench declarations"),
+    stages.artifacts[join(root, "candidate/dsh-agent-workbench/lib")] = {
+      "types/host.d.ts": hash("fixed Workbench declarations"),
     };
     json("quality-stages.json", stages);
   }

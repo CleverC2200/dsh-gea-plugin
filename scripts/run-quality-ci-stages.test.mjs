@@ -387,6 +387,7 @@ test("separate CLI processes prepare once, preserve the plan, restore fixed envi
   );
   assert.equal(commands.filter((entry) => entry.command === "sdk").length, 5);
   assert.equal(commands.filter((entry) => entry.command === "workbench-declarations").length, 1);
+  assert.equal(commands.filter((entry) => entry.command === "workbench-sales-plan").length, 1);
 });
 
 test("the public documentation stage admits the actual tuple and checks knowledge without SDK, install, build or tests", (t) => {
@@ -719,15 +720,15 @@ test("summary revalidates build artifacts instead of trusting passed stage JSON"
   assert.match(result.stderr, /QUALITY_STAGE_ARTIFACT_CHANGED/);
 });
 
-test("source-only checks reject declarations changed after the build", (t) => {
+test("source-only checks reject a shared runtime changed after the build", (t) => {
   const f = fixture(t);
   for (const stage of ["prepare", "build"]) {
     const result = f.run(stage);
     assert.equal(result.status, 0, result.stdout + result.stderr);
   }
   writeFileSync(
-    join(f.job, "candidate/dsh-agent-workbench/lib/types/host.d.ts"),
-    "changed declarations\n",
+    join(f.job, "candidate/dsh-agent-workbench/lib/sales-plan.js"),
+    "changed shared runtime\n",
   );
   const result = f.run("checks");
   assert.equal(result.status, 1, result.stdout + result.stderr);
