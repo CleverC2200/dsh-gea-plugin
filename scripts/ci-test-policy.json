@@ -58,6 +58,11 @@
   ],
   "rules": [
     {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/build\\.mjs$",
+      "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/development-tasks.test.mjs"]
+    },
+    {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:build-admission|development-(?:dependencies|repositories|tasks)|pack-raw)\\.mjs$",
       "tests": [
