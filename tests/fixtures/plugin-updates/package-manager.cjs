@@ -71,5 +71,6 @@ setTimeout(() => {
     }, 10);
     return;
   }
+  if (mode === "remove-user-skill") fs.unlinkSync(process.env.FIXTURE_USER_DATA_FILE);
   process.exit(mode === "fail-after-write" ? 1 : 0);
 }, 150);

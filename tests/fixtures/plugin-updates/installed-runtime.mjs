@@ -237,6 +237,40 @@ export async function installedScenario(
 ) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
   const root = await mkdtemp(join(repository, ".runtime/actual-install-"));
+  const personalData = join(root, "agent-plugins/data");
+  await mkdir(join(personalData, "user-agents.json.skills/personal/tree/references"), {
+    recursive: true,
+  });
+  const personalFiles = {
+    "user-agents.json": JSON.stringify({
+      version: 1,
+      agents: [
+        {
+          id: "personal",
+          name: "My Agent",
+          prompt: "Keep my custom prompt",
+          enabled: true,
+          skills: [
+            {
+              name: "personal",
+              directory: { root: join(personalData, "user-agents.json.skills/personal/tree") },
+            },
+          ],
+        },
+      ],
+    }),
+    "selected-resources.json": JSON.stringify({
+      version: 1,
+      selected: ["gea-readonly"],
+      customizations: { "gea-readonly": { prompt: "Keep my plugin customization" } },
+    }),
+    "user-agents.json.skills/personal/tree/SKILL.md":
+      "# Personal skill\nRead [rules](references/rules.md).\n",
+    "user-agents.json.skills/personal/tree/references/rules.md":
+      "Keep this complete reference file.\n",
+  };
+  for (const [name, value] of Object.entries(personalFiles))
+    await writeFile(join(personalData, name), value);
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, "profile"),
     pnpm = join(repository, "node_modules/pnpm/bin/pnpm.cjs");
@@ -508,6 +542,17 @@ export async function installedScenario(
     ),
   );
   assert.equal(operation.stage, "completed");
+  assert.match(operation.userDataSha256, /^[a-f0-9]{64}$/);
+  for (const [name, value] of Object.entries(personalFiles)) {
+    assert.equal(await readFile(join(personalData, name), "utf8"), value);
+    assert.equal(
+      await readFile(
+        join(operation.recoveryDirectory, "user-data/agent-plugins/data", name),
+        "utf8",
+      ),
+      value,
+    );
+  }
   if (allUpdates) {
     assert.equal(operation.targets.length, 3);
     assert.equal(operation.completionProofs.length, 3);
@@ -544,6 +589,9 @@ export async function installedScenario(
       ).version,
     },
     profileRetained: JSON.parse(await readFile(join(dir, "package.json"), "utf8")).retained,
+    personalAgentPreserved: true,
+    pluginCustomizationPreserved: true,
+    completeSkillAssetsPreserved: true,
   };
 }
 if (process.argv[1] === ownFile && process.argv[2] === "observe") {

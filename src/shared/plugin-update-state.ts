@@ -53,6 +53,7 @@ export type PluginUpdateOperation = {
   baselineSha256: string;
   archivePath: string;
   recoveryDirectory: string;
+  userDataSha256?: string;
   diagnostic: string | null;
   installedGraphSha256: string | null;
   completionProof: {

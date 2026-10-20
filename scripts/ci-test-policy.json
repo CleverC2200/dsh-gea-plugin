@@ -265,6 +265,11 @@
     },
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/plugin-updates/package-manager\\.cjs$",
+      "tests": ["tests/plugin-update-controller.contract.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^(?:scripts/(?:check-plugin-updates-types|create-plugin-release|build)\\.mjs|tests/(?:acceptance/plugin-update-desktop\\.mjs|fixtures/plugin-updates/installed-runtime\\.mjs))$",
       "tests": [
         "scripts/build.test.mjs",

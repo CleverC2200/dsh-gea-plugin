@@ -63,6 +63,9 @@ test(
   async (t) => {
     const result = await installedScenario(t, proof);
     assert.deepEqual(result.profileRetained, { draft: "keep", selection: "sales" });
+    assert.equal(result.personalAgentPreserved, true);
+    assert.equal(result.pluginCustomizationPreserved, true);
+    assert.equal(result.completeSkillAssetsPreserved, true);
     if (process.env.GEA_PLUGIN_UPDATE_INSTALL_RECEIPT)
       await writeFile(
         process.env.GEA_PLUGIN_UPDATE_INSTALL_RECEIPT,
