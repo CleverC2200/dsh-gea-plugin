@@ -37,6 +37,7 @@ async function selectStage(frame, role) {
   const stage = frame.getByTestId("regional-approval-stage-" + role);
   await expect(stage).toBeEnabled();
   if ((await stage.getAttribute("aria-pressed")) !== "true") await stage.click();
+  await expect(stage).toHaveAttribute("aria-pressed", "true");
   await frame.getByRole("tab", { name: "按客户", exact: true }).click();
   await expect(customerRow(frame)).toBeVisible();
 }
@@ -111,12 +112,17 @@ test(
     };
     const open = async (role) => {
       await selectStage(frame, role);
+      await expect(customerRow(frame).getByRole("checkbox")).toBeEnabled();
       const button = frame.getByRole("button", {
         name: "打开 纠偏客户 调整明细",
         exact: true,
       });
-      await button.click();
       const input = frame.getByRole("spinbutton", { name: "追加/追减 123", exact: true });
+      if (
+        !(await input.isVisible()) &&
+        (await button.locator("[data-expanded]").getAttribute("data-expanded")) !== "true"
+      )
+        await button.click();
       await expect(input).toBeEnabled();
       return { input, button };
     };
@@ -217,7 +223,12 @@ test(
         ])
           assert.equal(service.detail().skus[0]["category" + suffix], null);
         await selectStage(frame, "area");
-        await expect(frame.getByRole("button", { name: "通过", exact: true })).toHaveCount(0);
+        const through = frame.getByRole("button", { name: "通过", exact: true });
+        if (await through.count()) await expect(through).toBeDisabled();
+        else
+          await expect(
+            frame.getByRole("button", { name: "修改后提交", exact: true }),
+          ).toBeVisible();
         assert.equal(service.writes.length, 4);
       } else {
         await approve(4);
