@@ -791,6 +791,7 @@ test("Windows complete package inputs select existing release and Windows contra
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/windows-complete-local/released-input.fixture.json",
     "scripts/windows-complete-local/run-bundle.mjs",
+    "scripts/windows-complete-local/legacy-bootstrap.mjs",
   ])
     await t.test(source, (t) => {
       const fixture = resourceImpactFixture(t);
