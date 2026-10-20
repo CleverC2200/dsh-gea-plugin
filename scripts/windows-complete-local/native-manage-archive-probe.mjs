@@ -29,5 +29,21 @@ for(const locale of [null,'C.UTF-8','en_US.UTF-8','.UTF-8']){
  report.variants.push({locale:locale??'default',listedFiles:listed.length,missingCount:missing.length,unlistedCount:unlisted.length,listedMatchesActual:missing.length===0&&unlisted.length===0,directUnicodeReadMatches:directRead,missingExamples:missing.slice(0,6),unlistedExamples:unlisted.slice(0,6)});
  await writeFile(values.output,JSON.stringify(report,null,2)+'\n');
 }
-console.log(JSON.stringify(report));
-assert(report.variants[0].listedMatchesActual,'MANAGE_ARCHIVE_NAMES_DO_NOT_MATCH_FILES');
+const index=execFileSync('tar',['-cf','-','--format=mtree','--options=mtree:!all,type','@'+archive],{encoding:'buffer',timeout:30000,windowsHide:true});
+const indexed=[];
+for(const line of index.toString('ascii').trim().split(/\r?\n/)){
+ if(line==='#mtree')continue;
+ const match=/^(\S+) type=(file|dir)$/.exec(line);assert(match,'MTREE_ENTRY_INVALID');
+ const raw=Buffer.from(match[1].replace(/\\([0-7]{3})/g,(_,octal)=>String.fromCharCode(parseInt(octal,8))),'latin1');
+ const name=new TextDecoder('utf-8',{fatal:true}).decode(raw);assert(name.startsWith('./package/'));
+ if(match[2]==='file')indexed.push(name.slice(2));
+}
+assert.equal(indexed.length,new Set(indexed).size);
+const missing=indexed.filter(n=>!actual.includes(n)),unlisted=actual.filter(n=>!indexed.includes(n));
+report.candidate={format:'mtree',files:indexed.length,missingCount:missing.length,unlistedCount:unlisted.length,allFileBytesMatch:false};
+await writeFile(values.output,JSON.stringify(report,null,2)+'\n');
+assert.equal(missing.length,0);assert.equal(unlisted.length,0);
+for(const name of indexed){const streamed=execFileSync('tar',['-xOf',archive,name],{timeout:30000,windowsHide:true});assert(streamed.equals(await readFile(join(target,name))),'ARCHIVE_FILE_BYTES_MISMATCH');}
+report.candidate.allFileBytesMatch=true;
+await writeFile(values.output,JSON.stringify(report,null,2)+'\n');
+console.log(JSON.stringify({status:report.status,baselineMismatch:!report.variants[0].listedMatchesActual,candidate:report.candidate}));
