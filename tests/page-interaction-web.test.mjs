@@ -452,9 +452,10 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const ownerReady = waitForNativeOwner(page, "inventory-fc", "gea-html-inventory-fc");
-    await openWorkbenchPage(page, "分仓库存");
-    await ownerReady;
+    await Promise.all([
+      waitForNativeOwner(page, "inventory-fc", "gea-html-inventory-fc"),
+      openWorkbenchPage(page, "分仓库存"),
+    ]);
     await expect.poll(() => openedSessions.at(-1)?.owner).toEqual(expect.any(String));
     const selected = await app.remote("session/selectModel", {
       sessionId: openedSessions.at(-1).sessionId,

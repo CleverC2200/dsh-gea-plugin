@@ -10,6 +10,7 @@ import { stockState, installStockRoutes } from "./fixtures/branch-stock.mjs";
 import {
   htmlFrameElement,
   openWorkbenchPage,
+  preparePageStartup,
   prepareWorkbenchHtmlRoots,
 } from "./fixtures/business-page.mjs";
 
@@ -129,15 +130,17 @@ for (const pendingState of ["loading", "error", "ready"])
       });
       try {
         await page.goto(app.origin);
-        const opened = page.waitForResponse((response) => {
-          const request = response.request();
-          if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
-            return false;
-          const input = request.postDataJSON();
-          return input.operation === "open" && input.pageId === "inventory-fc";
-        });
-        await openWorkbenchPage(page, "分仓库存");
-        const reply = await opened;
+        await preparePageStartup(page);
+        const [reply] = await Promise.all([
+          page.waitForResponse((response) => {
+            const request = response.request();
+            if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
+              return false;
+            const input = request.postDataJSON();
+            return input.operation === "open" && input.pageId === "inventory-fc";
+          }),
+          openWorkbenchPage(page, "分仓库存"),
+        ]);
         assert.equal(reply.status(), 200);
         owner = (await reply.json()).owner;
         assert.match(owner, /^[0-9a-f-]{36}$/);

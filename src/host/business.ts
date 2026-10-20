@@ -2,6 +2,7 @@ import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts"
 import {
   salesPlanDraftMatches,
   salesPlanDraftSnapshot,
+  salesPlanLocalDraftValid,
   type SalesPlanLocalDraft,
   type SalesPlanApprovalRole,
   type ApprovalStageId,
@@ -1427,6 +1428,11 @@ export class Business {
     try {
       const stored = JSON.parse(await readFile(file, "utf8"));
       signal.throwIfAborted();
+      if (
+        salesPlanLocalDraftValid(stored.draft, planId, versionId) &&
+        stored.draft.status !== row.status
+      )
+        return { draft: null, sourceSnapshot };
       if (!salesPlanDraftMatches(stored.draft, row, detail))
         return { draft: null, stale: true, sourceSnapshot };
       return { ...stored, sourceSnapshot };
