@@ -148,10 +148,10 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: Diagnose the original Native private owner guard
+      - name: Measure original Native post-update checks
         run: |
           $outputPath = Join-Path $env:RUNNER_TEMP 'native-acl-probe.safe.json'
-          node scripts/windows-complete-local/acl-probe.mjs --output $outputPath
+          node scripts/windows-complete-local/native-tail-measure.mjs --output $outputPath
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Keep only safe ACL classification
         if: always()
