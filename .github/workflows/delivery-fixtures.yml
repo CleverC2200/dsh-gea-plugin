@@ -148,10 +148,10 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: Measure original Native post-update checks
+      - name: Inspect Manage archive file verification
         run: |
           $outputPath = Join-Path $env:RUNNER_TEMP 'native-acl-probe.safe.json'
-          node scripts/windows-complete-local/native-tail-measure.mjs --output $outputPath
+          node scripts/windows-complete-local/native-manage-archive-probe.mjs --output $outputPath
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Keep only safe ACL classification
         if: always()
