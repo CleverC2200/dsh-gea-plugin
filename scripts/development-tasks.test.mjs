@@ -165,6 +165,11 @@ test("raw TGZ uses its frozen owner and verified build outputs", async (t) => {
   const receipt = await packRaw({ input, destination, repo: "dsh-agent-manage" });
   assert.ok(fs.existsSync(receipt.artifact));
   assert.deepEqual(receipt.files.sort(), ["client/index.js", "lib/host.js", "package.json"]);
+  await assert.rejects(
+    packRaw({ input, destination, repo: "dsh-agent-manage" }),
+    /RAW_PACKAGE_DESTINATION_EXISTS/,
+  );
+  assert.equal(digest(fs.readFileSync(receipt.artifact)), receipt.sha256);
 });
 test("raw TGZ rejects dotfiles and checkout destinations before writing a package", async (t) => {
   const { input, path, destination } = await packageFixture(t, { dotfile: true });

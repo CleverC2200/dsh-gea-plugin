@@ -42,6 +42,7 @@ export async function packRaw({ input, repo, destination }) {
   )
     throw Error("RAW_PACKAGE_SOURCE_MISMATCH");
   if (inside(root, destination)) throw Error("RAW_PACKAGE_DESTINATION_OVERLAP");
+  if (fs.existsSync(destination)) throw Error("RAW_PACKAGE_DESTINATION_EXISTS");
   const lock = repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml";
   const build = await verifyPackageBuild({ ...owner, path: root, lock });
   for (const key of [".", "./client"]) {
@@ -85,7 +86,7 @@ export async function packRaw({ input, repo, destination }) {
       preview.files.some((file) => !inside(root, fs.realpathSync(join(root, file.path))))
     )
       throw Error("RAW_PACKAGE_BUILD_INCOMPLETE");
-    fs.mkdirSync(destination, { recursive: true });
+    fs.mkdirSync(destination);
     const packed = pack(["--pack-destination", destination]);
     const artifact = join(destination, packed.filename);
     if (
