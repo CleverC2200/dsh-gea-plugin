@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readDesktopInput, desktopCoreHead } from "./input.mjs";
+import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
 import { inspectPluginArchive } from "../../src/host/plugin-release-source.ts";
 import { readFile, writeFile, mkdir, open, readdir, stat, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -43,13 +43,7 @@ for (const [cwd, sha] of [
   )
     throw Error("SOURCE_DIRTY");
 }
-const sourcePackage = JSON.parse(await readFile(join(gea, "package.json"), "utf8"));
-if (
-  !input.seed.packages.some(
-    (row) => row.name === sourcePackage.name && row.version === sourcePackage.version,
-  )
-)
-  throw Error("DESKTOP_GEA_PACKAGE_SOURCE_MISMATCH");
+const pluginSource = readDesktopPluginSource(input, gea);
 await mkdir(output, { recursive: true });
 await writeFile(join(output, "fixed-input.json"), JSON.stringify(input, null, 2));
 const require = createRequire(join(desktop, "package.json"));
@@ -365,6 +359,7 @@ await writeFile(
       status: "packaged-and-runtime-smoke-passed",
       coreSha,
       geaSha,
+      geaPluginSourceSha: pluginSource.head,
       coreRoot: root,
       geaRoot: gea,
       artifact: files[0],
