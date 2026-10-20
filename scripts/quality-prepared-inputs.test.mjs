@@ -75,12 +75,16 @@ function fixture(t) {
   put("candidate/dsh-gea-plugin/lib/host.js", "generated host\n");
   chmodSync(join(root, "candidate/dsh-gea-plugin/lib/host.js"), 0o755);
   put("candidate/dsh-agent-manage/lib/host.js", "generated manage\n");
+  put("candidate/dsh-agent-workbench/lib/types/host.d.ts", "generated Workbench declarations\n");
   put("candidate/dsh-agent-manage/client/client.js", "fixed public client");
   put("candidate/dsh-agent-manage/client/client.js.map", "fixed public sourcemap");
   json("quality-stages.json", {
     binding: { inputSha256, plan },
     stages: { prepare: { status: "passed" }, build: { status: "passed" } },
     artifacts: {
+      [join(root, "candidate/dsh-agent-workbench/lib")]: {
+        "types/host.d.ts": hash("generated Workbench declarations\n"),
+      },
       ...Object.fromEntries(
         ["dsh-gea-plugin", "dsh-agent-manage"].map((repo) => [
           join(root, "candidate", repo, "lib"),
@@ -155,6 +159,7 @@ function fixture(t) {
       for (const file of [
         "candidate/dsh-gea-plugin/lib",
         "candidate/dsh-agent-manage/lib",
+        "candidate/dsh-agent-workbench/lib",
         "candidate/dsh-agent-manage/client",
         "official-latest-standard/packages/core/test/lib",
         "official-latest-standard/.git/dsh-sdk-artifacts.json",
@@ -228,6 +233,7 @@ test("runtime exports cover generated Workbench, upstream, native and browser by
   f.json("quality-test-plan.json", plan);
   const stages = JSON.parse(readFileSync(join(f.root, "quality-stages.json")));
   stages.binding.plan = plan;
+  delete stages.artifacts[join(f.root, "candidate/dsh-agent-workbench/lib")];
   f.json("quality-stages.json", stages);
   const workbenchFiles = {};
   for (const file of [
@@ -313,7 +319,6 @@ test("runtime exports cover generated Workbench, upstream, native and browser by
   assert.equal(exported.status, 0, exported.stderr);
   f.clearOutputs();
   for (const file of [
-    "candidate/dsh-agent-workbench/lib",
     "candidate/dsh-agent-workbench/static",
     "quality-upstreams",
     "official-latest-standard/apps/web/dist",
@@ -464,6 +469,7 @@ test("receive rejects a changed source lock or declared package manager while pr
 test("export rejects changed pinned build, SDK, candidate bytes and missing required materials", (t) => {
   for (const file of [
     "candidate/dsh-gea-plugin/lib/host.js",
+    "candidate/dsh-agent-workbench/lib/types/host.d.ts",
     "official-latest-standard/packages/core/test/lib/index.js",
     "candidate-input.json",
     "official-latest-standard/.git/dsh-sdk-artifacts.json",

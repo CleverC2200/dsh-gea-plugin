@@ -365,7 +365,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/windows-complete-local/(?:(?:build|input|run-bundle)\\.mjs|input\\.test\\.mjs|released-input\\.fixture\\.json)$",
+      "pattern": "^scripts/windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap)\\.mjs|input\\.test\\.mjs|released-input\\.fixture\\.json)$",
       "tests": [
         "scripts/windows-complete-local/input.test.mjs",
         "scripts/delivery-events.test.mjs",

@@ -125,6 +125,8 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/bundle-binding.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/public/**

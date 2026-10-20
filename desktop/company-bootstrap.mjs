@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
-import { refreshBundledGea } from "./company-gea-refresh.mjs";
+import {
+  refreshBundledGea,
+  assertCompletedGeaRefresh,
+  assertProfileIdle,
+} from "./company-gea-refresh.mjs";
+import { prepareCompanyArchives, repointCompanyArchives } from "./company-archives.mjs";
 import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
 
 const names = [
@@ -247,6 +252,7 @@ export async function installCompanyPackages({
   beforeInstall,
   complete,
   strictPeers = false,
+  seed,
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
   const require = createRequire(anchor);
@@ -273,6 +279,15 @@ export async function installCompanyPackages({
         if (offline && selectedStore !== join(store, "v11"))
           offlineArguments = ["--prefer-offline"];
       }
+      const archives = seed
+        ? await prepareCompanyArchives({ root, seed, home, profile, packages })
+        : { packages, replacements: [] };
+      await repointCompanyArchives({
+        root,
+        profile,
+        replacements: archives.replacements,
+        writeFileAtomic,
+      });
       boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
       const result = await runProfilePnpm(
         {
@@ -284,7 +299,7 @@ export async function installCompanyPackages({
         },
         [
           "add",
-          ...packages,
+          ...archives.packages,
           ...offlineArguments,
           ...(strictPeers
             ? ["--strict-peer-dependencies", "--config.auto-install-peers=false"]
@@ -309,8 +324,77 @@ export async function installCompanyPackages({
         },
       );
       if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
-      await complete?.({ writeFileAtomic });
+      await complete?.({
+        writeFileAtomic,
+        archiveReplacements: archives.replacements,
+      });
       return result;
+    },
+    { waitMs: 120000 },
+  );
+}
+
+async function normalizeProfileEncoding(root, home) {
+  const profile = join(home, "profiles/desktop");
+  const path = join(profile, "package.json");
+  const original = await readFile(path).catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!original || !original.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])))
+    return { changed: false };
+  const normalized = original.subarray(3);
+  const parsed = JSON.parse(normalized.toString("utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    throw Error("GEA_PROFILE_MANIFEST_INVALID");
+  const require = createRequire(join(root, "dsh/package.json"));
+  const { withFileLock, writeFileAtomic } = await import(
+    pathToFileURL(require.resolve("@deepseek-ai/dsh-atomic-write"))
+  );
+  const directory = join(profile, "gea/bootstrap/profile-encoding");
+  for (const candidate of [
+    home,
+    join(home, "profiles"),
+    profile,
+    join(profile, "gea"),
+    join(profile, "gea/bootstrap"),
+    directory,
+    path,
+  ]) {
+    const entry = await lstat(candidate).catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (
+      entry &&
+      (entry.isSymbolicLink() || (candidate === path ? !entry.isFile() : !entry.isDirectory()))
+    )
+      throw Error("GEA_PROFILE_ENCODING_UNSAFE_PATH");
+  }
+  return withFileLock(
+    path,
+    async () => {
+      await assertCompletedInstallation(join(profile, "gea/bootstrap"), profile);
+      await assertCompletedGeaRefresh(profile);
+      await assertProfileIdle(profile);
+      if (!(await readFile(path)).equals(original)) throw Error("GEA_REFRESH_PROFILE_CHANGED");
+      const entry = await lstat(path);
+      if (!entry.isFile() || entry.isSymbolicLink())
+        throw Error("GEA_PROFILE_ENCODING_UNSAFE_PATH");
+      const backup = join(directory, "before-" + digest(original) + ".json");
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const saved = await lstat(backup).catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (
+        saved &&
+        (!saved.isFile() || saved.isSymbolicLink() || !(await readFile(backup)).equals(original))
+      )
+        throw Error("GEA_PROFILE_ENCODING_BACKUP_CHANGED");
+      if (!saved) await writeFile(backup, original, { flag: "wx", mode: 0o600 });
+      await writeFileAtomic(path, normalized, { mode: entry.mode & 0o777 });
+      return { changed: true, backup };
     },
     { waitMs: 120000 },
   );
@@ -320,6 +404,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   const profile = join(home, "profiles/desktop");
   const record = join(profile, "gea/bootstrap");
   const receipt = await assertCompletedInstallation(record, profile);
+  const encoding = await normalizeProfileEncoding(root, home);
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
@@ -331,7 +416,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
     );
   if (!missing.length && receipt?.status !== "failed")
-    return { status: "existing-profile-preserved", changed: false };
+    return { status: "existing-profile-preserved", ...encoding };
   const manifest = await readCompanySeed(seed);
   const core = await verifyCompanyCore(root, manifest.core);
   await mkdir(record, { recursive: true, mode: 0o700 });
@@ -394,6 +479,7 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         await installCompanyPackages({
           root,
           support,
+          seed,
           home,
           profile,
           packages: selected.map((row) => join(seed, "archives", row.file)),

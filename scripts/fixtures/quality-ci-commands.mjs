@@ -22,11 +22,15 @@ commands.spawnSync = (command, args, options = {}) => {
   if (command === process.execPath && args[0] === "node_modules/typescript/bin/tsc") {
     log("workbench-declarations", args, cwd);
     if (process.env.FIXTURE_FAIL === "declarations") return { ...success, status: 1 };
+    mkdirSync(resolve(cwd, "lib/types"), { recursive: true });
+    writeFileSync(resolve(cwd, "lib/types/host.d.ts"), "export declare const prepared: true;\n");
     return success;
   }
   if (command === process.execPath && args[0] === "node_modules/esbuild/bin/esbuild") {
     log("workbench-model", args, cwd);
     if (process.env.FIXTURE_FAIL === "workbench-model") return { ...success, status: 1 };
+    mkdirSync(resolve(cwd, "lib"), { recursive: true });
+    writeFileSync(resolve(cwd, "lib/sales-plan.js"), "export const prepared = true;\n");
     return success;
   }
   if (command === process.execPath && args[0]?.endsWith("/prepare-official-sdk.mjs")) {
