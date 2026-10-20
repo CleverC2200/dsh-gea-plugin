@@ -810,6 +810,38 @@ try {
           DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
           APS_BUILD_MODE: "mock",
         });
+      else {
+        // Static GEA checks consume Workbench's public declarations too. Emit them
+        // from the admitted source instead of trusting checked-in build outputs.
+        run(
+          process.execPath,
+          [
+            "node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.official.json",
+            "--noEmit",
+            "false",
+            "--emitDeclarationOnly",
+            "true",
+          ],
+          preparedWorkbench,
+        );
+        // Node-only Host tests import this public pure-model entry at runtime.
+        // Keep it on the same source as the declarations without building the UI.
+        run(
+          process.execPath,
+          [
+            "node_modules/esbuild/bin/esbuild",
+            "src/sales-plan.ts",
+            "--bundle",
+            "--format=esm",
+            "--platform=node",
+            "--packages=external",
+            "--outfile=lib/sales-plan.js",
+          ],
+          preparedWorkbench,
+        );
+      }
       run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", ["pnpm", "build:plugin"]);
       if (plan.runtime) {
