@@ -1,10 +1,9 @@
+import { artifactSetSha256, retainStandard, projectOrchestrationStandard } from "./contract.mjs";
 import {
-  artifactSetSha256,
-  businessIds,
-  documentIds,
-  retainStandard,
-  projectOrchestrationStandard,
-} from "./contract.mjs";
+  currentBusinessIds,
+  currentDocumentIds,
+  validateInitialPresets,
+} from "./preset-discovery.mjs";
 /** In-process ordinary Web profile boot. Real Loader/resolver/services, with all outgoing transports denied. */
 import assert from "node:assert/strict";
 import { readFile, writeFile, realpath } from "node:fs/promises";
@@ -250,18 +249,8 @@ try {
     isDefault: row.isDefault,
     broken: Boolean(row.broken),
   }));
-  for (const id of businessIds)
-    assert(
-      projected.initialPresets.some((row) => row.id === id && !row.broken),
-      `BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:${id}`,
-    );
-  for (const id of [
-    "gea-html-inventory-customer",
-    "gea-html-inventory-orderworkbench",
-    "gea-html-inventory-orderfulfillment",
-  ])
-    assert(!projected.initialPresets.some((row) => row.id === id), `PREVIEW_PRESET_VISIBLE:${id}`);
-  for (const id of businessIds) {
+  validateInitialPresets(projected.initialPresets);
+  for (const id of currentBusinessIds) {
     assert(
       resources.some(
         (row) => row.id === id && row.enabled && !row.error && !row.missingSkills?.length,
@@ -280,7 +269,7 @@ try {
     "agent-resource-skill",
     "SKILL_PRESET_MISMATCH",
   );
-  const ids = documentIds;
+  const ids = currentDocumentIds;
   checkpoint("documents");
   const docs = new Map();
   for (const id of ids) {
