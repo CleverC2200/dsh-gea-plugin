@@ -342,17 +342,26 @@ test(
               (key) => Math.abs(first[key] - second[key]) < 1,
             );
           });
-          const before = await page
-            .locator(".agent-workbench-native-conversation [data-composer-card]")
-            .boundingBox();
-          await page.locator(".gea-agent-welcome").evaluate((el) => {
-            el.scrollTop = el.scrollHeight;
-          });
-          const after = await page
-            .locator(".agent-workbench-native-conversation [data-composer-card]")
-            .boundingBox();
-          assert.ok(Math.abs(before.y - after.y) < 1, "scrolling must not move the input");
-          assert.ok(after.y > 58 && after.x >= 0 && after.x + after.width <= viewport.width + 1);
+          // Layout changes can replace the composer between geometry reads.
+          // Each attempt measures a fresh top-to-bottom scroll, so a persistent
+          // input displacement still fails rather than comparing two bottom states.
+          await expect(async () => {
+            await page.locator(".gea-agent-welcome").evaluate((el) => {
+              el.scrollTop = 0;
+            });
+            const composer = page.locator(
+              ".agent-workbench-native-conversation [data-composer-card]",
+            );
+            const before = await composer.boundingBox();
+            assert.ok(before, "the input must be visible before scrolling");
+            await page.locator(".gea-agent-welcome").evaluate((el) => {
+              el.scrollTop = el.scrollHeight;
+            });
+            const after = await composer.boundingBox();
+            assert.ok(after, "the input must be visible after scrolling");
+            assert.ok(Math.abs(before.y - after.y) < 1, "scrolling must not move the input");
+            assert.ok(after.y > 58 && after.x >= 0 && after.x + after.width <= viewport.width + 1);
+          }).toPass({ timeout: 15000 });
         }
       }
       await page.setViewportSize({ width: 1536, height: 920 });
