@@ -62,6 +62,7 @@ test("the company desktop packages every module used by cleanup and refresh", as
     "official-main.cjs",
     "company-bootstrap.mjs",
     "company-gea-refresh.mjs",
+    "company-archives.mjs",
     "legacy-gea-cleanup.mjs",
     "plugin-storage.mjs",
     "plugin-store-lock.mjs",

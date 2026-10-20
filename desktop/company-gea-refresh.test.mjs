@@ -136,3 +136,190 @@ test("failed refreshes retain their backup and require recovery instead of retry
   assert.equal(receipt.status, "failed");
   await access(join(f.profile, "gea/bootstrap/gea-refresh/before-0.0.130-to-0.0.166/package.json"));
 });
+
+import { createHash } from "node:crypto";
+import { prepareCompanyArchives } from "./company-archives.mjs";
+
+async function legacyArchives(t) {
+  const f = await fixture(t);
+  const seed = join(f.home, "new-client/company-seed");
+  const old = join(f.home, "removed-client/company-seed/archives");
+  const root = join(f.home, "app");
+  const yaml = join(root, "dsh/node_modules/yaml");
+  await mkdir(yaml, { recursive: true });
+  await writeFile(join(yaml, "package.json"), '{"main":"index.cjs"}');
+  await writeFile(
+    join(yaml, "index.cjs"),
+    "exports.parse = JSON.parse; exports.stringify = JSON.stringify;",
+  );
+  await mkdir(join(seed, "archives"), { recursive: true });
+  const versions = {
+    "@cleverc2200/dsh-agent-workbench": ["0.1.8", "0.1.17"],
+    "dsh-agent-manage": ["0.6.3-company.15", "0.6.3-company.23"],
+    [name]: ["0.0.159", "0.0.177"],
+  };
+  const dependencies = {};
+  const packages = [];
+  for (const [packageName, [previous, next]] of Object.entries(versions)) {
+    const prefix = packageName.replace(/^@/, "").replace("/", "-");
+    dependencies[packageName] = "file:" + join(old, prefix + "-" + previous + ".tgz");
+    await mkdir(join(f.profile, "node_modules", packageName), { recursive: true });
+    await writeFile(
+      join(f.profile, "node_modules", packageName, "package.json"),
+      JSON.stringify({ name: packageName, version: previous }),
+    );
+    const bytes = Buffer.from(packageName + "@" + next);
+    const file = prefix + "-" + next + ".tgz";
+    await writeFile(join(seed, "archives", file), bytes);
+    packages.push({
+      name: packageName,
+      version: next,
+      file,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  }
+  const genui = "@changfenhuang/dsh-genui";
+  dependencies[genui] = "file:" + join(old, "dsh-genui-0.11.3.tgz");
+  await mkdir(join(f.profile, "node_modules", genui), { recursive: true });
+  await writeFile(
+    join(f.profile, "node_modules", genui, "package.json"),
+    JSON.stringify({ name: genui, version: "0.11.3" }),
+  );
+  const genuiBytes = Buffer.from("locked original GenUI archive");
+  await mkdir(old, { recursive: true });
+  const oldGenui = join(old, "dsh-genui-0.11.3.tgz");
+  await writeFile(oldGenui, genuiBytes);
+  const lock = {
+    importers: { ".": { dependencies: { [genui]: { specifier: dependencies[genui] } } } },
+    packages: {
+      [genui + "@" + dependencies[genui]]: {
+        resolution: {
+          tarball: dependencies[genui],
+          integrity: "sha512-" + createHash("sha512").update(genuiBytes).digest("base64"),
+        },
+      },
+    },
+  };
+  await writeFile(join(f.profile, "pnpm-lock.yaml"), JSON.stringify(lock));
+  await writeFile(join(f.profile, "package.json"), JSON.stringify({ ...current, dependencies }));
+  const manifest = { packages };
+  await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest));
+  return {
+    ...f,
+    seed,
+    root,
+    manifest,
+    genuiBytes,
+    oldGenui,
+    packages: [join(seed, "archives", packages[2].file)],
+  };
+}
+
+test("removed client archive references move to persistent storage and preserve the exact locked optional GenUI", async (t) => {
+  const f = await legacyArchives(t);
+  const original = await readFile(join(f.profile, "package.json"));
+  const result = await prepareCompanyArchives(f);
+  assert.equal(result.packages.length, 4);
+  assert.equal(result.replacements.length, 4);
+  assert.equal(
+    result.replacements.find((row) => row.name === "@changfenhuang/dsh-genui").version,
+    "0.11.3",
+  );
+  for (const path of result.packages)
+    assert.ok(path.startsWith(join(f.home, "desktop-company-cache/archives")));
+  await rm(join(f.home, "new-client"), { recursive: true });
+  for (const path of result.packages) await access(path);
+  assert.deepEqual(await readFile(join(f.profile, "package.json")), original);
+});
+
+test("legacy archive recovery rejects changed bytes and refuses to downgrade a newer company plugin", async (t) => {
+  for (const variant of ["integrity", "downgrade"]) {
+    const f = await legacyArchives(t);
+    const original = await readFile(join(f.profile, "package.json"));
+    if (variant === "integrity") await writeFile(f.oldGenui, "changed");
+    if (variant === "downgrade")
+      await writeFile(
+        join(f.profile, "node_modules/@cleverc2200/dsh-agent-workbench/package.json"),
+        JSON.stringify({ name: "@cleverc2200/dsh-agent-workbench", version: "0.1.20" }),
+      );
+    await assert.rejects(
+      prepareCompanyArchives(f),
+      variant === "integrity"
+        ? /GEA_LEGACY_ARCHIVE_INTEGRITY_CHANGED/
+        : /GEA_LEGACY_ARCHIVE_IDENTITY_CHANGED/,
+    );
+    assert.deepEqual(await readFile(join(f.profile, "package.json")), original);
+  }
+});
+
+test("only the logged pre-write missing GenUI archive failure may resume and the original failed receipt is retained", async (t) => {
+  for (const variant of ["known", "changed", "other", "retried"]) {
+    const f = await legacyArchives(t);
+    const directory = join(f.profile, "gea/bootstrap/gea-refresh");
+    const backup = join(directory, "before-0.0.159-to-0.0.177");
+    const log = join(f.profile, ".plugin-manager/logs/operation-known/pnpm.log");
+    await mkdir(backup, { recursive: true });
+    await mkdir(join(f.profile, ".plugin-manager/logs/operation-known"), { recursive: true });
+    const profile = JSON.parse(await readFile(join(f.profile, "package.json")));
+    const oldGenui = profile.dependencies["@changfenhuang/dsh-genui"].slice(5);
+    await writeFile(
+      log,
+      variant === "other"
+        ? "[ERR_PNPM_OTHER] unexpected failure\n"
+        : "Progress: resolved 4\n[ENOENT] ENOENT: no such file or directory, open '" +
+            oldGenui +
+            "'\n",
+    );
+    for (const file of ["package.json", "cordis.patch.yml", "pnpm-lock.yaml"])
+      await writeFile(join(backup, file), await readFile(join(f.profile, file)));
+    const failed = JSON.stringify({
+      status: "failed",
+      changed: false,
+      from: "0.0.159",
+      to: "0.0.177",
+      diagnostic: "GEA_COMPANY_INSTALL_FAILED: " + log,
+    });
+    await writeFile(join(directory, "receipt.json"), failed);
+    if (variant === "changed")
+      await writeFile(join(f.profile, "cordis.patch.yml"), "changed by user");
+    if (variant === "retried") await writeFile(join(backup, "failed-receipt.json"), failed);
+    const task = refreshBundledGea({
+      ...f,
+      install: async (options) => {
+        await options.beforeInstall();
+        await writeFile(
+          join(f.profile, "node_modules", name, "package.json"),
+          JSON.stringify({ name, version: "0.0.177" }),
+        );
+        await options.complete({ writeFileAtomic: writeFile });
+      },
+    });
+    if (variant === "known") {
+      assert.equal((await task).status, "completed");
+      assert.equal(await readFile(join(backup, "failed-receipt.json"), "utf8"), failed);
+    } else {
+      await assert.rejects(task, /GEA_REFRESH_RECOVERY_REQUIRED/);
+      assert.equal(await readFile(join(directory, "receipt.json"), "utf8"), failed);
+    }
+  }
+});
+
+test("the same bundled GEA version still repairs old installer archive references once", () => {
+  const manifest = {
+    ...current,
+    dependencies: {
+      ...current.dependencies,
+      "@changfenhuang/dsh-genui":
+        "file:D:/Program Files/DSH/resources/company-seed/archives/dsh-genui-0.11.3.tgz",
+    },
+  };
+  assert.equal(planBundledGeaRefresh(manifest, bundled, bundled).status, "ready");
+  assert.equal(
+    planBundledGeaRefresh(current, bundled, bundled).status,
+    "current-or-custom-gea-preserved",
+  );
+  assert.equal(
+    planBundledGeaRefresh(manifest, { ...bundled, version: "0.0.167" }, bundled).status,
+    "current-or-custom-gea-preserved",
+  );
+});

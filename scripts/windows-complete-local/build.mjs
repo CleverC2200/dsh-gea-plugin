@@ -295,6 +295,21 @@ const receipt = JSON.parse(
 if (receipt.status !== "installed" || receipt.packages.length !== 3)
   throw Error("THREE_PLUGIN_NEW_INSTALL_FAILED");
 await writeFile(join(output, "first-install-receipt.json"), JSON.stringify(receipt, null, 2));
+execFileSync(
+  executable,
+  [
+    "--expose-internals",
+    join(gea, "scripts/windows-complete-local/legacy-bootstrap.mjs"),
+    appRoot,
+    supportRoot,
+    seed,
+    join(output, "legacy-bootstrap"),
+  ],
+  {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    stdio: "inherit",
+  },
+);
 const files = (await readdir(join(target, "unsigned-artifacts"))).filter((name) =>
   name.endsWith(".exe"),
 );

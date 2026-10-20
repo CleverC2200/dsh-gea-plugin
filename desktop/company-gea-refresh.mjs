@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile, lstat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 const gea = "@cleverc2200/gea-dsh-prototype";
@@ -22,12 +22,37 @@ export function planBundledGeaRefresh(current, installed, bundled) {
     return { status: "disabled-gea-preserved", changed: false };
   if (typeof spec !== "string" || !(/^0\.0\.\d+$/.test(spec) || /^file:.+\.tgz$/.test(spec)))
     return { status: "custom-gea-preserved", changed: false };
-  if (!(release(installed.version) < release(bundled.version)))
+  const legacy = Object.entries(current.dependencies).some(
+    ([name, value]) =>
+      [
+        gea,
+        "@cleverc2200/dsh-agent-workbench",
+        "dsh-agent-manage",
+        "@changfenhuang/dsh-genui",
+      ].includes(name) &&
+      typeof value === "string" &&
+      value.startsWith("file:") &&
+      value.replaceAll("\\", "/").includes("/company-seed/archives/") &&
+      value.endsWith(".tgz"),
+  );
+  if (
+    !(release(installed.version) < release(bundled.version)) &&
+    !(
+      legacy &&
+      Number.isFinite(release(installed.version)) &&
+      installed.version === bundled.version
+    )
+  )
     return { status: "current-or-custom-gea-preserved", changed: false };
-  return { status: "ready", changed: false, from: installed.version, to: bundled.version };
+  return {
+    status: "ready",
+    changed: false,
+    from: installed.version,
+    to: bundled.version,
+  };
 }
 
-async function assertIdle(profile) {
+export async function assertProfileIdle(profile) {
   if (await optional(join(profile, ".plugin-manager/run.json")))
     throw Error("GEA_REFRESH_PROFILE_BUSY");
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
@@ -42,6 +67,82 @@ async function assertIdle(profile) {
     throw Error("GEA_REFRESH_UPDATE_PENDING");
 }
 
+export async function assertCompletedGeaRefresh(profile, { allowArchiveRecovery = false } = {}) {
+  const directory = join(profile, "gea/bootstrap/gea-refresh");
+  const bytes = await optional(join(directory, "receipt.json"));
+  if (!bytes) return;
+  const prior = JSON.parse(bytes);
+  if (prior.status === "completed") return;
+  if (allowArchiveRecovery) {
+    try {
+      const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
+      if (
+        prior.status !== "failed" ||
+        !Number.isFinite(release(prior.from)) ||
+        !Number.isFinite(release(prior.to)) ||
+        typeof prior.diagnostic !== "string" ||
+        !prior.diagnostic.startsWith(prefix)
+      )
+        throw Error("NOT_RECOVERABLE");
+      const backup = join(directory, "before-" + prior.from + "-to-" + prior.to);
+      if (await optional(join(backup, "failed-receipt.json"))) throw Error("ALREADY_RETRIED");
+      for (const path of [
+        join(profile, "gea"),
+        join(profile, "gea/bootstrap"),
+        directory,
+        backup,
+      ]) {
+        const entry = await lstat(path);
+        if (!entry.isDirectory() || entry.isSymbolicLink()) throw Error("UNSAFE_BACKUP");
+      }
+      for (const file of files) {
+        const current = await optional(join(profile, file));
+        const saved = await optional(join(backup, file));
+        if (
+          (current === null) !== (saved === null) ||
+          (current && !current.equals(saved)) ||
+          (file === "package.json" && !saved)
+        )
+          throw Error("PROFILE_CHANGED");
+        if (saved) {
+          const entry = await lstat(join(backup, file));
+          if (!entry.isFile() || entry.isSymbolicLink()) throw Error("UNSAFE_BACKUP");
+        }
+      }
+      const current = JSON.parse(await readFile(join(profile, "package.json")));
+      const installed = JSON.parse(
+        await readFile(join(profile, "node_modules", gea, "package.json")),
+      );
+      if (installed.name !== gea || installed.version !== prior.from)
+        throw Error("INSTALLED_CHANGED");
+      const log = prior.diagnostic.slice(prefix.length);
+      const local = relative(join(profile, ".plugin-manager/logs"), log).split(/[\\/]/);
+      if (
+        !isAbsolute(log) ||
+        local.length !== 2 ||
+        !/^operation-[a-zA-Z0-9_-]+$/.test(local[0]) ||
+        local[1] !== "pnpm.log"
+      )
+        throw Error("UNKNOWN_LOG");
+      const text = await readFile(log, "utf8");
+      const errors = text.split(/\r?\n/).filter((line) => /^\[[A-Z_]+\]/.test(line));
+      if (errors.length !== 1) throw Error("UNKNOWN_FAILURE");
+      const match = /^\[ENOENT\] ENOENT: no such file or directory, open '(.+)'$/.exec(errors[0]);
+      if (
+        !match ||
+        !match[1].replaceAll("\\", "/").endsWith("/company-seed/archives/dsh-genui-0.11.3.tgz") ||
+        current.dependencies?.["@changfenhuang/dsh-genui"]?.slice(5).replaceAll("\\", "/") !==
+          match[1].replaceAll("\\", "/")
+      )
+        throw Error("UNKNOWN_FAILURE");
+      return { bytes, backup };
+    } catch (error) {
+      throw Error("GEA_REFRESH_RECOVERY_REQUIRED", { cause: error });
+    }
+  }
+  throw Error("GEA_REFRESH_RECOVERY_REQUIRED");
+}
+
 export async function refreshBundledGea({ root, support, seed, home, manifest, install }) {
   const profile = join(home, "profiles/desktop");
   const directory = join(profile, "gea/bootstrap/gea-refresh");
@@ -49,9 +150,9 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
   const currentBytes = await optional(join(profile, "package.json"));
   const installedBytes = await optional(join(profile, "node_modules", gea, "package.json"));
   if (!currentBytes || !installedBytes) return { status: "gea-not-installed", changed: false };
-  const prior = await optional(journal);
-  if (prior && JSON.parse(prior).status !== "completed")
-    throw Error("GEA_REFRESH_RECOVERY_REQUIRED");
+  const recovery = await assertCompletedGeaRefresh(profile, {
+    allowArchiveRecovery: true,
+  });
   const current = JSON.parse(currentBytes);
   const installed = JSON.parse(installedBytes);
   const bundled = manifest.packages.find((row) => row.name === gea);
@@ -66,6 +167,7 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
     await install({
       root,
       support,
+      seed,
       home,
       profile,
       packages: [join(seed, "archives", bundled.file)],
@@ -73,7 +175,7 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
       offline: false,
       strictPeers: true,
       beforeInstall: async () => {
-        await assertIdle(profile);
+        await assertProfileIdle(profile);
         if (
           !(await readFile(join(profile, "package.json"))).equals(currentBytes) ||
           !(await readFile(join(profile, "node_modules", gea, "package.json"))).equals(
@@ -81,9 +183,9 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
           )
         )
           throw Error("GEA_REFRESH_PROFILE_CHANGED");
-        const latest = await optional(journal);
-        if (latest && JSON.parse(latest).status !== "completed")
-          throw Error("GEA_REFRESH_RECOVERY_REQUIRED");
+        await assertCompletedGeaRefresh(profile, {
+          allowArchiveRecovery: true,
+        });
         before = new Map(
           await Promise.all(files.map(async (file) => [file, await optional(join(profile, file))])),
         );
@@ -106,18 +208,39 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
           if (bytes) {
             const saved = await optional(join(backup, file));
             if (saved && !saved.equals(bytes)) throw Error("GEA_REFRESH_BACKUP_CHANGED");
-            if (!saved) await writeFile(join(backup, file), bytes, { flag: "wx", mode: 0o600 });
+            if (!saved)
+              await writeFile(join(backup, file), bytes, {
+                flag: "wx",
+                mode: 0o600,
+              });
           }
+        if (recovery)
+          await writeFile(join(recovery.backup, "failed-receipt.json"), recovery.bytes, {
+            flag: "wx",
+            mode: 0o600,
+          });
         await writeFile(journal, JSON.stringify({ ...plan, status: "installing", backup }) + "\n", {
           mode: 0o600,
         });
         started = true;
       },
-      complete: async ({ writeFileAtomic }) => {
+      complete: async ({ writeFileAtomic, archiveReplacements = [] }) => {
         const after = JSON.parse(await readFile(join(profile, "package.json")));
         const actual = JSON.parse(
           await readFile(join(profile, "node_modules", gea, "package.json")),
         );
+        const expected = structuredClone(current);
+        for (const replacement of archiveReplacements) {
+          if (expected.dependencies[replacement.name] !== replacement.before)
+            throw Error("GEA_REFRESH_PROFILE_CHANGED");
+          const installed = JSON.parse(
+            await readFile(join(profile, "node_modules", replacement.name, "package.json")),
+          );
+          if (installed.name !== replacement.name || installed.version !== replacement.version)
+            throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
+          expected.dependencies[replacement.name] =
+            "file:" + replacement.path.replaceAll("\\", "/");
+        }
         const withoutGea = (value) => {
           const copy = structuredClone(value);
           delete copy.dependencies[gea];
@@ -126,7 +249,7 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
         if (
           actual.name !== gea ||
           actual.version !== bundled.version ||
-          !isDeepStrictEqual(withoutGea(after), withoutGea(current))
+          !isDeepStrictEqual(withoutGea(after), withoutGea(expected))
         )
           throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
         const patch = await optional(join(profile, "cordis.patch.yml"));
@@ -147,7 +270,11 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
     if (started)
       await writeFile(
         journal,
-        JSON.stringify({ ...plan, status: "failed", diagnostic: error.message }) + "\n",
+        JSON.stringify({
+          ...plan,
+          status: "failed",
+          diagnostic: error.message,
+        }) + "\n",
         { mode: 0o600 },
       );
     throw error;

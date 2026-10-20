@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, access } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  writeFile,
+  access,
+  rm,
+  readdir,
+  symlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -154,7 +163,12 @@ test("an existing profile does not reinstall the uninstalled optional GenUI plug
   });
   await writeFile(join(profile, "package.json"), manifest);
   assert.deepEqual(
-    await bootstrapCompanyProfile({ root: "unused", support: "unused", seed: "unused", home }),
+    await bootstrapCompanyProfile({
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      home,
+    }),
     { status: "existing-profile-preserved", changed: false },
   );
   assert.equal(await readFile(join(profile, "package.json"), "utf8"), manifest);
@@ -310,7 +324,10 @@ test("only an unchanged profile with a known pre-write store rejection can reach
 });
 
 test("the admitted company Core refresh preserves the existing source and rejects unknown builds", () => {
-  const next = { ...currentCore, head: "8cfb899ccf21d3662421b99b5f4627842ef712ea" };
+  const next = {
+    ...currentCore,
+    head: "8cfb899ccf21d3662421b99b5f4627842ef712ea",
+  };
   const source = { channelUrl: "https://example.test/custom.json" };
   assert.deepEqual(planCompanyCoreRefresh({ source, core: currentCore }, next), {
     source,
@@ -376,12 +393,134 @@ test("an existing three-plugin profile without a bootstrap receipt stays untouch
   });
   await writeFile(join(profile, "package.json"), bytes);
   assert.deepEqual(
-    await bootstrapCompanyProfile({ root: "unused", support: "unused", seed: "unused", home }),
+    await bootstrapCompanyProfile({
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      home,
+    }),
     {
       status: "existing-profile-preserved",
       changed: false,
     },
   );
   assert.equal(await readFile(join(profile, "package.json"), "utf8"), bytes);
-  await assert.rejects(access(join(profile, "gea/bootstrap/receipt.json")), { code: "ENOENT" });
+  await assert.rejects(access(join(profile, "gea/bootstrap/receipt.json")), {
+    code: "ENOENT",
+  });
+});
+
+async function bomProfile(t) {
+  const home = await mkdtemp(join(tmpdir(), "gea-profile-encoding-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const profile = join(home, "profiles/desktop");
+  const root = join(home, "app");
+  const atomic = join(root, "dsh/node_modules/@deepseek-ai/dsh-atomic-write");
+  await mkdir(profile, { recursive: true });
+  await mkdir(atomic, { recursive: true });
+  await writeFile(
+    join(atomic, "package.json"),
+    JSON.stringify({ type: "module", exports: "./index.mjs" }),
+  );
+  await writeFile(
+    join(atomic, "index.mjs"),
+    `
+import { writeFile, rename, unlink } from "node:fs/promises";
+export async function withFileLock(path, run) {
+  await writeFile(path + ".lock", String(process.pid), { flag: "wx" });
+  try { return await run(); } finally { await unlink(path + ".lock"); }
+}
+export async function writeFileAtomic(path, bytes, options) {
+  await writeFile(path + ".tmp", bytes, { ...options, flag: "wx" });
+  await rename(path + ".tmp", path);
+}
+`,
+  );
+  const manifest =
+    JSON.stringify(
+      {
+        name: "existing-company-profile",
+        dependencies: {
+          "@cleverc2200/dsh-agent-workbench": "0.1.17",
+          "dsh-agent-manage": "0.6.3-company.23",
+          "@cleverc2200/gea-dsh-prototype": "0.0.177",
+        },
+        dsh: { profile: { bundles: ["dsh-agent-manage"] } },
+      },
+      null,
+      2,
+    ) + "\r\n";
+  const original = Buffer.from("\uFEFF" + manifest);
+  await writeFile(join(profile, "package.json"), original);
+  await writeFile(join(profile, "cordis.patch.yml"), "custom: keep\r\n");
+  return {
+    home,
+    root,
+    profile,
+    original,
+    manifest,
+    support: "unused",
+    seed: "unused",
+  };
+}
+
+test("a Windows BOM profile is backed up and normalized before the downstream JSON reader runs", async (t) => {
+  const f = await bomProfile(t);
+  const result = await bootstrapCompanyProfile(f);
+  assert.equal(result.status, "existing-profile-preserved");
+  assert.equal(result.changed, true);
+  assert.deepEqual(
+    JSON.parse(await readFile(join(f.profile, "package.json"), "utf8")),
+    JSON.parse(f.manifest),
+  );
+  assert.equal(await readFile(join(f.profile, "package.json"), "utf8"), f.manifest);
+  assert.deepEqual(await readFile(result.backup), f.original);
+  assert.equal(await readFile(join(f.profile, "cordis.patch.yml"), "utf8"), "custom: keep\r\n");
+  const again = await bootstrapCompanyProfile(f);
+  assert.deepEqual(again, {
+    status: "existing-profile-preserved",
+    changed: false,
+  });
+  assert.equal((await readdir(join(f.profile, "gea/bootstrap/profile-encoding"))).length, 1);
+});
+
+test("BOM normalization leaves failed refreshes, active installs, invalid JSON and linked profiles untouched", async (t) => {
+  for (const variant of ["refresh", "busy", "invalid", "linked"]) {
+    const f = await bomProfile(t);
+    if (variant === "refresh") {
+      const dir = join(f.profile, "gea/bootstrap/gea-refresh");
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        join(dir, "receipt.json"),
+        JSON.stringify({ status: "failed", from: "0.0.159", to: "0.0.177" }),
+      );
+    }
+    if (variant === "busy") {
+      await mkdir(join(f.profile, ".plugin-manager"));
+      await writeFile(join(f.profile, ".plugin-manager/run.json"), "{}");
+    }
+    if (variant === "invalid") {
+      f.original = Buffer.from("\uFEFF{broken");
+      await writeFile(join(f.profile, "package.json"), f.original);
+    }
+    if (variant === "linked") {
+      await writeFile(join(f.home, "linked.json"), f.original);
+      await rm(join(f.profile, "package.json"));
+      await symlink(join(f.home, "linked.json"), join(f.profile, "package.json"));
+    }
+    await assert.rejects(
+      bootstrapCompanyProfile(f),
+      variant === "refresh"
+        ? /GEA_REFRESH_RECOVERY_REQUIRED/
+        : variant === "busy"
+          ? /GEA_REFRESH_PROFILE_BUSY/
+          : variant === "linked"
+            ? /GEA_PROFILE_ENCODING_UNSAFE_PATH/
+            : SyntaxError,
+    );
+    assert.deepEqual(await readFile(join(f.profile, "package.json")), f.original);
+    await assert.rejects(access(join(f.profile, "gea/bootstrap/profile-encoding")), {
+      code: "ENOENT",
+    });
+  }
 });
