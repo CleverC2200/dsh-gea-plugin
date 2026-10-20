@@ -11,7 +11,7 @@ import { verifyServiceListener as verifyExplicitImports, lastTimings } from './n
 const execute = promisify(execFile), file = fileURLToPath(import.meta.url);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 let diagnosticPhase = 'initializing';
-const sourceBindings = {"privacy.mjs": "d809e5c740c58369f913b7d8a23a5909fb18de31d13fa68e1d40011dc8d3034e", "native-profile-port.mjs": "f64f85b0cf7c52b3258b7434d43580600a2c556f9e072f238ad157cf52127cca", "native-profile-port.imports-candidate.mjs": "749c5637b527b7319bafdee73a1551d4534d78188bcec97fa03fd80167a92376", "native-profile-port.timed-candidate.mjs": "0aaaa5c7008cc98690c0af83f51fa0c0c6d99b7ee6ffd3d8d203118dfde99065"};
+const sourceBindings = {"privacy.mjs": "d809e5c740c58369f913b7d8a23a5909fb18de31d13fa68e1d40011dc8d3034e", "native-profile-port.mjs": "f64f85b0cf7c52b3258b7434d43580600a2c556f9e072f238ad157cf52127cca", "native-profile-port.imports-candidate.mjs": "749c5637b527b7319bafdee73a1551d4534d78188bcec97fa03fd80167a92376", "native-profile-port.timed-candidate.mjs": "aec92d8bf49ac0b98bc9941bf71e990450fe54218649061e3848f4e94574a55e"};
 async function secureDirectory(path) {
   diagnosticPhase = 'secure-owner-create';
   await mkdir(path, { recursive: false, mode: 0o700 });
