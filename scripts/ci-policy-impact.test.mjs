@@ -668,6 +668,22 @@ test("detail contributions select the built browser and actual installer contrac
   assert.equal(plan.browser, true);
 });
 
+test("the package-manager subprocess fixture selects its update controller consumer", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(
+    fixture.own,
+    "tests/fixtures/plugin-updates/package-manager.cjs",
+    "process.exit(1);\n",
+  );
+  const plan = fixture.plan();
+  assert.ok(plan.files.includes("tests/plugin-update-controller.contract.mjs"));
+  assert.ok(
+    plan.reasons[fixture.own.repo + "/tests/fixtures/plugin-updates/package-manager.cjs"].includes(
+      "tests/plugin-update-controller.contract.mjs",
+    ),
+  );
+});
+
 test("browser-only changes and their dedicated fixtures select their browser consumer", async (t) => {
   for (const changed of [
     "tests/plugin-update-list.browser.mjs",

@@ -102,7 +102,8 @@ export function createPluginDetailUpdates(ctx: Context) {
         refs: number;
         timer?: ReturnType<typeof setTimeout>;
         poll?: Promise<void>;
-        recovering: number;
+        recovering: boolean;
+        recoveryTimer?: ReturnType<typeof setTimeout>;
         check?: AbortController;
         awaitingClient?: boolean;
         observation?: {
@@ -222,7 +223,8 @@ export function createPluginDetailUpdates(ctx: Context) {
     if (page !== owner) return;
     publishStatus(next);
     if (recovering && owner.recovering) {
-      owner.recovering = 0;
+      owner.recovering = false;
+      clearTimeout(owner.recoveryTimer);
       const names = snapshot.items
         .filter((row) => operationStages.includes(row.state))
         .map((row) => row.packageName);
@@ -282,7 +284,6 @@ export function createPluginDetailUpdates(ctx: Context) {
         publish({ transportError: "status" });
         if (owner.observation) notify(owner, "unconfirmed");
       }
-      if (owner.recovering) owner.recovering--;
     }
     if (!owner.refs && !owner.observation && !owner.recovering) close(owner);
     if (page === owner && !owner.lifetime.signal.aborted)
@@ -293,6 +294,7 @@ export function createPluginDetailUpdates(ctx: Context) {
   const close = (owner: NonNullable<typeof page>) => {
     if (page !== owner) return;
     clearTimeout(owner.timer);
+    clearTimeout(owner.recoveryTimer);
     clearTimeout(owner.observation?.timer);
     owner.lifetime.abort();
     page = undefined;
@@ -372,8 +374,13 @@ export function createPluginDetailUpdates(ctx: Context) {
         lifetime: new AbortController(),
         identity: crypto.randomUUID(),
         refs: 0,
-        recovering: 3,
+        recovering: true,
       };
+      const owner = page;
+      owner.recoveryTimer = setTimeout(() => {
+        owner.recovering = false;
+        if (!owner.refs && !owner.observation) close(owner);
+      }, pluginUpdateObservationMs);
       page.poll = tick(page);
       return page.poll;
     },
@@ -384,7 +391,7 @@ export function createPluginDetailUpdates(ctx: Context) {
           lifetime: new AbortController(),
           identity: crypto.randomUUID(),
           refs: 0,
-          recovering: 0,
+          recovering: false,
         };
         page.poll = tick(page);
       }
