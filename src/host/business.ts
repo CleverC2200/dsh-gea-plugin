@@ -3015,7 +3015,7 @@ export class Business {
     const failures = new Map<string, string>();
     const byMonth = new Map<string, Set<string>>();
     for (const row of rows) {
-      const month = salesPlanPeriodMonthForPlanId(text(row.planId));
+      const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
       if (!month || typeof row.dealerCode !== "string" || !row.dealerCode) continue;
       const customers = byMonth.get(month) ?? new Set<string>();
       customers.add(row.dealerCode);
@@ -3098,7 +3098,7 @@ export class Business {
     }
     signal.throwIfAborted();
     return rows.map((row) => {
-      const month = salesPlanPeriodMonthForPlanId(text(row.planId));
+      const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
       const key = `${month}\u0000${row.dealerCode}`;
       const progress = decimalSources([amounts.get(key), row.targetAmount]);
       return {
