@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { companyPackageNames, comparePluginVersions } from "../../src/shared/plugin-release.mjs";
@@ -38,6 +39,8 @@ export async function readDesktopInput(file, sourceSha) {
   if (!/^[a-f0-9]{40}$/.test(sourceSha ?? "") || input.geaSourceSha !== sourceSha)
     throw Error("DESKTOP_SOURCE_MISMATCH");
   if (input.schemaVersion !== 1) throw Error("DESKTOP_INPUT_INVALID");
+  if (input.pluginSourceSha !== undefined && !/^[a-f0-9]{40}$/.test(input.pluginSourceSha ?? ""))
+    throw Error("DESKTOP_PLUGIN_SOURCE_INVALID");
   try {
     if (
       typeof input.desktopVersion !== "string" ||
@@ -90,6 +93,7 @@ export async function readDesktopInput(file, sourceSha) {
   return {
     schemaVersion: 1,
     geaSourceSha: input.geaSourceSha,
+    ...(input.pluginSourceSha === undefined ? {} : { pluginSourceSha: input.pluginSourceSha }),
     desktopVersion: input.desktopVersion,
     seed: {
       packages: packages.map(({ name, version, url, sha256 }) => ({ name, version, url, sha256 })),
@@ -107,6 +111,29 @@ export async function readDesktopInput(file, sourceSha) {
       },
     },
   };
+}
+export function readDesktopPluginSource(input, checkout) {
+  const head = input.pluginSourceSha ?? input.geaSourceSha;
+  try {
+    if (!/^[a-f0-9]{40}$/.test(head ?? "")) throw Error();
+    execFileSync("git", ["merge-base", "--is-ancestor", head, input.geaSourceSha], {
+      cwd: checkout,
+      stdio: "pipe",
+    });
+    const manifest = JSON.parse(
+      execFileSync("git", ["show", head + ":package.json"], { cwd: checkout, encoding: "utf8" }),
+    );
+    if (
+      manifest.name !== "@cleverc2200/gea-dsh-prototype" ||
+      !input.seed.packages.some(
+        (row) => row.name === manifest.name && row.version === manifest.version,
+      )
+    )
+      throw Error();
+    return { head, name: manifest.name, version: manifest.version };
+  } catch {
+    throw Error("DESKTOP_GEA_PACKAGE_SOURCE_MISMATCH");
+  }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({

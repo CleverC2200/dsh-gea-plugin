@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
+import { readDesktopInput, readDesktopPluginSource } from "./input.mjs";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -153,5 +154,59 @@ test("native acceptance bundle input refuses mutable, foreign or incomplete iden
     );
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DESKTOP_NATIVE_BUNDLE_INVALID/);
+  }
+});
+
+test("a wrapper-only build binds the fixed plugin commit and rejects unrelated or wrong-version sources", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-desktop-plugin-source-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("config", "user.name", "fixture");
+  git("config", "user.email", "fixture@invalid");
+  const name = "@cleverc2200/gea-dsh-prototype";
+  const commit = async (version) => {
+    await writeFile(join(directory, "package.json"), JSON.stringify({ name, version }));
+    git("add", "package.json");
+    git("commit", "-qm", version);
+    return git("rev-parse", "HEAD");
+  };
+  const plugin = await commit("0.0.177"),
+    wrapper = await commit("0.0.178");
+  const input = { ...structuredClone(baseline), geaSourceSha: wrapper, pluginSourceSha: plugin };
+  input.seed.packages.find((row) => row.name === name).version = "0.0.177";
+  assert.deepEqual(readDesktopPluginSource(input, directory), {
+    head: plugin,
+    name,
+    version: "0.0.177",
+  });
+  delete input.pluginSourceSha;
+  assert.throws(
+    () => readDesktopPluginSource(input, directory),
+    /DESKTOP_GEA_PACKAGE_SOURCE_MISMATCH/,
+  );
+  input.seed.packages.find((row) => row.name === name).version = "0.0.178";
+  assert.equal(readDesktopPluginSource(input, directory).head, wrapper);
+  input.pluginSourceSha = git("commit-tree", git("rev-parse", "HEAD^{tree}"), "-m", "unrelated");
+  assert.throws(
+    () => readDesktopPluginSource(input, directory),
+    /DESKTOP_GEA_PACKAGE_SOURCE_MISMATCH/,
+  );
+});
+
+test("explicit immutable plugin source survives normalization while mutable input is refused", async (t) => {
+  const input = { ...structuredClone(baseline), pluginSourceSha: "1".repeat(40) };
+  const directory = await mkdtemp(join(tmpdir(), "gea-desktop-plugin-input-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "input.json");
+  await writeFile(path, JSON.stringify(input));
+  assert.equal(
+    (await readDesktopInput(path, baseline.geaSourceSha)).pluginSourceSha,
+    input.pluginSourceSha,
+  );
+  for (const pluginSourceSha of ["main", "f".repeat(39), null]) {
+    const result = await check(t, { ...input, pluginSourceSha });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DESKTOP_PLUGIN_SOURCE_INVALID/);
   }
 });
