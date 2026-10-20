@@ -36,7 +36,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileFields, readPluginProfile, combinationManifests, validateActualProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileFields, readPluginProfile, combinationManifests, validateActualProfile, pluginProfileStoreDirectory, freezePluginUserData, verifyPluginUserData} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -71,7 +71,98 @@ const {
   parseUpdateClientStatus,
   pluginProfileStoreDirectory,
   retainsProfileFields,
+  freezePluginUserData,
+  verifyPluginUserData,
 } = await import(pathToFileURL(modulePath));
+
+test("user-data verification permits formatting and additions but rejects changed instructions, a different home and corrupt backups", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t),
+    data = join(f.profile.home, "agent-plugins/data");
+  await mkdir(data, { recursive: true });
+  const file = join(data, "user-agents.json"),
+    value = { version: 1, agents: [{ id: "personal", prompt: "My instructions" }] };
+  await writeFile(file, JSON.stringify(value));
+  const recovery = join(f.root, "data-recovery");
+  await mkdir(recovery);
+  const sha = await freezePluginUserData(f.profile.home, recovery);
+  await writeFile(file, JSON.stringify(value, null, 2));
+  await writeFile(join(data, "new-file"), "Keep concurrent additions");
+  await verifyPluginUserData(f.profile.home, recovery, sha);
+  await writeFile(
+    file,
+    JSON.stringify({ ...value, agents: [{ id: "personal", prompt: "Changed instructions" }] }),
+  );
+  await assert.rejects(
+    verifyPluginUserData(f.profile.home, recovery, sha),
+    /UPDATE_USER_DATA_NOT_PRESERVED/,
+  );
+  await assert.rejects(
+    verifyPluginUserData(join(f.root, "other-home"), recovery, sha),
+    /UPDATE_USER_DATA_HOME_CHANGED/,
+  );
+  await writeFile(join(recovery, "user-data/agent-plugins/data/user-agents.json"), "corrupt");
+  await assert.rejects(
+    verifyPluginUserData(f.profile.home, recovery, sha),
+    /UPDATE_USER_DATA_BACKUP_INVALID/,
+  );
+  assert.equal(await readFile(join(data, "new-file"), "utf8"), "Keep concurrent additions");
+});
+
+for (const mode of ["success", "remove-user-skill"])
+  test(`accepted updates ${mode === "success" ? "back up" : "detect the loss of"} personal Agents, customizations and complete Skill assets`, async (t) => {
+    const { controllerFixture, waitForStage } =
+      await import("./fixtures/plugin-updates/profile.mjs");
+    const f = await controllerFixture(t, { mode });
+    const data = join(f.profile.home, "agent-plugins/data");
+    const skill = join(data, "user-agents.json.skills/personal/versions/one/tree");
+    await mkdir(join(skill, "references"), { recursive: true });
+    const files = {
+      "user-agents.json": JSON.stringify({
+        version: 1,
+        agents: [
+          { id: "personal", prompt: "keep my prompt", skills: [{ directory: { root: skill } }] },
+        ],
+      }),
+      "selected-resources.json": JSON.stringify({
+        version: 1,
+        selected: ["gea-readonly"],
+        customizations: { "gea-readonly": { prompt: "my plugin override" } },
+      }),
+      "user-agents.json.skills/personal/versions/one/tree/SKILL.md":
+        "# My skill\nSee [reference](references/rules.md)",
+      "user-agents.json.skills/personal/versions/one/tree/references/rules.md":
+        "Personal rules must survive updates\n",
+    };
+    for (const [name, value] of Object.entries(files)) await writeFile(join(data, name), value);
+    f.profile.packageManager.env.FIXTURE_USER_DATA_FILE = join(skill, "references/rules.md");
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    const row = controller.snapshot().items.find((item) => item.planId);
+    await controller.submit({ packageName: row.packageName, planId: row.planId });
+    const operation = await waitForStage(controller, ["pending-restart", "unknown", "restored"]);
+    assert.equal(
+      operation.stage,
+      mode === "success" ? "pending-restart" : "unknown",
+      JSON.stringify(operation),
+    );
+    if (mode !== "success") assert.equal(operation.diagnostic, "UPDATE_USER_DATA_NOT_PRESERVED");
+    assert.match(operation.userDataSha256 ?? "", /^[a-f0-9]{64}$/);
+    for (const [name, value] of Object.entries(files)) {
+      if (mode === "remove-user-skill" && name.endsWith("rules.md"))
+        await assert.rejects(readFile(join(data, name)), /ENOENT/);
+      else assert.equal(await readFile(join(data, name), "utf8"), value);
+      assert.equal(
+        await readFile(
+          join(operation.recoveryDirectory, "user-data/agent-plugins/data", name),
+          "utf8",
+        ),
+        value,
+      );
+    }
+  });
 test("profile store metadata selects its existing directory and rejects unusable state", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "plugin-update-store-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -362,6 +453,12 @@ test("pending receipt survives recreation in the same Node process and needs a g
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t),
     controller = createPluginUpdateController(f.options);
+  const skillFile = join(
+    f.profile.home,
+    "agent-plugins/data/user-agents.json.skills/one/tree/references/rules.md",
+  );
+  await mkdir(join(skillFile, ".."), { recursive: true });
+  await writeFile(skillFile, "Keep my referenced Skill resource\n");
   await controller.initialize();
   await controller.check();
   const row = controller.snapshot().items.find((row) => row.state === "available");
@@ -414,6 +511,21 @@ test("pending receipt survives recreation in the same Node process and needs a g
     }),
   );
   assert.equal(oldBrowser.operation.stage, "pending-restart", JSON.stringify(oldBrowser));
+  const receiptFile = join(
+    f.options.runtimeDirectory,
+    "operations",
+    oldBrowser.operation.id,
+    "receipt.json",
+  );
+  const pendingReceipt = await readFile(receiptFile);
+  await rm(skillFile);
+  const missingSkill = JSON.parse(
+    execFileSync(process.execPath, [script, input], { encoding: "utf8" }),
+  );
+  assert.equal(missingSkill.operation.stage, "unknown", JSON.stringify(missingSkill));
+  assert.equal(missingSkill.operation.diagnostic, "UPDATE_USER_DATA_NOT_PRESERVED");
+  await writeFile(skillFile, "Keep my referenced Skill resource\n");
+  await writeFile(receiptFile, pendingReceipt);
   const fresh = JSON.parse(execFileSync(process.execPath, [script, input], { encoding: "utf8" }));
   assert.equal(fresh.operation.stage, "completed", JSON.stringify(fresh));
   assert.notEqual(fresh.actualProcessIdentity, `${process.pid}:${performance.timeOrigin}`);

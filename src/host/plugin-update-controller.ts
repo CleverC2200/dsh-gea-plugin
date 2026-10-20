@@ -35,6 +35,8 @@ import {
   readPluginProfile,
   combinationManifests,
   freezePluginProfile,
+  freezePluginUserData,
+  verifyPluginUserData,
   restorePluginProfile,
   retainsProfileUpdates,
   retainsUnmanagedManifestFields,
@@ -117,6 +119,11 @@ async function durableJson(path: string, value: unknown, commit?: PluginUpdateFi
 }
 function parseOperation(raw: unknown): PluginUpdateOperation {
   const value = object(raw);
+  if (
+    value.userDataSha256 !== undefined &&
+    (typeof value.userDataSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.userDataSha256))
+  )
+    fail("UPDATE_JOURNAL_INVALID");
   if (
     value.schema !== 1 ||
     !companyPackageNames.some((name) => name === value.packageName) ||
@@ -479,6 +486,18 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           }
           completionProofs.push({ processIdentity: pluginUpdateProcessIdentity, host, client });
         }
+        if (latestOperation.userDataSha256) {
+          try {
+            await verifyPluginUserData(
+              options.profile.home,
+              latestOperation.recoveryDirectory,
+              latestOperation.userDataSha256,
+            );
+          } catch (error) {
+            await stage("unknown", code(error, "UPDATE_USER_DATA_NOT_PRESERVED"));
+            return snapshot();
+          }
+        }
         await stage("completed", null, {
           completionProof: completionProofs[0] ?? null,
           ...(operation.targets ? { completionProofs } : {}),
@@ -796,6 +815,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             currentMonitor = windowsRun;
             recovery = join(operationDirectory, "recovery");
             await freezePluginProfile(options.profile.dir, baseline, recovery, options.fileCommit);
+            const userDataSha256 = await freezePluginUserData(options.profile.home, recovery);
             await writePluginRecoveryNotes(operationDirectory, options.profile.dir);
             lifetime.signal.throwIfAborted();
             for (const selectedPlan of selected)
@@ -825,6 +845,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               baselineSha256: baseline.sha256,
               archivePath: archive,
               recoveryDirectory: recovery,
+              userDataSha256,
               diagnostic: null,
               installedGraphSha256: null,
               completionProof: null,
@@ -899,6 +920,13 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             await stage("verifying", null, { logs: operation.logs, processes });
             if (!stopped || outcome?.incompatible?.length)
               await stage("unknown", "PACKAGE_WRITERS_UNCONFIRMED");
+            else if (
+              await verifyPluginUserData(options.profile.home, recovery, userDataSha256).then(
+                () => false,
+                () => true,
+              )
+            )
+              await stage("unknown", "UPDATE_USER_DATA_NOT_PRESERVED");
             else if (
               !retainsUnmanagedManifestFields(
                 baseline,

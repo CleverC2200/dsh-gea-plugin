@@ -171,6 +171,107 @@ async function tree(root: string): Promise<{ entries: TreeEntry[]; bytes: number
   await walk(root, "");
   return { entries, bytes };
 }
+
+export async function freezePluginUserData(home: string, recovery: string): Promise<string> {
+  const source = join(home, "agent-plugins"),
+    directory = join(recovery, "user-data");
+  let graph: Awaited<ReturnType<typeof tree>> | null = null;
+  let present = false;
+  try {
+    const info = await lstat(source);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw Error("UPDATE_USER_DATA_ROOT_INVALID");
+    present = true;
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+  }
+  if (present) graph = await tree(source);
+  const capacity = await statfs(recovery);
+  if (capacity.bavail * capacity.bsize < (graph?.bytes ?? 0) + 64 * 1024 * 1024)
+    throw Error("PROFILE_RECOVERY_CAPACITY_REQUIRED");
+  await mkdir(directory, { mode: 0o700 });
+  const saved = join(directory, "agent-plugins");
+  if (graph) {
+    await cp(source, saved, { recursive: true, dereference: false, verbatimSymlinks: true });
+    if (
+      canonical((await tree(saved)).entries) !== canonical(graph.entries) ||
+      canonical((await tree(source)).entries) !== canonical(graph.entries)
+    )
+      throw Error("UPDATE_USER_DATA_CHANGED_DURING_BACKUP");
+    for (const entry of graph.entries.filter((entry) => entry.kind === "file")) {
+      const file = await open(join(saved, entry.path), process.platform === "win32" ? "r+" : "r");
+      try {
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+    }
+  }
+  const manifest = Buffer.from(
+    JSON.stringify({
+      schema: 1,
+      home: resolve(home),
+      graphSha256: graph ? sha256(canonical(graph.entries)) : null,
+    }) + "\n",
+  );
+  const file = await open(join(directory, "snapshot.json"), "wx", 0o600);
+  try {
+    await file.writeFile(manifest);
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+  if (process.platform !== "win32") {
+    const directories =
+      graph?.entries
+        .filter((entry) => entry.kind === "directory")
+        .map((entry) => join(saved, entry.path))
+        .reverse() ?? [];
+    for (const path of [...directories, directory, recovery]) {
+      const file = await open(path, "r");
+      try {
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+    }
+  }
+  return sha256(manifest);
+}
+
+export async function verifyPluginUserData(
+  home: string,
+  recovery: string,
+  expectedSha256: string,
+): Promise<void> {
+  const directory = join(recovery, "user-data"),
+    bytes = await readFile(join(directory, "snapshot.json"));
+  if (sha256(bytes) !== expectedSha256) throw Error("UPDATE_USER_DATA_BACKUP_INVALID");
+  const manifest = object(JSON.parse(bytes.toString("utf8")));
+  if (manifest.schema !== 1 || manifest.home !== resolve(home))
+    throw Error("UPDATE_USER_DATA_HOME_CHANGED");
+  if (manifest.graphSha256 === null) return;
+  const saved = join(directory, "agent-plugins"),
+    baseline = await tree(saved);
+  if (sha256(canonical(baseline.entries)) !== manifest.graphSha256)
+    throw Error("UPDATE_USER_DATA_BACKUP_INVALID");
+  const source = join(home, "agent-plugins"),
+    info = await lstat(source);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw Error("UPDATE_USER_DATA_ROOT_INVALID");
+  const current = new Map((await tree(source)).entries.map((entry) => [entry.path, entry]));
+  for (const expected of baseline.entries) {
+    const actual = current.get(expected.path);
+    if (!actual || actual.kind !== expected.kind) throw Error("UPDATE_USER_DATA_NOT_PRESERVED");
+    if (expected.kind === "symlink" && actual.target !== expected.target)
+      throw Error("UPDATE_USER_DATA_NOT_PRESERVED");
+    if (expected.kind !== "file" || expected.sha256 === actual.sha256) continue;
+    if (["data/user-agents.json", "data/selected-resources.json"].includes(expected.path)) {
+      const previous = JSON.parse(await readFile(join(saved, expected.path), "utf8"));
+      const next = JSON.parse(await readFile(join(source, expected.path), "utf8"));
+      if (canonical(previous) === canonical(next)) continue;
+    }
+    throw Error("UPDATE_USER_DATA_NOT_PRESERVED");
+  }
+}
 async function profileRealpath(path: string): Promise<string> {
   try {
     return await realpath(path);
