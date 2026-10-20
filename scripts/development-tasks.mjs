@@ -12,7 +12,7 @@ import {
   run,
   installed,
 } from "./development-dependencies.mjs";
-import { readBuildAdmissions } from "./build-admission.mjs";
+import { readBuildAdmissions, withBuildAdmission } from "./build-admission.mjs";
 
 function walk(root, prefix = "") {
   if (!fs.existsSync(root)) return [];
@@ -128,38 +128,40 @@ async function build(owner, target) {
       return { status: "reused", receipt };
     }
   }
-  const [file, args] = command(owner, script);
-  run(file, args, owner.path);
-  if (JSON.stringify(await buildInput(owner, target)) !== JSON.stringify(input))
-    throw Error("DEVELOPMENT_INPUT_CHANGED");
-  const files = outputs(owner);
-  if (!files.length) throw Error("DEVELOPMENT_BUILD_OUTPUT_REQUIRED");
-  fs.mkdirSync(join(owner.path, ".runtime/development"), { recursive: true });
-  fs.writeFileSync(
-    receipt,
-    JSON.stringify(
-      {
-        schemaVersion: 1,
-        input,
-        outputs: files,
-        sourceHead: execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: owner.path,
-          encoding: "utf8",
-        }).trim(),
-        lockSha256: digest(fs.readFileSync(join(owner.path, owner.lock))),
-        exitCode: 0,
-        command: { file, args, cwd: owner.path },
-        createdAt: new Date().toISOString(),
-        owner: process.env.CODEX_THREAD_ID ?? owner.path,
-        purpose: "development-build",
-        retention: "regenerable-after-reader-and-input-review",
-        generated: ["lib", ...(owner.repo === "dsh-agent-manage" ? ["client"] : [])],
-      },
-      null,
-      2,
-    ) + "\n",
-  );
-  return { status: "built", receipt };
+  return withBuildAdmission({ operation: "build", cwd: owner.path }, async () => {
+    const [file, args] = command(owner, script);
+    run(file, args, owner.path);
+    if (JSON.stringify(await buildInput(owner, target)) !== JSON.stringify(input))
+      throw Error("DEVELOPMENT_INPUT_CHANGED");
+    const files = outputs(owner);
+    if (!files.length) throw Error("DEVELOPMENT_BUILD_OUTPUT_REQUIRED");
+    fs.mkdirSync(join(owner.path, ".runtime/development"), { recursive: true });
+    fs.writeFileSync(
+      receipt,
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          input,
+          outputs: files,
+          sourceHead: execFileSync("git", ["rev-parse", "HEAD"], {
+            cwd: owner.path,
+            encoding: "utf8",
+          }).trim(),
+          lockSha256: digest(fs.readFileSync(join(owner.path, owner.lock))),
+          exitCode: 0,
+          command: { file, args, cwd: owner.path },
+          createdAt: new Date().toISOString(),
+          owner: process.env.CODEX_THREAD_ID ?? owner.path,
+          purpose: "development-build",
+          retention: "regenerable-after-reader-and-input-review",
+          generated: ["lib", ...(owner.repo === "dsh-agent-manage" ? ["client"] : [])],
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    return { status: "built", receipt };
+  });
 }
 export async function developmentTask(action, values = {}, cwd = process.cwd()) {
   const owner = repository(cwd);

@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { join, resolve, relative, isAbsolute, dirname, basename } from "node:path";
+import { join, resolve, relative, isAbsolute, dirname, basename, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -10,7 +10,7 @@ import { digest, json } from "./development-dependencies.mjs";
 
 const inside = (root, path) => {
   const name = relative(root, path);
-  return name === "" || (!isAbsolute(name) && name !== ".." && !name.startsWith("../"));
+  return name === "" || (!isAbsolute(name) && name !== ".." && !name.startsWith(".." + sep));
 };
 export async function packRaw({ input, repo, destination }) {
   if (
