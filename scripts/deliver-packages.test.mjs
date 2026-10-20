@@ -56,6 +56,10 @@ async function requestFixture(
   await mkdir(copiedScripts);
   const fixtureEntry = join(copiedScripts, "deliver-packages.mjs");
   const cliSource = await readFile(entry, "utf8");
+  await copyFile(
+    join(import.meta.dirname, "package-source-integrity.mjs"),
+    join(copiedScripts, "package-source-integrity.mjs"),
+  );
   // The temporary CLI exercises the production validator with its declared runtime dependency.
   await writeFile(
     fixtureEntry,

@@ -307,7 +307,7 @@ test("signed release cannot lie about the final tar peer graph", async (t) => {
   const { readdir } = await import("node:fs/promises");
   assert.deepEqual(await readdir(join(f.dir, "cache")), []);
 });
-test("single release CLI reads final conditional tar manifest and accepts only registered Core identities", async (t) => {
+test("single release CLI requires release preflight and rejects unregistered Core identities", async (t) => {
   const f = await fixture(t),
     releases = await f.source.check(),
     release = releases[0];
@@ -326,28 +326,22 @@ test("single release CLI reads final conditional tar manifest and accepts only r
     }),
   );
   const entry = fileURLToPath(new URL("../scripts/create-plugin-release.mjs", import.meta.url));
-  const receipt = JSON.parse(
-    execFileSync(
-      process.execPath,
-      [
-        entry,
-        "--archive",
-        archive,
-        "--metadata",
-        metadata,
-        "--destination",
-        join(f.dir, "release-output"),
-      ],
-      { encoding: "utf8" },
-    ),
+  const { spawnSync } = await import("node:child_process");
+  const missing = spawnSync(
+    process.execPath,
+    [
+      entry,
+      "--archive",
+      archive,
+      "--metadata",
+      metadata,
+      "--destination",
+      join(f.dir, "release-output"),
+    ],
+    { encoding: "utf8" },
   );
-  const content = await readFile(receipt.path),
-    projected = JSON.parse(content);
-  assert.equal(receipt.sha256, digest(content));
-  assert.equal(projected.name, release.name);
-  assert.equal(projected.version, release.version);
-  assert.deepEqual(projected.requires, {});
-  assert.equal(receipt.published, false);
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /RELEASE_PREFLIGHT_INPUT_REQUIRED/);
   await writeFile(
     metadata,
     JSON.stringify({
@@ -357,11 +351,12 @@ test("single release CLI reads final conditional tar manifest and accepts only r
       notes: "invalid fixed input",
     }),
   );
-  const { spawnSync } = await import("node:child_process");
   const failed = spawnSync(
     process.execPath,
     [
       entry,
+      "--preflight",
+      join(f.dir, "required-preflight.json"),
       "--archive",
       archive,
       "--metadata",
@@ -501,4 +496,60 @@ test("partial signed channels still reject empty, duplicate and unknown referenc
     });
     await assert.rejects(f.source.check(), /SOURCE_CHANNEL_INVALID/);
   }
+});
+
+test("signed companion releases share archive verification, allowlist and durable version approvals", async (t) => {
+  const f = await fixture(t),
+    G = "@cleverc2200/gea-dsh-prototype";
+  resign(f, (p) => {
+    p.companionReleases = p.releases.filter((row) => row.name !== G);
+    p.releases = p.releases.filter((row) => row.name === G);
+  });
+  const releases = await f.source.check();
+  assert.deepEqual(
+    releases.map((row) => row.name),
+    [G, ...companyPackageNames.filter((name) => name !== G)],
+  );
+  const companion = releases.find((row) => row.name === companyPackageNames[0]);
+  const archive = await f.source.download(companion, join(f.dir, "cache"));
+  assert.equal(digest(await readFile(archive)), companion.artifact.sha256);
+  const approval = JSON.parse(await readFile(join(f.dir, "trust/approved-channel.json"), "utf8"));
+  assert.equal(approval.releases.length, 3);
+  const reference = f.releases[0],
+    original = JSON.parse(f.objects.get(reference.url));
+  for (const [change, expected] of [
+    [
+      (release) => {
+        release.version = "1.0.0";
+      },
+      /SOURCE_VERSION_ROLLBACK/,
+    ],
+    [
+      (release) => {
+        release.artifact.sha256 = "d".repeat(64);
+        release.artifact.url = `https://fixture.invalid/releases/${release.artifact.sha256}/plugin.tgz`;
+      },
+      /SOURCE_SAME_VERSION_CONTENT_MISMATCH/,
+    ],
+  ]) {
+    const changed = structuredClone(original);
+    change(changed);
+    const bytes = Buffer.from(JSON.stringify(changed)),
+      sha256 = digest(bytes),
+      url = `https://fixture.invalid/releases/${sha256}/release.json`;
+    f.objects.set(url, bytes);
+    resign(f, (p) => {
+      p.revision = 2;
+      p.companionReleases[0] = { ...reference, url, sha256 };
+    });
+    await assert.rejects(f.source.check(), expected);
+  }
+  resign(f, (p) => {
+    p.companionReleases[0] = {
+      ...reference,
+      url: `https://outside.invalid/releases/${reference.sha256}/release.json`,
+    };
+  });
+  await assert.rejects(f.source.check(), /SOURCE_URL_FORBIDDEN/);
+  assert(!f.calls.some((row) => new URL(row.url).hostname === "outside.invalid"));
 });

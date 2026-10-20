@@ -16,7 +16,7 @@ import { openSalesPlan } from "./fixtures/business-page.mjs";
 const fixture = async (t, { rejectFails }) => {
   const app = await profile(t);
   const plan = {
-    planId: "p",
+    planId: "p-jxs-2026-09-00001",
     versionId: "v",
     seq: 1,
     periodId: "period-1",
@@ -63,7 +63,7 @@ const fixture = async (t, { rejectFails }) => {
       const records = status === null || status === "1" ? [plan] : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
-    if (path.endsWith("/plans/p"))
+    if (path.endsWith("/plans/p-jxs-2026-09-00001"))
       return send({
         currentVersion: { ...plan, id: "v", effective: true },
         skus: [sku],
@@ -96,7 +96,7 @@ const fixture = async (t, { rejectFails }) => {
         return true;
       }
       return send({
-        planId: "p",
+        planId: "p-jxs-2026-09-00001",
         versionId: "v",
         fromStatus: 1,
         toStatus: 6,
@@ -111,13 +111,15 @@ const fixture = async (t, { rejectFails }) => {
   });
   await app.login();
   // 真实场景里用户先在表里改过数量；这里直接把同一份草稿存进 Host。
-  const source = (await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" })).value;
+  const source = (
+    await app.rpc("sales-plan/draft", { planId: "p-jxs-2026-09-00001", versionId: "v" })
+  ).value;
   const saved = await app.rpc("sales-plan/draft", {
-    planId: "p",
+    planId: "p-jxs-2026-09-00001",
     versionId: "v",
     approvalRole: "region",
     draft: {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       status: 1,
       sourceSnapshot: source.sourceSnapshot,
@@ -149,9 +151,9 @@ const fixture = async (t, { rejectFails }) => {
 
   const openReject = async () => {
     // 关闭弹窗不会自动取消勾选，第二次打开前先确认这一行是选中的。
-    const box = frame.locator('label.arco-checkbox:has(input[value="p"]) input');
+    const box = frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input');
     if (!(await box.isChecked()))
-      await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+      await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame.getByRole("button", { name: "退回", exact: true }).click();
     const remark = frame.getByLabel("退回原因（必填）", { exact: true });
     await expect(remark).toBeVisible();
@@ -202,12 +204,12 @@ test(
     await frame.getByRole("button", { name: "确认退回", exact: true }).click();
     // 失败提示按上游原因码给说法（这里是通知载荷被拒），不再统一说"并发、请刷新"；
     // 这条用例只关心"失败之后弹窗还关不关得掉"，所以只等失败提示出来。
-    await expect(frame.getByText(/错误编号：[A-Z0-9]{6}/)).toBeVisible({ timeout: 20000 });
+    await expect(frame.getByText(/错误编号：req/)).toBeVisible({ timeout: 20000 });
     assert.equal(writes.length, 1);
     await closeThroughDiscardConfirm(remark);
     // 报错后这一批没被受理，勾选不能留在界面上（否则用户看到"还选中着"容易再点一次）。
     await expect(
-      frame.locator('tbody label.arco-checkbox:has(input[value="p"]) input'),
+      frame.locator('tbody label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).not.toBeChecked();
   },
 );

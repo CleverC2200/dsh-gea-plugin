@@ -120,7 +120,7 @@ test("identity changes disable old replay closures and the ring stays bounded", 
   for (const path of [
     "/sys/user/getUserInfo",
     "/sys/permission/getPermCode",
-    "/sales-plan/plans?pageNo=1&pageSize=20",
+    "/api/v1/notifications?pageNo=1&pageSize=20",
   ]) {
     const response = await center.fetch("https://gea.example" + path);
     await response.body.cancel();
@@ -292,4 +292,72 @@ test("log ownership is captured before admission waits and hidden across identit
   assert.equal(center.snapshot().records.length, 1);
   assert.deepEqual(center.snapshot().records[0].response.body, { privateValue: "old" });
   assert.equal("ownerScope" in center.snapshot().records[0], false);
+});
+
+test("service submission and its detail reads retain only audit metadata and cannot replay raw payloads", async () => {
+  const center = new GeaApiLogCenter(
+    () => "test",
+    20,
+    async () =>
+      json({
+        success: true,
+        requestId: "request-1",
+        traceId: "trace-1",
+        result: {
+          auditId: "audit-1",
+          items: [{ skuCode: "sku-private" }],
+          idempotencyKey: "private-key",
+        },
+      }),
+  );
+  for (const [path, method] of [
+    ["/api/v1/internal/sales-plans", "POST"],
+    ["/sales-plan/plans/private-plan", "GET"],
+    ["/sales-plan/plans/versions/private-version/skus", "GET"],
+    ["/sales-plan/plans", "GET"],
+    ["/sales-plan/plans/private-plan/versions", "GET"],
+    ["/sales-plan/plans/private-plan/logs", "GET"],
+  ]) {
+    const response = await center.fetch(
+      "https://private.example/gea-boot" + path + "?private=sku-private",
+      {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "private-key",
+          "X-Request-Id": "request-1",
+        },
+        ...(method === "POST"
+          ? {
+              body: JSON.stringify({
+                items: [{ skuCode: "sku-private" }],
+                idempotencyKey: "private-key",
+              }),
+            }
+          : {}),
+      },
+    );
+    await response.body.cancel();
+  }
+  const snapshot = center.snapshot();
+  const wire = JSON.stringify(snapshot.records);
+  for (const value of [
+    "private.example",
+    "private-plan",
+    "private-version",
+    "sku-private",
+    "private-key",
+  ])
+    assert.equal(wire.includes(value), false, value);
+  for (const record of snapshot.records) {
+    assert.equal(record.replayAvailable, false);
+    assert.equal(
+      snapshot.catalog.find((entry) => entry.id === record.catalogId).replayPolicy,
+      "blocked",
+    );
+    assert.equal(record.request.headers["x-request-id"], "request-1");
+    assert.equal(record.response.body.traceId, "trace-1");
+    assert.equal(record.response.body.auditId, "audit-1");
+    await assert.rejects(center.replay(record.id, true), /API_LOG_REPLAY_UNAVAILABLE/);
+  }
 });

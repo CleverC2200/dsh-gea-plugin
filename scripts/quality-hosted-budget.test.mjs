@@ -465,3 +465,34 @@ test("a completed workflow cannot borrow a running job clock or a different atte
   assert.equal(completedAsRunning.passed, false);
   assert.equal(completedAsRunning.completedMeasurement, false);
 });
+
+test("documentation and dependency-review N/A jobs accept only absence or explicit skips while applicable jobs remain mandatory", () => {
+  const absent = snapshot(10000);
+  absent.jobs.splice(1, 1);
+  absent.pagination.totalCount--;
+  for (const name of [
+    "gates",
+    "prepare-" + "a".repeat(40),
+    "macos-isolation",
+    "plan-test-shards",
+    "test-shards",
+    "Dependency review",
+  ]) {
+    const options = { requiredJobs: ["scope"], notApplicableJobs: [name] };
+    assert.equal(assess(absent, options).passed, true);
+    for (const conclusion of ["skipped", "success", "failure", "cancelled"]) {
+      const value = structuredClone(absent);
+      value.jobs.push({ ...value.jobs[0], id: 4, name, conclusion });
+      value.pagination.totalCount++;
+      assert.equal(
+        assess(value, options).passed,
+        conclusion === "skipped",
+        name + ":" + conclusion,
+      );
+    }
+  }
+  const required = snapshot(10000);
+  required.jobs[1].name = "Dependency review";
+  required.jobs[1].conclusion = "skipped";
+  assert.equal(assess(required, { requiredJobs: ["scope", "Dependency review"] }).passed, false);
+});

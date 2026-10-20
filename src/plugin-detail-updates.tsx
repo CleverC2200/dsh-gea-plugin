@@ -2,13 +2,18 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
+import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
-import { Button, Tag, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Tag, Toast, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
 import { companyPackageNames } from "./shared/plugin-release.mjs";
 import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
-import { createPluginDetailUpdates, pluginUpdateBusy } from "./plugin-updates-client.ts";
+import {
+  createPluginDetailUpdates,
+  pluginUpdateBusy,
+  pluginUpdateObservationMs,
+} from "./plugin-updates-client.ts";
 import { en, zh, pluginUpdateLocale } from "./plugin-update-locales.ts";
 import css from "./plugin-detail-updates.css";
 
@@ -176,6 +181,32 @@ function DetailSection({
           {error}
         </p>
       ) : null}
+      {row?.problem?.kind === "dependencies" ? (
+        <div className="gea-plugin-update-requirements">
+          {row.problem.requirements.map((requirement, index) => (
+            <dl className="gea-plugin-update-versions" key={index}>
+              <dt>{t("consumer")}</dt>
+              <dd>{requirement.consumer}</dd>
+              <dt>{t("dependency")}</dt>
+              <dd>{requirement.dependency}</dd>
+              <dt>{t("required")}</dt>
+              <dd>{requirement.required}</dd>
+              <dt>{t("dependencyCurrent")}</dt>
+              <dd>{requirement.current ?? t("unavailable")}</dd>
+              <dt>{t("dependencyCandidate")}</dt>
+              <dd>{requirement.candidate ?? t("unchanged")}</dd>
+            </dl>
+          ))}
+          <p className="gea-plugin-update-notice">
+            {row.problem.nextStep
+              ? t("dependenciesNextStep", {
+                  packageName: row.problem.nextStep.packageName,
+                  version: row.problem.nextStep.version,
+                })
+              : t("dependenciesAction")}
+          </p>
+        </div>
+      ) : null}
       {row?.state === "restored" && !error ? (
         <p className="gea-plugin-update-notice">{t("restoredReason")}</p>
       ) : null}
@@ -310,8 +341,65 @@ function desktopRestart(): (() => Promise<unknown>) | undefined {
   return async () => restart();
 }
 
+function UpdateNotice({
+  updates,
+  openStatus,
+  t,
+}: PropsLocale<typeof pluginUpdateLocale> & {
+  updates: Owner;
+  openStatus: (packageName: string) => void;
+}): ReactNode {
+  const state = useSyncExternalStore(updates.subscribe, updates.getSnapshot);
+  const [restarting, setRestarting] = useState(false);
+  const [restartFailed, setRestartFailed] = useState(false);
+  const notice = state.notice;
+  const bridge = desktopRestart();
+  const restartBusy =
+    state.checking ||
+    state.submitting !== null ||
+    state.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
+  if (!notice) return null;
+  const packageName = notice.packageName;
+  const actions = packageName
+    ? [{ label: t("viewStatus"), onClick: () => openStatus(packageName) }]
+    : [];
+  if (notice.kind === "pending-restart" && bridge && !restartBusy && !restarting) {
+    actions.unshift({
+      label: t("restartNow"),
+      onClick: () => {
+        setRestarting(true);
+        setRestartFailed(false);
+        void bridge()
+          .catch(() => setRestartFailed(true))
+          .finally(() => setRestarting(false));
+      },
+    });
+  }
+  const text =
+    notice.kind === "progress"
+      ? t("progressNotice")
+      : notice.kind === "pending-restart"
+        ? t(bridge ? "pendingNotice" : "pendingWebNotice")
+        : notice.kind === "completed"
+          ? t("completed")
+          : notice.kind === "restored"
+            ? t("restoredReason")
+            : notice.kind === "failed"
+              ? t("failedReason")
+              : t("unconfirmedNotice");
+  return (
+    <Toast
+      key={notice.sequence}
+      text={restartFailed ? t("restartError") : text}
+      actions={actions}
+      holdMs={notice.kind === "progress" ? pluginUpdateObservationMs : 15000}
+      onDone={updates.dismissNotice}
+    />
+  );
+}
+
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
-  const fiber = ctx.inject(["slots", "locale", "modules"], (scope) => {
+  const fiber = ctx.inject(["slots", "locale", "modules", "pluginNavigation"], (scope) => {
     scope.effect(() => {
       const style = document.createElement("style");
       style.textContent = css;
@@ -320,7 +408,24 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
     });
     const updates = createPluginDetailUpdates(scope);
     scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
-    scope.effect(() => () => updates.dispose());
+    scope.effect(() => {
+      void updates.resume();
+      return () => updates.dispose();
+    });
+    scope.slots.inject("shell.overlay", () =>
+      scope.slots.register(
+        {
+          name: "shell.overlay",
+          id: "gea.plugin-updates.notice",
+          locale: pluginUpdateLocale,
+          inject: () => ({
+            updates,
+            openStatus: (packageName: string) => scope.pluginNavigation.openBundle(packageName),
+          }),
+        },
+        UpdateNotice,
+      ),
+    );
     scope.slots.inject("plugins.list.badge", () =>
       scope.slots.register(
         {

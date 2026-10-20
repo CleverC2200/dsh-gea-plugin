@@ -5,35 +5,26 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      windows_complete_input:
+        description: "Fixed desktop version, Core8cf, merged GEA SHA and three immutable published package identities as JSON"
+        required: false
+        type: string
+      native_acceptance_bundle_url:
+        description: "Optional approved R9 TGZ at immutable OSS verification/<sha256>/<name>.tgz"
+        required: false
+        type: string
+      native_acceptance_bundle_sha256:
+        description: "Expected R9 bundle SHA256; bundle failures fail the job"
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  windows-plugin-update:
-    if: github.event.pull_request.draft != true && (github.head_ref == 'codex/windows-plugin-updates-159-20261016' || github.ref_name == 'codex/windows-plugin-updates-159-20261016')
-    runs-on: windows-2025
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - shell: pwsh
-        run: |
-          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1
-          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
-          node scripts/check-windows-plugin-update.mjs
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: windows-plugin-update-${{ github.sha }}
-          path: .runtime/windows-update-native/result.json
-          if-no-files-found: warn
   delivery-fixtures:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,27 +37,94 @@ jobs:
       - run: |
           npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
           ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
-      - id: scope
+      - run: node --run test:release-source
+      - run: npm run test:delivery:packages
+      - run: node --run test:delivery
+      - run: node --run test:fixture-inputs
+      - run: node --run test:prompt-execution
+      - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
+
+  windows-complete-package:
+    if: github.event_name == 'workflow_dispatch' && (inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      DSH_DESKTOP_TARGET_PLATFORM: win32
+      DSH_DESKTOP_TARGET_ARCH: x64
+      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
+      DSH_DESKTOP_UNSIGNED: "1"
+      DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+      DSH_DESKTOP_BUILD_DIRTY: "0"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      ELECTRON_BUILDER_7Z_FILTER: BCJ
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gea
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+          path: core
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - name: Validate fixed input before preparing Core
+        working-directory: gea
+        env:
+          DESKTOP_INPUT_JSON: ${{ inputs.windows_complete_input }}
+          NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
+          NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
         run: |
-          node --input-type=module <<'JS'
-          import {appendFileSync} from 'node:fs';
-          import {execFileSync} from 'node:child_process';
-          import {pluginUpdateLane, pluginUpdatePlanFor, desktopBootstrapAuthorization} from './scripts/plugin-update-pr-lane.mjs';
-          const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
-          const selected=pluginUpdateLane(process.cwd()) && pluginUpdatePlanFor([{repo:'dsh-gea-plugin',path:process.cwd(),head}]).authorization===desktopBootstrapAuthorization;
-          appendFileSync(process.env.GITHUB_OUTPUT,`bootstrap=${selected}\n`);
-          JS
-      - if: steps.scope.outputs.bootstrap == 'true'
-        run: node --test scripts/plugin-update-pr-lane.test.mjs
-      - if: steps.scope.outputs.bootstrap != 'true'
-        run: node --run test:release-source
-      - if: steps.scope.outputs.bootstrap != 'true'
-        run: npm run test:delivery:packages
-      - if: steps.scope.outputs.bootstrap != 'true'
-        run: node --run test:delivery
-      - if: steps.scope.outputs.bootstrap != 'true'
-        run: node --run test:fixture-inputs
-      - if: steps.scope.outputs.bootstrap != 'true'
-        run: node --run test:prompt-execution
-      - if: steps.scope.outputs.bootstrap != 'true'
-        run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
+          $inputPath = Join-Path $env:RUNNER_TEMP 'gea-desktop-input.json'
+          [IO.File]::WriteAllText($inputPath, $env:DESKTOP_INPUT_JSON, [Text.UTF8Encoding]::new($false))
+          node scripts/windows-complete-local/input.mjs --input $inputPath --source-sha $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:NATIVE_BUNDLE_URL -or $env:NATIVE_BUNDLE_SHA256) {
+            node scripts/windows-complete-local/run-bundle.mjs --bundle-url "$env:NATIVE_BUNDLE_URL" --bundle-sha256 "$env:NATIVE_BUNDLE_SHA256" --validate-only
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $fixed = Get-Content -Raw $inputPath | ConvertFrom-Json
+          "DSH_DESKTOP_BUILD_VERSION=$($fixed.desktopVersion)" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "GEA_DESKTOP_INPUT=$inputPath" | Out-File -Append -FilePath $env:GITHUB_ENV
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Prepare declared Core toolchain
+        working-directory: core
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile --prefer-offline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build full Windows package and verify isolated first installation
+        run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
+      - name: Run approved Native plugin update acceptance bundle
+        if: inputs.native_acceptance_bundle_url != ''
+        env:
+          NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
+          NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
+        run: |
+          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $buildReceipt = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/result.json'
+          $evidence = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance'
+          node gea/scripts/windows-complete-local/run-bundle.mjs --bundle-url "$env:NATIVE_BUNDLE_URL" --bundle-sha256 "$env:NATIVE_BUNDLE_SHA256" --build-receipt $buildReceipt --input "$env:GEA_DESKTOP_INPUT" --output $evidence
+      - name: Keep installer and original build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GEA-Desktop-${{ env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
+          if-no-files-found: warn
+          compression-level: 0
+          path: |
+            core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/bundle-binding.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/public/**

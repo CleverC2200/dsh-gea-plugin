@@ -13,18 +13,18 @@ import { openSalesPlan } from "./fixtures/business-page.mjs";
  */
 const plan = (id, provinceCode) => ({
   planId: id,
-  versionId: "v" + id.slice(1),
+  versionId: "v" + id.slice(-1),
   seq: 1,
   periodId: "period-1",
   planTypeCode: "Y",
   orderType: "M",
-  dealerCode: "d" + id.slice(1),
-  dealerName: "客户" + id.slice(1),
-  baseName: "base-" + id.slice(1),
-  areaCode: "area-" + id.slice(1),
-  areaName: "大区" + id.slice(1),
-  orgCode: "org-" + id.slice(1),
-  orgName: "组织" + id.slice(1),
+  dealerCode: "d" + id.slice(-1),
+  dealerName: "客户" + id.slice(-1),
+  baseName: "base-" + id.slice(-1),
+  areaCode: "area-" + id.slice(-1),
+  areaName: "大区" + id.slice(-1),
+  orgCode: "org-" + id.slice(-1),
+  orgName: "组织" + id.slice(-1),
   provinceCode,
   provinceName: "省区" + provinceCode,
   status: 1,
@@ -36,11 +36,11 @@ const plan = (id, provinceCode) => ({
 });
 const SUCCESS_PROVINCES = ["0013"];
 const plans = [
-  plan("p1", "0013"),
-  plan("p2", "0013"),
-  plan("p3", "0055"),
-  plan("p4", "0034"),
-  plan("p5", "0041"),
+  plan("p-jxs-2026-09-00001", "0013"),
+  plan("p-jxs-2026-09-00002", "0013"),
+  plan("p-jxs-2026-09-00003", "0055"),
+  plan("p-jxs-2026-09-00004", "0034"),
+  plan("p-jxs-2026-09-00005", "0041"),
 ];
 const skuFor = (versionId) => ({
   id: "s-" + versionId,
@@ -68,6 +68,7 @@ const UPSTREAM_NOTIFICATION_PAYLOAD_INVALID = {
 const openWorkbench = async (t) => {
   const app = await profile(t);
   const writes = [];
+  const statuses = new Map();
   app.route((req, _res, reply) => {
     const path = req.url.pathname;
     const send = (result) => {
@@ -89,18 +90,23 @@ const openWorkbench = async (t) => {
         actionable: true,
       },
     }));
-    const notification = /\/notifications\/(n-p\d)$/.exec(path);
+    const notification = /\/notifications\/(n-p-jxs-2026-09-\d{5})$/.exec(path);
     if (notification) {
       const item = notifications.find((row) => row.id === notification[1]);
       return send(item);
     }
     if (path.endsWith("/notifications"))
       return send({ items: notifications, total: notifications.length });
-    const detail = /\/plans\/(p\d)$/.exec(path);
+    const detail = /\/plans\/(p-jxs-2026-09-\d{5})$/.exec(path);
     if (detail) {
       const row = plans.find((item) => item.planId === detail[1]);
       return send({
-        currentVersion: { ...row, id: row.versionId, effective: true },
+        currentVersion: {
+          ...row,
+          id: row.versionId,
+          status: statuses.get(row.versionId) ?? row.status,
+          effective: true,
+        },
         skus: [skuFor(row.versionId)],
         versions: [],
         logs: [],
@@ -113,7 +119,7 @@ const openWorkbench = async (t) => {
         },
       });
     }
-    const versions = /\/plans\/(p\d)\/versions$/.exec(path);
+    const versions = /\/plans\/(p-jxs-2026-09-\d{5})\/versions$/.exec(path);
     if (versions) {
       const row = plans.find((item) => item.planId === versions[1]);
       return send([{ ...row, id: row.versionId, effective: true }]);
@@ -128,6 +134,7 @@ const openWorkbench = async (t) => {
         reply(UPSTREAM_NOTIFICATION_PAYLOAD_INVALID, 409);
         return true;
       }
+      statuses.set(row.versionId, 2);
       return send({
         planId: row.planId,
         versionId: row.versionId,
@@ -163,19 +170,19 @@ const openWorkbench = async (t) => {
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   const rowBox = (planId) =>
     frame.locator(`tbody label.arco-checkbox:has(input[value="${planId}"])`).first();
-  await expect(rowBox("p1")).toBeVisible();
+  await expect(rowBox("p-jxs-2026-09-00001")).toBeVisible();
   return { frame, rowBox, writes };
 };
 
 const batchApprove = async ({ frame, rowBox }, planIds, remark) => {
   for (const planId of planIds) await rowBox(planId).click();
   await frame.getByRole("button", { name: "通过", exact: true }).click();
-  const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
+  const dialog = frame.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("批量审批备注").fill(remark);
-  await dialog.locator("label.arco-checkbox").click();
-  await frame.getByRole("button", { name: "确认批量通过", exact: true }).click();
-  await expect(frame.getByTestId("regional-approval-batch-result")).toBeVisible();
+  await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
+  await expect(frame.getByRole("dialog")).toBeVisible();
 };
 
 test("同一请求在不同省区得到不同上游结果时，客户端逐笔如实呈现", { timeout: 120000 }, async (t) => {
@@ -183,17 +190,21 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
   const { frame, writes } = ctx;
 
   // 第一轮：省区 0013 的两笔——上游接受。
-  await batchApprove(ctx, ["p1", "p2"], "456");
-  await expect(frame.getByTestId("regional-approval-batch-result")).toContainText("成功 2 笔");
+  await batchApprove(ctx, ["p-jxs-2026-09-00001", "p-jxs-2026-09-00002"], "456");
+  await expect(frame.getByRole("dialog")).toContainText("成功 2 笔");
   await frame.getByRole("button", { name: "关闭", exact: true }).click();
-  await expect(frame.getByTestId("regional-approval-batch-action-dialog")).toBeHidden();
+  await expect(frame.getByRole("dialog")).toBeHidden();
 
   // 第二轮：另外三个省区的三笔——上游以通知 payload 校验失败拒绝。
-  await batchApprove(ctx, ["p3", "p4", "p5"], "456");
-  const result = frame.getByTestId("regional-approval-batch-result");
+  await batchApprove(
+    ctx,
+    ["p-jxs-2026-09-00003", "p-jxs-2026-09-00004", "p-jxs-2026-09-00005"],
+    "456",
+  );
+  const result = frame.getByRole("dialog");
   await expect(result).toContainText("成功 0 笔");
   await expect(result).toContainText("失败 3 笔");
-  for (const name of ["客户3", "客户4", "客户5"]) await expect(result).toContainText(name);
+  for (const name of ["组织3", "组织4", "组织5"]) await expect(result).toContainText(name);
 
   // 关键结论：客户端五次提交的报文完全一致，唯一差别是目标版本（在 URL 上）。
   assert.equal(writes.length, 5);

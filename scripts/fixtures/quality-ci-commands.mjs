@@ -34,6 +34,19 @@ commands.spawnSync = (command, args, options = {}) => {
       if (clone.status) return clone;
     }
     if (!existsSync(core)) return { ...success, status: 1, stderr: "missing prepared SDK" };
+    if (process.env.QUALITY_STAGE_FIXTURE_MACOS === "1") {
+      mkdirSync(resolve(core, "apps/web/dist"), { recursive: true });
+      writeFileSync(resolve(core, "apps/web/dist/index.html"), "fixture Web\n");
+      for (const kind of ["artifacts", "web"])
+        writeFileSync(resolve(core, ".git/dsh-sdk-" + kind + ".json"), "{}\n");
+    }
+    return success;
+  }
+  if (command === process.execPath && args[0] === "scripts/build.mjs") {
+    log("host-build", args, cwd);
+    if (process.env.FIXTURE_FAIL === "build") return { ...success, status: 1 };
+    mkdirSync(resolve(cwd, "lib"), { recursive: true });
+    writeFileSync(resolve(cwd, "lib/host.js"), "export const prepared=true;\n");
     return success;
   }
   if (command === process.execPath && args[0]?.endsWith("/verify-candidate-input.mjs")) {

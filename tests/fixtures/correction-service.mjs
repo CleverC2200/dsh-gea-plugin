@@ -22,7 +22,7 @@ export function correctionService() {
   };
   const version = () => ({
     id: "v",
-    planId: "z",
+    planId: "p-jxs-2026-09-00001",
     seq: 1,
     periodId: "20260901",
     planTypeCode: "Y",
@@ -102,6 +102,7 @@ export function correctionService() {
                 mPlanAmount: "60",
                 mPlanQty: "30",
                 shipAmount: "30",
+                amountProgress: "50",
                 shipQty: "10",
                 corrPlanAmount: "64",
               },
@@ -114,7 +115,7 @@ export function correctionService() {
         });
         return true;
       }
-      if (path.endsWith("/plans/z")) {
+      if (path.endsWith("/plans/p-jxs-2026-09-00001")) {
         reply({ success: true, result: detail() });
         return true;
       }
@@ -124,22 +125,37 @@ export function correctionService() {
       }
       if (path.endsWith("/versions/v/actions")) {
         const body = JSON.parse(req.body);
-        // 此夹具模拟旧版动作接口，只接收基础字段。快照与绝对净量契约由 Host
-        // 在出站前校验，拒绝过期快照的场景由 correction-host 覆盖。
-        assert.equal(body.expectedSnapshot, undefined);
-        assert.equal(body.adjustmentMode, undefined);
+        assert.equal(body.expectedSnapshot, revision.toString(16).padStart(64, "0"));
+        assert.equal(body.adjustmentMode, "ABSOLUTE_NET");
         assert.ok(
           Object.keys(body).every((key) =>
-            ["action", "expectedStatus", "remark", "adjustments", "notification"].includes(key),
+            [
+              "action",
+              "expectedStatus",
+              "remark",
+              "adjustments",
+              "notification",
+              "expectedSnapshot",
+              "adjustmentMode",
+              "approvalRole",
+            ].includes(key),
           ),
         );
         assert.equal(body.expectedStatus, status);
         const node = ["", "region", "province", "area", "category"][
           status >= 6 ? status - 6 : status
         ];
+        assert.equal(body.approvalRole, node);
         const from = status;
         if (body.action === "REJECT") {
-          for (const suffix of ["AdjAddQty", "AdjCutQty", "ConfirmedQty", "ConfirmedAmount"])
+          for (const suffix of [
+            "AdjAddQty",
+            "AdjCutQty",
+            "AdjAddAmount",
+            "AdjCutAmount",
+            "ConfirmedQty",
+            "ConfirmedAmount",
+          ])
             sku[node + suffix] = null;
           status = (status >= 6 ? status - 6 : status) + 5;
         } else {
@@ -151,6 +167,8 @@ export function correctionService() {
           }
           sku[node + "AdjAddQty"] = String(Math.max(0, delta));
           sku[node + "AdjCutQty"] = String(Math.max(0, -delta));
+          sku[node + "AdjAddAmount"] = (Math.max(0, delta) * 2).toFixed(2);
+          sku[node + "AdjCutAmount"] = (Math.max(0, -delta) * 2).toFixed(2);
           if (body.action === "APPROVE") {
             sku[node + "ConfirmedQty"] = String(30 + delta);
             sku[node + "ConfirmedAmount"] = String((30 + delta) * 2);
@@ -161,7 +179,7 @@ export function correctionService() {
         writes.push(body);
         const log = {
           id: String(revision),
-          planId: "z",
+          planId: "p-jxs-2026-09-00001",
           versionId: "v",
           fromStatus: from,
           toStatus: status,
@@ -175,7 +193,7 @@ export function correctionService() {
         logs.push(log);
         if (status === 5)
           mock = new MockDmsWriteback({
-            planId: "z",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             typeCode: "Y",
             orderType: "Z",
@@ -192,7 +210,7 @@ export function correctionService() {
         reply({
           success: true,
           result: {
-            planId: "z",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             fromStatus: from,
             toStatus: status,

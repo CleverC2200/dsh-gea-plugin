@@ -12,7 +12,7 @@ test(
   async (t) => {
     const app = await profile(t);
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -59,7 +59,7 @@ test(
         const records = status === null || status === "1" ? [plan] : [];
         return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
       }
-      if (path.endsWith("/plans/p"))
+      if (path.endsWith("/plans/p-jxs-2026-09-00001"))
         return send({
           currentVersion: { ...plan, id: "v", effective: true },
           skus: [sku],
@@ -149,7 +149,10 @@ test(
     await expect.poll(() => writeAttempts, { timeout: 10000 }).toBeGreaterThanOrEqual(2);
     await expect(frame.getByText("暂存失败", { exact: true })).toHaveCount(0, { timeout: 10000 });
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
-    const stored = await app.rpc("sales-plan/draft", { planId: "p", versionId: "v" });
+    const stored = await app.rpc("sales-plan/draft", {
+      planId: "p-jxs-2026-09-00001",
+      versionId: "v",
+    });
     assert.equal(stored.ok, true);
     assert.deepEqual(stored.value.draft.adjustments, [{ skuCode: "1001", adjustQty: "2.125" }]);
     assert.deepEqual(errors, []);

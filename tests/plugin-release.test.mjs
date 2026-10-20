@@ -197,7 +197,10 @@ test("historical companion upgrades require an explicit declaration and preserve
     const issues = (declared, version) => {
       const range = declared.join(" || ");
       const manifest = productionManifest(
-        { ...source, peerDependencies: { ...source.peerDependencies, [name]: range } },
+        {
+          ...source,
+          peerDependencies: { ...source.peerDependencies, [name]: range },
+        },
         {
           [W]: "0.1.10",
           [M]: "0.6.3-company.19",
@@ -281,12 +284,20 @@ test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 an
   assert.equal(planPluginUpdate({ release: project(nextGea), core, installed }).kind, "ready");
   const afterGea = installed.map((entry) => (entry.name === G ? nextGea : entry));
   assert.equal(
-    planPluginUpdate({ release: project(nextWorkbench), core, installed: afterGea }).kind,
+    planPluginUpdate({
+      release: project(nextWorkbench),
+      core,
+      installed: afterGea,
+    }).kind,
     "ready",
   );
   const afterWorkbench = afterGea.map((entry) => (entry.name === W ? nextWorkbench : entry));
   assert.equal(
-    planPluginUpdate({ release: project(nextManage), core, installed: afterWorkbench }).kind,
+    planPluginUpdate({
+      release: project(nextManage),
+      core,
+      installed: afterWorkbench,
+    }).kind,
     "ready",
   );
 });
@@ -314,4 +325,111 @@ test("a partial channel adds an independently published package without replacin
     expiresAt: previous.expiresAt,
   });
   assert.deepEqual(next.releases, [reference(G), reference(W)]);
+});
+
+test("signed schema1 bridge keeps GEA visible to legacy readers and companion references through merge and signing", async () => {
+  const { parsePluginChannel, mergePluginChannelRelease } =
+    await import("../src/shared/plugin-release.mjs");
+  const { signPluginChannel } = await import("../scripts/plugin-channel.mjs");
+  const { generateKeyPairSync, verify } = await import("node:crypto");
+  const reference = (name, sha256) => ({
+    name,
+    sha256,
+    url: `https://fixture.invalid/${sha256}/release.json`,
+  });
+  const previous = {
+    schema: 1,
+    channel: "test",
+    revision: 1,
+    issuedAt: "2026-10-20T01:00:00.000Z",
+    expiresAt: "2026-10-21T01:00:00.000Z",
+    releases: [reference(G, "a".repeat(64))],
+    companionReleases: [reference(W, "b".repeat(64)), reference(M, "c".repeat(64))],
+  };
+  assert.deepEqual(parsePluginChannel(previous), previous);
+  const selected = reference(W, "d".repeat(64));
+  const next = mergePluginChannelRelease({
+    previous,
+    release: selected,
+    revision: 2,
+    issuedAt: previous.issuedAt,
+    expiresAt: previous.expiresAt,
+  });
+  assert.deepEqual(next.releases, previous.releases);
+  assert.deepEqual(next.companionReleases, [selected, previous.companionReleases[1]]);
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const envelope = signPluginChannel({
+    payload: next,
+    keyId: "bridge",
+    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }),
+  });
+  const raw = Buffer.from(envelope.payloadBase64, "base64");
+  assert(verify(null, raw, publicKey, Buffer.from(envelope.signatureBase64, "base64")));
+  assert.deepEqual(JSON.parse(raw), next);
+  for (const change of [
+    (p) => {
+      p.companionReleases.push(p.releases[0]);
+    },
+    (p) => {
+      p.companionReleases = [p.companionReleases[0], p.companionReleases[0]];
+    },
+    (p) => {
+      p.companionReleases[0].url = "https://external.invalid/releases.json";
+    },
+    (p) => {
+      p.releases.push(p.companionReleases.pop());
+    },
+  ]) {
+    const invalid = structuredClone(previous);
+    change(invalid);
+    assert.throws(() => parsePluginChannel(invalid));
+  }
+});
+
+test("incompatible installed consumer retains its real long semver diagnostic and remains blocked", async () => {
+  const { planUpdateProblem, parseUpdateProblem } =
+    await import("../src/shared/plugin-update-diagnostics.ts");
+  const required =
+    "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3";
+  const installed = [
+    { name: W, version: "0.1.16-resubmit.3" },
+    {
+      name: G,
+      version: "0.0.171-resubmit.4",
+      peerDependencies: { [W]: required },
+    },
+  ];
+  const next = projectPluginRelease({
+    manifest: { name: W, version: "0.1.17" },
+    artifact,
+    supportedCores: [core],
+    dataCompatibility: { kind: "preserve" },
+    notes: "Bridge diagnostic",
+  });
+  const plan = planPluginUpdate({ release: next, core, installed });
+  assert.equal(plan.kind, "blocked");
+  assert.equal(plan.code, "COMBINATION_INCOMPATIBLE");
+  const problem = planUpdateProblem(plan, next, core, installed);
+  assert.equal(problem.requirements[0].required, required);
+  assert.equal(problem.requirements[0].current, "0.1.16-resubmit.3");
+  assert.equal(problem.requirements[0].candidate, "0.1.17");
+  assert.deepEqual(parseUpdateProblem(problem), problem);
+  for (const mutate of [
+    (p) => {
+      p.requirements[0].required = "not a semver range";
+    },
+    (p) => {
+      p.requirements[0].required = "1.0.0 || ".repeat(600) + "1.0.0";
+    },
+    (p) => {
+      p.requirements[0].consumer = "a".repeat(161);
+    },
+    (p) => {
+      p.requirements[0].installed = "1.0.0+" + "a".repeat(160);
+    },
+  ]) {
+    const invalid = structuredClone(problem);
+    mutate(invalid);
+    assert.throws(() => parseUpdateProblem(invalid), /UPDATE_STATUS_INVALID/);
+  }
 });

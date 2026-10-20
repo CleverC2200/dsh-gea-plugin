@@ -9,7 +9,7 @@ import { companyPackageNames, projectPluginRelease } from "../../../src/shared/p
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 export async function controllerFixture(
   t,
-  { mode = "success", sourceFailure, fileCommit, allUpdates = false } = {},
+  { mode = "success", sourceFailure, fileCommit, allUpdates = false, releasePeers = {} } = {},
 ) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "plugin-update-real-profile-")));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -44,12 +44,13 @@ export async function controllerFixture(
       version,
       dependencies: {},
       peerDependencies:
-        index === 2
+        releasePeers[name] ??
+        (index === 2
           ? {
               [companyPackageNames[0]]: allUpdates ? "^1.0.0" : "1.0.0",
               [companyPackageNames[1]]: allUpdates ? "^2.0.0" : "2.0.0",
             }
-          : {},
+          : {}),
       exports: contract.exports,
       dsh: contract.dsh,
     };
@@ -208,6 +209,8 @@ export async function controllerFixture(
   }));
   return {
     root,
+    files,
+    privateKey,
     dir,
     profile,
     source,

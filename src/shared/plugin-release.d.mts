@@ -47,6 +47,12 @@ export function planPluginUpdate(input: {
   core: FixedCore;
   installed: PluginManifest[];
 }): PluginUpdatePlan;
+export function findPluginUpdatePath(input: {
+  core: FixedCore;
+  installed: PluginManifest[];
+  releases: PluginRelease[];
+  firstStep?: CompanyPackageName;
+}): CompanyPackageName[] | null;
 export function projectPluginRelease(input: {
   manifest: PluginManifest;
   artifact: PluginRelease["artifact"];
@@ -62,6 +68,9 @@ export function parsePluginManifest(
     "name" | "version" | "dependencies" | "peerDependencies" | "peerDependenciesMeta"
   >
 >;
+export function parseInstalledPluginManifest(
+  value: unknown,
+): ReturnType<typeof parsePluginManifest>;
 export function comparePluginVersions(left: string, right: string): number;
 export type PluginReleaseReference = {
   name: CompanyPackageName;
@@ -75,6 +84,7 @@ export type PluginChannel = {
   issuedAt: string;
   expiresAt: string;
   releases: PluginReleaseReference[];
+  companionReleases?: PluginReleaseReference[];
 };
 export function parsePluginChannel(value: unknown): PluginChannel;
 export function mergePluginChannelRelease(input: {

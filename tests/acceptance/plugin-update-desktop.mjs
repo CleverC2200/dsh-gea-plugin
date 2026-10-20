@@ -2,46 +2,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
-import {
-  makeArchive as archive,
-  installedScenario,
-} from "../fixtures/plugin-updates/installed-runtime.mjs";
+import { installedScenario } from "../fixtures/plugin-updates/installed-runtime.mjs";
+import { createReleasePreflightFixture } from "../fixtures/plugin-release-preflight.mjs";
 const proofFile = process.env.GEA_PLUGIN_UPDATE_DESKTOP_PROOF;
 if (!proofFile || !isAbsolute(proofFile)) throw Error("GEA_PLUGIN_UPDATE_DESKTOP_PROOF required");
 const proof = JSON.parse(await readFile(proofFile, "utf8"));
-const gea = "@cleverc2200/gea-dsh-prototype";
-const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
-async function temporary(t) {
-  await mkdir(".runtime", { recursive: true });
-  const root = await mkdtemp(join(process.cwd(), ".runtime/desktop-update-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  return root;
-}
+
 test("release preparation accepts only the explicitly proven desktop identity", async (t) => {
-  const root = await temporary(t),
-    artifact = await archive(root, gea, "3.1.0");
-  const metadata = join(root, "metadata.json"),
+  const fixture = await createReleasePreflightFixture(t, {
+    core: {
+      head: proof.head,
+      version: proof.version,
+      sdk: { "@deepseek-ai/dsh-tools": "0.2.0-rc.2" },
+    },
+  });
+  const root = fixture.root,
+    artifact = fixture.input.targets[2];
+  const metadata = artifact.metadata,
     entry = fileURLToPath(new URL("../../scripts/create-plugin-release.mjs", import.meta.url));
-  const input = {
-    artifactUrl: `https://fixture.invalid/packages/${digest(artifact.bytes)}/plugin.tgz`,
-    supportedCores: [{ head: proof.head, version: proof.version }],
-    dataCompatibility: { kind: "preserve" },
-    notes: "actual desktop fixture",
-  };
-  await writeFile(metadata, JSON.stringify(input));
+  const input = JSON.parse(await readFile(metadata, "utf8"));
+  await writeFile(fixture.file, JSON.stringify(fixture.input));
   const args = [
     "--expose-internals",
     entry,
     "--archive",
-    artifact.path,
+    artifact.archive,
     "--metadata",
     metadata,
     "--destination",
     join(root, "release"),
+    "--preflight",
+    fixture.file,
     "--desktop-core-proof",
     proofFile,
   ];

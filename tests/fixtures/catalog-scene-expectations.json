@@ -52,10 +52,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-customer/skills/customer/SKILL.md",
-        "sha256": "525676727d0203390e7eac1d82019de274c322b00d5f746bc643df2c72227a50",
+        "sha256": "fff404337676432992e7964bbd69129130dca3ce644a1e92ca305c229b0a2316",
         "name": "inventory-customer",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "69bb250210c854ddee91edd245e84127f2e50e81",
         "sourceFile": "business-resources/inventory-customer/skills/customer/SKILL.md"
       },
       {
@@ -182,7 +182,12 @@
       "serverSchemas": "cube-wire.mjs; explicit loopback fixture contract",
       "priorCapture": "retired-query/specifications/catalog-scene-expectations.legacy.json.raw"
     },
-    "catalogScope": "gea-readonly exposes its four selected forecast Skills and the private filesystem canary; installed resources outside that Agent remain source-verified but are excluded from its session catalog"
+    "catalogScope": "gea-readonly exposes its four selected forecast Skills and the private filesystem canary; installed resources outside that Agent remain source-verified but are excluded from its session catalog",
+    "customerGovernedRead": {
+      "owner": "dsh-agent-manage",
+      "commit": "69bb250210c854ddee91edd245e84127f2e50e81",
+      "review": "Manage PR47 changed customer inventory from mock evidence to read-only governed SQL; only this author-source binding advances. Original capture and retired fixtures remain frozen."
+    }
   },
   "coreHeads": {
     "rc2": "639ed015397290b3745d163aafe02ffee4aa3f84",

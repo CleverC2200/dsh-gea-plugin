@@ -38,7 +38,7 @@ test(
       env: { GEA_PICKER_TEST_KEY: "fixture-key" },
     });
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -103,7 +103,7 @@ test(
                     arguments: JSON.stringify(
                       reading
                         ? { id: referenceId }
-                        : { kind: "invoke", target: "row:p", action: "expand" },
+                        : { kind: "invoke", target: "row:p-jxs-2026-09-00001", action: "expand" },
                     ),
                   },
                 },
@@ -142,7 +142,7 @@ test(
           current: 1,
           size: 20,
         });
-      if (path.endsWith("/plans/p"))
+      if (path.endsWith("/plans/p-jxs-2026-09-00001"))
         return send({
           currentVersion: { ...plan, id: "v", effective: true },
           skus: [sku],
@@ -190,7 +190,7 @@ test(
       .click();
     const frame = await openReadySalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
-    const target = frame.getByTestId("regional-approval-month-plan-p");
+    const target = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(target).toBeVisible();
     await enableSelection(page);
     await target.hover();

@@ -78,6 +78,34 @@ export function planPluginUpdate({ release, core, installed }) {
     : { kind: "ready", release };
 }
 
+export function findPluginUpdatePath({ core, installed, releases, firstStep }) {
+  function search(installed, remaining, order) {
+    if (!remaining.length)
+      return validatePluginCombination({ core, manifests: installed }).length ? null : order;
+    for (const release of remaining) {
+      if (!order.length && firstStep !== undefined && release.name !== firstStep) continue;
+      const plan = planPluginUpdate({ release, core, installed });
+      if (plan.kind !== "ready" && plan.kind !== "current") continue;
+      const next =
+        plan.kind === "current"
+          ? installed
+          : installed.map((manifest) =>
+              manifest.name === release.name
+                ? { ...release, artifactSha256: release.artifact.sha256 }
+                : manifest,
+            );
+      const result = search(
+        next,
+        remaining.filter((entry) => entry !== release),
+        [...order, release.name],
+      );
+      if (result) return result;
+    }
+    return null;
+  }
+  return search(installed, releases, []);
+}
+
 /** Release metadata is a projection of the final packed manifest, never a rewritten peer graph. */
 export function projectPluginRelease({
   manifest,
@@ -192,13 +220,35 @@ export function parsePluginRelease(value) {
 
 /** Parse final publication graph once; unknown wire objects do not enter planning. */
 export function parsePluginManifest(value) {
-  if (!record(value) || !companyPackageNames.includes(value.name) || !semver.valid(value.version))
+  return parseManifest(value, true);
+}
+export function parseInstalledPluginManifest(value) {
+  return parseManifest(value, false);
+}
+function parseManifest(value, publication) {
+  if (
+    !record(value) ||
+    typeof value.name !== "string" ||
+    !value.name ||
+    (publication && !companyPackageNames.includes(value.name)) ||
+    !semver.valid(value.version)
+  )
     fail();
+  if (!record(value.dependencies ?? {})) fail();
   const peerDependencies = ranges(value.peerDependencies ?? {}),
-    dependencies = ranges(value.dependencies ?? {});
+    dependencies = ranges(
+      publication
+        ? (value.dependencies ?? {})
+        : Object.fromEntries(
+            Object.entries(value.dependencies ?? {}).filter(([name]) =>
+              companyPackageNames.includes(name),
+            ),
+          ),
+    );
   const peerDependenciesMeta = {};
   if (!record(value.peerDependenciesMeta ?? {})) fail();
   for (const [name, meta] of Object.entries(value.peerDependenciesMeta ?? {})) {
+    if (!publication && !Object.hasOwn(peerDependencies, name)) continue;
     if (
       !record(meta) ||
       typeof meta.optional !== "boolean" ||
@@ -215,6 +265,7 @@ export function parsePluginManifest(value) {
     dependencies,
   };
 }
+
 export function comparePluginVersions(left, right) {
   return semver.compare(left, right);
 }
@@ -241,7 +292,7 @@ export function parsePluginChannel(value) {
   }
   if (Date.parse(value.expiresAt) <= Date.parse(value.issuedAt))
     throw Error("SOURCE_CHANNEL_TIME_INVALID");
-  const releases = value.releases.map((reference) => {
+  const parseReference = (reference) => {
     if (
       !record(reference) ||
       !companyPackageNames.includes(reference.name) ||
@@ -265,8 +316,24 @@ export function parsePluginChannel(value) {
       url: reference.url,
       sha256: reference.sha256,
     };
-  });
-  if (new Set(releases.map((reference) => reference.name)).size !== releases.length)
+  };
+  const releases = value.releases.map(parseReference);
+  let companionReleases;
+  if (value.companionReleases !== undefined) {
+    if (
+      !Array.isArray(value.companionReleases) ||
+      !value.companionReleases.length ||
+      releases.length !== 1 ||
+      releases[0].name !== "@cleverc2200/gea-dsh-prototype"
+    )
+      throw Error("SOURCE_CHANNEL_INVALID");
+    companionReleases = value.companionReleases.map(parseReference);
+  }
+  const combined = [...releases, ...(companionReleases ?? [])];
+  if (
+    combined.length > companyPackageNames.length ||
+    new Set(combined.map((reference) => reference.name)).size !== combined.length
+  )
     throw Error("SOURCE_CHANNEL_INVALID");
   return {
     schema: 1,
@@ -275,6 +342,7 @@ export function parsePluginChannel(value) {
     issuedAt: value.issuedAt,
     expiresAt: value.expiresAt,
     releases,
+    ...(companionReleases ? { companionReleases } : {}),
   };
 }
 /** Produce the complete next signed payload locally; publishing owns the atomic channel replacement. */
@@ -282,14 +350,19 @@ export function mergePluginChannelRelease({ previous, release, revision, issuedA
   const channel = parsePluginChannel(previous);
   if (!Number.isSafeInteger(revision) || revision <= channel.revision)
     throw Error("CHANNEL_REVISION_REQUIRED");
+  const selected =
+    channel.companionReleases && release.name !== "@cleverc2200/gea-dsh-prototype"
+      ? "companionReleases"
+      : "releases";
+  const references = channel[selected];
   return parsePluginChannel({
     ...channel,
     revision,
     issuedAt,
     expiresAt,
-    releases: channel.releases.some((reference) => reference.name === release.name)
-      ? channel.releases.map((reference) => (reference.name === release.name ? release : reference))
-      : [...channel.releases, release],
+    [selected]: references.some((reference) => reference.name === release.name)
+      ? references.map((reference) => (reference.name === release.name ? release : reference))
+      : [...references, release],
   });
 }
 export function satisfiesPluginVersion(version, range) {

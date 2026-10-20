@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "geaSourceSha": "0a474a8ce4d3b0607e89033fbd82342a412c69fd",
+  "desktopVersion": "0.2.0-rc.2.20261019.1",
+  "seed": {
+    "packages": [
+      {
+        "name": "@cleverc2200/dsh-agent-workbench",
+        "version": "0.1.10",
+        "sha256": "d570e74a4b782394e6eaef6edefa050092a694698ef81d4c0acd92ab9d140d03",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/d570e74a4b782394e6eaef6edefa050092a694698ef81d4c0acd92ab9d140d03/cleverc2200-dsh-agent-workbench-0.1.10.tgz"
+      },
+      {
+        "name": "dsh-agent-manage",
+        "version": "0.6.3-company.19",
+        "sha256": "97acdaf5cd4f4bd614a1b1e7f5d143dca59a464def5e340d1a570833033e3443",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/97acdaf5cd4f4bd614a1b1e7f5d143dca59a464def5e340d1a570833033e3443/dsh-agent-manage-0.6.3-company.19.tgz"
+      },
+      {
+        "name": "@cleverc2200/gea-dsh-prototype",
+        "version": "0.0.164",
+        "sha256": "23098bfcf894acb31a066d6a2495f753ff3f2ee4b6a76b0683b133180bfd3103",
+        "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/23098bfcf894acb31a066d6a2495f753ff3f2ee4b6a76b0683b133180bfd3103/cleverc2200-gea-dsh-prototype-0.0.164.tgz"
+      }
+    ],
+    "core": {
+      "head": "8cfb899ccf21d3662421b99b5f4627842ef712ea",
+      "version": "0.2.0-rc.2",
+      "artifacts": [
+        {
+          "path": "package.json",
+          "sha256": "a2aee88c77d7c95ff17a4a41e988516576433b73060cf21254a77a42849bec0e"
+        },
+        {
+          "path": "lib/main.js",
+          "sha256": "df448b33be1c7efc2241706184c9ff04ed9cfc719d5d1869aa71e136bd27e39e"
+        },
+        {
+          "path": "dsh/package.json",
+          "sha256": "09058d99b57edc509ba44f2e934094daf36a592fcef24b31793a250ba9dbb124"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh/package.json",
+          "sha256": "7cd28052f79d0581f6d55976be25ddf725e11dc4168019a6d8fcff2204cc2cfb"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-desktop-host/package.json",
+          "sha256": "bd95cb06c5b2b710e8fb9098f31eed8473e87e57790d0a3285df32a8abd467e4"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js",
+          "sha256": "6c6182cbd9ff7df144145065885fbc5873e9a9db9651c5152e785c84a55689d6"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-app-boot/package.json",
+          "sha256": "dc8f6f87489ba9bdd1139dfbf19ce144f593abe43ecb5cc9a342252164e66d77"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js",
+          "sha256": "234db45e1b3f8c683b5bc1f551948b2a2ec52a6468c7b6937725a23f1c0e0d96"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/cordis/package.json",
+          "sha256": "41c9dee4715a89ef94f227384460c8445857c8faf33493eb545604a948828649"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/cordis/lib/index.js",
+          "sha256": "6a9394c0877ff45218818c6e815edd038f8057e1a1deb390a8d43ec81c57691e"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/package.json",
+          "sha256": "fe6afc904361ebf081fe28a45398d71eeb09292f230528f61c4758fcf33cb80b"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js",
+          "sha256": "f46a48b3422927eea5605a70b78502e06ef9ceaa29d7a73f4a7f742361ff51c8"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-atomic-write/package.json",
+          "sha256": "bbf399274ae948f980e8cb5552697b660d42f82b4c29ad6cb6013065ca248747"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js",
+          "sha256": "5f07978ef594a2711b2da301d5cb73a835cf1a48c1f8920ab5c6625137e12029"
+        },
+        {
+          "path": "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js",
+          "sha256": "bf511a06b6ff2d7aab1f7725fcc80f304eb32a9541790e22cd28f8a9617b2c68"
+        }
+      ]
+    },
+    "source": {
+      "channel": "stable",
+      "channelUrl": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/plugin-detail-stable.json",
+      "authenticationRef": "anonymous",
+      "allowed": [
+        {
+          "origin": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com",
+          "pathPrefix": "/plugin-release/"
+        }
+      ],
+      "trustedKeys": [
+        {
+          "keyId": "plugin-detail-test-20261015",
+          "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4yJrjMTO0WzaKJzheHiMpGj5BamQ7eE1Xy3JQp7zIP0=\n-----END PUBLIC KEY-----\n"
+        }
+      ]
+    }
+  }
+}

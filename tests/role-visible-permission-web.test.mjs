@@ -11,10 +11,11 @@ test(
   async (t) => {
     const app = await profile(t);
     const plan = {
-      planId: "p-role-visible",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v-role-visible",
       periodId: "20260901",
       planTypeCode: "Y",
+      orderType: "M",
       status: 2,
       baseName: "跨节点区域审批",
       orgCode: "region-a",
@@ -39,7 +40,13 @@ test(
       if (path.endsWith("/periods"))
         return send({
           records: [
-            { periodId: "20260901", periodMonth: "2026-09", planTypeCode: "Y", status: "CLOSED" },
+            {
+              periodId: "20260901",
+              periodMonth: "2026-09",
+              planTypeCode: "Y",
+              orderType: "M",
+              status: "CLOSED",
+            },
           ],
           total: 1,
           current: 1,

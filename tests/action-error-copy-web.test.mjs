@@ -14,7 +14,7 @@ test(
   async (t) => {
     const app = await profile(t);
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -60,7 +60,7 @@ test(
         const records = status === null || status === "1" ? [plan] : [];
         return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
       }
-      if (path.endsWith("/plans/p"))
+      if (path.endsWith("/plans/p-jxs-2026-09-00001"))
         return send({
           currentVersion: { ...plan, id: "v", effective: true },
           skus: [sku],
@@ -114,7 +114,14 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
-    await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+    await expect(frame.getByRole("combobox", { name: "销售计划周期", exact: true })).toContainText(
+      "2026-09",
+    );
+    await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
+    await expect(
+      frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
+    ).toBeChecked();
+    await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
     // 退回弹窗不会在失败时自动关闭，正好用来核对失败提示文案。
     await frame.getByRole("button", { name: "退回", exact: true }).click();
     const dialog = frame.getByRole("dialog");
@@ -139,7 +146,7 @@ test(
     ]) {
       assert.ok(!dialogText.includes(leak), `界面上不应出现「${leak}」，实际：${dialogText}`);
     }
-    const reference = /错误编号：([A-Z0-9]{6})/.exec(dialogText);
+    const reference = /错误编号：(req)/.exec(dialogText);
     assert.ok(reference, `失败提示应给出错误编号，实际：${dialogText}`);
     // 技术细节只进控制台，且带着同一个错误编号，便于管理员核对。
     assert.ok(
@@ -152,15 +159,15 @@ test(
     await expect(dialog).toHaveCount(0);
     // 退回请求失败后这一笔没被受理，勾选已经清掉；再点「通过」要重新勾一次。
     await expect(
-      frame.locator('label.arco-checkbox:has(input[value="p"]) input'),
+      frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).not.toBeChecked();
-    await frame.locator('label.arco-checkbox:has(input[value="p"])').click();
+    await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame.getByRole("button", { name: "通过", exact: true }).click();
     const queueAlert = frame.locator('[class*="exportFeedback"]');
     await expect(queueAlert).toBeVisible({ timeout: 20000 });
     // 失败后勾选要一起清掉：这一批没被受理，留着的勾选会让人以为还能直接再点。
     await expect(
-      frame.locator('label.arco-checkbox:has(input[value="p"]) input'),
+      frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).not.toBeChecked();
     const queueText = await queueAlert.innerText();
     assert.ok(

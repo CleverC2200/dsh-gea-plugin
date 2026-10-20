@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/base.css";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/design-platform.css";
 import { Context } from "@deepseek-ai/cordis";
@@ -56,7 +56,15 @@ new TestRemote(ctx, {
   },
 });
 await ctx.plugin(settings).await();
-ctx.provide("settingsNavigation", { open() {} });
+let openSettings = () => {};
+let closeSettings = () => {};
+const openedSections: string[] = [];
+ctx.provide("settingsNavigation", {
+  open(sectionId) {
+    openedSections.push(sectionId);
+    openSettings();
+  },
+});
 ctx.slots.register(
   {
     name: "root",
@@ -65,12 +73,19 @@ ctx.slots.register(
       "shell.overlay": { kind: "list", scope: "root" },
     },
   },
-  ({ renderSlot }) => (
-    <div style={{ maxWidth: 800, margin: "auto", padding: 24 }}>
-      {renderSlot("settings.section", { close() {} }, { only: "plugin-manager" })}
-      {renderSlot("shell.overlay", {})}
-    </div>
-  ),
+  ({ renderSlot }) => {
+    const [visible, setVisible] = useState(true);
+    openSettings = () => setVisible(true);
+    closeSettings = () => setVisible(false);
+    return (
+      <div style={{ maxWidth: 800, margin: "auto", padding: 24 }}>
+        {visible
+          ? renderSlot("settings.section", { close: closeSettings }, { only: "plugin-manager" })
+          : null}
+        {renderSlot("shell.overlay", {})}
+      </div>
+    );
+  },
 );
 const core = ctx.plugin({ inject: manager.inject, apply: manager.apply });
 await core.await();
@@ -87,11 +102,23 @@ const built = window.geaFactory((name: string) => {
   if (!(name in platform)) throw Error("Missing client dependency " + name);
   return platform[name];
 });
-const gea = ctx.plugin(built);
+let gea = ctx.plugin(built);
 await gea.await();
 const unmount = ctx.uiRenderer.mount(document.getElementById("app")!);
 Object.assign(window, {
   fixture: {
+    closeSettings() {
+      closeSettings();
+    },
+    openedSections,
+    locale(value: string) {
+      locale.setLocale(value);
+    },
+    async reloadGea() {
+      await gea.dispose();
+      gea = ctx.plugin(built);
+      await gea.await();
+    },
     async dispose() {
       unmount();
       await gea.dispose();

@@ -1,5 +1,11 @@
 import semver from "semver";
-import type { FixedCore, PluginRelease, PluginUpdatePlan } from "./plugin-release.mjs";
+import { companyPackageNames } from "./plugin-release.mjs";
+import type {
+  FixedCore,
+  PluginManifest,
+  PluginRelease,
+  PluginUpdatePlan,
+} from "./plugin-release.mjs";
 const namePattern = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/i;
 const text = (value: unknown): string => {
   if (typeof value !== "string" || value.length > 160) throw Error("UPDATE_STATUS_INVALID");
@@ -31,6 +37,8 @@ export function parseUpdateProblem(value: unknown) {
         "release-not-published",
         "plan-unconfirmed",
         "conditions",
+        "channel-older",
+        "content-mismatch",
         "inactive",
         "restored",
         "failed",
@@ -67,18 +75,33 @@ export function parseUpdateProblem(value: unknown) {
     case "dependencies": {
       if (!Array.isArray(row.requirements) || !row.requirements.length)
         throw Error("UPDATE_STATUS_INVALID");
+      const nextStep = row.nextStep === undefined ? undefined : record(row.nextStep);
+      const packageName = nextStep
+        ? companyPackageNames.find((name) => name === nextStep.packageName)
+        : undefined;
+      if (nextStep && !packageName) throw Error("UPDATE_STATUS_INVALID");
       return {
         kind: "dependencies",
+        ...(nextStep && packageName
+          ? { nextStep: { packageName, version: version(nextStep.version) } }
+          : {}),
         requirements: row.requirements.map((raw) => {
           const item = record(raw),
-            required = text(item.required);
-          if (!/^[\w.*+^~<>=| -]*$/.test(required) || !semver.validRange(required))
+            required = item.required;
+          if (
+            typeof required !== "string" ||
+            required.length > 4096 ||
+            !/^[\w.*+^~<>=| -]*$/.test(required) ||
+            !semver.validRange(required)
+          )
             throw Error("UPDATE_STATUS_INVALID");
           return {
             consumer: npmName(item.consumer),
             dependency: npmName(item.dependency),
             required,
             installed: item.installed === null ? null : version(item.installed),
+            current: item.current == null ? null : version(item.current),
+            candidate: item.candidate == null ? null : version(item.candidate),
           };
         }),
       } as const;
@@ -91,6 +114,8 @@ export function parseUpdateProblem(value: unknown) {
 export type PluginUpdateProblem = NonNullable<ReturnType<typeof parseUpdateProblem>>;
 
 export function sourceUpdateProblem(code: string): PluginUpdateProblem {
+  if (code === "SOURCE_SAME_VERSION_CONTENT_MISMATCH")
+    return { kind: "policy", code: "content-mismatch" };
   return {
     kind: "source",
     code:
@@ -106,7 +131,11 @@ export function planUpdateProblem(
   plan: Extract<PluginUpdatePlan, { kind: "blocked" }>,
   release: PluginRelease,
   core: FixedCore,
+  installed: PluginManifest[],
 ): PluginUpdateProblem {
+  if (plan.code === "DOWNGRADE_FORBIDDEN") return { kind: "policy", code: "channel-older" };
+  if (plan.code === "SAME_VERSION_CONTENT_MISMATCH")
+    return { kind: "policy", code: "content-mismatch" };
   if (plan.code === "CORE_UNSUPPORTED")
     return parseUpdateProblem({
       kind: "core",
@@ -117,14 +146,22 @@ export function planUpdateProblem(
       })),
     })!;
   if (plan.code === "COMBINATION_INCOMPATIBLE" && plan.failures?.length) {
-    const requirements = plan.failures
-      .filter((row) => row.dependency !== undefined && row.range !== undefined)
-      .map((row) => ({
-        consumer: row.packageName.replace(/@[a-f0-9]{12}$/, ""),
-        dependency: row.dependency,
-        required: row.range,
-        installed: row.installed,
-      }));
+    const requirements = plan.failures.flatMap((row) => {
+      if (row.dependency === undefined || row.range === undefined) return [];
+      return [
+        {
+          consumer: row.packageName.replace(/@[a-f0-9]{12}$/, ""),
+          dependency: row.dependency,
+          required: row.range,
+          installed: row.installed,
+          current:
+            installed.find((manifest) => manifest.name === row.dependency)?.version ??
+            core.sdk[row.dependency] ??
+            null,
+          candidate: row.dependency === release.name ? release.version : null,
+        },
+      ];
+    });
     if (requirements.length) return parseUpdateProblem({ kind: "dependencies", requirements })!;
   }
   return { kind: "policy", code: "conditions" };

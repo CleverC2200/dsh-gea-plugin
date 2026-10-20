@@ -97,7 +97,6 @@ test(
     mode = "supported";
     // 未提报、待回写、回写完成都不是审批动作，仍然写不了。
     for (status of [0, 5, 10]) assert.equal((await action()).ok, false, `status ${status}`);
-    // 退回目标和发起角色都可按角色重审当前有效版本，无需服务账号。
     assert.equal(writes, 0);
     for (status of [6, 7, 8, 9]) {
       assert.equal(
@@ -111,9 +110,9 @@ test(
         "退回态不能绕过已协商的角色契约",
       );
       const result = await action();
-      assert.equal(result.ok, true, JSON.stringify(result));
+      assert.equal(result.ok, false, JSON.stringify(result));
     }
-    assert.equal(writes, 4);
+    assert.equal(writes, 0);
     status = 6;
     const returnedSave = await app.rpc("sales-plan/action", {
       planId: "p",

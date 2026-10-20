@@ -1,5 +1,6 @@
+import { validateServiceAccounts as validateServiceAccountReferences } from "../shared/service-accounts.js";
 /** 服务账号只在 Host 内按当前环境、租户和用户白名单使用销售计划重提；浏览器永远拿不到客户端密钥。 */
-import { GeaResponseError, geaResponseError } from '../shared/gea-error.js';
+import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 
 export type ServiceAccountConfig = {
   clientIdEnv: string;
@@ -8,79 +9,200 @@ export type ServiceAccountConfig = {
   tenantId: string;
   allowedUserIds: string[];
 };
-export type ServiceAccounts = Partial<Record<'production' | 'test', ServiceAccountConfig>>;
+export type ServiceAccounts = Partial<Record<"production" | "test", ServiceAccountConfig>>;
 
-/** 只校验环境变量引用；部署 JSON 中不得出现任何凭证值。 */
-export function validateServiceAccounts(value: unknown): asserts value is ServiceAccounts | undefined {
-  if (value === undefined) return;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_SERVICE_ACCOUNTS');
-  for (const [environment, raw] of Object.entries(value)) {
-    if (!['production', 'test'].includes(environment) || !raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('INVALID_SERVICE_ACCOUNTS');
-    const config = raw as Record<string, unknown>;
-    if (Object.keys(config).some(key => !['clientIdEnv', 'clientSecretEnv', 'keychainService', 'tenantId', 'allowedUserIds'].includes(key)) ||
-      !/^GEA_[A-Z0-9_]+$/.test(String(config.clientIdEnv ?? '')) ||
-      !/^GEA_[A-Z0-9_]+$/.test(String(config.clientSecretEnv ?? '')) || config.clientIdEnv === config.clientSecretEnv ||
-      (config.keychainService !== undefined && (typeof config.keychainService !== 'string' || !/^[a-zA-Z0-9._-]+$/.test(config.keychainService))) ||
-      typeof config.tenantId !== 'string' || !/^\d+$/.test(config.tenantId) ||
-      !Array.isArray(config.allowedUserIds) || !config.allowedUserIds.length ||
-      config.allowedUserIds.some(id => typeof id !== 'string' || !id.trim())) throw new Error('INVALID_SERVICE_ACCOUNTS');
-  }
+export function validateServiceAccounts(
+  value: unknown,
+): asserts value is ServiceAccounts | undefined {
+  validateServiceAccountReferences(value);
 }
 
 /** 读取凭证是否可用，但不暴露凭证内容。 */
-export function serviceAccountReady(config: ServiceAccountConfig | undefined, user: { id: string; tenantId: string } | undefined): boolean {
-  return Boolean(config && user && config.tenantId === user.tenantId && config.allowedUserIds.includes(user.id) &&
-    process.env[config.clientIdEnv]?.trim() && process.env[config.clientSecretEnv]?.trim());
+export function serviceAccountReady(
+  config: ServiceAccountConfig | undefined,
+  user: { id: string; tenantId: string } | undefined,
+): boolean {
+  return Boolean(
+    config &&
+    user &&
+    config.tenantId === user.tenantId &&
+    config.allowedUserIds.includes(user.id) &&
+    process.env[config.clientIdEnv]?.trim() &&
+    process.env[config.clientSecretEnv]?.trim(),
+  );
 }
 
 function unknownSubmission() {
-  const error = new GeaResponseError(502, { message: '重提结果暂时未知，请使用原幂等键重试或回读状态' });
+  const error = new GeaResponseError(502, {
+    message: "重提结果暂时未知，请使用原幂等键重试或回读状态",
+  });
   error.details.retrySameIntent = true;
   return error;
 }
 
-/** 每次尝试单独交换凭证，然后只发送一个带幂等键的业务请求。 */
-export async function submitWithServiceAccount(
-  config: ServiceAccountConfig, base: string, body: string, requestId: string, idempotencyKey: string,
-  signal: AbortSignal, fetchImpl: typeof fetch = fetch,
-): Promise<unknown> {
-  const clientId = process.env[config.clientIdEnv];
-  const secret = process.env[config.clientSecretEnv];
-  if (!clientId || !secret) throw new Error('GEA_SERVICE_CREDENTIAL_MISSING');
-  const auth = await fetchImpl(base + '/api/v1/internal/auth/token', {
-    method: 'POST', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Trace-Id': requestId },
-    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: secret, scope: 'sales-plan:write' }),
-  });
-  if (!auth.ok) throw await geaResponseError(auth, [clientId, secret]);
-  const tokenReply = await auth.json();
-  const token = tokenReply?.result?.access_token;
-  if (tokenReply?.success !== true || typeof token !== 'string' || !token || tokenReply.result.token_type !== 'Bearer' ||
-    !Number.isFinite(tokenReply.result.expires_in) || tokenReply.result.expires_in <= 0 ||
-    typeof tokenReply.result.scope !== 'string' || !tokenReply.result.scope.split(/\s+/).includes('sales-plan:write'))
-    throw new Error('GEA_SERVICE_TOKEN_INVALID');
-  signal.throwIfAborted();
-  let response: Response;
-  try { response = await fetchImpl(base + '/api/v1/internal/sales-plans', {
-    method: 'POST', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-Request-Id': requestId, 'Idempotency-Key': idempotencyKey }, body,
-  });
-  } catch { throw unknownSubmission(); }
-  if (!response.ok) {
-    const error = await geaResponseError(response, [clientId, secret, token]);
-    if (response.status >= 500) error.details.retrySameIntent = true;
-    throw error;
+export class ServiceAccountSession {
+  private token?: {
+    base: string;
+    tenantId: string;
+    clientId: string;
+    secret: string;
+    value: string;
+    expiresAt: number;
+  };
+  private generation = 0;
+
+  clear(): void {
+    this.token = undefined;
+    this.generation += 1;
   }
-  let result;
-  try { result = await response.json(); } catch { throw unknownSubmission(); }
-  if (result?.success !== true || !result.result)
-    throw new GeaResponseError(result?.code === 510 ? 403 : 502, { message: 'GEA 重提未返回成功回执' });
-  // 只返回公开回执字段，绝不返回任意上游数据或凭证。
-  const receipt = result.result;
-  if (typeof receipt.planId !== 'string' || typeof receipt.versionId !== 'string' || !Number.isSafeInteger(receipt.seq) ||
-    !Number.isSafeInteger(receipt.status) || typeof receipt.replayed !== 'boolean' || receipt.requestId !== requestId ||
-    typeof receipt.traceId !== 'string' || !receipt.traceId || typeof receipt.auditId !== 'string' || !receipt.auditId)
-    throw unknownSubmission();
-  return { planId: receipt.planId, versionId: receipt.versionId, seq: receipt.seq, status: receipt.status, replayed: receipt.replayed,
-    requestId: receipt.requestId, traceId: receipt.traceId, auditId: receipt.auditId };
+
+  async submit(
+    config: ServiceAccountConfig,
+    base: string,
+    body: string,
+    requestId: string,
+    idempotencyKey: string,
+    signal: AbortSignal,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<unknown> {
+    const clientId = process.env[config.clientIdEnv];
+    const secret = process.env[config.clientSecretEnv];
+    if (!clientId || !secret) throw new Error("GEA_SERVICE_CREDENTIAL_MISSING");
+    const generation = this.generation;
+    const acquire = async () => {
+      const cached = this.token;
+      if (
+        cached &&
+        cached.base === base &&
+        cached.tenantId === config.tenantId &&
+        cached.clientId === clientId &&
+        cached.secret === secret &&
+        Date.now() < cached.expiresAt
+      )
+        return cached.value;
+      this.token = undefined;
+      const issuedAt = Date.now();
+      const auth = await fetchImpl(base + "/api/v1/internal/auth/token", {
+        method: "POST",
+        redirect: "error",
+        signal,
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Trace-Id": requestId },
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          client_id: clientId,
+          client_secret: secret,
+          scope: "sales-plan:write",
+        }),
+      });
+      if (!auth.ok) {
+        const error = await geaResponseError(auth, [clientId, secret]);
+        error.details.authentication = "service";
+        throw error;
+      }
+      const reply = await auth.json();
+      const token = reply?.result?.access_token;
+      if (
+        reply?.success !== true ||
+        typeof token !== "string" ||
+        !token ||
+        reply.result.token_type !== "Bearer" ||
+        !Number.isFinite(reply.result.expires_in) ||
+        reply.result.expires_in <= 0 ||
+        typeof reply.result.scope !== "string" ||
+        !reply.result.scope.split(/\s+/).includes("sales-plan:write")
+      )
+        throw new Error("GEA_SERVICE_TOKEN_INVALID");
+      const expiresAt = issuedAt + reply.result.expires_in * 1000;
+      if (!Number.isFinite(expiresAt)) throw new Error("GEA_SERVICE_TOKEN_INVALID");
+      signal.throwIfAborted();
+      if (generation === this.generation)
+        this.token = {
+          base,
+          tenantId: config.tenantId,
+          clientId,
+          secret,
+          value: token,
+          expiresAt,
+        };
+      return token;
+    };
+    let response: Response | undefined;
+    let token = "";
+    for (let refresh = 0; refresh <= 1; refresh++) {
+      token = await acquire();
+      signal.throwIfAborted();
+      try {
+        response = await fetchImpl(base + "/api/v1/internal/sales-plans", {
+          method: "POST",
+          redirect: "error",
+          signal,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Request-Id": requestId,
+            "Idempotency-Key": idempotencyKey,
+          },
+          body,
+        });
+      } catch {
+        throw unknownSubmission();
+      }
+      if (response.status !== 401) break;
+      this.token = undefined;
+      if (refresh === 0) await response.body?.cancel();
+    }
+    if (!response) throw unknownSubmission();
+    if (!response.ok) {
+      const error = await geaResponseError(response, [clientId, secret, token]);
+      if (response.status === 401) error.details.authentication = "service";
+      if (response.status >= 500 && error.details.retryable !== false)
+        error.details.retrySameIntent = true;
+      throw error;
+    }
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw unknownSubmission();
+    }
+    if (result?.success !== true || !result.result) {
+      const status =
+        result?.code === 510
+          ? 403
+          : Number.isInteger(result?.code) && result.code >= 400 && result.code <= 599
+            ? result.code
+            : 502;
+      const error = new GeaResponseError(status, result, [clientId, secret, token]);
+      if (status === 401) error.details.authentication = "service";
+      throw error;
+    }
+    const receipt = result.result;
+    if (
+      typeof receipt.planId !== "string" ||
+      !receipt.planId.trim() ||
+      typeof receipt.versionId !== "string" ||
+      !receipt.versionId.trim() ||
+      !Number.isSafeInteger(receipt.seq) ||
+      receipt.seq <= 0 ||
+      !Number.isSafeInteger(receipt.status) ||
+      receipt.status < 0 ||
+      receipt.status > 10 ||
+      typeof receipt.replayed !== "boolean" ||
+      receipt.requestId !== requestId ||
+      typeof receipt.traceId !== "string" ||
+      !receipt.traceId.trim() ||
+      (receipt.auditId != null && typeof receipt.auditId !== "string")
+    )
+      throw unknownSubmission();
+    return {
+      planId: receipt.planId,
+      versionId: receipt.versionId,
+      seq: receipt.seq,
+      status: receipt.status,
+      replayed: receipt.replayed,
+      requestId: receipt.requestId,
+      traceId: receipt.traceId,
+      auditId: receipt.auditId ?? null,
+    };
+  }
 }

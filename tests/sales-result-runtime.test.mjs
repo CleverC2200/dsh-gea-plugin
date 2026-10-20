@@ -37,7 +37,7 @@ test(
           result: {
             records: [
               {
-                planId: "fixture-plan",
+                planId: "p-jxs-2026-08-00001",
                 versionId: "fixture-version",
                 periodId: "20260801",
                 planTypeCode: "Y",

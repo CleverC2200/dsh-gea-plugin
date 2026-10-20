@@ -26,7 +26,7 @@ test(
     });
     let modelCalls = 0;
     const plan = {
-      planId: "p",
+      planId: "p-jxs-2026-09-00001",
       versionId: "v",
       seq: 1,
       periodId: "period-1",
@@ -45,6 +45,9 @@ test(
       currentAmount: "200",
       targetQty: "40",
       targetAmount: "400",
+      amountProgress: "37.5",
+      shipQty: "15",
+      shipAmount: "150",
       skuCount: 1,
     };
     const sku = {
@@ -117,7 +120,7 @@ test(
         });
         return true;
       }
-      if (path.endsWith("/plans/p")) {
+      if (path.endsWith("/plans/p-jxs-2026-09-00001")) {
         reply({
           success: true,
           result: {
@@ -164,7 +167,7 @@ test(
         reply({
           success: true,
           result: {
-            planId: "p",
+            planId: "p-jxs-2026-09-00001",
             versionId: "v",
             fromStatus: 1,
             toStatus: 2,
@@ -210,14 +213,14 @@ test(
     await expect(totals).toContainText("¥500");
     await expect(totals).toContainText("50 件");
     await expect(totals).not.toContainText("¥200");
-    const monthPlan = frame.getByTestId("regional-approval-month-plan-p");
+    const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(monthPlan.locator("span").first()).toHaveText("¥150");
     // V1.8 #09：达成率改为「细进度条 + 百分比」，百分比前不再带「金额」。
     await expect(frame.locator("tbody").first()).toContainText("37.5%");
     await expect(frame.getByText(/数量 .*%/)).toHaveCount(0);
     await expect(frame.locator("thead")).not.toContainText("AI 核对意见");
     await frame.getByRole("switch").first().click();
-    const category = frame.getByTestId("regional-approval-category-row-p-汤圆");
+    const category = frame.getByTestId("regional-approval-category-row-p-jxs-2026-09-00001-汤圆");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveText("汤圆 · 1 SKU");
     await expect(frame.locator("tbody")).toContainText(["黑芝麻汤圆 500g"]);
