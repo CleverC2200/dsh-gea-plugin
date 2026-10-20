@@ -104,7 +104,9 @@ test("build cache tracks source, dependency state and every output while ignorin
   assert.equal((await developmentTask("build", {}, path)).status, "built");
   fs.mkdirSync(join(path, "tests"));
   fs.writeFileSync(join(path, "tests/example.test.mjs"), "fixture-test");
-  git("add", "tests");
+  fs.mkdirSync(join(path, "scripts"));
+  fs.writeFileSync(join(path, "scripts/example.test.mjs"), "fixture-test");
+  git("add", "tests", "scripts");
   git(
     "-c",
     "user.name=Fixture",
