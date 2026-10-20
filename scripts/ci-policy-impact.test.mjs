@@ -371,6 +371,7 @@ test("Workbench build commands select prepared assets, frozen transport and buil
     "build-order-fulfillment",
     "build-output",
     "build-static-authors",
+    "static-author-provenance",
   ]) {
     await t.test(name, (t) => {
       const fixture = resourceImpactFixture(t);
