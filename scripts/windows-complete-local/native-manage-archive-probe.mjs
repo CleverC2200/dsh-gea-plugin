@@ -25,7 +25,7 @@ for(const locale of [null,'C.UTF-8','en_US.UTF-8','.UTF-8']){
  const unlisted=actual.filter(n=>!listed.includes(n));
  const sample=actual.find(n=>/[^\x00-\x7F]/.test(n));
  let directRead=false;
- if(sample){const streamed=execFileSync('tar',['-xOf',archive,sample],{env,timeout:30000,windowsHide:true});directRead=streamed.equals(await readFile(join(target,sample)));}
+ if(sample){try{const streamed=execFileSync('tar',['-xOf',archive,sample],{env,timeout:30000,windowsHide:true});directRead=streamed.equals(await readFile(join(target,sample)));}catch{directRead=false;}}
  report.variants.push({locale:locale??'default',listedFiles:listed.length,missingCount:missing.length,unlistedCount:unlisted.length,listedMatchesActual:missing.length===0&&unlisted.length===0,directUnicodeReadMatches:directRead,missingExamples:missing.slice(0,6),unlistedExamples:unlisted.slice(0,6)});
  await writeFile(values.output,JSON.stringify(report,null,2)+'\n');
 }
