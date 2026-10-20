@@ -1,6 +1,4 @@
 import {
-  correctionAccess,
-  correctionAdjustments,
   correctionDecimal,
   salesPlanAccessForRow,
   salesPlanStagesForRoles,
@@ -71,10 +69,6 @@ function upstreamActionBody(request: Record<string, unknown>): Record<string, un
     if (request[field] !== undefined) body[field] = request[field];
   if (request.approvalPolicy === "role-visible-v1") {
     for (const field of ["approvalRole", "approvalPolicy", "expectedSnapshot"])
-      if (request[field] !== undefined) body[field] = request[field];
-  }
-  if (request.adjustmentMode === "ABSOLUTE_NET") {
-    for (const field of ["adjustmentMode", "approvalRole", "expectedSnapshot"])
       if (request[field] !== undefined) body[field] = request[field];
   }
   return body;
@@ -309,31 +303,30 @@ export class SalesPlanTransactions {
       throw new GeaResponseError(400, {
         message: "未提交、已完成或无效状态不允许写入",
       });
-    if (request.approvalRole == null && request.adjustmentMode == null)
-      throw new GeaResponseError(400, { message: "请明确本次审批角色" });
+
     if (
       request.approvalPolicy != null &&
       (request.approvalPolicy !== "role-visible-v1" || !request.approvalRole)
     )
       throw new Error("INVALID_PAYLOAD");
-    if (request.approvalRole != null && !intent.body) {
-      if (!["region", "province", "area", "category"].includes(text(request.approvalRole)))
-        throw new Error("INVALID_PAYLOAD");
+    if (
+      request.approvalRole != null &&
+      !["region", "province", "area", "category"].includes(text(request.approvalRole))
+    )
+      throw new Error("INVALID_PAYLOAD");
+    if (!intent.body) {
       const planId = text(payload.planId);
       const detail = (await this.host.query(
         { kind: "detail", query: { planId } },
         signal,
       )) as GeaSalesPlanDetail;
+      if (detail.currentVersion.orderType === "Z" && request.action === "SAVE")
+        throw new GeaResponseError(400, { message: "纠偏调整请使用本地暂存" });
+      if (request.approvalRole == null)
+        throw new GeaResponseError(400, { message: "请明确本次审批角色" });
+      if (request.adjustmentMode != null) throw new Error("INVALID_PAYLOAD");
       await this.host.permissions(signal);
-      const row = {
-        planId,
-        versionId,
-        status: request.expectedStatus as number,
-        planTypeCode: detail.currentVersion.planTypeCode,
-      };
-      const role = request.approvalRole as NonNullable<GeaSalesPlanActionRequest["approvalRole"]>;
       const workflowRows = await this.host.workflow(signal);
-      // 版本或状态已经变化属于并发冲突：提示刷新，而不是笼统地报成无权限并禁用本轮操作。
       if (
         salesPlanVersionEvidenceStale(detail, {
           planId,
@@ -344,6 +337,13 @@ export class SalesPlanTransactions {
         throw new GeaResponseError(409, {
           message: "该计划版本或审批状态已变化，请刷新权威队列后重试",
         });
+      const row = {
+        planId,
+        versionId,
+        status: request.expectedStatus as number,
+        planTypeCode: detail.currentVersion.planTypeCode,
+      };
+      const role = request.approvalRole as NonNullable<GeaSalesPlanActionRequest["approvalRole"]>;
       const access = salesPlanAccessForRow(
         row,
         detail,
@@ -378,86 +378,6 @@ export class SalesPlanTransactions {
         workflowRows,
       );
       if (scope.signal.aborted) throw new Error("STALE_LOGIN");
-    }
-    if (request.adjustmentMode != null && !intent.body) {
-      if (request.adjustmentMode !== "ABSOLUTE_NET") throw new Error("INVALID_PAYLOAD");
-      const planId = text(payload.planId);
-      const detail = (await this.host.query(
-        { kind: "detail", query: { planId } },
-        signal,
-      )) as GeaSalesPlanDetail;
-      const workflowRows = await this.host.workflow(signal);
-      await this.host.permissions(signal);
-      if (
-        salesPlanVersionEvidenceStale(detail, {
-          planId,
-          versionId,
-          status: request.expectedStatus as number,
-        })
-      )
-        throw new GeaResponseError(409, {
-          message: "该计划版本或审批状态已变化，请刷新权威队列后重试",
-        });
-      const access = correctionAccess(
-        detail,
-        workflowRows,
-        request.approvalRole as GeaSalesPlanActionRequest["approvalRole"],
-        salesPlanStagesForRoles(auth.roles),
-      );
-      if (
-        detail.correctionContext?.contract !== "absolute-net-v1" ||
-        detail.correctionContext.monthlyApproved !== true ||
-        detail.correctionContext.approvalOpen !== true ||
-        !access ||
-        detail.actionContext?.nodeOrder !== access.nodeOrder ||
-        !detail.actionContext?.allowedActions.includes(
-          request.action as GeaSalesPlanActionRequest["action"],
-        ) ||
-        !access.allowedActions.includes(request.action as GeaSalesPlanActionRequest["action"]) ||
-        !detail.currentVersion.submitter ||
-        detail.currentVersion.submitter === auth.id
-      )
-        throw new GeaResponseError(403, {
-          message: "纠偏契约、月初终审或角色权限未获确认",
-        });
-      if (
-        detail.currentVersion.id !== versionId ||
-        access.status !== request.expectedStatus ||
-        access.snapshotHash !== request.expectedSnapshot
-      )
-        throw new GeaResponseError(409, {
-          message: "纠偏版本或快照已变化，请刷新",
-        });
-      request.approvalRole = access.approvalRole;
-      const typed = request as GeaSalesPlanActionRequest;
-      validateSalesPlanActionInput(
-        {
-          planId,
-          versionId,
-          planTypeCode: detail.currentVersion.planTypeCode,
-          request: typed,
-        },
-        workflowRows,
-      );
-      if (typed.action !== "REJECT") {
-        const edits = Object.fromEntries(
-          (typed.adjustments ?? []).map((x) => [x.skuCode, x.adjustQty]),
-        );
-        if (Object.keys(edits).some((code) => !detail.skus.some((sku) => sku.skuCode === code)))
-          throw new Error("INVALID_PAYLOAD");
-        const expected = correctionAdjustments(
-          detail,
-          edits,
-          workflowRows,
-          request.approvalRole as GeaSalesPlanActionRequest["approvalRole"],
-        );
-        if (!isDeepStrictEqual(expected, typed.adjustments))
-          throw new GeaResponseError(400, {
-            message: "纠偏必须提交完整的本节点绝对调整决定",
-          });
-      }
-      if (scope.signal.aborted) throw new Error("STALE_LOGIN");
-      signal.throwIfAborted();
     }
     signal.throwIfAborted();
     intent.body ??= JSON.stringify(upstreamActionBody(request));
