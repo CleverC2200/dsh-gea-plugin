@@ -24,10 +24,23 @@ function walk(root, prefix = "") {
       : [{ path: name, sha256: digest(fs.readFileSync(join(root, entry.name))) }];
   });
 }
-function outputs(owner) {
-  return ["lib", ...(owner.repo === "dsh-agent-manage" ? ["client"] : [])].flatMap((dir) =>
-    walk(join(owner.path, dir), dir),
-  );
+function outputPaths(owner, target) {
+  if (owner.repo === "dsh-gea-plugin")
+    return (target === "plugin" ? ["host", "client"] : [target]).map((name) => `lib/${name}.js`);
+  if (owner.repo === "dsh-agent-manage")
+    return target === "client" ? ["client"] : ["lib", "client"];
+  return ["lib"];
+}
+function outputs(owner, target) {
+  const groups = outputPaths(owner, target).map((file) => {
+    const path = join(owner.path, file);
+    if (!fs.existsSync(path)) return [];
+    if (fs.lstatSync(path).isSymbolicLink()) throw Error("DEVELOPMENT_OUTPUT_LINK_FORBIDDEN");
+    return fs.statSync(path).isDirectory()
+      ? walk(path, file)
+      : [{ path: file, sha256: digest(fs.readFileSync(path)) }];
+  });
+  return groups.some((files) => !files.length) ? null : groups.flat();
 }
 function sources(root) {
   const files = execFileSync(
@@ -84,6 +97,7 @@ async function buildInput(owner, target) {
         "DSH_BUILD_FACE",
         "DSH_BUSINESS_BUILD_MOCK",
         "DSH_CORE_CHECKOUT",
+        "APS_BUILD_MODE",
       ].map((key) => [key, process.env[key] ?? null]),
     ),
   };
@@ -99,6 +113,11 @@ async function build(owner, target) {
   };
   const script = scripts[owner.repo][target];
   if (!script) throw Error("DEVELOPMENT_BUILD_TARGET_REQUIRED");
+  for (const dir of new Set(outputPaths(owner, target).map((file) => file.split("/")[0]))) {
+    const path = join(owner.path, dir);
+    if (fs.existsSync(path) && fs.lstatSync(path).isSymbolicLink())
+      throw Error("DEVELOPMENT_OUTPUT_LINK_FORBIDDEN");
+  }
   const input = await buildInput(owner, target);
   const receipt = join(owner.path, ".runtime/development", `build-${target}.json`);
   if (fs.existsSync(receipt)) {
@@ -106,7 +125,7 @@ async function build(owner, target) {
     if (
       JSON.stringify(previous.input) === JSON.stringify(input) &&
       previous.outputs?.length &&
-      JSON.stringify(previous.outputs) === JSON.stringify(outputs(owner))
+      JSON.stringify(previous.outputs) === JSON.stringify(outputs(owner, target))
     ) {
       const head = execFileSync("git", ["rev-parse", "HEAD"], {
         cwd: owner.path,
@@ -134,8 +153,8 @@ async function build(owner, target) {
     run(file, args, owner.path);
     if (JSON.stringify(await buildInput(owner, target)) !== JSON.stringify(input))
       throw Error("DEVELOPMENT_INPUT_CHANGED");
-    const files = outputs(owner);
-    if (!files.length) throw Error("DEVELOPMENT_BUILD_OUTPUT_REQUIRED");
+    const files = outputs(owner, target);
+    if (!files?.length) throw Error("DEVELOPMENT_BUILD_OUTPUT_REQUIRED");
     fs.mkdirSync(join(owner.path, ".runtime/development"), { recursive: true });
     fs.writeFileSync(
       receipt,
@@ -155,7 +174,7 @@ async function build(owner, target) {
           owner: process.env.CODEX_THREAD_ID ?? owner.path,
           purpose: "development-build",
           retention: "regenerable-after-reader-and-input-review",
-          generated: ["lib", ...(owner.repo === "dsh-agent-manage" ? ["client"] : [])],
+          generated: outputPaths(owner, target),
         },
         null,
         2,

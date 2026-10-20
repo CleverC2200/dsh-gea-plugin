@@ -22,7 +22,7 @@ function fixture(t, { dotfile = false } = {}) {
     name: "dsh-agent-manage",
     version: "1.0.0",
     packageManager: "pnpm@1.0.0",
-    scripts: { build: "fixture" },
+    scripts: { build: "fixture", "build:client": "fixture" },
     dependencies: { fixture: "1.0.0" },
     files: ["lib", "client", ...(dotfile ? [".env"] : [])],
     exports: { ".": "./lib/host.js", "./client": "./client/index.js" },
@@ -63,7 +63,10 @@ function fixture(t, { dotfile = false } = {}) {
   const compile = () => {
     for (const file of ["lib/host.js", "client/index.js"]) {
       fs.mkdirSync(join(path, file, ".."), { recursive: true });
-      fs.writeFileSync(join(path, file), fs.readFileSync(join(path, "source.js")));
+      fs.writeFileSync(
+        join(path, file),
+        fs.readFileSync(join(path, "source.js")) + (process.env.APS_BUILD_MODE ?? ""),
+      );
     }
   };
   return { root, path, owner, install, compile, git };
@@ -128,6 +131,17 @@ test("build cache tracks source, dependency state and every output while ignorin
   fs.appendFileSync(join(path, "node_modules/.modules.yaml"), "changed");
   assert.equal((await developmentTask("build", {}, path)).status, "built");
   assert.equal(calls, 4);
+  const previousMode = process.env.APS_BUILD_MODE;
+  t.after(() => {
+    if (previousMode === undefined) delete process.env.APS_BUILD_MODE;
+    else process.env.APS_BUILD_MODE = previousMode;
+  });
+  process.env.APS_BUILD_MODE = previousMode === "mock" ? "production" : "mock";
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  assert.equal(calls, 5);
+  assert.ok(
+    fs.readFileSync(join(path, "client/index.js"), "utf8").endsWith(process.env.APS_BUILD_MODE),
+  );
   const report = await developmentTask("finish", {}, path);
   assert.equal(report.status, "report-only");
   assert.equal(report.receipts[0].purpose, "development-build");
@@ -208,4 +222,57 @@ test("registry package links without Git metadata bind their public artifact byt
   fs.writeFileSync(join(local, "index.js"), "second");
   assert.equal((await prepareDependencies(owner)).status, "prepared");
   assert.equal(calls, 2);
+});
+
+test("a client-only receipt cannot package an older Host alongside the rebuilt client", async (t) => {
+  const { path, root, install, compile, git } = fixture(t);
+  install();
+  compile();
+  const host = fs.readFileSync(join(path, "lib/host.js"));
+  fs.writeFileSync(join(path, "source.js"), "new-client-source");
+  git("add", "source.js");
+  git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "commit",
+    "-qm",
+    "client source",
+  );
+  const original = cp.execFileSync;
+  t.mock.method(cp, "execFileSync", (file, args, options) =>
+    args.join(" ") === "pnpm --version" ? "1.0.0\n" : original(file, args, options),
+  );
+  t.mock.method(cp, "spawnSync", () => {
+    fs.writeFileSync(join(path, "client/index.js"), "new-client-source");
+    return { status: 0 };
+  });
+  const build = await developmentTask("build", { target: "client" }, path);
+  const receipt = JSON.parse(fs.readFileSync(build.receipt));
+  assert.deepEqual(
+    receipt.outputs.map((file) => file.path),
+    ["client/index.js"],
+  );
+  assert.deepEqual(fs.readFileSync(join(path, "lib/host.js")), host);
+  const input = join(root, "input.json"),
+    destination = join(root, "out");
+  fs.writeFileSync(
+    input,
+    JSON.stringify({
+      repositories: [
+        {
+          repo: "dsh-agent-manage",
+          path,
+          head: git("rev-parse", "HEAD"),
+          buildReceipt: build.receipt,
+        },
+      ],
+    }),
+  );
+  await assert.rejects(
+    packRaw({ input, destination, repo: "dsh-agent-manage" }),
+    /RAW_PACKAGE_BUILD_INCOMPLETE/,
+  );
+  assert.equal(fs.existsSync(destination), false);
 });
