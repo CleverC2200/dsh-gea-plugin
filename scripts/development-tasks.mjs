@@ -11,6 +11,7 @@ import {
   json,
   run,
   installed,
+  verifyDevelopmentSDK,
 } from "./development-dependencies.mjs";
 import { readBuildAdmissions, withBuildAdmission } from "./build-admission.mjs";
 
@@ -63,20 +64,6 @@ function sources(root) {
       return [file, fs.existsSync(path) ? digest(fs.readFileSync(path)) : null];
     });
 }
-async function sdkInputs(owner) {
-  const config = ["tsconfig.official-paths.json", "tsconfig.official.json"].find((file) =>
-    fs.existsSync(join(owner.path, file)),
-  );
-  if (!config) return [];
-  const core = resolve(owner.path, "../../official-latest-standard");
-  const coreHead = execFileSync("git", ["-C", core, "rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).trim();
-  const { verifyOfficialSDK } = await import(
-    new URL("../../dsh-agent-manage/scripts/prepare-official-sdk.mjs", import.meta.url)
-  );
-  return verifyOfficialSDK({ core, consumer: owner.path, coreHead });
-}
 async function buildInput(owner, target) {
   const peers = [
     owner.path,
@@ -88,7 +75,7 @@ async function buildInput(owner, target) {
     target,
     dependencies: dependencyInput(owner),
     installed: installed(owner),
-    sdk: await sdkInputs(owner),
+    sdk: await verifyDevelopmentSDK(owner),
     sources: peers.map((path) => ({ path, files: sources(path) })),
     environment: Object.fromEntries(
       [

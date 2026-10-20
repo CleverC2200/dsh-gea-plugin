@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import cp from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { managedPackages } from "./development-repositories.mjs";
 import { withBuildAdmission } from "./build-admission.mjs";
 
@@ -139,7 +140,7 @@ export function installed(owner) {
     });
   return { metadata: digest(fs.readFileSync(metadata)), packages };
 }
-export async function prepareDependencies(owner) {
+export async function verifyDevelopmentSDK(owner) {
   if (
     fs.existsSync(join(owner.path, "tsconfig.official-paths.json")) ||
     fs.existsSync(join(owner.path, "tsconfig.official.json"))
@@ -149,10 +150,14 @@ export async function prepareDependencies(owner) {
       .execFileSync("git", ["-C", core, "rev-parse", "HEAD"], { encoding: "utf8" })
       .trim();
     const { verifyOfficialSDK } = await import(
-      new URL("../../dsh-agent-manage/scripts/prepare-official-sdk.mjs", import.meta.url)
+      pathToFileURL(resolve(owner.path, "../dsh-agent-manage/scripts/prepare-official-sdk.mjs"))
     );
-    verifyOfficialSDK({ core, consumer: owner.path, coreHead });
+    return verifyOfficialSDK({ core, consumer: owner.path, coreHead });
   }
+  return [];
+}
+export async function prepareDependencies(owner) {
+  await verifyDevelopmentSDK(owner);
   const input = dependencyInput(owner);
   const receipt = join(owner.path, ".runtime/development/dependencies.json");
   if (fs.existsSync(receipt)) {

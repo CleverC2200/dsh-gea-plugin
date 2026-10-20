@@ -276,3 +276,35 @@ test("a client-only receipt cannot package an older Host alongside the rebuilt c
   );
   assert.equal(fs.existsSync(destination), false);
 });
+
+test("a shared tool verifies SDK inputs through the current consumer's Manage checkout", async (t) => {
+  const { root, path, owner } = fixture(t);
+  const integration = join(root, "integration");
+  fs.mkdirSync(integration);
+  owner.path = join(integration, "dsh-agent-manage");
+  fs.renameSync(path, owner.path);
+  const core = join(root, "official-latest-standard");
+  fs.mkdirSync(core);
+  fs.writeFileSync(join(core, "package.json"), '{"name":"fixture-core"}');
+  cp.execFileSync("git", ["init", "-q", core]);
+  cp.execFileSync("git", ["-C", core, "add", "."]);
+  cp.execFileSync("git", [
+    "-C",
+    core,
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "commit",
+    "-qm",
+    "Core",
+  ]);
+  fs.writeFileSync(join(owner.path, "tsconfig.official-paths.json"), "{}");
+  fs.mkdirSync(join(owner.path, "scripts"));
+  fs.writeFileSync(
+    join(owner.path, "scripts/prepare-official-sdk.mjs"),
+    'export function verifyOfficialSDK() { throw Error("CURRENT_OWNER_SDK"); }',
+  );
+  await assert.rejects(prepareDependencies(owner), /CURRENT_OWNER_SDK/);
+  assert.equal(fs.existsSync(join(owner.path, "node_modules")), false);
+});

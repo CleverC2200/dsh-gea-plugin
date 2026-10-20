@@ -124,6 +124,7 @@ async function requestFixture(
       await writeFile(join(path, "scripts/supported-cores.json"), JSON.stringify(supported));
       for (const file of [
         "production-manifest.mjs",
+        "build-admission.mjs",
         "prepare-package.mjs",
         "package.mjs",
         "package-companion.mjs",
