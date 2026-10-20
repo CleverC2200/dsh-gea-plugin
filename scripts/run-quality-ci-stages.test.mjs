@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sourceRoot = resolve(import.meta.dirname, "..");
 const fixtureSourceFiles = [
+  "build-admission.mjs",
   "run-quality-ci.mjs",
   "quality-ci-stages.mjs",
   "quality-docs.mjs",

@@ -1,3 +1,5 @@
+import { holdBuildAdmission } from "./build-admission.mjs";
+import { managedPackages as names } from "./development-repositories.mjs";
 /** Assemble ordinary plugin artifacts from explicit, already built owner inputs. */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -27,11 +29,6 @@ import { validatePluginCombination } from "../src/shared/plugin-release.mjs";
 import { sdkVersion } from "./supported-cores.mjs";
 import { sourceChanges, verifyPackageBuild, builtArchive } from "./package-source-integrity.mjs";
 
-const names = {
-  "dsh-agent-workbench": "@cleverc2200/dsh-agent-workbench",
-  "dsh-agent-manage": "dsh-agent-manage",
-  "dsh-gea-plugin": "@cleverc2200/gea-dsh-prototype",
-};
 const auxiliary = ["@changfenhuang/dsh-genui", "dsh-better-sidebar"];
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 let diagnosticDirectory;
@@ -224,6 +221,11 @@ async function preflight(input, destination) {
 
 async function deliver(input, destination) {
   const { core: _core, owners } = await preflight(input, destination);
+  holdBuildAdmission({
+    operation: "prepare",
+    output: destination,
+    scopes: [...owners.map((owner) => owner.path), destination],
+  });
   await mkdir(destination, { recursive: true, mode: 0o700 });
   const work = join(destination, "evidence");
   await mkdir(work, { mode: 0o700 });
@@ -397,7 +399,7 @@ try {
 } catch (error) {
   // External logs and paths may contain tokens. Emit only our fixed diagnostic code.
   console.error(
-    /^DELIVERY_[A-Z_]+$/.test(error.message) ? error.message : "DELIVERY_INPUT_INVALID",
+    /^(?:DELIVERY|BUILD)_[A-Z_]+$/.test(error.message) ? error.message : "DELIVERY_INPUT_INVALID",
   );
   process.exitCode = 1;
 }

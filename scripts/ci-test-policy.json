@@ -59,6 +59,16 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:build-admission|development-(?:dependencies|repositories|tasks)|pack-raw)\\.mjs$",
+      "tests": [
+        "scripts/build-admission.test.mjs",
+        "scripts/development-tasks.test.mjs",
+        "scripts/build.test.mjs",
+        "scripts/deliver-packages.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/plugin-reception/(?:observe-worker|preset-discovery)\\.mjs$",
       "tests": ["scripts/plugin-reception.test.mjs", "scripts/deliver-packages.test.mjs"]
     },

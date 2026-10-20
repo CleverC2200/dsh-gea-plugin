@@ -1,3 +1,4 @@
+import { holdBuildAdmission } from "./build-admission.mjs";
 /** Create a local release tarball from an explicit allowlist, excluding credentials and machine state. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -13,7 +14,6 @@ const root = resolve(values.input);
 const destination = resolve(
   values.destination ?? resolve(import.meta.dirname, "../.runtime/packages"),
 );
-await mkdir(destination, { recursive: true, mode: 0o700 });
 const manifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
 const lock = JSON.parse(await readFile(resolve(root, "npm-shrinkwrap.json"), "utf8"));
 if (
@@ -58,6 +58,7 @@ async function include(path) {
   } else if (stat.isFile()) allowed.add(path);
 }
 for (const file of manifest.files) await include(file);
+holdBuildAdmission({ operation: "package", output: destination });
 const [preview] = JSON.parse(
   execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
     cwd: root,
@@ -72,6 +73,7 @@ for (const file of preview.files) {
 }
 for (const file of allowed)
   if (!preview.files.some((x) => x.path === file)) throw Error("MISSING_PACKAGE_FILE: " + file);
+await mkdir(destination, { recursive: true, mode: 0o700 });
 const [packed] = JSON.parse(
   execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", destination], {
     cwd: root,
