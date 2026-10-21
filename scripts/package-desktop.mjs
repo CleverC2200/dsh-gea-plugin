@@ -1,3 +1,4 @@
+import { holdBuildAdmission } from "./build-admission.mjs";
 /**
  * Package the Electron shell from an isolated project directory.
  *
@@ -9,11 +10,11 @@ import { cp, mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import {buildDesktopTools} from './build-desktop-tools.mjs';
-import {prepareDesktopTrust} from './prepare-desktop-trust.mjs';
-import {prepareCoreLayout} from '../desktop/prepare-core-layout.mjs';
-import {readCoreLayout} from '../desktop/core-layer.mjs';
-import {describeInstaller} from '../desktop/installer-artifact.mjs';
+import { buildDesktopTools } from "./build-desktop-tools.mjs";
+import { prepareDesktopTrust } from "./prepare-desktop-trust.mjs";
+import { prepareCoreLayout } from "../desktop/prepare-core-layout.mjs";
+import { readCoreLayout } from "../desktop/core-layer.mjs";
+import { describeInstaller } from "../desktop/installer-artifact.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(root, "desktop");
@@ -64,8 +65,10 @@ function parseArgs(argv) {
     if (value === "--target") values.target = argv[++i];
     else if (value === "--dir") values.dir = true;
     else if (value === "--keep-staging") values.keepStaging = true;
-    else if (value === "--help" || value === "-h") { console.log(usage()); return null; }
-    else throw new Error(`UNKNOWN_OPTION: ${value}\n${usage()}`);
+    else if (value === "--help" || value === "-h") {
+      console.log(usage());
+      return null;
+    } else throw new Error(`UNKNOWN_OPTION: ${value}\n${usage()}`);
   }
   if (!values.target || !["mac", "win"].includes(values.target))
     throw new Error(`Set --target to mac or win\n${usage()}`);
@@ -73,13 +76,22 @@ function parseArgs(argv) {
 }
 
 async function assertDirectory(path, label) {
-  try { if (!(await stat(path)).isDirectory()) throw Error(); }
-  catch { throw new Error(`${label} must be an existing directory: ${path}`); }
+  try {
+    if (!(await stat(path)).isDirectory()) throw Error();
+  } catch {
+    throw new Error(`${label} must be an existing directory: ${path}`);
+  }
 }
 
 /** The packaged manifest must keep the data-schema contract the shell validates against. */
 export function stagedManifest(manifest) {
-  return { name: manifest.name, version: manifest.version, private: true, main: manifest.main, desktopDataSchema: manifest.desktopDataSchema };
+  return {
+    name: manifest.name,
+    version: manifest.version,
+    private: true,
+    main: manifest.main,
+    desktopDataSchema: manifest.desktopDataSchema,
+  };
 }
 
 async function prepareStaging(target) {
@@ -94,13 +106,20 @@ async function prepareStaging(target) {
   const staged = stagedManifest(manifest);
   const { writeFile } = await import("node:fs/promises");
   await writeFile(join(staging, "package.json"), JSON.stringify(staged, null, 2) + "\n");
-  await prepareDesktopTrust(staging,{target});
+  await prepareDesktopTrust(staging, { target });
   return staging;
 }
 
 function runBuilder({ target, staging, dir }) {
   const bin = process.env.GEA_ELECTRON_BUILDER || "electron-builder";
-  const args = ["--projectDir", staging, "--config", join(desktop, "electron-builder.cjs"), "--publish", "never"];
+  const args = [
+    "--projectDir",
+    staging,
+    "--config",
+    join(desktop, "electron-builder.cjs"),
+    "--publish",
+    "never",
+  ];
   if (dir) args.push("--dir");
   else args.push(target === "mac" ? "--mac" : "--win");
   return new Promise((resolvePromise, reject) => {
@@ -110,12 +129,14 @@ function runBuilder({ target, staging, dir }) {
       env: { ...process.env, GEA_DESKTOP_TARGET: target },
     });
     child.once("error", reject);
-    child.once("exit", code => code === 0 ? resolvePromise() : reject(new Error(`ELECTRON_BUILDER_FAILED:${code}`)));
+    child.once("exit", (code) =>
+      code === 0 ? resolvePromise() : reject(new Error(`ELECTRON_BUILDER_FAILED:${code}`)),
+    );
   });
 }
 
 export async function validateDesktopPackage({ target, payloadRoot }) {
-  if (!['mac', 'win'].includes(target)) throw new Error('INVALID_DESKTOP_TARGET');
+  if (!["mac", "win"].includes(target)) throw new Error("INVALID_DESKTOP_TARGET");
   await assertDirectory(payloadRoot, "GEA_DESKTOP_PAYLOAD_ROOT");
   await assertDirectory(join(payloadRoot, target, "payload"), `payload for ${target}`);
   return true;
@@ -126,24 +147,40 @@ export async function main(argv = process.argv.slice(2)) {
   if (!values) return;
   let payloadRoot = resolve(process.env.GEA_DESKTOP_PAYLOAD_ROOT || join(buildRoot, "payload"));
   await validateDesktopPackage({ target: values.target, payloadRoot });
+  holdBuildAdmission({ operation: "desktop", output: buildRoot });
   await buildDesktopTools();
   // Windows is the validated installation target for this change. macOS can
   // exercise the same layout explicitly before its separate signing acceptance.
-  if((values.target==='win'||process.env.GEA_ENABLE_LAYERED_MAC==='1')&&!await readCoreLayout(join(payloadRoot,values.target,'payload'))){
-    await mkdir(buildRoot,{recursive:true});const next=await mkdtemp(join(buildRoot,'layered-'));
-    await mkdir(join(next,values.target));
-    await prepareCoreLayout(join(payloadRoot,values.target,'payload'),join(next,values.target,'payload'));
-    payloadRoot=next;
+  if (
+    (values.target === "win" || process.env.GEA_ENABLE_LAYERED_MAC === "1") &&
+    !(await readCoreLayout(join(payloadRoot, values.target, "payload")))
+  ) {
+    await mkdir(buildRoot, { recursive: true });
+    const next = await mkdtemp(join(buildRoot, "layered-"));
+    await mkdir(join(next, values.target));
+    await prepareCoreLayout(
+      join(payloadRoot, values.target, "payload"),
+      join(next, values.target, "payload"),
+    );
+    payloadRoot = next;
   }
   const staging = await prepareStaging(values.target);
   process.env.GEA_DESKTOP_PAYLOAD_ROOT = payloadRoot;
   try {
     await runBuilder({ target: values.target, staging, dir: values.dir });
-    if(!values.dir){
-      const manifest=JSON.parse(await readFile(join(staging,'package.json'),'utf8'));
-      const file=join(buildRoot,'final',values.target,`GEA-Desktop-${manifest.version}-${values.target==='win'?'win-x64.exe':'mac-arm64.dmg'}`);
-      const {writeFile}=await import('node:fs/promises');
-      await writeFile(file+'.artifact.json',JSON.stringify(await describeInstaller(file),null,2)+'\n');
+    if (!values.dir) {
+      const manifest = JSON.parse(await readFile(join(staging, "package.json"), "utf8"));
+      const file = join(
+        buildRoot,
+        "final",
+        values.target,
+        `GEA-Desktop-${manifest.version}-${values.target === "win" ? "win-x64.exe" : "mac-arm64.dmg"}`,
+      );
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(
+        file + ".artifact.json",
+        JSON.stringify(await describeInstaller(file), null, 2) + "\n",
+      );
     }
   } finally {
     if (!values.keepStaging) await rm(staging, { recursive: true, force: true });
@@ -151,5 +188,8 @@ export async function main(argv = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch(error => { console.error(error.message); process.exitCode = 1; });
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
 }

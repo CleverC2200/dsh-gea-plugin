@@ -1,3 +1,4 @@
+import { holdBuildAdmission } from "./build-admission.mjs";
 /** Prepare an ordinary plugin artifact without installing SDK peers or touching source dependencies. */
 import { parseArgs } from "node:util";
 import { resolve, join, dirname } from "node:path";
@@ -17,6 +18,7 @@ if (!values.versions || !values.destination || !values.pnpm)
 const source = resolve(import.meta.dirname, ".."),
   target = resolve(values.destination);
 if (target === source) throw Error("SOURCE_PACKAGE_INSTALL_FORBIDDEN");
+holdBuildAdmission({ operation: "prepare", output: target });
 await mkdir(target, { recursive: false });
 const manifest = productionManifest(
   JSON.parse(await readFile(join(source, "package.json"), "utf8")),
