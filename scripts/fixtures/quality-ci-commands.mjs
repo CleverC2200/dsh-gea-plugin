@@ -1,4 +1,6 @@
 /** Controlled OS commands for the public quality CLI fixture; never imported by the runner. */
+import fs from "node:fs";
+import os from "node:os";
 import commands from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { mkdirSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
@@ -6,6 +8,8 @@ import { resolve } from "node:path";
 
 const job = process.env.QUALITY_STAGE_FIXTURE_ROOT;
 if (!job) throw Error("QUALITY_STAGE_FIXTURE_ROOT_REQUIRED");
+fs.statfsSync = () => ({ bavail: 100 * 1024 ** 3, bsize: 1 });
+os.tmpdir = () => job;
 if (process.env.FIXTURE_PLATFORM)
   Object.defineProperty(process, "platform", { value: process.env.FIXTURE_PLATFORM });
 const originalSpawn = commands.spawnSync;

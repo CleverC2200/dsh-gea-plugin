@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import {
   qualityStageRun,
   qualityBuildOutputs,
@@ -57,19 +58,30 @@ function admittedCore(head) {
   return core;
 }
 function run(command, args, cwd = process.cwd(), environment = {}) {
-  finalGroup?.verifyUnchanged();
-  const windows = process.platform === "win32" && ["npm", "corepack"].includes(command);
-  const result = spawnSync(windows ? command + ".cmd" : command, args, {
-    cwd,
-    stdio: "inherit",
-    shell: windows,
-    env: { ...process.env, ...environment },
-  });
-  if (result.error || result.signal || result.status !== 0)
-    refuse(
-      "QUALITY_COMMAND_FAILED",
-      command + ": " + (result.error?.message ?? result.signal ?? result.status),
-    );
+  const release =
+    ["npm", "corepack"].includes(command) && (args.includes("ci") || args.includes("install"))
+      ? createRequire(import.meta.url)("./build-admission.mjs").acquireBuild({
+          operation: "prepare",
+          cwd,
+        })
+      : () => {};
+  try {
+    finalGroup?.verifyUnchanged();
+    const windows = process.platform === "win32" && ["npm", "corepack"].includes(command);
+    const result = spawnSync(windows ? command + ".cmd" : command, args, {
+      cwd,
+      stdio: "inherit",
+      shell: windows,
+      env: { ...process.env, ...environment },
+    });
+    if (result.error || result.signal || result.status !== 0)
+      refuse(
+        "QUALITY_COMMAND_FAILED",
+        command + ": " + (result.error?.message ?? result.signal ?? result.status),
+      );
+  } finally {
+    release();
+  }
 }
 function writeSourceWindow(candidate, core, windowInputs) {
   const history = resolve("scripts/fixtures/delivery-history/navigation-r7-setup-failure.json.raw");

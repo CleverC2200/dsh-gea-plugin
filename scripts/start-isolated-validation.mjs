@@ -242,6 +242,16 @@ async function launch() {
   if (!physicalBase.startsWith((await realpath(root)) + "/"))
     throw Error("RUNTIME_OUTSIDE_CHECKOUT");
   const runtime = await mkdtemp(join(physicalBase, "run-"));
+  await save(join(runtime, "lifecycle.json"), {
+    schemaVersion: 1,
+    owner: window.owner,
+    pid: process.pid,
+    purpose: "isolated-validation",
+    source: window,
+    createdAt: new Date().toISOString(),
+    retention: "protected-user-data-and-evidence",
+    protected: ["home", "workspace", "server.log", "provenance.json", "exit.json"],
+  });
   for (const dir of ["home", "tmp", "workspace"]) await mkdir(join(runtime, dir), { mode: 0o700 });
   const sandbox = `(version 1)
 (allow default)
