@@ -23,7 +23,14 @@ for (const { id, source, expected, persona } of [
   {
     id: "inventory-customer",
     source: "prototypes/inventory-customer",
-    expected: ["inventory-customer"],
+    expected: [
+      "inventory-customer",
+      "customer-inventory-age-risk",
+      "customer-inventory-change",
+      "customer-inventory-diagnosis",
+      "customer-overstock-control",
+      "customer-stockout-replenishment",
+    ],
     persona: /客户库存Agent/,
   },
 ])
