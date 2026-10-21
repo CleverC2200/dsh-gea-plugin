@@ -229,7 +229,7 @@ test(
       );
       await page.getByRole("button", { name: "历史对话", exact: true }).last().click();
       assert.equal(
-        await page.locator(".gea-drawer-workspace .gea-sidebar-tab").getAttribute("aria-expanded"),
+        await page.locator(".gea-workspace-heading").getAttribute("aria-expanded"),
         "true",
       );
       assert.equal(
@@ -653,14 +653,13 @@ test(
         .getByRole("button", { name: "新会话", exact: true })
         .filter({ hasText: "AI工作台" })
         .click();
-      const homeBrand = page.locator("[data-company-hero-brand]");
+      const homeBrand = page.locator(".gea-conversation-welcome");
       await expect(homeBrand).toBeVisible();
-      await expect(page.getByText("探索未至之境", { exact: true })).toBeVisible();
+      await expect(
+        homeBrand.getByRole("heading", { name: "AI不止于对话，更融入工作", exact: true }),
+      ).toBeVisible();
       const heroCentered = await homeBrand.evaluate((el) => {
-        const headline = [...document.querySelectorAll("span")].find(
-          (node) => node.textContent === "探索未至之境",
-        );
-        const row = headline.parentElement.parentElement.getBoundingClientRect();
+        const row = el.getBoundingClientRect();
         // Core centers its hero on the composer column, which reserves the scrollbar gutter.
         const content = el
           .closest("[data-conversation-content]")

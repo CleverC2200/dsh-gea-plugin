@@ -200,7 +200,7 @@ test(
     assert.equal((await sample()).dark, true);
     // GEA may land on its default page; reopen the persisted conversation through history.
     if (!(await page.getByText("主题验收回复", { exact: true }).isVisible())) {
-      const history = page.getByRole("button", { name: "历史会话", exact: true });
+      const history = page.getByRole("button", { name: "工作台", exact: true });
       if ((await history.getAttribute("aria-expanded")) !== "true") await history.click();
       await page
         .getByRole("complementary", { name: "业务导航", exact: true })
