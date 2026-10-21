@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       windows_complete_input:
-        description: "Fixed desktop version, Core8cf, merged GEA SHA and three immutable published package identities as JSON"
+        description: "Frozen desktop version, Core6f88, GEA source and three immutable package identities as JSON"
         required: false
         type: string
       mac_complete_input:
@@ -117,7 +117,7 @@ jobs:
       DSH_DESKTOP_TARGET_ARCH: x64
       DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
       DSH_DESKTOP_UNSIGNED: "1"
-      DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+      DSH_DESKTOP_BUILD_COMMIT: 6f88c3ea2d266ba1825d88bab10d92479a6ffde8
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_7Z_FILTER: BCJ
@@ -130,7 +130,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: CleverC2200/deepseek-harness
-          ref: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+          ref: 6f88c3ea2d266ba1825d88bab10d92479a6ffde8
           path: core
           persist-credentials: false
       - uses: actions/setup-node@v4

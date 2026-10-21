@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { companyPackageNames, comparePluginVersions } from "../../src/shared/plugin-release.mjs";
 
-export const desktopCoreHead = "8cfb899ccf21d3662421b99b5f4627842ef712ea";
+export const desktopCoreHead = "6f88c3ea2d266ba1825d88bab10d92479a6ffde8";
 export const coreArtifactPaths = [
   "package.json",
   "lib/main.js",
@@ -54,7 +54,7 @@ export async function readDesktopInput(file, sourceSha) {
   }
   const core = input.seed.core;
   if (
-    core?.head !== desktopCoreHead ||
+    ![desktopCoreHead, "8cfb899ccf21d3662421b99b5f4627842ef712ea"].includes(core?.head) ||
     core.version !== "0.2.0-rc.2" ||
     !Array.isArray(core.artifacts) ||
     core.artifacts.length !== coreArtifactPaths.length ||
