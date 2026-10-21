@@ -71,6 +71,7 @@ jobs:
         run: |
           corepack enable
           corepack pnpm install --frozen-lockfile --prefer-offline
+          corepack pnpm run build:lib:host
       - name: Build full macOS package and verify isolated first installation
         run: node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"
       - name: Keep installer and original build evidence
