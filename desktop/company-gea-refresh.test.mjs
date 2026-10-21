@@ -35,7 +35,7 @@ test("disabled, linked, missing and differently named plugins are preserved", ()
 import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { refreshBundledGea } from "./company-gea-refresh.mjs";
+import { refreshBundledGea, assertProfileIdle } from "./company-gea-refresh.mjs";
 
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "gea-refresh-"));
@@ -91,7 +91,7 @@ test("the refresh installs only GEA, keeps user configuration and saves the orig
   );
 });
 
-test("an unfinished plugin update blocks refresh before any backup or install write", async (t) => {
+test("a pending restart defers bundled refresh without weakening the strict installation guard", async (t) => {
   const f = await fixture(t);
   const id = "00000000-0000-4000-8000-000000000000";
   await mkdir(join(f.profile, "gea/plugin-updates/operations", id), { recursive: true });
@@ -100,18 +100,122 @@ test("an unfinished plugin update blocks refresh before any backup or install wr
     join(f.profile, "gea/plugin-updates/operations", id, "receipt.json"),
     JSON.stringify({ id, stage: "pending-restart" }),
   );
-  await assert.rejects(
-    refreshBundledGea({
-      ...f,
-      install: async (options) => {
-        await options.beforeInstall();
-        assert.fail("pending updates must not install");
-      },
-    }),
-    /GEA_REFRESH_UPDATE_PENDING/,
+  const receipt = await readFile(
+    join(f.profile, "gea/plugin-updates/operations", id, "receipt.json"),
+  );
+  await assert.rejects(assertProfileIdle(f.profile), /GEA_REFRESH_UPDATE_PENDING/);
+  const result = await refreshBundledGea({
+    ...f,
+    install: () => assert.fail("pending updates must not enter installation"),
+  });
+  assert.equal(result.status, "pending-restart-preserved");
+  assert.equal(result.changed, false);
+  assert.deepEqual(
+    await readFile(join(f.profile, "gea/plugin-updates/operations", id, "receipt.json")),
+    receipt,
   );
   await assert.rejects(access(join(f.profile, "gea/bootstrap/gea-refresh")), { code: "ENOENT" });
   assert.equal(await readFile(join(f.profile, "package.json"), "utf8"), JSON.stringify(current));
+});
+
+test("unfinished writers and unknown update stages still prevent startup refresh", async (t) => {
+  const f = await fixture(t);
+  const id = "00000000-0000-4000-8000-000000000000";
+  const operation = join(f.profile, "gea/plugin-updates/operations", id);
+  await mkdir(operation, { recursive: true });
+  await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+  for (const stage of ["accepted", "installing", "verifying", "restoring", "unknown"]) {
+    await writeFile(join(operation, "receipt.json"), JSON.stringify({ id, stage }));
+    await assert.rejects(
+      refreshBundledGea({ ...f, install: () => assert.fail("must not install") }),
+      /GEA_REFRESH_UPDATE_PENDING/,
+    );
+  }
+  await writeFile(
+    join(operation, "receipt.json"),
+    JSON.stringify({ id, stage: "pending-restart" }),
+  );
+  await mkdir(join(f.profile, ".plugin-manager"));
+  await writeFile(join(f.profile, ".plugin-manager/run.json"), "{}");
+  await assert.rejects(
+    refreshBundledGea({ ...f, install: () => assert.fail("must not install") }),
+    /GEA_REFRESH_PROFILE_BUSY/,
+  );
+});
+
+test("bundled GEA refresh upgrades older owned companions together and preserves user configuration", async (t) => {
+  const f = await fixture(t);
+  f.seed = join(f.home, "company-seed");
+  await mkdir(join(f.seed, "archives"), { recursive: true });
+  const targets = [
+    ["@cleverc2200/dsh-agent-workbench", "0.1.21", "0.1.22"],
+    ["dsh-agent-manage", "0.6.3-company.24", "0.6.3-company.25"],
+  ];
+  const before = structuredClone(current);
+  const packages = [{ ...bundled, file: "gea.tgz" }];
+  for (const [name, previous, version] of targets) {
+    before.dependencies[name] = "file:/previous/" + name.replaceAll("/", "-") + ".tgz";
+    await mkdir(join(f.profile, "node_modules", name), { recursive: true });
+    await writeFile(
+      join(f.profile, "node_modules", name, "package.json"),
+      JSON.stringify({ name, version: previous }),
+    );
+    const file = name.replace(/^@/, "").replace("/", "-") + "-" + version + ".tgz";
+    const bytes = Buffer.from(name + "@" + version);
+    await writeFile(join(f.seed, "archives", file), bytes);
+    packages.push({
+      name,
+      version,
+      file,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  }
+  await writeFile(join(f.profile, "package.json"), JSON.stringify(before));
+  f.manifest = { packages };
+  for (const [name] of targets) {
+    const custom = structuredClone(before);
+    custom.dependencies[name] = "link:/user-development";
+    await writeFile(join(f.profile, "package.json"), JSON.stringify(custom));
+    assert.equal(
+      (
+        await refreshBundledGea({
+          ...f,
+          install: () => assert.fail("custom companions must be preserved"),
+        })
+      ).status,
+      "custom-companion-preserved",
+    );
+    assert.deepEqual(JSON.parse(await readFile(join(f.profile, "package.json"))), custom);
+  }
+  await writeFile(join(f.profile, "package.json"), JSON.stringify(before));
+  const result = await refreshBundledGea({
+    ...f,
+    install: async (options) => {
+      assert.deepEqual(
+        options.packages,
+        packages.map((row) => join(f.seed, "archives", row.file)),
+      );
+      await options.beforeInstall();
+      const after = structuredClone(before);
+      for (const row of packages) {
+        after.dependencies[row.name] = "file:" + join(f.seed, "archives", row.file);
+        await writeFile(
+          join(f.profile, "node_modules", row.name, "package.json"),
+          JSON.stringify({ name: row.name, version: row.version }),
+        );
+      }
+      await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
+      await options.complete({ writeFileAtomic: writeFile });
+    },
+  });
+  assert.equal(result.status, "completed");
+  assert.equal(
+    await readFile(join(f.profile, "cordis.patch.yml"), "utf8"),
+    "# user configuration\n- id: custom\n",
+  );
+  const after = JSON.parse(await readFile(join(f.profile, "package.json")));
+  assert.equal(after.dependencies["my-plugin"], before.dependencies["my-plugin"]);
+  assert.deepEqual(after.dsh, before.dsh);
 });
 
 test("failed refreshes retain their backup and require recovery instead of retrying at next startup", async (t) => {
@@ -287,10 +391,15 @@ test("only the logged pre-write missing GenUI archive failure may resume and the
       ...f,
       install: async (options) => {
         await options.beforeInstall();
-        await writeFile(
-          join(f.profile, "node_modules", name, "package.json"),
-          JSON.stringify({ name, version: "0.0.177" }),
-        );
+        const after = structuredClone(profile);
+        for (const row of f.manifest.packages) {
+          after.dependencies[row.name] = "file:" + join(f.seed, "archives", row.file);
+          await writeFile(
+            join(f.profile, "node_modules", row.name, "package.json"),
+            JSON.stringify({ name: row.name, version: row.version }),
+          );
+        }
+        await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
         await options.complete({ writeFileAtomic: writeFile });
       },
     });

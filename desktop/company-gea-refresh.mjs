@@ -1,8 +1,11 @@
 import { mkdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { releaseIndex } from "./company-archives.mjs";
+import { createHash } from "node:crypto";
 
 const gea = "@cleverc2200/gea-dsh-prototype";
+const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const files = ["package.json", "cordis.patch.yml", "pnpm-lock.yaml", "pnpm-workspace.yaml"];
 const optional = async (path) => {
   try {
@@ -52,7 +55,7 @@ export function planBundledGeaRefresh(current, installed, bundled) {
   };
 }
 
-export async function assertProfileIdle(profile) {
+export async function assertProfileIdle(profile, { allowPendingRestart = false } = {}) {
   if (await optional(join(profile, ".plugin-manager/run.json")))
     throw Error("GEA_REFRESH_PROFILE_BUSY");
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
@@ -63,7 +66,9 @@ export async function assertProfileIdle(profile) {
   const receipt = JSON.parse(
     await readFile(join(profile, "gea/plugin-updates/operations", pointer.id, "receipt.json")),
   );
-  if (receipt.id !== pointer.id || !["completed", "restored", "failed"].includes(receipt.stage))
+  if (receipt.id !== pointer.id) throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+  if (allowPendingRestart && receipt.stage === "pending-restart") return receipt;
+  if (!["completed", "restored", "failed"].includes(receipt.stage))
     throw Error("GEA_REFRESH_UPDATE_PENDING");
 }
 
@@ -161,6 +166,32 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
   const entry = await lstat(join(profile, "node_modules", gea));
   if (!entry.isDirectory() || entry.isSymbolicLink())
     return { status: "linked-gea-preserved", changed: false };
+  if (await assertProfileIdle(profile, { allowPendingRestart: true }))
+    return { ...plan, status: "pending-restart-preserved", changed: false };
+  const companions = [];
+  for (const row of manifest.packages) {
+    if (!["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage"].includes(row.name)) continue;
+    const spec = current.dependencies[row.name];
+    if (spec === undefined) continue;
+    const path = join(profile, "node_modules", row.name);
+    const installed = JSON.parse(await readFile(join(path, "package.json")));
+    const entry = await lstat(path);
+    if (
+      installed.name !== row.name ||
+      !entry.isDirectory() ||
+      entry.isSymbolicLink() ||
+      typeof spec !== "string" ||
+      !(spec === installed.version || /^file:.+\.tgz$/.test(spec))
+    )
+      return { ...plan, status: "custom-companion-preserved", changed: false };
+    try {
+      if (releaseIndex(row.name, installed.version) >= releaseIndex(row.name, row.version))
+        continue;
+    } catch {
+      return { ...plan, status: "custom-companion-preserved", changed: false };
+    }
+    companions.push(row);
+  }
   let started = false;
   let before;
   try {
@@ -170,7 +201,7 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
       seed,
       home,
       profile,
-      packages: [join(seed, "archives", bundled.file)],
+      packages: [bundled, ...companions].map((row) => join(seed, "archives", row.file)),
       store: join(home, "desktop-company-cache/gea-refresh/store"),
       offline: false,
       strictPeers: true,
@@ -240,6 +271,22 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
             throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
           expected.dependencies[replacement.name] =
             "file:" + replacement.path.replaceAll("\\", "/");
+        }
+        for (const row of companions) {
+          const installed = JSON.parse(
+            await readFile(join(profile, "node_modules", row.name, "package.json")),
+          );
+          const spec = after.dependencies[row.name];
+          if (
+            installed.name !== row.name ||
+            installed.version !== row.version ||
+            typeof spec !== "string" ||
+            !spec.startsWith("file:") ||
+            !isAbsolute(spec.slice(5)) ||
+            digest(await readFile(spec.slice(5))) !== row.sha256
+          )
+            throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
+          expected.dependencies[row.name] = spec;
         }
         const withoutGea = (value) => {
           const copy = structuredClone(value);

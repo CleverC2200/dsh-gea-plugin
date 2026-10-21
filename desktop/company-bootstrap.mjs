@@ -654,20 +654,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
   await refreshCompanyCore({ root, seed, home });
   const manifest = await readCompanySeed(seed);
-  console.log(
-    "GEA_BUNDLED_REFRESH",
-    JSON.stringify(
-      await refreshBundledGea({
-        root,
-        support,
-        seed,
-        home,
-        manifest,
-        install: installCompanyPackages,
-      }),
-    ),
-  );
-  if (legacyData)
+  const refresh = await refreshBundledGea({
+    root,
+    support,
+    seed,
+    home,
+    manifest,
+    install: installCompanyPackages,
+  });
+  console.log("GEA_BUNDLED_REFRESH", JSON.stringify(refresh));
+  if (
+    legacyData &&
+    !["pending-restart-preserved", "custom-companion-preserved"].includes(refresh.status)
+  )
     console.log(
       "GEA_LEGACY_CLEANUP",
       JSON.stringify(
