@@ -16,7 +16,84 @@ import {
   bootstrapCompanyProfile,
   readCompanySeed,
   planCompanyCoreRefresh,
+  relocateCompanyLock,
+  writeCompanySeedLock,
 } from "./company-bootstrap.mjs";
+import { createHash } from "node:crypto";
+
+test("a relocated seed lock preserves dependency versions and rewrites peer graph paths", () => {
+  const old = "file:C:\\Build (company)\\archives\\company.tgz";
+  const next = "file:../../desktop-company-cache/archives/company.tgz";
+  const key = "company@" + old;
+  const lock = {
+    importers: { ".": { dependencies: { company: { specifier: old, version: old } } } },
+    packages: { [key]: { resolution: { tarball: old } }, "fast-uri@3.1.8": {} },
+    snapshots: { [key + "(peer@" + old + ")"]: { dependencies: { "fast-uri": "3.1.8" } } },
+  };
+  const before = structuredClone(lock);
+  const relocated = relocateCompanyLock(lock, [[old, next]]);
+  assert.deepEqual(lock, before);
+  assert.equal(relocated.packages["company@" + next].resolution.tarball, next);
+  assert.deepEqual(relocated.packages["fast-uri@3.1.8"], {});
+  assert.deepEqual(relocated.snapshots["company@" + next + "(peer@" + next + ")"], {
+    dependencies: { "fast-uri": "3.1.8" },
+  });
+});
+
+test("the bundled dependency lock is portable, integrity checked and retains the resolved closure", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-seed-lock-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const seed = join(directory, "seed");
+  const profile = join(directory, "profiles/desktop");
+  const root = join(directory, "core");
+  const yaml = join(root, "dsh/node_modules/yaml");
+  for (const path of [join(seed, "archives"), profile, yaml])
+    await mkdir(path, { recursive: true });
+  await writeFile(join(yaml, "package.json"), '{"main":"index.cjs"}');
+  await writeFile(
+    join(yaml, "index.cjs"),
+    "exports.parse = JSON.parse; exports.stringify = JSON.stringify;",
+  );
+  const packages = [];
+  const dependencies = {};
+  const resolutions = { "fast-uri@3.1.8": { resolution: { integrity: "keep" } } };
+  for (const [index, name] of [
+    "@cleverc2200/dsh-agent-workbench",
+    "dsh-agent-manage",
+    "@cleverc2200/gea-dsh-prototype",
+  ].entries()) {
+    const file = "company-" + index + ".tgz";
+    const bytes = Buffer.from(name);
+    await writeFile(join(seed, "archives", file), bytes);
+    packages.push({
+      name,
+      version: "1.0.0",
+      file,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+    const specifier = "file:C:/Build (company)/archives/" + file;
+    const version = "file:../../../seed/archives/" + file;
+    dependencies[name] = { specifier, version };
+    resolutions[name + "@" + version] = { resolution: { tarball: version } };
+  }
+  await writeFile(join(seed, "manifest.json"), JSON.stringify({ schema: 1, packages }));
+  await writeFile(
+    join(profile, "pnpm-lock.yaml"),
+    JSON.stringify({ importers: { ".": { dependencies } }, packages: resolutions }),
+  );
+  await writeCompanySeedLock({ root, seed, profile });
+  const manifest = await readCompanySeed(seed);
+  const lock = JSON.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
+  assert.match(manifest.dependencyLockSha256, /^[a-f0-9]{64}$/);
+  assert.equal(
+    lock.importers["."].dependencies[packages[0].name].version,
+    "file:company-seed/archives/company-0.tgz",
+  );
+  assert.deepEqual(lock.packages["fast-uri@3.1.8"], resolutions["fast-uri@3.1.8"]);
+  assert.equal(JSON.stringify(lock).includes("Build (company)"), false);
+  await writeFile(join(seed, "dependency-lock.yaml"), "tampered");
+  await assert.rejects(readCompanySeed(seed), /GEA_SEED_DEPENDENCY_LOCK_CHANGED/);
+});
 
 const currentCore = {
   kind: "desktop",
@@ -123,6 +200,7 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
         "dsh-agent-manage": "keep",
         "@cleverc2200/gea-dsh-prototype": "keep",
         "@changfenhuang/dsh-genui": "keep",
+        "user-created-example": "file:./user-created-example.tgz",
       },
       dsh: { profile: { bundles: ["user-choice"] } },
     }),
@@ -130,6 +208,8 @@ test("an existing company profile retains configuration, disabled bundles, WeKno
       "- id: gea-proof\n  config:\n    knowledge:\n      baseUrl: https://weknora.example.test\n",
     "gea/plugin-updates/latest.json": '{"id":"old","stage":"completed"}',
     "gea/plugin-updates/operations/old/receipt.json": '{"version":"0.0.154","stage":"completed"}',
+    "pnpm-lock.yaml": "user-owned dependency lock\n",
+    "user-created-example.tgz": "user-owned plugin archive",
   };
   for (const [name, text] of Object.entries(files)) await writeFile(join(profile, name), text);
   const result = await bootstrapCompanyProfile({

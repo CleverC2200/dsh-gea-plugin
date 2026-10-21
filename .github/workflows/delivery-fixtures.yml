@@ -10,6 +10,10 @@ on:
         description: "Fixed desktop version, Core8cf, merged GEA SHA and three immutable published package identities as JSON"
         required: false
         type: string
+      mac_complete_input:
+        description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
+        required: false
+        type: string
       native_acceptance_bundle_url:
         description: "Optional approved R9 TGZ at immutable OSS verification/<sha256>/<name>.tgz"
         required: false
@@ -23,6 +27,66 @@ permissions:
   contents: read
 
 jobs:
+  mac-complete-package:
+    if: github.event_name == 'workflow_dispatch' && inputs.mac_complete_input != ''
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      DSH_DESKTOP_TARGET_PLATFORM: darwin
+      DSH_DESKTOP_TARGET_ARCH: arm64
+      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
+      DSH_DESKTOP_UNSIGNED: "1"
+      DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+      DSH_DESKTOP_BUILD_DIRTY: "0"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gea
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: 8cfb899ccf21d3662421b99b5f4627842ef712ea
+          path: core
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - name: Validate fixed input before preparing Core
+        working-directory: gea
+        env:
+          DESKTOP_INPUT_JSON: ${{ inputs.mac_complete_input }}
+        run: |
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
+          mkdir node_modules
+          ln -s "$PWD/.runtime/fixture-dependencies/node_modules/semver" node_modules/semver
+          inputPath="$RUNNER_TEMP/gea-desktop-input.json"
+          printenv DESKTOP_INPUT_JSON > "$inputPath"
+          node scripts/windows-complete-local/input.mjs --input "$inputPath" --source-sha "$GITHUB_SHA"
+          echo "DSH_DESKTOP_BUILD_VERSION=$(node -p 'JSON.parse(process.env.DESKTOP_INPUT_JSON).desktopVersion')" >> "$GITHUB_ENV"
+          echo "GEA_DESKTOP_INPUT=$inputPath" >> "$GITHUB_ENV"
+      - name: Prepare declared Core toolchain
+        working-directory: core
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile --prefer-offline
+          corepack pnpm run build:lib:host
+      - name: Build full macOS package and verify isolated first installation
+        run: node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"
+      - name: Keep installer and original build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GEA-Desktop-${{ env.DSH_DESKTOP_BUILD_VERSION }}-mac-arm64-complete
+          if-no-files-found: warn
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/gea-mac-complete/artifacts/*.dmg
+            ${{ runner.temp }}/gea-mac-complete/result.json
+            ${{ runner.temp }}/gea-mac-complete/first-install-receipt.json
+            ${{ runner.temp }}/gea-mac-complete/*.log
   delivery-fixtures:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest

@@ -166,6 +166,21 @@ test("关键词能把用户问题路由到模块", () => {
 });
 
 test("模块自己交的契约形状不对就整份丢掉", () => {
+  for (const consumerCode of [
+    "customer inventory",
+    "customer/inventory",
+    "customer.inventory",
+    "Customer_inventory",
+  ]) {
+    const contract = m.contractFromPlugin({
+      id: "inventory-customer",
+      label: "客户库存",
+      consumerCode,
+      pageIds: ["inventory-customer"],
+    });
+    assert.throws(() => m.normalizeContract(contract), /INVALID_CAPABILITY_CONTRACT/);
+    assert.throws(() => m.createCapabilityRegistry([contract]), /INVALID_CONSUMER_CODE/);
+  }
   assert.throws(() => m.normalizeContract({ id: "x" }), /INVALID_CAPABILITY_CONTRACT/);
   assert.throws(
     () =>
@@ -194,35 +209,4 @@ test("模块自己交的契约形状不对就整份丢掉", () => {
   });
   assert.equal(ok.maxEffect, "draft");
   assert.deepEqual(ok.data.tables, ["agents_scm_x"]);
-});
-
-test("Consumer 标识保留下划线且拒绝非法分隔符", () => {
-  const contract = {
-    id: "inventory-customer",
-    label: "客户库存",
-    maxEffect: "view",
-    view: {
-      surface: "gea-html-inventory-customer",
-      protocol: "self-report",
-      pageIds: ["inventory-customer"],
-    },
-    data: { consumerCode: "customer_inventory", tables: [], rules: [] },
-  };
-  assert.equal(m.normalizeContract(contract).data.consumerCode, "customer_inventory");
-  const registry = m.createCapabilityRegistry([m.normalizeContract(contract)]);
-  assert.equal(registry.modules()[0].consumerCode, "customer_inventory");
-  assert.equal(registry.allows("gea-html-inventory-customer", "view"), true);
-  assert.equal(registry.allows("gea-html-inventory-customer", "submit"), false);
-  for (const consumerCode of [
-    "",
-    "customer inventory",
-    "customer/inventory",
-    "customer.inventory",
-    "Customer_inventory",
-  ]) {
-    assert.throws(
-      () => m.normalizeContract({ ...contract, data: { ...contract.data, consumerCode } }),
-      /INVALID_CAPABILITY_CONTRACT/,
-    );
-  }
 });

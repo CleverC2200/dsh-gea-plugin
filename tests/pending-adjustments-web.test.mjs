@@ -134,9 +134,7 @@ test(
 
     // 改完不等自动暂存（500ms 防抖）就直接通过。
     await input.fill("22.125");
-    await expect(
-      input.locator("xpath=ancestor::tr").locator("td").last().locator("small"),
-    ).toHaveText("¥221.25");
+    await expect(input.locator("xpath=ancestor::td[1]").locator("small")).toHaveText("¥221.25");
     await frame.getByRole("button", { name: "通过", exact: true }).click();
     await expect.poll(() => writes.length, { timeout: 15000 }).toBe(1);
     assert.equal(writes[0].action, "APPROVE");
