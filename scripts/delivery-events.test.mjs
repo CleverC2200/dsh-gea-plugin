@@ -149,3 +149,20 @@ test("verified Core can be saved after wrapper failure without hiding the failed
     assert.equal(eligible(save.if, context), false);
   }
 });
+
+
+test("manual delivery runs dependency-free Core cache fixtures on Windows and macOS", () => {
+  const job = workflow.jobs["core-cache-fixtures"];
+  assert.ok(job);
+  assert.equal(job.if, "github.event_name == 'workflow_dispatch'");
+  assert.deepEqual(job.strategy.matrix.os, ["windows-2025", "macos-15"]);
+  assert.equal(job.strategy["fail-fast"], false);
+  assert.equal(job["runs-on"], "${{ matrix.os }}");
+  assert.equal(job["continue-on-error"], undefined);
+  assert.equal(job.needs, undefined);
+  assert.deepEqual(job.steps, [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24.14.1" } },
+    { run: "node --test scripts/windows-complete-local/core-cache.test.mjs" },
+  ]);
+});
