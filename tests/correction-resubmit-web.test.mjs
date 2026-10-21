@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "returned Z plan resubmits fixed baseline with edited correction and verifies successor node fields are empty",
@@ -31,6 +31,7 @@ test(
       planTypeCode: "Y",
       orderType: "Z",
       dealerCode: "456",
+      dealerName: "重提纠偏客户",
       status: 6,
       effective: true,
       targetQty: "30.000",
@@ -86,7 +87,11 @@ test(
       }
       if (path.endsWith("/plans")) {
         const requestedStatus = req.url.searchParams.get("status");
-        if (requestedStatus !== null && Number(requestedStatus) !== current.status) {
+        const requestedType = req.url.searchParams.get("orderType");
+        if (
+          (requestedStatus !== null && Number(requestedStatus) !== current.status) ||
+          (requestedType !== null && requestedType !== current.orderType)
+        ) {
           reply({
             success: true,
             result: { records: [], total: 0, size: 20, current: 1, pages: 1 },
@@ -102,7 +107,7 @@ test(
                 versionId: current.id,
                 monthlyApproved: true,
                 hasCorrection: true,
-                orderType: req.url.searchParams.get("orderType") ?? "Z",
+                orderType: current.orderType,
               },
             ],
             total: 1,
@@ -121,11 +126,6 @@ test(
             skus,
             versions: current.id === "v1" ? [old] : [{ ...old, effective: false }, current],
             logs,
-            correctionContext: {
-              contract: "absolute-net-v1",
-              monthlyApproved: true,
-              approvalOpen: true,
-            },
           },
         });
         return true;
@@ -196,46 +196,24 @@ test(
       })),
     );
     await page.goto(app.origin);
-    const initialOpen = page.waitForResponse(
-      (response) =>
-        response.url().endsWith("/api/agent-workbench/page") &&
-        response.ok() &&
-        response.request().postDataJSON()?.operation === "open" &&
-        response.request().postDataJSON()?.pageId === "gea-proof",
-    );
-    const f = await openSalesPlan(page);
-    const ownerResponse = await initialOpen;
-    const initialOwner = await ownerResponse.json();
-    assert.equal(typeof initialOwner.owner, "string");
+    const f = await openReadySalesPlan(page);
+    await expect(f.getByTestId("regional-approval-workbench")).toBeVisible();
     const correctionTab = f.getByRole("tab", { name: "纠偏", exact: true });
     await correctionTab.click();
     await expect(correctionTab).toHaveAttribute("aria-selected", "true");
-    try {
-      await f.getByRole("button", { name: "退回重提", exact: true }).click();
-    } catch (error) {
-      const evidence = resolve(".runtime/correction-resubmit-evidence");
-      await mkdir(evidence, { recursive: true });
-      await writeFile(
-        resolve(evidence, "action-failure.html"),
-        await f.locator("body").innerHTML(),
-      );
-      await writeFile(
-        resolve(evidence, "action-failure.json"),
-        JSON.stringify(
-          {
-            plan: current,
-            requests: app.requests.map((request) => ({
-              method: request.method,
-              path: request.url.pathname,
-              query: request.url.search,
-            })),
-          },
-          null,
-          2,
-        ),
-      );
-      throw error;
-    }
+    await f.getByRole("tab", { name: "按客户", exact: true }).click();
+    await f.getByRole("button", { name: "筛选条件", exact: true }).click();
+    await f.getByLabel("审批状态", { exact: true }).click();
+    await f.getByRole("option", { name: "退回销售", exact: true }).click();
+    const customerRow = f.getByRole("row").filter({ hasText: old.dealerName }).first();
+    await expect(customerRow).toBeVisible();
+    const rowSelection = customerRow.getByRole("checkbox");
+    await expect(rowSelection).toBeEnabled();
+    await rowSelection.locator("..").click();
+    await expect(rowSelection).toBeChecked();
+    const resubmit = f.getByRole("button", { name: "修改后提交", exact: true });
+    await expect(resubmit).toBeEnabled();
+    await resubmit.click();
     const d = f.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
     const input = d.getByRole("textbox", { name: "纠偏调整量 789" });
     await expect(input).toHaveValue("2");
@@ -245,6 +223,8 @@ test(
     await expect(d).toContainText("提交成功，已核验最新状态。");
     await d.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(d).toHaveCount(0);
+    assert.equal(received.orderType, "Z");
+    assert.equal(received.items[0].baseQty, "30.000");
     assert.equal(received.items[0].qty, "30.000");
     assert.equal(received.items[0].adjAddQty, "5");
     assert.equal(received.items[0].regionAdjAddQty, undefined);
@@ -252,5 +232,18 @@ test(
     assert.equal(read.value.currentVersion.id, "v2");
     assert.equal(read.value.versions[0].effective, false);
     assert.equal(read.value.skus[0].regionConfirmedQty, undefined);
+    for (const role of ["region", "province", "area", "category"]) {
+      for (const field of [
+        "AdjAddQty",
+        "AdjCutQty",
+        "AdjAddAmount",
+        "AdjCutAmount",
+        "ConfirmedQty",
+        "ConfirmedAmount",
+      ]) {
+        assert.equal(received.items[0][`${role}${field}`], undefined);
+        assert.equal(read.value.skus[0][`${role}${field}`], undefined);
+      }
+    }
   },
 );

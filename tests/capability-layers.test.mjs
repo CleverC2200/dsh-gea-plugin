@@ -95,14 +95,14 @@ test("没有页面时不给页面通道；演示页面要点名“不能当业�
   const mock = channelPlan({
     currentPage: {
       pluginId: "inventory-customer",
-      consumerCode: "customer-inventory-preview",
+      consumerCode: "customer_inventory",
       label: "客户库存",
       pageTool: "inventory_customer_page",
       mock: true,
       at: Date.now(),
     },
     module: {
-      consumerCode: "customer-inventory-preview",
+      consumerCode: "customer_inventory",
       label: "客户库存",
       readableTables: 0,
     },

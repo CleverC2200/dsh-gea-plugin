@@ -1,4 +1,8 @@
-import { openSalesPlan, openWorkbenchPage } from "./fixtures/business-page.mjs";
+import {
+  openSalesPlan,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+} from "./fixtures/business-page.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
@@ -10,7 +14,9 @@ test(
   "API log center lists real Host calls, redacts credentials and replays safe reads",
   { timeout: 90000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess([["gea-api-log", "接口日志"]]),
+    });
     await app.login();
     const browser = await chromium.launch({
       headless: true,
@@ -46,7 +52,7 @@ test(
     await page.getByRole("menuitem", { name: "设置", exact: true }).click({ force: true });
     const settings = page.getByRole("dialog", { name: "设置", exact: true });
     await settings.getByRole("button", { name: "关闭", exact: true }).click();
-    await openWorkbenchPage(page, "接口日志");
+    await openRegisteredWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
     await expect(settings).toHaveCount(0);
     const layout = await page.locator(".gea-api-log-center").evaluate((center) => {
@@ -92,16 +98,16 @@ test(
       ),
     ).toBeVisible();
     assert.ok((await page.locator(".gea-api-call-row").count()) >= 3);
+    await page.locator(".gea-api-catalog-item").filter({ hasText: "读取当前用户" }).click();
+    const profileCall = page.locator(".gea-api-call-row").first();
+    await expect(profileCall).toContainText("读取当前用户");
+    await profileCall.click();
     await page.getByText("请求头与 Query · 已脱敏", { exact: true }).click();
     const visibleText = await page.locator(".gea-api-log-center").innerText();
     assert.equal(visibleText.includes("fixture-gea-token"), false);
     assert.equal(visibleText.includes("fixture-delegation"), false);
     assert.equal(visibleText.includes("[已脱敏]"), true, visibleText);
 
-    await page.locator(".gea-api-catalog-item").filter({ hasText: "读取当前用户" }).click();
-    const profileCall = page.locator(".gea-api-call-row").first();
-    await expect(profileCall).toContainText("读取当前用户");
-    await profileCall.click();
     await expect(page.getByText("查看接口定义与请求字段", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "重发请求", exact: true }).click();
     await expect(page.locator(".gea-api-replayed")).toHaveCount(1);

@@ -8,7 +8,7 @@
 
 [业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。选用 GEA 来源的个人模式通过实际 Core 声明使用共用 `workbench` 模型路由；其他无可信 profile 的会话仍使用 `analysisAgentCode` 默认路由。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
 
-客户库存页在为 `customer-inventory-preview` 建立 Gateway 委托后，通过当前用户解析工具取得并核对角色/范围回执；回执必须同时匹配用户、会话、对话和 Consumer。`/api/gea-html/identity` 仅投影角色和 `regions`、`provinces`、`customerCodes`、版本/失效时间，绝不投影委托 token 或原始回执。缺少 `customerInventoryScope.status="granted"` 时范围为未配置，不得把页面角色标签解释为全量数据权。受控 SQL 的实际行级授权仍由 GEA Gateway 按当前委托执行，页面展示或筛选不构成授权。
+客户库存页在为 `customer_inventory` 建立 Gateway 委托后，通过当前用户解析工具取得并核对角色/范围回执；回执必须同时匹配用户、会话、对话和 Consumer。`/api/gea-html/identity` 仅投影角色和 `regions`、`provinces`、`customerCodes`、版本/失效时间，绝不投影委托 token 或原始回执。缺少 `customerInventoryScope.status="granted"` 时范围为未配置，不得把页面角色标签解释为全量数据权。受控 SQL 的实际行级授权仍由 GEA Gateway 按当前委托执行，页面展示或筛选不构成授权。
 
 登录环境只接受 [Host 配置](../src/shared/environments.js) 已登记的名称；client 通过 `businessAccount.startLogin` 将所选名称交给 Host，切环境会清旧二维码、凭据、预览并取消旧身份任务。只读投影同时提供当前环境与可选环境清单，端点/默认值从 [Host Config](../src/host.ts) 和公司产品配置读取，不从浏览器标签推断。
 
@@ -77,9 +77,9 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 | 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                                |
 | 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 校验当前有效退回版本、周期、SKU、价格、身份、流程和原正文。当前环境须有租户/用户白名单与可用服务凭据；[service-account](../src/host/service-account.ts) 交换委托后向 `/api/v1/internal/sales-plans` 发送原幂等请求 |
 | 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                       |
-| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 仍核当前身份、角色、版本、快照、服务端显式契约和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                 |
+| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                 |
 
-`salesPlanAction` 的 SAVE 与审批共用当前状态、有效版本和来源校验，只接受明确 `approvalRole` 或 `adjustmentMode` 的请求。0、5、10 和历史版本均拒绝写入；无角色、无调整模式的兼容 SAVE 已删除。合法角色 SAVE 仍核当前角色、服务端契约和快照，并保留原幂等意图。源码规则不证明服务端 V1.3 已部署或真实业务验收通过。
+M/Z 查询和审批复用原接口。`salesPlanAction` 从新鲜明细核对有效版本及状态，Z 的通过、退回沿月初既有角色与流程校验、原请求正文执行；原响应提供快照时仍核一致性，不要求纠偏专用 context、节点字段或 `ABSOLUTE_NET` 标记。界面保存调整复用 [Business.salesPlanDraft](../src/host/business.ts) 本地草稿，不推进节点；Z 的远端 SAVE 拒绝发送，原月初远端 SAVE 行为保留。0、5、10 和历史版本均拒绝写入；选择查看节点不授予写权限。本轮不执行 DMS。源码规则不证明真实服务或客户端验收通过。
 
 [`SalesPlanTransactions`](../src/host/sales-plan-transactions.ts) 持有本次登录内的重提与审批意图、已验证原正文、在途请求和回执。Business 保留公开写入口与登录权威，只借出当前身份、环境地址、身份取消信号和现有查询能力；退出或切换身份清空事务状态。意图登记时复制调用参数，校验、幂等指纹与发送正文使用同一快照；结果未知时只允许原键原正文重试。审批迟到的401或成功回执不能登出新身份或替换其回执。
 

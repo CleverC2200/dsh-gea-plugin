@@ -19,7 +19,7 @@ new Function("require", "module", "exports", output.outputFiles[0].text)(
   module.exports,
 );
 
-function fixture(t, actionReply, detailGate, detailPatch = {}, listPage) {
+function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflowRows) {
   const business = new module.exports.Business({
     geaBaseUrl: "https://localhost",
     analysisAgentCode: "sales_forecast",
@@ -102,12 +102,14 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage) {
       };
     else if (path.endsWith("/sql/execute")) {
       const body = JSON.parse(init.body);
-      const rows = ["0", "1", "2", "3", "4", "Y"].map((node, level) => ({
-        id: level + 1,
-        type_code: "Y",
-        examine_level: String(level),
-        node_num: node,
-      }));
+      const rows =
+        workflowRows ??
+        ["0", "1", "2", "3", "4", "Y"].map((node, level) => ({
+          id: level + 1,
+          type_code: "Y",
+          examine_level: String(level),
+          node_num: node,
+        }));
       result = {
         requestId: init.headers["X-Request-Id"],
         operation: "SELECT",
@@ -674,8 +676,9 @@ function correctionFixture(t, actionReply) {
         corrBaseQty: "100.000",
         price: "0.005",
         amt: "0.51",
-        adjAddQty: "2.000",
-        adjCutQty: "0.000",
+        nodeAdjAddQty: "2.000",
+        nodeAdjCutQty: "0.000",
+        editable: true,
       },
     ],
     actionContext: {
@@ -697,7 +700,7 @@ function correctionFixture(t, actionReply) {
     detail,
     payload: (patch = {}) =>
       f.payload({
-        adjustmentMode: "ABSOLUTE_NET",
+        action: "APPROVE",
         approvalRole: "category",
         adjustments: [{ skuCode: "789", adjustQty: "8" }],
         ...patch,
@@ -705,7 +708,64 @@ function correctionFixture(t, actionReply) {
   };
 }
 
-test("existing correction approval reuses the original action body without new context fields", async (t) => {
+test("Z approval uses the current environment workflow for a newly configured skipped-node type", async (t) => {
+  let body;
+  const f = fixture(
+    t,
+    async (_url, init) => {
+      body = JSON.parse(init.body);
+      return Response.json({ success: true, result: { approved: true } });
+    },
+    undefined,
+    {
+      currentVersion: {
+        id: "v",
+        planId: "p",
+        orderType: "Z",
+        planTypeCode: "NEW",
+        effective: true,
+        status: 4,
+      },
+      actionContext: undefined,
+    },
+    undefined,
+    ["0", "1", "4", "Y"].map((node, level) => ({
+      id: level + 1,
+      type_code: "NEW",
+      examine_level: String(level),
+      node_num: node,
+    })),
+  );
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  assert.deepEqual(
+    await f.business.salesPlanAction(
+      f.payload({
+        action: "APPROVE",
+        approvalRole: "category",
+        expectedStatus: 4,
+        expectedSnapshot: undefined,
+        adjustments: undefined,
+      }),
+      signal,
+    ),
+    { approved: true },
+  );
+  assert.deepEqual(body, { action: "APPROVE", expectedStatus: 4 });
+});
+
+test("Z adjustments stay local and cannot SAVE through the remote action endpoint", async (t) => {
+  const f = correctionFixture(t);
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  await assert.rejects(
+    f.business.salesPlanAction(f.payload({ action: "SAVE" }), signal),
+    (error) => error.code === "GEA_HTTP_400" && /本地暂存/.test(error.message),
+  );
+  assert.equal(f.writes(), 0);
+});
+
+test("Z approval reuses monthly action authority and original body without correction extensions", async (t) => {
   let sent;
   const f = correctionFixture(t, async (url, init) => {
     sent = { path: new URL(url).pathname, body: JSON.parse(init.body) };
@@ -717,11 +777,7 @@ test("existing correction approval reuses the original action body without new c
   await f.business.refreshApprovalRoles(signal);
   assert.deepEqual(
     await f.business.salesPlanAction(
-      f.payload({
-        action: "APPROVE",
-        adjustmentMode: undefined,
-        expectedSnapshot: undefined,
-      }),
+      f.payload({ action: "APPROVE", adjustmentMode: undefined, expectedSnapshot: undefined }),
       signal,
     ),
     { approved: true },
@@ -736,39 +792,53 @@ test("existing correction approval reuses the original action body without new c
   });
 });
 
-test("absolute correction SAVE sends its mode, snapshot and node role to GEA", async (t) => {
+test("Z rejection uses the original monthly action body and requires its reason", async (t) => {
   let body;
   const f = correctionFixture(t, async (_url, init) => {
     body = JSON.parse(init.body);
-    return Response.json({ success: true, result: { saved: true } });
+    return Response.json({ success: true, result: { rejected: true } });
   });
+  f.detail.actionContext = undefined;
+  f.detail.correctionContext = undefined;
   const signal = new AbortController().signal;
   await f.business.refreshApprovalRoles(signal);
-  assert.deepEqual(await f.business.salesPlanAction(f.payload(), signal), { saved: true });
-  assert.deepEqual(body, {
-    action: "SAVE",
-    expectedStatus: 4,
-    adjustments: [{ skuCode: "789", adjustQty: "8" }],
-    adjustmentMode: "ABSOLUTE_NET",
-    approvalRole: "category",
-    expectedSnapshot: "a".repeat(64),
-  });
+  const request = { action: "REJECT", expectedSnapshot: undefined, adjustments: undefined };
+  await assert.rejects(f.business.salesPlanAction(f.payload(request), signal));
+  assert.equal(f.writes(), 0);
+  assert.deepEqual(
+    await f.business.salesPlanAction(f.payload({ ...request, remark: "请核对调整数量" }), signal),
+    { rejected: true },
+  );
+  assert.deepEqual(body, { action: "REJECT", expectedStatus: 4, remark: "请核对调整数量" });
 });
 
-test("absolute correction binds an omitted role to the sole authorized node before sending", async (t) => {
-  let body;
-  const f = correctionFixture(t, async (_url, init) => {
-    body = JSON.parse(init.body);
+test("Z approval keeps monthly role and snapshot checks without correction metadata", async (t) => {
+  let sent;
+  const f = correctionFixture(t, async (url, init) => {
+    sent = { path: new URL(url).pathname, body: JSON.parse(init.body) };
     return Response.json({ success: true, result: { approved: true } });
   });
+  f.detail.correctionContext = undefined;
   const signal = new AbortController().signal;
   await f.business.refreshApprovalRoles(signal);
-  await f.business.salesPlanAction(
-    f.payload({ action: "APPROVE", approvalRole: undefined }),
-    signal,
+  assert.deepEqual(await f.business.salesPlanAction(f.payload(), signal), { approved: true });
+  assert.deepEqual(sent, {
+    path: "/sales-plan/plans/versions/v/actions",
+    body: {
+      action: "APPROVE",
+      expectedStatus: 4,
+      adjustments: [{ skuCode: "789", adjustQty: "8" }],
+    },
+  });
+  await assert.rejects(
+    f.business.salesPlanAction(f.payload({ expectedSnapshot: "b".repeat(64) }), signal),
+    /依据已变化/,
   );
-  assert.equal(body.approvalRole, "category");
-  assert.equal(body.adjustmentMode, "ABSOLUTE_NET");
+  await assert.rejects(
+    f.business.salesPlanAction(f.payload({ approvalRole: undefined }), signal),
+    /审批角色/,
+  );
+  assert.equal(f.writes(), 1);
 });
 
 test("correction readback preserves frozen amounts, all six node fields and server capabilities", async (t) => {
@@ -820,25 +890,27 @@ test("unknown correction write retries its frozen body and key without revalidat
   });
   const signal = new AbortController().signal;
   await f.business.refreshApprovalRoles(signal);
-  const payload = f.payload({ approvalRole: undefined });
+  const payload = f.payload();
   await assert.rejects(f.business.salesPlanAction(payload, signal), /isolated response lost/);
   f.detail.actionContext.snapshotHash = "b".repeat(64);
   f.detail.actionContext.allowedActions = [];
   assert.deepEqual(await f.business.salesPlanAction(payload, signal), { replayed: true });
   assert.deepEqual(bodies[0], bodies[1]);
-  assert.equal(JSON.parse(bodies[1].body).approvalRole, "category");
-  assert.equal(JSON.parse(bodies[1].body).expectedSnapshot, "a".repeat(64));
+  assert.deepEqual(JSON.parse(bodies[1].body), {
+    action: "APPROVE",
+    expectedStatus: 4,
+    adjustments: [{ skuCode: "789", adjustQty: "8" }],
+  });
 });
 
-test("correction input rejects incomplete, duplicate, unknown, negative and overprecision decisions", async (t) => {
+test("Z actions reuse monthly adjustment format and duplicate checks", async (t) => {
   const f = correctionFixture(t);
   const signal = new AbortController().signal;
   await f.business.refreshApprovalRoles(signal);
   for (const adjustments of [
-    [],
-    [{ skuCode: "789", adjustQty: "-100.001" }],
+    [{ skuCode: "789", adjustQty: "1000000000000000" }],
     [{ skuCode: "789", adjustQty: "0.0001" }],
-    [{ skuCode: "999", adjustQty: "8" }],
+    [{ skuCode: "invalid", adjustQty: "8" }],
     [
       { skuCode: "789", adjustQty: "8" },
       { skuCode: "789", adjustQty: "8" },
@@ -849,49 +921,34 @@ test("correction input rejects incomplete, duplicate, unknown, negative and over
   assert.equal(f.writes(), 0);
 });
 
-test("correction refuses unconfirmed window, node and action capabilities at the Host write entry", async (t) => {
+test("Z actions retain monthly version, role and server capability protection", async (t) => {
   const f = correctionFixture(t);
   const signal = new AbortController().signal;
   await f.business.refreshApprovalRoles(signal);
-  const context = structuredClone(f.detail.actionContext);
-  const capability = structuredClone(f.detail.correctionContext);
-  const cases = [
-    { correctionContext: { ...capability, approvalOpen: false } },
-    { correctionContext: { ...capability, monthlyApproved: false } },
-    { correctionContext: undefined },
-    { actionContext: { ...context, nodeOrder: 2 } },
-    { actionContext: { ...context, allowedActions: [] } },
-    { actionContext: undefined, expectedSnapshot: undefined },
-    { submitter: "user-1" },
-  ];
-  for (const denied of cases) {
-    f.detail.actionContext = Object.hasOwn(denied, "actionContext")
-      ? denied.actionContext
-      : context;
-    f.detail.correctionContext = Object.hasOwn(denied, "correctionContext")
-      ? denied.correctionContext
-      : capability;
-    f.detail.currentVersion.submitter = denied.submitter ?? "other-user";
-    await assert.rejects(
-      f.business.salesPlanAction(
-        f.payload({
-          action: "APPROVE",
-          ...(Object.hasOwn(denied, "expectedSnapshot")
-            ? { expectedSnapshot: denied.expectedSnapshot }
-            : {}),
-        }),
-        signal,
-      ),
-      JSON.stringify(denied),
-    );
+  const original = structuredClone(f.detail);
+  for (const patch of [
+    { currentVersion: { ...original.currentVersion, id: "historical" } },
+    { currentVersion: { ...original.currentVersion, effective: false } },
+    { currentVersion: { ...original.currentVersion, status: 3 } },
+    { actionContext: { ...original.actionContext, versionId: "historical" } },
+    { actionContext: { ...original.actionContext, allowedActions: [] } },
+  ]) {
+    Object.assign(f.detail, original, patch);
+    await assert.rejects(f.business.salesPlanAction(f.payload(), signal));
   }
+  Object.assign(f.detail, original);
+  await assert.rejects(
+    f.business.salesPlanAction(f.payload({ approvalRole: "region" }), signal),
+    /操作权限/,
+  );
   assert.equal(f.writes(), 0);
 });
 
-test("Host list readback keeps server progress, correction totals and filtered summary", async (t) => {
+test("Host list preserves plan totals and summary while unavailable shipment source stays unknown", async (t) => {
   const row = {
     planId: "p",
     versionId: "v",
+    periodId: "period",
     targetAmount: "1000.00",
     mPlanQty: "100.000",
     mPlanAmount: "800.00",
@@ -933,7 +990,15 @@ test("Host list readback keeps server progress, correction totals and filtered s
     },
     new AbortController().signal,
   );
-  assert.deepEqual(result.records, [row]);
+  assert.deepEqual(result.records, [
+    {
+      ...row,
+      shipQty: null,
+      shipAmount: null,
+      amountProgress: null,
+      shipmentError: "未取得该客户期间的发货数据",
+    },
+  ]);
   assert.deepEqual(result.summary, summary);
   assert.equal(f.writes(), 0);
 });
@@ -982,7 +1047,7 @@ test("Host serializes full-queue summary IDs without replacing existing list fil
   assert.equal(received.searchParams.get("orderType"), "Z");
   assert.equal(received.searchParams.get("planTypeCode"), "Y");
   assert.deepEqual(result.summary, summary);
-  assert.deepEqual(result.groupMetrics, groupMetrics);
+  assert.deepEqual(result.groupMetrics, [{ dimension: "region", key: "r", ...summary }]);
   assert.equal(f.writes(), 0);
 });
 
@@ -1113,4 +1178,40 @@ test("Host statuses reject malformed arrays and a simultaneous scalar status bef
       f.business.workbenchQuery({ kind: "list", query }, new AbortController().signal),
     );
   assert.equal(reads, 0);
+});
+
+test("original list and detail queries carry selected read node without permitting arbitrary roles", async (t) => {
+  let listUrl, detailUrl;
+  const f = fixture(
+    t,
+    undefined,
+    (url) => {
+      detailUrl = new URL(url);
+    },
+    {},
+    (url) => {
+      listUrl = new URL(url);
+      return { records: [], total: 0, size: 20, current: 1, pages: 0 };
+    },
+  );
+  const signal = new AbortController().signal;
+  await f.business.workbenchQuery(
+    { kind: "list", query: { orderType: "Z", approvalRole: "province" } },
+    signal,
+  );
+  await f.business.workbenchQuery(
+    { kind: "detail", query: { planId: "p", orderType: "Z", approvalRole: "province" } },
+    signal,
+  );
+  assert.equal(listUrl.pathname, "/sales-plan/plans");
+  assert.equal(detailUrl.pathname, "/sales-plan/plans/p");
+  assert.equal(listUrl.searchParams.get("approvalRole"), "province");
+  assert.equal(detailUrl.searchParams.get("approvalRole"), "province");
+  await assert.rejects(
+    f.business.workbenchQuery(
+      { kind: "detail", query: { planId: "p", approvalRole: "admin" } },
+      signal,
+    ),
+  );
+  assert.equal(f.writes(), 0);
 });

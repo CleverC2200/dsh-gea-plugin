@@ -58,6 +58,21 @@
   ],
   "rules": [
     {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/build\\.mjs$",
+      "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/development-tasks.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:build-admission|development-(?:dependencies|repositories|tasks)|pack-raw)\\.mjs$",
+      "tests": [
+        "scripts/build-admission.test.mjs",
+        "scripts/development-tasks.test.mjs",
+        "scripts/build.test.mjs",
+        "scripts/deliver-packages.test.mjs"
+      ]
+    },
+    {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/plugin-reception/(?:observe-worker|preset-discovery)\\.mjs$",
       "tests": ["scripts/plugin-reception.test.mjs", "scripts/deliver-packages.test.mjs"]
@@ -327,7 +342,7 @@
     },
     {
       "repo": "dsh-agent-workbench",
-      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-output|build-static-authors)\\.mjs$",
+      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-output|build-static-authors|static-author-provenance)\\.mjs$",
       "tests": [
         "scripts/quality-workbench.test.mjs",
         "scripts/quality-prepared-inputs.test.mjs",
@@ -365,7 +380,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap)\\.mjs|input\\.test\\.mjs|released-input\\.fixture\\.json)$",
+      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap)\\.mjs|input\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/build\\.mjs)$",
       "tests": [
         "scripts/windows-complete-local/input.test.mjs",
         "scripts/delivery-events.test.mjs",

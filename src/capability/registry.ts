@@ -41,7 +41,7 @@ export type CapabilityRegistry = {
   }>;
 };
 
-const CONSUMER_PATTERN = /^[a-z][a-z0-9-]+$/;
+const CONSUMER_PATTERN = /^[a-z][a-z0-9_-]+$/;
 
 /** 表名去前缀：`agents_scm_inventory_age` → `inventory_age`，够模型认出主题又不占字节。 */
 const shortTableName = (table: string): string =>

@@ -11,6 +11,7 @@ test("delivery retains PR main and manual contexts while feature pushes use thei
   assert.equal(workflow.on.pull_request, null);
   const inputs = workflow.on.workflow_dispatch.inputs;
   assert.deepEqual(Object.keys(inputs).sort(), [
+    "mac_complete_input",
     "native_acceptance_bundle_sha256",
     "native_acceptance_bundle_url",
     "windows_complete_input",
@@ -19,6 +20,27 @@ test("delivery retains PR main and manual contexts while feature pushes use thei
     assert.equal(input.type, "string");
     assert.equal(input.required, false);
   }
+});
+
+test("macOS complete packaging requires explicit manual input and a fixed company Core", () => {
+  const job = workflow.jobs["mac-complete-package"];
+  assert.equal(
+    job.if,
+    "github.event_name == 'workflow_dispatch' && inputs.mac_complete_input != ''",
+  );
+  assert.equal(job.env.DSH_DESKTOP_TARGET_PLATFORM, "darwin");
+  assert.equal(job.env.DSH_DESKTOP_TARGET_ARCH, "arm64");
+  const checkout = job.steps.find(
+    (step) => step.with?.repository === "CleverC2200/deepseek-harness",
+  );
+  assert.equal(checkout.with.ref, job.env.DSH_DESKTOP_BUILD_COMMIT);
+  assert.equal(checkout.with["persist-credentials"], false);
+  assert.ok(
+    job.steps.some(
+      (step) =>
+        step.run === 'node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"',
+    ),
+  );
 });
 
 test("standalone delivery retains package Prompt and source checks while candidate quality owns same-repository events", () => {
