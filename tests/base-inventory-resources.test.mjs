@@ -69,6 +69,10 @@ for (const { id, source, expected, persona } of [
     assert.equal(definition.id, "gea-html-" + id);
     assert.equal(definition.profile.consumerCode, manifest.gea.consumerCode);
     assert.deepEqual(definition.profile.skills, expected);
+    if (id === "inventory-customer") {
+      assert.equal(definition.presetName, "客户库存Agent");
+      assert.match(definition.description, /客户库存与动销的只读分析/);
+    }
     assert.deepEqual(Object.keys(definition.skillFiles), expected);
     assert.deepEqual(Object.values(definition.skillFiles), manifest.skills);
     for (const [name, file] of Object.entries(definition.skillFiles))
