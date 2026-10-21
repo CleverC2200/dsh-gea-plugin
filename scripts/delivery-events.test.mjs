@@ -111,3 +111,41 @@ test("complete delivery verifies exact Core outputs and cold tools before compil
     assert.equal(save.with.path, "${{ steps.delivery-core-plan.outputs.paths }}");
   }
 });
+
+
+test("verified Core can be saved after wrapper failure without hiding the failed delivery", () => {
+  for (const name of ["mac-complete-package", "windows-complete-package"]) {
+    const steps = workflow.jobs[name].steps;
+    const verify = steps.find((step) => step.name === "Verify Core output after packaging");
+    const save = steps.find((step) => step.name === "Save verified compiled Core");
+    const packaging = steps.find((step) => step.name?.startsWith("Build full "));
+    assert.equal(verify.id, "delivery-core-after-package");
+    assert.equal(verify.if, "!cancelled() && steps.delivery-core-plan.outcome == 'success'");
+    assert.equal(
+      save.if,
+      "!cancelled() && steps.delivery-core-after-package.outputs.hit == 'true' && steps.delivery-core-restore.outputs.cache-hit != 'true'",
+    );
+    assert.equal(packaging["continue-on-error"], undefined);
+    const eligible = (condition, steps, cancelled = false) =>
+      Function("cancelled", "steps", `return (${condition.replace(/steps\.([\w-]+)(?:\.outputs\.([\w-]+))?/g,
+        (_, id, output) => output ? `steps["${id}"].outputs["${output}"]` : `steps["${id}"]`)})`)(() => cancelled, steps);
+    const context = {
+      "delivery-core-plan": { outcome: "success" },
+      "delivery-core-after-package": { outputs: { hit: "true" } },
+      "delivery-core-restore": { outputs: { "cache-hit": "false" } },
+    };
+    assert.equal(eligible(verify.if, context), true);
+    assert.equal(eligible(save.if, context), true);
+    assert.equal(eligible(verify.if, context, true), false);
+    assert.equal(eligible(save.if, context, true), false);
+    context["delivery-core-plan"].outcome = "failure";
+    assert.equal(eligible(verify.if, context), false);
+    for (const hit of ["false", "", undefined]) {
+      context["delivery-core-after-package"].outputs.hit = hit;
+      assert.equal(eligible(save.if, context), false);
+    }
+    context["delivery-core-after-package"].outputs.hit = "true";
+    context["delivery-core-restore"].outputs["cache-hit"] = "true";
+    assert.equal(eligible(save.if, context), false);
+  }
+});
