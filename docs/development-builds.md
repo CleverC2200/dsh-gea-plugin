@@ -28,7 +28,7 @@ node ../dsh-gea-plugin/scripts/development-tasks.mjs build --target plugin
 node ../dsh-gea-plugin/scripts/development-tasks.mjs finish
 ```
 
-先核本票 checkout、HEAD 与本地输入。版本、锁、本地源路径和安装许可由当前仓 package、锁及 workspace 配置负责。固定 SDK 必须已准备；工具不会修改共享 SDK。冷 SDK 由 owner 在独立 checkout 使用 Manage 既有 SDK 准备入口完成。
+版本、锁、本地源路径和安装许可由当前仓 package、锁及 workspace 配置负责。依赖准备与构建要求固定 SDK 已准备；工具不会修改共享 SDK。冷 SDK 由 owner 在独立 checkout 使用 Manage 既有 SDK 准备入口完成。
 
 准备动作先核锁、Node/ABI/平台、管理器、本地链接源、安装元数据与直接依赖 manifest。有效回执复用当前 checkout 的依赖；失效则冻结安装。它不做依赖树每个文件的完整性审计。Manage 关闭隐式 prepare，GEA 保留 allowBuilds。工作树不共享可写 node_modules/lib；包内容缓存沿各仓管理器使用。
 
