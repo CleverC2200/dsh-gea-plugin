@@ -31,7 +31,7 @@ for (const { id, source, expected, persona } of [
       "customer-overstock-control",
       "customer-stockout-replenishment",
     ],
-    persona: /客户库存Agent/,
+    persona: /客户库存\s*Agent/,
   },
 ])
   test(`the ${id} declaration passes its original Consumer and Skills to Manage`, async (t) => {
