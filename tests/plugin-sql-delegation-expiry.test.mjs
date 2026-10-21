@@ -134,13 +134,22 @@ test(
     assert.notEqual(customer.data.mock, true, "customer inventory is a governed reader");
     assert.equal(customer.data.consumerCode, "customer_inventory");
     assert.ok(customer.data.tables.includes("agents_scm_cust_jxc_ai_daliy_d"));
+    const fulfillment = JSON.parse(
+      await readFile(
+        resolve(workbench, "lib/business/inventory-orderfulfillment/capability.json"),
+        "utf8",
+      ),
+    );
+    assert.notEqual(fulfillment.data.mock, true, "fulfillment is a governed reader");
+    assert.equal(fulfillment.data.consumerCode, "order01");
+    assert.ok(fulfillment.data.tables.includes("agents_scm_execute_detail_d"));
     for (const consumerCode of [
       "base-safety-stock",
       "dealer-inventory-replenishment",
       "full-chain-inventory",
       "aps",
       customer.data.consumerCode,
-      "orderfulfillment-preview",
+      fulfillment.data.consumerCode,
     ]) {
       const sessionsBefore = sessions,
         queriesBefore = sqlTokens.length;
@@ -149,11 +158,13 @@ test(
         sql:
           consumerCode === customer.data.consumerCode
             ? "SELECT COUNT(*) AS records FROM agents_scm_cust_jxc_ai_daliy_d"
-            : "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
+            : consumerCode === fulfillment.data.consumerCode
+              ? "SELECT COUNT(*) AS records FROM agents_scm_execute_detail_d"
+              : "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
         parameters: {},
         resultShape: "rows",
       });
-      if (["aps", "orderfulfillment-preview"].includes(consumerCode)) {
+      if (consumerCode === "aps") {
         assert.equal(current.error?.code, "GEA_CAPABILITY_MOCK_ONLY");
         assert.equal(sessions, sessionsBefore);
         assert.equal(sqlTokens.length, queriesBefore);
@@ -164,7 +175,7 @@ test(
       assert.equal(sessions, sessionsBefore + 2);
       assert.equal(sqlTokens.length, queriesBefore + 2);
     }
-    assert.equal(sessions, sessionBase + 8);
+    assert.equal(sessions, sessionBase + 10);
     failureMode = "login-expired";
     assert.equal((await query()).error?.code, "GEA_HTTP_401");
     assert.equal((await app.rpc("status")).value.authenticated, false);

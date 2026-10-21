@@ -68,7 +68,15 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     throw Error("QUALITY_WORKBENCH_SOURCE_DIRTY");
   const status = execFileSync(
     "git",
-    ["-C", prepared, "status", "--porcelain", "--untracked-files=all"],
+    [
+      "-c",
+      "core.quotepath=false",
+      "-C",
+      prepared,
+      "status",
+      "--porcelain",
+      "--untracked-files=all",
+    ],
     { encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
   ).trimEnd();
   for (const line of status.split("\n").filter(Boolean)) {
@@ -80,7 +88,9 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      /^lib\/business\/inventory-(?:aqkc|fc|qll|apsplan|dealer)\/sql\.config\.json$/.test(file)
+      /^lib\/business\/inventory-(?:aqkc|fc|qll|apsplan|dealer|orderfulfillment)\/sql\.config\.json$/.test(
+        file,
+      )
     ) {
       const resource = file.slice(4);
       const entry = git(source, "ls-tree", head, "--", resource);
@@ -104,7 +114,10 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      file.startsWith("lib/business/inventory-aqkc/skills/") &&
+      (/^lib\/business\/inventory-(?:aqkc|customer|orderfulfillment)\/skills\//.test(file) ||
+        /^lib\/business\/inventory-orderfulfillment\/(?:README\.md|SOURCE\.json|agent-prompt\.md)$/.test(
+          file,
+        )) &&
       manage
     ) {
       const owner = await realpath(manage.path);
