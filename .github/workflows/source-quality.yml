@@ -98,7 +98,7 @@ jobs:
         if: needs.source-plan.outputs.engineering == 'true'
         id: affected
         run: node scripts/source-quality.mjs --phase affected-plan
-      - name: Select registered Core only for consumers that need SDK
+      - name: Select registered Core for fixed dependency links and SDK consumers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         id: core
         run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from '../dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
@@ -137,10 +137,11 @@ jobs:
           restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare owned Core source without compiling
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Locate SDK artifact cache paths
+        if: steps.affected.outputs.sdk == 'true'
         id: sdk-paths
-        run: |
-          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
-          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
         if: steps.affected.outputs.sdk == 'true'
         id: sdk-cache
