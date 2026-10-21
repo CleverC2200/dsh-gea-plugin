@@ -28,7 +28,7 @@ async function cacheArchive(home, file, bytes) {
   return target;
 }
 
-function releaseIndex(name, version) {
+export function releaseIndex(name, version) {
   const expression =
     name === "dsh-agent-manage"
       ? /^0\.6\.3-company\.(\d+)$/
