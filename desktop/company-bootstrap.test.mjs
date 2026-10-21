@@ -47,7 +47,8 @@ test("the bundled dependency lock is portable, integrity checked and retains the
   const profile = join(directory, "profiles/desktop");
   const root = join(directory, "core");
   const yaml = join(root, "dsh/node_modules/yaml");
-  for (const path of [join(seed, "archives"), profile, yaml]) await mkdir(path, { recursive: true });
+  for (const path of [join(seed, "archives"), profile, yaml])
+    await mkdir(path, { recursive: true });
   await writeFile(join(yaml, "package.json"), '{"main":"index.cjs"}');
   await writeFile(
     join(yaml, "index.cjs"),

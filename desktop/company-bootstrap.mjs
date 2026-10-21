@@ -266,7 +266,10 @@ export async function writeCompanySeedLock({ root, seed, profile }) {
     const portable = "file:company-seed/archives/" + row.file;
     replacements.push(
       [dependency.specifier, portable],
-      [dependency.version.slice(0, dependency.version.indexOf(row.file) + row.file.length), portable],
+      [
+        dependency.version.slice(0, dependency.version.indexOf(row.file) + row.file.length),
+        portable,
+      ],
     );
   }
   const bytes = YAML.stringify(relocateCompanyLock(lock, replacements));
