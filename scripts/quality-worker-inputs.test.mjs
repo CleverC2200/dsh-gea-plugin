@@ -1474,6 +1474,7 @@ test("the real selector maps only the worker implementation to its public CLI co
     "scripts/quality-worker-inputs.test.mjs",
     "scripts/quality-prepared-inputs.test.mjs",
     "scripts/windows-complete-local/input.test.mjs",
+    "scripts/windows-complete-local/core-cache.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
     "tests/unrelated.browser.mjs",

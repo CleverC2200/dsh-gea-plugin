@@ -66,6 +66,51 @@
     },
     "scripts/source-quality.test.mjs": {
       "dependencies": false
+    },
+    "scripts/build-admission.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/build.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/delivery-events.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/development-tasks.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/quality-prepared-inputs.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/quality-shards.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/quality-worker-control.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/run-quality-checks.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/windows-complete-local/core-cache.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/windows-complete-local/input.test.mjs": {
+      "dependencies": true
+    },
+    "tests/plugin-release-source.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/deliver-packages.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/ci-windows-update.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/package-desktop.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/quality-worker-inputs.test.mjs": {
+      "dependencies": true
     }
   },
   "rules": [
