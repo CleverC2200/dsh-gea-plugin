@@ -82,6 +82,12 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
   for (const line of status.split("\n").filter(Boolean)) {
     const file = line.slice(3);
     if (line.startsWith(" M ") && isPreparedWorkbenchOutput(file)) continue;
+    if (
+      line.startsWith(" D ") &&
+      /^lib\/types\/.+\.d\.ts$/.test(file) &&
+      /^100644 blob [a-f0-9]{40}\t/.test(git(source, "ls-tree", head, "--", file))
+    )
+      continue;
     if (line.startsWith("?? ") && file.startsWith("lib/types/") && file.endsWith(".d.ts")) {
       // Declaration emission adds regular files; lstat never follows external targets.
       if ((await lstat(join(prepared, file))).isFile()) continue;

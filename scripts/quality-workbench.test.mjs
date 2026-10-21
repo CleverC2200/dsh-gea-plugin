@@ -56,7 +56,13 @@ function preparedFixture(t, worktree = false) {
     join(source, "business/inventory-dealer/sql.config.json"),
     '{"schemaVersion":1,"agentId":"inventory-dealer"}\n',
   );
-  for (const file of ["host.js", "client.js", "types/host.d.ts", "types/client.d.ts"])
+  for (const file of [
+    "host.js",
+    "client.js",
+    "types/host.d.ts",
+    "types/client.d.ts",
+    "types/retired.d.ts",
+  ])
     writeFileSync(join(source, "lib", file), "original output\n");
   const git = (...args) =>
     execFileSync("git", args, {
@@ -644,5 +650,27 @@ test("copied Agent SQL config must equal its frozen Workbench source and cannot 
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
   rmSync(output);
   symlinkSync(original, output);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("retired tracked declarations may disappear and their absence stays frozen", async (t) => {
+  const fixture = preparedFixture(t);
+  const file = "lib/types/retired.d.ts";
+  const declaration = join(fixture.prepared, file);
+  rmSync(declaration);
+  const record = await readPreparedWorkbench(fixture);
+  assert.equal(Object.hasOwn(record.files, file), false);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(declaration, "restored stale output\n");
+  await assert.rejects(verifyPreparedWorkbench(fixture), /QUALITY_WORKBENCH_ASSET_MISMATCH/);
+  rmSync(declaration);
+  fixture.git("-C", fixture.prepared, "add", "-u", file);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("generated declaration removal cannot admit authored source deletion", async (t) => {
+  const fixture = preparedFixture(t);
+  rmSync(join(fixture.prepared, "src/input.ts"));
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
