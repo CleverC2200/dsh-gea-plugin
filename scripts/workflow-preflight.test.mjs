@@ -13,7 +13,10 @@ test("workflow preflight propagates the validator failure before preparation", (
   mkdirSync(join(root, ".github/workflows"), { recursive: true });
   writeFileSync(join(root, ".github/workflows/quality.yml"), "name: fixture");
   const validator = join(root, "actionlint");
-  writeFileSync(validator, "#!/bin/sh\necho runner context unavailable\nexit 1\n");
+  writeFileSync(
+    validator,
+    "#!/bin/sh\ncase $1 in -version) echo 1.7.12; exit 0;; esac\necho runner context unavailable\nexit 1\n",
+  );
   chmodSync(validator, 0o755);
   const checked = spawnSync(process.execPath, [cli, ".github/workflows/quality.yml"], {
     cwd: root,
@@ -46,4 +49,24 @@ test("workflow preflight explains the required tool while unrelated and deleted 
     files: [],
     status: "not-applicable",
   });
+});
+
+test("workflow preflight rejects a different actionlint version before accepting its syntax result", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "workflow-version-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, ".github/workflows"), { recursive: true });
+  writeFileSync(join(root, ".github/workflows/quality.yml"), "name: fixture");
+  const validator = join(root, "actionlint");
+  writeFileSync(
+    validator,
+    "#!/bin/sh\ncase $1 in -version) echo 1.7.11; exit 0;; esac\necho unexpected-lint\nexit 9\n",
+  );
+  chmodSync(validator, 0o755);
+  const checked = spawnSync(process.execPath, [cli, ".github/workflows/quality.yml"], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, ACTIONLINT: validator },
+  });
+  assert.equal(checked.status, 1);
+  assert.match(checked.stderr, /WORKFLOW_PREFLIGHT_TOOL_VERSION.*1\.7\.12.*1\.7\.11/);
 });

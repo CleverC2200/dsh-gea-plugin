@@ -1,3 +1,4 @@
+import { workflowFiles } from "./workflow-preflight.mjs";
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, existsSync, realpathSync } from "node:fs";
 import { dirname, resolve, relative, isAbsolute, basename } from "node:path";
@@ -53,9 +54,12 @@ function plan() {
       : hasBase && files.length && files.every((file) => resource(file) || documentation(file))
         ? "resources"
         : "code";
+  const changedWorkflows = workflowFiles(files);
   return {
     mode,
     files,
+    workflows: changedWorkflows.length > 0,
+    "workflow-files": JSON.stringify(changedWorkflows),
     base: diffBase,
     head,
     engineering: mode === "code",
@@ -122,7 +126,7 @@ function checkResources(result) {
         }
       if (/(?:^|\/)(?:prompt|capability)\.json$/.test(file) && Array.isArray(value.skills)) {
         const names = tracked
-          .filter((path) => /^business-resources\//.test(path) && skill(path))
+          .filter((path) => path.startsWith("business-resources/") && skill(path))
           .map((path) =>
             readFileSync(reference(path, basename(path)), "utf8")
               .match(/^name:\s*(.+)$/m)?.[1]

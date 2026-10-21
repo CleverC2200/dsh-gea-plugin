@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -384,4 +384,29 @@ test("mixed code and resource changes still parse the complete affected resource
   const result = repo.run("check");
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /run\.js/);
+});
+
+test("workflow event planning selects only present changed workflows without preparing tools", (t) => {
+  const repo = fixture(
+    t,
+    { "README.md": "Before\n", ".github/workflows/removed.yaml": "name: old\n" },
+    {
+      "README.md": "After\n",
+      ".github/workflows/removed.yaml": null,
+      ".github/workflows/quality.yml": "name: changed\n",
+    },
+  );
+  const output = join(repo.root, ".git/workflow-plan-output");
+  const selected = repo.run("plan", { ACTIONLINT: "/missing/actionlint", GITHUB_OUTPUT: output });
+  assert.equal(selected.status, 0, selected.stderr);
+  const plan = JSON.parse(selected.stdout);
+  assert.equal(plan.workflows, true);
+  assert.deepEqual(JSON.parse(plan["workflow-files"]), [".github/workflows/quality.yml"]);
+  const written = readFileSync(output, "utf8");
+  assert.ok(written.includes("workflows=true\n"));
+  assert.ok(written.includes('workflow-files=[".github/workflows/quality.yml"]\n'));
+  const docs = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  const docsPlan = JSON.parse(docs.run("plan", { ACTIONLINT: "/missing/actionlint" }).stdout);
+  assert.equal(docsPlan.workflows, false);
+  assert.deepEqual(JSON.parse(docsPlan["workflow-files"]), []);
 });
