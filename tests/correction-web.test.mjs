@@ -1,221 +1,225 @@
-import { mkdir } from "node:fs/promises";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openReadySalesPlan, openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
+import { correctionService } from "./fixtures/correction-service.mjs";
+
+const roles = ["region", "province", "area", "category"];
+const actionRequests = (app) =>
+  app.requests.filter((request) => request.url.pathname.endsWith("/actions"));
+const customerRow = (frame) => frame.getByRole("row").filter({ hasText: "纠偏客户" }).first();
+
+async function openProfile(t, app) {
+  await app.login();
+  const browser = await testBrowser(t, () =>
+    chromium.launch({ channel: "chrome", headless: true }),
+  );
+  const page = await browser.newPage({ locale: "zh-CN" });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  t.after(() => assert.deepEqual(errors, []));
+  await page.context().addCookies(
+    app.cookie.split("; ").map((cookie) => ({
+      name: cookie.slice(0, cookie.indexOf("=")),
+      value: cookie.slice(cookie.indexOf("=") + 1),
+      url: app.origin,
+    })),
+  );
+  await page.goto(app.origin);
+  return openReadySalesPlan(page);
+}
+
+async function selectStage(frame, role) {
+  const expand = frame.getByRole("button", { name: "展开审批流程图", exact: true });
+  if (await expand.isVisible()) await expand.click();
+  const stage = frame.getByTestId("regional-approval-stage-" + role);
+  await expect(stage).toBeEnabled();
+  if ((await stage.getAttribute("aria-pressed")) !== "true") await stage.click();
+  await expect(stage).toHaveAttribute("aria-pressed", "true");
+  await frame.getByRole("tab", { name: "按客户", exact: true }).click();
+  await expect(customerRow(frame)).toBeVisible();
+}
+
+async function selectCustomer(frame) {
+  const checkbox = customerRow(frame).getByRole("checkbox");
+  await expect(checkbox).toBeEnabled();
+  if (!(await checkbox.isChecked())) await checkbox.locator("..").click();
+}
 
 test(
-  "correction tab uses an explicit Z query and blocks customers without an approved monthly baseline",
+  "shared correction query keeps Z scope and rejects unapproved, monthly-source and wrong-period writes",
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
-    let responseMode = "normal";
-    app.route((req, res, reply) => {
-      if (req.url.pathname.endsWith("/getPermCode")) {
-        reply({ success: true, result: { codeList: ["sales-plan:plan:region-approve"] } });
-        return true;
-      }
-      if (req.url.pathname.endsWith("/plans")) {
-        const requestedStatus = req.url.searchParams.get("status");
-        if (requestedStatus !== null && Number(requestedStatus) !== 1) {
-          reply({
-            success: true,
-            result: { records: [], total: 0, current: 1, size: 20, pages: 1 },
-          });
-          return true;
-        }
-        reply({
-          success: true,
-          result: {
-            records: [
-              {
-                planId: "p-jxs-2026-09-00001",
-                versionId: "v",
-                seq: 1,
-                periodId: responseMode === "wrong-period" ? "20260902" : "20260901",
-                planTypeCode: "Y",
-                orderType:
-                  responseMode === "monthly" ? "M" : (req.url.searchParams.get("orderType") ?? "Z"),
-                dealerCode: "123",
-                dealerName: "纠偏客户",
-                status: 1,
-                targetAmount: "1000",
-                targetQty: "100",
-                currentQty: "100",
-                currentAmount: "1000",
-                skuCount: 1,
-                monthlyApproved: false,
-                mPlanQty: "100",
-                mPlanAmount: "800",
-                shipQty: "25",
-                shipAmount: "400",
-              },
-            ],
-            total: 1,
-            size: 20,
-            current: 1,
-            pages: 1,
-          },
-        });
-        return true;
-      }
-    });
-    await app.login();
-    const browser = await testBrowser(t, () =>
-      chromium.launch({ channel: "chrome", headless: true }),
-    );
-    const page = await browser.newPage({ locale: "zh-CN" });
-    page.on("pageerror", (e) => console.error("PAGE ERROR", e.message));
-    await page.context().addCookies(
-      app.cookie.split("; ").map((p) => {
-        const [name, ...v] = p.split("=");
-        return { name, value: v.join("="), url: app.origin };
-      }),
-    );
-    await page.goto(app.origin);
-    const frame = await openSalesPlan(page);
-    await expect(frame.getByRole("columnheader", { name: "月度目标", exact: true })).toBeVisible();
-    await frame
-      .getByRole("tab", { name: "纠偏", exact: true })
-      .click({ timeout: 10000 })
-      .catch(async (e) => {
-        console.error(await frame.locator("body").innerText());
-        throw e;
-      });
-    await expect(frame.getByText("纠偏客户", { exact: true })).toBeVisible();
-    await expect(frame.getByText("不可纠偏：月初未终审", { exact: true })).toBeVisible();
-    await expect(frame.getByRole("button", { name: "纠偏客户", exact: true })).toBeDisabled();
-    assert.ok(app.requests.some((r) => r.url.searchParams.get("orderType") === "Z"));
-    await expect(frame.getByRole("combobox", { name: "纠偏周期", exact: true })).toContainText(
+    const service = correctionService({ monthlyApproved: false });
+    app.route(service.route);
+    const frame = await openProfile(t, app);
+    const workbench = frame.getByTestId("regional-approval-workbench");
+    await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
+    await selectStage(frame, "region");
+    await expect(workbench).toBeVisible();
+    await expect(customerRow(frame).getByRole("checkbox")).toBeDisabled();
+    for (const name of ["通过", "退回"])
+      await expect(frame.getByRole("button", { name, exact: true })).toBeDisabled();
+    assert.ok(app.requests.some((request) => request.url.searchParams.get("orderType") === "Z"));
+    await expect(frame.getByRole("combobox", { name: "销售计划周期", exact: true })).toContainText(
       "2026-09",
     );
-    responseMode = "monthly";
-    await frame.getByRole("button", { name: "刷新纠偏", exact: true }).click();
-    await expect(frame.getByRole("button", { name: "纠偏客户", exact: true })).toBeDisabled();
-    await expect(frame.getByText("不可纠偏：月初未终审", { exact: true })).toBeVisible();
-    responseMode = "wrong-period";
-    await frame.getByRole("button", { name: "刷新纠偏", exact: true }).click();
-    await expect(frame.getByText(/其他周期或非纠偏数据/)).toBeVisible();
-    assert.equal(
-      app.requests.filter((request) => request.url.pathname.endsWith("/actions")).length,
-      0,
-    );
-    await expect(frame.getByText("纠偏客户", { exact: true })).toHaveCount(0);
-    await expect(frame.getByTestId("correction-summary")).toContainText("目标金额");
-    await expect(frame.getByTestId("correction-summary").locator("strong")).toHaveText([
-      "—",
-      "—",
-      "—",
-      "—",
-    ]);
+
+    service.setResponseMode("monthly");
+    await frame.getByRole("tab", { name: "月初", exact: true }).click();
+    await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
+    await selectStage(frame, "region");
+    await expect(customerRow(frame)).toContainText("月初来源（只读）");
+    await expect(customerRow(frame).getByRole("checkbox")).toBeDisabled();
+    for (const name of ["通过", "退回"])
+      await expect(frame.getByRole("button", { name, exact: true })).toBeDisabled();
+
+    service.setResponseMode("wrong-period");
+    await frame.getByRole("tab", { name: "月初", exact: true }).click();
+    await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
+    await expect
+      .poll(() =>
+        service.listResponses.some(
+          ({ query, records }) =>
+            query.orderType === "Z" &&
+            query.periodId === "20260901" &&
+            records.some((record) => record.periodId === "20260902"),
+        ),
+      )
+      .toBe(true);
+    await expect(frame.getByRole("alert").filter({ hasText: "审批队列读取失败" })).toBeVisible();
+    await expect(frame.getByRole("row").filter({ hasText: "纠偏客户" })).toHaveCount(0);
+    await expect(
+      frame.getByRole("region", { name: "当前页明细汇总", exact: true }).locator("strong"),
+    ).toHaveText(["—", "—", "—", "—"]);
+    assert.equal(actionRequests(app).length, 0);
+    assert.equal(service.writes.length, 0);
   },
 );
 
-import { correctionService } from "./fixtures/correction-service.mjs";
 test(
-  "correction saves absolute drafts, blocks returned approvals, and reconciles legal terminal DMS mock",
+  "shared correction locally stages drafts and preserves frozen baselines through approvals, rejection and receipts",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
-      roles: ["region", "province", "area", "category"].map((role) => ({
-        code: `sales_plan_${role}_approver`,
-        name: role,
-      })),
+      roles: roles.map((role) => ({ code: "sales_plan_" + role + "_approver", name: role })),
     });
-    let service = correctionService();
+    let service = correctionService({ versionId: "v-reject" });
     app.route(service.route);
-    await app.login();
-    const browser = await testBrowser(t, () =>
-      chromium.launch({ channel: "chrome", headless: true }),
-    );
-    const page = await browser.newPage({ locale: "zh-CN" });
-    await page.context().addCookies(
-      app.cookie.split("; ").map((p) => ({
-        name: p.slice(0, p.indexOf("=")),
-        value: p.slice(p.indexOf("=") + 1),
-        url: app.origin,
-      })),
-    );
-    await page.goto(app.origin);
-    const f = await openReadySalesPlan(page);
-    await f.getByRole("tab", { name: "纠偏", exact: true }).click();
-    await expect(f.getByRole("tab", { name: "纠偏", exact: true })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    await expect(
-      f.getByTestId("correction-workbench").getByText("50.0%", { exact: true }),
-    ).toBeVisible();
-    const open = async () => {
-      const status = service.detail().currentVersion.status;
-      const node =
-        status >= 5 && status <= 10 && status !== 9
-          ? "品类计划审批"
-          : { 1: "城市经理", 2: "省区经理", 3: "大区总监", 4: "品类计划审批", 9: "大区总监" }[
-              status
-            ];
-      const toggle = f.locator('button[aria-controls="correction-stage-lane"]');
-      if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
-      const lane = f.getByRole("navigation", { name: "纠偏查看节点", exact: true });
-      await lane
-        .getByRole("button", {
-          name: new RegExp((status === 5 || status === 10 ? "当前节点" : node) + "$"),
-        })
-        .click();
-      await f.getByRole("button", { name: "纠偏客户", exact: true }).click();
+    const frame = await openProfile(t, app);
+    await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
+
+    const approve = async (from) => {
+      await selectCustomer(frame);
+      const button = frame.getByRole("button", { name: "通过", exact: true });
+      await expect(button).toBeEnabled();
+      await button.click();
+      await expect.poll(() => service.detail().currentVersion.status).toBe(from + 1);
     };
+    const open = async (role) => {
+      await selectStage(frame, role);
+      await expect(customerRow(frame).getByRole("checkbox")).toBeEnabled();
+      const button = frame.getByRole("button", {
+        name: "打开 纠偏客户 调整明细",
+        exact: true,
+      });
+      const input = frame.getByRole("spinbutton", { name: "追加/追减 123", exact: true });
+      if (
+        !(await input.isVisible()) &&
+        (await button.locator("[data-expanded]").getAttribute("data-expanded")) !== "true"
+      )
+        await button.click();
+      await expect(input).toBeEnabled();
+      return { input, button };
+    };
+
     for (const outcome of ["reject", "approve"]) {
       if (outcome === "approve") {
-        service = correctionService();
+        service = correctionService({ versionId: "v-approve" });
         app.route(service.route);
-        await f.getByRole("button", { name: "刷新纠偏", exact: true }).click();
+        await frame.getByRole("tab", { name: "月初", exact: true }).click();
+        await frame.getByRole("tab", { name: "纠偏", exact: true }).click();
       }
-      await open();
-      const d = f.getByRole("dialog", { name: "纠偏调整明细", exact: true });
-      await expect(d.getByRole("textbox", { name: "调整量 123" })).toHaveValue("2");
-      await d.getByRole("button", { name: "关闭", exact: true }).click();
-      const activeStage = f
-        .getByRole("navigation", { name: "纠偏查看节点", exact: true })
-        .getByRole("button", { name: /城市经理$/ });
-      await expect(activeStage).toHaveAttribute("aria-pressed", "true");
-      await activeStage.click();
-      await expect(f.getByRole("button", { name: "纠偏客户", exact: true })).toBeVisible();
-      await open();
-      await mkdir(".runtime/correction-evidence", { recursive: true });
-      await page.screenshot({
-        path: ".runtime/correction-evidence/detail.png",
-        fullPage: true,
-        animations: "disabled",
-      });
-      await d.getByRole("textbox", { name: "调整量 123" }).fill("8");
-      await d.getByRole("button", { name: "保存调整", exact: true }).click();
-      await expect(d).toHaveCount(0);
+      const initial = service.detail();
+      const initialActions = actionRequests(app).length;
+      const city = await open("region");
+      await expect(city.input).toHaveValue("0");
+      const skuRow = frame.getByRole("row").filter({ hasText: "冻结基准SKU" }).last();
+      await expect(skuRow.getByRole("cell").nth(1)).toHaveText("30");
+      await expect(skuRow.getByRole("cell").nth(3)).toHaveText("60");
+      await city.input.fill("8");
+      await expect
+        .poll(async () => {
+          const result = await app.rpc("sales-plan/draft", {
+            planId: initial.currentVersion.planId,
+            versionId: initial.currentVersion.id,
+            approvalRole: "region",
+          });
+          return result.ok ? result.value.draft?.adjustments : undefined;
+        })
+        .toEqual([{ skuCode: "123", adjustQty: "8" }]);
+      assert.equal(actionRequests(app).length, initialActions);
+      assert.equal(service.writes.length, 0);
+      assert.deepEqual(service.detail().skus, initial.skus);
+      assert.equal(service.detail().currentVersion.status, 1);
+      await city.button.click();
+      await city.button.click();
+      await expect(city.input).toHaveValue("8");
+      await selectCustomer(frame);
+      const current = frame.getByTestId("regional-approval-stage-region");
+      await current.click();
+      await expect(current).toHaveAttribute("aria-pressed", "true");
+      await expect(customerRow(frame).getByRole("checkbox")).toBeChecked();
+      await expect(city.input).toHaveValue("8");
+      await approve(1);
       assert.equal(service.detail().skus[0].regionAdjAddQty, "8");
       assert.equal(service.detail().skus[0].regionAdjAddAmount, "16.00");
       assert.equal(service.detail().skus[0].regionAdjCutAmount, "0.00");
-      assert.equal(service.detail().skus[0].regionConfirmedQty, undefined);
-      assert.equal(service.detail().currentVersion.status, 1);
-      for (const _stage of [1, 2]) {
-        await open();
-        await expect(d.getByRole("textbox", { name: "调整量 123" })).toHaveValue("8");
-        await d.getByRole("button", { name: "通过", exact: true }).click();
-        await expect(d).toHaveCount(0);
-      }
+      assert.equal(service.detail().skus[0].regionConfirmedQty, "38");
+
+      await open("province");
+      await approve(2);
       assert.equal(service.detail().skus[0].provinceConfirmedQty, "38");
-      await open();
-      await d.getByRole("textbox", { name: "调整量 123" }).fill("-31");
-      await expect(d.getByRole("button", { name: "通过", exact: true })).toBeDisabled();
-      await d.getByRole("textbox", { name: "调整量 123" }).fill("-3");
-      await d.getByRole("button", { name: "通过", exact: true }).click();
-      await expect(d).toHaveCount(0);
-      assert.equal(service.detail().skus[0].areaConfirmedQty, "27");
-      await open();
+      assert.equal(service.detail().skus[0].provinceConfirmedAmount, "76");
+
+      const area = await open("area");
+      await area.input.fill("-39");
+      await expect(frame.getByText("暂存失败", { exact: true })).toBeVisible();
+      const beforeNegative = actionRequests(app).length;
+      await selectCustomer(frame);
+      const through = frame.getByRole("button", { name: "通过", exact: true });
+      await through.click();
+      await expect(
+        frame
+          .getByRole("alert")
+          .filter({ hasText: "操作请求失败且未更新本地状态；请刷新权威队列后再决定。" })
+          .first(),
+      ).toBeVisible();
+      await expect(through).toBeEnabled();
+      assert.equal(actionRequests(app).length, beforeNegative);
+      assert.equal(service.detail().currentVersion.status, 3);
+      assert.equal(service.writes.length, 2);
+      await area.input.fill("-3");
+      await approve(3);
+      assert.equal(service.detail().skus[0].areaConfirmedQty, "35");
+      assert.equal(service.detail().skus[0].areaConfirmedAmount, "70");
+
+      await open("category");
       if (outcome === "reject") {
-        await d.getByRole("textbox", { name: "退回原因" }).fill("重新核对");
-        await d.getByRole("button", { name: "退回", exact: true }).click();
-        await expect(d).toHaveCount(0);
+        await selectCustomer(frame);
+        await frame.getByRole("button", { name: "退回", exact: true }).click();
+        const dialog = frame.getByRole("dialog", { name: "退回", exact: true });
+        const confirm = dialog.getByRole("button", { name: "确认退回", exact: true });
+        await expect(confirm).toBeDisabled();
+        await dialog
+          .getByRole("textbox", { name: "退回原因（必填）", exact: true })
+          .fill("重新核对");
+        await expect(confirm).toBeEnabled();
+        await confirm.click();
+        await expect(dialog).toHaveCount(0);
         assert.equal(service.detail().currentVersion.status, 9);
         assert.equal(service.detail().skus[0].areaAdjCutQty, "3");
         for (const suffix of [
@@ -227,33 +231,37 @@ test(
           "ConfirmedAmount",
         ])
           assert.equal(service.detail().skus[0]["category" + suffix], null);
-        const writes = service.writes.length;
-        const requests = app.requests.filter((r) => r.url.pathname.endsWith("/actions")).length;
-        await open();
-        for (const name of ["保存调整", "通过", "退回"])
-          await expect(d.getByRole("button", { name, exact: true })).toBeDisabled();
-        await d.getByRole("button", { name: "关闭", exact: true }).click();
-        assert.equal(service.writes.length, writes);
-        assert.equal(
-          app.requests.filter((r) => r.url.pathname.endsWith("/actions")).length,
-          requests,
-        );
-        assert.equal(service.detail().currentVersion.status, 9);
-        continue;
+        await selectStage(frame, "area");
+        const through = frame.getByRole("button", { name: "通过", exact: true });
+        if (await through.count()) await expect(through).toBeDisabled();
+        else
+          await expect(
+            frame.getByRole("button", { name: "修改后提交", exact: true }),
+          ).toBeVisible();
+        assert.equal(service.writes.length, 4);
+      } else {
+        await approve(4);
+        assert.equal(service.detail().currentVersion.status, 5);
+        assert.equal(service.detail().skus[0].categoryConfirmedQty, "35");
+        assert.equal(service.writes.length, 4);
       }
-      await d.getByRole("button", { name: "通过", exact: true }).click();
-      await expect(d).toHaveCount(0);
-      assert.equal(service.detail().currentVersion.status, 5);
-      service.deliver("partial");
-      await open();
-      await expect(d.getByText("DMS mock · UNKNOWN", { exact: true })).toBeVisible();
-      await d.getByRole("button", { name: "关闭", exact: true }).click();
-      service.reconcile();
-      service.deliver("success");
-      await f.getByRole("button", { name: "刷新纠偏", exact: true }).click();
-      await open();
-      await expect(d.getByText("DMS mock · SYNCED", { exact: true })).toBeVisible();
-      assert.equal(service.detail().currentVersion.status, 10);
+
+      const after = service.detail();
+      for (const field of ["qty", "corrBaseQty", "amt", "price", "adjAddQty", "adjCutQty"])
+        assert.equal(after.skus[0][field], initial.skus[0][field]);
+      assert.deepEqual(
+        service.writes.map((body) => body.action),
+        ["APPROVE", "APPROVE", "APPROVE", outcome === "reject" ? "REJECT" : "APPROVE"],
+      );
+      assert.equal(service.receipts.length, 4);
+      assert.equal(after.logs.length, 4);
+      for (const [index, receipt] of service.receipts.entries()) {
+        assert.equal(receipt.requestId, after.logs[index].requestId);
+        assert.equal(receipt.auditId, "sales-plan-log:" + after.logs[index].id);
+        assert.equal(receipt.toStatus, after.logs[index].toStatus);
+        assert.equal(JSON.parse(after.logs[index].decisionJson)[0].skuCode, "123");
+      }
+      assert.equal(actionRequests(app).length, initialActions + 4);
     }
   },
 );

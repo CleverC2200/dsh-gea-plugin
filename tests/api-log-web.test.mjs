@@ -1,4 +1,8 @@
-import { openSalesPlan, openWorkbenchPage } from "./fixtures/business-page.mjs";
+import {
+  openSalesPlan,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+} from "./fixtures/business-page.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
@@ -10,7 +14,9 @@ test(
   "API log center lists real Host calls, redacts credentials and replays safe reads",
   { timeout: 90000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess([["gea-api-log", "接口日志"]]),
+    });
     await app.login();
     const browser = await chromium.launch({
       headless: true,
@@ -46,7 +52,7 @@ test(
     await page.getByRole("menuitem", { name: "设置", exact: true }).click({ force: true });
     const settings = page.getByRole("dialog", { name: "设置", exact: true });
     await settings.getByRole("button", { name: "关闭", exact: true }).click();
-    await openWorkbenchPage(page, "接口日志");
+    await openRegisteredWorkbenchPage(page, "接口日志");
     await page.getByRole("heading", { name: "接口日志中心", exact: true }).waitFor();
     await expect(settings).toHaveCount(0);
     const layout = await page.locator(".gea-api-log-center").evaluate((center) => {
