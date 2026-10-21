@@ -416,6 +416,15 @@
         "scripts/run-quality-ci.test.mjs",
         "scripts/run-quality-ci-stages.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-peer-baseline\\.json$",
+      "tests": [],
+      "sourceTests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     }
   ],
   "testOwners": {
