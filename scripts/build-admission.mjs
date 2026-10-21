@@ -4,7 +4,8 @@ import { dirname, join, resolve, relative, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 
 export const buildPolicy = Object.freeze({
-  safetyBytes: 20 * 1024 ** 3,
+  safetyBytes: 2 * 1024 ** 3,
+  desktopSafetyBytes: 20 * 1024 ** 3,
   reserveBytes: Object.freeze({
     prepare: 3 * 1024 ** 3,
     build: 1024 ** 3,
@@ -124,7 +125,11 @@ export function acquireBuild({
     const reservedBytes = claims
       .filter((entry) => entry.device === device)
       .reduce((sum, entry) => sum + entry.reserveBytes, 0);
-    const requiredBytes = buildPolicy.safetyBytes + reservedBytes + reserveBytes;
+    const safetyBytes =
+      operation === "desktop" || operation === "sdk"
+        ? buildPolicy.desktopSafetyBytes
+        : buildPolicy.safetyBytes;
+    const requiredBytes = safetyBytes + reservedBytes + reserveBytes;
     if (availableBytes < requiredBytes) {
       const error = Error("BUILD_CAPACITY_INSUFFICIENT");
       Object.assign(error, { availableBytes, requiredBytes, reserveBytes, reservedBytes });

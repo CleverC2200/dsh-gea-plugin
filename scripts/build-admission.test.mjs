@@ -24,6 +24,32 @@ function fixture(t, bytes = 100 * 1024 ** 3) {
   });
   return { root, a, b };
 }
+for (const [operation, requiredGiB] of [
+  ["build", 3],
+  ["package", 3],
+  ["watch", 3],
+  ["prepare", 5],
+  ["desktop", 28],
+  ["sdk", 28],
+]) {
+  const requiredBytes = requiredGiB * 1024 ** 3;
+  test(`${operation} accepts its own space budget at ${requiredGiB} GiB`, (t) => {
+    const { a } = fixture(t, requiredBytes);
+    const release = acquireBuild({ operation, cwd: a });
+    assert.equal(readBuildAdmissions(a).length, 1);
+    release();
+    assert.deepEqual(readBuildAdmissions(a), []);
+  });
+  test(`${operation} refuses below its own space budget`, (t) => {
+    const { a } = fixture(t, requiredBytes - 1);
+    assert.throws(
+      () => acquireBuild({ operation, cwd: a }),
+      (error) =>
+        error.message === "BUILD_CAPACITY_INSUFFICIENT" && error.requiredBytes === requiredBytes,
+    );
+    assert.deepEqual(readBuildAdmissions(a), []);
+  });
+}
 test("capacity refusal occurs before the output or command is created", async (t) => {
   const { a } = fixture(t, buildPolicy.safetyBytes);
   const output = join(a, "not-created");
