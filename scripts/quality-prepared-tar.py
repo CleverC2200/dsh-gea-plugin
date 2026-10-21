@@ -143,6 +143,7 @@ else:
                     raise ValueError("existing output refuses overwrite")
         retired = retired_workbench_declarations()
         for target in retired:
+            check_output_parents(target)
             if not clean_git_output(target):
                 raise ValueError("Git declaration changed before removal")
             target.unlink()
