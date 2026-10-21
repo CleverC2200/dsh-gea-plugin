@@ -5,9 +5,8 @@ import { parse } from "yaml";
 
 const workflow = parse(readFileSync(".github/workflows/delivery-fixtures.yml", "utf8"));
 
-test("delivery retains PR main and manual contexts while feature pushes use their PR", () => {
-  assert.deepEqual(Object.keys(workflow.on).sort(), ["pull_request", "push", "workflow_dispatch"]);
-  assert.deepEqual(workflow.on.push, { branches: ["main"] });
+test("delivery retains PR and manual contexts without empty main push runs", () => {
+  assert.deepEqual(Object.keys(workflow.on).sort(), ["pull_request", "workflow_dispatch"]);
   assert.equal(workflow.on.pull_request, null);
   const inputs = workflow.on.workflow_dispatch.inputs;
   assert.deepEqual(Object.keys(inputs).sort(), [
@@ -40,6 +39,13 @@ test("macOS complete packaging requires explicit manual input and a fixed compan
       (step) =>
         step.run === 'node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"',
     ),
+  );
+});
+
+test("Windows complete packaging uses its own input or Native bundle without selecting macOS", () => {
+  assert.equal(
+    workflow.jobs["windows-complete-package"].if,
+    "github.event_name == 'workflow_dispatch' && (inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')",
   );
 });
 
