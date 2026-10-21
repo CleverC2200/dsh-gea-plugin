@@ -37,6 +37,7 @@ function run(root, args = []) {
   const child = spawn(process.execPath, [builder, ...args], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, TMPDIR: root },
   });
   let log = "";
   child.stdout.on("data", (data) => {
@@ -72,7 +73,8 @@ test(
   { timeout: 20000 },
   async (t) => {
     const root = await fixture(t);
-    assert.equal((await run(root).done).code, 0);
+    const initial = await run(root).done;
+    assert.equal(initial.code, 0, initial.log);
     for (const file of outputs) assert.ok((await stat(join(root, file))).size > 0, file);
     assert.match(
       await readFile(join(root, "lib/client.js"), "utf8"),

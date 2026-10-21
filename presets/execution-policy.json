@@ -32,6 +32,20 @@
       "consumerCode": "full-chain-inventory",
       "skills": ["inventory-qll"]
     },
+    "gea-html-inventory-customer": {
+      "label": "客户库存",
+      "presetName": "客户库存Agent",
+      "description": "客户库存与动销的只读分析，按已发布证据调用库存诊断、补货、控补、货龄和趋势 Skill；业务执行遵循当前身份与资源授权。",
+      "consumerCode": "customer_inventory",
+      "skills": [
+        "inventory-customer",
+        "customer-inventory-age-risk",
+        "customer-inventory-change",
+        "customer-inventory-diagnosis",
+        "customer-overstock-control",
+        "customer-stockout-replenishment"
+      ]
+    },
     "gea-html-inventory-aqkc": {
       "label": "基地库存",
       "presetName": "基地库存Agent",

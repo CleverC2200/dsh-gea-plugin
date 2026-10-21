@@ -208,6 +208,16 @@ test("customer and fulfillment build copies require identical caller-frozen Mana
   }
 });
 
+test("customer Skill copies reject changed frozen Manage bytes", async (t) => {
+  const fixture = copiedSkillFixture(
+    t,
+    "business-resources/inventory-customer/skills/inventory-policy/rules/data-boundary.md",
+  );
+  await readPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, fixture.output), "changed customer Skill\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
 test("the public verifier uses caller-frozen Manage input for copied Skills", async (t) => {
   const fixture = copiedSkillFixture(t);
   const record = await readPreparedWorkbench(fixture);
