@@ -555,6 +555,7 @@ if (install && ['cancel','leader-exit'].includes(process.env.INSTALL_SCENARIO) &
 if (install && process.env.INSTALL_SCENARIO==='fail-second' && basename(cwd)==='dsh-better-sidebar') {
   const file=join(root,'grandchild-ready');
   if(!existsSync(file))await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{watcher.close();reject(Error('grandchild not ready'))},5000);const done=()=>{if(existsSync(file)){clearTimeout(timer);watcher.close();resolve()}};const watcher=watch(root,done);done()});
+  writeFileSync(join(root,'second-install-ready'),'ready');
   process.stderr.write('controlled second install failure');process.exit(23);
 }
 const r=spawnSync(command,args,{cwd,encoding:'utf8',env:process.env});
@@ -1749,6 +1750,7 @@ test("worker CLI reaps its owned install group and keeps the second failure befo
   f.clear();
   const run = f.receiveAsync({ PROCESS_INSTALLS: "1", INSTALL_SCENARIO: "fail-second" });
   try {
+    await installFixturesReady(f, run);
     const r = await deadline(run.closed);
     assert.equal(r.code, 1, r.stderr);
     assert.match(r.stderr, /controlled second install failure/);

@@ -22,6 +22,7 @@ test(
         },
       }),
     });
+    assert.equal((await app.login()).ok, true);
     const browser = await chromium.launch({ headless: true });
     t.after(() => browser.close());
     const context = await browser.newContext({
