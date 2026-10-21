@@ -58,6 +58,15 @@
   ],
   "rules": [
     {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/host\\.ts$",
+      "tests": [
+        "scripts/quality-workbench.test.mjs",
+        "tests/current-startup-web.test.mjs",
+        "tests/received-mock-resources.test.mjs"
+      ]
+    },
+    {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/build\\.mjs$",
       "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/development-tasks.test.mjs"]
