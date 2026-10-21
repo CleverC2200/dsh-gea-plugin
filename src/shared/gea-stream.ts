@@ -21,7 +21,8 @@ const STREAM_FAILURES: Record<string, string> = {
   GEA_MODEL_TOOL_TEXT: "模型把工具调用写成了文本；这些调用未执行，本轮业务答复未完成",
   GEA_MODEL_INCOMPLETE_STREAM: "模型这一轮没返回结束标记就断流了，本轮已中止，请重发一次",
   GEA_MODEL_UNSUPPORTED_TOOL_CALL: "模型用了这个客户端不支持的调用方式，本轮已中止",
-  GEA_MODEL_INVALID_TOOL_CALL: "模型这一轮回复里的工具调用不合法，本轮已中止，请重发一次",
+  GEA_MODEL_INVALID_TOOL_CALL:
+    "模型这一轮回复里的工具调用不合法，调用未执行，本轮已中止。请核对工具清单与模型响应，连续失败时保留请求标识排查",
   GEA_MODEL_UNSUPPORTED_FINISH_REASON: "模型返回了无法识别的结束原因，本轮已中止",
   GEA_MODEL_EMPTY_RESPONSE: "模型这一轮没有给出任何内容，请重发一次",
   GEA_MODEL_INVALID_SSE: "模型返回的数据格式无法解析，本轮已中止",
