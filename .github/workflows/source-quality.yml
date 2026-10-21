@@ -1,0 +1,94 @@
+name: source-quality
+run-name: "Repository source quality — ${{ github.sha }}"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Check source syntax and whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
+          const base = process.env.BASE_SHA;
+          if (base && !/^0+$/.test(base))
+            execFileSync('git', ['diff', '--check', base, 'HEAD'], { stdio: 'inherit' });
+          const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
+          let checked = 0;
+          for (const file of files) {
+            if (file.split('/').includes('fixtures')) continue;
+            if (/\.(?:mjs|cjs|js)$/.test(file)) {
+              execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
+              checked++;
+            } else if (file.endsWith('.json')) {
+              JSON.parse(readFileSync(file, 'utf8'));
+              checked++;
+            }
+          }
+          console.log(`Checked ${checked} repository JavaScript and JSON files`);
+          NODE
+      - name: Check committed package version
+        run: node scripts/generate-plugin-package-version.mjs --check
+      - name: Run independent repository regressions
+        run: >-
+          node --test
+          scripts/run-quality-checks.test.mjs
+          scripts/runtime-environment.test.mjs
+          scripts/gea-error.test.mjs
+          scripts/session-log.test.mjs
+          scripts/quality-test-reporter.test.mjs
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+
+  candidate-quality:
+    if: always()
+    needs: [source-checks, dependency-review]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful repository checks
+        env:
+          SOURCE_RESULT: ${{ needs.source-checks.result }}
+          DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          test "$SOURCE_RESULT" = success
+          if [ "$EVENT_NAME" = pull_request ]; then
+            test "$DEPENDENCY_RESULT" = success
+          fi
