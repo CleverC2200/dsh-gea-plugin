@@ -285,3 +285,103 @@ test("JavaScript resources retain security scanning without unrelated engineerin
   assert.equal(repo.run("final", results).status, 0);
   assert.notEqual(repo.run("final", { ...results, CODEQL_RESULT: "skipped" }).status, 0);
 });
+
+test("ordinary JavaScript changes check only current changed sources", (t) => {
+  const repo = fixture(
+    t,
+    { "src/main.js": "export const value = 1;\n", "src/old.js": "broken syntax !" },
+    { "src/main.js": "export const value = 2;\n", "src/added.cjs": "module.exports = 1;\n" },
+  );
+  const result = repo.run("check");
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("syntax checker and parser inputs expand checks to unchanged tracked sources", (t) => {
+  for (const file of [
+    "package.json",
+    "pnpm-lock.yaml",
+    ".nvmrc",
+    "tsconfig.json",
+    "babel.config.cjs",
+    ".oxlintrc.json",
+    ".oxfmtrc.json",
+    "scripts/source-quality.mjs",
+  ]) {
+    const repo = fixture(
+      t,
+      { "src/old.js": "broken syntax !", [file]: file.endsWith(".json") ? "{}" : "before\n" },
+      { [file]: file.endsWith(".json") ? '{"changed":true}' : "after\n" },
+    );
+    const result = repo.run("check");
+    assert.notEqual(result.status, 0, file);
+    assert.match(result.stderr, /old\.js/);
+  }
+});
+
+test("unknown changes and missing comparison bases keep full syntax checks", (t) => {
+  const repo = fixture(
+    t,
+    { "src/old.js": "broken syntax !", "src/input.unknown": "before\n" },
+    { "src/input.unknown": "after\n" },
+  );
+  const unknown = repo.run("check");
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stderr, /old\.js/);
+  const noBase = repo.run("check", { GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: "" });
+  assert.notEqual(noBase.status, 0);
+  assert.match(noBase.stderr, /old\.js/);
+});
+
+test("ordinary JSON changes skip unchanged invalid JSON and reject changed invalid JSON", (t) => {
+  const repo = fixture(
+    t,
+    { "src/data.json": '{"value":1}', "src/old.json": "invalid JSON" },
+    { "src/data.json": '{"value":2}', "src/new.json": '{"added":true}' },
+  );
+  const accepted = repo.run("check");
+  assert.equal(accepted.status, 0, accepted.stderr);
+  writeFileSync(join(repo.root, "src/data.json"), "invalid changed JSON");
+  repo.git("add", ".");
+  repo.git("commit", "-qm", "invalid changed JSON");
+  const rejected = repo.run("check", { SOURCE_HEAD_SHA: repo.git("rev-parse", "HEAD") });
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /SyntaxError/);
+});
+
+test("added and modified JavaScript must parse while deleted sources are not read", (t) => {
+  for (const added of [false, true]) {
+    const repo = fixture(
+      t,
+      { "src/main.mjs": "export const value = 1;\n" },
+      { [added ? "src/new.cjs" : "src/main.mjs"]: "broken changed syntax !" },
+    );
+    const result = repo.run("check");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, added ? /new\.cjs/ : /main\.mjs/);
+  }
+  const deleted = fixture(
+    t,
+    { "src/deleted.js": "broken deleted syntax !", "src/old.js": "broken unchanged syntax !" },
+    { "src/deleted.js": null },
+  );
+  const result = deleted.run("check");
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("mixed code and resource changes still parse the complete affected resource group", (t) => {
+  const repo = fixture(
+    t,
+    {
+      "src/main.js": "export const value = 1;\n",
+      "business-resources/demo/data.json": '{"value":1}',
+      "business-resources/demo/run.js": "broken resource syntax !",
+    },
+    {
+      "src/main.js": "export const value = 2;\n",
+      "business-resources/demo/data.json": '{"value":2}',
+    },
+  );
+  const result = repo.run("check");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /run\.js/);
+});
