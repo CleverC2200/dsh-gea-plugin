@@ -144,13 +144,12 @@ test("the APS config exception rejects altered sources, staging, redirects and u
   }
 });
 
-function copiedSkillFixture(
-  t,
-  resource = "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md",
-) {
+function copiedSkillFixture(t) {
   const fixture = preparedFixture(t);
   const path = join(fixture.source, "..", "manage");
-  const output = resource.replace(/^business-resources\//, "lib/business/");
+  const resource =
+    "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
+  const output = "lib/business/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
   mkdirSync(join(path, resource, ".."), { recursive: true });
   writeFileSync(join(path, resource), "Only admitted inventory rows may be read.\n");
   fixture.git("-C", path, "init", "-q");
@@ -611,20 +610,5 @@ test("copied Agent SQL config must equal its frozen Workbench source and cannot 
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
   rmSync(output);
   symlinkSync(original, output);
-  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
-});
-
-test("caller-frozen customer Skill build copies retain source and byte verification", async (t) => {
-  const fixture = copiedSkillFixture(
-    t,
-    "business-resources/inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
-  );
-  const record = await readPreparedWorkbench(fixture);
-  assert.ok(record.files[fixture.output]);
-  await assert.rejects(
-    readPreparedWorkbench({ ...fixture, manage: undefined }),
-    /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
-  );
-  writeFileSync(join(fixture.prepared, fixture.output), "changed copy\n");
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
