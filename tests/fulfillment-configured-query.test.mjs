@@ -14,10 +14,21 @@ test("fulfillment installed queries bind order01 and reject browser Consumer/SQL
       "utf8",
     ),
   );
-  const policy = JSON.parse(await readFile('presets/execution-policy.json', 'utf8'));
-  const capability = JSON.parse(await readFile('../dsh-agent-manage/business-resources/inventory-orderfulfillment/capability.json', 'utf8'));
-  assert.equal(policy.profiles['gea-html-inventory-orderfulfillment'].consumerCode, manifest.gea.consumerCode);
-  assert.deepEqual(policy.profiles['gea-html-inventory-orderfulfillment'].skills, capability.skills);
+  const policy = JSON.parse(await readFile("presets/execution-policy.json", "utf8"));
+  const capability = JSON.parse(
+    await readFile(
+      "../dsh-agent-manage/business-resources/inventory-orderfulfillment/capability.json",
+      "utf8",
+    ),
+  );
+  assert.equal(
+    policy.profiles["gea-html-inventory-orderfulfillment"].consumerCode,
+    manifest.gea.consumerCode,
+  );
+  assert.deepEqual(
+    policy.profiles["gea-html-inventory-orderfulfillment"].skills,
+    capability.skills,
+  );
   assert.equal(manifest.skills.length, capability.skills.length);
   await writeFile(
     join(directory, "sql.config.json"),
