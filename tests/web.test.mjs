@@ -323,7 +323,7 @@ test(
               table: Math.round(element.querySelector("table").getBoundingClientRect().width),
             })),
           )
-          .toMatchObject({ viewport: width - 1, table: Math.max(660, width - 1) });
+          .toMatchObject({ viewport: width - 1, table: Math.max(864, width - 1) });
         const headers = await table.locator("thead th").evaluateAll((cells) =>
           cells.map((cell) => ({
             left: cell.getBoundingClientRect().left,
@@ -333,6 +333,22 @@ test(
         for (let index = 1; index < headers.length; index++) {
           assert.ok(headers[index].left >= headers[index - 1].right - 1, JSON.stringify(headers));
         }
+        await expect(table.locator("thead th").last()).toHaveText("退回原因");
+        await table.evaluate((element) => {
+          element.scrollLeft = element.scrollWidth;
+        });
+        await expect
+          .poll(() =>
+            table.evaluate((element) => {
+              const viewport = element.getBoundingClientRect();
+              const last = element.querySelector("thead th:last-child").getBoundingClientRect();
+              return last.left >= viewport.left && last.right <= viewport.right + 1;
+            }),
+          )
+          .toBe(true);
+        await table.evaluate((element) => {
+          element.scrollLeft = 0;
+        });
         await workbenchFrame.screenshot({
           path: `.runtime/web-evidence/approval-columns-${width}.png`,
         });

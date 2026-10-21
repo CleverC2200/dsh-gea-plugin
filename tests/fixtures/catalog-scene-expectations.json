@@ -19,7 +19,7 @@
         "sha256": "fe0a9aa099be4489c8d3f961b29ad41349212f3cdaeeb01d8bb2acfac67489a7",
         "name": "inventory-mps",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "54cd0cd59dd338a3bffe51c66d60ed2c98866dea",
+        "sourceHead": "4fccf7cd6c86f229f62e532625c9d8be9f2215a9",
         "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       },
       {

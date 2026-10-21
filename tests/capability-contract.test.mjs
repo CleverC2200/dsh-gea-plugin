@@ -34,20 +34,9 @@ test("formal customer Consumer keeps underscores through normalization and regis
     maxEffect: "view",
     sources: [],
   });
-  const normalized = m.normalizeContract(contract);
-  const registry = m.createCapabilityRegistry([normalized]);
+  const registry = m.createCapabilityRegistry([m.normalizeContract(contract)]);
   assert.equal(registry.byConsumer("customer_inventory").id, "inventory-customer");
   assert.equal(registry.byConsumer("customer-inventory-preview"), undefined);
-  for (const consumerCode of [
-    "customer inventory",
-    "customer/inventory",
-    "customer.inventory",
-    "customer@inventory",
-  ]) {
-    const invalid = { ...contract, data: { ...contract.data, consumerCode } };
-    assert.throws(() => m.normalizeContract(invalid), /INVALID_CAPABILITY_CONTRACT/);
-    assert.throws(() => m.createCapabilityRegistry([invalid]), /INVALID_CONSUMER_CODE/);
-  }
 });
 
 test("只从模块自己的 SQL 里提取受管业务表，CTE 与函数不算表", () => {
@@ -191,6 +180,21 @@ test("关键词能把用户问题路由到模块", () => {
 });
 
 test("模块自己交的契约形状不对就整份丢掉", () => {
+  for (const consumerCode of [
+    "customer inventory",
+    "customer/inventory",
+    "customer.inventory",
+    "Customer_inventory",
+  ]) {
+    const contract = m.contractFromPlugin({
+      id: "inventory-customer",
+      label: "客户库存",
+      consumerCode,
+      pageIds: ["inventory-customer"],
+    });
+    assert.throws(() => m.normalizeContract(contract), /INVALID_CAPABILITY_CONTRACT/);
+    assert.throws(() => m.createCapabilityRegistry([contract]), /INVALID_CONSUMER_CODE/);
+  }
   assert.throws(() => m.normalizeContract({ id: "x" }), /INVALID_CAPABILITY_CONTRACT/);
   assert.throws(
     () =>

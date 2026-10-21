@@ -85,7 +85,7 @@ try {
     "--strict",
     join(mount, "GEA Desktop.app"),
   ]);
-  execFileSync("/bin/cp", ["-cR", join(mount, "GEA Desktop.app"), app]);
+  await run("baseline-copy", "/usr/bin/ditto", [join(mount, "GEA Desktop.app"), app]);
 } finally {
   await run("baseline-detach", "/usr/bin/hdiutil", ["detach", mount]);
 }
