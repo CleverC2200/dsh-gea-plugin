@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -313,4 +313,25 @@ test("delivery initializes isolated download paths after Node setup through the 
       `COREPACK_HOME=${join(directory, "delivery-downloads/corepack")}\nELECTRON_CACHE=${join(directory, "delivery-downloads/electron")}\nELECTRON_BUILDER_CACHE=${join(directory, "delivery-downloads/electron-builder")}\n`,
     );
   }
+});
+
+test("a failed real type process cannot be hidden by a successful tee pipeline", (t) => {
+  const step = workflow.jobs["delivery-fixtures"].steps.find(
+    (step) =>
+      step.name === "Source types: run the four real configurations and retain source identity",
+  );
+  const directory = mkdtempSync(join(tmpdir(), "source-types-pipefail-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  mkdirSync(join(directory, ".runtime/source-types"), { recursive: true });
+  const script = step.run.replace(
+    /(<<'NODE'[^\n]*\n)[\s\S]*?(\nNODE)/,
+    '$1throw Error("CONTROLLED_TYPES_FAILURE");$2',
+  );
+  const result = spawnSync("bash", ["-e", "-c", script], { cwd: directory, encoding: "utf8" });
+  assert.notEqual(result.status, 0, result.stdout + result.stderr);
+  assert.match(
+    readFileSync(join(directory, ".runtime/source-types/checks.log"), "utf8"),
+    /CONTROLLED_TYPES_FAILURE/,
+  );
+  assert.equal(step["continue-on-error"], undefined);
 });
