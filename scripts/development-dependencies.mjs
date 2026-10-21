@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import cp from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -49,7 +49,81 @@ export function repository(cwd = process.cwd()) {
     lock: manager === "npm" ? "package-lock.json" : "pnpm-lock.yaml",
   };
 }
-function publicFiles(target, manifest) {
+function buildManifest(manifest) {
+  const metadata = [
+    "description",
+    "repository",
+    "homepage",
+    "bugs",
+    "keywords",
+    "author",
+    "contributors",
+    "license",
+    "funding",
+  ];
+  return Object.fromEntries(Object.entries(manifest).filter(([key]) => !metadata.includes(key)));
+}
+function managedManifest(manifest) {
+  return Object.values(managedPackages).includes(manifest.name);
+}
+function buildPublicFiles(target, manifest) {
+  const files = new Map();
+  const visit = (file) => {
+    const path = resolve(target, file);
+    file = relative(target, path).replaceAll("\\", "/");
+    if (files.has(file)) return;
+    files.set(file, null);
+    if (!fs.existsSync(path)) return;
+    if (fs.lstatSync(path).isDirectory()) {
+      for (const name of fs.readdirSync(path).sort())
+        if (name !== "node_modules" && !name.startsWith(".")) visit(join(file, name));
+      files.delete(file);
+      return;
+    }
+    const content = fs.readFileSync(path);
+    files.set(
+      file,
+      digest(file === "package.json" ? JSON.stringify(buildManifest(json(path))) : content),
+    );
+    if (!/\.[cm]?[jt]sx?$/.test(file)) return;
+    const references = content
+      .toString()
+      .matchAll(
+        /(?:\b(?:import|export)\s+(?:[^;"']*?\s+from\s*)?|\b(?:import|require)\s*\(\s*|\bnew\s+URL\s*\(\s*|\/\/\/\s*<reference\s+path=)["'](\.\.?\/[^"'\n]+)["']/g,
+      );
+    for (const match of references) {
+      const dependency = resolve(dirname(path), match[1]);
+      const candidates = [dependency];
+      if (/\.[cm]?js$/.test(dependency))
+        candidates.push(
+          dependency.replace(/\.[cm]?js$/, ".d.ts"),
+          dependency.replace(/\.[cm]?js$/, ".ts"),
+          dependency.replace(/\.[cm]?js$/, ".tsx"),
+        );
+      candidates.push(
+        ...[".ts", ".tsx", ".js", ".mjs", ".cjs", ".d.ts", "/index.ts", "/index.js", "/index.d.ts"].map(
+          (extension) => dependency + extension,
+        ),
+      );
+      const resolved = candidates.find(
+        (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+      );
+      visit(resolved ?? dependency);
+    }
+  };
+  const visitExport = (value) => {
+    if (typeof value !== "string") {
+      for (const entry of Object.values(value ?? {})) visitExport(entry);
+    } else if (!value.startsWith("../") && !value.startsWith("/")) {
+      visit(value.includes("*") ? dirname(value.slice(0, value.indexOf("*")) + "*") : value);
+    }
+  };
+  for (const entry of [manifest.exports, manifest.main, manifest.module, manifest.types])
+    if (entry) visitExport(entry);
+  return [...files].sort(([a], [b]) => a.localeCompare(b));
+}
+function publicFiles(target, manifest, build = false) {
+  if (build) return buildPublicFiles(target, manifest);
   const strings = (value) =>
     typeof value === "string" ? [value] : Object.values(value ?? {}).flatMap(strings);
   const roots = [
@@ -76,7 +150,7 @@ function publicFiles(target, manifest) {
   };
   return roots.flatMap(visit);
 }
-function localInputs(owner) {
+function localInputs(owner, build) {
   return Object.entries({
     ...owner.manifest.dependencies,
     ...owner.manifest.devDependencies,
@@ -98,16 +172,18 @@ function localInputs(owner) {
       } catch (error) {
         if (error.status !== 128) throw error;
       }
+      const parsed = JSON.parse(manifest);
+      const projected = build && managedManifest(parsed);
       return {
         name,
         target,
-        head,
-        manifest: digest(manifest),
-        artifacts: publicFiles(target, JSON.parse(manifest)),
+        ...(projected ? {} : { head }),
+        manifest: digest(projected ? JSON.stringify(buildManifest(parsed)) : manifest),
+        artifacts: publicFiles(target, parsed, projected),
       };
     });
 }
-export function dependencyInput(owner) {
+export function dependencyInput(owner, { build = false } = {}) {
   const files = ["package.json", owner.lock, ".npmrc", "pnpm-workspace.yaml"].filter((file) =>
     fs.existsSync(join(owner.path, file)),
   );
@@ -119,10 +195,10 @@ export function dependencyInput(owner) {
     abi: process.versions.modules,
     platform: process.platform,
     arch: process.arch,
-    local: localInputs(owner),
+    local: localInputs(owner, build),
   };
 }
-export function installed(owner) {
+export function installed(owner, { build = false } = {}) {
   const metadata = join(
     owner.path,
     "node_modules",
@@ -136,7 +212,17 @@ export function installed(owner) {
     .map((name) => {
       const file = join(owner.path, "node_modules", name, "package.json");
       const content = fs.readFileSync(file);
-      return { name, target: fs.realpathSync(file), manifest: digest(content) };
+      const local = /^(?:file|link):/.test(
+        owner.manifest.dependencies?.[name] ?? owner.manifest.devDependencies?.[name] ?? "",
+      );
+      const parsed = JSON.parse(content);
+      return {
+        name,
+        target: fs.realpathSync(file),
+        manifest: digest(
+          build && local && managedManifest(parsed) ? JSON.stringify(buildManifest(parsed)) : content,
+        ),
+      };
     });
   return { metadata: digest(fs.readFileSync(metadata)), packages };
 }
