@@ -50,7 +50,7 @@ function checkResources(result) {
         if (createHash('sha256').update(readFileSync(path)).digest('hex') !== entry.packagedSha256) throw Error(`RESOURCE_INTEGRITY_MISMATCH: ${file}: ${entry.path}`);
       }
       if (/(?:^|\/)(?:prompt|capability)\.json$/.test(file) && Array.isArray(value.skills)) {
-        const names = tracked.filter(path => /^business-resources\//.test(path) && skill(path)).map(path => readFileSync(reference(path, basename(path)), 'utf8').match(/^name:\s*(.+)$/m)?.[1].trim());
+        const names = tracked.filter(path => /^business-resources\//.test(path) && skill(path)).map(path => readFileSync(reference(path, basename(path)), 'utf8').match(/^name:\s*(.+)$/m)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2'));
         for (const name of value.skills) if (!names.includes(name)) throw Error(`RESOURCE_SKILL_MISSING: ${file}: ${name}`);
       }
       if (/^business\/[^/]+\/plugin\.json$/.test(file)) {
