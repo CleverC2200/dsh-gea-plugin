@@ -808,3 +808,14 @@ test("complete package inputs select existing release and platform contracts", a
       assert.deepEqual(plan.required, businessCore);
     });
 });
+
+test("Workbench Host changes select actual default registration and client startup", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.peer, "src/host.ts", "export const fixture = true;\n");
+  const plan = fixture.plan();
+  assert.deepEqual(plan.reasons[fixture.peer.repo + "/src/host.ts"], [
+    "tests/current-startup-web.test.mjs",
+    "tests/workbench-boot.test.mjs",
+  ]);
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});

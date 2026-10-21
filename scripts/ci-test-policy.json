@@ -387,6 +387,11 @@
         "scripts/package-desktop.test.mjs",
         "tests/plugin-release-source.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/host\\.ts$",
+      "tests": ["tests/current-startup-web.test.mjs", "tests/workbench-boot.test.mjs"]
     }
   ],
   "testOwners": {
