@@ -208,3 +208,21 @@ test("delivery rejects orphaned cached output when its receipt is missing", asyn
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_CACHE_RECEIPT_MISSING/);
 });
+
+
+test("a failed wrapper leaves independently verified Core reusable without caching wrapper evidence", async (t) => {
+  const { root, run } = await fixture(t);
+  assert.equal(run("seal").status, 0);
+  const wrapperEvidence = join(root, ".dsh-build/wrapper-failure.json");
+  const wrapper = spawnSync(process.execPath, ["--input-type=module", "-e",
+    'import { writeFileSync } from "node:fs"; writeFileSync(process.argv[1], "wrapper failed"); process.exit(23);',
+    wrapperEvidence,
+  ]);
+  assert.equal(wrapper.status, 23);
+  const verified = run("verify");
+  assert.equal(verified.status, 0, verified.stderr);
+  const result = JSON.parse(verified.stdout);
+  assert.equal(result.hit, true);
+  assert.ok(!result.paths.includes(wrapperEvidence));
+  assert.ok(result.paths.every((path) => !/profiles|seed|install/.test(path)));
+});
