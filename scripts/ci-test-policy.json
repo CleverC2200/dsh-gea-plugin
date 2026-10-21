@@ -57,6 +57,17 @@
     "scripts/run-quality-ci-stages.test.mjs",
     "scripts/run-quality-ci.test.mjs"
   ],
+  "sourceFixtures": {
+    "scripts/run-quality-ci-stages.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/run-quality-ci.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/source-quality.test.mjs": {
+      "dependencies": false
+    }
+  },
   "rules": [
     {
       "repo": "dsh-agent-manage",
@@ -395,6 +406,15 @@
       "pattern": "^(?:scripts/source-quality\\.mjs|\\.github/workflows/source-quality\\.yml)$",
       "tests": [
         "scripts/source-quality.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:run-quality-ci\\.mjs|ci-test-policy\\.json)$",
+      "tests": [],
+      "sourceTests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
       ]
     }
   ],
