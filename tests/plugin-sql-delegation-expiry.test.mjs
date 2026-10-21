@@ -132,13 +132,14 @@ test(
       ),
     );
     assert.notEqual(customer.data.mock, true, "customer inventory is a governed reader");
+    assert.equal(customer.data.consumerCode, "customer_inventory");
     assert.ok(customer.data.tables.includes("agents_scm_cust_jxc_ai_daliy_d"));
     for (const consumerCode of [
       "base-safety-stock",
       "dealer-inventory-replenishment",
       "full-chain-inventory",
       "aps",
-      "customer-inventory-preview",
+      customer.data.consumerCode,
       "orderfulfillment-preview",
     ]) {
       const sessionsBefore = sessions,
@@ -146,7 +147,7 @@ test(
       const current = await app.rpc("plugin/sql", {
         consumerCode,
         sql:
-          consumerCode === "customer-inventory-preview"
+          consumerCode === customer.data.consumerCode
             ? "SELECT COUNT(*) AS records FROM agents_scm_cust_jxc_ai_daliy_d"
             : "SELECT COUNT(*) AS records FROM agents_scm_safety_stock",
         parameters: {},
