@@ -1,4 +1,4 @@
-name: candidate-quality
+name: candidate-joint-quality
 run-name: "${{ github.event_name == 'workflow_dispatch' && 'Joint frozen three-repository quality' || 'Source event quality' }} — ${{ github.sha }}"
 
 on:
@@ -16,10 +16,6 @@ on:
         description: Frozen Manage commit
         required: true
         type: string
-  push:
-    branches: [main, codex/quality-ci-maintenance-20261010]
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -826,6 +822,7 @@ jobs:
           fail-on-severity: high
 
   candidate-quality:
+    name: joint-quality
     permissions:
       contents: read
       actions: read
@@ -890,6 +887,7 @@ jobs:
       - name: Verify exact coverage and independently measure the hosted attempt
         if: always()
         env:
+          QUALITY_FINAL_JOB_NAME: joint-quality
           QUALITY_APPLICABILITY: ${{ needs.source-plan.outputs.applicability }}
           GITHUB_TOKEN: ${{ github.token }}
           QUALITY_EXPECTED_WORKFLOW_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

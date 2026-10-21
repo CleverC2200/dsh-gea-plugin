@@ -217,7 +217,7 @@ try {
       snapshot,
       requiredJobs,
       notApplicableJobs,
-      finalJobName: "candidate-quality",
+      finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
       mode: "in-gate",
     });
     const output = resolve(values["final-output"]);
@@ -309,7 +309,7 @@ try {
         snapshot,
         requiredJobs: catalog?.requiredJobs ?? ["candidate-scope", "plan-test-shards"],
         notApplicableJobs: catalog?.notApplicableJobs ?? [],
-        finalJobName: "candidate-quality",
+        finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
         mode: "in-gate",
       });
     } catch (error) {
