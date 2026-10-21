@@ -486,7 +486,10 @@ test("a changed package version compiles again and never certifies a moving gene
     compile();
     if (JSON.parse(fs.readFileSync(join(path, "package.json"))).version === "2.0.0") {
       fs.mkdirSync(join(path, "src"), { recursive: true });
-      fs.writeFileSync(join(path, "src/plugin-package-version.ts"), 'export const version = "2.0.0";');
+      fs.writeFileSync(
+        join(path, "src/plugin-package-version.ts"),
+        'export const version = "2.0.0";',
+      );
       fs.writeFileSync(join(path, "lib/host.js"), 'export const version = "2.0.0";');
     }
     return { status: 0 };
@@ -497,6 +500,54 @@ test("a changed package version compiles again and never certifies a moving gene
   fs.writeFileSync(join(path, "package.json"), JSON.stringify(owner.manifest));
   await assert.rejects(developmentTask("build", {}, path), /DEVELOPMENT_INPUT_CHANGED/);
   assert.equal(fs.readFileSync(build.receipt, "utf8"), receipt);
-  assert.equal(fs.readFileSync(join(path, "lib/host.js"), "utf8"), 'export const version = "2.0.0";');
+  assert.equal(
+    fs.readFileSync(join(path, "lib/host.js"), "utf8"),
+    'export const version = "2.0.0";',
+  );
   assert.equal((await developmentTask("build", {}, path)).status, "built");
+});
+
+test("local preflight runs on dirty source without a Core, package manager or dependencies", async (t) => {
+  const { path, git } = fixture(t);
+  const original = cp.execFileSync;
+  let managerChecks = 0;
+  t.mock.method(cp, "execFileSync", (file, args, options) => {
+    if (args.join(" ") === "pnpm --version") {
+      managerChecks++;
+      return "1.0.0\n";
+    }
+    return original(file, args, options);
+  });
+  const manifest = JSON.parse(fs.readFileSync(join(path, "package.json")));
+  manifest.scripts["check:knowledge"] = "node scripts/check-agent-knowledge.mjs";
+  fs.writeFileSync(join(path, "package.json"), JSON.stringify(manifest));
+  fs.mkdirSync(join(path, "docs"));
+  fs.writeFileSync(
+    join(path, "docs/agent-knowledge.json"),
+    JSON.stringify({ commandRoots: { "README.md": ["../../official-latest-standard"] } }),
+  );
+  fs.mkdirSync(join(path, "scripts"));
+  for (const file of ["source-quality.mjs", "workflow-preflight.mjs"])
+    fs.copyFileSync(new URL(file, import.meta.url), join(path, "scripts", file));
+  git("add", "scripts");
+  git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "commit",
+    "-qm",
+    "cold tools",
+  );
+  fs.writeFileSync(join(path, "new.mjs"), "export const broken = ;");
+  await assert.rejects(developmentTask("preflight", {}, path), /DEVELOPMENT_PREFLIGHT_FAILED/);
+  fs.writeFileSync(join(path, "new.mjs"), "export const value = 1;");
+  const checked = await developmentTask("preflight", {}, path);
+  assert.equal(managerChecks, 0);
+  assert.equal(checked.status, "passed");
+  assert.equal(checked.scope, "local-working-tree");
+  assert.equal(checked.knowledge.status, "deferred");
+  assert.match(checked.knowledge.missingInputs[0], /official-latest-standard/);
+  assert.equal(fs.existsSync(join(path, "node_modules")), false);
+  assert.equal(fs.existsSync(join(path, "lib")), false);
 });

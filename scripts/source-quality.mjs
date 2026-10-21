@@ -1,4 +1,4 @@
-import { workflowFiles } from "./workflow-preflight.mjs";
+import { workflowFiles, checkWorkflows } from "./workflow-preflight.mjs";
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, existsSync, realpathSync } from "node:fs";
 import { dirname, resolve, relative, isAbsolute, basename } from "node:path";
@@ -28,35 +28,59 @@ function resource(file) {
     /^business\/[^/]+\/(?:plugin\.json|page\.json|sql\.config\.json|SOURCE\.md)$/.test(file)
   );
 }
+const workingTree = process.argv.includes("--working-tree");
+const availableFiles = () =>
+  listed(
+    "ls-files",
+    "--cached",
+    ...(workingTree ? ["--others", "--exclude-standard"] : []),
+    "-z",
+  ).filter((file) => existsSync(file));
 function plan() {
-  const event = process.env.GITHUB_EVENT_PATH
-    ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"))
-    : {};
+  const event =
+    !workingTree && process.env.GITHUB_EVENT_PATH
+      ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"))
+      : {};
   const head =
-    process.env.SOURCE_HEAD_SHA ||
+    (!workingTree && process.env.SOURCE_HEAD_SHA) ||
     event.pull_request?.head?.sha ||
     event.after ||
     git("rev-parse", "HEAD").trim();
   if (git("rev-parse", head) !== git("rev-parse", "HEAD")) throw Error("SOURCE_HEAD_MISMATCH");
-  const base = process.env.SOURCE_BASE_SHA || event.pull_request?.base?.sha || event.before;
+  const base =
+    process.env.SOURCE_BASE_SHA ||
+    event.pull_request?.base?.sha ||
+    event.before ||
+    (workingTree ? head : undefined);
   const hasBase = base && !/^0+$/.test(base);
   const diffBase = hasBase
-    ? process.env.GITHUB_EVENT_NAME === "pull_request"
+    ? !workingTree && process.env.GITHUB_EVENT_NAME === "pull_request"
       ? git("merge-base", base, head).trim()
       : base
     : null;
-  const files = hasBase
+  let files = hasBase
     ? listed("diff", "--no-renames", "--name-only", "-z", diffBase, head)
     : listed("ls-files", "-z");
+  if (workingTree)
+    files = [
+      ...new Set([
+        ...files,
+        ...listed("diff", "--no-renames", "--name-only", "-z", "HEAD"),
+        ...listed("ls-files", "--others", "--exclude-standard", "-z"),
+      ]),
+    ].sort();
   const mode =
-    hasBase && files.length && files.every((file) => !resource(file) && documentation(file))
+    workingTree && !files.length
       ? "docs"
-      : hasBase && files.length && files.every((file) => resource(file) || documentation(file))
-        ? "resources"
-        : "code";
+      : hasBase && files.length && files.every((file) => !resource(file) && documentation(file))
+        ? "docs"
+        : hasBase && files.length && files.every((file) => resource(file) || documentation(file))
+          ? "resources"
+          : "code";
   const changedWorkflows = workflowFiles(files);
   return {
     mode,
+    ...(workingTree ? { workingTree: true, scope: "local-working-tree" } : {}),
     files,
     workflows: changedWorkflows.length > 0,
     "workflow-files": JSON.stringify(changedWorkflows),
@@ -69,7 +93,7 @@ function plan() {
 }
 
 function checkResources(result) {
-  const tracked = listed("ls-files", "-z");
+  const tracked = availableFiles();
   const groups = result.files
     .filter(resource)
     .map(
@@ -164,6 +188,7 @@ function checkResources(result) {
 }
 
 function check(result) {
+  if (workingTree) checkWorkflows(result.files);
   if (result.mode === "docs") return console.log(JSON.stringify({ mode: "docs", checked: 0 }));
   checkResources(result);
   if (result.mode !== "code") return;
@@ -172,9 +197,20 @@ function check(result) {
       (file) => !file.endsWith(".md") && !file.endsWith(".mdx"),
     );
     if (changedCode.length)
-      execFileSync("git", ["diff", "--check", result.base, result.head, "--", ...changedCode], {
-        stdio: "inherit",
-      });
+      execFileSync(
+        "git",
+        [
+          "diff",
+          "--check",
+          result.base,
+          ...(workingTree ? [] : [result.head]),
+          "--",
+          ...changedCode,
+        ],
+        {
+          stdio: "inherit",
+        },
+      );
   }
   const full =
     !result.base ||
@@ -189,17 +225,21 @@ function check(result) {
           file,
         ),
     );
-  const files = !full
-    ? listed(
-        "diff",
-        "--no-renames",
-        "--diff-filter=AM",
-        "--name-only",
-        "-z",
-        result.base,
-        result.head,
-      )
-    : listed("ls-files", "-z");
+  const files = workingTree
+    ? full
+      ? availableFiles()
+      : result.files.filter((file) => existsSync(file))
+    : !full
+      ? listed(
+          "diff",
+          "--no-renames",
+          "--diff-filter=AM",
+          "--name-only",
+          "-z",
+          result.base,
+          result.head,
+        )
+      : availableFiles();
   for (const file of files) {
     if (file.split("/").includes("fixtures")) continue;
     if (/\.(?:mjs|cjs|js)$/.test(file))
@@ -209,9 +249,11 @@ function check(result) {
 }
 
 const phase = process.argv[process.argv.indexOf("--phase") + 1];
+if (workingTree && !["plan", "check", "affected-plan"].includes(phase))
+  throw Error("SOURCE_WORKING_TREE_PLAN_ONLY");
 const result = plan();
 if (phase === "plan") {
-  if (result.mode === "code" && existsSync("scripts/quality-peer-baseline.json")) {
+  if (!workingTree && result.mode === "code" && existsSync("scripts/quality-peer-baseline.json")) {
     const own = basename(process.cwd());
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json", "utf8"));
     for (const [key, repo] of [
@@ -227,15 +269,20 @@ if (phase === "plan") {
       result[key] = head;
     }
   }
-  if (process.env.GITHUB_OUTPUT)
+  if (!workingTree && process.env.GITHUB_OUTPUT)
     for (const key of Object.keys(result).filter((key) => !["files", "base", "head"].includes(key)))
       appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${result[key]}\n`);
   console.log(JSON.stringify(result));
 } else if (phase === "check") check(result);
 else if (["affected-plan", "affected-prepare", "affected-check"].includes(phase)) {
   if (result.mode !== "code") throw Error("SOURCE_CODE_PHASE_REQUIRED");
-  const reader =
-    basename(process.cwd()) === "dsh-gea-plugin"
+  const reader = workingTree
+    ? resolve(
+        basename(process.cwd()) === "dsh-agent-workbench"
+          ? "scripts/source-checks.mjs"
+          : "../dsh-agent-workbench/scripts/source-checks.mjs",
+      )
+    : basename(process.cwd()) === "dsh-gea-plugin"
       ? resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")
       : resolve(
           basename(process.cwd()) === "dsh-agent-workbench"

@@ -410,3 +410,69 @@ test("workflow event planning selects only present changed workflows without pre
   assert.equal(docsPlan.workflows, false);
   assert.deepEqual(JSON.parse(docsPlan["workflow-files"]), []);
 });
+
+test("local preflight checks staged, unstaged and untracked JavaScript before commit", (t) => {
+  const repo = fixture(
+    t,
+    { "package.json": '{"type":"module"}', "src/main.js": "export const value = 1;\n" },
+    { "README.md": "Docs\n" },
+  );
+  const run = () =>
+    spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
+      cwd: repo.root,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
+    });
+  for (const state of ["unstaged", "staged", "untracked"]) {
+    const file = state === "untracked" ? "src/new.js" : "src/main.js";
+    writeFileSync(join(repo.root, file), "export const broken = ;\n");
+    if (state === "staged") repo.git("add", file);
+    const result = run();
+    assert.notEqual(result.status, 0, state + ": " + result.stdout);
+    assert.match(result.stderr, /SyntaxError/, state);
+    if (state === "untracked") rmSync(join(repo.root, file));
+    else {
+      writeFileSync(join(repo.root, file), "export const value = 1;\n");
+      if (state === "staged") repo.git("add", file);
+    }
+  }
+  assert.equal(run().status, 0);
+});
+
+test("local preflight validates new resource references before they are tracked", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  const directory = join(repo.root, "business-resources/demo");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, "SKILL.md"),
+    "---\nname: demo\ndescription: Demo\n---\n[Rules](rules.md)\n",
+  );
+  const run = () =>
+    spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
+      cwd: repo.root,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
+    });
+  assert.match(run().stderr, /RESOURCE_REFERENCE_MISSING.*rules\.md/);
+  writeFileSync(join(directory, "rules.md"), "Rules\n");
+  const accepted = run();
+  assert.equal(accepted.status, 0, accepted.stderr);
+});
+
+test("local preflight requires the pinned validator for an untracked workflow", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  mkdirSync(join(repo.root, ".github/workflows"), { recursive: true });
+  writeFileSync(join(repo.root, ".github/workflows/new.yml"), "name: New\non: push\njobs: {}\n");
+  const checked = spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
+    cwd: repo.root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_EVENT_PATH: "",
+      SOURCE_BASE_SHA: repo.head,
+      ACTIONLINT: join(repo.root, ".git/no-actionlint"),
+    },
+  });
+  assert.notEqual(checked.status, 0);
+  assert.match(checked.stderr, /WORKFLOW_PREFLIGHT_TOOL_REQUIRED.*ACTIONLINT/);
+});

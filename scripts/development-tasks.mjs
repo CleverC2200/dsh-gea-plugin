@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { join, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { managedPackages } from "./development-repositories.mjs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -73,7 +74,9 @@ async function buildInput(owner, target) {
       peers.push({
         path,
         files: sources(path, (file) =>
-          /^(?:business-resources\/|src\/(?:inventory-compute|aps-compute)\/|package\.json$)/.test(file),
+          /^(?:business-resources\/|src\/(?:inventory-compute|aps-compute)\/|package\.json$)/.test(
+            file,
+          ),
         ),
       });
   }
@@ -192,7 +195,101 @@ async function build(owner, target) {
     return { status: "built", receipt };
   });
 }
+function localSourceTask(action, values, cwd) {
+  const path = fs.realpathSync(cwd);
+  const manifest = json(join(path, "package.json"));
+  const repo = Object.keys(managedPackages).find((name) => managedPackages[name] === manifest.name);
+  if (!repo) throw Error("DEVELOPMENT_REPOSITORY_REQUIRED");
+  const invoke = (file, args) => {
+    const checked = spawnSync(process.execPath, [file, ...args], {
+      cwd: path,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GITHUB_EVENT_PATH: "",
+        GITHUB_EVENT_NAME: "",
+        SOURCE_REPOSITORY: repo,
+        SOURCE_BASE_SHA: values.base ?? process.env.SOURCE_BASE_SHA ?? "",
+        GITHUB_OUTPUT: "",
+      },
+    });
+    if (checked.error || checked.status !== 0)
+      throw Error(
+        "DEVELOPMENT_PREFLIGHT_FAILED: " +
+          (checked.error?.message || checked.stderr || checked.stdout),
+      );
+    return checked.stdout;
+  };
+  const source = JSON.parse(
+    invoke(join(path, "scripts/source-quality.mjs"), ["--phase", "plan", "--working-tree"]),
+  );
+  const knowledgeConfig = join(
+    path,
+    repo === "dsh-agent-workbench" ? "agent-knowledge.json" : "docs/agent-knowledge.json",
+  );
+  const knowledgeInput = manifest.scripts?.["check:knowledge"] ? json(knowledgeConfig) : null;
+  const missingKnowledgeInputs = [
+    ...new Set(Object.values(knowledgeInput?.commandRoots ?? {}).flat()),
+  ]
+    .map((directory) => resolve(path, directory, "package.json"))
+    .filter((file) => !fs.existsSync(file));
+  const knowledge = !knowledgeInput
+    ? { status: "not-applicable" }
+    : missingKnowledgeInputs.length
+      ? {
+          status: "deferred",
+          reason: "configured knowledge command roots are unavailable",
+          missingInputs: missingKnowledgeInputs,
+          command: "check:knowledge",
+        }
+      : knowledgeInput.exports
+        ? {
+            status: "deferred",
+            reason: "configured package export checks require compiled outputs",
+            command: "check:knowledge",
+          }
+        : { status: "planned", command: "check:knowledge" };
+  if (action === "plan") {
+    const impact =
+      source.mode === "code"
+        ? JSON.parse(
+            invoke(join(path, "scripts/source-quality.mjs"), [
+              "--phase",
+              "affected-plan",
+              "--working-tree",
+            ]),
+          )
+        : { status: "not-applicable", reason: "cold " + source.mode + " lane", files: [] };
+    return { status: "planned", repo, scope: "local-working-tree", source, knowledge, impact };
+  }
+  invoke(join(path, "scripts/source-quality.mjs"), ["--phase", "check", "--working-tree"]);
+  if (knowledge.status === "planned") {
+    const workbench =
+      repo === "dsh-agent-workbench" ? path : resolve(path, "../dsh-agent-workbench");
+    invoke(join(workbench, "scripts/check-agent-knowledge.mjs"), [
+      "--root",
+      path,
+      "--config",
+      knowledgeConfig,
+    ]);
+    knowledge.status = "passed";
+  }
+  return {
+    status: "passed",
+    repo,
+    scope: "local-working-tree",
+    source,
+    knowledge,
+    checks: {
+      resources: source.mode === "docs" ? "not-applicable" : "passed",
+      engineeringSyntax: source.mode === "code" ? "passed" : "not-applicable",
+      workflowSemantics: source.workflows ? "passed" : "not-applicable",
+    },
+  };
+}
+
 export async function developmentTask(action, values = {}, cwd = process.cwd()) {
+  if (["preflight", "plan"].includes(action)) return localSourceTask(action, values, cwd);
   const owner = repository(cwd);
   if (action === "check") return { status: "checked", repo: owner.repo, ...dependencyInput(owner) };
   if (action === "prepare") return prepareDependencies(owner);
@@ -270,7 +367,12 @@ export async function developmentTask(action, values = {}, cwd = process.cwd()) 
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values, positionals } = parseArgs({
-    options: { target: { type: "string" }, input: { type: "string" }, sha256: { type: "string" } },
+    options: {
+      target: { type: "string" },
+      input: { type: "string" },
+      sha256: { type: "string" },
+      base: { type: "string" },
+    },
     allowPositionals: true,
   });
   try {
