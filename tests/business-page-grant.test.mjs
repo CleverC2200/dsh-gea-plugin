@@ -10,7 +10,7 @@ test("registered regional, category and MPS mock resources authorize only their 
   for (const [id, pageId, consumer] of [
     ["plan-regional", "gea-regional-plan", "regional-plan-prototype"],
     ["category-plan", "plan-region-category", "category-plan-prototype"],
-    ["inventory-mps", "plan-category-production", "mps-prototype"],
+    ["inventory-mps", "plan-category-production", "mps"],
     ["inventory-customer", "inventory-customer", "customer_inventory"],
   ]) {
     const h = await fixture(t, {
@@ -432,4 +432,27 @@ test("configured page grant only resolves installed query IDs and is revoked wit
     ),
   );
   assert.equal(h.queries.length, 1);
+});
+test("received MPS package registers the live mps Consumer and permits only named read queries", async (t) => {
+  const h = await fixture(t, {
+    id: "inventory-mps",
+    pageId: "plan-category-production",
+    consumer: "mps",
+    resourceRoot: "../dsh-agent-workbench/lib/static/mps",
+  });
+  const grant = await h.authorize();
+  assert.deepEqual(h.launches, ["mps"]);
+  assert.equal(grant.allowsEffect("view"), true);
+  assert.equal(grant.allowsEffect("approve"), false);
+  const result = await grant.readSql(
+    { queryId: "products.detail", parameters: { page_size: 25, offset: 0 } },
+    new AbortController().signal,
+  );
+  assert.deepEqual(result.rows, [{ qty: 42 }]);
+  assert.equal(h.queries[0].consumerCode, "mps");
+  assert.match(h.queries[0].sql, /FROM agents_dim_product_list_mi/);
+  const denied = await grant.readSql({ sql: "SELECT 1" }, new AbortController().signal);
+  assert.equal(denied.success, false);
+  assert.equal(h.queries.length, 1);
+  grant.release();
 });
