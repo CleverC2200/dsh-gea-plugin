@@ -239,3 +239,5 @@ ELECTRON_RUN_AS_NODE=1 GEA_LAYERED_TEST_PAYLOAD=<layered-payload> \
 ```
 
 存储 smoke 会临时移动该测试 payload 的核心归档再恢复，以证明旧安装移除后的独立性。只对本任务的隔离 payload 运行，不指向安装中的应用，不与其他 smoke 并行共享同一 payload。
+
+公司客户端通过配套 Core 的 `visibleProviders` 部署配置，仅在模型菜单展示 `gea-analysis` 来源。普通宿主默认展示全部来源。该规则保留用户模型配置和历史选择；Host 继续按原授权执行。装配时须同时包含支持该配置的 Core 和公司启动入口。

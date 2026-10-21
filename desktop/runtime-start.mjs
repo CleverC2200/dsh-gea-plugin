@@ -62,7 +62,7 @@ const htmlPlugins=await prepareHtmlPlugins({runtime});
 const htmlPluginEnv=Object.keys(htmlPlugins.roots).length?{GEA_HTML_PLUGIN_ROOTS:JSON.stringify(htmlPlugins.roots)}:{};
 
 console.log('[startup] 启动 DSH 核心');
-const child=spawn(process.execPath,[...(process.env.GEA_LAYERED_CORE?['--expose-internals']:[]),join(core,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','full','--patch',patchPath,'--host','127.0.0.1','--port',String(port),...(process.env.DSH_FULL_NO_OPEN?['--no-open']:[])],{cwd:root,env:{...process.env,DSH_HOME:home,...htmlPluginEnv},stdio:'inherit'});
+const child=spawn(process.execPath,[...(process.env.GEA_LAYERED_CORE?['--expose-internals']:[]),join(core,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','full','--patch',patchPath,'--host','127.0.0.1','--port',String(port),...(process.env.DSH_FULL_NO_OPEN?['--no-open']:[])],{cwd:root,env:{...process.env,DSH_HOME:home,GEA_COMPANY_CLIENT:'1',...htmlPluginEnv},stdio:'inherit'});
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));
 process.on('message',message=>{if(message?.type==='stop')child.kill('SIGTERM');});
 process.on('disconnect',()=>child.kill('SIGTERM'));
