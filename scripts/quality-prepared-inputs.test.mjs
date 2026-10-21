@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { readPreparedWorkbench } from "./quality-workbench.mjs";
 
@@ -558,7 +559,7 @@ test("receive refuses parent redirects, undeclared overwrites, archive tampering
   }
 });
 
-test("the upstream CLI can prepare fixed source checkouts without downloading assets, installing dependencies or building", (t) => {
+test("the upstream CLI can prepare fixed source checkouts without downloading assets, installing dependencies or building", async (t) => {
   const f = fixture(t),
     tools = join(f.root, "tools");
   mkdirSync(tools);
@@ -569,7 +570,7 @@ test("the upstream CLI can prepare fixed source checkouts without downloading as
     const source = join(f.root, "origins", repo);
     mkdirSync(source, { recursive: true });
     f.json("origins/" + repo + "/package.json", {
-      name: repo,
+      name: repo === "genui" ? "@changfenhuang/dsh-genui" : "dsh-better-sidebar",
       packageManager: "pnpm@11.8.0",
       scripts: { build: "touch forbidden-build" },
     });
@@ -620,6 +621,48 @@ test("the upstream CLI can prepare fixed source checkouts without downloading as
     });
   }
   assert.throws(() => statSync(join(output, "upstream-assets")), { code: "ENOENT" });
+  const { bindQualityUpstreamInputs } = await import(
+    pathToFileURL(join(tools, "quality-upstreams.mjs"))
+  );
+  const inputs = join(f.root, "source-inputs");
+  const bound = await bindQualityUpstreamInputs(output, inputs, {
+    prepare: true,
+    sourceOnly: true,
+  });
+  assert.equal(bound.status, "source-only");
+  assert.equal(realpathSync(join(inputs, "genui")), join(output, "upstream-reference/dsh-genui"));
+  assert.equal(
+    realpathSync(join(inputs, "sidebar")),
+    join(output, "upstream-reference/dsh-better-sidebar"),
+  );
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, inputs),
+    /QUALITY_UPSTREAM_MATERIAL_REQUIRED/,
+  );
+  const redirected = join(f.root, "redirected-inputs");
+  symlinkSync(inputs, redirected, "dir");
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, redirected, { prepare: true, sourceOnly: true }),
+    /QUALITY_UPSTREAM_INPUT_PRIVATE_ROOT_REQUIRED/,
+  );
+  rmSync(join(inputs, "sidebar"));
+  symlinkSync(join(output, "upstream-reference/dsh-genui"), join(inputs, "sidebar"), "dir");
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, inputs, { prepare: true, sourceOnly: true }),
+    /QUALITY_UPSTREAM_INPUT_MISMATCH/,
+  );
+  assert.equal(realpathSync(join(inputs, "sidebar")), join(output, "upstream-reference/dsh-genui"));
+  rmSync(join(inputs, "sidebar"));
+  symlinkSync(
+    join(output, "upstream-reference/dsh-better-sidebar"),
+    join(inputs, "sidebar"),
+    "dir",
+  );
+  writeFileSync(join(output, "upstream-reference/dsh-genui/package.json"), "changed source");
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, inputs, { sourceOnly: true }),
+    /QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED/,
+  );
 });
 
 test("transport reads its own Linux OS and runtime ABI, rejecting drift, missing values and old environment formats", (t) => {
@@ -876,10 +919,14 @@ test("runtime export and cold receive preserve the Workbench verification receip
     process.execPath,
     [
       join(import.meta.dirname, "quality-workbench.mjs"),
-      "--source", source,
-      "--prepared", prepared,
-      "--head", head,
-      "--receipt", join(f.root, "prepared-workbench.json"),
+      "--source",
+      source,
+      "--prepared",
+      prepared,
+      "--head",
+      head,
+      "--receipt",
+      join(f.root, "prepared-workbench.json"),
     ],
     { encoding: "utf8" },
   );
