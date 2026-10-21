@@ -479,7 +479,7 @@ test(
         .toBe(sidebarPreferenceWidth);
       await expect(nativeRightbar).toBeHidden();
       await expect(page.locator('[data-side="rightbar"]')).toHaveCount(0);
-      const history = page.getByRole("button", { name: "历史会话", exact: true });
+      const history = page.getByRole("button", { name: "工作台", exact: true });
       if ((await history.getAttribute("aria-expanded")) !== "true") await history.click();
       await page
         .getByRole("complementary", { name: "业务导航", exact: true })
