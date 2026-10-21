@@ -90,6 +90,7 @@ test(
         ),
       )
       .toBe(true);
+    await expect(frame.getByRole("alert").filter({ hasText: "审批队列读取失败" })).toBeVisible();
     await expect(frame.getByRole("row").filter({ hasText: "纠偏客户" })).toHaveCount(0);
     await expect(
       frame.getByRole("region", { name: "当前页明细汇总", exact: true }).locator("strong"),

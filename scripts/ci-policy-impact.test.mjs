@@ -371,6 +371,7 @@ test("Workbench build commands select prepared assets, frozen transport and buil
     "build-order-fulfillment",
     "build-output",
     "build-static-authors",
+    "static-author-provenance",
   ]) {
     await t.test(name, (t) => {
       const fixture = resourceImpactFixture(t);
@@ -782,7 +783,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
 });
 
-test("Windows complete package inputs select existing release and Windows contracts", async (t) => {
+test("complete package inputs select existing release and platform contracts", async (t) => {
   const regressions = [
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/delivery-events.test.mjs",
@@ -790,6 +791,7 @@ test("Windows complete package inputs select existing release and Windows contra
     "tests/plugin-release-source.test.mjs",
   ];
   for (const source of [
+    "scripts/mac-complete-local/build.mjs",
     "scripts/windows-complete-local/build.mjs",
     "scripts/windows-complete-local/input.mjs",
     "scripts/windows-complete-local/input.test.mjs",
