@@ -573,7 +573,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 14
+      max-parallel: 8
       matrix: ${{ fromJSON(needs.plan-test-shards.outputs.matrix) }}
     env:
       QUALITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

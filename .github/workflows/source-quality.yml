@@ -15,7 +15,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  source-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      engineering: ${{ steps.plan.outputs.engineering }}
+      dependency-review: ${{ steps.plan.outputs.dependency-review }}
+      codeql: ${{ steps.plan.outputs.codeql }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Classify actual Git changes
+        id: plan
+        run: node scripts/source-quality.mjs --phase plan
+
   source-checks:
+    needs: source-plan
+    if: needs.source-plan.outputs.mode != 'docs'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -27,35 +50,16 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Check source syntax and whitespace
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
-          import { readFileSync } from 'node:fs';
-          const base = process.env.BASE_SHA;
-          if (base && !/^0+$/.test(base))
-            execFileSync('git', ['diff', '--check', base, 'HEAD'], { stdio: 'inherit' });
-          const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
-          let checked = 0;
-          for (const file of files) {
-            if (file.split('/').includes('fixtures')) continue;
-            if (/\.(?:mjs|cjs|js)$/.test(file)) {
-              execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
-              checked++;
-            } else if (file.endsWith('.json')) {
-              JSON.parse(readFileSync(file, 'utf8'));
-              checked++;
-            }
-          }
-          console.log(`Checked ${checked} repository JavaScript and JSON files`);
-          NODE
+      - name: Check applicable repository source
+        run: node scripts/source-quality.mjs --phase check
       - name: Check committed package version
+        if: needs.source-plan.outputs.engineering == 'true'
         run: node scripts/generate-plugin-package-version.mjs --check
       - name: Run independent repository regressions
+        if: needs.source-plan.outputs.engineering == 'true'
         run: >-
           node --test
+          scripts/source-quality.test.mjs
           scripts/run-quality-checks.test.mjs
           scripts/runtime-environment.test.mjs
           scripts/gea-error.test.mjs
@@ -63,7 +67,8 @@ jobs:
           scripts/quality-test-reporter.test.mjs
 
   dependency-review:
-    if: github.event_name == 'pull_request'
+    needs: source-plan
+    if: needs.source-plan.outputs.dependency-review == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,16 +84,21 @@ jobs:
 
   candidate-quality:
     if: always()
-    needs: [source-checks, dependency-review]
+    needs: [source-plan, source-checks, dependency-review]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Require successful repository checks
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Require successful applicable checks
         env:
-          SOURCE_RESULT: ${{ needs.source-checks.result }}
+          PLAN_RESULT: ${{ needs.source-plan.result }}
+          CHECK_RESULT: ${{ needs.source-checks.result }}
           DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          test "$SOURCE_RESULT" = success
-          if [ "$EVENT_NAME" = pull_request ]; then
-            test "$DEPENDENCY_RESULT" = success
-          fi
+        run: node scripts/source-quality.mjs --phase final

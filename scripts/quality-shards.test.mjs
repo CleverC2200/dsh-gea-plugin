@@ -830,17 +830,17 @@ test("historical scheduling weights retain their measured source and leave new t
       },
       timings,
     }),
-    14,
+    8,
   );
   assert.equal(plan.shards.filter((x) => x.estimatedMs === null).length, 2);
 });
 
-test("routing uses one shard without Profiles and bounds fixed heavy work at fourteen", async () => {
+test("routing uses one shard without Profiles and bounds fixed heavy work at eight", async () => {
   const { plannedShardCount } = await import("./quality-shards.mjs");
   const files = Array.from({ length: 30 }, (_, index) => `tests/heavy-${index}.test.mjs`);
   const timings = { files: files.map((file) => ({ file, durationMs: 400000 })) };
   assert.equal(plannedShardCount({ selection: { files, runtimeFiles: [] }, timings }), 1);
-  assert.equal(plannedShardCount({ selection: { files, runtimeFiles: files }, timings }), 14);
+  assert.equal(plannedShardCount({ selection: { files, runtimeFiles: files }, timings }), 8);
   assert.equal(
     plannedShardCount({
       selection: { files: ["new.test.mjs"], runtimeFiles: ["new.test.mjs"] },
@@ -872,6 +872,7 @@ test("auto routing keeps leaf, unknown and empty selections bounded without drop
     [[null, null, 20000], 2],
     [[600000, null], 3],
     [[600000], 2],
+    [Array(30).fill(null), 8],
     [[], 1],
   ]) {
     const files = durations.map((_, index) => `tests/leaf-${index}.test.mjs`);
