@@ -1897,7 +1897,7 @@ export class Business {
       conversationId,
     );
     const inventoryRoleConsumer =
-      agentCode === "inventory-personal-workbench" || agentCode === "customer-inventory-preview";
+      agentCode === "inventory-personal-workbench" || agentCode === "customer_inventory";
     if (!inventoryRoleConsumer) return credentials;
     try {
       const roleProfile = await resolveInventoryRoles(
@@ -1909,7 +1909,7 @@ export class Business {
         this.fetchExternal.bind(this),
       );
       identity.throwIfAborted();
-      if (agentCode === "customer-inventory-preview" && this.auth === auth) {
+      if (agentCode === "customer_inventory" && this.auth === auth) {
         this.customerInventoryAccess = { authToken: auth.token, profile: roleProfile };
         this.notifyIdentity();
       }
@@ -1929,7 +1929,7 @@ export class Business {
           expiresAt: null,
         },
       };
-      if (agentCode === "customer-inventory-preview" && this.auth === auth) {
+      if (agentCode === "customer_inventory" && this.auth === auth) {
         this.customerInventoryAccess = { authToken: auth.token, profile: roleProfile };
         this.notifyIdentity();
       }
