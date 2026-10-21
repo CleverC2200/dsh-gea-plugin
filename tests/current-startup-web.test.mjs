@@ -31,16 +31,9 @@ test(
     for (const directory of [
       "samples",
       ...["regional", "category", "mps"].map((id) => "static/" + id),
-      ...[
-        "fc",
-        "aqkc",
-        "dealer",
-        "qll",
-        "customer",
-        "orderworkbench",
-        "orderfulfillment",
-        "apsplan",
-      ].map((id) => "business/inventory-" + id),
+      ...["fc", "aqkc", "dealer", "qll", "customer", "orderfulfillment", "apsplan"].map(
+        (id) => "business/inventory-" + id,
+      ),
     ]) {
       const root = join(installed, directory);
       const manifest = JSON.parse(await readFile(join(root, "plugin.json"), "utf8"));

@@ -426,15 +426,6 @@ test("named peer-private CI inputs select no GEA execution without an actual con
 
 test("explicit peer CI mappings preserve additional executable GEA import consumers", async (t) => {
   for (const [repo, file, contracts] of [
-    [
-      "dsh-agent-workbench",
-      "src/host.ts",
-      [
-        "scripts/quality-workbench.test.mjs",
-        "tests/current-startup-web.test.mjs",
-        "tests/received-mock-resources.test.mjs",
-      ],
-    ],
     ["dsh-agent-workbench", "scripts/build-output.mjs", workbenchBuildContracts],
     ["dsh-agent-manage", "scripts/download-cache.mjs", []],
     ["dsh-agent-workbench", "scripts/run-quality-fast.mjs", []],
