@@ -43,7 +43,7 @@ function outputs(owner, target) {
   });
   return groups.some((files) => !files.length) ? null : groups.flat();
 }
-function sources(root) {
+function sources(root, include = () => true) {
   const files = execFileSync(
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
@@ -54,6 +54,7 @@ function sources(root) {
   return files
     .filter(
       (file) =>
+        include(file) &&
         !/^(?:lib|client|tests|docs|docs-site|\.agents|\.github|\.codex)\//.test(file) &&
         !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file) &&
         !/^(?:README|AGENTS|CLAUDE|QUALITY|CONTRIBUTING|CHANGELOG|SECURITY)/.test(file),
@@ -65,18 +66,39 @@ function sources(root) {
     });
 }
 async function buildInput(owner, target) {
-  const peers = [
-    owner.path,
-    ...["dsh-agent-workbench", "dsh-agent-manage", "dsh-gea-plugin"]
-      .map((repo) => resolve(owner.path, "..", repo))
-      .filter((path) => path !== owner.path && fs.existsSync(join(path, "package.json"))),
-  ];
+  const peers = [];
+  if (owner.repo === "dsh-agent-workbench") {
+    const path = resolve(owner.path, "../dsh-agent-manage");
+    if (fs.existsSync(join(path, "package.json")))
+      peers.push({
+        path,
+        files: sources(path, (file) =>
+          /^(?:business-resources\/|src\/(?:inventory-compute|aps-compute)\/|package\.json$)/.test(file),
+        ),
+      });
+  }
+  if (owner.repo !== "dsh-gea-plugin") {
+    const path = resolve(owner.path, "../dsh-gea-plugin");
+    if (fs.existsSync(join(path, "package.json")))
+      peers.push({
+        path,
+        files: ["build-admission", "development-dependencies", "development-repositories"].map(
+          (name) => {
+            const file = `scripts/${name}.mjs`;
+            return [
+              file,
+              fs.existsSync(join(path, file)) ? digest(fs.readFileSync(join(path, file))) : null,
+            ];
+          },
+        ),
+      });
+  }
   return {
     target,
-    dependencies: dependencyInput(owner),
-    installed: installed(owner),
+    dependencies: dependencyInput(owner, { build: true }),
+    installed: installed(owner, { build: true }),
     sdk: await verifyDevelopmentSDK(owner),
-    sources: peers.map((path) => ({ path, files: sources(path) })),
+    sources: [{ path: owner.path, files: sources(owner.path) }, ...peers],
     environment: Object.fromEntries(
       [
         "NODE_ENV",
