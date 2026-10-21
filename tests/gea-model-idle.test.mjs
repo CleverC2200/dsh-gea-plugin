@@ -319,3 +319,59 @@ test("an unterminated finish continues pulsing on heartbeats and then obeys the 
   assert.equal(outcome.error.code, "GEA_NETWORK_TIMEOUT");
   assert.equal(stream.cancelled(), 1);
 });
+
+test("invalid tool responses retain a request id without automatic retry or payload disclosure", async (t) => {
+  let requests = 0;
+  const { adapter } = fixture(t, async () => {
+    requests++;
+    return new Response(
+      event(
+        {
+          tool_calls: [
+            {
+              index: 0,
+              id: "bad",
+              type: "function",
+              function: {
+                name: "GEA_MODEL_INVALID_TOOL_CALL",
+                arguments: '{"secret":"private-arguments"}',
+              },
+            },
+          ],
+        },
+        "tool_calls",
+      ),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  });
+  const chunks = [];
+  await assert.rejects(
+    collect(
+      adapter.stream({
+        ...options,
+        tools: [{ name: "lookup", description: "fixture", parameters: { type: "object" } }],
+      }),
+      chunks,
+    ),
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_INVALID_TOOL_CALL");
+      assert.match(error.failure.requestId, /^[a-f0-9-]{36}$/);
+      assert.match(error.message, new RegExp("requestId=" + error.failure.requestId));
+      const diagnostics = console.info.mock.calls.map((call) => JSON.parse(call.arguments[0]));
+      assert.equal(
+        diagnostics.find((row) => row.event === "GEA_MODEL_FAILURE").requestId,
+        error.failure.requestId,
+      );
+      assert.doesNotMatch(
+        JSON.stringify({ error: error.failure, diagnostics }),
+        /private-arguments|fixture-secret/,
+      );
+      return true;
+    },
+  );
+  assert.equal(requests, 1);
+  assert.equal(
+    chunks.some((chunk) => chunk.type === "tool-call-delta"),
+    false,
+  );
+});
