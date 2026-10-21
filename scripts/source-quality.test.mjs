@@ -143,3 +143,18 @@ test('pull requests compare their merge-base while push events retain the pushed
   assert.equal(push.status, 0, push.stderr);
   assert.equal(JSON.parse(push.stdout).mode, 'code');
 });
+
+
+test('JavaScript resources retain security scanning without unrelated engineering preparation', t => {
+  const repo = fixture(t, { 'business-resources/demo/scripts/run.mjs': 'export const value = 1;\n' }, { 'business-resources/demo/scripts/run.mjs': 'export const value = 2;\n' });
+  const planned = repo.run('plan');
+  assert.equal(planned.status, 0, planned.stderr);
+  const plan = JSON.parse(planned.stdout);
+  assert.equal(plan.mode, 'resources');
+  assert.equal(plan.engineering, false);
+  assert.equal(plan['dependency-review'], false);
+  assert.equal(plan.codeql, true);
+  const results = { PLAN_RESULT: 'success', CHECK_RESULT: 'success', DEPENDENCY_RESULT: 'skipped', CODEQL_RESULT: 'success', HAS_CODEQL: 'true' };
+  assert.equal(repo.run('final', results).status, 0);
+  assert.notEqual(repo.run('final', { ...results, CODEQL_RESULT: 'skipped' }).status, 0);
+});

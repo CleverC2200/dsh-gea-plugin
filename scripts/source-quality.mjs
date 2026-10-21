@@ -21,7 +21,7 @@ function plan() {
   const files = hasBase ? listed('diff', '--no-renames', '--name-only', '-z', diffBase, head) : listed('ls-files', '-z');
   const documentation = file => /^(?:docs\/|docs-site\/|\.agents\/notes\/)/.test(file) && /\.(?:md|mdx|txt)$/.test(file) || /^[^/]+\.md$/.test(file);
   const mode = hasBase && files.length && files.every(file => !resource(file) && documentation(file)) ? 'docs' : hasBase && files.length && files.every(file => resource(file) || documentation(file)) ? 'resources' : 'code';
-  return { mode, files, base: diffBase, head, engineering: mode === 'code', 'dependency-review': mode === 'code' && process.env.GITHUB_EVENT_NAME === 'pull_request', codeql: mode === 'code' };
+  return { mode, files, base: diffBase, head, engineering: mode === 'code', 'dependency-review': mode === 'code' && process.env.GITHUB_EVENT_NAME === 'pull_request', codeql: mode === 'code' || files.some(file => /\.(?:[cm]?[jt]s|[jt]sx)$/.test(file)) };
 }
 
 function checkResources(result) {
