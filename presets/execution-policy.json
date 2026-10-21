@@ -89,8 +89,30 @@
         "production-fulfillment-progress",
         "warehouse-logistics-fulfillment",
         "sales-organization-analysis",
-        "fulfillment-sales-confirmation-automation"
+        "fulfillment-sales-confirmation-automation",
+        "operations-kpi-performance-analysis",
+        "operations-exception-root-cause",
+        "improvement-action-closure"
       ]
+    },
+    "gea-html-inventory-orderworkbench": {
+      "label": "订单工作台",
+      "presetName": "订单工作台Agent",
+      "consumerCode": "orderworkbench-preview",
+      "skills": [
+        "inventory-orderworkbench",
+        "fulfillment-query-orchestrator",
+        "order-fulfillment-risk",
+        "sku-inventory-shortage",
+        "production-fulfillment-progress",
+        "warehouse-logistics-fulfillment",
+        "sales-organization-analysis",
+        "fulfillment-sales-confirmation-automation",
+        "operations-kpi-performance-analysis",
+        "operations-exception-root-cause",
+        "improvement-action-closure"
+      ],
+      "description": "指标达成、异常归因和改善闭环分析，使用当前页面或已授权证据，执行能力以实际安装为准。"
     }
   }
 }
