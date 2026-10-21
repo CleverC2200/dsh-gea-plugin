@@ -149,6 +149,16 @@ test(
     await expect(provinceStage).toHaveAttribute("aria-pressed", "false");
     await frame.getByRole("tab", { name: "按省区", exact: true }).click();
     await expect(frame.locator("tbody tr")).toHaveCount(4);
+    const checkboxOf = (province) =>
+      frame
+        .locator("tbody tr")
+        .filter({ hasText: province })
+        .filter({ hasText: "份计划" })
+        .first()
+        .locator("label.arco-checkbox")
+        .first();
+    await expect(checkboxOf("P1")).not.toHaveClass(/disabled/);
+    await expect(checkboxOf("P2")).not.toHaveClass(/disabled/);
 
     const rows = await frame.locator("tbody tr").evaluateAll((nodes) =>
       nodes.map((node) => ({
@@ -167,14 +177,6 @@ test(
     // P3 整组都不可操作：置灰，从源头挡掉「勾上却按不动」。
     assert.equal(rowOf("P3")?.selectable, false, JSON.stringify(rows));
 
-    const checkboxOf = (province) =>
-      frame
-        .locator("tbody tr")
-        .filter({ hasText: province })
-        .filter({ hasText: "份计划" })
-        .first()
-        .locator("label.arco-checkbox")
-        .first();
     const approve = frame.getByRole("button", { name: "通过", exact: true });
     const reject = frame.getByRole("button", { name: "退回", exact: true });
     await checkboxOf("P1").click();
