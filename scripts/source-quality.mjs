@@ -10,6 +10,9 @@ const listed = (...args) =>
     .split("\0")
     .filter(Boolean);
 const skill = (file) => /(?:^|\/)(?:SKILL\.md|[^/]+\.skill\.md)$/.test(file);
+const documentation = (file) =>
+  (/^(?:docs\/|docs-site\/|\.agents\/notes\/)/.test(file) && /\.(?:md|mdx|txt)$/.test(file)) ||
+  /^[^/]+\.md$/.test(file);
 function resource(file) {
   if (file.split("/").includes("fixtures")) return false;
   if (
@@ -44,9 +47,6 @@ function plan() {
   const files = hasBase
     ? listed("diff", "--no-renames", "--name-only", "-z", diffBase, head)
     : listed("ls-files", "-z");
-  const documentation = (file) =>
-    (/^(?:docs\/|docs-site\/|\.agents\/notes\/)/.test(file) && /\.(?:md|mdx|txt)$/.test(file)) ||
-    /^[^/]+\.md$/.test(file);
   const mode =
     hasBase && files.length && files.every((file) => !resource(file) && documentation(file))
       ? "docs"
@@ -172,7 +172,31 @@ function check(result) {
         stdio: "inherit",
       });
   }
-  for (const file of listed("ls-files", "-z")) {
+  const full =
+    !result.base ||
+    !result.files.length ||
+    result.files.some(
+      (file) =>
+        (!resource(file) &&
+          !documentation(file) &&
+          !/\.(?:[cm]?[jt]s|[jt]sx|json|css|scss|html|svg)$/.test(file)) ||
+        /^(?:scripts|\.github|\.codex)\//.test(file) ||
+        /(?:^|\/)(?:package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-(?:lock|workspace)\.yaml|yarn\.lock|requirements[^/]*\.txt|(?:ts|js)config(?:\.[^/]*)?\.json|\.nvmrc|\.node-version|\.tool-versions|\.npmrc|\.yarnrc(?:\.yml)?|\.?(?:babel|eslint|prettier|swc|biome|oxlint|oxfmt)[^/]*|[^/]+\.config\.[^/]+)$/.test(
+          file,
+        ),
+    );
+  const files = !full
+    ? listed(
+        "diff",
+        "--no-renames",
+        "--diff-filter=AM",
+        "--name-only",
+        "-z",
+        result.base,
+        result.head,
+      )
+    : listed("ls-files", "-z");
+  for (const file of files) {
     if (file.split("/").includes("fixtures")) continue;
     if (/\.(?:mjs|cjs|js)$/.test(file))
       execFileSync(process.execPath, ["--check", file], { stdio: "inherit" });
