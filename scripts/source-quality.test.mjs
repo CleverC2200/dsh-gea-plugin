@@ -76,6 +76,27 @@ test('candidate-quality accepts only intended skips and fails closed for failed,
   for (const key of ['CHECK_RESULT', 'DEPENDENCY_RESULT', 'CODEQL_RESULT']) for (const result of ['skipped', 'failure', 'cancelled', '', 'unknown']) assert.notEqual(code.run('final', { ...success, [key]: result }).status, 0, `${key}=${result}`);
 });
 
+test('quoted Skill names resolve without engineering preparation and missing names still fail', t => {
+  for (const name of ['"demo"', "'demo'"]) {
+    const file = 'business-resources/demo/skills/demo/SKILL.md';
+    const repo = fixture(t, {
+      [file]: '---\nname: demo\ndescription: Demo\n---\n',
+      'business-resources/demo/prompt.json': '{"skills":["demo"]}',
+      'unrelated.js': 'broken syntax !'
+    }, { [file]: `---\nname: ${name}\ndescription: Demo\n---\n` });
+    const plan = JSON.parse(repo.run('plan').stdout);
+    assert.equal(plan.mode, 'resources');
+    assert.equal(plan.engineering, false);
+    const accepted = repo.run('check');
+    assert.equal(accepted.status, 0, accepted.stderr);
+    writeFileSync(join(repo.root, 'business-resources/demo/prompt.json'), '{"skills":["missing"]}');
+    repo.git('add', '.'); repo.git('commit', '-qm', 'missing skill reference');
+    const missing = repo.run('check', { SOURCE_HEAD_SHA: repo.git('rev-parse', 'HEAD') });
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /RESOURCE_SKILL_MISSING.*missing/);
+  }
+});
+
 test('resource declarations reject skills absent from their packaged capability', t => {
   const repo = fixture(t, {
     'business-resources/demo/prompt.json': '{"skills":["demo"]}',
