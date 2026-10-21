@@ -144,12 +144,11 @@ test("the APS config exception rejects altered sources, staging, redirects and u
   }
 });
 
-function copiedSkillFixture(t) {
+function copiedSkillFixture(t, agent = "aqkc") {
   const fixture = preparedFixture(t);
   const path = join(fixture.source, "..", "manage");
-  const resource =
-    "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
-  const output = "lib/business/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
+  const resource = `business-resources/inventory-${agent}/skills/inventory-policy/rules/data-boundary.md`;
+  const output = `lib/business/inventory-${agent}/skills/inventory-policy/rules/data-boundary.md`;
   mkdirSync(join(path, resource, ".."), { recursive: true });
   writeFileSync(join(path, resource), "Only admitted inventory rows may be read.\n");
   fixture.git("-C", path, "init", "-q");
@@ -182,6 +181,15 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
     readFileSync(join(assets, fixture.output), "utf8"),
     "Only admitted inventory rows may be read.\n",
   );
+});
+
+test("new customer Skills require the frozen Manage blob and reject altered copies", async (t) => {
+  const fixture = copiedSkillFixture(t, "customer");
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, fixture.output), "altered customer Skill\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 
 test("the public verifier uses caller-frozen Manage input for copied Skills", async (t) => {

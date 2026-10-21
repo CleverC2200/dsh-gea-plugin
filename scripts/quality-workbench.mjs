@@ -104,7 +104,7 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      file.startsWith("lib/business/inventory-aqkc/skills/") &&
+      /^lib\/business\/inventory-(?:aqkc|customer)\/skills\//.test(file) &&
       manage
     ) {
       const owner = await realpath(manage.path);
