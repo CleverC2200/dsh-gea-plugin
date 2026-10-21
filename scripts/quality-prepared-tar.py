@@ -59,6 +59,42 @@ def clean_git_output(target):
     return False
 
 
+def check_output_parents(target):
+    for parent in target.parents:
+        if parent == root:
+            break
+        if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+            raise ValueError("output parent refuses symlink traversal")
+
+
+def retired_workbench_declarations():
+    retired = []
+    for source in manifest["binding"]["manifest"]["repositories"]:
+        if source["repo"] != "dsh-agent-workbench":
+            continue
+        checkout = root / "candidate" / source["repo"]
+        if not (checkout / ".git").exists():
+            continue
+        rows = subprocess.check_output([
+            "git", "-C", str(checkout), "ls-tree", "-rz", source["head"], "--", "lib/types"
+        ])
+        for row in rows.split(b"\0"):
+            if not row:
+                continue
+            metadata, path = row.split(b"\t", 1)
+            local = path.decode()
+            target = checkout / local
+            if not metadata.startswith(b"100644 blob ") or not local.endswith(".d.ts"):
+                continue
+            if target.relative_to(root).as_posix() in entries or not (target.exists() or target.is_symlink()):
+                continue
+            check_output_parents(target)
+            if not clean_git_output(target):
+                raise ValueError("retired declaration refuses removal")
+            retired.append(target)
+    return retired
+
+
 if action == "export":
     with tarfile.open(bundle, "x") as archive:
         for name in entries:
@@ -93,11 +129,7 @@ else:
         for member in members:
             entry = entries[member.name]
             target = root / member.name
-            for parent in target.parents:
-                if parent == root:
-                    break
-                if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
-                    raise ValueError("output parent refuses symlink traversal")
+            check_output_parents(target)
             if target.exists() or target.is_symlink():
                 if not entry["control"] and entry["type"] == "file" and clean_git_output(target):
                     replace.add(member.name)
@@ -109,6 +141,11 @@ else:
                     or target.stat().st_mode & 0o777 != entry["mode"]
                 ):
                     raise ValueError("existing output refuses overwrite")
+        retired = retired_workbench_declarations()
+        for target in retired:
+            if not clean_git_output(target):
+                raise ValueError("Git declaration changed before removal")
+            target.unlink()
         for member in members:
             entry = entries[member.name]
             target = root / member.name
