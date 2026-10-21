@@ -24,6 +24,7 @@ jobs:
       gea-sha: ${{ steps.plan.outputs.gea-sha }}
       mode: ${{ steps.plan.outputs.mode }}
       engineering: ${{ steps.plan.outputs.engineering }}
+      workflows: ${{ steps.plan.outputs.workflows }}
       dependency-review: ${{ steps.plan.outputs.dependency-review }}
       codeql: ${{ steps.plan.outputs.codeql }}
     steps:
@@ -38,6 +39,18 @@ jobs:
       - name: Classify actual Git changes
         id: plan
         run: node scripts/source-quality.mjs --phase plan
+      - name: Check changed workflow semantics
+        if: steps.plan.outputs.workflows == 'true'
+        shell: bash
+        env:
+          WORKFLOW_FILES: ${{ steps.plan.outputs.workflow-files }}
+          ACTIONLINT: ${{ runner.temp }}/workflow-preflight/actionlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/workflow-preflight"
+          curl --fail --location --silent --show-error https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" -C "$RUNNER_TEMP/workflow-preflight" actionlint
+          node --input-type=module -e "import { checkWorkflows } from './scripts/workflow-preflight.mjs'; console.log(JSON.stringify(checkWorkflows(JSON.parse(process.env.WORKFLOW_FILES))))"
 
   source-checks:
     needs: source-plan
@@ -97,6 +110,12 @@ jobs:
           path: source/official-core
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify selected Core source before dependency preparation
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        env:
+          QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
+        run: |
+          node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
       - name: Enable declared package managers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         run: |
