@@ -11,6 +11,7 @@ test("registered regional, category and MPS mock resources authorize only their 
     ["plan-regional", "gea-regional-plan", "regional-plan-prototype"],
     ["category-plan", "plan-region-category", "category-plan-prototype"],
     ["inventory-mps", "plan-category-production", "mps-prototype"],
+    ["inventory-customer", "inventory-customer", "customer_inventory"],
   ]) {
     const h = await fixture(t, {
       id,
