@@ -73,3 +73,35 @@ test("standalone delivery retains package Prompt and source checks while candida
   ])
     assert.equal(typeof packageScripts[name], "string", name);
 });
+
+test("complete delivery verifies exact Core outputs and cold tools before compiling", () => {
+  for (const [name, profile] of [
+    ["mac-complete-package", "host"],
+    ["windows-complete-package", "official"],
+  ]) {
+    const job = workflow.jobs[name];
+    const steps = job.steps;
+    const restore = steps.findIndex((step) => step.id === "delivery-core-restore");
+    const preflight = steps.findIndex((step) => step.name === "Preflight cold packaging tools");
+    const install = steps.findIndex((step) => step.name === "Prepare declared Core toolchain");
+    assert.ok(install >= 0 && preflight > install && restore > preflight, name);
+    assert.match(steps[preflight].run, new RegExp(`core-cache\\.mjs preflight core ${profile}`));
+    assert.equal(steps[restore].uses, "actions/cache/restore@v4");
+    assert.equal(steps[restore].with.key, "${{ steps.delivery-core-plan.outputs.key }}");
+    assert.equal(steps[restore].with["restore-keys"], undefined);
+    assert.equal(steps[restore].with.path, "${{ steps.delivery-core-plan.outputs.paths }}");
+    const downloads = steps.find((step) => step.id === "delivery-downloads");
+    assert.equal(downloads.uses, "actions/cache@v4");
+    assert.doesNotMatch(downloads.with.path, /node_modules|profile|seed|install/);
+    const afterPackaging = steps.findIndex(
+      (step) => step.name === "Verify Core output after packaging",
+    );
+    const packaging = steps.findIndex((step) => step.name?.startsWith("Build full "));
+    const saveIndex = steps.findIndex((step) => step.uses === "actions/cache/save@v4");
+    assert.ok(afterPackaging > packaging && saveIndex > afterPackaging, name);
+    assert.match(steps[afterPackaging].run, new RegExp(`core-cache\\.mjs verify core ${profile}`));
+    const save = steps[saveIndex];
+    assert.equal(save.with.key, "${{ steps.delivery-core-plan.outputs.key }}");
+    assert.equal(save.with.path, "${{ steps.delivery-core-plan.outputs.paths }}");
+  }
+});

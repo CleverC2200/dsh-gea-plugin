@@ -39,6 +39,9 @@ jobs:
       DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      COREPACK_HOME: ${{ runner.temp }}/delivery-downloads/corepack
+      ELECTRON_CACHE: ${{ runner.temp }}/delivery-downloads/electron
+      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/delivery-downloads/electron-builder
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +55,7 @@ jobs:
           path: core
           persist-credentials: false
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: "24.14.1"
       - name: Validate fixed input before preparing Core
@@ -67,14 +71,56 @@ jobs:
           node scripts/windows-complete-local/input.mjs --input "$inputPath" --source-sha "$GITHUB_SHA"
           echo "DSH_DESKTOP_BUILD_VERSION=$(node -p 'JSON.parse(process.env.DESKTOP_INPUT_JSON).desktopVersion')" >> "$GITHUB_ENV"
           echo "GEA_DESKTOP_INPUT=$inputPath" >> "$GITHUB_ENV"
-      - name: Prepare declared Core toolchain
+      - name: Locate declared tool download cache
+        id: delivery-tool-path
         working-directory: core
         run: |
           corepack enable
+          echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: delivery-downloads
+        with:
+          path: |
+            ${{ env.COREPACK_HOME }}
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+            core/apps/desktop/.desktop-build/downloads
+            ${{ steps.delivery-tool-path.outputs.store }}
+          key: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
+      - name: Prepare declared Core toolchain
+        working-directory: core
+        run: |
           corepack pnpm install --frozen-lockfile --prefer-offline
+      - name: Preflight cold packaging tools
+        run: node gea/scripts/windows-complete-local/core-cache.mjs preflight core host
+      - name: Plan compiled Core cache
+        id: delivery-core-plan
+        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core host
+      - uses: actions/cache/restore@v4
+        id: delivery-core-restore
+        with:
+          path: ${{ steps.delivery-core-plan.outputs.paths }}
+          key: ${{ steps.delivery-core-plan.outputs.key }}
+      - name: Verify restored Core output
+        id: delivery-core-verify
+        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core host
+      - name: Compile missing Core tools
+        if: steps.delivery-core-verify.outputs.hit != 'true'
+        working-directory: core
+        run: |
           corepack pnpm run build:lib:host
+          node ../gea/scripts/windows-complete-local/core-cache.mjs seal . host
       - name: Build full macOS package and verify isolated first installation
         run: node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"
+      - name: Verify Core output after packaging
+        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core host
+      - name: Save verified compiled Core
+        if: success() && steps.delivery-core-restore.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.delivery-core-plan.outputs.paths }}
+          key: ${{ steps.delivery-core-plan.outputs.key }}
       - name: Keep installer and original build evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -120,6 +166,9 @@ jobs:
       DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      COREPACK_HOME: ${{ runner.temp }}/delivery-downloads/corepack
+      ELECTRON_CACHE: ${{ runner.temp }}/delivery-downloads/electron
+      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/delivery-downloads/electron-builder
       ELECTRON_BUILDER_7Z_FILTER: BCJ
     steps:
       - uses: actions/checkout@v4
@@ -134,6 +183,7 @@ jobs:
           path: core
           persist-credentials: false
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: "24.14.1"
       - name: Validate fixed input before preparing Core
@@ -160,14 +210,51 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: Prepare declared Core toolchain
+      - name: Locate declared tool download cache
+        id: delivery-tool-path
         working-directory: core
         run: |
           corepack enable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $store = corepack pnpm store path --silent
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "store=$store" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
+      - uses: actions/cache@v4
+        id: delivery-downloads
+        with:
+          path: |
+            ${{ env.COREPACK_HOME }}
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+            core/apps/desktop/.desktop-build/downloads
+            ${{ steps.delivery-tool-path.outputs.store }}
+          key: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
+      - name: Prepare declared Core toolchain
+        working-directory: core
+        run: |
           corepack pnpm install --frozen-lockfile --prefer-offline
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preflight cold packaging tools
+        run: node gea/scripts/windows-complete-local/core-cache.mjs preflight core official
+      - name: Plan compiled Core cache
+        id: delivery-core-plan
+        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core official
+      - uses: actions/cache/restore@v4
+        id: delivery-core-restore
+        with:
+          path: ${{ steps.delivery-core-plan.outputs.paths }}
+          key: ${{ steps.delivery-core-plan.outputs.key }}
       - name: Build full Windows package and verify isolated first installation
         run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
+      - name: Verify Core output after packaging
+        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core official
+      - name: Save verified compiled Core
+        if: success() && steps.delivery-core-restore.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.delivery-core-plan.outputs.paths }}
+          key: ${{ steps.delivery-core-plan.outputs.key }}
       - name: Run approved Native plugin update acceptance bundle
         if: inputs.native_acceptance_bundle_url != ''
         env:

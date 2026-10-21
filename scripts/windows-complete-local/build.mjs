@@ -5,7 +5,7 @@ import { inspectPluginArchive } from "../../src/host/plugin-release-source.ts";
 import { readFile, writeFile, mkdir, open, readdir, stat, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(process.argv[2]);
 const gea = resolve(process.argv[3]);
@@ -43,6 +43,11 @@ for (const [cwd, sha] of [
   )
     throw Error("SOURCE_DIRTY");
 }
+const coreCache = fileURLToPath(new URL("./core-cache.mjs", import.meta.url));
+execFileSync(process.execPath, [coreCache, "preflight", root, "official"], { stdio: "inherit" });
+const coreReuse = JSON.parse(
+  execFileSync(process.execPath, [coreCache, "verify", root, "official"], { encoding: "utf8" }),
+);
 const pluginSource = readDesktopPluginSource(input, gea);
 await mkdir(output, { recursive: true });
 await writeFile(join(output, "fixed-input.json"), JSON.stringify(input, null, 2));
@@ -204,7 +209,12 @@ for (const row of seedInput.packages) {
     throw Error("PACKAGE_DOWNLOAD_IDENTITY_MISMATCH");
 }
 await writeFile(join(output, "input-three.json"), JSON.stringify(seedInput));
-await run("build-official", ["run", "build:official"]);
+if (!coreReuse.hit) {
+  await run("build-official", ["run", "build:official"]);
+  await run("build-native-ts", ["--dir", "native/system", "run", "build:ts"]);
+  execFileSync(process.execPath, [coreCache, "seal", root, "official"], { stdio: "inherit" });
+}
+await writeFile(join(output, "core-reuse.json"), JSON.stringify(coreReuse, null, 2));
 await run("pack-dsh", [
   "run",
   "release:pack",
@@ -228,7 +238,6 @@ await run("pack-vendor", [
   "--out",
   join(target, "packed/vendor"),
 ]);
-await run("build-native-ts", ["--dir", "native/system", "run", "build:ts"]);
 await run("pack-native", [
   "--dir",
   "native/system/packages/entry",
