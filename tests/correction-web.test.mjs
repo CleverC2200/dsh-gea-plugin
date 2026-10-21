@@ -148,8 +148,8 @@ test(
       const city = await open("region");
       await expect(city.input).toHaveValue("0");
       const skuRow = frame.getByRole("row").filter({ hasText: "冻结基准SKU" }).last();
-      await expect(skuRow.getByRole("cell").nth(1)).toHaveText("30");
-      await expect(skuRow.getByRole("cell").nth(3)).toHaveText("60");
+      await expect(skuRow.getByRole("cell").nth(1).locator("span")).toHaveText("30");
+      await expect(skuRow.getByRole("cell").nth(1).locator("small")).toHaveText("¥60");
       await city.input.fill("8");
       await expect
         .poll(async () => {
