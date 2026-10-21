@@ -80,7 +80,9 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      /^lib\/business\/inventory-(?:aqkc|fc|qll|apsplan|dealer)\/sql\.config\.json$/.test(file)
+      /^lib\/business\/inventory-(?:aqkc|fc|qll|apsplan|dealer|orderfulfillment)\/sql\.config\.json$/.test(
+        file,
+      )
     ) {
       const resource = file.slice(4);
       const entry = git(source, "ls-tree", head, "--", resource);
@@ -104,7 +106,7 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      /^lib\/business\/inventory-(?:aqkc|customer)\/skills\//.test(file) &&
+      /^lib\/business\/inventory-(?:aqkc|customer|orderfulfillment)\/skills\//.test(file) &&
       manage
     ) {
       const owner = await realpath(manage.path);

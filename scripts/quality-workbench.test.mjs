@@ -183,14 +183,18 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
   );
 });
 
-test("new customer Skills require the frozen Manage blob and reject altered copies", async (t) => {
-  const fixture = copiedSkillFixture(t, "customer");
-  const record = await readPreparedWorkbench(fixture);
-  writeFileSync(fixture.receipt, JSON.stringify(record));
-  await verifyPreparedWorkbench(fixture);
-  writeFileSync(join(fixture.prepared, fixture.output), "altered customer Skill\n");
-  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
-});
+for (const agent of ["customer", "orderfulfillment"])
+  test(`new ${agent} Skills require the frozen Manage blob and reject altered copies`, async (t) => {
+    const fixture = copiedSkillFixture(t, agent);
+    const record = await readPreparedWorkbench(fixture);
+    writeFileSync(fixture.receipt, JSON.stringify(record));
+    await verifyPreparedWorkbench(fixture);
+    writeFileSync(join(fixture.prepared, fixture.output), "altered customer Skill\n");
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+  });
 
 test("the public verifier uses caller-frozen Manage input for copied Skills", async (t) => {
   const fixture = copiedSkillFixture(t);
