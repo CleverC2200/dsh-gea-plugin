@@ -30,6 +30,8 @@
 | 受管 SQL                         | [查询入口](../src/host/plugin-query.ts)、[物理额度](../src/shared/sql-read-limit.js)；实际端点和分页计数由源码定义                                                                                                 |
 | 证据与取消                       | [证据归属](../src/host/prompt-execution-state.ts)、[隔离取消信号](../src/shared/transport-signal.ts)；保留部分、失败、unknown 与来源范围                                                                           |
 
+环境自查的 `businessProfileDeclared=false` 不单独表示业务工具不可用：个人 Agent 可通过已选 GEA 工具来源接入。`independentQuery` 只报告当前本地接入条件，并明确独立查询不要求页面；`recovery` 按当前身份与来源提供恢复引导。服务端授权仍以实际调用结果为准，自查的 `businessAuthorization` 保持 `not-checked`。
+
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
 Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，HTML lease 使用 `gea_page` 读取，以及目录声明的 `gea_plugin_page_apply` 视图动作。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。 页面读取保留 focus 摘要、来源及实际覆盖范围；同页同焦点再次调用仍返回当前内容。页面身份 TTL 和 owner 撤销继续生效，工具不再以问题词表或重复窗口决定是否读取。
@@ -79,7 +81,7 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 | 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                                |
 | 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 校验当前有效退回版本、周期、SKU、价格、身份、流程和原正文。当前环境须有租户/用户白名单与可用服务凭据；[service-account](../src/host/service-account.ts) 交换委托后向 `/api/v1/internal/sales-plans` 发送原幂等请求 |
 | 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                       |
-| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                 |
+| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                           |
 
 M/Z 查询和审批复用原接口。`salesPlanAction` 从新鲜明细核对有效版本及状态，Z 的通过、退回沿月初既有角色与流程校验、原请求正文执行；原响应提供快照时仍核一致性，不要求纠偏专用 context、节点字段或 `ABSOLUTE_NET` 标记。界面保存调整复用 [Business.salesPlanDraft](../src/host/business.ts) 本地草稿，不推进节点；Z 的远端 SAVE 拒绝发送，原月初远端 SAVE 行为保留。0、5、10 和历史版本均拒绝写入；选择查看节点不授予写权限。本轮不执行 DMS。源码规则不证明真实服务或客户端验收通过。
 
