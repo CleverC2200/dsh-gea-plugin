@@ -88,7 +88,7 @@ jobs:
       - name: Select registered Core only for consumers that need SDK
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         id: core
-        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + require('../dsh-gea-plugin/scripts/current-core.json').adaptation + '\n')"
+        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from '../dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
       - uses: actions/checkout@v7
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         with:

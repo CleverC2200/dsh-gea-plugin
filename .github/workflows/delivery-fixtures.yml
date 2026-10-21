@@ -221,10 +221,10 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
-      - name: "Source types: select the candidate adaptation Core"
+      - name: "Source types: select the required CI Core"
         if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
         id: source-types-core
-        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + require('./candidate/dsh-gea-plugin/scripts/current-core.json').adaptation + '\n')"
+        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from './candidate/dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
       - name: "Source types: checkout the registered Core source"
         if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
         uses: actions/checkout@v4
@@ -253,7 +253,8 @@ jobs:
           const root = process.cwd(), gea = resolve('candidate/dsh-gea-plugin'), workbench = resolve('source/dsh-agent-workbench');
           const observed = JSON.parse(execFileSync(process.execPath, [resolve(workbench, 'scripts/read-hosted-peer-input.mjs'), '--repo', 'dsh-gea-plugin'], { cwd: gea, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: '' } }));
           const env = { ...process.env, QUALITY_GROUP_ID: observed['group-id'], QUALITY_SOURCE_KIND: observed['source-kind'], QUALITY_BASELINE_ID: observed['baseline-id'], GITHUB_OUTPUT: '' };
-          const core = JSON.parse(readFileSync(resolve(gea, 'scripts/current-core.json'))).adaptation;
+          const { ciCores } = await import('./candidate/dsh-gea-plugin/scripts/ci-core-policy.mjs');
+          const core = ciCores('required')[0].head;
           execFileSync(process.execPath, [resolve(workbench, 'scripts/write-hosted-group.mjs'), '--root', root, '--repo', 'dsh-gea-plugin', '--core-head', core, '--workbench-source'], { cwd: gea, env, stdio: 'inherit' });
           const sha256 = createHash('sha256').update(readFileSync('candidate-input.json')).digest('hex');
           const admitted = await readFinalGroup({ input: resolve('candidate-input.json'), sha256, checkout: gea, coreSource: resolve('source/official-core'), expectedSha: process.env.GITHUB_SHA, ci: true });

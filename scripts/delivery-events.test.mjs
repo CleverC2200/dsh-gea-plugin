@@ -205,7 +205,8 @@ test("real source types prepare only for an explicit manual tuple and preserve e
   ])
     assert.ok(code.includes(contract), contract);
   assert.match(code, /--prepare --reuse-prepared --with-flock/);
-  assert.match(code, /current-core\.json/);
+  assert.match(code, /ciCores\('required'\)/);
+  assert.doesNotMatch(code, /current-core|adaptation/);
   assert.doesNotMatch(code, /affected-check|run-quality-ci|SOURCE_BASE_SHA|plan\.typecheck/);
 });
 
