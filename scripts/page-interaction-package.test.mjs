@@ -5,7 +5,7 @@ import { mkdtemp, readFile, writeFile, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { chromium } from "@playwright/test";
-import { resolveSourceInputs } from "./source-profile.mjs";
+import { resolveSourceInputs } from "../tests/profile.mjs";
 
 test(
   "Workbench tarball installs without GEA and exposes the picker and shared bridge",

@@ -15,6 +15,7 @@ import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 import { withSourceSetup } from "./fixtures/source-test.mjs";
 import { waitProfileReady, probeProfileBusiness } from "./fixtures/profile-ready.mjs";
 import { fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
+export { resolveSourceInputs } from "../scripts/source-profile.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */

@@ -736,6 +736,21 @@ test("the shared returned-review fixture selects every isolated browser scenario
   );
 });
 
+test("standalone Workbench package acceptance prepares its frozen profile inputs", (t) => {
+  const file = "scripts/page-interaction-package.test.mjs";
+  const fixture = resourceImpactFixture(t, [file, "tests/profile.mjs"]);
+  fixture.change(
+    fixture.own,
+    file,
+    readFileSync(new URL("../" + file, import.meta.url), "utf8") + "\n",
+  );
+  const plan = fixture.plan();
+  assert.ok(plan.files.includes(file), JSON.stringify(plan));
+  assert.ok(plan.runtimeFiles.includes(file), JSON.stringify(plan));
+  assert.equal(plan.runtime, true);
+  assert.equal(plan.browser, true);
+});
+
 test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {
