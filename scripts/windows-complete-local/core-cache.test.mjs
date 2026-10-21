@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, rm, symlink, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, mkdir, writeFile, rm, symlink, readFile, realpath } from "node:fs/promises";
+import { join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const cli = fileURLToPath(new URL("./core-cache.mjs", import.meta.url));
 async function fixture(t, built = true) {
-  const root = await mkdtemp(join(tmpdir(), "delivery-core-cache-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "delivery-core-cache-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const path of ["apps/desktop", "apps/cli", "packages/boot/app-boot"])
     await mkdir(join(root, path), { recursive: true });
@@ -58,7 +58,7 @@ test("delivery Core CLI reuses a complete sealed host build without caching prof
   let result = run("plan");
   assert.equal(result.status, 0, result.stderr);
   const plan = JSON.parse(result.stdout);
-  assert.ok(plan.paths.some((path) => path.endsWith("apps/desktop/lib")));
+  assert.ok(plan.paths.some((path) => normalize(path) === join(root, "apps/desktop/lib")));
   assert.ok(plan.paths.every((path) => !/node_modules|profiles|seed|install/.test(path)));
   result = run("verify");
   assert.equal(result.status, 0, result.stderr);
@@ -198,7 +198,7 @@ test("delivery CLI emits a verified hit and exact output paths for Actions", asy
   assert.equal(result.status, 0, result.stderr);
   const text = await readFile(output, "utf8");
   assert.match(text, /^key=delivery-core-[a-f0-9]{64}\nhit=true\npaths<<DELIVERY_CORE_PATHS\n/);
-  assert.ok(text.includes(join(root, "apps/desktop/lib")));
+  assert.ok(text.split("\n").some((path) => normalize(path) === join(root, "apps/desktop/lib")));
   assert.ok(text.endsWith("\nDELIVERY_CORE_PATHS\n"));
 });
 
@@ -209,12 +209,13 @@ test("delivery rejects orphaned cached output when its receipt is missing", asyn
   assert.match(result.stderr, /DELIVERY_CACHE_RECEIPT_MISSING/);
 });
 
-
 test("a failed wrapper leaves independently verified Core reusable without caching wrapper evidence", async (t) => {
   const { root, run } = await fixture(t);
   assert.equal(run("seal").status, 0);
   const wrapperEvidence = join(root, ".dsh-build/wrapper-failure.json");
-  const wrapper = spawnSync(process.execPath, ["--input-type=module", "-e",
+  const wrapper = spawnSync(process.execPath, [
+    "--input-type=module",
+    "-e",
     'import { writeFileSync } from "node:fs"; writeFileSync(process.argv[1], "wrapper failed"); process.exit(23);',
     wrapperEvidence,
   ]);
