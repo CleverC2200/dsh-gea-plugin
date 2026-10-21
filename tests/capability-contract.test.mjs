@@ -202,7 +202,6 @@ test("关键词能把用户问题路由到模块", () => {
 });
 
 test("模块自己交的契约形状不对就整份丢掉", () => {
-<<<<<<< HEAD
   for (const consumerCode of [
     "customer inventory",
     "customer/inventory",
@@ -218,8 +217,6 @@ test("模块自己交的契约形状不对就整份丢掉", () => {
     assert.throws(() => m.normalizeContract(contract), /INVALID_CAPABILITY_CONTRACT/);
     assert.throws(() => m.createCapabilityRegistry([contract]), /INVALID_CONSUMER_CODE/);
   }
-=======
->>>>>>> 0615d33
   assert.throws(() => m.normalizeContract({ id: "x" }), /INVALID_CAPABILITY_CONTRACT/);
   assert.throws(
     () =>

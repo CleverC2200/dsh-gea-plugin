@@ -1,14 +1,10 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-<<<<<<< HEAD
-  "version": "0.0.180",
-=======
-  "version": "0.0.178-local.20261021.21",
->>>>>>> 0615d33
+  "version": "0.0.181",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
-  "description": "\u63a5\u5165 GEA \u4e1a\u52a1\u8eab\u4efd\u3001\u6388\u6743\u4e0e\u4e1a\u52a1\u5de5\u5177\u3002",
+  "description": "接入 GEA 业务身份、授权与业务工具。",
   "exports": {
     ".": "./lib/host.js",
     "./client": "./lib/client.js",
@@ -212,11 +208,7 @@
     "packages/*"
   ],
   "peerDependencies": {
-<<<<<<< HEAD
-    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17 || 0.1.18 || 0.1.19 || 0.1.20 || 0.1.21",
-=======
-    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17 || 0.1.18 || 0.1.19 || 0.1.20-local.20261021.1 || 0.1.20-local.20261021.2 || 0.1.20-local.20261021.3 || 0.1.20-local.20261021.4 || 0.1.20-local.20261021.5 || 0.1.20-local.20261021.6 || 0.1.20-local.20261021.7 || 0.1.20-local.20261021.8 || 0.1.20-local.20261021.9 || 0.1.20-local.20261021.10 || 0.1.20-local.20261021.11 || 0.1.20-local.20261021.12 || 0.1.20-local.20261021.13 || 0.1.20-local.20261021.14 || 0.1.20-local.20261021.15 || 0.1.20-local.20261021.16 || 0.1.20-local.20261021.17 || 0.1.20-local.20261021.18 || 0.1.20-local.20261021.19 || 0.1.20-local.20261021.20",
->>>>>>> 0615d33
+    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17 || 0.1.18 || 0.1.19 || 0.1.20 || 0.1.21 || 0.1.22 || 0.1.23",
     "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",
