@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
 import {
@@ -17,6 +17,9 @@ import { createHash } from "node:crypto";
 
 const entry = join(import.meta.dirname, "deliver-packages.mjs");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const admissionRoot = await mkdtemp(join(tmpdir(), "delivery-admission-test-"));
+process.env.TMPDIR = admissionRoot;
+after(() => rm(admissionRoot, { recursive: true, force: true }));
 
 async function requestFixture(
   t,

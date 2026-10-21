@@ -37,6 +37,7 @@ function run(root, args = []) {
   const child = spawn(process.execPath, [builder, ...args], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, TMPDIR: root },
   });
   let log = "";
   child.stdout.on("data", (data) => {

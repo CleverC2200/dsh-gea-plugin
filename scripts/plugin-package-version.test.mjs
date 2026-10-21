@@ -49,9 +49,14 @@ test("compiled GEA package stamp stays immutable until the next owner build", as
   assert.equal((await import(pathToFileURL(rebuilt))).pluginPackageVersion.version, next);
 });
 
-test("the actual declared client builder exposes the compiled stamp in its materialized namespace", async () => {
+test("the actual declared client builder exposes the compiled stamp in its materialized namespace", async (t) => {
   const { runInNewContext } = await import("node:vm");
-  execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], { stdio: "pipe" });
+  const admissionRoot = await mkdtemp(join(tmpdir(), "gea-version-admission-test-"));
+  t.after(() => rm(admissionRoot, { recursive: true, force: true }));
+  execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], {
+    stdio: "pipe",
+    env: { ...process.env, TMPDIR: admissionRoot },
+  });
   let loaded;
   runInNewContext(await readFile("lib/client.js", "utf8"), {
     window: {
