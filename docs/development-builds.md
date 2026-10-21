@@ -1,6 +1,25 @@
 # 依赖与构建入口
 
-三仓在各自 `.codex/environments/environment.toml` 提供相同的检查、依赖准备、定向构建、类型检查和收尾动作。setup 只检查工具。从目标仓运行：
+三仓的原生 Actions 由各自 `.codex/environments/environment.toml` 维护，setup 只检查工具。先从项目根 `docs/agents/current-development.md` 进入本票冻结输入，再核登记 checkout、HEAD、owner 和未提交修改。已有任务保留自己的输入和动作默认值。
+
+本地轻预检与影响计划使用现有开发 CLI，从目标仓运行：
+
+```sh
+node ../dsh-gea-plugin/scripts/development-tasks.mjs preflight
+node ../dsh-gea-plugin/scripts/development-tasks.mjs plan --base <本票完整基线SHA>
+```
+
+GEA 本仓使用 `scripts/development-tasks.mjs`。未给 `--base` 或 `SOURCE_BASE_SHA` 时，轻入口从当前 HEAD 比较。它将 base 到 HEAD 的已提交差异、暂存、未暂存和 Git 未忽略的新文件合并为当前工作树范围；删除和改名保留旧路径参与影响分析。输出标记 `scope=local-working-tree`，HEAD 只标识提交，不能代替未提交字节或冻结候选验收。
+
+`preflight` 只运行冷目录资源合同、适用语法、差分空白和已变更 workflow 的语义检查。workflow 检查复用 `scripts/workflow-preflight.mjs`；工具缺失时按错误提示将 `ACTIONLINT` 指向本票自有的固定版本可执行文件后重试。工具不会安装 actionlint、依赖、SDK 或桌面，也不启用 hook。Python 资源仍需当前资源合同使用的 Python 解释器。
+
+知识引用沿现有 Node CLI 执行。Manage/GEA 的配置还引用 Core commandRoot，缺少其源码包时明确返回 `knowledge.status=deferred`、缺失路径和原因；Workbench 配置还要求编译后的包导出，也明确延后。所需输入已就绪的检查可以前置失败。准备相应材料后仍运行原 `check:knowledge`。轻预检不执行 lint、format、类型、行为或联合检查；计划声明的材料与检查仍由现有执行入口负责。各项检查通过只证明实际运行的范围。
+
+`plan` 复用 source-quality 与共享 sourceChecks，输出实际文件、测试和材料需求，保存既有 `.runtime/source-checks-plan.json`。它不准备材料、不运行测试；未知源码仍按原选择规则拒绝。代码计划使用相邻三仓当前 HEAD，单仓冷资源检查不因此要求 Core。
+
+项目根的新增轻动作要求显式 `DSH_DEVELOPMENT_INPUT`，沿 `tools/development.mjs preflight|plan --input <本票绝对输入路径>` 核三仓包身份、登记 HEAD 和开发工具源码后调用同一 CLI。它只对这两项动作省去 Core 核验；既有准备、构建、验收和收尾动作保持原输入要求。
+
+依赖准备、定向构建和收尾仍使用原动作：
 
 ```sh
 node ../dsh-gea-plugin/scripts/development-tasks.mjs check

@@ -1,5 +1,7 @@
 # 本地依赖与按需检查
 
+本地轻预检、影响计划与原生 Actions 见[开发构建入口](development-builds.md)。该入口区分冷检查、待执行计划和完整验收。
+
 工具链与精确版本从 `package.json` 的 engines、packageManager 和 devDependencies 读取，固定依赖由 `pnpm-lock.yaml` 提供。Core 与 peer 来自本任务冻结输入；Node 兼容范围不代表每个补丁版已验。
 
 ```sh
