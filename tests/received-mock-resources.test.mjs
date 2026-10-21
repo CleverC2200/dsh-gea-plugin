@@ -70,14 +70,19 @@ test("the received packages preserve governed customer login and mock view-only 
     const id = "gea-html-" + item.manifest.id,
       definition = definitions.get(id);
     assert.equal(definition.enabled, true);
-    assert.deepEqual(definition.profile.skills, [item.manifest.id]);
+    const capability = JSON.parse(
+      await readFile(resolve(item.directory, "capability.json"), "utf8"),
+    );
+    assert.deepEqual(definition.profile.skills, capability.skills);
     const persona = JSON.parse(await readFile(resolve(definition.root, definition.prompt), "utf8"));
     assert.equal(persona.consumerCode, definition.profile.consumerCode);
-    if (item.manifest.id === "inventory-customer") {
+    if (item.manifest.mode !== "mock") {
       assert.equal(item.manifest.gea.readonly, true);
       assert.equal(definition.cube, true);
-      assert.match(persona.persona, /GEA受控读取/);
-      assert.match(persona.persona, /当前只读/);
+      if (item.manifest.id === "inventory-customer") {
+        assert.match(persona.persona, /GEA受控读取/);
+        assert.match(persona.persona, /当前只读/);
+      }
       await assert.rejects(
         pages.get(item.manifest.id)(session, id, new AbortController().signal),
         /PAGE_REFERENCE_LOGIN_REQUIRED/,

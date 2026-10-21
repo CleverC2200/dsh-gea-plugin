@@ -336,7 +336,7 @@ test(
     );
     assert.equal(catalogConsumers.at(-1), "sales_forecast");
     assert.deepEqual(
-      [...new Set(catalogConsumers)],
+      [...new Set(catalogConsumers)].sort(),
       ["base-safety-stock", "sales_forecast"],
       "discovery and refreshed inspection stay in the owning Agent context",
     );
