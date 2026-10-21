@@ -119,6 +119,12 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^\\.codex/environments/environment\\.toml$",
+      "tests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"],
+      "sourceTests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^(?:scripts/workflow-preflight(?:\\.test)?\\.mjs|\\.github/workflows/[^/]+\\.ya?ml)$",
       "tests": ["scripts/workflow-preflight.test.mjs"],
       "sourceTests": ["scripts/workflow-preflight.test.mjs"]
