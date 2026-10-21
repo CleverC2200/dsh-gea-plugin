@@ -152,7 +152,7 @@ await writeFile(
     2,
   ) + "\n",
 );
-const escape = (value) => value.replace(/([*?\[\]{}()!+@\\])/g, "\\$1");
+const escape = (value) => value.replace(/[*?[\]{}()!+@\\]/g, "\\$&");
 function pattern(paths) {
   if (!paths.length) return undefined;
   const groups = new Map();
