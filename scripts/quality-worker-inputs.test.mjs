@@ -98,6 +98,9 @@ function fixture(
     "quality-hosted-budget.mjs",
     "quality-worker-control.mjs",
     "quality-ci-stages.mjs",
+    "build-admission.mjs",
+    "development-dependencies.mjs",
+    "development-repositories.mjs",
   ])
     put("candidate/dsh-gea-plugin/scripts/" + file, readFileSync(join(own, "scripts", file)));
   if (publicQuality) {
@@ -564,9 +567,12 @@ process.stdout.write(r.stdout??'');process.stderr.write(r.stderr??'');process.ex
     "commands.mjs",
     `import cp from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import {syncBuiltinESMExports} from 'node:module';
 import {readFileSync,writeFileSync,mkdirSync,appendFileSync} from 'node:fs';
 import {join,dirname,relative} from 'node:path';
+const fixtureTemp=${JSON.stringify(join(root, "build-admission-tmp"))};mkdirSync(fixtureTemp,{recursive:true});os.tmpdir=()=>fixtureTemp;
+const statfs=fs.statfsSync;fs.statfsSync=(path,...args)=>{const value=statfs(path,...args);return relative(${JSON.stringify(root)},String(path)).startsWith('..')?value:{...value,bavail:128*1024**3/Number(value.bsize)}};
 ${browser ? "Object.defineProperty(process,'platform',{value:process.env.FIXTURE_PLATFORM??'linux'});if(process.env.FIXTURE_ARCH)Object.defineProperty(process,'arch',{value:process.env.FIXTURE_ARCH});" : ""}
 if(${browser}){for(const [name,key] of [['modules','FIXTURE_MODULES'],['napi','FIXTURE_NAPI']])if(process.env[key]!==undefined)Object.defineProperty(process.versions,name,{value:process.env[key]});const report=process.report.getReport.bind(process.report);process.report.getReport=()=>{const value=report();value.header.glibcVersionRuntime=process.env.FIXTURE_GLIBC??'2.39';return value};const read=fs.readFileSync;fs.readFileSync=(file,...args)=>{if(file==='/etc/os-release'){if(process.env.FIXTURE_OS_RELEASE==='MISSING')throw Object.assign(Error('missing os-release'),{code:'ENOENT'});const value=process.env.FIXTURE_OS_RELEASE??'ID=ubuntu\\nVERSION_ID="24.04"\\nPRETTY_NAME="Ubuntu 24.04.5 LTS"\\n';return args[0]==='utf8'?value:Buffer.from(value)}return read(file,...args)}}
 if(process.env.FIXTURE_NODE)Object.defineProperty(process.versions,'node',{value:process.env.FIXTURE_NODE});
@@ -603,7 +609,7 @@ cp.spawnSync=(command,args,options={})=>{
   if(args.includes('install-deps'))return {status:process.env.FAIL_SYSTEM_LIBS==='1'?1:0,stdout:'',stderr:'system libraries unavailable'};
   if(args.includes('ci')||args.includes('install')){
    if(process.env.FAIL_INSTALL==='1')return {status:1,stdout:'',stderr:'controlled install failure'};
-   mkdirSync(join(options.cwd,'node_modules'),{recursive:true});writeFileSync(join(options.cwd,'node_modules/fixture'),'independent');
+   mkdirSync(join(options.cwd,'node_modules'),{recursive:true});writeFileSync(join(options.cwd,'node_modules/fixture'),'independent');writeFileSync(join(options.cwd,'node_modules/.modules.yaml'),'fixture install metadata');
    if(${browser}&&process.env.EARLY_BROWSER_CLOSURE==='1'&&[${JSON.stringify(gea)},${JSON.stringify(manage)}].includes(options.cwd)){
     const packageRoots=Object.fromEntries(['@playwright/test','playwright','playwright-core'].map(name=>[name,join(options.cwd,'node_modules/.pnpm',name.replace('/','+')+'@1.58.2','node_modules',name)]));
     for(const name of ['@playwright/test','playwright','playwright-core']){const target=packageRoots[name];mkdirSync(target,{recursive:true});const metadata={name,type:'commonjs',version:'1.58.2',bin:{[name==='playwright-core'?'playwright-core':'playwright']:'cli.js'},dependencies:name==='@playwright/test'?{playwright:'1.58.2'}:name==='playwright'?{'playwright-core':'1.58.2'}:{},...(name==='playwright'?{optionalDependencies:{fsevents:'2.3.2'}}:{}),...(name==='@playwright/test'?{exports:{'.':{require:'./index.cjs',import:'./index.mjs'},'./package.json':'./package.json'}}:{})};writeFileSync(join(target,'package.json'),JSON.stringify(metadata));writeFileSync(join(target,'shipped.txt'),process.env.MUTATE_LATE_BROWSER==='1'&&options.cwd===${JSON.stringify(gea)}?'late changed bytes':'same shipped bytes');writeFileSync(join(target,'cli.js'),"const fs=require('node:fs'),p=require('node:path');fs.writeFileSync(p.join(process.env.GITHUB_WORKSPACE,'early-apt-executed'),'actual Node CLI');if(process.env.MUTATE_EARLY_BROWSER==='1')fs.writeFileSync(p.join(__dirname,'shipped.txt'),'during CLI');if(process.env.MUTATE_EARLY_WIRING==='1')fs.writeFileSync(p.join(__dirname,'node_modules/.bin/playwright'),'mutated generated shim');if(process.env.FAIL_EARLY_APT==='1')process.exit(19);");if(name==='@playwright/test'){writeFileSync(join(target,'index.cjs'),"module.exports = require('./api.cjs');");writeFileSync(join(target,'index.mjs'),"import api from './index.cjs';export const chromium=api.chromium;");writeFileSync(join(target,'api.cjs'),readFileSync(${JSON.stringify(join(root, "fake-playwright.cjs"))}))}}
@@ -1817,17 +1823,15 @@ function fileReady(file, timeoutMs = 5000, signal) {
 async function installFixturesReady(f, run) {
   const waiting = new AbortController();
   try {
-    await deadline(
-      Promise.race([
-        Promise.all([
-          fileReady(join(f.root, "grandchild-ready"), 5000, waiting.signal),
-          fileReady(join(f.root, "second-install-ready"), 5000, waiting.signal),
-        ]),
-        run.closed.then((result) => {
-          throw Error("worker exited before install fixtures became ready", { cause: result });
-        }),
+    await Promise.race([
+      Promise.all([
+        fileReady(join(f.root, "grandchild-ready"), 15000, waiting.signal),
+        fileReady(join(f.root, "second-install-ready"), 15000, waiting.signal),
       ]),
-    );
+      run.closed.then((result) => {
+        throw Error("worker exited before install fixtures became ready", { cause: result });
+      }),
+    ]);
   } finally {
     waiting.abort();
   }

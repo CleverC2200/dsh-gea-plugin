@@ -98,16 +98,16 @@ test(
       ),
     ).toBeVisible();
     assert.ok((await page.locator(".gea-api-call-row").count()) >= 3);
+    await page.locator(".gea-api-catalog-item").filter({ hasText: "读取当前用户" }).click();
+    const profileCall = page.locator(".gea-api-call-row").first();
+    await expect(profileCall).toContainText("读取当前用户");
+    await profileCall.click();
     await page.getByText("请求头与 Query · 已脱敏", { exact: true }).click();
     const visibleText = await page.locator(".gea-api-log-center").innerText();
     assert.equal(visibleText.includes("fixture-gea-token"), false);
     assert.equal(visibleText.includes("fixture-delegation"), false);
     assert.equal(visibleText.includes("[已脱敏]"), true, visibleText);
 
-    await page.locator(".gea-api-catalog-item").filter({ hasText: "读取当前用户" }).click();
-    const profileCall = page.locator(".gea-api-call-row").first();
-    await expect(profileCall).toContainText("读取当前用户");
-    await profileCall.click();
     await expect(page.getByText("查看接口定义与请求字段", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "重发请求", exact: true }).click();
     await expect(page.locator(".gea-api-replayed")).toHaveCount(1);
