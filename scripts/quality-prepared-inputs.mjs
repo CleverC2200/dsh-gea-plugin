@@ -355,8 +355,22 @@ function enumerate(root, binding) {
         .filter(([file]) => file.startsWith("lib/"))
         .map(([file, digest]) => [file.slice(4), digest]),
     );
-    if (!equalMap(tree("candidate/dsh-agent-workbench/lib"), expected))
-      refuse("Workbench lib changed");
+    const directory = "candidate/dsh-agent-workbench/lib";
+    const actual = tree(directory);
+    if (!equalMap(actual, expected))
+      refuse(
+        "Workbench lib changed: " +
+          JSON.stringify(
+            [...new Set([...Object.keys(expected), ...Object.keys(actual)])]
+              .sort()
+              .filter((file) => expected[file] !== actual[file])
+              .map((file) => ({
+                path: directory + "/" + file,
+                expected: expected[file] ?? null,
+                actual: actual[file] ?? null,
+              })),
+          ),
+      );
     for (const [file, expected] of Object.entries(prepared.files)) {
       if (!isPreparedWorkbenchOutput(file) || file.startsWith("lib/")) continue;
       add("candidate/dsh-agent-workbench/" + safePath(file));
