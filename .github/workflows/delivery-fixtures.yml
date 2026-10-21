@@ -25,6 +25,23 @@ permissions:
   contents: read
 
 jobs:
+  core-cache-fixtures:
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - run: node --test scripts/windows-complete-local/core-cache.test.mjs
+
   mac-complete-package:
     if: github.event_name == 'workflow_dispatch' && inputs.mac_complete_input != ''
     runs-on: macos-15
