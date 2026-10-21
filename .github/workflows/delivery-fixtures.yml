@@ -158,6 +158,7 @@ jobs:
   delivery-fixtures:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -299,6 +300,14 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
         working-directory: candidate/dsh-gea-plugin
         run: node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.source-types-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: "Source types: save only the verified SDK cache"
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.source_types_input != '' && steps.source-types-sdk-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        timeout-minutes: 1
+        with:
+          path: ${{ steps.source-types-sdk-paths.outputs.paths }}
+          key: ${{ steps.source-types-sdk-cache.outputs.cache-primary-key }}
       - name: "Source types: prepare locked owner dependencies and existing upstreams"
         if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
         run: |
@@ -334,14 +343,19 @@ jobs:
           const root = process.cwd(), admitted = JSON.parse(readFileSync('.runtime/source-types/admitted.json'));
           const manifest = JSON.parse(readFileSync('candidate-input.json')), completed = [];
           let failure, sourceIntegrity = { status: 'passed' };
-          try {
-            for (const entry of manifest.repositories) {
-              process.chdir(entry.path);
-              const sdk = verifyOfficialSDK({ consumer: entry.path, core: resolve(root, 'official-latest-standard'), coreHead: admitted.core, withArtifactReceipt: true });
+          for (const entry of manifest.repositories) {
+            process.chdir(entry.path);
+            let sdk;
+            try {
+              sdk = verifyOfficialSDK({ consumer: entry.path, core: resolve(root, 'official-latest-standard'), coreHead: admitted.core, withArtifactReceipt: true });
               await checkTypes(entry.path, manifest.repositories, entry.repo);
               completed.push({ repo: entry.repo, head: entry.head, sdk, status: 'passed' });
+            } catch (error) {
+              completed.push({ repo: entry.repo, head: entry.head, sdk, status: 'failed', error: error.message });
+              failure ??= error;
+              console.error(error);
             }
-          } catch (error) { failure = error; }
+          }
           process.chdir(root);
           try {
             await readFinalGroup({ input: resolve('candidate-input.json'), sha256: admitted.sha256, checkout: resolve('candidate/dsh-gea-plugin'), coreSource: resolve('source/official-core'), expectedSha: process.env.GITHUB_SHA, ci: true });
@@ -353,14 +367,6 @@ jobs:
           writeFileSync('.runtime/source-types/result.json', JSON.stringify({ status: failure ? 'failed' : 'passed', inputSha256: admitted.sha256, core: admitted.core, completed, sourceIntegrity, error: failure?.message }, null, 2) + '\n');
           if (failure) throw failure;
           NODE
-      - name: "Source types: save only the verified SDK cache"
-        if: success() && github.event_name == 'workflow_dispatch' && inputs.source_types_input != '' && steps.source-types-sdk-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        timeout-minutes: 1
-        with:
-          path: ${{ steps.source-types-sdk-paths.outputs.paths }}
-          key: ${{ steps.source-types-sdk-cache.outputs.cache-primary-key }}
       - name: "Source types: keep the frozen input and actual diagnostics"
         if: always() && github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
         uses: actions/upload-artifact@v4

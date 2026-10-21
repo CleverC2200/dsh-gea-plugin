@@ -259,3 +259,29 @@ test("manual source type inline Node programs are valid without preparing depend
     assert.equal(checked.status, 0, `${step.name}: ${checked.stderr}`);
   }
 });
+
+test("manual type diagnostics retain the prepared SDK and attempt every owner before failing", () => {
+  const job = workflow.jobs["delivery-fixtures"],
+    steps = job.steps;
+  assert.equal(job["timeout-minutes"], 60);
+  const index = (name) => steps.findIndex((step) => step.name === "Source types: " + name);
+  const prepared = index("prepare or verify the SDK once"),
+    saved = index("save only the verified SDK cache");
+  assert.ok(
+    prepared >= 0 &&
+      saved > prepared &&
+      saved < index("prepare locked owner dependencies and existing upstreams"),
+  );
+  const smoke = steps[index("run the four real configurations and retain source identity")].run;
+  assert.match(
+    smoke,
+    /for \(const entry of manifest\.repositories\) \{\s*process\.chdir\(entry\.path\);\s*let sdk;\s*try \{/,
+  );
+  assert.match(
+    smoke,
+    /completed\.push\(\{ repo: entry\.repo, head: entry\.head, sdk, status: 'failed'/,
+  );
+  assert.match(smoke, /failure \?\?= error/);
+  assert.ok(smoke.indexOf("await readFinalGroup") > smoke.indexOf("status: 'failed'"));
+  assert.ok(smoke.includes("if (failure) throw failure"));
+});
