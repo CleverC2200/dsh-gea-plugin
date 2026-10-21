@@ -12,7 +12,8 @@ import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
 import { selectBusinessResource } from "./fixtures/business-session.mjs";
 import {
   preparePageStartup,
-  openWorkbenchPage,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
   htmlFrameElement,
 } from "./fixtures/business-page.mjs";
 
@@ -127,7 +128,13 @@ test(
       );
     }
     const app = await profile(t, {
-      beforeStart: fixtureWorkbench(plugins),
+      beforeStart: prepareWorkbenchPageAccess(
+        [
+          ["inventory-split-fc-probe", "分仓库存"],
+          ["inventory-split-aqkc-probe", "基地库存"],
+        ],
+        fixtureWorkbench(plugins),
+      ),
       config: (base) => ({
         cubeMcpCodes: { production: "probe" },
         analysis: {
@@ -327,7 +334,7 @@ test(
       ["inventory-split-fc-probe", "分仓库存"],
       ["inventory-split-aqkc-probe", "基地库存"],
     ]) {
-      await openWorkbenchPage(page, name);
+      await openRegisteredWorkbenchPage(page, name);
       const frame = htmlFrameElement(page, id).contentFrame();
       themePageId = id;
       await expect.poll(() => opens.get(id)?.owner).toEqual(expect.any(String));

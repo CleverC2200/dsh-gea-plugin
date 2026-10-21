@@ -481,7 +481,10 @@ test("Workbench page resources select GEA page grants and admitted asset integri
     ["static/category/plugin.json", []],
     ["theme/tokens.css", []],
     ["theme/html-defaults.css", []],
-    ["scripts/static-author-provenance.mjs", []],
+    [
+      "scripts/static-author-provenance.mjs",
+      ["scripts/quality-prepared-inputs.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
   ]) {
     await t.test(file, (t) => {
       const fixture = resourceImpactFixture(t);

@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import YAML from "yaml";
 import { resolve } from "node:path";
 import { expect } from "@playwright/test";
 import { waitForNativeOwner } from "./native-page.mjs";
@@ -108,10 +109,17 @@ async function showBusinessMenu(page) {
 }
 
 export async function openWorkbenchPage(page, label) {
+  if (label === "原生对话") {
+    await preparePageStartup(page);
+    await page
+      .getByRole("button", { name: /^(新会话|New conversation)$/ })
+      .first()
+      .click();
+    return;
+  }
   await showBusinessMenu(page);
-  await page.getByRole("button", { name: "工作台", exact: true }).click();
   await page
-    .locator(".gea-directory-owned")
+    .getByRole("navigation", { name: "业务导航", exact: true })
     .getByRole("button", { name: label, exact: true })
     .click();
 }
@@ -131,4 +139,66 @@ export function prepareWorkbenchHtmlRoots(roots) {
 }
 export function htmlFrameElement(page, id) {
   return page.locator(`iframe[src^="/api/agent-workbench/html?id=${id}&"]`);
+}
+
+export function prepareWorkbenchPageAccess(pages, beforeStart) {
+  return async (input) => {
+    await beforeStart?.(input);
+    const directory = resolve(input.runtime, "fixtures/workbench-page-access");
+    await mkdir(directory, { recursive: true });
+    const files = {
+      "package.json": JSON.stringify({
+        name: "@fixture/workbench-page-access",
+        version: "0.0.1",
+        private: true,
+        type: "module",
+        main: "index.js",
+        exports: { ".": "./index.js", "./client": "./client.js" },
+        dsh: { client: { platform: "web" } },
+      }),
+      "index.js": "export function apply() {}\n",
+      "client.js": `window.__ModuleLoader__.load({
+        id: '@fixture/workbench-page-access',
+        factory(require) {
+          const React = require('react');
+          return {
+            inject: ['slots', 'agentWorkbench'],
+            apply(ctx) {
+              ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'fixture-workbench-page-access' },
+                () => React.createElement('details', { style: { position: 'fixed', top: 0, right: 0, zIndex: 99999 } },
+                  React.createElement('summary', null, '测试页面入口'),
+                  ...${JSON.stringify(pages)}.map(([id, label]) => React.createElement('button', {
+                    key: id, type: 'button', onClick: () => void ctx.agentWorkbench.open(id),
+                  }, '打开测试页面：' + label)))));
+            },
+          };
+        },
+      });`,
+    };
+    for (const [name, bytes] of Object.entries(files))
+      await writeFile(resolve(directory, name), bytes);
+    const profile = resolve(input.runtime, "home/profiles/plugin-split-validation");
+    await mkdir(profile, { recursive: true });
+    const patch = resolve(profile, "cordis.patch.yml");
+    let entries = [];
+    try {
+      entries = YAML.parse(await readFile(patch, "utf8"));
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    entries.push({
+      insert: [{ id: "fixture-workbench-page-access", name: resolve(directory, "index.js") }],
+    });
+    await writeFile(patch, JSON.stringify(entries));
+  };
+}
+
+export async function openRegisteredWorkbenchPage(page, label) {
+  await preparePageStartup(page);
+  const launcher = page
+    .locator("details")
+    .filter({ has: page.getByText("测试页面入口", { exact: true }) });
+  await launcher.locator("summary").click();
+  await launcher.getByRole("button", { name: "打开测试页面：" + label, exact: true }).click();
+  await launcher.locator("summary").click();
 }

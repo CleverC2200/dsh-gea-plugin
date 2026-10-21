@@ -68,9 +68,8 @@ test(
           .getByRole("button", { name: /^(业务工作台|Business workbenches)$/ })
           .first()
           .click();
-        await page.getByRole("button", { name: "工作台", exact: true }).click();
         const entry = page
-          .locator(".gea-directory-owned")
+          .getByRole("navigation", { name: "业务导航", exact: true })
           .getByRole("button", { name: "分仓库存", exact: true });
         await expect(entry).toBeVisible();
         await expect.poll(() => aborted, { timeout: 7000 }).toBeGreaterThan(0);
@@ -86,7 +85,7 @@ test(
               statusAvailable: available.status.ok,
               catalogContainsBranch: true,
               registeredEntries: await page
-                .locator(".gea-directory-owned")
+                .getByRole("navigation", { name: "业务导航", exact: true })
                 .getByRole("button", { name: "分仓库存", exact: true })
                 .count(),
             },
