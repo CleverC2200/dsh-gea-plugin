@@ -151,26 +151,7 @@ export default async function* report(source) {
         }
       }
       if (event.type === "test:pass" && data.skip) skipped++;
-      if (event.type === "test:fail") {
-        if (receipt && entry) {
-          const file = observation(entry);
-          file.failures ??= [];
-          file.failures.push({
-            name: data.name,
-            message: [data.details.error?.message, data.details.error?.stderr?.toString()]
-              .filter(Boolean)
-              .join("\n")
-              .split("\n")
-              .map((line) =>
-                /token|secret|password|authorization|credential|bearer/i.test(line)
-                  ? "[redacted sensitive test output]"
-                  : line,
-              )
-              .join("\n")
-              .slice(0, 8192),
-          });
-          persist();
-        }
+      if (event.type === "test:fail")
         yield {
           type: "test:diagnostic",
           data: {
@@ -178,7 +159,6 @@ export default async function* report(source) {
             message: `Failure detail: ${data.name}\n${inspect(data.details.error, { depth: 8, colors: false })}`,
           },
         };
-      }
       yield event;
     }
   })();

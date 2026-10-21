@@ -80,29 +80,19 @@ test("failure details appear before the following fixture completes", () => {
     const fixture = join(root, "fixture.mjs");
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;
-    const receipt = join(root, "receipt.json");
-    Object.assign(env, {
-      QUALITY_TEST_ROOT: root,
-      QUALITY_TEST_FILES: JSON.stringify(["fixture.mjs"]),
-      QUALITY_TEST_RECEIPT: receipt,
-    });
     writeFileSync(
       fixture,
       'import test from "node:test"; test("failure fixture", () => { throw Error("FIXTURE_FAILURE_DETAIL"); }); test("later marker", async () => { await new Promise(resolve => setTimeout(resolve, 50)); });',
     );
     const result = spawnSync(
       process.execPath,
-      ["--test", `--test-reporter=${resolve("scripts/quality-test-reporter.mjs")}`, fixture],
-      { cwd: root, encoding: "utf8", env },
+      ["--test", "--test-reporter=./scripts/quality-test-reporter.mjs", fixture],
+      { encoding: "utf8", env },
     );
     assert.equal(result.status, 1);
     const detail = result.stdout.indexOf("FIXTURE_FAILURE_DETAIL");
     const later = result.stdout.indexOf("✔ later marker");
     assert.ok(detail >= 0 && later >= 0 && detail < later, result.stdout);
-    const record = JSON.parse(readFileSync(receipt));
-    assert.deepEqual(record.files[0].failures, [
-      { name: "failure fixture", message: "FIXTURE_FAILURE_DETAIL" },
-    ]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
