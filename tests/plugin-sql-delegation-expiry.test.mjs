@@ -4,16 +4,22 @@ import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import { profile } from "./profile.mjs";
 import { fixtureWorkbench } from "./fixtures/workbench-profile.mjs";
+import { readProfileSources } from "./fixtures/profile-inputs.mjs";
 
 test(
   "expired cached SQL delegation is renewed once without failing the page",
   { timeout: 60000 },
   async (t) => {
+    const sources = await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS);
+    const businessRoot = resolve(
+      sources.find((source) => source.repo === "dsh-agent-workbench").assetRoot,
+      "lib/business",
+    );
     const app = await profile(t, {
       bundle: true,
       beforeStart: fixtureWorkbench(
         ["fc", "aqkc", "dealer", "qll", "apsplan", "customer", "orderfulfillment"].map((id) =>
-          resolve(`../dsh-agent-workbench/lib/business/inventory-${id}`),
+          resolve(businessRoot, `inventory-${id}`),
         ),
       ),
     });
@@ -119,17 +125,11 @@ test(
     failureMode = "first-token-expiry";
     sessionBase = sessions;
     const aps = JSON.parse(
-      await readFile(
-        resolve("../dsh-agent-workbench/lib/business/inventory-apsplan/capability.json"),
-        "utf8",
-      ),
+      await readFile(resolve(businessRoot, "inventory-apsplan/capability.json"), "utf8"),
     );
     assert.equal(aps.data.mock, true, "the CI APS build is explicitly mock-only");
     const customer = JSON.parse(
-      await readFile(
-        resolve("../dsh-agent-workbench/lib/business/inventory-customer/capability.json"),
-        "utf8",
-      ),
+      await readFile(resolve(businessRoot, "inventory-customer/capability.json"), "utf8"),
     );
     assert.notEqual(customer.data.mock, true, "customer inventory is a governed reader");
     assert.ok(customer.data.tables.includes("agents_scm_cust_jxc_ai_daliy_d"));

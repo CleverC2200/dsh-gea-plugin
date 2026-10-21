@@ -148,6 +148,17 @@ for (const mixed of [false, true])
         });
         await expect(quantity).toHaveValue("1.250");
         await quantity.fill("3.000");
+        await expect(quantity).toHaveValue("3.000");
+        await expect
+          .poll(async () => {
+            const result = await app.rpc("sales-plan/draft", {
+              planId: PLAN_C,
+              versionId: "v3",
+              approvalRole: "region",
+            });
+            return result.value?.draft?.adjustments;
+          })
+          .toEqual([{ skuCode: "789", adjustQty: "1.750" }]);
       }
       await selectPlan(frame, mixed ? "沈阳待审批" : "济南退回区域");
       const submit = frame.getByRole("button", {

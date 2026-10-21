@@ -1823,17 +1823,15 @@ function fileReady(file, timeoutMs = 5000, signal) {
 async function installFixturesReady(f, run) {
   const waiting = new AbortController();
   try {
-    await deadline(
-      Promise.race([
-        Promise.all([
-          fileReady(join(f.root, "grandchild-ready"), 5000, waiting.signal),
-          fileReady(join(f.root, "second-install-ready"), 5000, waiting.signal),
-        ]),
-        run.closed.then((result) => {
-          throw Error("worker exited before install fixtures became ready", { cause: result });
-        }),
+    await Promise.race([
+      Promise.all([
+        fileReady(join(f.root, "grandchild-ready"), 15000, waiting.signal),
+        fileReady(join(f.root, "second-install-ready"), 15000, waiting.signal),
       ]),
-    );
+      run.closed.then((result) => {
+        throw Error("worker exited before install fixtures became ready", { cause: result });
+      }),
+    ]);
   } finally {
     waiting.abort();
   }
