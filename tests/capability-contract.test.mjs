@@ -201,9 +201,18 @@ test("Consumer 标识保留下划线且拒绝非法分隔符", () => {
     id: "inventory-customer",
     label: "客户库存",
     maxEffect: "view",
+    view: {
+      surface: "gea-html-inventory-customer",
+      protocol: "self-report",
+      pageIds: ["inventory-customer"],
+    },
     data: { consumerCode: "customer_inventory", tables: [], rules: [] },
   };
   assert.equal(m.normalizeContract(contract).data.consumerCode, "customer_inventory");
+  const registry = m.createCapabilityRegistry([m.normalizeContract(contract)]);
+  assert.equal(registry.modules()[0].consumerCode, "customer_inventory");
+  assert.equal(registry.allows("gea-html-inventory-customer", "view"), true);
+  assert.equal(registry.allows("gea-html-inventory-customer", "submit"), false);
   for (const consumerCode of [
     "",
     "customer inventory",
