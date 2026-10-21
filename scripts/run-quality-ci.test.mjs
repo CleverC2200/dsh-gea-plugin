@@ -450,7 +450,7 @@ test("Linux preparation exports once and failed checks block executable worker i
   );
   assert.match(worker, /always\(\).*needs\.plan-test-shards\.result == 'success'/);
   assert.match(worker, /has-shards == 'true'/);
-  assert.match(worker, /max-parallel: 14/);
+  assert.match(worker, /max-parallel: 8/);
   assert.match(worker, /quality-worker-inputs\.mjs --root.*--early-control.*--early-sha256/);
   assert.match(worker, /--stage tests --execution-plan.*--test-shard/);
   assert.ok(linux.indexOf("--mode prepare-browser") < linux.indexOf("--mode binding"));
@@ -469,7 +469,8 @@ test("Linux preparation exports once and failed checks block executable worker i
     worker,
     /--prepare-sdk|--prepare-inputs|--stage build|actions\/cache|id: cache-path/,
   );
-  assert.doesNotMatch(worker, /needs:.*gates/);
+  assert.match(worker, /needs:.*gates/);
+  assert.match(worker, /always\(\).*needs\.gates\.result == 'success'/);
   assert.match(worker, /GH_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(
     source,
