@@ -79,7 +79,7 @@
     },
     {
       "repo": "dsh-agent-workbench",
-      "pattern": "^src/sql-config-document\\.ts$|^scripts/(?:agent_sql\\.py|test_agent_sql\\.py|requirements-sql\\.txt|build_deep_query_configs\\.py)$",
+      "pattern": "^src/sql-config-document\\.ts$|^scripts/(?:agent_sql\\.py|test_agent_sql\\.py|requirements-sql\\.txt|build_deep_query_configs\\.py|update-inventory-batch-source\\.py)$",
       "tests": ["tests/configured-html-query.test.mjs", "tests/business-page-grant.test.mjs"]
     },
     {
@@ -246,7 +246,7 @@
     },
     {
       "repo": "dsh-agent-workbench",
-      "pattern": "^src/(?:client|company|frame|page|workbench|business)",
+      "pattern": "^src/(?:host\\.ts$|html-view-state\\.ts$|client|company|frame|page|workbench|business)",
       "tests": ["tests/controlled-execution.test.mjs", "tests/business-page-grant.test.mjs"]
     },
     {
