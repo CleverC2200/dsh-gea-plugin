@@ -302,7 +302,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     const candidate = data as Record<string, unknown>;
     const consumerCode = candidate.consumerCode;
-    if (typeof consumerCode !== "string" || !/^[a-z][a-z0-9-]+$/.test(consumerCode))
+    if (typeof consumerCode !== "string" || !/^[a-z][a-z0-9_-]+$/.test(consumerCode))
       throw new Error("INVALID_CAPABILITY_CONTRACT");
     const tables = Array.isArray(candidate.tables)
       ? (candidate.tables as unknown[]).filter(

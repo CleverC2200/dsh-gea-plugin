@@ -80,7 +80,7 @@ export async function registerHtmlPlugins(
       manifest.gea?.contract !== "gea-html-v2" ||
       manifest.gea?.readonly !== true ||
       typeof manifest.gea.consumerCode !== "string" ||
-      !/^[a-z0-9][a-z0-9-]{0,127}$/.test(manifest.gea.consumerCode) ||
+      !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(manifest.gea.consumerCode) ||
       manifest.html !== "index.html"
     )
       throw Error(`INVALID_HTML_PLUGIN [source: ${directory}/plugin.json]`);
