@@ -377,41 +377,43 @@ test("selected desktop packaging receives its three generated tool outputs witho
   );
 });
 
+function freezeCandidateCheckout(f, repoName, files) {
+  const repo = join(f.root, "candidate", repoName);
+  const git = (...args) => {
+    const result = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git("init", "-q");
+  git("add", ...files);
+  git(
+    "-c",
+    "user.name=fixture",
+    "-c",
+    "user.email=fixture@invalid.test",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "commit",
+    "-qm",
+    "fixture",
+  );
+  const candidate = JSON.parse(readFileSync(join(f.root, "candidate-input.json")));
+  candidate.repositories.find((entry) => entry.repo === repoName).head = git("rev-parse", "HEAD");
+  f.json("candidate-input.json", candidate);
+  f.binding.manifest = candidate;
+  f.binding.inputSha256 = hash(readFileSync(join(f.root, "candidate-input.json")));
+  f.json("binding.json", f.binding);
+  const stages = JSON.parse(readFileSync(join(f.root, "quality-stages.json")));
+  stages.binding.inputSha256 = f.binding.inputSha256;
+  f.json("quality-stages.json", stages);
+}
+
 test("receive may replace a declared clean Git build output but preserves an edited output", (t) => {
   for (const edited of [false, true]) {
     const f = fixture(t),
       repo = join(f.root, "candidate/dsh-gea-plugin");
-    const git = (...args) => {
-      const result = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
-      assert.equal(result.status, 0, result.stderr);
-      return result.stdout.trim();
-    };
-    git("init", "-q");
     f.put("candidate/dsh-gea-plugin/lib/host.js", "checked-in build\n");
-    git("add", "lib/host.js");
-    git(
-      "-c",
-      "user.name=fixture",
-      "-c",
-      "user.email=fixture@invalid.test",
-      "-c",
-      "core.hooksPath=/dev/null",
-      "commit",
-      "-qm",
-      "fixture",
-    );
-    const candidate = JSON.parse(readFileSync(join(f.root, "candidate-input.json")));
-    candidate.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head = git(
-      "rev-parse",
-      "HEAD",
-    );
-    f.json("candidate-input.json", candidate);
-    f.binding.manifest = candidate;
-    f.binding.inputSha256 = hash(readFileSync(join(f.root, "candidate-input.json")));
-    f.json("binding.json", f.binding);
-    const stages = JSON.parse(readFileSync(join(f.root, "quality-stages.json")));
-    stages.binding.inputSha256 = f.binding.inputSha256;
-    f.json("quality-stages.json", stages);
+    freezeCandidateCheckout(f, "dsh-gea-plugin", ["lib/host.js"]);
     f.put("candidate/dsh-gea-plugin/lib/host.js", "generated host\n");
     chmodSync(join(repo, "lib/host.js"), 0o755);
     assert.equal(f.run("export").status, 0);
@@ -710,5 +712,40 @@ test("the transport accepts exactly the declared Manage client and sourcemap and
       /QUALITY_STAGE_(ARTIFACT_REQUIRED|CLIENT_DECLARATION_CHANGED)|build bytes changed/,
       change,
     );
+  }
+});
+
+test("receive retires only clean tracked Workbench declarations omitted by the producer", (t) => {
+  for (const scenario of ["clean", "edited", "symlink"]) {
+    const f = fixture(t);
+    const file = "candidate/dsh-agent-workbench/lib/types/retired.d.ts";
+    const target = join(f.root, file);
+    f.put(file, "retired generated declaration\n");
+    f.put("candidate/dsh-agent-workbench/src/keep.ts", "authored source\n");
+    freezeCandidateCheckout(f, "dsh-agent-workbench", ["lib/types/retired.d.ts", "src/keep.ts"]);
+    rmSync(target);
+    const exported = f.run("export");
+    assert.equal(exported.status, 0, exported.stderr);
+    const digest = hash(readFileSync(f.manifest));
+    f.clearOutputs();
+    f.put(file, scenario === "edited" ? "user changes\n" : "retired generated declaration\n");
+    const external = join(f.root, "external.d.ts");
+    if (scenario === "symlink") {
+      f.put("external.d.ts", "retired generated declaration\n");
+      rmSync(target);
+      symlinkSync(external, target);
+    }
+    const received = f.run("receive", ["--manifest-sha256", digest]);
+    assert.equal(received.status, scenario === "clean" ? 0 : 1, received.stderr);
+    assert.equal(
+      readFileSync(join(f.root, "candidate/dsh-agent-workbench/src/keep.ts"), "utf8"),
+      "authored source\n",
+    );
+    if (scenario === "clean") assert.throws(() => statSync(target), { code: "ENOENT" });
+    if (scenario === "edited") assert.equal(readFileSync(target, "utf8"), "user changes\n");
+    if (scenario === "symlink") {
+      assert.equal(readlinkSync(target), external);
+      assert.equal(readFileSync(external, "utf8"), "retired generated declaration\n");
+    }
   }
 });

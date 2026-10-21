@@ -143,7 +143,7 @@
     "@deepseek-ai/schemastery": "link:../../official-latest-standard/vendor/schemastery",
     "@electron/asar": "3.4.1",
     "@icon-park/react": "1.4.2",
-    "@modelcontextprotocol/sdk": "1.31.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "@playwright/test": "1.58.2",
     "@types/node": "24.3.1",
     "@types/qrcode": "1.5.6",
