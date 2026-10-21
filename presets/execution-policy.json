@@ -91,18 +91,6 @@
         "sales-organization-analysis",
         "fulfillment-sales-confirmation-automation"
       ]
-    },
-    "gea-html-inventory-customer": {
-      "label": "客户库存",
-      "consumerCode": "customer_inventory",
-      "skills": [
-        "inventory-customer",
-        "customer-inventory-age-risk",
-        "customer-inventory-change",
-        "customer-inventory-diagnosis",
-        "customer-overstock-control",
-        "customer-stockout-replenishment"
-      ]
     }
   }
 }
