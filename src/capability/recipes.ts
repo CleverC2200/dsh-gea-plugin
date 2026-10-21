@@ -77,7 +77,7 @@ const INVENTORY_CONSUMERS = [
   "full-chain-inventory",
   "dealer-inventory-replenishment",
   "inventory-personal-workbench",
-  "customer-inventory-preview",
+  "customer_inventory",
   "orderworkbench-preview",
   "orderfulfillment-preview",
 ];

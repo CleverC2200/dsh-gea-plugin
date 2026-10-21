@@ -25,6 +25,20 @@ const m = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
+test("formal customer Consumer keeps underscores through normalization and registry lookup", () => {
+  const contract = m.contractFromPlugin({
+    id: "inventory-customer",
+    label: "客户库存",
+    consumerCode: "customer_inventory",
+    pageIds: ["inventory-customer"],
+    maxEffect: "view",
+    sources: [],
+  });
+  const registry = m.createCapabilityRegistry([m.normalizeContract(contract)]);
+  assert.equal(registry.byConsumer("customer_inventory").id, "inventory-customer");
+  assert.equal(registry.byConsumer("customer-inventory-preview"), undefined);
+});
+
 test("只从模块自己的 SQL 里提取受管业务表，CTE 与函数不算表", () => {
   const html = [
     "WITH dsh_packet_source AS (SELECT * FROM agents_scm_branch_inventory_snapshot),",
