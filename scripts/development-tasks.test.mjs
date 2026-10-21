@@ -8,7 +8,7 @@ import { prepareDependencies, digest } from "./development-dependencies.mjs";
 import { developmentTask } from "./development-tasks.mjs";
 import { packRaw } from "./pack-raw.mjs";
 
-function fixture(t, { dotfile = false } = {}) {
+function fixture(t, { dotfile = false, suiteManifests = false } = {}) {
   const root = fs.mkdtempSync(join(os.tmpdir(), "development-task-"));
   t.after(() => {
     delete process.env.DSH_BUILD_ADMISSION;
@@ -24,7 +24,12 @@ function fixture(t, { dotfile = false } = {}) {
     packageManager: "pnpm@1.0.0",
     scripts: { build: "fixture", "build:client": "fixture" },
     dependencies: { fixture: "1.0.0" },
-    files: ["lib", "client", ...(dotfile ? [".env"] : [])],
+    files: [
+      "lib",
+      "client",
+      ...(dotfile ? [".env"] : []),
+      ...(suiteManifests ? ["business-resources"] : []),
+    ],
     exports: { ".": "./lib/host.js", "./client": "./client/index.js" },
   };
   fs.writeFileSync(join(path, "package.json"), JSON.stringify(manifest));
@@ -32,6 +37,13 @@ function fixture(t, { dotfile = false } = {}) {
   fs.writeFileSync(join(path, ".gitignore"), "node_modules/\nlib/\nclient/\n.runtime/\n");
   fs.writeFileSync(join(path, "source.js"), "fixture-source");
   if (dotfile) fs.writeFileSync(join(path, ".env"), "fixture-only");
+  if (suiteManifests) {
+    for (const name of ["sales-plan", "sinian-demand-forecast"]) {
+      const directory = join(path, "business-resources", name, ".claude-plugin");
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(join(directory, "plugin.json"), JSON.stringify({ name, version: "1.0.0" }));
+    }
+  }
   const git = (...args) =>
     cp.execFileSync("git", ["-C", path, ...args], { encoding: "utf8" }).trim();
   git("init", "-q");
@@ -198,6 +210,12 @@ test("raw TGZ rejects dotfiles and checkout destinations before writing a packag
     /RAW_PACKAGE_FILE_FORBIDDEN/,
   );
   assert.equal(fs.existsSync(destination), false);
+});
+test("raw TGZ retains the two bundled suite declarations without allowing other dotfiles", async (t) => {
+  const { input, destination } = await packageFixture(t, { suiteManifests: true });
+  const receipt = await packRaw({ input, destination, repo: "dsh-agent-manage" });
+  for (const name of ["sales-plan", "sinian-demand-forecast"])
+    assert.ok(receipt.files.includes(`business-resources/${name}/.claude-plugin/plugin.json`));
 });
 
 test("registry package links without Git metadata bind their public artifact bytes", async (t) => {
