@@ -3,6 +3,7 @@ import {
   LlmAdapter,
   LlmError,
   ReasoningEffortId,
+  ProviderRequestId,
   attributionHeaders,
   type GenerateOptions,
   type LlmReasoningEffortInfo,
@@ -255,7 +256,11 @@ export class GeaModelAdapter extends LlmAdapter {
           timeoutMs: this.business.config.modelRequestTimeoutMs,
         }),
       );
-      throw new LlmError(converted.message, typeof code === "string" ? code : "NETWORK");
+      throw new LlmError(
+        `${converted.message} requestId=${requestId}`,
+        typeof code === "string" ? code : "NETWORK",
+        { requestId: ProviderRequestId(requestId) },
+      );
     } finally {
       cancellation.abort();
       try {

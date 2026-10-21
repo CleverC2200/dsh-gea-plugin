@@ -339,3 +339,41 @@ test("SSE output-parameter errors and transient failures do not trigger context 
     );
   }
 });
+
+test("an error-code tool name is rejected without publishing calls and a fresh response can recover", async () => {
+  const chunks = [];
+  await assert.rejects(
+    async () => {
+      for await (const chunk of geaTextStream(
+        streamOf(
+          event(toolDelta(0, "valid", "{}")) +
+            event(toolDelta(1, "invalid", "{}", "GEA_MODEL_INVALID_TOOL_CALL")) +
+            event({}, "tool_calls"),
+        ),
+        undefined,
+        offered,
+      ))
+        chunks.push(chunk);
+    },
+    (error) => {
+      assert.equal(error.code, "GEA_MODEL_INVALID_TOOL_CALL");
+      assert.match(error.message, /工具清单与模型响应/);
+      assert.doesNotMatch(error.message, /请重发一次/);
+      return true;
+    },
+  );
+  assert.equal(
+    chunks.some((chunk) => chunk.type === "tool-call-delta" || chunk.type === "block-end"),
+    false,
+  );
+  const recovered = await collect(
+    geaTextStream(streamOf(event(toolDelta(0, "fresh", "{}"), "tool_calls")), undefined, offered),
+  );
+  assert.equal(recovered.at(-1).reason.kind, "tool-calls");
+  assert.deepEqual(
+    recovered
+      .filter((chunk) => chunk.type === "block-end" && chunk.block.type === "tool-call")
+      .map((chunk) => chunk.block.name),
+    ["gea_sales_plan_read"],
+  );
+});
