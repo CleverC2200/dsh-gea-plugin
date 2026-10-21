@@ -58,7 +58,7 @@ test(
     const files = execFileSync("tar", ["-tzf", packed.artifact], { encoding: "utf8" }).split("\n");
     assert.equal(
       manifest.dependencies["@modelcontextprotocol/sdk"],
-      "1.31.0",
+      "1.32.0",
       "the actual Host import is a shipped runtime dependency",
     );
     assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");

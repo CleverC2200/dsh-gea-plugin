@@ -416,6 +416,8 @@ test("the admitted company Core refresh preserves the existing source and reject
     pollIntervalMs: 2000,
   });
   assert.deepEqual(planCompanyCoreRefresh(undefined, next, source).core, next);
+  const welcomeCore = { ...next, head: "6f88c3ea2d266ba1825d88bab10d92479a6ffde8" };
+  assert.deepEqual(planCompanyCoreRefresh({ source, core: next }, welcomeCore).core, welcomeCore);
   assert.throws(
     () =>
       planCompanyCoreRefresh(
