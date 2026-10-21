@@ -417,7 +417,12 @@ test("the workflow expands shard planning and workers only after every producer 
     const condition = /^    if: \$\{\{ (.+) \}\}$/m.exec(job)?.[1];
     assert.ok(condition, `${name} requires an explicit scheduling condition`);
     const evaluate = (producer, cancelled = false) =>
-      Function("needs", "always", "cancelled", `return (${condition.replace(/\.([\w]+(?:-[\w]+)+)/g, '["$1"]')})`)(
+      Function(
+        "needs",
+        "always",
+        "cancelled",
+        `return (${condition.replace(/\.([\w]+(?:-[\w]+)+)/g, '["$1"]')})`,
+      )(
         {
           "candidate-scope": { result: "success" },
           "source-plan": { result: "success", outputs: { applicability: "source" } },

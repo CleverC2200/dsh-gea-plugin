@@ -333,6 +333,7 @@ jobs:
       - name: "Source types: run the four real configurations and retain source identity"
         if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
         run: |
+          set -o pipefail
           node --input-type=module <<'NODE' 2>&1 | tee .runtime/source-types/checks.log
           import { readFileSync, writeFileSync, existsSync } from 'node:fs';
           import { resolve } from 'node:path';

@@ -101,9 +101,17 @@ function buildPublicFiles(target, manifest) {
           dependency.replace(/\.[cm]?js$/, ".tsx"),
         );
       candidates.push(
-        ...[".ts", ".tsx", ".js", ".mjs", ".cjs", ".d.ts", "/index.ts", "/index.js", "/index.d.ts"].map(
-          (extension) => dependency + extension,
-        ),
+        ...[
+          ".ts",
+          ".tsx",
+          ".js",
+          ".mjs",
+          ".cjs",
+          ".d.ts",
+          "/index.ts",
+          "/index.js",
+          "/index.d.ts",
+        ].map((extension) => dependency + extension),
       );
       const resolved = candidates.find(
         (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
@@ -220,7 +228,9 @@ export function installed(owner, { build = false } = {}) {
         name,
         target: fs.realpathSync(file),
         manifest: digest(
-          build && local && managedManifest(parsed) ? JSON.stringify(buildManifest(parsed)) : content,
+          build && local && managedManifest(parsed)
+            ? JSON.stringify(buildManifest(parsed))
+            : content,
         ),
       };
     });

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -475,4 +475,51 @@ test("local preflight requires the pinned validator for an untracked workflow", 
   });
   assert.notEqual(checked.status, 0);
   assert.match(checked.stderr, /WORKFLOW_PREFLIGHT_TOOL_REQUIRED.*ACTIONLINT/);
+});
+
+test("workflow source plans retain behavior contracts alongside semantic preflight", async (t) => {
+  const { selectCiTests } = await import("../../dsh-agent-workbench/scripts/ci-test-plan.mjs");
+  const policy = readFileSync(new URL("./ci-test-policy.json", import.meta.url), "utf8");
+  const files = { "scripts/ci-test-policy.json": policy };
+  for (const pattern of JSON.parse(policy).tests)
+    for (const file of globSync(pattern, { cwd: new URL("../", import.meta.url) }))
+      files[file] = "export const fixture = true;";
+  for (const [workflow, consumers] of [
+    ["quality", ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]],
+    [
+      "delivery-fixtures",
+      ["scripts/delivery-events.test.mjs", "scripts/windows-complete-local/core-cache.test.mjs"],
+    ],
+    ["source-quality", ["scripts/source-quality.test.mjs"]],
+  ]) {
+    await t.test(workflow, (t) => {
+      const file = `.github/workflows/${workflow}.yml`;
+      const repo = fixture(
+        t,
+        { ...files, [file]: "permissions: {contents: read}\n" },
+        { [file]: "permissions: {contents: write}\n" },
+      );
+      const plan = selectCiTests({
+        repositories: [{ repo: "dsh-gea-plugin", path: repo.root, head: repo.head }],
+        repo: "dsh-gea-plugin",
+        base: repo.base,
+        sourceOnly: true,
+      });
+      for (const consumer of ["scripts/workflow-preflight.test.mjs", ...consumers])
+        assert.ok(plan.files.includes(consumer), `${consumer}: ${JSON.stringify(plan)}`);
+    });
+  }
+  const file = "scripts/workflow-preflight.mjs";
+  const repo = fixture(
+    t,
+    { ...files, [file]: "export const revision = 1;" },
+    { [file]: "export const revision = 2;" },
+  );
+  const plan = selectCiTests({
+    repositories: [{ repo: "dsh-gea-plugin", path: repo.root, head: repo.head }],
+    repo: "dsh-gea-plugin",
+    base: repo.base,
+    sourceOnly: true,
+  });
+  assert.deepEqual(plan.files, ["scripts/workflow-preflight.test.mjs"]);
 });

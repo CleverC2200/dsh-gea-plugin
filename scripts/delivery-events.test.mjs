@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -313,4 +313,31 @@ test("delivery initializes isolated download paths after Node setup through the 
       `COREPACK_HOME=${join(directory, "delivery-downloads/corepack")}\nELECTRON_CACHE=${join(directory, "delivery-downloads/electron")}\nELECTRON_BUILDER_CACHE=${join(directory, "delivery-downloads/electron-builder")}\n`,
     );
   }
+});
+
+test("manual type step preserves a failing process status and its tee diagnostics", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "delivery-type-failure-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  mkdirSync(join(directory, ".runtime/source-types"), { recursive: true });
+  const step = workflow.jobs["delivery-fixtures"].steps.find(
+    (step) =>
+      step.name === "Source types: run the four real configurations and retain source identity",
+  );
+  const result = spawnSync(
+    "bash",
+    [
+      "-e",
+      "-c",
+      `node() { printf 'SOURCE_TYPES_FAILED: real configuration\\n' >&2; return 37; }\n${step.run}`,
+    ],
+    {
+      cwd: directory,
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 37, result.stdout + result.stderr);
+  assert.match(
+    readFileSync(join(directory, ".runtime/source-types/checks.log"), "utf8"),
+    /SOURCE_TYPES_FAILED: real configuration/,
+  );
 });
