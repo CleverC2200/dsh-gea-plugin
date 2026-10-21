@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { parse } from "yaml";
 
 const workflow = parse(readFileSync(".github/workflows/delivery-fixtures.yml", "utf8"));
@@ -13,6 +16,7 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "mac_complete_input",
     "native_acceptance_bundle_sha256",
     "native_acceptance_bundle_url",
+    "source_types_input",
     "windows_complete_input",
   ]);
   for (const input of Object.values(inputs)) {
@@ -112,7 +116,6 @@ test("complete delivery verifies exact Core outputs and cold tools before compil
   }
 });
 
-
 test("verified Core can be saved after wrapper failure without hiding the failed delivery", () => {
   for (const name of ["mac-complete-package", "windows-complete-package"]) {
     const steps = workflow.jobs[name].steps;
@@ -127,8 +130,13 @@ test("verified Core can be saved after wrapper failure without hiding the failed
     );
     assert.equal(packaging["continue-on-error"], undefined);
     const eligible = (condition, steps, cancelled = false) =>
-      Function("cancelled", "steps", `return (${condition.replace(/steps\.([\w-]+)(?:\.outputs\.([\w-]+))?/g,
-        (_, id, output) => output ? `steps["${id}"].outputs["${output}"]` : `steps["${id}"]`)})`)(() => cancelled, steps);
+      Function(
+        "cancelled",
+        "steps",
+        `return (${condition.replace(/steps\.([\w-]+)(?:\.outputs\.([\w-]+))?/g, (_, id, output) =>
+          output ? `steps["${id}"].outputs["${output}"]` : `steps["${id}"]`,
+        )})`,
+      )(() => cancelled, steps);
     const context = {
       "delivery-core-plan": { outcome: "success" },
       "delivery-core-after-package": { outputs: { hit: "true" } },
@@ -150,7 +158,6 @@ test("verified Core can be saved after wrapper failure without hiding the failed
   }
 });
 
-
 test("manual delivery runs dependency-free Core cache fixtures on Windows and macOS", () => {
   const job = workflow.jobs["core-cache-fixtures"];
   assert.ok(job);
@@ -165,4 +172,90 @@ test("manual delivery runs dependency-free Core cache fixtures on Windows and ma
     { uses: "actions/setup-node@v4", with: { "node-version": "24.14.1" } },
     { run: "node --test scripts/windows-complete-local/core-cache.test.mjs" },
   ]);
+});
+
+test("real source types prepare only for an explicit manual tuple and preserve existing admission", () => {
+  const input = workflow.on.workflow_dispatch.inputs.source_types_input;
+  assert.equal(input.default, "");
+  const steps = workflow.jobs["delivery-fixtures"].steps.filter((step) =>
+    step.name?.startsWith("Source types:"),
+  );
+  assert.ok(steps.length > 0);
+  for (const step of steps) {
+    assert.ok(
+      step.if.includes(
+        "github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''",
+      ),
+    );
+    assert.equal(
+      step["continue-on-error"],
+      step.uses === "actions/cache/save@v4" ? true : undefined,
+    );
+  }
+  const code = steps.map((step) => step.run ?? "").join("\n");
+  for (const contract of [
+    "read-hosted-peer-input.mjs",
+    "write-hosted-group.mjs",
+    "readFinalGroup",
+    "prepareQualityUpstreams",
+    "bindQualityUpstreamInputs",
+    "acquireBuild",
+    "verifyOfficialSDK",
+    "checkTypes(",
+  ])
+    assert.ok(code.includes(contract), contract);
+  assert.match(code, /--prepare --reuse-prepared --with-flock/);
+  assert.match(code, /current-core\.json/);
+  assert.doesNotMatch(code, /affected-check|run-quality-ci|SOURCE_BASE_SHA|plan\.typecheck/);
+});
+
+test("manual source type input binds exactly three commits to the actual GEA dispatch", (t) => {
+  const step = workflow.jobs["delivery-fixtures"].steps.find(
+    (step) => step.id === "source-types-input",
+  );
+  const script = step.run.match(/<<'NODE'[^\n]*\n([\s\S]*?)\nNODE/)[1];
+  const directory = mkdtempSync(join(tmpdir(), "source-types-event-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const tuple = { workbench: "1".repeat(40), manage: "2".repeat(40), gea: "3".repeat(40) };
+  const output = join(directory, "output");
+  const env = {
+    ...process.env,
+    SOURCE_TYPES_INPUT: JSON.stringify(tuple),
+    GITHUB_EVENT_NAME: "workflow_dispatch",
+    GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+    GITHUB_SHA: tuple.gea,
+    GITHUB_OUTPUT: output,
+  };
+  const run = (extra) =>
+    spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+      encoding: "utf8",
+      env: { ...env, ...extra },
+    });
+  assert.equal(run({}).status, 0);
+  assert.equal(
+    readFileSync(output, "utf8"),
+    `workbench=${tuple.workbench}\nmanage=${tuple.manage}\ngea=${tuple.gea}\n`,
+  );
+  for (const extra of [
+    { GITHUB_EVENT_NAME: "pull_request" },
+    { GITHUB_REPOSITORY: "other/repository" },
+    { GITHUB_SHA: "4".repeat(40) },
+    { SOURCE_TYPES_INPUT: JSON.stringify({ ...tuple, manage: "short" }) },
+    { SOURCE_TYPES_INPUT: JSON.stringify({ ...tuple, extra: "4".repeat(40) }) },
+    { SOURCE_TYPES_INPUT: JSON.stringify({ workbench: tuple.workbench, manage: tuple.manage }) },
+  ])
+    assert.notEqual(run(extra).status, 0, JSON.stringify(extra));
+});
+
+test("manual source type inline Node programs are valid without preparing dependencies", () => {
+  for (const step of workflow.jobs["delivery-fixtures"].steps.filter(
+    (step) => step.name?.startsWith("Source types:") && step.run?.includes("<<'NODE'"),
+  )) {
+    const script = step.run.match(/<<'NODE'[^\n]*\n([\s\S]*?)\nNODE/)[1];
+    const checked = spawnSync(process.execPath, ["--input-type=module", "--check"], {
+      input: script,
+      encoding: "utf8",
+    });
+    assert.equal(checked.status, 0, `${step.name}: ${checked.stderr}`);
+  }
 });

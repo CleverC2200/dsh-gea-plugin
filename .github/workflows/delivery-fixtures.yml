@@ -12,6 +12,11 @@ on:
         description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
         required: false
         type: string
+      source_types_input:
+        description: "Optional immutable workbench/manage/gea SHA JSON for the four real source TypeScript configurations"
+        default: ""
+        required: false
+        type: string
       native_acceptance_bundle_url:
         description: "Optional approved R9 TGZ at immutable OSS verification/<sha256>/<name>.tgz"
         required: false
@@ -158,6 +163,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
+        id: node
         with:
           node-version: "24"
       # Only the declared semver runtime parser; no Core/SDK checkout, service or secrets.
@@ -170,6 +176,201 @@ jobs:
       - run: node --run test:fixture-inputs
       - run: node --run test:prompt-execution
       - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
+
+      - name: "Source types: validate the explicit manual tuple"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        id: source-types-input
+        env:
+          SOURCE_TYPES_INPUT: ${{ inputs.source_types_input }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const tuple = JSON.parse(process.env.SOURCE_TYPES_INPUT);
+          if (process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || process.env.GITHUB_REPOSITORY !== 'CleverC2200/dsh-gea-plugin' ||
+            !tuple || Object.keys(tuple).sort().join(',') !== 'gea,manage,workbench' ||
+            Object.values(tuple).some(sha => typeof sha !== 'string' || !/^[a-f0-9]{40}$/.test(sha)) || tuple.gea !== process.env.GITHUB_SHA)
+            throw Error('SOURCE_TYPES_INPUT_REQUIRED: three immutable heads bound to the actual dispatch');
+          for (const [repo, head] of Object.entries(tuple)) appendFileSync(process.env.GITHUB_OUTPUT, `${repo}=${head}\n`);
+          NODE
+      - name: "Source types: checkout the actual GEA event"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - name: "Source types: checkout frozen Workbench"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ steps.source-types-input.outputs.workbench }}
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: "Source types: checkout frozen Manage"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ steps.source-types-input.outputs.manage }}
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: "Source types: select the candidate adaptation Core"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        id: source-types-core
+        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + require('./candidate/dsh-gea-plugin/scripts/current-core.json').adaptation + '\n')"
+      - name: "Source types: checkout the registered Core source"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.source-types-core.outputs.head }}
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - name: "Source types: bind and admit the actual joint group"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        env:
+          QUALITY_GROUP_GEA: ${{ steps.source-types-input.outputs.gea }}
+          QUALITY_GROUP_MANAGE: ${{ steps.source-types-input.outputs.manage }}
+          QUALITY_GROUP_WORKBENCH: ${{ steps.source-types-input.outputs.workbench }}
+          QUALITY_EXPECTED_SHA: ${{ github.sha }}
+          QUALITY_SCOPE_ALLOWED: "true"
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          import { createHash } from 'node:crypto';
+          import { readFinalGroup } from './source/dsh-agent-workbench/scripts/candidate-input.mjs';
+          import { resourceDigests } from './candidate/dsh-gea-plugin/scripts/source-combination-integrity.mjs';
+          const root = process.cwd(), gea = resolve('candidate/dsh-gea-plugin'), workbench = resolve('source/dsh-agent-workbench');
+          const observed = JSON.parse(execFileSync(process.execPath, [resolve(workbench, 'scripts/read-hosted-peer-input.mjs'), '--repo', 'dsh-gea-plugin'], { cwd: gea, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: '' } }));
+          const env = { ...process.env, QUALITY_GROUP_ID: observed['group-id'], QUALITY_SOURCE_KIND: observed['source-kind'], QUALITY_BASELINE_ID: observed['baseline-id'], GITHUB_OUTPUT: '' };
+          const core = JSON.parse(readFileSync(resolve(gea, 'scripts/current-core.json'))).adaptation;
+          execFileSync(process.execPath, [resolve(workbench, 'scripts/write-hosted-group.mjs'), '--root', root, '--repo', 'dsh-gea-plugin', '--core-head', core, '--workbench-source'], { cwd: gea, env, stdio: 'inherit' });
+          const sha256 = createHash('sha256').update(readFileSync('candidate-input.json')).digest('hex');
+          const admitted = await readFinalGroup({ input: resolve('candidate-input.json'), sha256, checkout: gea, coreSource: resolve('source/official-core'), expectedSha: process.env.GITHUB_SHA, ci: true });
+          const lib = {};
+          for (const entry of admitted.manifest.repositories) lib[entry.repo] = existsSync(resolve(entry.path, 'lib')) ? await resourceDigests(resolve(entry.path, 'lib')) : null;
+          mkdirSync('.runtime/source-types', { recursive: true });
+          writeFileSync('.runtime/source-types/admitted.json', JSON.stringify({ sha256, core, receipt: admitted.receipt, lib }, null, 2) + '\n');
+          NODE
+      - name: "Source types: enable the declared package managers"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+      - name: "Source types: locate the existing download cache"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        id: source-types-cache-path
+        working-directory: candidate/dsh-agent-manage
+        run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: "Source types: restore existing package downloads"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.source-types-cache-path.outputs.store }}
+          key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
+          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+      - name: "Source types: prepare owned Core source without compiling"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        id: source-types-sdk-paths
+        working-directory: candidate/dsh-gea-plugin
+        run: |
+          node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.source-types-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+          node ../dsh-agent-manage/scripts/sdk-artifact-cache.mjs --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+      - name: "Source types: restore the verified SDK cache"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        id: source-types-sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.source-types-sdk-paths.outputs.paths }}
+          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.source-types-core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - name: "Source types: prepare or verify the SDK once"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        working-directory: candidate/dsh-gea-plugin
+        run: node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.source-types-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: "Source types: prepare locked owner dependencies and existing upstreams"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, symlinkSync, realpathSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          import { acquireBuild } from './candidate/dsh-gea-plugin/scripts/build-admission.mjs';
+          import { prepareQualityUpstreams, bindQualityUpstreamInputs } from './candidate/dsh-gea-plugin/scripts/quality-upstreams.mjs';
+          const upstream = resolve('quality-upstreams'), inputs = resolve('upstream-inputs');
+          const release = acquireBuild({ operation: 'prepare', cwd: process.cwd(), output: upstream, scopes: [upstream, inputs] });
+          try { await prepareQualityUpstreams(upstream); await bindQualityUpstreamInputs(upstream, inputs, { prepare: true }); } finally { release(); }
+          symlinkSync(resolve('source/dsh-agent-workbench'), resolve('candidate/dsh-agent-workbench'), 'dir');
+          if (realpathSync('candidate/dsh-agent-workbench') !== realpathSync('source/dsh-agent-workbench')) throw Error('SOURCE_PEER_LINK_MISMATCH');
+          for (const entry of JSON.parse(readFileSync('candidate-input.json')).repositories) {
+            const release = acquireBuild({ operation: 'prepare', cwd: entry.path });
+            try {
+              if (entry.repo === 'dsh-agent-workbench') execFileSync('npm', ['ci', '--ignore-scripts', '--prefer-offline', '--no-audit', '--no-fund'], { cwd: entry.path, stdio: 'inherit' });
+              else execFileSync('corepack', ['pnpm', 'install', '--frozen-lockfile', '--ignore-scripts', '--prefer-offline'], { cwd: entry.path, stdio: 'inherit' });
+            } finally { release(); }
+          }
+          NODE
+      - name: "Source types: run the four real configurations and retain source identity"
+        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        run: |
+          node --input-type=module <<'NODE' 2>&1 | tee .runtime/source-types/checks.log
+          import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          import { checkTypes } from './source/dsh-agent-workbench/scripts/source-checks.mjs';
+          import { readFinalGroup } from './source/dsh-agent-workbench/scripts/candidate-input.mjs';
+          import { verifyOfficialSDK } from './candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs';
+          import { resourceDigests } from './candidate/dsh-gea-plugin/scripts/source-combination-integrity.mjs';
+          const root = process.cwd(), admitted = JSON.parse(readFileSync('.runtime/source-types/admitted.json'));
+          const manifest = JSON.parse(readFileSync('candidate-input.json')), completed = [];
+          let failure, sourceIntegrity = { status: 'passed' };
+          try {
+            for (const entry of manifest.repositories) {
+              process.chdir(entry.path);
+              const sdk = verifyOfficialSDK({ consumer: entry.path, core: resolve(root, 'official-latest-standard'), coreHead: admitted.core, withArtifactReceipt: true });
+              await checkTypes(entry.path, manifest.repositories, entry.repo);
+              completed.push({ repo: entry.repo, head: entry.head, sdk, status: 'passed' });
+            }
+          } catch (error) { failure = error; }
+          process.chdir(root);
+          try {
+            await readFinalGroup({ input: resolve('candidate-input.json'), sha256: admitted.sha256, checkout: resolve('candidate/dsh-gea-plugin'), coreSource: resolve('source/official-core'), expectedSha: process.env.GITHUB_SHA, ci: true });
+            for (const entry of manifest.repositories) {
+              const lib = existsSync(resolve(entry.path, 'lib')) ? await resourceDigests(resolve(entry.path, 'lib')) : null;
+              if (JSON.stringify(lib) !== JSON.stringify(admitted.lib[entry.repo])) throw Error('SOURCE_TYPES_CHANGED_BUSINESS_OUTPUT: ' + entry.repo);
+            }
+          } catch (error) { sourceIntegrity = { status: 'failed', error: error.message }; failure ??= error; }
+          writeFileSync('.runtime/source-types/result.json', JSON.stringify({ status: failure ? 'failed' : 'passed', inputSha256: admitted.sha256, core: admitted.core, completed, sourceIntegrity, error: failure?.message }, null, 2) + '\n');
+          if (failure) throw failure;
+          NODE
+      - name: "Source types: save only the verified SDK cache"
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.source_types_input != '' && steps.source-types-sdk-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        timeout-minutes: 1
+        with:
+          path: ${{ steps.source-types-sdk-paths.outputs.paths }}
+          key: ${{ steps.source-types-sdk-cache.outputs.cache-primary-key }}
+      - name: "Source types: keep the frozen input and actual diagnostics"
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-types-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            .runtime/source-types/
+            candidate-input.json
+            candidate-group.json
 
   windows-complete-package:
     if: github.event_name == 'workflow_dispatch' && (inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
