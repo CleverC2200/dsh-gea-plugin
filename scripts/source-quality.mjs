@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, existsSync, realpathSync } from 'node:fs';
 import { dirname, resolve, relative, isAbsolute, basename } from 'node:path';
 import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
 const listed = (...args) => git(...args).split('\0').filter(Boolean);
@@ -89,9 +90,23 @@ function check(result) {
 const phase = process.argv[process.argv.indexOf('--phase') + 1];
 const result = plan();
 if (phase === 'plan') {
-  if (process.env.GITHUB_OUTPUT) for (const key of ['mode', 'engineering', 'dependency-review', 'codeql']) appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${result[key]}\n`);
+  if (result.mode === 'code' && existsSync('scripts/quality-peer-baseline.json')) {
+    const own = basename(process.cwd());
+    const baseline = JSON.parse(readFileSync('scripts/quality-peer-baseline.json', 'utf8'));
+    for (const [key, repo] of [['workbench-sha', 'dsh-agent-workbench'], ['manage-sha', 'dsh-agent-manage'], ['gea-sha', 'dsh-gea-plugin']]) {
+      const head = own === repo ? result.head : baseline.repositories?.find(entry => entry.repo === repo)?.head;
+      if (!/^[a-f0-9]{40}$/.test(head || '')) throw Error('SOURCE_PEER_REQUIRED');
+      result[key] = head;
+    }
+  }
+  if (process.env.GITHUB_OUTPUT) for (const key of Object.keys(result).filter(key => !['files', 'base', 'head'].includes(key))) appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${result[key]}\n`);
   console.log(JSON.stringify(result));
 } else if (phase === 'check') check(result);
+else if (['affected-plan', 'affected-prepare', 'affected-check'].includes(phase)) {
+  if (result.mode !== 'code') throw Error('SOURCE_CODE_PHASE_REQUIRED');
+  const reader = basename(process.cwd()) === 'dsh-gea-plugin' ? resolve('../../source/dsh-agent-workbench/scripts/source-checks.mjs') : resolve(basename(process.cwd()) === 'dsh-agent-workbench' ? 'scripts/source-checks.mjs' : '../dsh-agent-workbench/scripts/source-checks.mjs');
+  await (await import(pathToFileURL(reader))).sourceChecks(result, phase);
+}
 else if (phase === 'final') {
   const expected = { PLAN_RESULT: 'success', CHECK_RESULT: result.mode === 'docs' ? 'skipped' : 'success', DEPENDENCY_RESULT: result['dependency-review'] ? 'success' : 'skipped' };
   if (process.env.HAS_CODEQL === 'true') expected.CODEQL_RESULT = result.codeql ? 'success' : 'skipped';

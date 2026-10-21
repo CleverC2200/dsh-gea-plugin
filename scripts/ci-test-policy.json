@@ -389,6 +389,13 @@
         "scripts/package-desktop.test.mjs",
         "tests/plugin-release-source.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:scripts/source-quality\\.mjs|\\.github/workflows/source-quality\\.yml)$",
+      "tests": [
+        "scripts/source-quality.test.mjs"
+      ]
     }
   ],
   "testOwners": {

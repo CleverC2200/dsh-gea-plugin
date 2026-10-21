@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      workbench-sha: ${{ steps.plan.outputs.workbench-sha }}
+      manage-sha: ${{ steps.plan.outputs.manage-sha }}
+      gea-sha: ${{ steps.plan.outputs.gea-sha }}
       mode: ${{ steps.plan.outputs.mode }}
       engineering: ${{ steps.plan.outputs.engineering }}
       dependency-review: ${{ steps.plan.outputs.dependency-review }}
@@ -40,14 +43,19 @@ jobs:
     needs: source-plan
     if: needs.source-plan.outputs.mode != 'docs'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
+        id: node
         with:
           node-version: 24
       - name: Check applicable repository source
@@ -55,16 +63,99 @@ jobs:
       - name: Check committed package version
         if: needs.source-plan.outputs.engineering == 'true'
         run: node scripts/generate-plugin-package-version.mjs --check
-      - name: Run independent repository regressions
+      - uses: actions/checkout@v7
         if: needs.source-plan.outputs.engineering == 'true'
-        run: >-
-          node --test
-          scripts/source-quality.test.mjs
-          scripts/run-quality-checks.test.mjs
-          scripts/runtime-environment.test.mjs
-          scripts/gea-error.test.mjs
-          scripts/session-log.test.mjs
-          scripts/quality-test-reporter.test.mjs
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ needs.source-plan.outputs.workbench-sha }}
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: needs.source-plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ needs.source-plan.outputs.manage-sha }}
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Select affected behavior and type checks before preparation
+        if: needs.source-plan.outputs.engineering == 'true'
+        id: affected
+        run: node scripts/source-quality.mjs --phase affected-plan
+      - name: Select registered Core only for consumers that need SDK
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        id: core
+        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + require('../dsh-gea-plugin/scripts/current-core.json').adaptation + '\n')"
+      - uses: actions/checkout@v7
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.core.outputs.head }}
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enable declared package managers
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+      - name: Locate existing package download cache
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        id: cache-path
+        working-directory: candidate/dsh-agent-manage
+        run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.cache-path.outputs.store }}
+          key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
+          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+      - name: Prepare owned Core source without compiling
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        id: sdk-paths
+        run: |
+          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+      - uses: actions/cache/restore@v4
+        if: steps.affected.outputs.sdk == 'true'
+        id: sdk-cache
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - name: Prepare or verify SDK through existing cache contract
+        if: steps.affected.outputs.sdk == 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+      - uses: actions/cache/save@v4
+        if: success() && steps.affected.outputs.sdk == 'true' && steps.sdk-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+      - name: Prepare dependencies consumed by selected checks
+        if: steps.affected.outputs.dependencies == 'true'
+        run: node scripts/source-quality.mjs --phase affected-prepare
+      - name: Run affected behavior and real TypeScript checks
+        if: needs.source-plan.outputs.engineering == 'true'
+        run: node scripts/source-quality.mjs --phase affected-check
+      - name: Keep source selection and executed check evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-checks
+          path: |
+            candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
+            candidate/dsh-gea-plugin/quality-checks.json
+            quality-test-plan.json
+            quality-test-execution-plan.json
+            quality-checks.json
+          if-no-files-found: ignore
 
   dependency-review:
     needs: source-plan
