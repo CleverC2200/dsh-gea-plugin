@@ -16,6 +16,7 @@ import { changeThemeSetting } from "./theme-settings.mjs";
 import {
   htmlFrameElement,
   openWorkbenchPage,
+  preparePageStartup,
   prepareWorkbenchHtmlRoots,
 } from "./fixtures/business-page.mjs";
 
@@ -392,15 +393,17 @@ for (const mode of ["denied", "error", "empty", "empty-error", "missing"]) {
         }
       });
       await page.goto(app.origin);
-      const opened = page.waitForResponse((response) => {
-        const request = response.request();
-        if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
-          return false;
-        const input = request.postDataJSON();
-        return input.operation === "open" && input.pageId === "inventory-fc";
-      });
-      await openWorkbenchPage(page, "分仓库存");
-      const reply = await opened;
+      await preparePageStartup(page);
+      const [reply] = await Promise.all([
+        page.waitForResponse((response) => {
+          const request = response.request();
+          if (!request.url().endsWith("/api/agent-workbench/page") || !request.postData())
+            return false;
+          const input = request.postDataJSON();
+          return input.operation === "open" && input.pageId === "inventory-fc";
+        }),
+        openWorkbenchPage(page, "分仓库存"),
+      ]);
       const pageReply = await reply.json();
       if (mode === "denied") {
         assert.equal(reply.status(), 400);

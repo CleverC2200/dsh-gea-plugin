@@ -2,6 +2,7 @@ import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts"
 import {
   salesPlanDraftMatches,
   salesPlanDraftSnapshot,
+  salesPlanLocalDraftValid,
   type SalesPlanLocalDraft,
   type SalesPlanApprovalRole,
   type ApprovalStageId,
@@ -388,8 +389,9 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
     "versionIds",
     "summaryOnly",
     "statuses",
+    "approvalRole",
   ],
-  detail: ["planId", "orderType"],
+  detail: ["planId", "orderType", "approvalRole"],
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
@@ -1426,6 +1428,11 @@ export class Business {
     try {
       const stored = JSON.parse(await readFile(file, "utf8"));
       signal.throwIfAborted();
+      if (
+        salesPlanLocalDraftValid(stored.draft, planId, versionId) &&
+        stored.draft.status !== row.status
+      )
+        return { draft: null, sourceSnapshot };
       if (!salesPlanDraftMatches(stored.draft, row, detail))
         return { draft: null, stale: true, sourceSnapshot };
       return { ...stored, sourceSnapshot };
@@ -3004,6 +3011,117 @@ export class Business {
     return this.readWorkbenchQuery(payload, signal);
   }
 
+  private async salesPlanShipments(
+    rows: Record<string, unknown>[],
+    caller: AbortSignal,
+  ): Promise<Record<string, unknown>[]> {
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const quantities = new Map<string, string>();
+    const amounts = new Map<string, string>();
+    const failures = new Map<string, string>();
+    const byMonth = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
+      if (!month || typeof row.dealerCode !== "string" || !row.dealerCode) continue;
+      const customers = byMonth.get(month) ?? new Set<string>();
+      customers.add(row.dealerCode);
+      byMonth.set(month, customers);
+    }
+    for (const [month, codes] of byMonth) {
+      const customers = [...codes];
+      const [year, number] = month.split("-").map(Number);
+      const nextMonth =
+        number === 12 ? `${year + 1}-01` : `${year}-${String(number + 1).padStart(2, "0")}`;
+      for (let offset = 0; offset < customers.length; offset += 100) {
+        const batch = customers.slice(offset, offset + 100);
+        const customerParameters: Record<string, string> = {};
+        const placeholders = batch.map((customer, index) => {
+          customerParameters[`customer${index}`] = customer;
+          return `:customer${index}`;
+        });
+        const sources = [
+          {
+            label: "发货数量",
+            field: "ship_qty",
+            values: quantities,
+            sql: `SELECT cust_code, CAST(SUM(qtyshipped) AS TEXT) AS ship_qty FROM agents_order_execute_isontime_mi WHERE fromorderno_month >= :start AND fromorderno_month < :end AND cust_code IN (${placeholders.join(", ")}) GROUP BY cust_code ORDER BY cust_code`,
+            parameters: { start: `${month}-01`, end: `${nextMonth}-01`, ...customerParameters },
+          },
+          {
+            label: "发货金额",
+            field: "ship_amount",
+            values: amounts,
+            sql: `SELECT cust_code, CAST(SUM(income_excl_tax_local) AS TEXT) AS ship_amount FROM agents_scm_cust_deliv_daily_di WHERE ship_month = :month AND cust_code IN (${placeholders.join(", ")}) GROUP BY cust_code ORDER BY cust_code`,
+            parameters: { month: month.replace("-", ""), ...customerParameters },
+          },
+        ];
+        for (const source of sources) {
+          try {
+            const result = object(
+              await this.pluginSql(
+                {
+                  consumerCode: this.config.analysisAgentCode,
+                  sql: source.sql,
+                  parameters: source.parameters,
+                  pageNo: 1,
+                  pageSize: 200,
+                },
+                signal,
+              ),
+            );
+            if (
+              !Array.isArray(result.rows) ||
+              result.total !== result.rows.length ||
+              (Array.isArray(result.rejectedColumns) && result.rejectedColumns.length)
+            )
+              throw new Error("发货数据读取不完整");
+            const received = new Map<string, string>();
+            for (const value of result.rows) {
+              const row = object(value);
+              const metric = row[source.field];
+              if (
+                typeof row.cust_code !== "string" ||
+                !batch.includes(row.cust_code) ||
+                received.has(row.cust_code) ||
+                typeof metric !== "string" ||
+                !/^-?\d+(?:\.\d+)?$/.test(metric)
+              )
+                throw new Error("发货数据格式不完整");
+              received.set(row.cust_code, metric);
+            }
+            for (const [customer, metric] of received)
+              source.values.set(`${month}\u0000${customer}`, metric);
+          } catch (error) {
+            signal.throwIfAborted();
+            for (const customer of batch) {
+              const key = `${month}\u0000${customer}`;
+              const message = `${source.label}读取失败：${error instanceof Error ? error.message : "查询失败"}`;
+              failures.set(key, [failures.get(key), message].filter(Boolean).join("；"));
+            }
+          }
+        }
+      }
+    }
+    signal.throwIfAborted();
+    return rows.map((row) => {
+      const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
+      const key = `${month}\u0000${row.dealerCode}`;
+      const progress = decimalSources([amounts.get(key), row.targetAmount]);
+      return {
+        ...row,
+        shipQty: quantities.get(key) ?? null,
+        shipAmount: amounts.get(key) ?? null,
+        amountProgress:
+          "values" in progress && progress.values[1].gt(0)
+            ? progress.values[0].div(progress.values[1]).times(100).toFixed()
+            : null,
+        shipmentError:
+          failures.get(key) ??
+          (!quantities.has(key) || !amounts.has(key) ? "未取得该客户期间的发货数据" : null),
+      };
+    });
+  }
+
   /** 为模型读取数据，不使浏览器持有的选择或预览失效。
    * @param payload 固定资源类型及已校验的查询字段。
    * @param signal 所属工具执行的取消信号。
@@ -3180,6 +3298,11 @@ export class Business {
       );
     if (query.orderType != null && !["M", "Z"].includes(String(query.orderType)))
       throw new Error("INVALID_QUERY");
+    if (
+      query.approvalRole != null &&
+      !["region", "province", "area", "category"].includes(String(query.approvalRole))
+    )
+      throw new Error("INVALID_QUERY");
     if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
     if (kind === "aggregate")
       return aggregateSalesPlans(
@@ -3261,9 +3384,36 @@ export class Business {
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_COLLECTION");
       const total = integer(page.total, page.records.length);
       const pageSize = integer(page.size ?? size, 1);
+      const planRows = page.records.map(kind === "list" ? listRecord : object);
+      if (
+        kind === "list" &&
+        query.periodId != null &&
+        query.periodId !== "" &&
+        planRows.some(
+          (row) =>
+            (typeof row.periodId !== "string" && typeof row.periodId !== "number") ||
+            String(row.periodId) !== query.periodId,
+        )
+      )
+        throw new Error("GEA_PLAN_PERIOD_MISMATCH");
       return {
         ...page,
-        records: page.records.map(kind === "list" ? listRecord : object),
+        ...(kind === "list" && query.orderType === "Z" && Array.isArray(page.groupMetrics)
+          ? {
+              groupMetrics: page.groupMetrics.map((value) => {
+                const metric = { ...object(value) };
+                delete metric.shipQty;
+                delete metric.shipAmount;
+                delete metric.amountProgress;
+                delete metric.shipmentError;
+                return metric;
+              }),
+            }
+          : {}),
+        records:
+          kind === "list" && query.orderType === "Z"
+            ? await this.salesPlanShipments(planRows, signal)
+            : planRows,
         total,
         size: pageSize,
         current: integer(page.current ?? current, 1),
