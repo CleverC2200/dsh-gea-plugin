@@ -69,11 +69,6 @@ test("the received packages preserve governed customer login and mock view-only 
   for (const item of packages) {
     const id = "gea-html-" + item.manifest.id,
       definition = definitions.get(id);
-    if (item.manifest.id === "inventory-orderworkbench") {
-      assert.equal(definition, undefined);
-      assert.equal(pages.has(item.manifest.id), false);
-      continue;
-    }
     assert.equal(definition.enabled, true);
     const capability = JSON.parse(
       await readFile(resolve(item.directory, item.manifest.declarations.capability), "utf8"),

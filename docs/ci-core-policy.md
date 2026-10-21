@@ -1,8 +1,14 @@
 # CI Core 门禁策略
 
+PR 与 main push 由 `.github/workflows/source-quality.yml` 执行本仓 JavaScript/JSON 语法、差分空白、包版本标识和 workflow 中列出的独立回归。PR 同时执行依赖审查，`candidate-quality` 汇总并拒绝失败、取消或缺失的适用检查。该流程只检出本仓，不读取 peer baseline、不要求跨仓凭据，也不装配另外两仓。
+
+三仓冻结、SDK 准备、完整类型/构建、受影响集成与浏览器测试改由 `.github/workflows/quality.yml` 的手动 `workflow_dispatch` 执行，最终检查名为 `joint-quality`，不再作为日常合并条件。手动 alpha compatibility 入口保留。日常绿灯只证明上述本仓检查，不能表示三仓或客户端验收通过。
+
+下文描述手动三仓流程及其历史范围，涉及联合合并门禁的旧说明不再适用于日常 PR/main。
+
 当前交付基线为公司 fork 中基于官方 `0.2.0-rc.2` 的欢迎区与工作台 UI 接口候选，配套 Workbench 通过公开接口贡献文案、标题和展开状态。确切提交由下述策略文件固定。此登记只固定源码验证输入，不切换正式客户端或发布频道。阻断与兼容输入统一维护在 `scripts/ci-core-policy.json`；`supported-cores.json` 保留更完整的兼容目录。
 
-`candidate-quality` 只运行 required 基线。rc.2 的质量、适用的 Windows 归档及安全检查仍是合并条件。最终门禁继续拒绝失败、取消、缺失或跳过的必需任务。
+手动 `joint-quality` 只运行 required 基线。rc.2 的质量、适用的 Windows 归档及安全检查仍是联合验收条件。最终门禁继续拒绝失败、取消、缺失或跳过的必需任务。
 
 Windows 插件更新原生回归由 [`ci-windows-update.mjs`](../scripts/ci-windows-update.mjs) 按实际 event HEAD 与 base 的完整 diff 判定，覆盖更新 Host/共享实现、安装 fixture、原生入口、依赖锁与工作流。适用时在 `windows-2025` 执行；其他改动在轻量 Linux job 写明确 `not-applicable` 回执。`windows-plugin-update` 始终属于最终聚合依赖和必需 job，失败、取消、缺失或跳过不能放行，不再依赖单次任务分支名。
 
@@ -10,7 +16,7 @@ Windows 插件更新原生回归由 [`ci-windows-update.mjs`](../scripts/ci-wind
 
 `candidate-compatibility` 通过 `workflow_dispatch` 独立运行 alpha，仍使用冻结的三仓完整 SHA 和同一必需检查与受影响测试命令。失败保留在该工作流的日志、产物及结论中。它不作为 required merge context，也不要求它完成或成功后才接收 rc.2。
 
-合并核验必须绑定候选组或实际 main 的完整三仓输入，核 rc.2 必需任务和适用的安全检查。按工作流身份单独记录 alpha，不再以“所有 check-run 一律成功”判断。alpha 未运行或失败不能记成兼容通过；只凭任务名包含 alpha 也不能豁免其他检查。
+手动联合验收必须绑定候选组或实际 main 的完整三仓输入，核 rc.2 必需任务和适用的安全检查。按工作流身份单独记录 alpha，不再以“所有 check-run 一律成功”判断。alpha 未运行或失败不能记成兼容通过；只凭任务名包含 alpha 也不能豁免其他检查。
 
 原策略只调整 CI 接收范围。本次插件设置工作将 required 输入改为用户授权的公司 fork 候选；官方上游与旧私有候选仍保留各自来源，不能互相替代验收。业务断言、预算与最终门禁保持。在途运行仍按原双 Core 定义解释。将策略应用到重新审查并冻结的输入组后，分别核验候选组和合并后的实际 main。
 

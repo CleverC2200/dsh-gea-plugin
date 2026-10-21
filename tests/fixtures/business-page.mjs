@@ -14,6 +14,7 @@ import {
 /** Read only Core's public, redacted settings view; acknowledgement still happens through Continue. */
 async function welcomeNoticeAcknowledged(page) {
   const response = await page.request.post(new URL("/api/settings/describe", page.url()).href, {
+    maxRetries: 2,
     headers: { Origin: new URL(page.url()).origin },
     data: {
       type: "client-request",
