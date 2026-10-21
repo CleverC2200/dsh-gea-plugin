@@ -341,6 +341,58 @@ test("official detail slots check, update, close and reenter through controlled 
     await page.setViewportSize({ width: 1280, height: 900 });
   }
   await page.evaluate(() => window.fixture.locale("en"));
+  const singleRequirement = problem.requirements[0];
+  problem = {
+    ...problem,
+    requirements: Array.from({ length: 18 }, (_, index) => ({
+      ...singleRequirement,
+      consumer: `@fixture/consumer-${index}-${"long-package-name-".repeat(6)}`,
+    })),
+  };
+  await requirement.getByText(problem.requirements.at(-1).consumer, { exact: true }).waitFor();
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 640 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const bounds = await requirement.evaluate((element) => ({
+      height: element.clientHeight,
+      contentHeight: element.scrollHeight,
+      width: element.clientWidth,
+      contentWidth: element.scrollWidth,
+      overflow: getComputedStyle(element).overflowY,
+    }));
+    assert.ok(bounds.height <= Math.min(320, viewport.height * 0.4), JSON.stringify(bounds));
+    assert.ok(bounds.contentHeight > bounds.height);
+    assert.equal(bounds.overflow, "auto");
+    assert.ok(bounds.contentWidth <= bounds.width);
+    await requirement.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await requirement.press("PageDown");
+    await page.waitForFunction(() => {
+      const element = document.querySelector(".gea-plugin-update-requirements");
+      return element.scrollTop > 0;
+    });
+    await requirement
+      .getByText(problem.requirements.at(-1).consumer, { exact: true })
+      .scrollIntoViewIfNeeded();
+    assert.equal(
+      await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      await page.getByRole("button", { name: "Check for updates", exact: true }).isEnabled(),
+      true,
+    );
+    if (process.env.GEA_DETAIL_SCREENSHOT)
+      await page.screenshot({
+        path: `${process.env.GEA_DETAIL_SCREENSHOT}-many-${viewport.width}.png`,
+      });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  problem = { ...problem, requirements: [singleRequirement] };
+  await requirement.getByText(singleRequirement.consumer, { exact: true }).waitFor();
   problem = {
     ...problem,
     nextStep: { packageName: "@cleverc2200/dsh-agent-workbench", version: "1.2.4" },
