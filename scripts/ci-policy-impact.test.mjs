@@ -819,3 +819,13 @@ test("Workbench Host changes select actual default registration and client start
   ]);
   assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
 });
+
+test("Workbench view state changes execute its frozen presentation owner contract", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.peer, "src/html-view-state.ts", "export const fixture = true;\n");
+  const plan = fixture.plan();
+  assert.deepEqual(plan.reasons[fixture.peer.repo + "/src/html-view-state.ts"], [
+    "tests/html-client-pages.test.mjs",
+  ]);
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});

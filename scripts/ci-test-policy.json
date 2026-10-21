@@ -392,6 +392,11 @@
       "repo": "dsh-agent-workbench",
       "pattern": "^src/host\\.ts$",
       "tests": ["tests/current-startup-web.test.mjs", "tests/workbench-boot.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/html-view-state\\.ts$",
+      "tests": ["tests/html-client-pages.test.mjs"]
     }
   ],
   "testOwners": {

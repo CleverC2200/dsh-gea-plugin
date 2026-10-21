@@ -8,6 +8,7 @@ test("the frozen Workbench preserves HTML catalog, hidden-page and discovery con
       await runWorkbenchContracts([
         "tests/html-discovery-contract.test.mjs",
         "tests/html-pages.test.mjs",
+        "tests/html-view-state.test.mjs",
       ]),
     ),
   );
