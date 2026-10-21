@@ -144,12 +144,13 @@ test("the APS config exception rejects altered sources, staging, redirects and u
   }
 });
 
-function copiedSkillFixture(t) {
+function copiedSkillFixture(
+  t,
+  resource = "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md",
+) {
   const fixture = preparedFixture(t);
   const path = join(fixture.source, "..", "manage");
-  const resource =
-    "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
-  const output = "lib/business/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md";
+  const output = resource.replace(/^business-resources\//, "lib/business/");
   mkdirSync(join(path, resource, ".."), { recursive: true });
   writeFileSync(join(path, resource), "Only admitted inventory rows may be read.\n");
   fixture.git("-C", path, "init", "-q");
@@ -182,6 +183,29 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
     readFileSync(join(assets, fixture.output), "utf8"),
     "Only admitted inventory rows may be read.\n",
   );
+});
+
+test("customer and fulfillment build copies require identical caller-frozen Manage blobs", async (t) => {
+  for (const suffix of [
+    "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
+    "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
+    "inventory-orderfulfillment/README.md",
+    "inventory-orderfulfillment/SOURCE.json",
+    "inventory-orderfulfillment/agent-prompt.md",
+  ]) {
+    const fixture = copiedSkillFixture(t, "business-resources/" + suffix);
+    const record = await readPreparedWorkbench(fixture);
+    assert.ok(record.files[fixture.output]);
+    await assert.rejects(
+      readPreparedWorkbench({ ...fixture, manage: undefined }),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+    writeFileSync(join(fixture.prepared, fixture.output), "changed copy\n");
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+  }
 });
 
 test("the public verifier uses caller-frozen Manage input for copied Skills", async (t) => {
