@@ -58,11 +58,6 @@
   ],
   "rules": [
     {
-      "repo": "dsh-agent-workbench",
-      "pattern": "^scripts/static-author-provenance\\.mjs$",
-      "tests": ["scripts/quality-workbench.test.mjs", "tests/business-page-grant.test.mjs"]
-    },
-    {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/build\\.mjs$",
       "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/development-tasks.test.mjs"]
