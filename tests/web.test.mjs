@@ -325,7 +325,7 @@ test(
           )
           .toMatchObject({
             viewport: width - 1,
-            table: Math.max(864, Math.min(960, width - 1)),
+            table: Math.max(864, width - 1),
           });
         const headers = await table.locator("thead th").evaluateAll((cells) =>
           cells.map((cell) => ({
