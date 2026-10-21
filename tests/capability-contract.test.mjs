@@ -164,6 +164,28 @@ test("注册表只由契约产出白名单与只读模块清单", () => {
   assert.ok(index.length < 600, `索引过长会占每次请求的上下文: ${index.length}`);
 });
 
+test("已声明的下划线Consumer保持原身份及只读边界，未声明身份不获授权", () => {
+  const contract = m.normalizeContract(
+    m.contractFromPlugin({
+      id: "inventory-customer",
+      label: "客户库存",
+      consumerCode: "customer_inventory",
+      pageIds: ["inventory-customer"],
+      maxEffect: "view",
+    }),
+  );
+  const registry = m.createCapabilityRegistry([contract]);
+  assert.equal(registry.byConsumer("customer_inventory").id, "inventory-customer");
+  assert.equal(registry.byConsumer("customer-inventory"), undefined);
+  assert.equal(registry.byConsumer("another_customer"), undefined);
+  assert.equal(registry.allows("gea-html-inventory-customer", "view"), true);
+  assert.equal(registry.allows("gea-html-inventory-customer", "draft"), false);
+  assert.throws(
+    () => m.normalizeContract({ ...contract, data: { consumerCode: "customer/inventory" } }),
+    /INVALID_CAPABILITY_CONTRACT/,
+  );
+});
+
 test("关键词能把用户问题路由到模块", () => {
   const plugin = m.contractFromPlugin({
     id: "inventory-fc",

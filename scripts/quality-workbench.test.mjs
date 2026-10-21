@@ -636,3 +636,15 @@ test("copied Agent SQL config must equal its frozen Workbench source and cannot 
   symlinkSync(original, output);
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
+
+test("quoted Chinese Skill paths preserve raw path and frozen byte validation", async (t) => {
+  const fixture = copiedSkillFixture(
+    t,
+    'business-resources/inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单 "语义".md',
+  );
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, fixture.output), "changed reference\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});

@@ -77,7 +77,14 @@ export async function packRaw({ input, repo, destination }) {
       preview.files.some(
         ({ path }) =>
           !allowed(path) ||
-          path.split("/").some((part) => part.startsWith(".") || part === "node_modules"),
+          (path.split("/").some((part) => part.startsWith(".") || part === "node_modules") &&
+            !(
+              manifest.name === "dsh-agent-manage" &&
+              [
+                "business-resources/sales-plan/.claude-plugin/plugin.json",
+                "business-resources/sinian-demand-forecast/.claude-plugin/plugin.json",
+              ].includes(path)
+            )),
       )
     )
       throw Error("RAW_PACKAGE_FILE_FORBIDDEN");
