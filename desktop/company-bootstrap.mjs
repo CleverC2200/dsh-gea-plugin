@@ -23,6 +23,7 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const desktopCoreHeads = new Set([
   "639ed015397290b3745d163aafe02ffee4aa3f84",
   "8cfb899ccf21d3662421b99b5f4627842ef712ea",
+  "6f88c3ea2d266ba1825d88bab10d92479a6ffde8",
 ]);
 const desktopCoreVersion = "0.2.0-rc.2";
 
