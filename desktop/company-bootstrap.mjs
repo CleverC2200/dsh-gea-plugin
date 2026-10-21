@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, writeFile, lstat } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, lstat, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
@@ -238,7 +238,41 @@ export async function readCompanySeed(seed) {
     if (digest(await readFile(join(seed, "archives", row.file))) !== row.sha256)
       throw Error("GEA_SEED_ARCHIVE_CHANGED");
   }
+  if (
+    manifest.dependencyLockSha256 !== undefined &&
+    digest(await readFile(join(seed, "dependency-lock.yaml"))) !== manifest.dependencyLockSha256
+  )
+    throw Error("GEA_SEED_DEPENDENCY_LOCK_CHANGED");
   return manifest;
+}
+
+export function relocateCompanyLock(lock, replacements) {
+  let text = JSON.stringify(lock);
+  for (const [before, after] of replacements)
+    text = text.replaceAll(JSON.stringify(before).slice(1, -1), JSON.stringify(after).slice(1, -1));
+  return JSON.parse(text);
+}
+
+export async function writeCompanySeedLock({ root, seed, profile }) {
+  const require = createRequire(join(root, "dsh/package.json"));
+  const YAML = require("yaml");
+  const manifest = await readCompanySeed(seed);
+  const lock = YAML.parse(await readFile(join(profile, "pnpm-lock.yaml"), "utf8"));
+  const replacements = [];
+  for (const row of manifest.packages) {
+    const dependency = lock.importers?.["."]?.dependencies?.[row.name];
+    if (!dependency?.specifier?.startsWith("file:") || !dependency.version?.startsWith("file:"))
+      throw Error("GEA_SEED_DEPENDENCY_LOCK_INVALID");
+    const portable = "file:company-seed/archives/" + row.file;
+    replacements.push(
+      [dependency.specifier, portable],
+      [dependency.version.slice(0, dependency.version.indexOf(row.file) + row.file.length), portable],
+    );
+  }
+  const bytes = YAML.stringify(relocateCompanyLock(lock, replacements));
+  await writeFile(join(seed, "dependency-lock.yaml"), bytes, { flag: "wx" });
+  manifest.dependencyLockSha256 = digest(bytes);
+  await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 }
 
 export async function installCompanyPackages({
@@ -289,41 +323,73 @@ export async function installCompanyPackages({
         writeFileAtomic,
       });
       boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
-      const result = await runProfilePnpm(
-        {
-          profile: "desktop",
-          dir: profile,
-          home,
-          cwd: profile,
-          installAnchor: anchor,
-        },
-        [
-          "add",
-          ...archives.packages,
-          ...offlineArguments,
-          ...(strictPeers
-            ? ["--strict-peer-dependencies", "--config.auto-install-peers=false"]
-            : []),
-          "--registry=https://registry.npmjs.org",
-          "--store-dir=" + selectedStore,
-          "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),
-        ],
-        {
-          execution: "service",
-          command: process.execPath,
-          args: ["--expose-internals", join(support, "pnpm/bin/pnpm.mjs")],
-          env: {
-            ELECTRON_RUN_AS_NODE: "1",
-            DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
-            DSH_HOME: home,
-            PATH: join(support, "bin") + delimiter + (process.env.PATH ?? ""),
+      const current = await json(join(profile, "package.json"));
+      const hasUserDependencies = Object.keys(current.dependencies ?? {}).length > 0;
+      if (offline && hasUserDependencies) offlineArguments = ["--prefer-offline"];
+      const lockPath = join(profile, "pnpm-lock.yaml");
+      const previousLock = existsSync(lockPath) ? await readFile(lockPath) : undefined;
+      let seededLock = false;
+      if (offline && seed && !hasUserDependencies && previousLock === undefined) {
+        const manifest = await readCompanySeed(seed);
+        if (manifest.dependencyLockSha256) {
+          if (archives.packages.length !== manifest.packages.length)
+            throw Error("GEA_SEED_DEPENDENCY_LOCK_PARTIAL_INSTALL");
+          const YAML = require("yaml");
+          const lock = YAML.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
+          const replacements = manifest.packages.map((row, index) => [
+            "file:company-seed/archives/" + row.file,
+            "file:" + relative(profile, archives.packages[index]).replaceAll("\\", "/"),
+          ]);
+          const relocated = relocateCompanyLock(lock, replacements);
+          for (const [index, row] of manifest.packages.entries())
+            relocated.importers["."].dependencies[row.name].specifier =
+              "file:" + archives.packages[index].replaceAll("\\", "/");
+          await writeFileAtomic(lockPath, YAML.stringify(relocated), { mode: 0o600 });
+          seededLock = true;
+        }
+      }
+      let result;
+      try {
+        result = await runProfilePnpm(
+          {
+            profile: "desktop",
+            dir: profile,
+            home,
+            cwd: profile,
+            installAnchor: anchor,
           },
-          outputBytes: 16000,
-          idleTimeoutMs: 120000,
-          lookupTimeoutMs: 30000,
-        },
-      );
-      if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
+          [
+            "add",
+            ...archives.packages,
+            ...offlineArguments,
+            ...(seededLock ? ["--config.frozen-lockfile=true"] : []),
+            ...(strictPeers
+              ? ["--strict-peer-dependencies", "--config.auto-install-peers=false"]
+              : []),
+            "--registry=https://registry.npmjs.org",
+            "--store-dir=" + selectedStore,
+            "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),
+          ],
+          {
+            execution: "service",
+            command: process.execPath,
+            args: ["--expose-internals", join(support, "pnpm/bin/pnpm.mjs")],
+            env: {
+              ELECTRON_RUN_AS_NODE: "1",
+              DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
+              DSH_HOME: home,
+              PATH: join(support, "bin") + delimiter + (process.env.PATH ?? ""),
+            },
+            outputBytes: 16000,
+            idleTimeoutMs: 120000,
+            lookupTimeoutMs: 30000,
+          },
+        );
+        if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
+      } catch (error) {
+        if (seededLock) await rm(lockPath, { force: true });
+        throw error;
+      }
       await complete?.({
         writeFileAtomic,
         archiveReplacements: archives.replacements,
