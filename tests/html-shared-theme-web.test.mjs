@@ -2,7 +2,8 @@ import {
   prepareWorkbenchHtmlRoots,
   htmlFrameElement,
   openBusinessPage,
-  openWorkbenchPage,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
 } from "./fixtures/business-page.mjs";
 /** Real profile/iframe acceptance; the table itself is a workbench-owned local sample. */
 import test from "./fixtures/source-test.mjs";
@@ -45,7 +46,12 @@ test(
         html: "index.html",
       }),
     );
-    const app = await profile(t, { beforeStart: prepareWorkbenchHtmlRoots([root]) });
+    const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess(
+        [["gea-api-log", "接口日志"]],
+        prepareWorkbenchHtmlRoots([root]),
+      ),
+    });
     t.after(async () => {
       await app.stop();
       await rm(root, { recursive: true, force: true });
@@ -456,7 +462,7 @@ test(
         Math.round(el.getBoundingClientRect().width),
       );
       await expect(page.locator('[data-side="rightbar"]')).toBeVisible();
-      await openWorkbenchPage(page, "接口日志");
+      await openRegisteredWorkbenchPage(page, "接口日志");
       await expect(page.getByRole("heading", { name: "接口日志中心", exact: true })).toBeVisible();
       const navigation = page.getByRole("complementary", { name: "业务导航", exact: true });
       await expect(navigation).toBeVisible();

@@ -102,7 +102,9 @@ test(
           },
           { total: 1, size: 2, current: 1, pages: 1 },
         );
-        const page = await query("list", { periodId: "period-1", status: 5 });
+        const periodId = periods.value.records[0].periodId;
+        assert.equal(periodId, "20260901");
+        const page = await query("list", { periodId, status: 5 });
         assert.equal(page.ok, true, JSON.stringify(page));
         assert.deepEqual(
           {
@@ -165,6 +167,7 @@ test(
         assert.equal(reads[0].url.searchParams.get("pageSize"), "200");
         assert.equal(reads[1].url.searchParams.get("pageNo"), "1");
         assert.equal(reads[1].url.searchParams.get("pageSize"), "10");
+        assert.equal(reads[1].url.searchParams.get("periodId"), periodId);
         assert.equal(reads.at(-1).url.searchParams.get("fromVersionId"), "version/a");
         assert.equal(reads.at(-1).url.searchParams.get("toVersionId"), "version/b");
       },

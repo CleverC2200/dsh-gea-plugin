@@ -51,8 +51,10 @@ test(
       .getByRole("button", { name: "新建对话", exact: true })
       .click();
     const prototype = htmlFrameElement(page, "plan-category-production").contentFrame();
-    await expect(prototype.getByText("需求确认").first()).toBeVisible();
-    await expect(prototype.getByText("三路数据").first()).toBeVisible();
+    await expect(prototype.getByRole("heading", { name: "需求确认", exact: true })).toBeVisible();
+    for (const name of ["计划提报数据", "模型双期预测", "历史同期发货"]) {
+      await expect(prototype.getByRole("region", { name, exact: true })).toBeVisible();
+    }
     // 原型自带的数字人会话列关掉，会话只留外壳右侧这一个。
     await expect(prototype.locator("aside.ap-dock")).toBeHidden();
     // 右侧会话区跟着这一页换成「主计划参谋」。
