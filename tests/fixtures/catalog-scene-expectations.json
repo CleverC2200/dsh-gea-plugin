@@ -52,10 +52,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-customer/skills/customer/SKILL.md",
-        "sha256": "fff404337676432992e7964bbd69129130dca3ce644a1e92ca305c229b0a2316",
+        "sha256": "833a190033fe12595b1ee00cfa5976cb642f1f9c292fe3fa02457d673236fcaa",
         "name": "inventory-customer",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "69bb250210c854ddee91edd245e84127f2e50e81",
+        "sourceHead": "16cb47098409a73a1e4303faeb3e03fbb406e373",
         "sourceFile": "business-resources/inventory-customer/skills/customer/SKILL.md"
       },
       {
@@ -79,10 +79,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-orderfulfillment/skills/orderfulfillment/SKILL.md",
-        "sha256": "54ae2cd859178d9ba30d58e788eb531aaed2df481507eff9f8634363126e83f7",
+        "sha256": "1270294b7b057f3975bec70b94b34f6e01ee2857af72cea1aac50ae59b8c84cb",
         "name": "inventory-orderfulfillment",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "16cb47098409a73a1e4303faeb3e03fbb406e373",
         "sourceFile": "business-resources/inventory-orderfulfillment/skills/orderfulfillment/SKILL.md"
       },
       {

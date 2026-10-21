@@ -369,6 +369,7 @@ test("Workbench build commands select prepared assets, frozen transport and buil
     "build-dms-prototype",
     "build-inventory",
     "build-order-fulfillment",
+    "build-orderworkbench",
     "build-output",
     "build-static-authors",
     "static-author-provenance",

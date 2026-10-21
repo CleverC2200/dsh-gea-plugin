@@ -342,7 +342,7 @@
     },
     {
       "repo": "dsh-agent-workbench",
-      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-output|build-static-authors|static-author-provenance)\\.mjs$",
+      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-orderworkbench|build-output|build-static-authors|static-author-provenance)\\.mjs$",
       "tests": [
         "scripts/quality-workbench.test.mjs",
         "scripts/quality-prepared-inputs.test.mjs",
