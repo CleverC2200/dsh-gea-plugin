@@ -146,13 +146,11 @@ test("the APS config exception rejects altered sources, staging, redirects and u
 
 function copiedSkillFixture(
   t,
-  agent = "aqkc",
-  reference = "inventory-policy/rules/data-boundary.md",
+  resource = "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md",
 ) {
   const fixture = preparedFixture(t);
   const path = join(fixture.source, "..", "manage");
-  const resource = `business-resources/inventory-${agent}/skills/${reference}`;
-  const output = `lib/business/inventory-${agent}/skills/${reference}`;
+  const output = resource.replace(/^business-resources\//, "lib/business/");
   mkdirSync(join(path, resource, ".."), { recursive: true });
   writeFileSync(join(path, resource), "Only admitted inventory rows may be read.\n");
   fixture.git("-C", path, "init", "-q");
@@ -187,30 +185,27 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
   );
 });
 
-for (const agent of ["customer", "orderfulfillment"])
-  test(`new ${agent} Skills require the frozen Manage blob and reject altered copies`, async (t) => {
-    const fixture = copiedSkillFixture(t, agent);
+test("customer and fulfillment build copies require identical caller-frozen Manage blobs", async (t) => {
+  for (const suffix of [
+    "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
+    "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
+    "inventory-orderfulfillment/README.md",
+    "inventory-orderfulfillment/SOURCE.json",
+    "inventory-orderfulfillment/agent-prompt.md",
+  ]) {
+    const fixture = copiedSkillFixture(t, "business-resources/" + suffix);
     const record = await readPreparedWorkbench(fixture);
-    writeFileSync(fixture.receipt, JSON.stringify(record));
-    await verifyPreparedWorkbench(fixture);
-    writeFileSync(join(fixture.prepared, fixture.output), "altered customer Skill\n");
+    assert.ok(record.files[fixture.output]);
+    await assert.rejects(
+      readPreparedWorkbench({ ...fixture, manage: undefined }),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+    writeFileSync(join(fixture.prepared, fixture.output), "changed copy\n");
     await assert.rejects(
       readPreparedWorkbench(fixture),
       /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
     );
-  });
-
-test("Chinese Skill reference paths use raw Git paths and retain frozen byte checks", async (t) => {
-  const fixture = copiedSkillFixture(
-    t,
-    "orderfulfillment",
-    "fulfillment-query-orchestrator/references/订单履约语义.md",
-  );
-  const record = await readPreparedWorkbench(fixture);
-  writeFileSync(fixture.receipt, JSON.stringify(record));
-  await verifyPreparedWorkbench(fixture);
-  writeFileSync(join(fixture.prepared, fixture.output), "changed reference\n");
-  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  }
 });
 
 test("the public verifier uses caller-frozen Manage input for copied Skills", async (t) => {
@@ -639,5 +634,17 @@ test("copied Agent SQL config must equal its frozen Workbench source and cannot 
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
   rmSync(output);
   symlinkSync(original, output);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("quoted Chinese Skill paths preserve raw path and frozen byte validation", async (t) => {
+  const fixture = copiedSkillFixture(
+    t,
+    'business-resources/inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单 "语义".md',
+  );
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, fixture.output), "changed reference\n");
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
