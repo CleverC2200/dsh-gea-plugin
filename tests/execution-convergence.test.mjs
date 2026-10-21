@@ -177,6 +177,7 @@ test("business admission survives repeated calls without a turn budget", async (
   assert.equal(current.guard(exec), undefined);
   current.setPreset("agent-resource-skill");
   assert.match(current.guard(exec), /GEA_BUSINESS_PROFILE_REQUIRED/);
+  assert.match(current.guard(exec), /GEA Workbench.*无需.*页面/);
   assert.equal(current.guard({ ...exec, name: "skill" }), undefined);
 });
 
