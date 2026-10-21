@@ -46,7 +46,8 @@
     "desktop/startup-copy.test.cjs",
     "desktop/updates.test.mjs",
     "desktop/verify-client-artifacts.test.cjs",
-    "scripts/windows-complete-local/input.test.mjs"
+    "scripts/windows-complete-local/input.test.mjs",
+    "scripts/windows-complete-local/core-cache.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -328,7 +329,7 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
-      "tests": ["scripts/delivery-events.test.mjs"]
+      "tests": ["scripts/delivery-events.test.mjs", "scripts/windows-complete-local/core-cache.test.mjs"]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -380,8 +381,9 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap)\\.mjs|input\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/build\\.mjs)$",
+      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/build\\.mjs)$",
       "tests": [
+        "scripts/windows-complete-local/core-cache.test.mjs",
         "scripts/windows-complete-local/input.test.mjs",
         "scripts/delivery-events.test.mjs",
         "scripts/package-desktop.test.mjs",
