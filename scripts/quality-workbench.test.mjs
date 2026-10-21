@@ -147,8 +147,7 @@ test("the APS config exception rejects altered sources, staging, redirects and u
 function copiedSkillFixture(t, id = "inventory-aqkc") {
   const fixture = preparedFixture(t);
   const path = join(fixture.source, "..", "manage");
-  const resource =
-    `business-resources/${id}/skills/inventory-policy/rules/data-boundary.md`;
+  const resource = `business-resources/${id}/skills/inventory-policy/rules/data-boundary.md`;
   const output = `lib/business/${id}/skills/inventory-policy/rules/data-boundary.md`;
   mkdirSync(join(path, resource, ".."), { recursive: true });
   writeFileSync(join(path, resource), "Only admitted inventory rows may be read.\n");
