@@ -59,9 +59,6 @@ jobs:
       DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      COREPACK_HOME: ${{ runner.temp }}/delivery-downloads/corepack
-      ELECTRON_CACHE: ${{ runner.temp }}/delivery-downloads/electron
-      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/delivery-downloads/electron-builder
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +75,8 @@ jobs:
         id: node
         with:
           node-version: "24.14.1"
+      - name: Initialize isolated delivery download paths
+        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
       - name: Validate fixed input before preparing Core
         working-directory: gea
         env:
@@ -391,9 +390,6 @@ jobs:
       DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      COREPACK_HOME: ${{ runner.temp }}/delivery-downloads/corepack
-      ELECTRON_CACHE: ${{ runner.temp }}/delivery-downloads/electron
-      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/delivery-downloads/electron-builder
       ELECTRON_BUILDER_7Z_FILTER: BCJ
     steps:
       - uses: actions/checkout@v4
@@ -411,6 +407,8 @@ jobs:
         id: node
         with:
           node-version: "24.14.1"
+      - name: Initialize isolated delivery download paths
+        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
       - name: Validate fixed input before preparing Core
         working-directory: gea
         env:

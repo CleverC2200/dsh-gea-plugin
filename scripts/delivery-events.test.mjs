@@ -286,3 +286,31 @@ test("manual type diagnostics retain the prepared SDK and attempt every owner be
   assert.ok(smoke.indexOf("await readFinalGroup") > smoke.indexOf("status: 'failed'"));
   assert.ok(smoke.includes("if (failure) throw failure"));
 });
+
+test("delivery job environment excludes contexts unavailable at job initialization", () => {
+  for (const [name, job] of Object.entries(workflow.jobs))
+    assert.doesNotMatch(JSON.stringify(job.env ?? {}), /\$\{\{\s*(?:runner|env|steps|job)\./, name);
+});
+
+test("delivery initializes isolated download paths after Node setup through the runtime environment", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "delivery-runtime-env-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  for (const name of ["mac-complete-package", "windows-complete-package"]) {
+    const steps = workflow.jobs[name].steps;
+    const initialized = steps.findIndex(
+      (step) => step.name === "Initialize isolated delivery download paths",
+    );
+    assert.ok(initialized > steps.findIndex((step) => step.uses === "actions/setup-node@v4"));
+    assert.ok(initialized < steps.findIndex((step) => step.id === "delivery-tool-path"));
+    const output = join(directory, name + "-env");
+    const result = spawnSync("sh", ["-c", steps[initialized].run], {
+      encoding: "utf8",
+      env: { ...process.env, RUNNER_TEMP: directory, GITHUB_ENV: output },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(
+      readFileSync(output, "utf8"),
+      `COREPACK_HOME=${join(directory, "delivery-downloads/corepack")}\nELECTRON_CACHE=${join(directory, "delivery-downloads/electron")}\nELECTRON_BUILDER_CACHE=${join(directory, "delivery-downloads/electron-builder")}\n`,
+    );
+  }
+});
