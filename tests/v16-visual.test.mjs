@@ -273,8 +273,8 @@ test(
     ]);
     const inline = frame.locator('div[role="region"][tabindex="0"]');
     const skuRow = inline.getByRole("row").filter({ hasText: "黑芝麻汤圆 500g" });
-    await expect(skuRow.locator("td").nth(1)).toHaveText("10");
-    await expect(skuRow.locator("td").nth(3)).toHaveText("100");
+    await expect(skuRow.locator("td").nth(1).locator("span")).toHaveText("10");
+    await expect(skuRow.locator("td").nth(1).locator("small")).toHaveText("¥100");
     assert.ok(await inline.evaluate((el) => getComputedStyle(el).maxHeight === "360px"));
     const nav = page.locator(".gea-shell-navigation");
     for (const width of ["64px", "240px", "64px", "240px"]) {
