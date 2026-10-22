@@ -60,27 +60,24 @@ preflight 使用以下文件合同，所有路径为绝对路径。sources、tar
       "installed": ["FULL_INSTALLED_MANIFESTS"]
     }
   ],
-  "supportedStarts": [
-    {
-      "id": "supported-start",
-      "core": {
-        "head": "FULL_CORE_SHA",
-        "version": "CORE_VERSION",
-        "sdk": { "SDK_PACKAGE": "ACTUAL_VERSION" }
-      },
-      "installed": ["FULL_INSTALLED_MANIFESTS"]
-    }
-  ]
+  "environment": {
+    "core": {
+      "head": "FULL_CORE_SHA",
+      "version": "CORE_VERSION",
+      "sdk": { "SDK_PACKAGE": "ACTUAL_VERSION" }
+    },
+    "installed": ["FULL_CURRENT_INSTALLED_MANIFESTS"]
+  }
 }
 ```
 
-上例只展示每类一项。`deployed` 与 `supportedStarts` 均不可为空，每个 installed 包含完整消费者 manifest，包括非公司包；三个公司 manifest 还必须带实际部署归档的 `artifactSha256`。部署快照由发行 owner 从批准的真实频道、归档和安装图准备，并保留观察时间及来源证据。历史重放若复用当前未变消费者，须在原证据中说明，不能称为历史整图观察。Core 使用实际宿主固定的 head/version/sdk。缺公司包、缺 SDK 或缺归档身份都拒绝，不以三个手填版本替代图。 第三方 manifest 按规划器实际消费的版本、全部 peer 和公司包 dependency 校验；没有对应 peer 的 optional metadata 不形成约束。原始完整图保留，公司发行 manifest 继续严格解析。
+上例只展示每类一项。`deployed` 保留实际已发布版本与归档身份，`environment` 固定当前宿主的 head/version/sdk 与完整消费者 manifest，包括非公司包；三个公司 manifest 还必须带实际部署归档的 `artifactSha256`。不再要求历史起点清单或历史组合重放。缺公司包、缺 SDK 或缺归档身份仍拒绝。
 
 门禁核实际 source HEAD 与源码修改范围，复用普通交付对 lib/client 生成输出的允许规则，生成输出仍须逐字节匹配构建回执与最终 TGZ。它读取 `deliveryManifest`，将每包的 archive 路径、sha256、name/version、source.head/path、锁和 buildReceipt 摘要绑定到实际文件。构建回执沿[普通交付合同](package-delivery.md)，每个输出同时核当前源码目录和 tar 内字节；相同版本的旧包不能借新 HEAD 的声明通过。
 
-每个目标版本必须不低于所有 deployed 与 supportedStarts 中该包的版本；同版本必须使用相同归档字节。全部受支持起点先通过整组规划。安装包通过 `geaPluginUpdateStrategy: "suite"` 声明具备整组更新器，该能力随归档投影到 release，下载时与实际 manifest 交叉核对。已具备该能力的起点直接规划整组；旧起点先由真实 `planPluginUpdate` 验证 GEA 过渡包可独立安装，再用新规划器验证剩余整组。旧更新器需要重启加载过渡包，再执行统一更新。能力缺失的历史 release 继续验证原逐包路径。功能名后缀仍按同一版本比较器处理，无合法路径即拒绝。Core 不支持或需要数据迁移时保留阻断，分别更新客户端或完成独立迁移后再检查。三包同版同字节的频道提升允许 planner 返回 current。
+每个目标版本必须不低于已部署版本和当前环境中的版本；同版本必须使用相同归档字节。门禁只用当前 `environment` 调用 `planPluginSuiteUpdate` 校验完整目标组合，保留非公司消费者与 Core SDK 约束，不枚举历史起点或逐包顺序。安装包用 `geaPluginUpdateStrategy: "suite"` 声明整组更新能力，该字段随归档投影并在下载时交叉核对。当前安装若仍为旧更新器，只检查本次 GEA 过渡包可独立安装；重启加载后由新更新器处理整组。Core 不支持、需要数据迁移或当前过渡包不可安装时继续阻断。
 
-metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自最终归档。destination 必须不存在。输出包含 release 文件路径、摘要、preflight 输入与交付清单摘要、各起点的合法顺序及 published=false，不上传 OSS、不更新频道。`test:release-contract` 将公开 CLI 的来源、身份和路径回归纳入 `quality:fast --source-only` 与现有 source CI。`release:preflight --desktop --base-tag <tag>` 保留桌面安装包原有版本准备职责，不代替插件发行门禁。
+metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自最终归档。destination 必须不存在。输出包含 release 文件路径、摘要、preflight 输入与交付清单摘要、目标组合及 published=false，不上传 OSS、不更新频道。`test:release-contract` 将公开 CLI 的来源、身份和路径回归纳入 `quality:fast --source-only` 与现有 source CI。`release:preflight --desktop --base-tag <tag>` 保留桌面安装包原有版本准备职责，不代替插件发行门禁。
 
 发布方使用 [createPluginSuiteChannel](../scripts/plugin-channel.mjs)，输入 previous、preflightInput、三个最终 release 引用及新 revision/时间。该入口重新执行发布门禁，将三个 release 引用摘要绑定到门禁实际投影的 JSON 字节，一次生成完整 payload。旧起点还须证明 GEA 可作为第一步。生成结果带 `suite: true`，以 GEA `releases` 加 Workbench/Manage `companionReleases` 保持旧 reader 可读。`mergePluginChannelRelease` 拒绝修改已标记整组的频道，避免单包发布产生混装目标。发布方使用 `signPluginChannel({payload,keyId,privateKeyPem})` 签完整 payload，再原子替换频道。以上函数只生成本地对象，正式发布仍须有相应授权。
 

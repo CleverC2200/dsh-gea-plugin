@@ -161,7 +161,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/plugin-reception/(?:observe-worker|preset-discovery)\\.mjs$",
+      "pattern": "^scripts/plugin-reception/(?:observe-worker|preset-discovery|readiness(?:\\.test)?)\\.mjs$",
       "tests": ["scripts/plugin-reception.test.mjs", "scripts/deliver-packages.test.mjs"]
     },
     {

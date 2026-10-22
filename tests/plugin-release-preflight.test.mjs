@@ -13,25 +13,22 @@ test("old updaters bootstrap GEA then atomically install mutually dependent comp
   const result = await f.run();
   assert.equal(result.status, 0, result.stderr);
   const receipt = JSON.parse(result.stdout);
-  assert.ok(receipt.paths.every((path) => path.strategy === "legacy-bootstrap"));
-  assert.deepEqual(receipt.paths[0].steps, [
-    { strategy: "legacy", packages: [G] },
-    { strategy: "suite", packages: companyPackageNames.slice(0, 2) },
-  ]);
-  for (const start of f.input.supportedStarts)
-    start.installed.find((manifest) => manifest.name === G).geaPluginUpdateStrategy = "suite";
+  assert.equal(receipt.targetCombination.strategy, "legacy-bootstrap");
+  assert.equal(receipt.targetCombination.bootstrap, G);
+  f.input.environment.installed.find((manifest) => manifest.name === G).geaPluginUpdateStrategy =
+    "suite";
   const modern = await f.run();
   assert.equal(modern.status, 0, modern.stderr);
-  assert.ok(JSON.parse(modern.stdout).paths.every((path) => path.strategy === "suite"));
+  assert.equal(JSON.parse(modern.stdout).targetCombination.strategy, "suite");
   const target = receipt.targets.find(({ release }) => release.name === G).release;
   const missingBootstrap = structuredClone(f.input);
-  const start = missingBootstrap.supportedStarts[0];
+  const start = missingBootstrap.environment;
   start.installed = start.installed.map((manifest) =>
     manifest.name === G ? { ...target, artifactSha256: target.artifact.sha256 } : manifest,
   );
   assert.match((await f.run(missingBootstrap)).stderr, /RELEASE_LEGACY_BRIDGE_REQUIRED/);
 });
-test("suite channel replaces all references only after validating the bound archives and old upgrade paths", async (t) => {
+test("suite channel replaces all references only after validating the bound archives and the current environment", async (t) => {
   const { createPluginSuiteChannel, signPluginChannel, mergePluginChannelRelease } =
     await import("../scripts/plugin-channel.mjs");
   const { parsePluginChannel } = await import("../src/shared/plugin-release.mjs");
@@ -98,17 +95,16 @@ test("suite channel replaces all references only after validating the bound arch
   await assert.rejects(createPluginSuiteChannel(input), /RELEASE_SOURCE_DIRTY/);
 });
 
-test("public preflight finds a GEA-first path from previous stable, sales and resubmit using full installed graphs", async (t) => {
+test("public preflight validates only the complete target combination without historical paths", async (t) => {
   const f = await fixture(t),
     result = await f.run();
   assert.equal(result.status, 0, result.stderr);
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.status, "release-preflight-passed");
-  assert.deepEqual(
-    receipt.paths.map((row) => row.id),
-    ["previous-stable", "sales", "resubmit"],
-  );
-  assert.ok(receipt.paths.every((row) => row.order[0] === G && row.order.length === 3));
+  assert.equal(receipt.targetCombination.packages.length, 3);
+  assert.equal(receipt.paths, undefined);
+  assert.equal(f.input.supportedStarts, undefined);
+  assert.equal(f.input.upgradeVerification, undefined);
 });
 
 test("public preflight requires clean fixed sources containing every required commit or merge", async (t) => {
@@ -204,27 +200,25 @@ test("release gate binds archive bytes to the existing delivery manifest and act
   assert.match((await f.run()).stderr, /DELIVERY_BUILD_OUTPUT_MISMATCH/);
 });
 
-test("gate retains non-company consumers and Core SDK constraints throughout every path and rejects incomplete snapshots", async (t) => {
+test("gate validates current consumers and Core SDK against the complete target combination", async (t) => {
   const f = await fixture(t),
     consumerBlocked = structuredClone(f.input);
-  consumerBlocked.supportedStarts[0].installed.find(
+  consumerBlocked.environment.installed.find(
     (row) => row.name === "customer-dashboard",
   ).peerDependencies[G] = "0.0.167";
-  assert.match((await f.run(consumerBlocked)).stderr, /RELEASE_UPGRADE_PATH_MISSING/);
+  assert.match((await f.run(consumerBlocked)).stderr, /RELEASE_TARGET_COMBINATION_INCOMPATIBLE/);
   const sdkBlocked = structuredClone(f.input);
-  sdkBlocked.supportedStarts[0].core.sdk["@deepseek-ai/dsh-tools"] = "0.2.1-alpha.1";
-  assert.match((await f.run(sdkBlocked)).stderr, /RELEASE_UPGRADE_PATH_MISSING/);
+  sdkBlocked.environment.core.sdk["@deepseek-ai/dsh-tools"] = "0.2.1-alpha.1";
+  assert.match((await f.run(sdkBlocked)).stderr, /RELEASE_TARGET_COMBINATION_INCOMPATIBLE/);
   const missing = structuredClone(f.input);
-  missing.supportedStarts[0].installed = missing.supportedStarts[0].installed.filter(
-    (row) => row.name !== M,
-  );
+  missing.environment.installed = missing.environment.installed.filter((row) => row.name !== M);
   assert.match((await f.run(missing)).stderr, /RELEASE_INSTALLED_GRAPH_INCOMPLETE/);
-  delete missing.supportedStarts[0].core.sdk;
-  missing.supportedStarts[0].installed = f.input.supportedStarts[0].installed;
+  delete missing.environment.core.sdk;
+  missing.environment.installed = f.input.environment.installed;
   assert.match((await f.run(missing)).stderr, /RELEASE_CORE_SDK_REQUIRED/);
 });
 
-test("same-version three-package promotion accepts the identical deployed bytes and current planner states", async (t) => {
+test("same-version three-package promotion accepts identical deployed bytes", async (t) => {
   const f = await fixture(t),
     installed = [];
   for (const [index, target] of f.input.targets.entries()) {
@@ -234,10 +228,10 @@ test("same-version three-package promotion accepts the identical deployed bytes 
     installed.push({ ...manifest, artifactSha256: f.delivery.packages[index].sha256 });
   }
   f.input.deployed = [{ id: "test-channel", installed }];
-  f.input.supportedStarts = [{ ...f.input.supportedStarts[0], id: "test-promotion", installed }];
+  f.input.environment = { ...f.input.environment, installed };
   const result = await f.run();
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(JSON.parse(result.stdout).paths[0].order.length, 3);
+  assert.equal(JSON.parse(result.stdout).targetCombination.packages.length, 3);
 });
 
 test("generated output renames into source remain uncommitted source edits", async (t) => {
@@ -256,22 +250,19 @@ test("the actual debug 4.4.3 npm shape permits orphan optional metadata and reta
     peerDependenciesMeta: { "supports-color": { optional: true } },
     dependencies: { ms: "^2.1.3" },
   };
-  for (const snapshot of [...f.input.deployed, ...f.input.supportedStarts])
+  for (const snapshot of [...f.input.deployed, f.input.environment])
     snapshot.installed.push(structuredClone(debug));
   const accepted = await f.run();
   assert.equal(accepted.status, 0, accepted.stderr);
-  f.input.supportedStarts[0].installed.find(
-    (manifest) => manifest.name === "debug",
-  ).peerDependencies[G] = "0.0.167";
+  f.input.environment.installed.find((manifest) => manifest.name === "debug").peerDependencies[G] =
+    "0.0.167";
   const blocked = await f.run();
   assert.notEqual(blocked.status, 0);
-  assert.match(blocked.stderr, /RELEASE_UPGRADE_PATH_MISSING/);
-  const consumer = f.input.supportedStarts[0].installed.find(
-    (manifest) => manifest.name === "debug",
-  );
+  assert.match(blocked.stderr, /RELEASE_TARGET_COMBINATION_INCOMPATIBLE/);
+  const consumer = f.input.environment.installed.find((manifest) => manifest.name === "debug");
   delete consumer.peerDependencies[G];
   consumer.dependencies = { ms: "npm:ms@^2.1.3", [G]: "0.0.167" };
-  assert.match((await f.run()).stderr, /RELEASE_UPGRADE_PATH_MISSING/);
+  assert.match((await f.run()).stderr, /RELEASE_TARGET_COMBINATION_INCOMPATIBLE/);
   consumer.version = "invalid-version";
   assert.match((await f.run()).stderr, /RELEASE_INVALID/);
 });

@@ -15,7 +15,7 @@ import https from "node:https";
 import net from "node:net";
 import { createHash } from "node:crypto";
 import { inspect } from "node:util";
-import { FIBER_ACTIVE, waitForMainPlugins } from "./readiness.mjs";
+import { FIBER_ACTIVE, waitForMainPlugins, createReceptionReady } from "./readiness.mjs";
 
 const v = JSON.parse(await readFile(process.argv[2], "utf8"));
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
@@ -91,7 +91,7 @@ try {
     profile,
     home: v.home,
   });
-  const readyListeners = [];
+  const readiness = createReceptionReady();
   checkpoint("boot");
   ctx = await boot.boot(
     "reception",
@@ -110,12 +110,7 @@ try {
         exit: () => {
           throw Error("UNEXPECTED_PROFILE_EXIT");
         },
-        ready: {
-          onReady: (listener) => {
-            readyListeners.push(listener);
-            return () => {};
-          },
-        },
+        ready: readiness.service,
       });
       checkpoint("boot-mount");
     },
@@ -123,7 +118,7 @@ try {
   checkpoint("boot-ready");
   assert.equal(ctx.fiber.state, FIBER_ACTIVE, "HOST_NOT_ACTIVE");
   assert(ctx.get("loader") !== undefined, "HOST_LOADER_MISSING");
-  for (const listener of readyListeners) listener();
+  readiness.commit();
   await ctx.loader.await();
   await waitForMainPlugins(
     ctx.loader,

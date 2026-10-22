@@ -1,0 +1,15 @@
+<!-- collaboration-record
+{"kind":"bug","id":"BUG-20261022-step-upgrade-resource-identity","date":"2026-10-22","title":"分步升级的业务资源身份冲突使 GEA 后台无法启动","module":"插件更新","category":"功能逻辑","cause":"原始遗漏","severity":"P1","status":"已修复待验证"}
+-->
+
+# 分步升级的资源身份冲突
+
+Workbench 0.1.22、Manage 0.6.3-company.25 与 GEA 0.0.182 的实际安装组合中，旧订单履约资源的 orderfulfillment-preview 与 GEA 策略中的 order01 冲突。HTML 资源注册抛出的 INVALID_AGENT_RESOURCE_IDENTITY 中断整个 GEA Host，身份和更新接口一并不可用。隔离 profile 使用同字节原包已复现；三包最终组合通过不能证明分步升级安全。
+
+修复保留该资源的身份拒绝，不注册其 Agent、Skill 或受控能力，不覆盖 GEA 策略。页面授权明确提示更新 Workbench 并重启，其他资源、身份和更新服务继续工作。有效 Consumer、mock、禁用、页面绑定与服务端授权规则保持。
+
+按用户确认的统一更新方向，发布只校验当前环境下最新目标三包组合，移除历史起点、逐包顺序与中间重启回执门禁。原有已发布版本高水位、同版本字节、完整消费者与 Core SDK 约束保留。防止资源冲突中断整个 Host 的保护保留。
+
+本次源码回归已复现原启动错误并通过定向修复检查。最终三包接收、CI、合并、测试频道、Native 与正式频道按本次 PR 和发布回执分别核验；本卡不提前声明这些阶段通过。不改变已有包字节，不读取或迁移用户凭据、会话和草稿。
+
+最新目标组合接收另发现 MPS 的 `governed-sql-read` 与 `governed-cube-read` 声明被入口的单 SQL 白名单拒绝。按已有 Host 只读实现对齐这两个能力名，非 mock 仍要求 SQL 只读，未知能力、重复能力及仅 Cube 的不完整声明继续拒绝；定向回归覆盖真实 MPS 声明与拒绝边界。

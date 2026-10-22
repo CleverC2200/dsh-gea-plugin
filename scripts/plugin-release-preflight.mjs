@@ -8,7 +8,6 @@ import { inspectPluginArchive } from "../src/host/plugin-release-source.ts";
 import {
   companyPackageNames,
   projectPluginRelease,
-  findPluginUpdatePath,
   planPluginSuiteUpdate,
   planPluginUpdate,
   comparePluginVersions,
@@ -73,8 +72,7 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
     input?.schemaVersion !== 1 ||
     !Array.isArray(input.targets) ||
     input.targets.length !== 3 ||
-    !Array.isArray(input.supportedStarts) ||
-    !input.supportedStarts.length
+    !input.environment
   )
     fail("RELEASE_PREFLIGHT_INPUT_REQUIRED");
   if (
@@ -190,7 +188,7 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
     fail("RELEASE_TARGET_GRAPH_INCOMPLETE");
   if (!Array.isArray(input.deployed) || !input.deployed.length)
     fail("RELEASE_DEPLOYED_INPUT_REQUIRED");
-  for (const snapshot of [...input.deployed, ...input.supportedStarts]) {
+  for (const snapshot of [...input.deployed, { id: "current-environment", ...input.environment }]) {
     if (typeof snapshot.id !== "string" || !snapshot.id) fail("RELEASE_SNAPSHOT_ID_REQUIRED");
     validateGraph(snapshot.installed);
     for (const { release } of targets) {
@@ -208,67 +206,43 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
         );
     }
   }
-  const paths = input.supportedStarts.map((start) => {
-    validateCore(start.core);
-    const suite = planPluginSuiteUpdate({
-      core: start.core,
-      installed: start.installed,
-      releases: targets.map(({ release }) => release),
-    });
-    if (suite.kind === "blocked") fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
-    const updater = start.installed.find((manifest) => manifest.name === companyPackageNames[2]);
-    if (updater.geaPluginUpdateStrategy === "suite")
-      return { id: start.id, strategy: "suite", order: targets.map(({ release }) => release.name) };
-    const bridge = targets.find(({ release }) => release.name === companyPackageNames[2]).release;
-    if (bridge.updateStrategy === "suite") {
-      const first = planPluginUpdate({
-        release: bridge,
-        core: start.core,
-        installed: start.installed,
-      });
-      if (suite.kind === "ready" && first.kind !== "ready")
-        fail("RELEASE_LEGACY_BRIDGE_REQUIRED", start.id);
-      const installed = start.installed.map((manifest) =>
-        manifest.name === bridge.name
-          ? { ...bridge, artifactSha256: bridge.artifact.sha256 }
-          : manifest,
-      );
-      const remaining = planPluginSuiteUpdate({
-        core: start.core,
-        installed,
-        releases: targets.map(({ release }) => release),
-      });
-      if (remaining.kind === "blocked") fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
-      return {
-        id: start.id,
-        strategy: "legacy-bootstrap",
-        order: [bridge.name, ...companyPackageNames.filter((name) => name !== bridge.name)],
-        steps: [
-          { strategy: "legacy", packages: first.kind === "current" ? [] : [bridge.name] },
-          {
-            strategy: "suite",
-            packages:
-              remaining.kind === "ready" ? remaining.releases.map((release) => release.name) : [],
-          },
-        ],
-      };
-    }
-    const order = findPluginUpdatePath({
-      core: start.core,
-      installed: start.installed,
-      releases: targets.map(({ release }) => release),
-      firstStep: companyPackageNames[2],
-    });
-    if (!order) fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
-    return { id: start.id, strategy: "legacy", order };
+  validateCore(input.environment.core);
+  const releases = targets.map(({ release }) => release);
+  const suite = planPluginSuiteUpdate({
+    core: input.environment.core,
+    installed: input.environment.installed,
+    releases,
   });
+  if (suite.kind === "blocked") fail("RELEASE_TARGET_COMBINATION_INCOMPATIBLE");
+  const updater = input.environment.installed.find(
+    (manifest) => manifest.name === companyPackageNames[2],
+  );
+  const bridge = releases.find((release) => release.name === companyPackageNames[2]);
+  const bootstrap =
+    updater.geaPluginUpdateStrategy !== "suite" && bridge.updateStrategy === "suite";
+  if (
+    bootstrap &&
+    suite.kind === "ready" &&
+    planPluginUpdate({
+      release: bridge,
+      core: input.environment.core,
+      installed: input.environment.installed,
+    }).kind !== "ready"
+  )
+    fail("RELEASE_LEGACY_BRIDGE_REQUIRED");
+
   return {
     status: "release-preflight-passed",
     inputSha256: digest(await readFile(inputPath)),
     deliveryManifestSha256: digest(deliveryBytes),
     sources: sources.map(({ manifest: _manifest, ...source }) => source),
     targets,
-    paths,
+    targetCombination: {
+      strategy: bootstrap ? "legacy-bootstrap" : "suite",
+      ...(bootstrap ? { bootstrap: bridge.name } : {}),
+      core: input.environment.core,
+      packages: targets.map(({ release }) => ({ name: release.name, version: release.version })),
+    },
   };
 }
 
