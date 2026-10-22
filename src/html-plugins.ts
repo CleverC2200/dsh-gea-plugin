@@ -103,23 +103,17 @@ export async function registerHtmlPlugins(
     const mcpPath = await realpath(resolve(directory, manifest.mcp ?? ""));
     if (!mcpPath.startsWith(directory + sep)) throw Error("INVALID_MCP_PATH");
     const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
-    const capabilities = mcp.capabilities;
-    const supportedReads = mock
-      ? Array.isArray(capabilities) && capabilities.length === 0
-      : Array.isArray(capabilities) &&
-        capabilities.includes("governed-sql-read") &&
-        new Set(capabilities).size === capabilities.length &&
-        capabilities.every(
-          (capability: unknown) =>
-            capability === "governed-sql-read" || capability === "governed-cube-read",
-        );
     if (
       mcp.provider !== "gea" ||
       mcp.transport !== "host-provided" ||
       mcp.contract !== "gea-html-v2" ||
       mcp.consumer?.consumerCode !== manifest.gea.consumerCode ||
       mcp.consumer?.consumerType !== "AGENT" ||
-      !supportedReads
+      !(mock
+        ? JSON.stringify(mcp.capabilities) === "[]"
+        : ['["governed-sql-read"]', '["governed-sql-read","governed-cube-read"]'].includes(
+            JSON.stringify(mcp.capabilities),
+          ))
     )
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
     if (!manifest.declarations || manifest.agentResources?.provider !== "dsh-agent-manage")

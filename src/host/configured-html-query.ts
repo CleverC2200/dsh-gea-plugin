@@ -3,12 +3,18 @@ import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import type { Business } from "./business.ts";
 import { GeaSqlError } from "../html-sql.ts";
+import { validateCubeQueryResult } from "./cube-new.ts";
+
+const object = (value: unknown): Record<string, unknown> | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 
 /** Query IDs are resolved from this installed page only. The page never supplies SQL or routing. */
 export async function readConfiguredHtmlQuery(
   resource: { directory: string; manifest: Record<string, any> },
   input: unknown,
-  business: Pick<Business, "pluginSql">,
+  business: Pick<Business, "pluginSql" | "moduleMcp">,
   signal: AbortSignal,
 ) {
   signal.throwIfAborted();
@@ -36,7 +42,9 @@ export async function readConfiguredHtmlQuery(
       typeof candidateParameters !== "object" ||
       Array.isArray(candidateParameters)
     )
-      throw Object.assign(Error("配置查询参数无效"), { code: "INVALID_CONFIGURED_QUERY" });
+      throw Object.assign(Error("配置查询参数无效"), {
+        code: "INVALID_CONFIGURED_QUERY",
+      });
     queryId = candidateId;
     parameters = candidateParameters as Record<string, unknown>;
     if (resource.manifest.sqlConfig !== "sql.config.json") throw Error("INVALID_SQL_CONFIG_PATH");
@@ -81,6 +89,32 @@ export async function readConfiguredHtmlQuery(
   try {
     const request = queryContract.makeRequest(config, queryId, parameters);
     signal.throwIfAborted();
+    if ("cube" in request) {
+      const args = {
+        action: "query",
+        response_mode: "inline_complete",
+        queries: [{ name: queryId, query: request.cube }],
+      };
+      const client = await business.moduleMcp(resource.manifest.gea.consumerCode, signal);
+      const payload: unknown = JSON.parse(await client.call("query_business_data", args, signal));
+      signal.throwIfAborted();
+      validateCubeQueryResult(payload, args, "inline");
+      const datasets = object(payload)?.datasets;
+      const dataset = Array.isArray(datasets) ? object(datasets[0]) : undefined;
+      if (!dataset || !Array.isArray(dataset.rows) || !Array.isArray(dataset.fields))
+        throw Error("GEA_CUBE_NEW_QUERY_RESULT_INVALID");
+      return {
+        rows: dataset.rows,
+        returnedColumns: dataset.fields.map((field: unknown) => object(field)?.name),
+        rejectedColumns: [],
+        totalRowCount: dataset.totalRowCount,
+        hasMorePages: dataset.hasMorePages,
+        offset: dataset.offset,
+        dataStatus: dataset.dataStatus,
+        warnings: dataset.warnings,
+        configVersion: createHash("sha256").update(raw).digest("hex"),
+      };
+    }
     // Published-resource and field authorization remain with the GEA gateway.
     // No local provider is consulted on this path, including after a denied query.
     const result = await business.pluginSql(
@@ -89,7 +123,10 @@ export async function readConfiguredHtmlQuery(
       true,
     );
     signal.throwIfAborted();
-    return { ...(result as object), configVersion: createHash("sha256").update(raw).digest("hex") };
+    return {
+      ...(result as object),
+      configVersion: createHash("sha256").update(raw).digest("hex"),
+    };
   } catch (error) {
     return configuredQueryFailure(error, signal, queryContract);
   }
@@ -121,5 +158,9 @@ function configuredQueryFailure(
       returnedColumns: error.returnedColumns,
       rejectedColumns: error.rejectedColumns,
     };
-  return { success: false, errorCode: code, message: "配置查询失败（" + code + "）" };
+  return {
+    success: false,
+    errorCode: code,
+    message: "配置查询失败（" + code + "）",
+  };
 }

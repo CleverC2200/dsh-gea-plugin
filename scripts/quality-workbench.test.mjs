@@ -103,6 +103,14 @@ function copiedSqlFixture(t, resource = "business/inventory-apsplan/sql.config.j
   return { ...fixture, resource, output };
 }
 
+test("MPS named query copies require the frozen Workbench bytes", async (t) => {
+  const fixture = copiedSqlFixture(t, "static/mps/sql.config.json");
+  const record = await readPreparedWorkbench(fixture);
+  assert.ok(record.files[fixture.output]);
+  writeFileSync(join(fixture.prepared, fixture.output), '{"agentId":"forged"}\n');
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
 test("the APS SQL config copy is admitted only from the frozen Workbench blob and remains frozen in assets", async (t) => {
   const fixture = copiedSqlFixture(t);
   const record = await readPreparedWorkbench(fixture);
@@ -201,6 +209,8 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
 
 test("customer and both order build copies require identical caller-frozen Manage blobs", async (t) => {
   for (const suffix of [
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
     "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
     "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
