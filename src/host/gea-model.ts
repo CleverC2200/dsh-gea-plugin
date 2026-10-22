@@ -75,10 +75,10 @@ export function geaKeptReasoningEffort(current: {
 export class GeaModelAdapter extends LlmAdapter {
   constructor(
     private readonly business: Business,
-    private readonly htmlConsumer: (
+    private readonly htmlAccess: (
       session?: string,
       signal?: AbortSignal,
-    ) => Promise<string | undefined> = async () => undefined,
+    ) => Promise<{ consumerCode: string; signal: AbortSignal } | undefined> = async () => undefined,
   ) {
     super();
   }
@@ -117,11 +117,13 @@ export class GeaModelAdapter extends LlmAdapter {
     let responseReceivedMs: number | null = null;
     let textChars = 0;
     const cancellation = new AbortController();
+    const access = await this.htmlAccess(options.sessionId, options.signal);
     using watchdog = idleWatchdog(
       AbortSignal.any([
         cancellation.signal,
         ...(options.signal ? [options.signal] : []),
         this.business.identitySignal(),
+        ...(access ? [access.signal] : []),
       ]),
       this.business.config.modelRequestTimeoutMs,
       "GEA_MODEL_IDLE",
@@ -132,9 +134,8 @@ export class GeaModelAdapter extends LlmAdapter {
     let stage = "连接";
     const modelHost = "GEA 模型网关";
     const business = this.business;
-    const htmlConsumer = this.htmlConsumer;
     const request = async function* (): AsyncGenerator<StreamChunk> {
-      const consumer = await htmlConsumer(options.sessionId, signal);
+      const consumer = access?.consumerCode;
       business.assertExecutionAllowed(
         consumer ?? business.config.analysisAgentCode,
         "view",
@@ -226,6 +227,7 @@ export class GeaModelAdapter extends LlmAdapter {
     try {
       while (true) {
         const next = await watchdog.next(iterator);
+        signal.throwIfAborted();
         if (next.done) return;
         yield next.value;
       }

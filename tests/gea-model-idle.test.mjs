@@ -27,7 +27,7 @@ const event = (delta, finish = null) =>
 const settled = () => new Promise((done) => setImmediate(done));
 const options = { provider: "gea-analysis", model: "fixture", messages: [] };
 
-function fixture(t, fetch, { mockTimers = true } = {}) {
+function fixture(t, fetch, { mockTimers = true, access } = {}) {
   if (mockTimers) t.mock.timers.enable({ apis: ["setTimeout"] });
   t.mock.method(console, "info", () => {});
   const identity = new AbortController();
@@ -47,7 +47,7 @@ function fixture(t, fetch, { mockTimers = true } = {}) {
     }),
     fetchExternal: fetch,
   };
-  return { adapter: new GeaModelAdapter(business), identity };
+  return { adapter: new GeaModelAdapter(business, access), identity };
 }
 
 function response() {
@@ -222,6 +222,28 @@ for (const reason of ["user", "identity"]) {
     t.mock.timers.tick(5000);
   });
 }
+
+test("revoking a managed model source cancels its pending stream after re-enable", async (t) => {
+  const stream = response();
+  let source = new AbortController();
+  const { adapter } = fixture(t, async () => stream.value, {
+    access: async () => ({ consumerCode: "workbench", signal: source.signal }),
+  });
+  const chunks = [];
+  const pending = assert.rejects(collect(adapter.stream(options), chunks), { name: "AbortError" });
+  await settled();
+  stream.send(event({ content: "before revoke" }));
+  await settled();
+  const count = chunks.length;
+  source.abort();
+  source = new AbortController();
+  await settled();
+  assert.equal(stream.cancelled(), 1);
+  await pending;
+  assert.equal(chunks.length, count);
+  assert.equal(stream.cancelled(), 1);
+  t.mock.timers.tick(5000);
+});
 
 test("legal tool parameters larger than the business snapshot budget reach Core intact", async (t) => {
   const argumentsText = JSON.stringify({ text: "中".repeat(40000) });
