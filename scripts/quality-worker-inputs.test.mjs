@@ -95,6 +95,7 @@ function fixture(
     "quality-workbench.mjs",
     "source-combination-integrity.mjs",
     "quality-test-execution.mjs",
+    "source-check-shards.mjs",
     "quality-hosted-budget.mjs",
     "quality-worker-control.mjs",
     "quality-ci-stages.mjs",

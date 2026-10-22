@@ -1,8 +1,10 @@
 # CI Core 门禁策略
 
-PR 与 main push 由 `.github/workflows/source-quality.yml` 按实际 Git 差异选择检查。纯说明文档只完成适用性判断与必需状态汇总；包内 Prompt、Skill、资源声明及其资产走资源检查；代码与未知输入保留工程检查。`candidate-quality` 拒绝失败、取消、缺失或非预期跳过的适用检查。该流程只检出本仓，不装配另外两仓。 分类、CLI 和资源检查边界见[共享日常 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。
+源码检查中的联合用例集合在 Linux 上超过一个文件时，按同一冻结执行计划分给两个独立 worker。每个 worker 保留原静态检查、构建、容量和60分钟预算，业务断言不变。最终门禁还核本次 HEAD、run/attempt、输入与构建摘要，以及所有文件和用例的精确一次覆盖；缺片、取消、跳过或输入变化均拒绝。纯工具与单文件集合保持一个完整 worker。
 
-三仓冻结、SDK 准备、完整类型/构建、受影响集成与浏览器测试改由 `.github/workflows/quality.yml` 的手动 `workflow_dispatch` 执行，最终检查名为 `joint-quality`，不再作为日常合并条件。手动 alpha compatibility 入口保留。日常绿灯只证明上述本仓检查，不能表示三仓或客户端验收通过。
+PR 与 main push 由 `.github/workflows/source-quality.yml` 按实际 Git 差异选择检查。纯说明文档只完成适用性判断与必需状态汇总；包内 Prompt、Skill、资源声明及其资产走资源检查；代码与未知输入保留工程检查。`candidate-quality` 拒绝失败、取消、缺失或非预期跳过的适用检查。工程检查读取固定配套源码，按影响计划准备所需依赖与构建。分类、CLI 和资源检查边界见[共享日常 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。
+
+独立三仓联合验收由 `.github/workflows/quality.yml` 的手动 `workflow_dispatch` 执行，最终检查名为 `joint-quality`，不再作为日常合并条件。手动 alpha compatibility 入口保留。日常绿灯只证明实际选中的源码集合，不能表示完整三仓或客户端验收通过。
 
 下文描述手动三仓流程及其历史范围，涉及联合合并门禁的旧说明不再适用于日常 PR/main。
 

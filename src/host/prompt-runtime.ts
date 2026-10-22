@@ -132,7 +132,7 @@ export function mountBusinessPrompts(
     ctx.on("agent/pre-step", async ({ agent, messages = [], signal }, next) => {
       if (profileOf(agent)) {
         await assertSessionResourceAvailable(ctx, agent.id, signal);
-        business.assertExecutionAllowed(sessionConsumer(ctx, business, agent.id));
+        business.assertExecutionAllowed(sessionConsumer(ctx, business, agent.id), "view", agent.id);
       }
       if (
         hasPageReferences(

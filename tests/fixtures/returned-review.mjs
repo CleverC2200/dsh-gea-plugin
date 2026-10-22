@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "../profile.mjs";
 import { testBrowser } from "./test-browser.mjs";
-import { openSalesPlan } from "./business-page.mjs";
+import { openReadySalesPlan } from "./business-page.mjs";
 
 export const PLAN_A = "p-jxs-2026-10-00001";
 export const PLAN_B = "p-jxs-2026-10-00002";
@@ -386,7 +386,7 @@ export const fixture = async (
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   await page.goto(app.origin);
-  const frame = await openSalesPlan(page);
+  const frame = await openReadySalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   await expect(frame.getByTestId("regional-approval-flow-toggle")).toBeVisible();
   return {

@@ -135,10 +135,15 @@ export class GeaModelAdapter extends LlmAdapter {
     const htmlConsumer = this.htmlConsumer;
     const request = async function* (): AsyncGenerator<StreamChunk> {
       const consumer = await htmlConsumer(options.sessionId, signal);
-      business.assertExecutionAllowed(consumer ?? business.config.analysisAgentCode);
+      business.assertExecutionAllowed(
+        consumer ?? business.config.analysisAgentCode,
+        "view",
+        options.sessionId,
+      );
       const route = await business.modelRoute(
         signal,
         consumer ?? business.config.analysisAgentCode,
+        options.sessionId,
       );
       if (!route.models.includes(options.model))
         throw new LlmError(
