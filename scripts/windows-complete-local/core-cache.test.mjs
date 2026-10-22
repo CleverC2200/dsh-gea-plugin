@@ -200,7 +200,10 @@ test("delivery CLI emits a verified hit and exact output paths for Actions", asy
   const result = run("verify", { GITHUB_OUTPUT: output });
   assert.equal(result.status, 0, result.stderr);
   const text = await readFile(output, "utf8");
-  assert.match(text, /^key=delivery-core-[a-f0-9]{64}\nhit=true\npaths<<DELIVERY_CORE_PATHS\n/);
+  assert.match(
+    text,
+    /^key=delivery-core-[a-f0-9]{64}\nhit=true\nintegrity=verified\npaths<<DELIVERY_CORE_PATHS\n/,
+  );
   assert.ok(text.split("\n").some((path) => normalize(path) === join(root, "apps/desktop/lib")));
   assert.ok(text.endsWith("\nDELIVERY_CORE_PATHS\n"));
 });
@@ -340,4 +343,199 @@ test("macOS baseline cache is limited to its fixed DMG and refuses incorrect byt
   await mkdir(join(plan.paths[0], ".."), { recursive: true });
   await writeFile(plan.paths[0], "wrong baseline");
   assert.match(run("seal", {}, "mac-baseline").stderr, /DELIVERY_CACHE_BASELINE_CHANGED/);
+});
+
+test("Windows runtime reuse follows preparation implementation instead of final packaging", async (t) => {
+  const { root } = await fixture(t, false);
+  const tooling = await realpath(await mkdtemp(join(tmpdir(), "delivery-preparation-tooling-")));
+  t.after(() => rm(tooling, { recursive: true, force: true }));
+  await mkdir(join(tooling, "windows-complete-local"));
+  await mkdir(join(tooling, "mac-complete-local"));
+  await cp(cli, join(tooling, "windows-complete-local/core-cache.mjs"));
+  await cp(
+    fileURLToPath(new URL("../mac-complete-local/baseline.mjs", import.meta.url)),
+    join(tooling, "mac-complete-local/baseline.mjs"),
+  );
+  const finalBuild = join(tooling, "windows-complete-local/build.mjs");
+  const preparation = join(tooling, "windows-complete-local/prepare.mjs");
+  const compilation = join(tooling, "windows-complete-local/compile.mjs");
+  await writeFile(finalBuild, "final packaging v1");
+  await writeFile(preparation, "prepare runtime v1");
+  await writeFile(compilation, "compile Core v1");
+  const plan = (profile = "windows-runtime") => {
+    const result = spawnSync(
+      process.execPath,
+      [join(tooling, "windows-complete-local/core-cache.mjs"), "plan", root, profile],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout).key;
+  };
+  const original = plan();
+  const originalCore = plan("official");
+  await writeFile(finalBuild, "final packaging and reporting v2");
+  assert.equal(plan(), original);
+  await writeFile(preparation, "prepare runtime v2");
+  assert.notEqual(plan(), original);
+  assert.equal(plan("official"), originalCore);
+  const preparedRuntime = plan();
+  await writeFile(compilation, "compile Core v2");
+  assert.notEqual(plan("official"), originalCore);
+  assert.notEqual(plan(), preparedRuntime);
+});
+
+test("cache verification reports its sealed source and distinguishes disabled reuse from a miss", async (t) => {
+  const { run } = await fixture(t, false);
+  let result = JSON.parse(run("verify").stdout);
+  assert.equal(result.reason, "readable-scope-empty");
+  result = JSON.parse(run("verify", { DSH_DELIVERY_REUSE_INPUTS: "false" }).stdout);
+  assert.equal(result.reason, "reuse-disabled");
+  const prepared = await fixture(t);
+  assert.equal(
+    prepared.run("seal", {
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: "a".repeat(40),
+      GITHUB_RUN_ID: "123",
+    }).status,
+    0,
+  );
+  result = JSON.parse(prepared.run("verify", { GITHUB_REF: "refs/tags/release" }).stdout);
+  assert.equal(result.sourceRef, "refs/heads/main");
+  assert.equal(result.sourceSha, "a".repeat(40));
+  assert.equal(result.integrity, "verified");
+  assert.equal(result.reason, "verified-hit");
+});
+
+test("release preflight prepares missing default-ref caches and confirms the requested keys", async (t) => {
+  const { root, run } = await fixture(t, false);
+  const keys = ["official", "windows-runtime"].map(
+    (profile) => JSON.parse(run("plan", {}, profile).stdout).key,
+  );
+  const { createServer } = await import("node:http");
+  const { spawn } = await import("node:child_process");
+  let prepared = false;
+  let dispatch;
+  let unavailable = false;
+  const server = createServer(async (request, response) => {
+    response.setHeader("content-type", "application/json");
+    const url = new URL(request.url, "http://localhost");
+    if (unavailable) {
+      response.writeHead(503).end("{}");
+      return;
+    }
+    if (request.method === "POST") {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      dispatch = JSON.parse(body);
+      prepared = true;
+      response.end(JSON.stringify({ workflow_run_id: 91 }));
+    } else if (url.pathname.endsWith("/runs/91")) {
+      response.end(
+        JSON.stringify({
+          id: 91,
+          event: "workflow_dispatch",
+          status: "completed",
+          conclusion: "success",
+          head_branch: "main",
+        }),
+      );
+    } else {
+      assert.equal(url.searchParams.get("ref"), "refs/heads/main");
+      const key = url.searchParams.get("key");
+      response.end(
+        JSON.stringify({ actions_caches: prepared ? [{ key, ref: "refs/heads/main" }] : [] }),
+      );
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const output = join(root, ".dsh-build/preflight.json");
+  const child = spawn(
+    process.execPath,
+    [fileURLToPath(new URL("./shared-cache.mjs", import.meta.url)), "preflight", root, output],
+    {
+      env: {
+        ...process.env,
+        GITHUB_API_URL: `http://127.0.0.1:${server.address().port}`,
+        GITHUB_REPOSITORY: "fixture/gea",
+        GITHUB_DEFAULT_BRANCH: "main",
+        GITHUB_REF: "refs/tags/new",
+        GITHUB_TOKEN: "fixture",
+        GITHUB_RUN_ID: "100",
+        GITHUB_RUN_ATTEMPT: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const code = await new Promise((resolve) => child.on("close", resolve));
+  assert.equal(code, 0, stderr);
+  assert.equal(dispatch.ref, "main");
+  assert.equal(dispatch.inputs.prepare_windows_cache, "true");
+  assert.deepEqual(JSON.parse(dispatch.inputs.cache_request).keys, keys);
+  const receipt = JSON.parse(await readFile(output, "utf8"));
+  assert.equal(receipt.reason, "default-ref-prepared");
+  assert.ok(
+    receipt.layers.every((layer) => layer.available && layer.sourceRef === "refs/heads/main"),
+  );
+  unavailable = true;
+  const fallback = spawn(
+    process.execPath,
+    [fileURLToPath(new URL("./shared-cache.mjs", import.meta.url)), "preflight", root, output],
+    {
+      env: {
+        ...process.env,
+        GITHUB_API_URL: `http://127.0.0.1:${server.address().port}`,
+        GITHUB_REPOSITORY: "fixture/gea",
+        GITHUB_DEFAULT_BRANCH: "main",
+        GITHUB_REF: "refs/tags/new",
+        GITHUB_TOKEN: "fixture",
+      },
+      stdio: "ignore",
+    },
+  );
+  assert.equal(await new Promise((resolve) => fallback.on("close", resolve)), 0);
+  const failure = JSON.parse(await readFile(output, "utf8"));
+  assert.equal(failure.reason, "cache-api-503");
+  assert.equal(failure.fallback, "cold-preparation");
+});
+
+test("shared cache producer rejects nondefault events and mismatched preparation requests", async (t) => {
+  const { root, run } = await fixture(t, false);
+  const keys = ["official", "windows-runtime"].map(
+    (profile) => JSON.parse(run("plan", {}, profile).stdout).key,
+  );
+  const producer = (env) =>
+    spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("./shared-cache.mjs", import.meta.url)), "check-request", root],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_EVENT_NAME: "workflow_dispatch",
+          GITHUB_REF: "refs/heads/main",
+          GITHUB_DEFAULT_BRANCH: "main",
+          CACHE_REQUEST: JSON.stringify({ keys }),
+          ...env,
+        },
+      },
+    );
+  const accepted = producer({});
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(
+    producer({ GITHUB_REF: "refs/heads/feature" }).stderr,
+    /DELIVERY_CACHE_DEFAULT_REF_REQUIRED/,
+  );
+  assert.match(
+    producer({ GITHUB_EVENT_NAME: "pull_request" }).stderr,
+    /DELIVERY_CACHE_DEFAULT_REF_REQUIRED/,
+  );
+  assert.match(
+    producer({ CACHE_REQUEST: JSON.stringify({ keys: ["different"] }) }).stderr,
+    /DELIVERY_CACHE_PREPARATION_INPUT_CHANGED/,
+  );
 });
