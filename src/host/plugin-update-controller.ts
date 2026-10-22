@@ -11,8 +11,7 @@ import { performance } from "node:perf_hooks";
 import {
   companyPackageNames,
   parsePluginRelease,
-  planPluginUpdate,
-  findPluginUpdatePath,
+  planPluginSuiteUpdate,
   validatePluginCombination,
   type FixedCore,
   type CompanyPackageName,
@@ -289,6 +288,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   let startup: RuntimePackageProof[] = [],
     mutationInThisController = false;
   let plans = new Map<CompanyPackageName, Plan>();
+  let suiteReleases: PluginRelease[] = [];
   let currentMonitor: Pick<
     Awaited<ReturnType<typeof observeProfilePackageProcesses>>,
     "capture" | "snapshot" | "waitForQuiescence" | "cancelObserved" | "close"
@@ -527,6 +527,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     if (active || journalBroken || blocking(state.operation)) return snapshot();
     const generation = ++checking;
     plans.clear();
+    suiteReleases = [];
     state = {
       ...state,
       items: state.items.map((item) => ({
@@ -545,9 +546,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         () => readPluginProfile(options.profile.dir),
         { waitMs: options.lockWaitMs ?? 30_000 },
       );
-      const releases = await options.source.check(
-        signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal,
-      );
+      const releases = (
+        await options.source.check(
+          signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal,
+        )
+      ).map(parsePluginRelease);
       if (generation !== checking || closed) return snapshot();
       const proofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
       if (generation !== checking || closed) return snapshot();
@@ -594,52 +597,42 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           });
           continue;
         }
-        const plan = planPluginUpdate({
-          release,
-          core: options.core,
-          installed,
-        });
-        if (generation !== checking || closed) return snapshot();
-        if (plan.kind === "ready") {
-          const id = randomUUID();
-          plans.set(release.name, { id, release, baseline: profile });
-          row(release.name, {
-            state: "available",
-            candidateVersion: release.version,
-            planId: id,
-            diagnostic: null,
-          });
-        } else
-          row(release.name, {
-            state: plan.kind === "current" ? "current" : "blocked",
-            diagnostic: plan.kind === "blocked" ? plan.code : null,
-            problem:
-              plan.kind === "blocked"
-                ? planUpdateProblem(plan, release, options.core, installed)
-                : undefined,
-          });
       }
-      const next = state.items.find(
-        (item) =>
-          item.state === "available" &&
-          item.planId !== null &&
-          proofs.find((proof) => proof.name === item.packageName)?.host.kind === "active" &&
-          findPluginUpdatePath({
-            core: options.core,
-            installed,
-            releases,
-            firstStep: item.packageName,
-          }) !== null,
-      );
-      if (next && next.candidateVersion)
+      if (state.items.some((item) => item.state === "blocked")) {
         for (const item of state.items)
-          if (item.state === "blocked" && item.problem?.kind === "dependencies")
+          if (item.state !== "blocked")
             row(item.packageName, {
-              problem: {
-                ...item.problem,
-                nextStep: { packageName: next.packageName, version: next.candidateVersion },
-              },
+              state: "blocked",
+              diagnostic: "UPDATE_SUITE_BLOCKED",
+              problem: { kind: "policy", code: "conditions" },
             });
+        return snapshot();
+      }
+      const plan = planPluginSuiteUpdate({ releases, core: options.core, installed });
+      if (plan.kind === "blocked") {
+        const release =
+          releases.find((release) => release.name === plan.packageName) ?? releases[0];
+        for (const name of companyPackageNames)
+          row(name, {
+            state: "blocked",
+            diagnostic: plan.code,
+            problem: release
+              ? planUpdateProblem(plan, release, options.core, installed, releases)
+              : { kind: "policy", code: "release-not-published" },
+          });
+      } else {
+        suiteReleases = releases;
+        for (const release of releases) {
+          if (
+            plan.kind === "ready" &&
+            plan.releases.some((changed) => changed.name === release.name)
+          ) {
+            const id = randomUUID();
+            plans.set(release.name, { id, release, baseline: profile });
+            row(release.name, { state: "available", planId: id, diagnostic: null });
+          } else row(release.name, { state: "current", diagnostic: null });
+        }
+      }
     } catch (error) {
       if (generation === checking && !closed) {
         plans.clear();
@@ -684,11 +677,12 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       new Set(requests.map((request) => request.packageName)).size !== requests.length
     )
       fail("UPDATE_REQUEST_INVALID");
-    const selected = requests.map((request) => {
+    for (const request of requests) {
       const plan = plans.get(request.packageName);
       if (!plan || plan.id !== request.planId) fail("UPDATE_PLAN_STALE");
-      return plan;
-    });
+    }
+    const selected = [...plans.values()];
+    const selectedSuite = suiteReleases;
     const plan = selected[0];
     if (!plan) fail("UPDATE_REQUEST_INVALID");
     ++checking;
@@ -735,8 +729,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               options.core,
               options.profile.dir,
             );
-            for (const selectedPlan of selected) {
-              const release = selectedPlan.release;
+            for (const release of selectedSuite) {
               if (
                 runtimeProofs.find((proof) => proof.name === release.name)?.host.kind !== "active"
               )
@@ -752,19 +745,19 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               );
               if (!within(await realpath(join(options.profile.dir, "node_modules")), resolved))
                 fail("INSTALL_ANCHOR_SHADOWED");
-              if (
-                planPluginUpdate({ release, core: options.core, installed: manifests }).kind !==
-                "ready"
-              )
-                fail("UPDATE_COMBINATION_CHANGED");
             }
-            const combined = manifests.map((manifest) => {
-              const release = selected.find(
-                (selectedPlan) => selectedPlan.release.name === manifest.name,
-              )?.release;
-              return release ?? manifest;
+            const suitePlan = planPluginSuiteUpdate({
+              releases: selectedSuite,
+              core: options.core,
+              installed: manifests,
             });
-            if (validatePluginCombination({ core: options.core, manifests: combined }).length)
+            if (
+              suitePlan.kind !== "ready" ||
+              suitePlan.releases.length !== selected.length ||
+              suitePlan.releases.some(
+                (release) => !selected.some((entry) => entry.release === release),
+              )
+            )
               fail("UPDATE_COMBINATION_CHANGED");
             if (await optionalFile(join(options.profile.dir, ".plugin-manager/run.json")))
               fail("PROFILE_WRITER_UNCONFIRMED");
@@ -790,8 +783,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             const userDataSha256 = await freezePluginUserData(options.profile.home, recovery);
             await writePluginRecoveryNotes(operationDirectory, options.profile.dir);
             lifetime.signal.throwIfAborted();
-            for (const selectedPlan of selected)
-              options.source.assertCurrentRelease(selectedPlan.release);
+            for (const release of selectedSuite) options.source.assertCurrentRelease(release);
             if ((await readPluginProfile(options.profile.dir)).sha256 !== baseline.sha256)
               fail("UPDATE_BASELINE_CHANGED");
             const operation: PluginUpdateOperation = {
@@ -845,8 +837,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             await stage("installing");
             currentMonitor ??= await observeProfilePackageProcesses(options.profile.dir);
             lifetime.signal.throwIfAborted();
-            for (const selectedPlan of selected)
-              options.source.assertCurrentRelease(selectedPlan.release);
+            for (const release of selectedSuite) options.source.assertCurrentRelease(release);
             mutationStarted = true;
             mutationInThisController = true;
             let outcome: Awaited<ReturnType<typeof runProfilePnpm>> | null = null,

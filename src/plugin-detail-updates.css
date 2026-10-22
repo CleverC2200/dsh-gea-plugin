@@ -57,13 +57,8 @@
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
 }
-.gea-plugin-list-status.available,
-.gea-plugin-list-update {
+.gea-plugin-list-status.available {
   color: var(--dsw-alias-state-error-primary);
-}
-.gea-plugin-list-update {
-  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 30%, transparent);
-  white-space: nowrap;
 }
 .gea-plugin-list-status.current,
 .gea-plugin-list-status.completed {

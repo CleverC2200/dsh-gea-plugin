@@ -8,15 +8,23 @@ import vm from "node:vm";
 import { build } from "esbuild";
 import { parse as parseYaml } from "yaml";
 import { projectPluginRelease, companyPackageNames } from "../../../src/shared/plugin-release.mjs";
+import { preservedSession } from "./preserved-session.mjs";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const repository = fileURLToPath(new URL("../../../", import.meta.url));
 const ownFile = fileURLToPath(import.meta.url);
-export async function makeArchive(root, name, version) {
+export async function makeArchive(
+  root,
+  name,
+  version,
+  peerDependencies = {},
+  suiteUpdates = false,
+) {
   const directory = join(root, name.replaceAll("/", "-"), version, "package");
   await mkdir(join(directory, "lib"), { recursive: true });
   const manifest = {
     name,
     version,
+    ...(suiteUpdates ? { geaPluginUpdateStrategy: "suite" } : {}),
     type: "module",
     exports: { ".": "./lib/host.js", "./client": "./lib/client.js" },
     dsh: {
@@ -24,6 +32,7 @@ export async function makeArchive(root, name, version) {
       client: { platform: "web", inject: [], external: [] },
     },
     dependencies: {},
+    peerDependencies,
   };
   await writeFile(join(directory, "package.json"), JSON.stringify(manifest));
   await writeFile(join(directory, "cordis.patch.yml"), "[]\n");
@@ -36,7 +45,9 @@ export async function makeArchive(root, name, version) {
     `window.__ModuleLoader__.load({id:${JSON.stringify(name)},factory:()=>({pluginPackageVersion:Object.freeze(${JSON.stringify({ name, version })}),apply(){}})});\n`,
   );
   const path = join(directory, "..", "plugin.tgz");
-  execFileSync("tar", ["-czf", path, "-C", dirname(directory), "package"]);
+  execFileSync("tar", ["-czf", path, "-C", dirname(directory), "package"], {
+    env: { ...process.env, COPYFILE_DISABLE: "1" },
+  });
   return { path, manifest, bytes: await readFile(path) };
 }
 function runtimeLocation(proof, sdk) {
@@ -233,10 +244,11 @@ export async function installedScenario(
   t,
   proof,
   sdk,
-  { customStore = false, allUpdates = false } = {},
+  { customStore = false, allUpdates = false, strictSuitePeers = false } = {},
 ) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
   const root = await mkdtemp(join(repository, ".runtime/actual-install-"));
+  const verifySession = await preservedSession(sdk, root);
   const personalData = join(root, "agent-plugins/data");
   await mkdir(join(personalData, "user-agents.json.skills/personal/tree/references"), {
     recursive: true,
@@ -279,12 +291,17 @@ export async function installedScenario(
     old = await Promise.all(
       companyPackageNames.map((name, index) => makeArchive(root, name, oldVersions[index])),
     );
-  const target = await makeArchive(root, companyPackageNames[2], "3.1.0"),
+  const peers = strictSuitePeers
+    ? Object.fromEntries(
+        companyPackageNames.map((name, index) => [name, ["1.1.0", "2.1.0", "3.1.0"][index]]),
+      )
+    : {};
+  const target = await makeArchive(root, companyPackageNames[2], "3.1.0", peers, true),
     location = runtimeLocation(proof, sdk);
   const targets = allUpdates
     ? [
-        await makeArchive(root, companyPackageNames[0], "1.1.0"),
-        await makeArchive(root, companyPackageNames[1], "2.1.0"),
+        await makeArchive(root, companyPackageNames[0], "1.1.0", peers),
+        await makeArchive(root, companyPackageNames[1], "2.1.0", peers),
         target,
       ]
     : [old[0], old[1], target];
@@ -542,6 +559,7 @@ export async function installedScenario(
     ),
   );
   assert.equal(operation.stage, "completed");
+  await verifySession();
   assert.match(operation.userDataSha256, /^[a-f0-9]{64}$/);
   for (const [name, value] of Object.entries(personalFiles)) {
     assert.equal(await readFile(join(personalData, name), "utf8"), value);
@@ -592,6 +610,7 @@ export async function installedScenario(
     personalAgentPreserved: true,
     pluginCustomizationPreserved: true,
     completeSkillAssetsPreserved: true,
+    sessionPreserved: true,
   };
 }
 if (process.argv[1] === ownFile && process.argv[2] === "observe") {

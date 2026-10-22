@@ -41,6 +41,7 @@ export async function createReleasePreflightFixture(t, options = {}) {
     { name: M, version: "0.6.3-company.22" },
     {
       name: G,
+      geaPluginUpdateStrategy: "suite",
       version: "0.0.172",
       peerDependencies: {
         [W]: "0.1.12 || 0.1.14",
@@ -49,6 +50,10 @@ export async function createReleasePreflightFixture(t, options = {}) {
       },
     },
   ];
+  if (options.mutualPeers) {
+    manifests[0].peerDependencies = { [M]: manifests[1].version };
+    manifests[1].peerDependencies = { [W]: manifests[0].version };
+  }
   await mkdir(join(root, "packages"));
   const delivery = { stage: "ordinary-three-package-delivery", status: "packaged", packages: [] };
   const input = {

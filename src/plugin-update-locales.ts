@@ -1,7 +1,6 @@
 export const en = {
   title: "Plugin update",
   newVersion: "New version {version}",
-  updateShort: "Update",
   updateAll: "Update all",
   restartNow: "Restart",
   restartError: "Could not restart. Try again.",
@@ -10,9 +9,8 @@ export const en = {
   pendingNotice: "Plugin updates are installed. Restart the application to apply them.",
   pendingWebNotice: "Plugin updates are installed. Restart the application normally to apply them.",
   unconfirmedNotice: "The update result is not confirmed. View update status to check its status.",
-  availableCount: "{count} plugin updates available",
+  availableCount: "{count} plugins will update to the verified combination",
   check: "Check for updates",
-  update: "Update to {version}",
   installed: "Installed",
   host: "Running in background",
   client: "Running in interface",
@@ -45,6 +43,8 @@ export const en = {
   "release-not-published": "This channel has no release for this plugin.",
   "plan-unconfirmed": "Check for updates again before installing.",
   conditions: "This update does not meet the installation requirements.",
+  "migration-required":
+    "This combination requires a separate data migration. Keep the installed versions until migration is complete.",
   "channel-older":
     "The channel version is older than the installed version. Keep the installed version and check again after a newer release is published.",
   "content-mismatch":
@@ -73,7 +73,6 @@ export const en = {
 export const zh: Record<keyof typeof en, string> = {
   title: "插件更新",
   newVersion: "新版本 {version}",
-  updateShort: "更新",
   updateAll: "全部更新",
   restartNow: "一键重启",
   restartError: "重启失败，请重试。",
@@ -82,9 +81,8 @@ export const zh: Record<keyof typeof en, string> = {
   pendingNotice: "插件更新已安装，需要重启应用后生效。",
   pendingWebNotice: "插件更新已安装，请正常重启应用后生效。",
   unconfirmedNotice: "更新结果暂未确认，请查看更新状态。",
-  availableCount: "{count} 个插件可更新",
+  availableCount: "已验证组合中有 {count} 个插件需更新",
   check: "检查更新",
-  update: "更新至 {version}",
   installed: "已安装",
   host: "后台运行版本",
   client: "界面运行版本",
@@ -117,6 +115,7 @@ export const zh: Record<keyof typeof en, string> = {
   "release-not-published": "此频道尚未发布该插件。",
   "plan-unconfirmed": "请重新检查更新后再安装。",
   conditions: "此更新不满足安装条件。",
+  "migration-required": "此组合需要先完成独立的数据迁移。迁移完成前保留当前版本。",
   "channel-older": "频道版本早于已安装版本。请保留已安装版本，等待较新版本发布后重新检查。",
   "content-mismatch": "频道中相同版本的内容不一致。请保留已安装版本，并联系发布者发布新版本。",
   inactive: "插件尚未装载，启用并重启后可更新。",

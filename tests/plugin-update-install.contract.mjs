@@ -37,7 +37,7 @@ test(
     for (const options of [
       { customStore: false },
       { customStore: true },
-      { customStore: true, allUpdates: true },
+      { customStore: true, allUpdates: true, strictSuitePeers: true },
     ]) {
       await t.test(
         options.allUpdates
@@ -51,6 +51,7 @@ test(
             draft: "keep",
             selection: "sales",
           });
+          assert.equal(result.sessionPreserved, true);
         },
       );
     }
