@@ -36,8 +36,7 @@ function start(ownsLock) {
       if (name === "./lib/main.js") {
         assert.equal(env.GEA_COMPANY_CLIENT, "1");
         events.push("official-main");
-      }
-      else throw Error(name);
+      } else throw Error(name);
     },
   });
   return events;
@@ -62,7 +61,8 @@ test("the bundled model picker policy applies only in the company client", () =>
   });
   assert.deepEqual(document.errors, []);
   const rows = document.toJS();
-  const expression = rows.find((row) => row.id === "ui-model-selection").config.visibleProviders.expression;
+  const expression = rows.find((row) => row.id === "ui-model-selection").config.visibleProviders
+    .expression;
   const ordinary = runInNewContext(expression, { process: { env: {} } });
   assert.equal(ordinary, undefined);
   const company = runInNewContext(expression, { process: { env: { GEA_COMPANY_CLIENT: "1" } } });

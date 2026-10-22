@@ -155,10 +155,7 @@ test("MPS static SQL copies require the frozen Workbench blob and reject altered
   const record = await readPreparedWorkbench(fixture);
   assert.ok(record.files[fixture.output]);
   writeFileSync(join(fixture.prepared, fixture.output), "changed SQL config\n");
-  await assert.rejects(
-    readPreparedWorkbench(fixture),
-    /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
-  );
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 
 function copiedSkillFixture(

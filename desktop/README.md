@@ -37,7 +37,6 @@ GEA_DESKTOP_PAYLOAD_ROOT=.runtime/electron-build/payload pnpm run package:deskto
 
 入口会先把 `desktop/` 壳文件复制到隔离 staging 目录，再调用固定的 `electron-builder.cjs`；父工作区的 `package.json` 和 `node_modules` 不会进入 `app.asar`。`GEA_DESKTOP_PAYLOAD_ROOT` 必须包含 `<mac|win>/payload`，运行依赖和原生模块按平台分别准备。需要只生成解包目录时追加 `--dir`，需要保留 staging 供排查时追加 `--keep-staging`。
 
-
 Windows 安装耗时专项使用 [一次运行采集说明](INSTALL-DIAGNOSTICS-README.md)。诊断包必须携带与 `diagnostic-package.json` 摘要一致的完整 EXE，不能用普通安装包替换。该包仅供专项试用，不自动推进桌面频道。
 
 诊断构建用 `prepare-installer-diagnostics.mjs <app-builder-lib目录> <新模板目录>` 给固定 26.15.3 模板加阶段日志，再用 `build-diagnostic-installer.cjs <node_modules目录> <独立桌面导出目录> <win-unpacked目录> <新模板目录> <输出目录>` 复用同一 payload；设置 `GEA_DESKTOP_TARGET=win`、`GEA_INSTALL_TIMING_LOG=1` 及 `GEA_DESKTOP_PAYLOAD_ROOT`。导出目录中的 `build/installer-timing.nsh` 必须来自本次源码。不修改共享构建缓存，不更换默认 7z 算法。`installer-timing-probe.nsi` 在 Windows 上验证日志追加、寄存器/栈及错误标记不受日志成功或失败影响；云端 clean/upgrade 验证不能冒充 Windows 10/11 实机性能验收。
@@ -119,6 +118,7 @@ MSIX 只作为 Windows 10/11 验证路线，不进入现有正式频道。当前
 Windows payload 准备显式使用 `virtualStoreDirMaxLength: 60`，Mac 使用 120，安装器使用相同目标参数。仅对已知 hoisted/layout 5 图内部的虚拟目录记录做相对路径转换，在复制后及安装后各处理一次；真实 store、长度或其他布局不兼容仍保留 pnpm 重建兜底。旧 Windows 图可能需要一次布局迁移，不保证首次升级完全免重建。
 
 准备插件后，桌面逐项核对浏览器源文件摘要；仅当内容与随包编译记录一致时复用压缩文件及源码映射，保持重复启动性能。更新后内容不同的插件使用新文件，不被旧优化产物覆盖。
+
 ## GitLab 更新渠道
 
 `release-sources.json` 改为公司 GitLab 12 的公开发行库 raw JSON，正式/测试频道分别读取
@@ -145,11 +145,11 @@ Windows 包验收先记录 GitLab 网络可达性。能访问公司网络时执�
 
 三个更新频道都改成**按优先级排列的地址列表**，宿主按顺序尝试，第一个读到的清单生效，全部读不到才报错（错误码取最后一个来源）。当前顺序是公司 OSS 在前、公司 GitLab 在后，这样外网或客户网络连不上内网时仍能更新：
 
-| 频道 | 配置位置 | OSS 地址（排第一） |
-|---|---|---|
-| 插件正式/测试 | `release-sources.json` | `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-{stable,test}.json` |
-| HTML 插件（库存等业务入口） | `html-plugins.mjs` 的 `HTML_PLUGIN_CHANNELS` | `.../plugin-release/channels/gea-html-preview.json` |
-| 桌面安装包正式/测试 | `desktop-release-sources.json` | `.../client-release/raw/channels/desktop-{stable,test}.json` |
+| 频道                        | 配置位置                                     | OSS 地址（排第一）                                                                                     |
+| --------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 插件正式/测试               | `release-sources.json`                       | `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/dsh-0.1.6-{stable,test}.json` |
+| HTML 插件（库存等业务入口） | `html-plugins.mjs` 的 `HTML_PLUGIN_CHANNELS` | `.../plugin-release/channels/gea-html-preview.json`                                                    |
+| 桌面安装包正式/测试         | `desktop-release-sources.json`               | `.../client-release/raw/channels/desktop-{stable,test}.json`                                           |
 
 三条频道的兜底来源都是公司 GitLab raw。规则细节：
 
@@ -164,7 +164,6 @@ Windows 包验收先记录 GitLab 网络可达性。能访问公司网络时执�
 本版包含系统凭据授权等待修复，以及客户端组合脚本的换行计数优化。`prepare-payload.py` 使用 pnpm 的 `patchedDependencies` 应用 `patches/client-modules-newline-scan.patch`；官方归档保持原始字节，补丁和锁随桌面版本固定。插件安装保留补丁声明，重建依赖后仍使用相同实现。上游源码对应 deepseek-harness PR #10。
 
 Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 秒；此数值不代表下载安装后的首次启动或 Windows 耗时。Mac 默认仍为 ad-hoc 内测签名，正式分发需 Developer ID 签名与 Apple 公证。
-
 
 ## 插件更新耗时诊断
 
@@ -209,7 +208,6 @@ Mac 本机构建对照中，再次启动中位耗时由 2.875 秒降至 2.105 �
 内置 DSH 0.1.6 公司核心，更新下载状态靠近设置入口显示，并提供进行中的动画；准备完成后的“下载并重启”操作改为红色强调。
 业务版移除默认的本地工作区快捷打开按钮，仍保留“选择打开方式”菜单。
 数据代际仍为 2，不修改用户登录、会话或工作区。
-
 
 ## 0.0.23 安装与存储候选
 
