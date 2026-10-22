@@ -58,15 +58,9 @@ jobs:
       - name: Validate benchmark identity
         run: |
           node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
-          node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs';
-          writeFileSync(process.env.RUNNER_TEMP + '/ci-benchmark-event.json', JSON.stringify({before:process.env.CI_BENCH_SOURCE_BASE,after:process.env.CI_BENCH_SOURCE_HEAD,ref:'refs/heads/main',repository:{full_name:process.env.GITHUB_REPOSITORY}}));
-          NODE
       - name: Classify actual Git changes
         id: plan
-        env:
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
-        run: node scripts/source-quality.mjs --phase plan
+        run: SOURCE_HEAD_SHA="$CI_BENCH_SOURCE_HEAD" SOURCE_BASE_SHA="$CI_BENCH_SOURCE_BASE" node scripts/source-quality.mjs --phase plan
       - name: Check changed workflow semantics
         if: steps.plan.outputs.workflows == 'true'
         shell: bash
@@ -102,14 +96,8 @@ jobs:
       - name: Validate benchmark identity
         run: |
           node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
-          node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs';
-          writeFileSync(process.env.RUNNER_TEMP + '/ci-benchmark-event.json', JSON.stringify({before:process.env.CI_BENCH_SOURCE_BASE,after:process.env.CI_BENCH_SOURCE_HEAD,ref:'refs/heads/main',repository:{full_name:process.env.GITHUB_REPOSITORY}}));
-          NODE
       - name: Check applicable repository source
-        env:
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
-        run: node scripts/source-quality.mjs --phase check
+        run: SOURCE_HEAD_SHA="$CI_BENCH_SOURCE_HEAD" SOURCE_BASE_SHA="$CI_BENCH_SOURCE_BASE" node scripts/source-quality.mjs --phase check
       - name: Check committed package version
         if: needs.source-plan.outputs.engineering == 'true'
         run: node scripts/generate-plugin-package-version.mjs --check
@@ -134,9 +122,16 @@ jobs:
       - name: Select affected behavior and type checks before preparation
         if: needs.source-plan.outputs.engineering == 'true'
         id: affected
-        env:
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
-        run: node scripts/source-quality.mjs --phase affected-plan
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { resolve } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const env = {...process.env, SOURCE_HEAD_SHA:process.env.CI_BENCH_SOURCE_HEAD, SOURCE_BASE_SHA:process.env.CI_BENCH_SOURCE_BASE, GITHUB_OUTPUT:''};
+          const result = JSON.parse(execFileSync(process.execPath,['scripts/source-quality.mjs','--phase','plan'],{env,encoding:'utf8'}));
+          const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
+          await sourceChecks(result, "affected-plan");
+          NODE
       - name: Select registered Core for fixed dependency links and SDK consumers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         id: core
@@ -228,9 +223,16 @@ jobs:
           NODE
       - name: Prepare dependencies consumed by selected checks
         if: steps.affected.outputs.dependencies == 'true'
-        env:
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
-        run: node scripts/source-quality.mjs --phase affected-prepare
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { resolve } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const env = {...process.env, SOURCE_HEAD_SHA:process.env.CI_BENCH_SOURCE_HEAD, SOURCE_BASE_SHA:process.env.CI_BENCH_SOURCE_BASE, GITHUB_OUTPUT:''};
+          const result = JSON.parse(execFileSync(process.execPath,['scripts/source-quality.mjs','--phase','plan'],{env,encoding:'utf8'}));
+          const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
+          await sourceChecks(result, "affected-prepare");
+          NODE
       - name: Save isolated benchmark package downloads
         if: success() && inputs.benchmark_case == 'cold' && steps.affected.outputs.dependencies == 'true'
         uses: actions/cache/save@v4
@@ -243,9 +245,16 @@ jobs:
           key: ${{ steps.downloads-cache.outputs.cache-primary-key }}
       - name: Run affected behavior and real TypeScript checks
         if: needs.source-plan.outputs.engineering == 'true'
-        env:
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
-        run: node scripts/source-quality.mjs --phase affected-check
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { resolve } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const env = {...process.env, SOURCE_HEAD_SHA:process.env.CI_BENCH_SOURCE_HEAD, SOURCE_BASE_SHA:process.env.CI_BENCH_SOURCE_BASE, GITHUB_OUTPUT:''};
+          const result = JSON.parse(execFileSync(process.execPath,['scripts/source-quality.mjs','--phase','plan'],{env,encoding:'utf8'}));
+          const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
+          await sourceChecks(result, "affected-check");
+          NODE
       - name: Keep source selection and executed check evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -293,14 +302,9 @@ jobs:
       - name: Validate benchmark identity
         run: |
           node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
-          node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs';
-          writeFileSync(process.env.RUNNER_TEMP + '/ci-benchmark-event.json', JSON.stringify({before:process.env.CI_BENCH_SOURCE_BASE,after:process.env.CI_BENCH_SOURCE_HEAD,ref:'refs/heads/main',repository:{full_name:process.env.GITHUB_REPOSITORY}}));
-          NODE
       - name: Require successful applicable checks
         env:
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
           PLAN_RESULT: ${{ needs.source-plan.result }}
           CHECK_RESULT: ${{ needs.source-checks.result }}
           DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
-        run: node scripts/source-quality.mjs --phase final
+        run: SOURCE_HEAD_SHA="$CI_BENCH_SOURCE_HEAD" SOURCE_BASE_SHA="$CI_BENCH_SOURCE_BASE" node scripts/source-quality.mjs --phase final
