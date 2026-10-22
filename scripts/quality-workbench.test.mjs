@@ -212,6 +212,7 @@ test("customer and fulfillment build copies require identical caller-frozen Mana
     "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
     "inventory-orderworkbench/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
     "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-orderfulfillment/README.md",
     "inventory-orderfulfillment/SOURCE.json",
