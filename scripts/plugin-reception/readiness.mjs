@@ -3,6 +3,29 @@ import { setTimeout } from "node:timers/promises";
 
 export const FIBER_ACTIVE = 2;
 
+export function createReceptionReady() {
+  let ready = false;
+  const listeners = new Set();
+  return {
+    service: {
+      onReady(listener) {
+        if (ready) {
+          listener();
+          return () => {};
+        }
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    },
+    commit() {
+      if (ready) return;
+      ready = true;
+      for (const listener of [...listeners]) listener();
+      listeners.clear();
+    },
+  };
+}
+
 export async function waitForMainPlugins(loader, names, deadline) {
   while (true) {
     const entries = [...loader.entries()];

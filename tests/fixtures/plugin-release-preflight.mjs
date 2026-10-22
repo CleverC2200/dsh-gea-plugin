@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { companyPackageNames } from "../../src/shared/plugin-release.mjs";
+import { upgradeObserverSha256 } from "../../scripts/step-upgrade-receipts.mjs";
 import { artifactSetSha256 } from "../../scripts/plugin-reception/contract.mjs";
 const [W, M, G] = companyPackageNames;
 const defaultCore = {
@@ -154,11 +155,7 @@ export async function createReleasePreflightFixture(t, options = {}) {
       schema: 1,
       status: "step-upgrades-verified",
       core,
-      observerSha256: hash(
-        await readFile(
-          new URL("../../scripts/plugin-reception/observe-worker.mjs", import.meta.url),
-        ),
-      ),
+      observerSha256: await upgradeObserverSha256(),
       targets: delivery.packages,
       paths: [],
     };

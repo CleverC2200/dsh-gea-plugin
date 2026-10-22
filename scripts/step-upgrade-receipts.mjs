@@ -4,6 +4,24 @@ import { isAbsolute } from "node:path";
 import { artifactSetSha256, digest } from "./plugin-reception/contract.mjs";
 import { companyPackageNames, planPluginUpdate } from "../src/shared/plugin-release.mjs";
 
+export async function upgradeObserverSha256() {
+  const files = [
+    "step-upgrade-receipts.mjs",
+    "verify-step-upgrades.mjs",
+    "plugin-reception/observe-worker.mjs",
+    "plugin-reception/readiness.mjs",
+    "plugin-reception/contract.mjs",
+    "plugin-reception/preset-discovery.mjs",
+  ];
+  return digest(
+    JSON.stringify(
+      await Promise.all(
+        files.map(async (file) => [file, digest(await readFile(new URL(file, import.meta.url)))]),
+      ),
+    ),
+  );
+}
+
 export async function verifyUpgradeReceipts(file, starts, targets) {
   const files = Array.isArray(file) ? file : [file];
   assert(
@@ -13,9 +31,7 @@ export async function verifyUpgradeReceipts(file, starts, targets) {
   const receipts = await Promise.all(
     files.map(async (path) => ({ path, bytes: await readFile(path) })),
   );
-  const observer = await readFile(
-    new URL("./plugin-reception/observe-worker.mjs", import.meta.url),
-  );
+  const observer = await upgradeObserverSha256();
   const targetArtifacts = targets.map(({ release }) => ({
     name: release.name,
     version: release.version,
@@ -29,7 +45,7 @@ export async function verifyUpgradeReceipts(file, starts, targets) {
         Array.isArray(receipt.paths),
       "RELEASE_UPGRADE_RUNTIME_REQUIRED",
     );
-    assert.equal(receipt.observerSha256, digest(observer), "RELEASE_UPGRADE_OBSERVER_CHANGED");
+    assert.equal(receipt.observerSha256, observer, "RELEASE_UPGRADE_OBSERVER_CHANGED");
     assert.equal(
       artifactSetSha256(receipt.targets),
       artifactSetSha256(targetArtifacts),

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout } from "node:timers/promises";
-import { FIBER_ACTIVE, waitForMainPlugins } from "./readiness.mjs";
+import { FIBER_ACTIVE, waitForMainPlugins, createReceptionReady } from "./readiness.mjs";
 
 test("waits for a pending Host to finish asynchronous service initialization", async () => {
   const entry = {
@@ -51,4 +51,16 @@ test("missing, duplicate and disabled mounts keep their original failures", asyn
     ),
     /MAIN_PLUGIN_DISABLED/,
   );
+});
+
+test("reception readiness notifies late plugin startup listeners once, matching the launcher", () => {
+  const readiness = createReceptionReady();
+  const observed = [];
+  readiness.service.onReady(() => observed.push("early"));
+  const cancel = readiness.service.onReady(() => observed.push("cancelled"));
+  cancel();
+  readiness.commit();
+  readiness.service.onReady(() => observed.push("late"));
+  readiness.commit();
+  assert.deepEqual(observed, ["early", "late"]);
 });

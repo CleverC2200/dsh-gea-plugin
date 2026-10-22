@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { inspectPluginArchive } from "../src/host/plugin-release-source.ts";
 import { archiveMatches } from "../src/host/plugin-update-archive.mjs";
+import { upgradeObserverSha256 } from "./step-upgrade-receipts.mjs";
 import { readSupportedCore } from "./supported-cores.mjs";
 import { artifactSetSha256, digest, pluginNames } from "./plugin-reception/contract.mjs";
 
@@ -23,6 +24,7 @@ export async function verifyStepUpgrades(inputFile, output) {
     core = await realpath(input.core),
     pnpm = await realpath(input.pnpm);
   const identity = await readSupportedCore(core);
+  const observerSha256 = await upgradeObserverSha256();
   for (const protectedRoot of [core, dirname(import.meta.dirname)])
     assert(!within(protectedRoot, output), "UPGRADE_OUTPUT_IN_PROTECTED_INPUT");
   assert(Array.isArray(input.starts) && input.starts.length > 0, "UPGRADE_STARTS_REQUIRED");
@@ -196,6 +198,7 @@ export async function verifyStepUpgrades(inputFile, output) {
           receipt,
           upgrade: { protectionRequired: true, expectedBlocked },
         });
+        assert.equal(await upgradeObserverSha256(), observerSha256, "UPGRADE_OBSERVER_CHANGED");
         await child(join(worker, "observe-worker.mjs"), [parameters], env, receipt + ".log");
         const observationFile = receipt + ".runtime.json",
           bytes = await readFile(observationFile),
@@ -231,7 +234,8 @@ export async function verifyStepUpgrades(inputFile, output) {
       result.paths.push(path);
     }
   result.status = "step-upgrades-verified";
-  result.observerSha256 = digest(await readFile(join(worker, "observe-worker.mjs")));
+  assert.equal(await upgradeObserverSha256(), observerSha256, "UPGRADE_OBSERVER_CHANGED");
+  result.observerSha256 = observerSha256;
   await save(join(output, "result.json"), result);
   return result;
 }
