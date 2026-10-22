@@ -406,3 +406,35 @@ test("pnpm local bin wiring is inventoried separately while shipped nested node_
     /identity changed/,
   );
 });
+
+test("the workflow expands shard planning and workers only after every producer succeeds", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../.github/workflows/quality.yml", import.meta.url), "utf8");
+  for (const name of ["plan-test-shards", "test-shards"]) {
+    const job = source.split(`\n  ${name}:\n`)[1].split(/\n  [a-z][\w-]*:\n/)[0];
+    const dependencies = /^    needs: \[([^\]]+)\]/m.exec(job)?.[1].split(/,\s*/);
+    assert.ok(dependencies?.includes("gates"), `${name} must await all producer jobs`);
+    const condition = /^    if: \$\{\{ (.+) \}\}$/m.exec(job)?.[1];
+    assert.ok(condition, `${name} requires an explicit scheduling condition`);
+    const evaluate = (producer, cancelled = false) =>
+      Function(
+        "needs",
+        "always",
+        "cancelled",
+        `return (${condition.replace(/\.([\w]+(?:-[\w]+)+)/g, '["$1"]')})`,
+      )(
+        {
+          "candidate-scope": { result: "success" },
+          "source-plan": { result: "success", outputs: { applicability: "source" } },
+          "plan-test-shards": { result: "success", outputs: { "has-shards": "true" } },
+          gates: { result: producer },
+        },
+        () => true,
+        () => cancelled,
+      );
+    for (const producer of ["failure", "cancelled", "skipped"])
+      assert.equal(evaluate(producer), false, `${name}: ${producer}`);
+    assert.equal(evaluate("success", true), false, `${name}: workflow cancelled`);
+    assert.equal(evaluate("success"), true, `${name}: successful source candidate`);
+  }
+});

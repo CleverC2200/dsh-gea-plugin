@@ -8,7 +8,7 @@ import { prepareDependencies, digest } from "./development-dependencies.mjs";
 import { developmentTask } from "./development-tasks.mjs";
 import { packRaw } from "./pack-raw.mjs";
 
-function fixture(t, { dotfile = false, suiteManifests = false } = {}) {
+function fixture(t, { dotfile = false, suiteManifests = false, repo = "dsh-agent-manage" } = {}) {
   const root = fs.mkdtempSync(join(os.tmpdir(), "development-task-"));
   t.after(() => {
     delete process.env.DSH_BUILD_ADMISSION;
@@ -16,10 +16,15 @@ function fixture(t, { dotfile = false, suiteManifests = false } = {}) {
   });
   t.mock.method(os, "tmpdir", () => root);
   t.mock.method(fs, "statfsSync", () => ({ bavail: 100 * 1024 ** 3, bsize: 1 }));
-  const path = join(root, "dsh-agent-manage");
+  const path = join(root, repo);
   fs.mkdirSync(path);
   const manifest = {
-    name: "dsh-agent-manage",
+    name:
+      repo === "dsh-gea-plugin"
+        ? "@cleverc2200/gea-dsh-prototype"
+        : repo === "dsh-agent-workbench"
+          ? "@cleverc2200/dsh-agent-workbench"
+          : repo,
     version: "1.0.0",
     packageManager: "pnpm@1.0.0",
     scripts: { build: "fixture", "build:client": "fixture" },
@@ -60,7 +65,7 @@ function fixture(t, { dotfile = false, suiteManifests = false } = {}) {
   const owner = {
     path,
     manifest,
-    repo: "dsh-agent-manage",
+    repo,
     manager: "pnpm",
     lock: "pnpm-lock.yaml",
   };
@@ -73,7 +78,11 @@ function fixture(t, { dotfile = false, suiteManifests = false } = {}) {
     );
   };
   const compile = () => {
-    for (const file of ["lib/host.js", "client/index.js"]) {
+    const files =
+      repo === "dsh-gea-plugin"
+        ? ["lib/host.js", "lib/client.js"]
+        : ["lib/host.js", "client/index.js"];
+    for (const file of files) {
       fs.mkdirSync(join(path, file, ".."), { recursive: true });
       fs.writeFileSync(
         join(path, file),
@@ -325,4 +334,220 @@ test("a shared tool verifies SDK inputs through the current consumer's Manage ch
   );
   await assert.rejects(prepareDependencies(owner), /CURRENT_OWNER_SDK/);
   assert.equal(fs.existsSync(join(owner.path, "node_modules")), false);
+});
+
+function peerFixture(root, repo) {
+  const path = join(root, repo);
+  const write = (file, content) => {
+    fs.mkdirSync(join(path, file, ".."), { recursive: true });
+    fs.writeFileSync(join(path, file), content);
+  };
+  const manifest = {
+    name: repo === "dsh-agent-workbench" ? "@cleverc2200/dsh-agent-workbench" : repo,
+    version: "1.0.0",
+    type: "module",
+    exports: { ".": { types: "./lib/types/index.d.ts", default: "./lib/index.js" } },
+  };
+  write("package.json", JSON.stringify(manifest));
+  write("lib/index.js", 'export { value } from "./value.js";');
+  write("lib/value.js", 'export const value = "first";');
+  write("lib/types/index.d.ts", "export declare const value: string;");
+  write("business-resources/unrelated/SKILL.md", "first-resource");
+  const git = (...args) =>
+    cp.execFileSync("git", ["-C", path, ...args], { encoding: "utf8" }).trim();
+  git("init", "-q");
+  const commit = () => {
+    git("add", ".");
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "-qm",
+      "peer change",
+    );
+  };
+  commit();
+  return { path, write, manifest, commit };
+}
+
+test("GEA build reuses linked peer resource and description commits while public bytes still rebuild", async (t) => {
+  const { root, path, owner, install, compile } = fixture(t, { repo: "dsh-gea-plugin" });
+  const peer = peerFixture(root, "dsh-agent-workbench");
+  owner.manifest.dependencies[peer.manifest.name] = "link:../dsh-agent-workbench";
+  fs.writeFileSync(join(path, "package.json"), JSON.stringify(owner.manifest));
+  install();
+  fs.mkdirSync(join(path, "node_modules/@cleverc2200"));
+  fs.symlinkSync(peer.path, join(path, "node_modules", peer.manifest.name), "dir");
+  const original = cp.execFileSync;
+  t.mock.method(cp, "execFileSync", (file, args, options) =>
+    args.join(" ") === "pnpm --version" ? "1.0.0\n" : original(file, args, options),
+  );
+  t.mock.method(cp, "spawnSync", () => {
+    compile();
+    return { status: 0 };
+  });
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  peer.write("business-resources/unrelated/SKILL.md", "second-resource");
+  peer.manifest.description = "a description";
+  peer.write("package.json", JSON.stringify(peer.manifest));
+  peer.commit();
+  assert.equal((await developmentTask("build", {}, path)).status, "reused");
+  peer.write("lib/static/unrelated/SKILL.md", "unconsumed copied resource");
+  assert.equal((await developmentTask("build", {}, path)).status, "reused");
+  peer.write("lib/types/index.d.ts", "export declare const value: number;");
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  peer.write("lib/types/index.d.ts", 'export { value } from "./value.js";');
+  peer.write("lib/types/value.d.ts", "export declare const value: number;");
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  peer.write("lib/types/value.d.ts", "export declare const value: boolean;");
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  peer.write("lib/value.js", 'export const value = "second";');
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+});
+
+test("Manage build ignores GEA business resources but tracks its directly executed build tools", async (t) => {
+  const { root, path, install, compile } = fixture(t);
+  const gea = peerFixture(root, "dsh-gea-plugin");
+  gea.write("scripts/build-admission.mjs", "first tool");
+  install();
+  const original = cp.execFileSync;
+  t.mock.method(cp, "execFileSync", (file, args, options) =>
+    args.join(" ") === "pnpm --version" ? "1.0.0\n" : original(file, args, options),
+  );
+  t.mock.method(cp, "spawnSync", () => {
+    compile();
+    return { status: 0 };
+  });
+  assert.equal((await developmentTask("build", { target: "client" }, path)).status, "built");
+  gea.write("business-resources/unrelated/SKILL.md", "changed resource");
+  gea.commit();
+  assert.equal((await developmentTask("build", { target: "client" }, path)).status, "reused");
+  gea.write("scripts/build-admission.mjs", "changed tool");
+  assert.equal((await developmentTask("build", { target: "client" }, path)).status, "built");
+});
+
+test("Workbench keeps its copied Manage resources, compute sources and provenance manifest as build inputs", async (t) => {
+  const { root, path, install, compile } = fixture(t, { repo: "dsh-agent-workbench" });
+  const manage = peerFixture(root, "dsh-agent-manage");
+  manage.write("src/inventory-compute/calculate.ts", "first compute");
+  manage.commit();
+  const gea = peerFixture(root, "dsh-gea-plugin");
+  install();
+  const original = cp.execFileSync;
+  t.mock.method(cp, "execFileSync", (file, args, options) =>
+    args.join(" ") === "pnpm --version" ? "1.0.0\n" : original(file, args, options),
+  );
+  t.mock.method(cp, "spawnSync", () => {
+    compile();
+    return { status: 0 };
+  });
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  gea.write("business-resources/unrelated/SKILL.md", "changed resource");
+  assert.equal((await developmentTask("build", {}, path)).status, "reused");
+  manage.write("business-resources/unrelated/SKILL.md", "changed copied resource");
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  manage.write("src/inventory-compute/calculate.ts", "changed compute");
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+  manage.manifest.description = "changed provenance";
+  manage.write("package.json", JSON.stringify(manage.manifest));
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+});
+
+test("dependency preparation still binds complete linked peer manifests and commits", async (t) => {
+  const { root, path, owner, install } = fixture(t);
+  const peer = peerFixture(root, "dsh-agent-workbench");
+  owner.manifest.dependencies[peer.manifest.name] = "link:../dsh-agent-workbench";
+  fs.writeFileSync(join(path, "package.json"), JSON.stringify(owner.manifest));
+  t.mock.method(cp, "spawnSync", () => {
+    install();
+    fs.mkdirSync(join(path, "node_modules/@cleverc2200"), { recursive: true });
+    const link = join(path, "node_modules", peer.manifest.name);
+    if (!fs.existsSync(link)) fs.symlinkSync(peer.path, link, "dir");
+    return { status: 0 };
+  });
+  assert.equal((await prepareDependencies(owner)).status, "prepared");
+  assert.equal((await prepareDependencies(owner)).status, "reused");
+  peer.manifest.description = "changed description";
+  peer.write("package.json", JSON.stringify(peer.manifest));
+  peer.commit();
+  assert.equal((await prepareDependencies(owner)).status, "prepared");
+});
+
+test("a changed package version compiles again and never certifies a moving generated stamp", async (t) => {
+  const { path, owner, install, compile } = fixture(t);
+  install();
+  const original = cp.execFileSync;
+  t.mock.method(cp, "execFileSync", (file, args, options) =>
+    args.join(" ") === "pnpm --version" ? "1.0.0\n" : original(file, args, options),
+  );
+  t.mock.method(cp, "spawnSync", () => {
+    compile();
+    if (JSON.parse(fs.readFileSync(join(path, "package.json"))).version === "2.0.0") {
+      fs.mkdirSync(join(path, "src"), { recursive: true });
+      fs.writeFileSync(
+        join(path, "src/plugin-package-version.ts"),
+        'export const version = "2.0.0";',
+      );
+      fs.writeFileSync(join(path, "lib/host.js"), 'export const version = "2.0.0";');
+    }
+    return { status: 0 };
+  });
+  const build = await developmentTask("build", {}, path);
+  const receipt = fs.readFileSync(build.receipt, "utf8");
+  owner.manifest.version = "2.0.0";
+  fs.writeFileSync(join(path, "package.json"), JSON.stringify(owner.manifest));
+  await assert.rejects(developmentTask("build", {}, path), /DEVELOPMENT_INPUT_CHANGED/);
+  assert.equal(fs.readFileSync(build.receipt, "utf8"), receipt);
+  assert.equal(
+    fs.readFileSync(join(path, "lib/host.js"), "utf8"),
+    'export const version = "2.0.0";',
+  );
+  assert.equal((await developmentTask("build", {}, path)).status, "built");
+});
+
+test("local preflight runs on dirty source without a Core, package manager or dependencies", async (t) => {
+  const { path, git } = fixture(t);
+  const original = cp.execFileSync;
+  let managerChecks = 0;
+  t.mock.method(cp, "execFileSync", (file, args, options) => {
+    if (args.join(" ") === "pnpm --version") {
+      managerChecks++;
+      return "1.0.0\n";
+    }
+    return original(file, args, options);
+  });
+  const manifest = JSON.parse(fs.readFileSync(join(path, "package.json")));
+  manifest.scripts["check:knowledge"] = "node scripts/check-agent-knowledge.mjs";
+  fs.writeFileSync(join(path, "package.json"), JSON.stringify(manifest));
+  fs.mkdirSync(join(path, "docs"));
+  fs.writeFileSync(
+    join(path, "docs/agent-knowledge.json"),
+    JSON.stringify({ commandRoots: { "README.md": ["../../official-latest-standard"] } }),
+  );
+  fs.mkdirSync(join(path, "scripts"));
+  for (const file of ["source-quality.mjs", "workflow-preflight.mjs"])
+    fs.copyFileSync(new URL(file, import.meta.url), join(path, "scripts", file));
+  git("add", "scripts");
+  git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "commit",
+    "-qm",
+    "cold tools",
+  );
+  fs.writeFileSync(join(path, "new.mjs"), "export const broken = ;");
+  await assert.rejects(developmentTask("preflight", {}, path), /DEVELOPMENT_PREFLIGHT_FAILED/);
+  fs.writeFileSync(join(path, "new.mjs"), "export const value = 1;");
+  const checked = await developmentTask("preflight", {}, path);
+  assert.equal(managerChecks, 0);
+  assert.equal(checked.status, "passed");
+  assert.equal(checked.scope, "local-working-tree");
+  assert.equal(checked.knowledge.status, "deferred");
+  assert.match(checked.knowledge.missingInputs[0], /official-latest-standard/);
+  assert.equal(fs.existsSync(join(path, "node_modules")), false);
+  assert.equal(fs.existsSync(join(path, "lib")), false);
 });

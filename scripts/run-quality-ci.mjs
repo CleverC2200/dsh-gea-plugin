@@ -116,6 +116,7 @@ try {
       "core-source": { type: "string" },
       "core-head": { type: "string" },
       "prepare-inputs": { type: "boolean" },
+      "source-only": { type: "boolean" },
       "final-group-sha256": { type: "string" },
       "final-group-workbench": { type: "string" },
       "test-shards": { type: "string", default: "1" },
@@ -392,6 +393,7 @@ try {
           }
         : selectCiTests({
             repositories: candidate.repositories,
+            sourceOnly: values["source-only"],
             repo: "dsh-gea-plugin",
             testOwners: JSON.parse(readFileSync("scripts/ci-test-policy.json")).testOwners,
             base:
