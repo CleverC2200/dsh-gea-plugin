@@ -283,7 +283,7 @@ try {
   }
   const standard = docs.get("standard").rows;
   const manageRequire = createRequire(join(v.profile, "package.json"));
-  const { composeStandardPreset, ORCHESTRATION_PRESET } = await import(
+  const { composeStandardPreset, ORCHESTRATION_PRESET, registerOrchestration } = await import(
     pathToFileURL(manageRequire.resolve("dsh-agent-manage/standard-preset"))
   );
   const companyStandard = (await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET))
@@ -309,10 +309,31 @@ try {
     );
     assert.equal(managedOrchestration.customized, false, "ORCHESTRATION_FRESH_PROFILE_REQUIRED");
   }
+  let orchestrationDeclaration;
+  await registerOrchestration({
+    register: async (definitions) => {
+      orchestrationDeclaration = definitions.find((row) => row.id === ORCHESTRATION_PRESET.id);
+      return async () => {};
+    },
+  });
+  if (managedOrchestration)
+    assert.deepEqual(
+      managedOrchestration.skills.map((skill) => skill.name).sort(),
+      [...orchestrationDeclaration.profile.skills].sort(),
+      "ORCHESTRATION_SKILL_DECLARATION_DIFFERS",
+    );
   const orchestrationStandard = projectOrchestrationStandard(companyStandard, {
     prompt: orchestrationPrompt,
     skillDirectory: join(manageRoot, "business-resources/orchestration/skills"),
     managed: Boolean(managedOrchestration),
+    ...(managedOrchestration
+      ? {
+          skillConfig: {
+            skills: managedOrchestration.skills,
+            ...(orchestrationDeclaration.inheritSkills ? { inheritSkills: true } : {}),
+          },
+        }
+      : {}),
   });
   assert.deepEqual(
     docs.get("auto-negotiation").rows,

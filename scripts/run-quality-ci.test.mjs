@@ -450,7 +450,7 @@ test("Linux preparation exports once and failed checks block executable worker i
   );
   assert.match(worker, /always\(\).*needs\.plan-test-shards\.result == 'success'/);
   assert.match(worker, /has-shards == 'true'/);
-  assert.match(worker, /max-parallel: 14/);
+  assert.match(worker, /max-parallel: 8/);
   assert.match(worker, /quality-worker-inputs\.mjs --root.*--early-control.*--early-sha256/);
   assert.match(worker, /--stage tests --execution-plan.*--test-shard/);
   assert.ok(linux.indexOf("--mode prepare-browser") < linux.indexOf("--mode binding"));
@@ -469,7 +469,8 @@ test("Linux preparation exports once and failed checks block executable worker i
     worker,
     /--prepare-sdk|--prepare-inputs|--stage build|actions\/cache|id: cache-path/,
   );
-  assert.doesNotMatch(worker, /needs:.*gates/);
+  assert.match(worker, /needs:.*gates/);
+  assert.match(worker, /always\(\).*needs\.gates\.result == 'success'/);
   assert.match(worker, /GH_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(
     source,
@@ -661,4 +662,111 @@ test("dependency review applies only to consumed GEA dependency inputs on PRs an
   const action = job.steps.find((step) => step.uses === "actions/dependency-review-action@v5");
   assert.equal(action.with["fail-on-severity"], "high");
   assert.equal(action["continue-on-error"], undefined);
+});
+
+test("tool knowledge uses the immutable Core command manifest and refuses unavailable or malformed metadata", (t) => {
+  const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
+  const step = workflow.jobs["source-checks"].steps.find(
+    (step) => step.name === "Read fixed Core command metadata for knowledge checks",
+  );
+  assert.equal(
+    step.if,
+    "steps.affected.outputs.tooling == 'true' && steps.reuse.outputs.hit != 'true'",
+  );
+  const code = step.run
+    .match(/<<'NODE'\n([\s\S]*?)\nNODE/)[1]
+    .replace(
+      /from '[^']+source-tools\.mjs';/,
+      "from " +
+        JSON.stringify(
+          pathToFileURL(resolve("../dsh-agent-workbench/scripts/source-tools.mjs")).href,
+        ) +
+        ";",
+    );
+  for (const mode of ["valid", "http", "malformed"]) {
+    const directory = mkdtempSync(join(tmpdir(), "source-core-metadata-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    mkdirSync(join(directory, "scripts"));
+    writeFileSync(
+      join(directory, "scripts/ci-core-policy.mjs"),
+      `export function ciCores(lane) { if(lane !== 'required') throw Error('WRONG_LANE'); return [{head:'${"a".repeat(40)}'}]; }`,
+    );
+    const fake = `globalThis.fetch=async url => { if(url !== 'https://raw.githubusercontent.com/CleverC2200/deepseek-harness/${"a".repeat(40)}/package.json') throw Error('MUTABLE_SOURCE'); return new Response(JSON.stringify(${mode === "malformed" ? "{}" : '{scripts:{"dev:desktop":"unchanged"}}'}), {status:${mode === "http" ? 503 : 200}}); };`;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", fake + code], {
+      cwd: directory,
+      env: { ...process.env, GITHUB_WORKSPACE: directory },
+      encoding: "utf8",
+    });
+    if (mode === "valid") {
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.equal(
+        JSON.parse(readFileSync(join(directory, "official-latest-standard/package.json"))).scripts[
+          "dev:desktop"
+        ],
+        "unchanged",
+      );
+      assert.equal(existsSync(join(directory, "official-latest-standard/node_modules")), false);
+    } else {
+      assert.notEqual(result.status, 0);
+      assert.match(
+        result.stderr,
+        mode === "http" ? /SOURCE_CORE_METADATA_HTTP/ : /SOURCE_CORE_COMMANDS_REQUIRED/,
+      );
+      assert.equal(existsSync(join(directory, "official-latest-standard")), false);
+    }
+  }
+});
+
+test("merged PR result reuse skips only the validated body and preserves every fallback check", () => {
+  const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
+  const job = workflow.jobs["source-checks"],
+    steps = job.steps;
+  const affected = steps.findIndex((step) => step.id === "affected");
+  const lookup = steps.findIndex((step) => step.id === "reuse");
+  const check = steps.findIndex((step) => step.name === "Check applicable repository source");
+  assert.ok(affected < lookup && lookup < check);
+  assert.equal(job.permissions.actions, "read");
+  assert.equal(workflow.jobs["candidate-quality"].if, "always()");
+  assert.ok(workflow.jobs["candidate-quality"].needs.includes("source-checks"));
+  const evaluate = (condition, hit) =>
+    Function(
+      "steps",
+      "needs",
+      "success",
+      "return (" +
+        condition.replace(
+          /(steps|needs)\.([\w-]+)\.outputs\.([\w-]+)/g,
+          (_, kind, id, output) => `${kind}["${id}"].outputs["${output}"]`,
+        ) +
+        ")",
+    )(
+      {
+        reuse: { outputs: { hit } },
+        affected: { outputs: { dependencies: "true", sdk: "false" } },
+      },
+      { "source-plan": { outputs: { engineering: "true" } } },
+      () => true,
+    );
+  for (const name of [
+    "Check applicable repository source",
+    "Check committed package version",
+    "Enable declared package managers",
+    "Prepare dependencies consumed by selected checks",
+    "Run affected behavior and real TypeScript checks",
+  ]) {
+    const step = steps.find((step) => step.name === name);
+    assert.equal(evaluate(step.if, "true"), false, name);
+    assert.equal(evaluate(step.if, "false"), true, name);
+    assert.equal(step["continue-on-error"], undefined);
+  }
+  const record = steps.findIndex((step) => step.id === "receipt");
+  assert.ok(
+    record >
+      steps.findIndex((step) => step.name === "Run affected behavior and real TypeScript checks"),
+  );
+  assert.match(steps[record].if, /success\(\)/);
+  const store = steps.find((step) => step.name === "Store reusable tool-check receipt");
+  assert.equal(store.with.name, "source-result-${{ github.run_attempt }}");
+  assert.equal(store.if, "steps.receipt.outputs.published == 'true'");
+  assert.equal(workflow.permissions.contents, "read");
 });

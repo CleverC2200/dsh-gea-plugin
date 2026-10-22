@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
 import { ciCores } from "../scripts/ci-core-policy.mjs";
 
 const rc2 = "6f88c3ea2d266ba1825d88bab10d92479a6ffde8";
@@ -88,3 +89,37 @@ for (const [name, change] of [
     assert.throws(() => reader.ciCores("required"), /CI_CORE_POLICY_/);
   });
 }
+
+test("source and manual type workflows execute the required Core policy instead of adaptation", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hosted-required-core-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const gea = join(root, "candidate/dsh-gea-plugin");
+  await mkdir(join(gea, "scripts"), { recursive: true });
+  for (const file of ["ci-core-policy.mjs", "ci-core-policy.json", "supported-cores.json"])
+    await writeFile(
+      join(gea, "scripts", file),
+      await readFile(new URL("../scripts/" + file, import.meta.url)),
+    );
+  await writeFile(
+    join(gea, "scripts/current-core.json"),
+    JSON.stringify({ adaptation: "b".repeat(40) }),
+  );
+  for (const [file, id, cwd] of [
+    ["source-quality.yml", "core", gea],
+    ["delivery-fixtures.yml", "source-types-core", root],
+  ]) {
+    const workflow = await readFile(
+      new URL("../.github/workflows/" + file, import.meta.url),
+      "utf8",
+    );
+    const command = workflow.match(new RegExp("id: " + id + "\\n\\s*run: (.+)"))[1];
+    const output = join(root, id + "-output");
+    const result = spawnSync("sh", ["-c", command], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_OUTPUT: output },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(output, "utf8"), `head=${rc2}\n`);
+  }
+});

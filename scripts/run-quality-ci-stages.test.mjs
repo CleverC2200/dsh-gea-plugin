@@ -126,6 +126,7 @@ function fixture(
   ]) {
     const root = join(job, "quality-upstreams/upstream-reference", name);
     json(join(root, "package.json"), {
+      name: name === "dsh-genui" ? "@changfenhuang/dsh-genui" : name,
       packageManager: "pnpm@11.8.0",
       main: "lib/host.js",
       types: "lib/types/host.d.ts",

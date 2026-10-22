@@ -263,7 +263,10 @@ export function bindReception(manifest, install, observe, bindings = {}) {
   };
 }
 
-export function projectOrchestrationStandard(baseline, { prompt, skillDirectory, managed }) {
+export function projectOrchestrationStandard(
+  baseline,
+  { prompt, skillDirectory, managed, skillConfig },
+) {
   const expected = structuredClone(baseline);
   if (prompt === undefined) {
     assert(!managed, "ORCHESTRATION_PROMPT_REQUIRED");
@@ -273,7 +276,14 @@ export function projectOrchestrationStandard(baseline, { prompt, skillDirectory,
   const persona = expected.find((row) => row.name === "@deepseek-ai/dsh-persona");
   assert(persona, "ORCHESTRATION_STANDARD_CAPABILITIES_REQUIRED");
   persona.config.prefix += "\n\n" + prompt;
-  if (!managed) {
+  if (managed) {
+    assert(Array.isArray(skillConfig?.skills), "ORCHESTRATION_SKILL_DECLARATION_REQUIRED");
+    expected.push({
+      id: "user-agent-skills",
+      name: "dsh-agent-manage/user-agent-skills",
+      config: structuredClone(skillConfig),
+    });
+  } else {
     const filesystem = expected.find((row) => row.name === "@deepseek-ai/dsh-skill-filesystem");
     assert(filesystem, "ORCHESTRATION_STANDARD_CAPABILITIES_REQUIRED");
     filesystem.config = {
