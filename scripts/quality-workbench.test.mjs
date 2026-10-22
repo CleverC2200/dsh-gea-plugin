@@ -198,6 +198,8 @@ test("customer and fulfillment build copies require identical caller-frozen Mana
     "inventory-orderfulfillment/README.md",
     "inventory-orderfulfillment/SOURCE.json",
     "inventory-orderfulfillment/agent-prompt.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
   ]) {
     const fixture = copiedSkillFixture(t, "business-resources/" + suffix);
     const record = await readPreparedWorkbench(fixture);
