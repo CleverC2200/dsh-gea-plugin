@@ -62,11 +62,7 @@ export async function createReleasePreflightFixture(t, options = {}) {
     sources: [],
     targets: [],
     deployed: [{ id: "current", installed: oldGraph("0.0.171-resubmit.2") }],
-    supportedStarts: ["previous-stable", "sales", "resubmit"].map((id, index) => ({
-      id,
-      core,
-      installed: oldGraph(["0.0.167", "0.0.171-sales.1", "0.0.171-resubmit.2"][index]),
-    })),
+    environment: { core, installed: oldGraph("0.0.171-resubmit.2") },
   };
   for (const [index, manifest] of manifests.entries()) {
     const path = join(root, `source-${index}`),

@@ -273,9 +273,11 @@ jobs:
             candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
             candidate/dsh-gea-plugin/.runtime/source-tools.json
             candidate/dsh-gea-plugin/.runtime/source-result-reuse.json
+            candidate/dsh-gea-plugin/.runtime/quality-fast.json
             candidate/dsh-gea-plugin/quality-checks.json
             quality-test-plan.json
             quality-test-execution-plan.json
+            quality-stages.json
             quality-checks.json
             source-checks-scope.json
             quality-stages.json

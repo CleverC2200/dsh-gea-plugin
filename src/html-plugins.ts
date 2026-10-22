@@ -43,6 +43,7 @@ export async function registerHtmlPlugins(
   if (local) ctx.effect(() => () => local.close());
   const lifetime = new AbortController();
   const items: any[] = [];
+  const incompatible: { id: string; code: "INVALID_AGENT_RESOURCE_IDENTITY" }[] = [];
   /** A page Session cannot be reopened under a different GEA principal in this host lifetime. */
   const sessionPrincipals = new Map<string, string>();
   // 预设显示名、顺序与隐藏清单：plugin.json 由别的仓库发布，改选择器不必重发插件包。
@@ -123,8 +124,27 @@ export async function registerHtmlPlugins(
       consumerCode: manifest.gea.consumerCode,
       skills: [manifest.id],
     };
-    if (profile.consumerCode !== manifest.gea.consumerCode)
-      throw Error("INVALID_AGENT_RESOURCE_IDENTITY");
+    if (profile.consumerCode !== manifest.gea.consumerCode) {
+      incompatible.push({ id: manifest.id, code: "INVALID_AGENT_RESOURCE_IDENTITY" });
+      ctx.logger.warn("HTML_RESOURCE_INCOMPATIBLE: %s", manifest.id);
+      for (const page of pages)
+        ctx.effect(() =>
+          ctx.workbenchPages.registerBusinessPage(
+            {
+              id: page.id,
+              kind: "html",
+              label: page.name,
+              pluginId: manifest.id,
+              resourceId: preset,
+              catalog: { surface: page.id, tool: "gea_plugin_page_apply" },
+            },
+            async () => {
+              throw Error("配套插件版本不兼容，请更新 Workbench 后重启应用。");
+            },
+          ),
+        );
+      continue;
+    }
     const capabilityContract = await readPluginContract(directory, manifest.declarations, {
       ...contractFromPlugin({
         id: manifest.id,
@@ -251,6 +271,7 @@ export async function registerHtmlPlugins(
         },
       }),
     );
+  register("/api/gea-html/compatibility", ["GET"], () => json(incompatible), false);
   register(
     "/api/gea-html/identity",
     ["GET"],
