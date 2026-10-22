@@ -669,7 +669,10 @@ test("tool knowledge uses the immutable Core command manifest and refuses unavai
   const step = workflow.jobs["source-checks"].steps.find(
     (step) => step.name === "Read fixed Core command metadata for knowledge checks",
   );
-  assert.equal(step.if, "steps.affected.outputs.tooling == 'true'");
+  assert.equal(
+    step.if,
+    "steps.affected.outputs.tooling == 'true' && steps.reuse.outputs.hit != 'true'",
+  );
   const code = step.run
     .match(/<<'NODE'\n([\s\S]*?)\nNODE/)[1]
     .replace(
@@ -712,4 +715,58 @@ test("tool knowledge uses the immutable Core command manifest and refuses unavai
       assert.equal(existsSync(join(directory, "official-latest-standard")), false);
     }
   }
+});
+
+test("PR result reuse skips only the validated body and falls back to every original check", () => {
+  const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
+  const job = workflow.jobs["source-checks"],
+    steps = job.steps;
+  const affected = steps.findIndex((step) => step.id === "affected");
+  const lookup = steps.findIndex((step) => step.id === "reuse");
+  const check = steps.findIndex((step) => step.name === "Check applicable repository source");
+  assert.ok(affected < lookup && lookup < check);
+  assert.equal(job.permissions.actions, "read");
+  assert.equal(workflow.jobs["candidate-quality"].if, "always()");
+  assert.ok(workflow.jobs["candidate-quality"].needs.includes("source-checks"));
+  const evaluate = (condition, hit) =>
+    Function(
+      "steps",
+      "needs",
+      "success",
+      "return (" +
+        condition.replace(
+          /(steps|needs)\.([\w-]+)\.outputs\.([\w-]+)/g,
+          (_, kind, id, output) => `${kind}["${id}"].outputs["${output}"]`,
+        ) +
+        ")",
+    )(
+      {
+        reuse: { outputs: { hit } },
+        affected: { outputs: { dependencies: "true", sdk: "false" } },
+      },
+      { "source-plan": { outputs: { engineering: "true" } } },
+      () => true,
+    );
+  for (const name of [
+    "Check applicable repository source",
+    "Check committed package version",
+    "Enable declared package managers",
+    "Prepare dependencies consumed by selected checks",
+    "Run affected behavior and real TypeScript checks",
+  ]) {
+    const step = steps.find((step) => step.name === name);
+    assert.equal(evaluate(step.if, "true"), false, name);
+    assert.equal(evaluate(step.if, "false"), true, name);
+    assert.equal(step["continue-on-error"], undefined);
+  }
+  const record = steps.findIndex((step) => step.id === "receipt");
+  assert.ok(
+    record >
+      steps.findIndex((step) => step.name === "Run affected behavior and real TypeScript checks"),
+  );
+  assert.match(steps[record].if, /success\(\)/);
+  const store = steps.find((step) => step.name === "Store reusable tool-check receipt");
+  assert.equal(store.with.name, "source-result-${{ github.run_attempt }}");
+  assert.equal(store.if, "steps.receipt.outputs.published == 'true'");
+  assert.equal(workflow.permissions.contents, "read");
 });
