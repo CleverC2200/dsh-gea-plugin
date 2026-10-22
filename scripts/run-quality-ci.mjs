@@ -255,7 +255,7 @@ try {
     )
       refuse("QUALITY_FINAL_INPUT_REQUIRED");
     const { shardCli, createShardCatalog } = await import("./quality-shards.mjs");
-    const { readHostedRun, assessHostedBudget } = await import("./quality-hosted-budget.mjs");
+    const { readHostedGate } = await import("./quality-hosted-budget.mjs");
     const output = resolve(values["final-output"]);
     mkdirSync(output, { recursive: true });
     let coverage, catalog;
@@ -308,7 +308,10 @@ try {
     }
     let hosted;
     try {
-      const snapshot = await readHostedRun({
+      const { snapshot, assessment } = await readHostedGate({
+        requiredJobs: catalog?.requiredJobs ?? ["candidate-scope", "plan-test-shards"],
+        notApplicableJobs: catalog?.notApplicableJobs ?? [],
+        finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
         repository: process.env.GITHUB_REPOSITORY,
         runId: process.env.GITHUB_RUN_ID,
         runAttempt: process.env.GITHUB_RUN_ATTEMPT,
@@ -322,13 +325,7 @@ try {
         resolve(output, "hosted-snapshot.json"),
         JSON.stringify(snapshot, null, 2) + "\n",
       );
-      hosted = assessHostedBudget({
-        snapshot,
-        requiredJobs: catalog?.requiredJobs ?? ["candidate-scope", "plan-test-shards"],
-        notApplicableJobs: catalog?.notApplicableJobs ?? [],
-        finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
-        mode: "in-gate",
-      });
+      hosted = assessment;
     } catch (error) {
       hosted = {
         passed: false,

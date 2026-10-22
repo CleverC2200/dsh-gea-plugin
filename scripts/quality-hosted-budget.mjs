@@ -31,6 +31,66 @@ export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000
   }
 }
 
+export async function readHostedGate({
+  requiredJobs,
+  notApplicableJobs = [],
+  finalJobName,
+  intervalMs = 3000,
+  timeoutMs = 90000,
+  ...input
+}) {
+  if (
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs < 1 ||
+    intervalMs >= 60000 ||
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1
+  )
+    throw Error("HOSTED_GATE_WAIT_INPUT_REQUIRED");
+  const deadline = performance.now() + timeoutMs;
+  while (true) {
+    const snapshot = await readHostedRun(input);
+    const assessment = assessHostedBudget({
+      snapshot,
+      requiredJobs,
+      notApplicableJobs,
+      finalJobName,
+      mode: "in-gate",
+    });
+    const result = { snapshot, assessment };
+    if (assessment.functional.status === "passed") return result;
+    const pending = (entry) =>
+      ["queued", "pending", "requested", "in_progress"].includes(entry.status) &&
+      entry.conclusion === null;
+    const final = snapshot.jobs.filter((job) => job.name === finalJobName);
+    const retryable =
+      pending(snapshot.run) &&
+      final.length === 1 &&
+      pending(final[0]) &&
+      requiredJobs.every((name) => {
+        const found = snapshot.jobs.filter((job) => job.name === name);
+        return (
+          found.length === 1 &&
+          ((found[0].status === "completed" && found[0].conclusion === "success") ||
+            pending(found[0]))
+        );
+      }) &&
+      assessment.functional.reasons.every(
+        (reason) =>
+          reason === "HOSTED_FINAL_STATE: " + finalJobName ||
+          requiredJobs.some((name) => reason === "HOSTED_REQUIRED_JOB: " + name),
+      );
+    if (!retryable) return result;
+    const remaining = deadline - performance.now();
+    if (remaining > 0)
+      await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+    if (performance.now() >= deadline) {
+      assessment.functional.reasons.push("HOSTED_GATE_WAIT_TIMEOUT");
+      return result;
+    }
+  }
+}
+
 export async function readHostedRun({
   repository,
   runId,
