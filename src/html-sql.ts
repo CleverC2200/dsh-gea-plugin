@@ -324,8 +324,8 @@ export function createGeaSqlDatabase(
           const safeDiagnostic = new GeaResponseError(response.status, body, [token]);
           const upstreamCode = record(body)
             ? [
-                failureFrom(body)?.reasonCode,
                 body.errorCode,
+                failureFrom(body)?.reasonCode,
                 body.code,
                 body.message,
                 body.msg,
