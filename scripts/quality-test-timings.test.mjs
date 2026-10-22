@@ -2,12 +2,67 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { currentTestTimings } from "./quality-test-timings.mjs";
+import { currentTestTimings, timingsFromExecution } from "./quality-test-timings.mjs";
+import { createExecutionPlan, runExecutionPlan } from "./quality-test-execution.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
+test("completed real execution produces a scheduling reference while source changes invalidate it", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "timing-refresh-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "tests"));
+  mkdirSync(join(root, "src"));
+  writeFileSync(join(root, "tests/a.test.mjs"), "import test from 'node:test';test('a',()=>{});");
+  writeFileSync(join(root, "src/host.ts"), "export const value = 1;");
+  writeFileSync(join(root, "package.json"), "{}");
+  const environment = {
+    platform: process.platform,
+    node: process.versions.node,
+    core: "a".repeat(40),
+    fileConcurrency: 2,
+  };
+  const plan = createExecutionPlan({
+    selection: { files: ["tests/a.test.mjs"] },
+    platformPlan: { files: ["tests/a.test.mjs"] },
+    binding: {
+      ...environment,
+      runId: "123",
+      runAttempt: "1",
+      manifest: { core: environment.core },
+    },
+  });
+  const resultFile = join(root, "execution.json");
+  runExecutionPlan({
+    plan,
+    root,
+    resultFile,
+    reporter: resolve("scripts/quality-test-reporter.mjs"),
+    buildSha256: "b".repeat(64),
+    environment: { NODE_TEST_CONTEXT: undefined },
+  });
+  const receipt = JSON.parse(readFileSync(resultFile));
+  const timings = timingsFromExecution({
+    plan,
+    receipts: [receipt],
+    root,
+    inputs: ["src/host.ts", "package.json"],
+  });
+  assert.equal(timings.source.acceptance, "not-acceptance");
+  assert.equal(timings.source.runId, 123);
+  assert.equal(timings.source.runAttempt, 1);
+  assert.equal(currentTestTimings({ root, timings, environment }).files.length, 1);
+  writeFileSync(join(root, "src/host.ts"), "export const value = 2;");
+  assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
+  writeFileSync(join(root, "src/host.ts"), "export const value = 1;");
+  writeFileSync(join(root, "package.json"), '{"dependencies":{"changed":"1"}}');
+  assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
+  assert.throws(() => timingsFromExecution({ plan, receipts: [], root, inputs: [] }));
+  assert.throws(() =>
+    timingsFromExecution({ plan, receipts: [{ ...receipt, status: "failed" }], root, inputs: [] }),
+  );
+});
 test("costs invalidate changed tests, changed or deleted fixtures, and incompatible environments", (t) => {
   const root = mkdtempSync(join(tmpdir(), "gea-timing-inputs-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -68,14 +123,19 @@ test("costs invalidate changed tests, changed or deleted fixtures, and incompati
     assert.throws(() => read({ ...timings, files }), /QUALITY_TEST_TIMING_INVALID/);
 });
 
-test("committed historical data has distinct existing source paths and explicit measurement provenance", () => {
+test("committed timing references bind measured source bytes and invalidate retired current paths", () => {
   const timings = JSON.parse(readFileSync(new URL("./quality-test-timings.json", import.meta.url)));
   assert.equal(timings.schemaVersion, 2);
-  assert.equal(timings.source.kind, "historical-reference-only");
+  assert.ok(["historical-reference-only", "measured-reference-only"].includes(timings.source.kind));
   assert.equal(timings.source.acceptance, "not-acceptance");
   assert.ok(Number.isSafeInteger(timings.source.runId) && timings.source.runId > 0);
   assert.match(timings.source.head, /^[a-f0-9]{40}$/);
-  assert.ok(timings.source.artifacts.length > 0);
+  assert.ok((timings.source.artifacts ?? timings.source.executions).length > 0);
+  const current = currentTestTimings({
+    root: resolve(import.meta.dirname, ".."),
+    timings,
+    environment: timings.source,
+  });
   assert.equal(new Set(timings.files.map((entry) => entry.file)).size, timings.files.length);
   const original = (file) =>
     hash(
@@ -92,7 +152,10 @@ test("committed historical data has distinct existing source paths and explicit 
       original(entry.file),
       entry.file + " must bind the measured test bytes",
     );
-    assert.ok(readFileSync(resolve(import.meta.dirname, "..", entry.file)).length > 0);
+    if (!existsSync(resolve(import.meta.dirname, "..", entry.file))) {
+      assert.ok(!current.files.some((file) => file.file === entry.file));
+      assert.ok(current.source.invalidated.some((file) => file.file === entry.file));
+    }
     assert.ok(entry.fixtures.every((file) => /^[a-f0-9]{64}$/.test(timings.fixtures[file])));
   }
 });

@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "versionTests": [
+    "scripts/plugin-package-version.test.mjs",
+    "tests/plugin-release.test.mjs",
+    "tests/plugin-release-preflight.test.mjs"
+  ],
   "required": [
     "tests/controlled-execution.test.mjs",
     "tests/plugin-sql-cancel.test.mjs",
@@ -117,6 +122,11 @@
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/capability/html-mcp(?:\\.mjs|\\.d\\.mts)$",
+      "tests": ["tests/html-resource-contract.test.mjs", "scripts/deliver-packages.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^\\.codex/environments/environment\\.toml$",

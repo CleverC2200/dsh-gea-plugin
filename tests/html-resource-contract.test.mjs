@@ -6,6 +6,34 @@ import { join } from "node:path";
 import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
 import { contractFromPlugin } from "../src/capability/contract.ts";
 import { readPluginContract } from "../src/capability/declarations.ts";
+import { assertHtmlMcp } from "../src/capability/html-mcp.mjs";
+
+test("packaging and Host share the exact governed HTML MCP admission", () => {
+  const mcp = {
+    provider: "gea",
+    transport: "host-provided",
+    contract: "gea-html-v2",
+    consumer: { consumerCode: "mps", consumerType: "AGENT" },
+    capabilities: ["governed-sql-read"],
+  };
+  assert.doesNotThrow(() => assertHtmlMcp(mcp, "mps", false));
+  assert.doesNotThrow(() =>
+    assertHtmlMcp(
+      { ...mcp, capabilities: ["governed-sql-read", "governed-cube-read"] },
+      "mps",
+      false,
+    ),
+  );
+  assert.doesNotThrow(() => assertHtmlMcp({ ...mcp, capabilities: [] }, "mps", true));
+  for (const invalid of [
+    null,
+    {},
+    { ...mcp, capabilities: [] },
+    { ...mcp, capabilities: ["governed-sql-read", "cube-read"] },
+    { ...mcp, consumer: { consumerCode: "other", consumerType: "AGENT" } },
+  ])
+    assert.throws(() => assertHtmlMcp(invalid, "mps", false), /INVALID_GEA_CAPABILITY/);
+});
 
 test("explicit HTML fixture retains invalid input for the current declaration reader to reject", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "gea-explicit-declaration-"));

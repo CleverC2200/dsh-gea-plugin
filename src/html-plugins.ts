@@ -16,6 +16,7 @@ import { contractFromPlugin, type CapabilityContract } from "./capability/contra
 import { readPluginContract } from "./capability/declarations.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
+import { assertHtmlMcp } from "./capability/html-mcp.mjs";
 
 export async function registerHtmlPlugins(
   ctx: any,
@@ -103,19 +104,11 @@ export async function registerHtmlPlugins(
     const mcpPath = await realpath(resolve(directory, manifest.mcp ?? ""));
     if (!mcpPath.startsWith(directory + sep)) throw Error("INVALID_MCP_PATH");
     const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
-    if (
-      mcp.provider !== "gea" ||
-      mcp.transport !== "host-provided" ||
-      mcp.contract !== "gea-html-v2" ||
-      mcp.consumer?.consumerCode !== manifest.gea.consumerCode ||
-      mcp.consumer?.consumerType !== "AGENT" ||
-      !(mock
-        ? JSON.stringify(mcp.capabilities) === "[]"
-        : ['["governed-sql-read"]', '["governed-sql-read","governed-cube-read"]'].includes(
-            JSON.stringify(mcp.capabilities),
-          ))
-    )
+    try {
+      assertHtmlMcp(mcp, manifest.gea.consumerCode, mock);
+    } catch {
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
+    }
     if (!manifest.declarations || manifest.agentResources?.provider !== "dsh-agent-manage")
       throw Error(`UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${directory}/plugin.json]`);
     const preset = "gea-html-" + manifest.id;

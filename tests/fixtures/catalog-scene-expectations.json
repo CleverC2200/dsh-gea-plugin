@@ -34,19 +34,19 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-apsplan/skills/aps/SKILL.md",
-        "sha256": "555d6e3698cbdff78f795500ae1ce28ecd1218c33960dff82abb9ac1ccd9f6dc",
+        "sha256": "767a0822130034e83e792283fe12d1c1b97510f7c0d6f0abe708fe0bab35bcef",
         "name": "inventory-apsplan",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "d4bfc385e7b26955461e303303e1d8221bb802f9",
         "sourceFile": "business-resources/inventory-apsplan/skills/aps/SKILL.md"
       },
       {
         "owner": "workbench",
         "file": "lib/business/inventory-aqkc/skills/aqkc/SKILL.md",
-        "sha256": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
+        "sha256": "34e9c04d41f861304a2e2d79013480e2d33457c7941b531951de2ce14ab5c31a",
         "name": "inventory-aqkc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
+        "sourceHead": "d4bfc385e7b26955461e303303e1d8221bb802f9",
         "sourceFile": "business-resources/inventory-aqkc/skills/aqkc/SKILL.md"
       },
       {
@@ -70,10 +70,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
-        "sha256": "e423a08d7926d215f82c0c44784b27dd2f3deb19a9c42c804d8dc363c87b648c",
+        "sha256": "757351d48da5d478d541c61a72766d6cd779c2649b164aa046339a5a256b008d",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
+        "sourceHead": "d4bfc385e7b26955461e303303e1d8221bb802f9",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
@@ -97,10 +97,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-qll/skills/qll/SKILL.md",
-        "sha256": "6b929538f1936d93fa3f063e7180ec20b560c685775b766ecc1eb3046cac3736",
+        "sha256": "5041cc5336f78222e2cb7d5f2c7d3d3e6deb8178a0a6e4018c2618076466d502",
         "name": "inventory-qll",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "d4bfc385e7b26955461e303303e1d8221bb802f9",
         "sourceFile": "business-resources/inventory-qll/skills/qll/SKILL.md"
       },
       {
