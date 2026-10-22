@@ -123,12 +123,8 @@ Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开
 
 公司完整桌面包可只携带三个必要插件，GenUI 仍为可选第四包，现有配置和卸载选择保留。构建版本使用用户确认的完整版本号；Core 身份仍由实际 launcher/runtime 的产品版本、App 的干净提交与完整字节证明确定，不能把带日期的桌面构建版本当成 Core runtime 版本。当前明确登记公司 Core `8cfb899ccf21d3662421b99b5f4627842ef712ea`，允许原 `639ed015397290b3745d163aafe02ffee4aa3f84` 的证明刷新，未知 Core 继续拒绝。
 
-## 分步升级发布验收
+## 当前目标组合验收
 
-发布前先用 `release:verify-steps --input /absolute/steps.json --output /absolute/new-evidence` 在自有隔离 profile 中逐包安装，每步退出后由新进程启动官方 Loader。输入包含固定 Core、pnpm、目标三包，以及 `starts` 中每个起点的 `id` 和三份 `archives`。每份归档用 `name`、`version`、`archive` 和 `artifactSha256` 固定身份。默认先安装 GEA 保护版，再分别覆盖 Workbench→Manage 和 Manage→Workbench 两条次序；旧更新器尚无保护，必须先升级 GEA 并重启。
+后续发行统一面向最新验证通过的三插件组合，不枚举历史版本组合，不要求逐包升级顺序及中间重启回执。`release:preflight` 使用当前 `environment` 的固定 Core、SDK 与完整消费者图，只校验替换三个公司包后的最终组合；保留不可变归档、来源、构建、已部署版本高水位与同版本字节保护。
 
-每步核归档与实际安装字节、三个 ACTIVE Host 的模块归属、SDK 路由、客户端装载图、身份和更新接口，以及拒绝接入的资源。资源 Consumer 与 GEA 策略冲突时，该资源不进入 Manage 或能力注册表，其页面明确拒绝授权并提示更新 Workbench；其他资源、身份与更新接口继续运行。最终三包组合必须没有资源冲突。用户数据与凭据不进入隔离验收，禁止业务与模型请求；客户端装载图不代替 Native 执行。
-
-`release:preflight` 的输入必须通过 `upgradeVerification` 指向该入口生成的 `result.json`。门禁核每个声明起点、每次中间重启、包集合摘要与原始观察回执；缺步骤、源码观察器变化、Host 失败或最终资源仍不兼容时拒绝发布。Native 和真实客户端的下载、安装、重启、Host/client 版本及数据保留仍单独验收。
-
-分步验收只在本次独占新建的隔离 home 中运行。每条路径成功后回收其中可重建的依赖、下载缓存和默认 Skill 资产副本，保留原包、安装锁、配置、命令日志及每步观察回执；任一步失败时保留该路径现场。不会访问或回收已有用户 profile。
+最终三包通过 `delivery:reception` 核官方安装、ACTIVE Host、资源、预设与客户端装载图。真实客户端的下载、安装、重启、Host/client 版本及配置和会话保留分别验收。资源 Consumer 与 GEA 策略冲突时，该资源不进入 Manage 或能力注册表，其页面提示更新 Workbench 并重启；其他资源、身份与更新接口继续运行。

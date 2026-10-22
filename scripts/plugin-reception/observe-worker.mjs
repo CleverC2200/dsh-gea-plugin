@@ -190,20 +190,6 @@ try {
   for (const artifact of owner.artifacts) {
     const installed = join(v.profile, "node_modules", artifact.name),
       manifest = await readJson(join(installed, "package.json"));
-    assert.equal(manifest.version, artifact.version, "INSTALLED_PLUGIN_VERSION_MISMATCH");
-    const mounted = entries.find((entry) => entry.options.name === artifact.name);
-    const namespace = await mounted.parent.tree.import(artifact.name);
-    assert.equal(
-      ctx.registry.resolve(ctx.loader.unwrapExports(namespace)),
-      mounted.fiber.runtime.callback,
-      "HOST_MODULE_IDENTITY_CHANGED",
-    );
-    if (namespace.pluginPackageVersion)
-      assert.deepEqual(
-        namespace.pluginPackageVersion,
-        { name: artifact.name, version: artifact.version },
-        "HOST_MODULE_VERSION_MISMATCH",
-      );
     const exports = manifest.exports?.["."];
     const entry = typeof exports === "string" ? exports : (exports?.default ?? manifest.main);
     assert(entry, "PLUGIN_ROOT_EXPORT_MISSING");
@@ -236,213 +222,155 @@ try {
       });
     }
   }
-  if (v.upgrade) {
-    checkpoint("upgrade-services");
-    const handler = ctx.connection.createSharedFetchHandler("/api");
-    const identity = await handler.fetch(new Request("http://localhost/api/gea-html/identity"));
-    assert.equal(identity.status, 200, "UPGRADE_IDENTITY_ROUTE_FAILED");
-    assert.equal(
-      (await identity.json()).status.authenticated,
-      false,
-      "UPGRADE_MUST_NOT_READ_USER_IDENTITY",
+  checkpoint("resources");
+  const handler = ctx.connection.createSharedFetchHandler("/api");
+  const response = await handler.fetch(
+    new Request("http://localhost/api/agent-manage/resources?cwd=" + encodeURIComponent(v.home)),
+  );
+  assert.equal(response.status, 200, "RESOURCE_ROUTE_FAILED");
+  const resources = await response.json();
+  assert(Array.isArray(resources), "RESOURCE_ROSTER_NOT_ARRAY");
+  projected.resources = resources.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    enabled: row.enabled,
+    error: Boolean(row.error),
+    missingSkills: row.missingSkills ?? [],
+  }));
+  const signal = new AbortController().signal;
+  const initialRoster = await ctx.agentPresets.remoteExportList();
+  projected.initialPresets = initialRoster.presets.map((row) => ({
+    id: row.id,
+    isDefault: row.isDefault,
+    broken: Boolean(row.broken),
+  }));
+  validateInitialPresets(projected.initialPresets);
+  for (const id of currentBusinessIds) {
+    assert(
+      resources.some(
+        (row) => row.id === id && row.enabled && !row.error && !row.missingSkills?.length,
+      ),
+      `BUSINESS_RESOURCE_NOT_READY:${id}`,
     );
-    const updates = await handler.fetch(
-      new Request("http://localhost/api/gea/plugin-updates/status", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pageIdentity: "isolated-upgrade-verification" }),
-      }),
-    );
-    assert.equal(updates.status, 200, "UPGRADE_UPDATE_ROUTE_FAILED");
-    assert.equal((await updates.json()).ok, true, "UPGRADE_UPDATE_SERVICE_FAILED");
-    const response = await handler.fetch(
-      new Request("http://localhost/api/gea-html/compatibility"),
-    );
-    let blocked = [];
-    if (v.upgrade.protectionRequired) {
-      assert.equal(response.status, 200, "UPGRADE_COMPATIBILITY_ROUTE_FAILED");
-      blocked = await response.json();
-      assert.deepEqual(
-        blocked.map((row) => row.id).sort(),
-        [...v.upgrade.expectedBlocked].sort(),
-        "UPGRADE_QUARANTINE_MISMATCH",
-      );
-      assert(
-        blocked.every((row) => row.code === "INVALID_AGENT_RESOURCE_IDENTITY"),
-        "UPGRADE_UNEXPECTED_BLOCK_REASON",
-      );
-    }
-    const roster = await handler.fetch(
-      new Request("http://localhost/api/agent-manage/resources?cwd=" + encodeURIComponent(v.home)),
-    );
-    assert.equal(roster.status, 200, "UPGRADE_RESOURCE_ROUTE_FAILED");
-    const resources = await roster.json();
-    for (const row of blocked)
-      assert(
-        !resources.some((resource) => resource.id === "gea-html-" + row.id && resource.enabled),
-        "UPGRADE_INCOMPATIBLE_RESOURCE_ENABLED",
-      );
-    projected.upgrade = {
-      identityRouteAvailable: true,
-      updateRouteAvailable: true,
-      incompatibleResources: blocked,
-      releaseSourceChecked: false,
-    };
-  } else {
-    checkpoint("resources");
-    const handler = ctx.connection.createSharedFetchHandler("/api");
-    const response = await handler.fetch(
-      new Request("http://localhost/api/agent-manage/resources?cwd=" + encodeURIComponent(v.home)),
-    );
-    assert.equal(response.status, 200, "RESOURCE_ROUTE_FAILED");
-    const resources = await response.json();
-    assert(Array.isArray(resources), "RESOURCE_ROSTER_NOT_ARRAY");
-    projected.resources = resources.map((row) => ({
-      id: row.id,
-      kind: row.kind,
-      enabled: row.enabled,
-      error: Boolean(row.error),
-      missingSkills: row.missingSkills ?? [],
-    }));
-    const signal = new AbortController().signal;
-    const initialRoster = await ctx.agentPresets.remoteExportList();
-    projected.initialPresets = initialRoster.presets.map((row) => ({
-      id: row.id,
-      isDefault: row.isDefault,
-      broken: Boolean(row.broken),
-    }));
-    validateInitialPresets(projected.initialPresets);
-    for (const id of currentBusinessIds) {
-      assert(
-        resources.some(
-          (row) => row.id === id && row.enabled && !row.error && !row.missingSkills?.length,
-        ),
-        `BUSINESS_RESOURCE_NOT_READY:${id}`,
-      );
-      const selected = await ctx.agentResources.select(id, signal, v.home);
-      assert.equal(selected.preset, id, "BUSINESS_RESOURCE_PRESET_MISMATCH");
-    }
-    const skill = resources.find(
-      (row) => row.kind === "skill" && row.enabled && !row.error && row.id.startsWith("skill:"),
-    );
-    assert(skill, "INSTALLED_INVOCABLE_SKILL_REQUIRED");
-    assert.equal(
-      (await ctx.agentResources.select(skill.id, signal, v.home)).preset,
-      "agent-resource-skill",
-      "SKILL_PRESET_MISMATCH",
-    );
-    const ids = currentDocumentIds;
-    checkpoint("documents");
-    const docs = new Map();
-    for (const id of ids) {
-      assert.equal((await ctx.agentPresets.resolve(id)).broken, undefined, "PRESET_BROKEN");
-      const doc = await ctx.agentPresets.readDocument(id);
-      docs.set(id, {
-        content: doc.content,
-        rows: load(doc.content, { schema: entryListSchema }),
-      });
-      assert(Array.isArray(docs.get(id).rows), "PRESET_DOCUMENT_NOT_PLUGIN_LIST");
-    }
-    const standard = docs.get("standard").rows;
-    const manageRequire = createRequire(join(v.profile, "package.json"));
-    const { composeStandardPreset, ORCHESTRATION_PRESET, registerOrchestration } = await import(
-      pathToFileURL(manageRequire.resolve("dsh-agent-manage/standard-preset"))
-    );
-    const companyStandard = (await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET))
-      .plugins;
-    const manageRoot = dirname(manageRequire.resolve("dsh-agent-manage/package.json"));
-    let orchestrationPrompt;
-    try {
-      orchestrationPrompt = await readFile(
-        join(manageRoot, "business-resources/orchestration/prompt.md"),
-        "utf8",
-      );
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-    const managedOrchestration = (await ctx.agentResources.pluginAgents()).find(
-      (row) => row.id === ORCHESTRATION_PRESET.id,
-    );
-    if (managedOrchestration) {
-      assert.equal(
-        managedOrchestration.prompt,
-        orchestrationPrompt,
-        "ORCHESTRATION_SOURCE_PROMPT_DIFFERS",
-      );
-      assert.equal(managedOrchestration.customized, false, "ORCHESTRATION_FRESH_PROFILE_REQUIRED");
-    }
-    let orchestrationDeclaration;
-    await registerOrchestration({
-      register: async (definitions) => {
-        orchestrationDeclaration = definitions.find((row) => row.id === ORCHESTRATION_PRESET.id);
-        return async () => {};
-      },
-    });
-    if (managedOrchestration)
-      assert.deepEqual(
-        managedOrchestration.skills.map((skill) => skill.name).sort(),
-        [...orchestrationDeclaration.profile.skills].sort(),
-        "ORCHESTRATION_SKILL_DECLARATION_DIFFERS",
-      );
-    const orchestrationStandard = projectOrchestrationStandard(companyStandard, {
-      prompt: orchestrationPrompt,
-      skillDirectory: join(manageRoot, "business-resources/orchestration/skills"),
-      managed: Boolean(managedOrchestration),
-      ...(managedOrchestration
-        ? {
-            skillConfig: {
-              skills: managedOrchestration.skills,
-              ...(orchestrationDeclaration.inheritSkills ? { inheritSkills: true } : {}),
-            },
-          }
-        : {}),
-    });
-    assert.deepEqual(
-      docs.get("auto-negotiation").rows,
-      orchestrationStandard,
-      "ORCHESTRATION_PRESET_DIFFERS_FROM_DECLARATION",
-    );
-    assert.deepEqual(
-      docs.get("agent-resource-skill").rows,
-      companyStandard,
-      "GENERAL_PRESET_DIFFERS_FROM_COMPANY_STANDARD",
-    );
-    projected.documents = ids.map((id) => {
-      const doc = docs.get(id),
-        additions = [];
-      const baseline =
-        id === "standard"
-          ? standard
-          : id === "auto-negotiation"
-            ? orchestrationStandard
-            : companyStandard;
-      retainStandard(baseline, doc.rows, id, additions);
-      return {
-        id,
-        sha256: createHash("sha256").update(doc.content).digest("hex"),
-        standardEntries: flatten(baseline).length,
-        declaredEntries: flatten(doc.rows).length,
-        fullStandardRetained: true,
-        byteEqualStandard: doc.content === docs.get("standard").content,
-        allowedPersonaPrefixExtension: additions,
-      };
-    });
-    checkpoint("default-preset");
-    const roster = await ctx.agentPresets.remoteExportList();
-    projected.presets = roster.presets.map((row) => ({
-      id: row.id,
-      isDefault: row.isDefault,
-      broken: Boolean(row.broken),
-    }));
-    projected.actualDefault = (await ctx.agentPresets.resolve()).id;
-    // Observe the installed default; do not write a legacy selectedDefault patch to make it pass.
-    assert.equal(
-      projected.actualDefault,
-      "auto-negotiation",
-      "DEFAULT_ORCHESTRATION_NOT_EFFECTIVE",
-    );
-    projected.workbenchPageCount = ctx.workbenchPages.list().length;
+    const selected = await ctx.agentResources.select(id, signal, v.home);
+    assert.equal(selected.preset, id, "BUSINESS_RESOURCE_PRESET_MISMATCH");
   }
+  const skill = resources.find(
+    (row) => row.kind === "skill" && row.enabled && !row.error && row.id.startsWith("skill:"),
+  );
+  assert(skill, "INSTALLED_INVOCABLE_SKILL_REQUIRED");
+  assert.equal(
+    (await ctx.agentResources.select(skill.id, signal, v.home)).preset,
+    "agent-resource-skill",
+    "SKILL_PRESET_MISMATCH",
+  );
+  const ids = currentDocumentIds;
+  checkpoint("documents");
+  const docs = new Map();
+  for (const id of ids) {
+    assert.equal((await ctx.agentPresets.resolve(id)).broken, undefined, "PRESET_BROKEN");
+    const doc = await ctx.agentPresets.readDocument(id);
+    docs.set(id, {
+      content: doc.content,
+      rows: load(doc.content, { schema: entryListSchema }),
+    });
+    assert(Array.isArray(docs.get(id).rows), "PRESET_DOCUMENT_NOT_PLUGIN_LIST");
+  }
+  const standard = docs.get("standard").rows;
+  const manageRequire = createRequire(join(v.profile, "package.json"));
+  const { composeStandardPreset, ORCHESTRATION_PRESET, registerOrchestration } = await import(
+    pathToFileURL(manageRequire.resolve("dsh-agent-manage/standard-preset"))
+  );
+  const companyStandard = (await composeStandardPreset(ctx.agentPresets, ORCHESTRATION_PRESET))
+    .plugins;
+  const manageRoot = dirname(manageRequire.resolve("dsh-agent-manage/package.json"));
+  let orchestrationPrompt;
+  try {
+    orchestrationPrompt = await readFile(
+      join(manageRoot, "business-resources/orchestration/prompt.md"),
+      "utf8",
+    );
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const managedOrchestration = (await ctx.agentResources.pluginAgents()).find(
+    (row) => row.id === ORCHESTRATION_PRESET.id,
+  );
+  if (managedOrchestration) {
+    assert.equal(
+      managedOrchestration.prompt,
+      orchestrationPrompt,
+      "ORCHESTRATION_SOURCE_PROMPT_DIFFERS",
+    );
+    assert.equal(managedOrchestration.customized, false, "ORCHESTRATION_FRESH_PROFILE_REQUIRED");
+  }
+  let orchestrationDeclaration;
+  await registerOrchestration({
+    register: async (definitions) => {
+      orchestrationDeclaration = definitions.find((row) => row.id === ORCHESTRATION_PRESET.id);
+      return async () => {};
+    },
+  });
+  if (managedOrchestration)
+    assert.deepEqual(
+      managedOrchestration.skills.map((skill) => skill.name).sort(),
+      [...orchestrationDeclaration.profile.skills].sort(),
+      "ORCHESTRATION_SKILL_DECLARATION_DIFFERS",
+    );
+  const orchestrationStandard = projectOrchestrationStandard(companyStandard, {
+    prompt: orchestrationPrompt,
+    skillDirectory: join(manageRoot, "business-resources/orchestration/skills"),
+    managed: Boolean(managedOrchestration),
+    ...(managedOrchestration
+      ? {
+          skillConfig: {
+            skills: managedOrchestration.skills,
+            ...(orchestrationDeclaration.inheritSkills ? { inheritSkills: true } : {}),
+          },
+        }
+      : {}),
+  });
+  assert.deepEqual(
+    docs.get("auto-negotiation").rows,
+    orchestrationStandard,
+    "ORCHESTRATION_PRESET_DIFFERS_FROM_DECLARATION",
+  );
+  assert.deepEqual(
+    docs.get("agent-resource-skill").rows,
+    companyStandard,
+    "GENERAL_PRESET_DIFFERS_FROM_COMPANY_STANDARD",
+  );
+  projected.documents = ids.map((id) => {
+    const doc = docs.get(id),
+      additions = [];
+    const baseline =
+      id === "standard"
+        ? standard
+        : id === "auto-negotiation"
+          ? orchestrationStandard
+          : companyStandard;
+    retainStandard(baseline, doc.rows, id, additions);
+    return {
+      id,
+      sha256: createHash("sha256").update(doc.content).digest("hex"),
+      standardEntries: flatten(baseline).length,
+      declaredEntries: flatten(doc.rows).length,
+      fullStandardRetained: true,
+      byteEqualStandard: doc.content === docs.get("standard").content,
+      allowedPersonaPrefixExtension: additions,
+    };
+  });
+  checkpoint("default-preset");
+  const roster = await ctx.agentPresets.remoteExportList();
+  projected.presets = roster.presets.map((row) => ({
+    id: row.id,
+    isDefault: row.isDefault,
+    broken: Boolean(row.broken),
+  }));
+  projected.actualDefault = (await ctx.agentPresets.resolve()).id;
+  // Observe the installed default; do not write a legacy selectedDefault patch to make it pass.
+  assert.equal(projected.actualDefault, "auto-negotiation", "DEFAULT_ORCHESTRATION_NOT_EFFECTIVE");
+  projected.workbenchPageCount = ctx.workbenchPages.list().length;
   assert.equal(
     Object.values(projected.outgoingAttempts).reduce((a, b) => a + b, 0),
     0,

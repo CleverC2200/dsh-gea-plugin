@@ -455,7 +455,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/(?:plugin-release-preflight|release-preflight|step-upgrade-receipts|verify-step-upgrades|package-source-integrity|deliver-packages)\\.mjs$",
+      "pattern": "^scripts/(?:plugin-release-preflight|release-preflight|package-source-integrity|deliver-packages)\\.mjs$",
       "tests": ["scripts/deliver-packages.test.mjs", "tests/plugin-release-preflight.test.mjs"]
     },
     {

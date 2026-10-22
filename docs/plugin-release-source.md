@@ -58,27 +58,24 @@ preflight 使用以下文件合同，所有路径为绝对路径。sources、tar
       "installed": ["FULL_INSTALLED_MANIFESTS"]
     }
   ],
-  "supportedStarts": [
-    {
-      "id": "supported-start",
-      "core": {
-        "head": "FULL_CORE_SHA",
-        "version": "CORE_VERSION",
-        "sdk": { "SDK_PACKAGE": "ACTUAL_VERSION" }
-      },
-      "installed": ["FULL_INSTALLED_MANIFESTS"]
-    }
-  ]
+  "environment": {
+    "core": {
+      "head": "FULL_CORE_SHA",
+      "version": "CORE_VERSION",
+      "sdk": { "SDK_PACKAGE": "ACTUAL_VERSION" }
+    },
+    "installed": ["FULL_CURRENT_INSTALLED_MANIFESTS"]
+  }
 }
 ```
 
-上例只展示每类一项。`deployed` 与 `supportedStarts` 均不可为空，每个 installed 包含完整消费者 manifest，包括非公司包；三个公司 manifest 还必须带实际部署归档的 `artifactSha256`。部署快照由发行 owner 从批准的真实频道、归档和安装图准备，并保留观察时间及来源证据。历史重放若复用当前未变消费者，须在原证据中说明，不能称为历史整图观察。Core 使用实际宿主固定的 head/version/sdk。缺公司包、缺 SDK 或缺归档身份都拒绝，不以三个手填版本替代图。 第三方 manifest 按规划器实际消费的版本、全部 peer 和公司包 dependency 校验；没有对应 peer 的 optional metadata 不形成约束。原始完整图保留，公司发行 manifest 继续严格解析。
+上例只展示每类一项。`deployed` 保留实际已发布版本与归档身份，`environment` 固定当前宿主的 head/version/sdk 与完整消费者 manifest，包括非公司包；三个公司 manifest 还必须带实际部署归档的 `artifactSha256`。不再要求历史起点清单或历史组合重放。缺公司包、缺 SDK 或缺归档身份仍拒绝。
 
 门禁核实际 source HEAD 与源码修改范围，复用普通交付对 lib/client 生成输出的允许规则，生成输出仍须逐字节匹配构建回执与最终 TGZ。它读取 `deliveryManifest`，将每包的 archive 路径、sha256、name/version、source.head/path、锁和 buildReceipt 摘要绑定到实际文件。构建回执沿[普通交付合同](package-delivery.md)，每个输出同时核当前源码目录和 tar 内字节；相同版本的旧包不能借新 HEAD 的声明通过。
 
-每个目标版本必须不低于所有 deployed 与 supportedStarts 中该包的版本；同版本必须使用相同归档字节。门禁逐步调用真实 `planPluginUpdate`，最多枚举三个包的六种顺序，每一步保留未替换消费者与 Core SDK，并用 `validatePluginCombination` 核最终图。功能名后缀仍按同一版本比较器处理，无合法路径即拒绝。三包同版同字节的频道提升允许 planner 返回 current。
+每个目标版本必须不低于已部署版本和当前环境中的版本；同版本必须使用相同归档字节。门禁将三个公司包一起替换为固定目标，调用 `validatePluginCombination` 校验最终图，保留当前非公司消费者与 Core SDK 约束。不枚举逐包顺序，不要求历史或中间重启回执。
 
-metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自最终归档。destination 必须不存在。输出包含 release 文件路径、摘要、preflight 输入与交付清单摘要、各起点的合法顺序及 published=false，不上传 OSS、不更新频道。`test:release-contract` 将公开 CLI 的来源、身份和路径回归纳入 `quality:fast --source-only` 与现有 source CI。`release:preflight --desktop --base-tag <tag>` 保留桌面安装包原有版本准备职责，不代替插件发行门禁。
+metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自最终归档。destination 必须不存在。输出包含 release 文件路径、摘要、preflight 输入与交付清单摘要、目标组合及 published=false，不上传 OSS、不更新频道。`test:release-contract` 将公开 CLI 的来源、身份和路径回归纳入 `quality:fast --source-only` 与现有 source CI。`release:preflight --desktop --base-tag <tag>` 保留桌面安装包原有版本准备职责，不代替插件发行门禁。
 
 [mergePluginChannelRelease/signPluginChannel](../scripts/plugin-channel.mjs) 用显式旧频道、一个新引用、递增 revision 和时间生成完整的新签名 envelope，保留已有其他包引用，尚未在频道出现的包可独立加入。部署方持有私钥并负责原子替换频道。此处函数只生成对象；没有网络或频道写入能力。真实 OSS 地址、凭据、公钥与部署验收仍需明确输入。
 

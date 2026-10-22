@@ -8,14 +8,13 @@ import { inspectPluginArchive } from "../src/host/plugin-release-source.ts";
 import {
   companyPackageNames,
   projectPluginRelease,
-  findPluginUpdatePath,
+  validatePluginCombination,
   comparePluginVersions,
   parsePluginManifest,
   parseInstalledPluginManifest,
 } from "../src/shared/plugin-release.mjs";
 import { sourceChanges, verifyPackageBuild, builtArchive } from "./package-source-integrity.mjs";
 import { findSupportedCore } from "./supported-cores.mjs";
-import { verifyUpgradeReceipts } from "./step-upgrade-receipts.mjs";
 
 const fail = (code, detail = "") => {
   throw Error(`${code}${detail ? ": " + detail : ""}`);
@@ -72,8 +71,7 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
     input?.schemaVersion !== 1 ||
     !Array.isArray(input.targets) ||
     input.targets.length !== 3 ||
-    !Array.isArray(input.supportedStarts) ||
-    !input.supportedStarts.length
+    !input.environment
   )
     fail("RELEASE_PREFLIGHT_INPUT_REQUIRED");
   if (
@@ -189,7 +187,7 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
     fail("RELEASE_TARGET_GRAPH_INCOMPLETE");
   if (!Array.isArray(input.deployed) || !input.deployed.length)
     fail("RELEASE_DEPLOYED_INPUT_REQUIRED");
-  for (const snapshot of [...input.deployed, ...input.supportedStarts]) {
+  for (const snapshot of [...input.deployed, { id: "current-environment", ...input.environment }]) {
     if (typeof snapshot.id !== "string" || !snapshot.id) fail("RELEASE_SNAPSHOT_ID_REQUIRED");
     validateGraph(snapshot.installed);
     for (const { release } of targets) {
@@ -207,29 +205,33 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
         );
     }
   }
-  for (const start of input.supportedStarts) {
-    validateCore(start.core);
-    const order = findPluginUpdatePath({
-      core: start.core,
-      installed: start.installed,
-      releases: targets.map(({ release }) => release),
-    });
-    if (!order) fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
+  validateCore(input.environment.core);
+  for (const { release } of targets) {
+    if (
+      !release.supportedCores.some(
+        (core) =>
+          core.head === input.environment.core.head &&
+          core.version === input.environment.core.version,
+      )
+    )
+      fail("RELEASE_CORE_UNSUPPORTED", release.name);
   }
-  const runtime = await verifyUpgradeReceipts(
-    input.upgradeVerification,
-    input.supportedStarts,
-    targets,
+  const combination = input.environment.installed.map(
+    (manifest) =>
+      targets.find(({ release }) => release.name === manifest.name)?.release ?? manifest,
   );
-  const paths = runtime.paths.map(({ id, order }) => ({ id, order }));
+  if (validatePluginCombination({ core: input.environment.core, manifests: combination }).length)
+    fail("RELEASE_TARGET_COMBINATION_INCOMPATIBLE");
   return {
     status: "release-preflight-passed",
     inputSha256: digest(await readFile(inputPath)),
     deliveryManifestSha256: digest(deliveryBytes),
     sources: sources.map(({ manifest: _manifest, ...source }) => source),
     targets,
-    paths,
-    upgradeRuntime: runtime,
+    targetCombination: {
+      core: input.environment.core,
+      packages: targets.map(({ release }) => ({ name: release.name, version: release.version })),
+    },
   };
 }
 
