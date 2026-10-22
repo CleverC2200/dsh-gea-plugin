@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { businessIds, documentIds } from "./contract.mjs";
 
-// Customer inventory now registers a governed-read Agent. The two mock order
-// previews still must not appear in the initial model preset roster.
-export const currentBusinessIds = [...businessIds, "gea-html-inventory-customer"];
-export const currentDocumentIds = [...documentIds, "gea-html-inventory-customer"];
+export const currentBusinessIds = [
+  ...businessIds,
+  "gea-html-inventory-customer",
+  "gea-html-inventory-orderfulfillment",
+];
+export const currentDocumentIds = [
+  ...documentIds,
+  "gea-html-inventory-customer",
+  "gea-html-inventory-orderfulfillment",
+];
 export function validateInitialPresets(presets) {
   for (const id of currentBusinessIds) {
     const matches = presets.filter((row) => row.id === id);
@@ -13,6 +19,6 @@ export function validateInitialPresets(presets) {
       `BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:${id}`,
     );
   }
-  for (const id of ["gea-html-inventory-orderworkbench", "gea-html-inventory-orderfulfillment"])
-    assert(!presets.some((row) => row.id === id), `PREVIEW_PRESET_VISIBLE:${id}`);
+  const preview = "gea-html-inventory-orderworkbench";
+  assert(!presets.some((row) => row.id === preview), `PREVIEW_PRESET_VISIBLE:${preview}`);
 }

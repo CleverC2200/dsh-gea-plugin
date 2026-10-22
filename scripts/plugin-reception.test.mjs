@@ -17,24 +17,24 @@ import {
   validateInitialPresets,
 } from "./plugin-reception/preset-discovery.mjs";
 
-test("governed customer inventory is discoverable while mock order previews remain hidden", () => {
+test("governed customer inventory and fulfillment are discoverable while order preview stays hidden", () => {
   const presets = currentBusinessIds.map((id) => ({ id, broken: false }));
   validateInitialPresets(presets);
-  const customer = "gea-html-inventory-customer";
-  for (const invalid of [
-    presets.filter((row) => row.id !== customer),
-    presets.map((row) => (row.id === customer ? { ...row, broken: true } : row)),
-    [...presets, { id: customer, broken: false }],
-  ])
-    assert.throws(
-      () => validateInitialPresets(invalid),
-      /BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:gea-html-inventory-customer/,
-    );
-  for (const id of ["gea-html-inventory-orderworkbench", "gea-html-inventory-orderfulfillment"])
-    assert.throws(
-      () => validateInitialPresets([...presets, { id, broken: false }]),
-      /PREVIEW_PRESET_VISIBLE/,
-    );
+  for (const id of ["gea-html-inventory-customer", "gea-html-inventory-orderfulfillment"])
+    for (const invalid of [
+      presets.filter((row) => row.id !== id),
+      presets.map((row) => (row.id === id ? { ...row, broken: true } : row)),
+      [...presets, { id, broken: false }],
+    ])
+      assert.throws(
+        () => validateInitialPresets(invalid),
+        new RegExp(`BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:${id}`),
+      );
+  const id = "gea-html-inventory-orderworkbench";
+  assert.throws(
+    () => validateInitialPresets([...presets, { id, broken: false }]),
+    /PREVIEW_PRESET_VISIBLE/,
+  );
 });
 
 const fixture = async (name) =>
