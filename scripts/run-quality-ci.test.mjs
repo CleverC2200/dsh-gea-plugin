@@ -670,7 +670,16 @@ test("tool knowledge uses the immutable Core command manifest and refuses unavai
     (step) => step.name === "Read fixed Core command metadata for knowledge checks",
   );
   assert.equal(step.if, "steps.affected.outputs.tooling == 'true'");
-  const code = step.run.match(/<<'NODE'\n([\s\S]*?)\nNODE/)[1];
+  const code = step.run
+    .match(/<<'NODE'\n([\s\S]*?)\nNODE/)[1]
+    .replace(
+      /from '[^']+source-tools\.mjs';/,
+      "from " +
+        JSON.stringify(
+          pathToFileURL(resolve("../dsh-agent-workbench/scripts/source-tools.mjs")).href,
+        ) +
+        ";",
+    );
   for (const mode of ["valid", "http", "malformed"]) {
     const directory = mkdtempSync(join(tmpdir(), "source-core-metadata-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
