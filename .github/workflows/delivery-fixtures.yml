@@ -4,6 +4,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      reuse_prepared_inputs:
+        description: "Reuse verified desktop preparation; disable for a cold benchmark or rebuild"
+        default: true
+        required: false
+        type: boolean
       windows_complete_input:
         description: "Fixed desktop version, Core8cf, merged GEA SHA and three immutable published package identities as JSON"
         required: false
@@ -129,6 +134,15 @@ jobs:
         run: |
           corepack pnpm run build:lib:host
           node ../gea/scripts/windows-complete-local/core-cache.mjs seal . host
+      - name: Plan immutable macOS baseline cache
+        id: delivery-baseline-plan
+        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core mac-baseline
+      - uses: actions/cache/restore@v4
+        id: delivery-baseline-restore
+        if: inputs.reuse_prepared_inputs
+        with:
+          path: ${{ steps.delivery-baseline-plan.outputs.paths }}
+          key: ${{ steps.delivery-baseline-plan.outputs.key }}
       - name: Build full macOS package and verify isolated first installation
         run: node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"
       - name: Verify Core output after packaging
@@ -138,10 +152,23 @@ jobs:
       - name: Save verified compiled Core
         if: "!cancelled() && steps.delivery-core-after-package.outputs.hit == 'true' && steps.delivery-core-restore.outputs.cache-hit != 'true'"
         continue-on-error: true
+        timeout-minutes: 2
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.delivery-core-plan.outputs.paths }}
           key: ${{ steps.delivery-core-plan.outputs.key }}
+      - name: Verify macOS baseline after packaging
+        id: delivery-baseline-after-package
+        if: "!cancelled() && steps.delivery-baseline-plan.outcome == 'success'"
+        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core mac-baseline
+      - name: Save verified macOS baseline
+        if: "!cancelled() && steps.delivery-baseline-after-package.outputs.hit == 'true' && steps.delivery-baseline-restore.outputs.cache-hit != 'true'"
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.delivery-baseline-plan.outputs.paths }}
+          key: ${{ steps.delivery-baseline-plan.outputs.key }}
       - name: Keep installer and original build evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -153,6 +180,8 @@ jobs:
             ${{ runner.temp }}/gea-mac-complete/artifacts/*.dmg
             ${{ runner.temp }}/gea-mac-complete/result.json
             ${{ runner.temp }}/gea-mac-complete/first-install-receipt.json
+            ${{ runner.temp }}/gea-mac-complete/stages.json
+            ${{ runner.temp }}/gea-mac-complete/baseline-reuse.json
             ${{ runner.temp }}/gea-mac-complete/*.log
   delivery-fixtures:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
@@ -468,6 +497,25 @@ jobs:
         with:
           path: ${{ steps.delivery-core-plan.outputs.paths }}
           key: ${{ steps.delivery-core-plan.outputs.key }}
+      - name: Plan prepared Windows runtime cache
+        id: delivery-runtime-plan
+        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core windows-runtime
+      - uses: actions/cache/restore@v4
+        id: delivery-runtime-restore
+        if: inputs.reuse_prepared_inputs
+        with:
+          path: ${{ steps.delivery-runtime-plan.outputs.paths }}
+          key: ${{ steps.delivery-runtime-plan.outputs.key }}
+      - name: Select GNU tar for Unicode published archives
+        shell: pwsh
+        run: |
+          $tarDirectory = Join-Path $env:ProgramFiles 'Git\usr\bin'
+          $tarExecutable = Join-Path $tarDirectory 'tar.exe'
+          if (!(Test-Path -LiteralPath $tarExecutable)) { throw 'DELIVERY_GNU_TAR_REQUIRED' }
+          & $tarExecutable --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
+          'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
       - name: Build full Windows package and verify isolated first installation
         run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
       - name: Verify Core output after packaging
@@ -477,10 +525,23 @@ jobs:
       - name: Save verified compiled Core
         if: "!cancelled() && steps.delivery-core-after-package.outputs.hit == 'true' && steps.delivery-core-restore.outputs.cache-hit != 'true'"
         continue-on-error: true
+        timeout-minutes: 2
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.delivery-core-plan.outputs.paths }}
           key: ${{ steps.delivery-core-plan.outputs.key }}
+      - name: Verify prepared Windows runtime after packaging
+        id: delivery-runtime-after-package
+        if: "!cancelled() && steps.delivery-runtime-plan.outcome == 'success'"
+        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core windows-runtime
+      - name: Save verified Windows runtime
+        if: "!cancelled() && steps.delivery-runtime-after-package.outputs.hit == 'true' && steps.delivery-runtime-restore.outputs.cache-hit != 'true'"
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.delivery-runtime-plan.outputs.paths }}
+          key: ${{ steps.delivery-runtime-plan.outputs.key }}
       - name: Run approved Native plugin update acceptance bundle
         if: inputs.native_acceptance_bundle_url != ''
         env:
