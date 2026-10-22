@@ -1699,9 +1699,13 @@ export class Business {
   }
 
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
-  async modelRoute(signal: AbortSignal, agentCode = "sales_forecast"): Promise<GeaModelRoute> {
+  async modelRoute(
+    signal: AbortSignal,
+    agentCode = "sales_forecast",
+    pageSessionId?: string,
+  ): Promise<GeaModelRoute> {
     this.assertModelAllowed();
-    this.assertExecutionAllowed(agentCode);
+    this.assertExecutionAllowed(agentCode, "view", pageSessionId);
     const auth = this.authenticated();
     const epoch = this.epoch.signal;
     if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
@@ -2458,16 +2462,26 @@ export class Business {
     this.salesReadonly?.assertModel();
   }
 
-  assertExecutionAllowed(consumerCode: string, effect: CapabilityEffect = "view"): void {
+  assertExecutionAllowed(
+    consumerCode: string,
+    effect: CapabilityEffect = "view",
+    pageSessionId?: string,
+  ): void {
     this.salesReadonly?.assertConsumer(consumerCode, effect);
     const contract =
       consumerCode === this.config.analysisAgentCode && consumerCode !== WORKBENCH_AGENT_CODE
         ? this.capabilities.get("gea-workbench")
         : this.capabilities.list().find((item) => item.data?.consumerCode === consumerCode);
+    const page = pageSessionId ? this.currentPageIdentity(pageSessionId) : undefined;
+    const pageAnalysis =
+      effect === "view" &&
+      page?.mock === true &&
+      page.consumerCode === consumerCode &&
+      page.pluginId === contract?.id;
     let code: string | undefined;
     if (!contract) code = "GEA_PLUGIN_CONSUMER_NOT_ALLOWED";
     else if (contract.enabled === false) code = "GEA_CAPABILITY_DISABLED";
-    else if (contract.data?.mock) code = "GEA_CAPABILITY_MOCK_ONLY";
+    else if (contract.data?.mock && !pageAnalysis) code = "GEA_CAPABILITY_MOCK_ONLY";
     else if (
       effectRank(effect) > effectRank(contract.maxEffect) ||
       (contract.view && !this.capabilities.allows(contract.view.surface, effect))
