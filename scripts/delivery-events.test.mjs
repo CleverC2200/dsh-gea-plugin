@@ -111,7 +111,21 @@ test("standalone delivery retains package Prompt and source checks while candida
       "node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs",
     ],
   );
-  const packageScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
+  const manifest = JSON.parse(readFileSync("package.json", "utf8"));
+  const preparation = steps.findIndex((step) =>
+    step.run?.startsWith("npm install --prefix .runtime/fixture-dependencies "),
+  );
+  assert.ok(
+    preparation >= 0 &&
+      preparation < steps.findIndex((step) => step.run === "node --run test:release-source"),
+  );
+  const preparationArguments = steps[preparation].run.split(/\s+/);
+  for (const name of ["semver", "tar"])
+    assert.ok(
+      preparationArguments.includes(`${name}@${manifest.dependencies[name]}`),
+      `missing declared fixture dependency: ${name}`,
+    );
+  const packageScripts = manifest.scripts;
   for (const name of [
     "test:release-source",
     "test:delivery:packages",
