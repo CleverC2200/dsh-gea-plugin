@@ -46,8 +46,10 @@ async function plan(root, profile) {
     ),
     protocol: await fileHash(fileURLToPath(import.meta.url)),
   };
+  if (["official", "windows-runtime"].includes(profile))
+    identity.compilation = await fileHash(fileURLToPath(new URL("./compile.mjs", import.meta.url)));
   if (profile === "windows-runtime") {
-    identity.preparation = await fileHash(fileURLToPath(new URL("./build.mjs", import.meta.url)));
+    identity.preparation = await fileHash(fileURLToPath(new URL("./prepare.mjs", import.meta.url)));
     identity.appId = process.env.DSH_DESKTOP_APP_ID ?? "";
     identity.registry = hash(process.env.DSH_DESKTOP_NPM_REGISTRY ?? "");
   }
@@ -142,6 +144,20 @@ async function main() {
   const prepared = await plan(root, profile);
   const paths = [...prepared.roots.map((path) => join(root, path)), prepared.receipt];
   let hit = false;
+  let source = {};
+  const requested = process.env.DSH_DELIVERY_REUSE_INPUTS !== "false";
+  let reason =
+    operation === "verify"
+      ? requested
+        ? "readable-scope-empty"
+        : "reuse-disabled"
+      : "not-requested";
+  let integrity = "not-restored";
+  const restore =
+    process.env[
+      profile === "windows-runtime" ? "DSH_DELIVERY_RUNTIME_RESTORE" : "DSH_DELIVERY_CORE_RESTORE"
+    ];
+  if (operation === "verify" && requested && restore === "failure") reason = "restore-failed";
   if (operation === "seal" || operation === "verify") {
     for (const path of [dirname(prepared.receipt), prepared.receipt]) {
       try {
@@ -176,7 +192,15 @@ async function main() {
     await mkdir(dirname(prepared.receipt), { recursive: true });
     await writeFile(
       prepared.receipt,
-      JSON.stringify({ identity: prepared.identity, files }) + "\n",
+      JSON.stringify({
+        identity: prepared.identity,
+        files,
+        source: {
+          ref: process.env.GITHUB_REF ?? "unknown",
+          sha: process.env.GITHUB_SHA ?? "unknown",
+          runId: process.env.GITHUB_RUN_ID ?? "unknown",
+        },
+      }) + "\n",
     );
   } else if (operation === "verify") {
     let record;
@@ -195,7 +219,10 @@ async function main() {
         JSON.stringify(await inventory(root, prepared.roots, profile))
       )
         throw Error("DELIVERY_CACHE_OUTPUT_CHANGED");
-      hit = true;
+      source = record.source ?? {};
+      integrity = "verified";
+      hit = requested;
+      reason = requested ? "verified-hit" : "reuse-disabled";
     } else {
       for (const path of prepared.roots) {
         try {
@@ -211,7 +238,7 @@ async function main() {
   if (process.env.GITHUB_OUTPUT)
     await appendFile(
       process.env.GITHUB_OUTPUT,
-      `key=${prepared.key}\nhit=${hit}\npaths<<DELIVERY_CORE_PATHS\n${paths.join("\n")}\nDELIVERY_CORE_PATHS\n`,
+      `key=${prepared.key}\nhit=${hit}\nintegrity=${integrity}\npaths<<DELIVERY_CORE_PATHS\n${paths.join("\n")}\nDELIVERY_CORE_PATHS\n`,
     );
   console.log(
     JSON.stringify({
@@ -219,8 +246,31 @@ async function main() {
       key: prepared.key,
       hit,
       paths,
+      requested,
+      reason,
+      integrity,
+      sourceRef: source.ref ?? "unknown",
+      sourceSha: source.sha ?? "unknown",
+      sourceRunId: source.runId ?? "unknown",
       seconds: (Date.now() - started) / 1000,
     }),
   );
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    if (process.env.DSH_DELIVERY_CACHE_EVIDENCE) {
+      await mkdir(process.env.DSH_DELIVERY_CACHE_EVIDENCE, { recursive: true });
+      await writeFile(
+        join(process.env.DSH_DELIVERY_CACHE_EVIDENCE, `cache-rejection-${process.argv[4]}.json`),
+        JSON.stringify({
+          profile: process.argv[4],
+          integrity: "rejected",
+          reason: /^DELIVERY_CACHE_[A-Z_]+$/.test(error.message) ? error.message : "unknown",
+        }),
+      );
+    }
+    throw error;
+  }
+}
