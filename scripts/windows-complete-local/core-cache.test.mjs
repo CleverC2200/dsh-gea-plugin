@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, rm, symlink, readFile, realpath } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, writeFile, rm, symlink, readFile, realpath } from "node:fs/promises";
 import { join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,10 @@ async function fixture(t, built = true) {
     await writeFile(join(root, path), JSON.stringify({ packageManager: "pnpm@11.7.0" }));
   await writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
   await writeFile(join(root, "pnpm-workspace.yaml"), "packages: ['apps/*']\n");
-  await writeFile(join(root, ".gitignore"), "lib/\n.dsh-build/\nprofiles/\ndist/\n");
+  await writeFile(
+    join(root, ".gitignore"),
+    "lib/\n.dsh-build/\n.desktop-build/\nprofiles/\ndist/\n",
+  );
   const git = (...args) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
   git("init", "-q");
   git("add", ".");
@@ -226,4 +229,115 @@ test("a failed wrapper leaves independently verified Core reusable without cachi
   assert.equal(result.hit, true);
   assert.ok(!result.paths.includes(wrapperEvidence));
   assert.ok(result.paths.every((path) => !/profiles|seed|install/.test(path)));
+});
+
+async function prepareWindowsRuntime(root) {
+  const target = join(root, "apps/desktop/.desktop-build/targets/win-x64");
+  for (const path of [
+    "electron/electron.exe",
+    "runtime/versions.json",
+    "runtime/pnpm/bin/pnpm.mjs",
+    "runtime/cli/command-manager.js",
+    "dsh/package.json",
+    "dsh/desktop-runtime.json",
+    "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js",
+  ]) {
+    await mkdir(join(target, path, ".."), { recursive: true });
+    await writeFile(join(target, path), "prepared Core runtime");
+  }
+  return target;
+}
+
+test("prepared Windows runtime restores into another checkout without reusing company state", async (t) => {
+  const { root, run } = await fixture(t);
+  assert.equal(run("seal").status, 0);
+  assert.equal(JSON.parse(run("verify", {}, "windows-runtime").stdout).hit, false);
+  const target = await prepareWindowsRuntime(root);
+  await mkdir(join(target, "company-seed"));
+  await writeFile(join(target, "company-seed/manifest.json"), "old company packages");
+  let result = run("seal", {}, "windows-runtime");
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(run("plan", {}, "windows-runtime").stdout);
+  assert.deepEqual(
+    plan.paths.slice(0, 3).map((path) => path.slice(target.length + 1)),
+    ["dsh", "electron", "runtime"],
+  );
+  assert.ok(plan.paths.every((path) => !/company-seed|seed-home|packed|profiles/.test(path)));
+  const copy = await realpath(await mkdtemp(join(tmpdir(), "restored-delivery-")));
+  t.after(() => rm(copy, { recursive: true, force: true }));
+  await cp(root, copy, { recursive: true });
+  await rm(join(copy, "apps/desktop/.desktop-build/targets/win-x64/company-seed"), {
+    recursive: true,
+  });
+  result = spawnSync(process.execPath, [cli, "verify", copy, "windows-runtime"], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).hit, true);
+  assert.equal(JSON.parse(run("verify").stdout).hit, true);
+});
+
+test("Windows runtime key survives company releases but changes for preparation inputs", async (t) => {
+  const { root, run } = await fixture(t);
+  await prepareWindowsRuntime(root);
+  assert.equal(run("seal", {}, "windows-runtime").status, 0);
+  const key = JSON.parse(run("plan", {}, "windows-runtime").stdout).key;
+  const release = {
+    GEA_COMPLETE_SOURCE_SHA: "b".repeat(40),
+    DSH_DESKTOP_BUILD_VERSION: "0.2.0-rc.2.20261022.2",
+  };
+  assert.equal(JSON.parse(run("plan", release, "windows-runtime").stdout).key, key);
+  assert.equal(JSON.parse(run("verify", release, "windows-runtime").stdout).hit, true);
+  assert.notEqual(
+    JSON.parse(run("plan", { DSH_DESKTOP_APP_ID: "changed" }, "windows-runtime").stdout).key,
+    key,
+  );
+  assert.match(
+    run("verify", { DSH_DESKTOP_APP_ID: "changed" }, "windows-runtime").stderr,
+    /DELIVERY_CACHE_IDENTITY_MISMATCH/,
+  );
+  assert.notEqual(
+    JSON.parse(
+      run("plan", { DSH_DESKTOP_NPM_REGISTRY: "https://mirror.example" }, "windows-runtime").stdout,
+    ).key,
+    key,
+  );
+});
+
+test("Windows runtime rejects missing required files and altered restored production dependencies", async (t) => {
+  const { root, run } = await fixture(t);
+  const target = await prepareWindowsRuntime(root);
+  await rm(join(target, "electron/electron.exe"));
+  assert.match(run("seal", {}, "windows-runtime").stderr, /DELIVERY_CACHE_OUTPUTS_INCOMPLETE/);
+  await prepareWindowsRuntime(root);
+  assert.equal(run("seal", {}, "windows-runtime").status, 0);
+  await writeFile(
+    join(target, "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js"),
+    "changed Host",
+  );
+  assert.match(run("verify", {}, "windows-runtime").stderr, /DELIVERY_CACHE_OUTPUT_CHANGED/);
+});
+
+test("macOS baseline cache is limited to its fixed DMG and refuses incorrect bytes", async (t) => {
+  const { root, run } = await fixture(t);
+  const plan = JSON.parse(run("plan", {}, "mac-baseline").stdout);
+  assert.equal(plan.paths.length, 2);
+  assert.equal(
+    JSON.parse(
+      run(
+        "plan",
+        { ImageVersion: "another-image", DSH_DESKTOP_BUILD_VERSION: "another-release" },
+        "mac-baseline",
+      ).stdout,
+    ).key,
+    plan.key,
+  );
+  assert.equal(
+    normalize(plan.paths[0]),
+    join(root, "apps/desktop/.desktop-build/baseline/mac-arm64.dmg"),
+  );
+  assert.equal(JSON.parse(run("verify", {}, "mac-baseline").stdout).hit, false);
+  await mkdir(join(plan.paths[0], ".."), { recursive: true });
+  await writeFile(plan.paths[0], "wrong baseline");
+  assert.match(run("seal", {}, "mac-baseline").stderr, /DELIVERY_CACHE_BASELINE_CHANGED/);
 });

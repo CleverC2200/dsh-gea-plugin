@@ -16,10 +16,20 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "mac_complete_input",
     "native_acceptance_bundle_sha256",
     "native_acceptance_bundle_url",
+    "reuse_prepared_inputs",
     "source_types_input",
     "windows_complete_input",
   ]);
-  for (const input of Object.values(inputs)) {
+  for (const [name, input] of Object.entries(inputs)) {
+    if (name === "reuse_prepared_inputs") {
+      assert.deepEqual(input, {
+        description: "Reuse verified desktop preparation; disable for a cold benchmark or rebuild",
+        default: true,
+        required: false,
+        type: "boolean",
+      });
+      continue;
+    }
     assert.equal(input.type, "string");
     assert.equal(input.required, false);
   }
@@ -116,6 +126,19 @@ test("complete delivery verifies exact Core outputs and cold tools before compil
   }
 });
 
+test("Windows packaging selects GNU tar with literal names and local drive paths", () => {
+  const steps = workflow.jobs["windows-complete-package"].steps;
+  const index = steps.findIndex(
+    (step) => step.name === "Select GNU tar for Unicode published archives",
+  );
+  assert.ok(index >= 0 && index < steps.findIndex((step) => step.name?.startsWith("Build full ")));
+  const step = steps[index];
+  assert.equal(step.shell, "pwsh");
+  assert.match(step.run, /Git\\usr\\bin/);
+  assert.match(step.run, /TAR_OPTIONS=--force-local --quoting-style=literal/);
+  assert.match(step.run, /DELIVERY_GNU_TAR_REQUIRED/);
+});
+
 test("verified Core can be saved after wrapper failure without hiding the failed delivery", () => {
   for (const name of ["mac-complete-package", "windows-complete-package"]) {
     const steps = workflow.jobs[name].steps;
@@ -174,6 +197,42 @@ test("manual delivery runs dependency-free Core cache fixtures on Windows and ma
   ]);
 });
 
+test("desktop jobs restore exact prepared inputs and save only after verifying unchanged bytes", () => {
+  for (const [name, id, profile] of [
+    ["windows-complete-package", "runtime", "windows-runtime"],
+    ["mac-complete-package", "baseline", "mac-baseline"],
+  ]) {
+    const job = workflow.jobs[name];
+    assert.equal(job.needs, undefined, name);
+    const steps = job.steps;
+    const plan = steps.findIndex((step) => step.id === `delivery-${id}-plan`);
+    const restore = steps.findIndex((step) => step.id === `delivery-${id}-restore`);
+    const packaging = steps.findIndex((step) => step.name?.startsWith("Build full "));
+    const verify = steps.findIndex((step) => step.id === `delivery-${id}-after-package`);
+    const save = steps.findIndex(
+      (step) =>
+        step.name === `Save verified ${id === "runtime" ? "Windows runtime" : "macOS baseline"}`,
+    );
+    assert.ok(
+      plan >= 0 && restore > plan && packaging > restore && verify > packaging && save > verify,
+      name,
+    );
+    assert.match(steps[plan].run, new RegExp(`core-cache\\.mjs plan core ${profile}`));
+    assert.match(steps[verify].run, new RegExp(`core-cache\\.mjs verify core ${profile}`));
+    assert.equal(steps[restore].if, "inputs.reuse_prepared_inputs");
+    assert.equal(steps[restore].with["restore-keys"], undefined);
+    assert.equal(steps[restore].with.key, `\u0024{{ steps.delivery-${id}-plan.outputs.key }}`);
+    assert.equal(steps[save].with.path, steps[restore].with.path);
+    assert.equal(steps[save].with.key, steps[restore].with.key);
+    assert.match(
+      steps[save].if,
+      new RegExp(`steps.delivery-${id}-after-package.outputs.hit == 'true'`),
+    );
+    assert.equal(steps[save]["continue-on-error"], true);
+    assert.equal(steps[save]["timeout-minutes"], 2);
+  }
+});
+
 test("real source types prepare only for an explicit manual tuple and preserve existing admission", () => {
   const input = workflow.on.workflow_dispatch.inputs.source_types_input;
   assert.equal(input.default, "");
@@ -217,7 +276,11 @@ test("manual source type input binds exactly three commits to the actual GEA dis
   const script = step.run.match(/<<'NODE'[^\n]*\n([\s\S]*?)\nNODE/)[1];
   const directory = mkdtempSync(join(tmpdir(), "source-types-event-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const tuple = { workbench: "1".repeat(40), manage: "2".repeat(40), gea: "3".repeat(40) };
+  const tuple = {
+    workbench: "1".repeat(40),
+    manage: "2".repeat(40),
+    gea: "3".repeat(40),
+  };
   const output = join(directory, "output");
   const env = {
     ...process.env,
@@ -243,7 +306,12 @@ test("manual source type input binds exactly three commits to the actual GEA dis
     { GITHUB_SHA: "4".repeat(40) },
     { SOURCE_TYPES_INPUT: JSON.stringify({ ...tuple, manage: "short" }) },
     { SOURCE_TYPES_INPUT: JSON.stringify({ ...tuple, extra: "4".repeat(40) }) },
-    { SOURCE_TYPES_INPUT: JSON.stringify({ workbench: tuple.workbench, manage: tuple.manage }) },
+    {
+      SOURCE_TYPES_INPUT: JSON.stringify({
+        workbench: tuple.workbench,
+        manage: tuple.manage,
+      }),
+    },
   ])
     assert.notEqual(run(extra).status, 0, JSON.stringify(extra));
 });

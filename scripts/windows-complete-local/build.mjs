@@ -44,9 +44,18 @@ for (const [cwd, sha] of [
     throw Error("SOURCE_DIRTY");
 }
 const coreCache = fileURLToPath(new URL("./core-cache.mjs", import.meta.url));
-execFileSync(process.execPath, [coreCache, "preflight", root, "official"], { stdio: "inherit" });
+execFileSync(process.execPath, [coreCache, "preflight", root, "official"], {
+  stdio: "inherit",
+});
 const coreReuse = JSON.parse(
-  execFileSync(process.execPath, [coreCache, "verify", root, "official"], { encoding: "utf8" }),
+  execFileSync(process.execPath, [coreCache, "verify", root, "official"], {
+    encoding: "utf8",
+  }),
+);
+const runtimeReuse = JSON.parse(
+  execFileSync(process.execPath, [coreCache, "verify", root, "windows-runtime"], {
+    encoding: "utf8",
+  }),
 );
 const pluginSource = readDesktopPluginSource(input, gea);
 await mkdir(output, { recursive: true });
@@ -212,42 +221,66 @@ await writeFile(join(output, "input-three.json"), JSON.stringify(seedInput));
 if (!coreReuse.hit) {
   await run("build-official", ["run", "build:official"]);
   await run("build-native-ts", ["--dir", "native/system", "run", "build:ts"]);
-  execFileSync(process.execPath, [coreCache, "seal", root, "official"], { stdio: "inherit" });
+  execFileSync(process.execPath, [coreCache, "seal", root, "official"], {
+    stdio: "inherit",
+  });
 }
 await writeFile(join(output, "core-reuse.json"), JSON.stringify(coreReuse, null, 2));
-await run("pack-dsh", [
-  "run",
-  "release:pack",
-  "--family",
-  "dsh",
-  "--out",
-  join(target, "packed/dsh"),
-]);
-await run("pack-host", [
-  "--dir",
-  "apps/desktop-host",
-  "pack",
-  "--pack-destination",
-  join(target, "packed/dsh"),
-]);
-await run("pack-vendor", [
-  "run",
-  "release:pack",
-  "--family",
-  "vendor",
-  "--out",
-  join(target, "packed/vendor"),
-]);
-await run("pack-native", [
-  "--dir",
-  "native/system/packages/entry",
-  "pack",
-  "--pack-destination",
-  join(target, "packed/landlock"),
-]);
-await run("prepare-runtime", ["run", "prepare:runtime"], desktop);
-await run("prepare-packages", ["run", "prepare:packages"], desktop);
-await run("prepare-dsh", ["run", "prepare:dsh"], desktop);
+await writeFile(join(output, "runtime-reuse.json"), JSON.stringify(runtimeReuse, null, 2));
+if (!runtimeReuse.hit) {
+  await run("pack-dsh", [
+    "run",
+    "release:pack",
+    "--family",
+    "dsh",
+    "--out",
+    join(target, "packed/dsh"),
+  ]);
+  await run("pack-host", [
+    "--dir",
+    "apps/desktop-host",
+    "pack",
+    "--pack-destination",
+    join(target, "packed/dsh"),
+  ]);
+  await run("pack-vendor", [
+    "run",
+    "release:pack",
+    "--family",
+    "vendor",
+    "--out",
+    join(target, "packed/vendor"),
+  ]);
+  await run("pack-native", [
+    "--dir",
+    "native/system/packages/entry",
+    "pack",
+    "--pack-destination",
+    join(target, "packed/landlock"),
+  ]);
+  await run("prepare-runtime", ["run", "prepare:runtime"], desktop);
+  await run("prepare-packages", ["run", "prepare:packages"], desktop);
+  await run("prepare-dsh", ["run", "prepare:dsh"], desktop);
+  execFileSync(process.execPath, [coreCache, "seal", root, "windows-runtime"], {
+    stdio: "inherit",
+  });
+} else {
+  const smoke = join(output, "reused-runtime-smoke.mts");
+  await writeFile(
+    smoke,
+    `import { verifyDesktopRuntime } from ${JSON.stringify(pathToFileURL(join(desktop, "src/runtime-tree.ts")).href)};
+import { smokePreparedRuntime } from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/smoke-prepared-runtime.ts")).href)};
+import { smokePrimaryRuntime } from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/prepare-primary-runtime.ts")).href)};
+const root = ${JSON.stringify(join(target, "dsh"))};
+const runtime = ${JSON.stringify(join(target, "runtime"))};
+const descriptor = await verifyDesktopRuntime(root, '0.2.0-rc.2', { platform: 'win32', arch: 'x64' });
+await smokePrimaryRuntime(${JSON.stringify(join(target, "runtime/primary-runtime"))});
+await smokePreparedRuntime(root, ${JSON.stringify(join(target, "electron/electron.exe"))}, runtime, descriptor);
+await verifyDesktopRuntime(root, '0.2.0-rc.2', { platform: 'win32', arch: 'x64' });
+`,
+  );
+  await run("reused-runtime-smoke", ["exec", "tsx", smoke]);
+}
 
 const seedRoot = join(target, "seed-root");
 await mkdir(seedRoot, { recursive: true });
@@ -367,6 +400,8 @@ await writeFile(
     {
       status: "packaged-and-runtime-smoke-passed",
       coreSha,
+      coreReuse,
+      runtimeReuse,
       geaSha,
       geaPluginSourceSha: pluginSource.head,
       coreRoot: root,
