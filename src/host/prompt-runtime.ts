@@ -1,3 +1,4 @@
+import { CURRENT_SHORTAGE_ROUTING, currentShortageResource } from "./current-shortage-contract.ts";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 import { sessionConsumer, assertSessionResourceAvailable } from "./business-identity.ts";
 import { businessToolDisplay } from "./business-tool-display.ts";
@@ -449,8 +450,11 @@ export function mountBusinessPrompts(
             description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,
           }),
         );
+      const sections = currentShortageResource(profile.consumerCode)
+        ? [...assembled.sections, { name: "gea-current-shortage", text: CURRENT_SHORTAGE_ROUTING }]
+        : assembled.sections;
       const measurement = promptMeasurement(
-        assembled.sections.map((section) => section.text).join("\n\n"),
+        sections.map((section) => section.text).join("\n\n"),
         tools,
       );
       console.info(
@@ -461,7 +465,7 @@ export function mountBusinessPrompts(
           resultChars: state.returned,
         }),
       );
-      return { ...assembled, tools };
+      return { ...assembled, tools, sections };
     });
   });
   return () => {
