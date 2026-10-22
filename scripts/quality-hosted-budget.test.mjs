@@ -108,6 +108,15 @@ test("in-gate source reports preserve a failed final admission", () => {
   assert.equal(assessSourceBudget(value, options).functional.status, "unknown");
 });
 
+test("source budget accepts the workflow's skipped dependency-review job", () => {
+  const value = snapshot();
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks";
+  value.jobs.push({ ...value.jobs[1], id: 4, name: "dependency-review", conclusion: "skipped" });
+  value.pagination.totalCount = 4;
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "passed");
+});
+
 async function restFixture(t, change = (response) => response) {
   const data = snapshot();
   const requests = [];
