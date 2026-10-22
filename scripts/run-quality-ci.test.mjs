@@ -663,3 +663,53 @@ test("dependency review applies only to consumed GEA dependency inputs on PRs an
   assert.equal(action.with["fail-on-severity"], "high");
   assert.equal(action["continue-on-error"], undefined);
 });
+
+test("tool knowledge uses the immutable Core command manifest and refuses unavailable or malformed metadata", (t) => {
+  const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
+  const step = workflow.jobs["source-checks"].steps.find(
+    (step) => step.name === "Read fixed Core command metadata for knowledge checks",
+  );
+  assert.equal(step.if, "steps.affected.outputs.tooling == 'true'");
+  const code = step.run
+    .match(/<<'NODE'\n([\s\S]*?)\nNODE/)[1]
+    .replace(
+      /from '[^']+source-tools\.mjs';/,
+      "from " +
+        JSON.stringify(
+          pathToFileURL(resolve("../dsh-agent-workbench/scripts/source-tools.mjs")).href,
+        ) +
+        ";",
+    );
+  for (const mode of ["valid", "http", "malformed"]) {
+    const directory = mkdtempSync(join(tmpdir(), "source-core-metadata-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    mkdirSync(join(directory, "scripts"));
+    writeFileSync(
+      join(directory, "scripts/ci-core-policy.mjs"),
+      `export function ciCores(lane) { if(lane !== 'required') throw Error('WRONG_LANE'); return [{head:'${"a".repeat(40)}'}]; }`,
+    );
+    const fake = `globalThis.fetch=async url => { if(url !== 'https://raw.githubusercontent.com/CleverC2200/deepseek-harness/${"a".repeat(40)}/package.json') throw Error('MUTABLE_SOURCE'); return new Response(JSON.stringify(${mode === "malformed" ? "{}" : '{scripts:{"dev:desktop":"unchanged"}}'}), {status:${mode === "http" ? 503 : 200}}); };`;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", fake + code], {
+      cwd: directory,
+      env: { ...process.env, GITHUB_WORKSPACE: directory },
+      encoding: "utf8",
+    });
+    if (mode === "valid") {
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.equal(
+        JSON.parse(readFileSync(join(directory, "official-latest-standard/package.json"))).scripts[
+          "dev:desktop"
+        ],
+        "unchanged",
+      );
+      assert.equal(existsSync(join(directory, "official-latest-standard/node_modules")), false);
+    } else {
+      assert.notEqual(result.status, 0);
+      assert.match(
+        result.stderr,
+        mode === "http" ? /SOURCE_CORE_METADATA_HTTP/ : /SOURCE_CORE_COMMANDS_REQUIRED/,
+      );
+      assert.equal(existsSync(join(directory, "official-latest-standard")), false);
+    }
+  }
+});

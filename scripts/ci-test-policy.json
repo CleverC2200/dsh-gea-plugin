@@ -478,7 +478,11 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:run-quality-ci\\.mjs|ci-test-policy\\.json)$",
       "tests": [],
-      "sourceTests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "sourceTests": [
+        "scripts/delivery-events.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs",
+        "scripts/run-quality-ci.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -497,5 +501,9 @@
     "desktop/plugin-store.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/recovery.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
+  },
+  "sourceTools": {
+    "scripts/delivery-events.test.mjs": ["yaml"],
+    "scripts/run-quality-ci.test.mjs": ["yaml"]
   }
 }
