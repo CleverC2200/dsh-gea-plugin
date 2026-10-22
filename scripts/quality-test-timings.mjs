@@ -102,8 +102,8 @@ export function timingsFromExecution({ plan, receipts, root, inputs }) {
     source: {
       kind: "measured-reference-only",
       acceptance: "not-acceptance",
-      runId: plan.binding.runId ?? null,
-      runAttempt: plan.binding.runAttempt ?? null,
+      runId: plan.binding.runId == null ? null : Number(plan.binding.runId),
+      runAttempt: plan.binding.runAttempt == null ? null : Number(plan.binding.runAttempt),
       platform: plan.binding.platform,
       node: plan.binding.node,
       core: plan.binding.manifest.core,

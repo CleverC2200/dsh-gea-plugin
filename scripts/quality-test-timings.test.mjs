@@ -26,7 +26,12 @@ test("completed real execution produces a scheduling reference while source chan
   const plan = createExecutionPlan({
     selection: { files: ["tests/a.test.mjs"] },
     platformPlan: { files: ["tests/a.test.mjs"] },
-    binding: { ...environment, manifest: { core: environment.core } },
+    binding: {
+      ...environment,
+      runId: "123",
+      runAttempt: "1",
+      manifest: { core: environment.core },
+    },
   });
   const resultFile = join(root, "execution.json");
   runExecutionPlan({
@@ -45,6 +50,8 @@ test("completed real execution produces a scheduling reference while source chan
     inputs: ["src/host.ts", "package.json"],
   });
   assert.equal(timings.source.acceptance, "not-acceptance");
+  assert.equal(timings.source.runId, 123);
+  assert.equal(timings.source.runAttempt, 1);
   assert.equal(currentTestTimings({ root, timings, environment }).files.length, 1);
   writeFileSync(join(root, "src/host.ts"), "export const value = 2;");
   assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
