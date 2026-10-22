@@ -116,6 +116,25 @@ jobs:
           QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
         run: |
           node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
+      - name: Read fixed Core command metadata for knowledge checks
+        if: steps.affected.outputs.tooling == 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          import { ciCores } from './scripts/ci-core-policy.mjs';
+          const head = ciCores('required')[0].head;
+          if (!/^[a-f0-9]{40}$/.test(head)) throw Error('SOURCE_CORE_METADATA_HEAD');
+          const response = await fetch(`https://raw.githubusercontent.com/CleverC2200/deepseek-harness/${head}/package.json`);
+          if (!response.ok) throw Error(`SOURCE_CORE_METADATA_HTTP: ${response.status}`);
+          const text = await response.text();
+          const manifest = JSON.parse(text);
+          if (!manifest.scripts || typeof manifest.scripts !== 'object' || Array.isArray(manifest.scripts)) throw Error('SOURCE_CORE_COMMANDS_REQUIRED');
+          const directory = resolve(process.env.GITHUB_WORKSPACE, 'official-latest-standard');
+          mkdirSync(directory);
+          writeFileSync(resolve(directory, 'package.json'), text);
+          console.log(JSON.stringify({ coreMetadata: { head, bytes: Buffer.byteLength(text), purpose: 'command-reference-only' } }));
+          NODE
       - name: Enable declared package managers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         run: |
