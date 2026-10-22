@@ -99,11 +99,11 @@ jobs:
         id: affected
         run: node scripts/source-quality.mjs --phase affected-plan
       - name: Select registered Core for fixed dependency links and SDK consumers
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        if: steps.affected.outputs.core == 'true'
         id: core
         run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from '../dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
       - uses: actions/checkout@v7
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        if: steps.affected.outputs.core == 'true'
         with:
           repository: CleverC2200/deepseek-harness
           ref: ${{ steps.core.outputs.head }}
@@ -111,7 +111,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Verify selected Core source before dependency preparation
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        if: steps.affected.outputs.core == 'true'
         env:
           QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
         run: |
@@ -119,15 +119,18 @@ jobs:
       - name: Enable declared package managers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         run: |
-          npm install --global npm@11.11.0
+          if [ "${{ steps.affected.outputs.tooling }}" != 'true' ]; then
+            npm install --global npm@11.11.0
+          fi
           corepack enable
       - name: Locate existing package download cache
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        if: steps.affected.outputs.core == 'true'
         id: cache-path
         working-directory: candidate/dsh-agent-manage
         run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        id: download-cache
+        if: steps.affected.outputs.core == 'true'
         with:
           path: |
             ~/.npm
@@ -135,8 +138,14 @@ jobs:
             ${{ steps.cache-path.outputs.store }}
           key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
           restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+      - uses: actions/cache/restore@v4
+        if: steps.affected.outputs.tooling == 'true'
+        id: tool-download-cache
+        with:
+          path: ${{ steps.affected.outputs.tools-downloads }}
+          key: source-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.affected.outputs.tools-key }}
       - name: Prepare owned Core source without compiling
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        if: steps.affected.outputs.core == 'true'
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
       - name: Locate SDK artifact cache paths
         if: steps.affected.outputs.sdk == 'true'
@@ -161,6 +170,23 @@ jobs:
       - name: Prepare dependencies consumed by selected checks
         if: steps.affected.outputs.dependencies == 'true'
         run: node scripts/source-quality.mjs --phase affected-prepare
+      - uses: actions/cache/save@v4
+        if: success() && steps.affected.outputs.tooling == 'true' && steps.tool-download-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          path: ${{ steps.affected.outputs.tools-downloads }}
+          key: ${{ steps.tool-download-cache.outputs.cache-primary-key }}
+      - uses: actions/cache/save@v4
+        if: success() && steps.affected.outputs.core == 'true' && steps.download-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.cache-path.outputs.store }}
+          key: ${{ steps.download-cache.outputs.cache-primary-key }}
       - name: Run affected behavior and real TypeScript checks
         if: needs.source-plan.outputs.engineering == 'true'
         run: node scripts/source-quality.mjs --phase affected-check
@@ -171,6 +197,7 @@ jobs:
           name: source-checks
           path: |
             candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
+            candidate/dsh-gea-plugin/.runtime/source-tools.json
             candidate/dsh-gea-plugin/quality-checks.json
             quality-test-plan.json
             quality-test-execution-plan.json
