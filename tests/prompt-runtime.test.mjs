@@ -121,6 +121,7 @@ test("repeated catalog, query and evidence calls retain business and standard to
     "mcp__gea-gateway__inspect_cube_model",
     "mcp__gea-gateway__query_business_data",
     "gea_sales_plan_read",
+    "gea_current_shortage",
     "read_file",
     "run_code",
     "run_agent",
@@ -287,7 +288,9 @@ test("repeated catalog, query and evidence calls retain business and standard to
       assembled.tools.map((tool) => tool.name),
       before,
     );
-    assert.deepEqual(assembled.sections, assembly.sections);
+    assert.deepEqual(assembled.sections.slice(0, assembly.sections.length), assembly.sections);
+    assert.equal(assembled.sections.at(-1).name, "gea-current-shortage");
+    assert.match(assembled.sections.at(-1).text, /gea_current_shortage/);
     for (const name of ["read_file", "run_code", "run_agent"])
       assert.equal(guard({ name, agent, arguments: {} }), undefined);
   }
