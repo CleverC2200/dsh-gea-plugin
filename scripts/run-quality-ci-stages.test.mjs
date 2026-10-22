@@ -43,6 +43,7 @@ const fixtureSourceFiles = [
   "ci-platform-tests.mjs",
   "quality-test-reporter.mjs",
   "quality-test-execution.mjs",
+  "source-check-shards.mjs",
   "quality-test-timings.mjs",
   "quality-shards.mjs",
   "quality-worker-inputs.mjs",
@@ -126,6 +127,7 @@ function fixture(
   ]) {
     const root = join(job, "quality-upstreams/upstream-reference", name);
     json(join(root, "package.json"), {
+      name: name === "dsh-genui" ? "@changfenhuang/dsh-genui" : name,
       packageManager: "pnpm@11.8.0",
       main: "lib/host.js",
       types: "lib/types/host.d.ts",
@@ -219,7 +221,7 @@ function fixture(
   });
   write(
     join(gea, "scripts/stage-fixture.test.mjs"),
-    `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
+    `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.GEA_SOURCE_CHECK_SHARD, undefined); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
   );
   for (const file of additionalTests)
     write(
@@ -908,4 +910,49 @@ test("automatic metadata routing freezes one shard before preparation and later 
   const changed = f.run("build", {}, ["--test-shards", "2", "--execution-plan", file]);
   assert.equal(changed.status, 1);
   assert.match(changed.stderr, /QUALITY_TEST_PLAN_CHANGED/);
+});
+
+test("source workers prepare the full public input and execute only their own frozen shard", (t) => {
+  for (const id of ["1", "2"]) {
+    const f = fixture(t, { additionalTests: ["tests/source-worker-fixture.test.mjs"] });
+    for (const file of ["scripts/stage-fixture.test.mjs", "tests/source-worker-fixture.test.mjs"])
+      appendFileSync(join(f.gea, file), "\n");
+    const git = (...args) => {
+      const child = spawnSync("git", args, { cwd: f.gea, encoding: "utf8" });
+      assert.equal(child.status, 0, child.stderr);
+      return child.stdout.trim();
+    };
+    git("add", ".");
+    git(
+      "-c",
+      "user.name=fixture",
+      "-c",
+      "user.email=fixture@invalid",
+      "commit",
+      "-qm",
+      "changed public test inputs",
+    );
+    const candidate = JSON.parse(readFileSync(f.input));
+    candidate.repositories.find((entry) => entry.repo === "dsh-gea-plugin").head = git(
+      "rev-parse",
+      "HEAD",
+    );
+    writeFileSync(f.input, JSON.stringify(candidate));
+    const result = f.run("full", { GEA_SOURCE_CHECK_SHARD: id }, ["--source-only"]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const plan = JSON.parse(readFileSync(join(f.job, "quality-test-execution-plan.json")));
+    const receipt = JSON.parse(readFileSync(join(f.job, "quality-test-execution.json")));
+    assert.equal(plan.shards.length, 2);
+    assert.equal(plan.selected.length, 2);
+    assert.equal(receipt.scope, "shard");
+    assert.equal(receipt.status, "passed");
+    assert.deepEqual(
+      receipt.results.map((entry) => entry.shardId),
+      [id],
+    );
+    assert.deepEqual(
+      receipt.results[0].report.files.map((entry) => entry.file).sort(),
+      plan.shards.find((shard) => shard.id === id).files.sort(),
+    );
+  }
 });

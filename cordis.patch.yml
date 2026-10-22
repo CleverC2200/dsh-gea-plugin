@@ -2,3 +2,6 @@
 - insert:
     - id: gea-proof
       name: "@cleverc2200/gea-dsh-prototype"
+- id: ui-model-selection
+  config:
+    visibleProviders: !!js "process.env.GEA_COMPANY_CLIENT === '1' ? ['gea-analysis'] : undefined"

@@ -62,6 +62,54 @@ async function sidebarSource(directory) {
   if ((await json(join(directory, "package.json"))).packageManager !== fixed.sidebar.packageManager)
     throw Error("QUALITY_UPSTREAM_TOOLCHAIN");
 }
+async function upstreamSources(root, prepare = false) {
+  const sidebar = join(root, "upstream-reference/dsh-better-sidebar"),
+    genui = join(root, "upstream-reference/dsh-genui");
+  await sidebarSource(sidebar);
+  if (
+    !(await exists(genui)) ||
+    run("git", ["rev-parse", "HEAD"], genui, true) !== fixed.genui.head ||
+    run("git", ["status", "--porcelain"], genui, true)
+  )
+    throw Error("QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED");
+  sourceRemote(genui, fixed.genui.repository, prepare);
+  sourceRemote(sidebar, fixed.sidebar.repository, prepare);
+  return {
+    status: "source-only",
+    root: await realpath(root),
+    genui: { source: genui, head: fixed.genui.head },
+    sidebar: { source: sidebar, head: fixed.sidebar.head },
+    dependencies: "not-prepared",
+    runtime: "not-observed",
+  };
+}
+async function sourceLinks(root, prepare = false) {
+  const sidebar = join(root, "upstream-reference/dsh-better-sidebar"),
+    genui = join(root, "upstream-reference/dsh-genui");
+  if (
+    (await realpath(sidebar)) !== sidebar ||
+    run("git", ["config", "--local", "--get", "dsh.qualityUpstream"], sidebar, true) !==
+      "independent-fixed-sidebar"
+  )
+    throw Error("QUALITY_UPSTREAM_PRIVATE_ROOT_REQUIRED");
+  if ((await realpath(genui)) !== genui) throw Error("QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED");
+  const sources = await upstreamSources(root, prepare);
+  for (const [name, entry] of [
+    ["@changfenhuang/dsh-genui", sources.genui],
+    ["dsh-better-sidebar", sources.sidebar],
+  ]) {
+    if ((await json(join(entry.source, "package.json"))).name !== name)
+      throw Error("QUALITY_UPSTREAM_SOURCE_PACKAGE_MISMATCH: " + name);
+  }
+  return sources;
+}
+export async function verifyQualityUpstreamSources(root) {
+  if (!root) throw Error("QUALITY_UPSTREAM_REQUIRED");
+  root = resolve(root);
+  if (!(await exists(root))) throw Error("QUALITY_UPSTREAM_MATERIAL_REQUIRED");
+  if ((await realpath(root)) !== root) throw Error("QUALITY_UPSTREAM_PRIVATE_ROOT_REQUIRED");
+  return sourceLinks(root);
+}
 export async function verifyQualityUpstreams(root) {
   if (!root) throw Error("QUALITY_UPSTREAM_REQUIRED");
   root = resolve(root);
@@ -76,16 +124,7 @@ export async function verifyQualityUpstreams(root) {
     Object.entries(files).some(([file, sha]) => fixed.genui.files[file] !== sha)
   )
     throw Error("QUALITY_UPSTREAM_HASH");
-  await sidebarSource(sidebar);
-  const genuiSource = join(root, "upstream-reference/dsh-genui");
-  if (
-    !(await exists(genuiSource)) ||
-    run("git", ["rev-parse", "HEAD"], genuiSource, true) !== fixed.genui.head ||
-    run("git", ["status", "--porcelain"], genuiSource, true)
-  )
-    throw Error("QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED");
-  sourceRemote(genuiSource, fixed.genui.repository);
-  sourceRemote(sidebar, fixed.sidebar.repository);
+  await upstreamSources(root);
   const manifest = await json(join(sidebar, "package.json"));
   const required = new Set([
     manifest.main,
@@ -168,29 +207,7 @@ export async function prepareQualityUpstreamSources(root) {
     run("git", ["checkout", "--detach", fixed.sidebar.head], sidebar);
     run("git", ["config", "--local", "dsh.qualityUpstream", "independent-fixed-sidebar"], sidebar);
   }
-  if (
-    (await realpath(sidebar)) !== sidebar ||
-    run("git", ["config", "--local", "--get", "dsh.qualityUpstream"], sidebar, true) !==
-      "independent-fixed-sidebar"
-  )
-    throw Error("QUALITY_UPSTREAM_PRIVATE_ROOT_REQUIRED");
-  await sidebarSource(sidebar);
-  if (
-    (await realpath(genuiSource)) !== genuiSource ||
-    run("git", ["rev-parse", "HEAD"], genuiSource, true) !== fixed.genui.head ||
-    run("git", ["status", "--porcelain"], genuiSource, true)
-  )
-    throw Error("QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED");
-  sourceRemote(genuiSource, fixed.genui.repository, true);
-  sourceRemote(sidebar, fixed.sidebar.repository, true);
-  return {
-    status: "source-only",
-    root,
-    genui: { source: genuiSource, head: fixed.genui.head },
-    sidebar: { source: sidebar, head: fixed.sidebar.head },
-    dependencies: "not-prepared",
-    runtime: "not-observed",
-  };
+  return sourceLinks(root, true);
 }
 
 export async function prepareQualityUpstreams(root) {
@@ -225,8 +242,12 @@ export async function prepareQualityUpstreams(root) {
 }
 
 /** Bind the unchanged development link locks to already verified fixed upstream material. */
-export async function bindQualityUpstreamInputs(root, inputs, { prepare = false } = {}) {
-  const upstream = await verifyQualityUpstreams(root);
+export async function bindQualityUpstreamInputs(
+  root,
+  inputs,
+  { prepare = false, sourceOnly = false } = {},
+) {
+  const upstream = await (sourceOnly ? verifyQualityUpstreamSources : verifyQualityUpstreams)(root);
   inputs = resolve(inputs);
   if (!(await exists(inputs))) {
     if (!prepare) throw Error("QUALITY_UPSTREAM_INPUT_REQUIRED: " + inputs);
@@ -235,7 +256,7 @@ export async function bindQualityUpstreamInputs(root, inputs, { prepare = false 
   if ((await realpath(inputs)) !== inputs || !(await lstat(inputs)).isDirectory())
     throw Error("QUALITY_UPSTREAM_INPUT_PRIVATE_ROOT_REQUIRED: " + inputs);
   for (const [name, material] of [
-    ["genui", "upstream-assets/genui-0.11.3"],
+    ["genui", sourceOnly ? "upstream-reference/dsh-genui" : "upstream-assets/genui-0.11.3"],
     ["sidebar", "upstream-reference/dsh-better-sidebar"],
   ]) {
     const input = join(inputs, name),

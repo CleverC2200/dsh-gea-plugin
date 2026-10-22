@@ -9,13 +9,16 @@ const signal = () => new AbortController().signal;
 async function resource(t, id) {
   const directory = await mkdtemp(join(tmpdir(), "configured-gea-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const root = "../dsh-agent-workbench/business/inventory-" + id;
+  const root =
+    id === "mps"
+      ? "../dsh-agent-workbench/static/mps"
+      : "../dsh-agent-workbench/business/inventory-" + id;
   const manifest = JSON.parse(await readFile(root + "/plugin.json", "utf8"));
   const raw = await readFile(root + "/sql.config.json", "utf8");
   await writeFile(join(directory, "sql.config.json"), raw);
   return { directory, manifest, config: JSON.parse(raw) };
 }
-for (const id of ["fc", "aqkc", "qll", "dealer", "apsplan"])
+for (const id of ["fc", "aqkc", "qll", "dealer", "apsplan", "mps"])
   test(id + ": installed query uses its Consumer and binds fresh ten-row offsets", async (t) => {
     const r = await resource(t, id),
       calls = [];
@@ -28,7 +31,7 @@ for (const id of ["fc", "aqkc", "qll", "dealer", "apsplan"])
     };
     const [queryId, q] = Object.entries(r.config.queries).find(([, q]) => q.pagination?.countQuery);
     const parameters = Object.fromEntries(
-      Object.entries(q.parameterSpec).map(([key, s]) => [s.name, q.request.parameters[key]]),
+      Object.entries(q.parameterSpec).map(([key, s]) => [s.name, q.request.parameters?.[key]]),
     );
     parameters.page_size = 10;
     parameters.offset = 0;

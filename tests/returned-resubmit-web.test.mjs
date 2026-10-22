@@ -136,6 +136,9 @@ for (const mixed of [false, true])
       const { frame, page, app, submitted, approved, state } = await fixture(t);
       await selectPlan(frame);
       if (mixed) {
+        page.on("console", (message) => {
+          if (message.text().startsWith("[gea-draft]")) t.diagnostic(message.text());
+        });
         await frame
           .getByRole("button", {
             name: "打开 沈阳待审批 调整明细",
@@ -157,11 +160,19 @@ for (const mixed of [false, true])
                 versionId: "v3",
                 approvalRole: "region",
               });
-              return result.value?.draft?.adjustments;
+              return {
+                ok: result.ok,
+                error: result.error,
+                adjustments: result.value?.draft?.adjustments,
+              };
             },
             { timeout: 15000 },
           )
-          .toEqual([{ skuCode: "789", adjustQty: "1.750" }]);
+          .toEqual({
+            ok: true,
+            error: undefined,
+            adjustments: [{ skuCode: "789", adjustQty: "1.750" }],
+          });
       }
       await selectPlan(frame, mixed ? "沈阳待审批" : "济南退回区域");
       const submit = frame.getByRole("button", {

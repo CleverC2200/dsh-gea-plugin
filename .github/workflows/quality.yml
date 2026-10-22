@@ -523,8 +523,8 @@ jobs:
           if-no-files-found: warn
 
   plan-test-shards:
-    if: ${{ always() && !cancelled() && needs.candidate-scope.result == 'success' && needs.source-plan.result == 'success' && needs.source-plan.outputs.applicability == 'source' }}
-    needs: [candidate-scope, source-plan]
+    if: ${{ always() && !cancelled() && needs.candidate-scope.result == 'success' && needs.source-plan.result == 'success' && needs.gates.result == 'success' && needs.source-plan.outputs.applicability == 'source' }}
+    needs: [candidate-scope, source-plan, gates]
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -568,12 +568,12 @@ jobs:
       contents: read
       actions: read
     name: ${{ matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards' }}
-    if: ${{ always() && !cancelled() && needs.plan-test-shards.result == 'success' && needs.plan-test-shards.outputs.has-shards == 'true' }}
-    needs: [candidate-scope, plan-test-shards]
+    if: ${{ always() && !cancelled() && needs.gates.result == 'success' && needs.plan-test-shards.result == 'success' && needs.plan-test-shards.outputs.has-shards == 'true' }}
+    needs: [candidate-scope, gates, plan-test-shards]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 14
+      max-parallel: 8
       matrix: ${{ fromJSON(needs.plan-test-shards.outputs.matrix) }}
     env:
       QUALITY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
