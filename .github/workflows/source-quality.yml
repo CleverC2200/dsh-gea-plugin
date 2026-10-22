@@ -197,6 +197,8 @@ jobs:
           key: ${{ steps.tool-download-cache.outputs.cache-primary-key }}
       - name: Run affected behavior and real TypeScript checks
         if: needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
+        env:
+          GEA_QUALITY_FILE_CONCURRENCY: "4"
         run: node scripts/source-quality.mjs --phase affected-check
       - uses: actions/cache/save@v4
         if: success() && steps.affected.outputs.core == 'true' && steps.download-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true'

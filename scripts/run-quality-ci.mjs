@@ -120,7 +120,10 @@ try {
       "final-group-sha256": { type: "string" },
       "final-group-workbench": { type: "string" },
       "test-shards": { type: "string", default: "1" },
-      "test-file-concurrency": { type: "string", default: "2" },
+      "test-file-concurrency": {
+        type: "string",
+        default: process.env.GEA_QUALITY_FILE_CONCURRENCY ?? "2",
+      },
       "test-timings": { type: "string" },
       "source-check-receipt": { type: "string" },
       "test-results": { type: "string" },
@@ -136,6 +139,7 @@ try {
       "windows-results": { type: "string" },
     },
   });
+  delete process.env.GEA_QUALITY_FILE_CONCURRENCY;
   if (
     (values["early-controls"] !== undefined || values["early-allocation"] !== undefined) &&
     (values.phase !== "final" || !values["early-controls"] || !values["early-allocation"])
