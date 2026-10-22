@@ -6,6 +6,8 @@
 
 ## 准备输入
 
+交付先核支持的 Core 与输入形状，再在归档扫描前取得原容量准入。owner 构建回执中的 HTML 资源使用与 Host 相同的 MCP 能力校验；非法能力在生产依赖准备或安装前拒绝，诊断标明仓库、阶段和资源文件。归档缺少构建回执声明的输出返回 `DELIVERY_BUILD_OUTPUT_MISSING_IN_ARCHIVE`，不再折叠为普通输入错误。最终包字节核验和隔离安装接收仍分别执行。
+
 在各自隔离 checkout 先按 owner 固定工具链完成构建。Workbench 完整构建还需 APS 子目录独立 package-lock 的冻结安装。Manage 正常 prepare/prepack 的构建应有实际记录，普通 raw pack 可在已完成生命周期后使用 `npm pack --ignore-scripts`，本入口只整理发布元数据。各仓自有依赖和输出不能共享。
 
 request.json 的所有输入路径须为绝对路径，destination 必须是不存在的新目录，且不能落在源码 checkout 或 Core 内。命令不依赖调用者 cwd。以下路径、提交与版本都是占位输入，须以同次冻结记录和 [支持声明](../scripts/supported-cores.json) 替换；用户安装说明不包含这些源码路径。
@@ -122,6 +124,8 @@ Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开
 ## 公司桌面构建
 
 公司完整桌面包可只携带三个必要插件，GenUI 仍为可选第四包，现有配置和卸载选择保留。构建版本使用用户确认的完整版本号；Core 身份仍由实际 launcher/runtime 的产品版本、App 的干净提交与完整字节证明确定，不能把带日期的桌面构建版本当成 Core runtime 版本。当前明确登记公司 Core `8cfb899ccf21d3662421b99b5f4627842ef712ea`，允许原 `639ed015397290b3745d163aafe02ffee4aa3f84` 的证明刷新，未知 Core 继续拒绝。
+
+归档的 owner 输出校验一次流式读取，按原始路径核对每个文件的 SHA256，并拒绝缺文件、重复条目和链接。容量检查先于归档检查；原始包和整理后包的失败分别标明 raw-archive 与 published-archive 阶段。此校验不替代最终三包安装和 Host 接收。
 
 ## 当前目标组合验收
 

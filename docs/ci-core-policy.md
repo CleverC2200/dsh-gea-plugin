@@ -6,6 +6,16 @@ PR 与 main push 由 `.github/workflows/source-quality.yml` 按实际 Git 差异
 
 独立三仓联合验收由 `.github/workflows/quality.yml` 的手动 `workflow_dispatch` 执行，最终检查名为 `joint-quality`，不再作为日常合并条件。手动 alpha compatibility 入口保留。日常绿灯只证明实际选中的源码集合，不能表示完整三仓或客户端验收通过。
 
+## 日常计时参考
+
+日常分片上传 `quality-test-results/` 的逐文件报告，失败或取消时保留已有部分报告。完成的同轮全部执行回执可在对应干净 GEA 源码上刷新参考：
+
+```sh
+node scripts/quality-test-timings.mjs --plan /absolute/quality-test-execution-plan.json --execution /absolute/worker-1/quality-test-execution.json --execution /absolute/worker-2/quality-test-execution.json --output /absolute/new-timings.json
+```
+
+单 worker 只传一次 `--execution`。必须是同一冻结计划的完整成功覆盖，部分或取消结果不能更新参考。输出只用于排程，保留来源、共享源码、包清单和锁文件摘要。日常最终任务另存功能准入和 600 秒预算判断，任务内观察不含后续清理；完整耗时结论需在运行结束后使用 completed 模式核对。核对后更新原 `scripts/quality-test-timings.json`，旧运行和报告保留。
+
 下文描述手动三仓流程及其历史范围，涉及联合合并门禁的旧说明不再适用于日常 PR/main。
 
 当前交付基线为公司 fork 中基于官方 `0.2.0-rc.2` 的欢迎区与工作台 UI 接口候选，配套 Workbench 通过公开接口贡献文案、标题和展开状态。确切提交由下述策略文件固定。此登记只固定源码验证输入，不切换正式客户端或发布频道。阻断与兼容输入统一维护在 `scripts/ci-core-policy.json`；`supported-cores.json` 保留更完整的兼容目录。
