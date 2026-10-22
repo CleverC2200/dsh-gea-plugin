@@ -177,6 +177,9 @@ jobs:
         with:
           path: ${{ steps.affected.outputs.tools-downloads }}
           key: ${{ steps.tool-download-cache.outputs.cache-primary-key }}
+      - name: Run affected behavior and real TypeScript checks
+        if: needs.source-plan.outputs.engineering == 'true'
+        run: node scripts/source-quality.mjs --phase affected-check
       - uses: actions/cache/save@v4
         if: success() && steps.affected.outputs.core == 'true' && steps.download-cache.outputs.cache-hit != 'true'
         continue-on-error: true
@@ -187,9 +190,6 @@ jobs:
             ~/.cache/node/corepack
             ${{ steps.cache-path.outputs.store }}
           key: ${{ steps.download-cache.outputs.cache-primary-key }}
-      - name: Run affected behavior and real TypeScript checks
-        if: needs.source-plan.outputs.engineering == 'true'
-        run: node scripts/source-quality.mjs --phase affected-check
       - name: Keep source selection and executed check evidence
         if: always()
         uses: actions/upload-artifact@v7
