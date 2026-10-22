@@ -27,7 +27,12 @@ import {
 
 import { validatePluginCombination } from "../src/shared/plugin-release.mjs";
 import { sdkVersion } from "./supported-cores.mjs";
-import { sourceChanges, verifyPackageBuild, builtArchive } from "./package-source-integrity.mjs";
+import {
+  sourceChanges,
+  verifyPackageBuild,
+  builtArchive,
+  verifyHtmlCapabilities,
+} from "./package-source-integrity.mjs";
 
 const auxiliary = ["@changfenhuang/dsh-genui", "dsh-better-sidebar"];
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -173,6 +178,12 @@ async function preflight(input, destination) {
       buildReceipt: row.buildReceipt,
       lock: repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml",
     });
+    try {
+      await verifyHtmlCapabilities(path, build.outputs);
+    } catch (error) {
+      error.delivery = { ...error.delivery, repo };
+      throw error;
+    }
     if (repo !== "dsh-gea-plugin") {
       const rawManifest = archive(absolute(row.archive), manifest.name, true);
       builtArchive(row.archive, rawManifest, build.outputs);
@@ -220,12 +231,15 @@ async function preflight(input, destination) {
 }
 
 async function deliver(input, destination) {
-  const { core: _core, owners } = await preflight(input, destination);
+  if (!findSupportedCore(input.core)) fail("DELIVERY_CORE_INCOMPATIBLE");
+  if (!Array.isArray(input.repositories) || input.repositories.length !== 3)
+    fail("DELIVERY_THREE_REPOSITORIES_REQUIRED");
   holdBuildAdmission({
     operation: "prepare",
     output: destination,
-    scopes: [...owners.map((owner) => owner.path), destination],
+    scopes: [...input.repositories.map((owner) => absolute(owner.path)), destination],
   });
+  const { core: _core, owners } = await preflight(input, destination);
   await mkdir(destination, { recursive: true, mode: 0o700 });
   const work = join(destination, "evidence");
   await mkdir(work, { mode: 0o700 });
@@ -401,5 +415,13 @@ try {
   console.error(
     /^(?:DELIVERY|BUILD)_[A-Z_]+$/.test(error.message) ? error.message : "DELIVERY_INPUT_INVALID",
   );
+  if (error.delivery && Object.hasOwn(names, error.delivery.repo))
+    console.error(
+      JSON.stringify({
+        repo: error.delivery.repo,
+        stage: "html-capability",
+        file: /^[a-z0-9_./-]+$/i.test(error.delivery.file ?? "") ? error.delivery.file : null,
+      }),
+    );
   process.exitCode = 1;
 }

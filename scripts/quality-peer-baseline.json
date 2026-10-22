@@ -3,7 +3,7 @@
   "repositories": [
     {
       "repo": "dsh-agent-workbench",
-      "head": "73e5118ff4cbd16b6bc6c777b7fa8231ce1ce2c7"
+      "head": "8580853f022a5ac5e5d01811f0a8a772a5b364c3"
     },
     {
       "repo": "dsh-agent-manage",

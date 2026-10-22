@@ -1,5 +1,10 @@
 /** GitHub run-attempt clocks only; source admission and execution coverage belong to the caller. */
 const budgetMs = 600000;
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { parseArgs } from "node:util";
 
 export const skippedTestShardsJobName =
   "matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards'";
@@ -29,6 +34,19 @@ export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000
     await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
     if (performance.now() >= deadline) throw Error("HOSTED_WAIT_TIMEOUT");
   }
+}
+
+export function assessSourceBudget(snapshot, options = {}) {
+  const jobs = snapshot?.jobs ?? [];
+  return assessHostedBudget({
+    snapshot,
+    requiredJobs: jobs
+      .filter((job) => job.name !== "candidate-quality" && job.conclusion !== "skipped")
+      .map((job) => job.name),
+    notApplicableJobs: jobs.filter((job) => job.conclusion === "skipped").map((job) => job.name),
+    finalJobName: "candidate-quality",
+    ...options,
+  });
 }
 
 export async function readHostedRun({
@@ -197,7 +215,7 @@ export function assessHostedBudget({
     new Set(notApplicableJobs).size !== notApplicableJobs.length ||
     notApplicableJobs.some(
       (name) =>
-        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
+        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|source-checks(?: \([12]\))?|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
           name,
         ) &&
           !unexpandedSkippedJobNames.includes(name)) ||
@@ -385,4 +403,43 @@ export function assessHostedBudget({
     performance,
     passed: functional.status === "passed" && performance.status === "passed",
   };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const { values } = parseArgs({
+    options: {
+      "source-report": { type: "string" },
+      snapshot: { type: "string" },
+      mode: { type: "string", default: "in-gate" },
+    },
+  });
+  if (!values["source-report"]) throw Error("SOURCE_BUDGET_OUTPUT_REQUIRED");
+  let result;
+  try {
+    const snapshot = values.snapshot
+      ? JSON.parse(readFileSync(values.snapshot, "utf8"))
+      : await readHostedRun({
+          repository: process.env.GITHUB_REPOSITORY,
+          runId: process.env.GITHUB_RUN_ID,
+          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+          token: process.env.GITHUB_TOKEN,
+        });
+    result = assessSourceBudget(snapshot, { mode: values.mode });
+  } catch (error) {
+    result = {
+      schemaVersion: 1,
+      mode: values.mode,
+      completedMeasurement: false,
+      functional: { status: "unknown" },
+      performance: { status: "unknown", budgetMs, reasons: [error.message] },
+      passed: false,
+    };
+  }
+  writeFileSync(values["source-report"], JSON.stringify(result, null, 2) + "\n");
+  if (process.env.GITHUB_STEP_SUMMARY)
+    appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `## Source workflow performance\n\nFunctional: ${result.functional.status}. Performance: ${result.performance.status}. Budget: ${budgetMs} ms. Workflow to observation: ${result.performance.workflowToDecisionMs ?? "unknown"} ms. Queue: ${result.performance.triggerQueueMs ?? "unknown"} ms. Measurement: ${values.mode}; completed workflow: ${result.completedMeasurement}.\n\nThis report does not replace functional admission. In-gate observations exclude later cleanup; use completed mode after the run ends before claiming the ten-minute target.\n`,
+    );
 }

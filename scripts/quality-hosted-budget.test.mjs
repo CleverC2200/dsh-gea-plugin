@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assessHostedBudget, readHostedRun, waitForHostedRun } from "./quality-hosted-budget.mjs";
+import {
+  assessHostedBudget,
+  assessSourceBudget,
+  readHostedRun,
+  waitForHostedRun,
+} from "./quality-hosted-budget.mjs";
 import { createServer } from "node:http";
 import { once } from "node:events";
 
@@ -55,6 +60,21 @@ const assess = (value, options = {}) =>
     now: value.observedAt,
     ...options,
   });
+
+test("daily source budgets distinguish functional success, slow completion and missing time", () => {
+  const value = snapshot(600001);
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks (1)";
+  const result = assessSourceBudget(value, { mode: "completed", now: value.observedAt });
+  assert.equal(result.functional.status, "passed");
+  assert.equal(result.performance.status, "failed");
+  assert.equal(result.completedMeasurement, true);
+  value.jobs[1].completed_at = null;
+  assert.equal(
+    assessSourceBudget(value, { mode: "completed", now: value.observedAt }).performance.status,
+    "unknown",
+  );
+});
 
 async function restFixture(t, change = (response) => response) {
   const data = snapshot();
