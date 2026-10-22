@@ -478,7 +478,11 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:run-quality-ci\\.mjs|ci-test-policy\\.json)$",
       "tests": [],
-      "sourceTests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "sourceTests": [
+        "scripts/delivery-events.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs",
+        "scripts/run-quality-ci.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
