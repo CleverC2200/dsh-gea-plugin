@@ -282,7 +282,9 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
     skippedConclusion = "skipped",
     skippedCopies = 1,
     hostedReads = 0,
-    lagUntilRead = 0;
+    lagUntilRead = 0,
+    hostedStepFailure = false,
+    hostedHttpStatus = 200;
   const server = createServer((request, response) => {
     if (!request.url.includes("/jobs?")) hostedReads++;
     const stale = hostedReads <= lagUntilRead;
@@ -346,13 +348,35 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
         }
       } else body.status = "queued";
     }
+    if (hostedStepFailure && body.jobs)
+      body.jobs.find((job) => job.name === hostedRequiredJobs.at(-1)).steps = [
+        { name: "actual work", status: "completed", conclusion: "failure" },
+      ];
+    response.statusCode = hostedHttpStatus;
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify(body));
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => server.close());
-  const invoke = async (suffix, extra = [], withWindows = true) => {
+  const invoke = async (suffix, extra = [], withWindows = true, schedulerNeeds) => {
+    const needs = {
+      "candidate-scope": { result: "success" },
+      "source-plan": { result: "success", outputs: { applicability: "source" } },
+      gates: { result: "success" },
+      "plan-test-shards": { result: "success" },
+      "test-shards": {
+        result: hostedRequiredJobs.some((name) => /^test-[a-f0-9]{40}-/.test(name))
+          ? "success"
+          : "skipped",
+      },
+      "macos-isolation": { result: "success" },
+      "windows-plugin-update": { result: "success" },
+      "dependency-review": {
+        result: hostedRequiredJobs.includes("Dependency review") ? "success" : "skipped",
+      },
+    };
+    if (schedulerNeeds) schedulerNeeds(needs);
     const child = spawn(
       process.execPath,
       [
@@ -379,6 +403,7 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
           GITHUB_RUN_ID: "7",
           GITHUB_RUN_ATTEMPT: "2",
           QUALITY_EXPECTED_WORKFLOW_SHA: "b".repeat(40),
+          QUALITY_FINAL_NEEDS: JSON.stringify(schedulerNeeds === null ? null : needs),
           QUALITY_FINAL_CORES: JSON.stringify(hostedCores),
           QUALITY_FINAL_GROUP_ID: "group",
           QUALITY_FINAL_MANAGE_SHA: "b".repeat(40),
@@ -398,6 +423,9 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
       coverage: existsSync(join(root, suffix, "coverage.json"))
         ? JSON.parse(readFileSync(join(root, suffix, "coverage.json")))
         : null,
+      functionalGate: existsSync(join(root, suffix, "final-dependencies.json"))
+        ? JSON.parse(readFileSync(join(root, suffix, "final-dependencies.json")))
+        : null,
       hosted: existsSync(join(root, suffix, "hosted-budget.json"))
         ? JSON.parse(readFileSync(join(root, suffix, "hosted-budget.json")))
         : null,
@@ -406,17 +434,55 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   const green = await invoke("final-green");
   assert.equal(green.status, 0, green.stderr);
   assert.equal(green.hosted.completedMeasurement, false, "in-gate is not completed acceptance");
-  lagUntilRead = hostedReads + 1;
-  const caughtUp = await invoke("final-rest-caught-up");
-  assert.equal(caughtUp.status, 0, caughtUp.stderr);
-  assert.equal(caughtUp.coverage.status, "passed");
-  assert.equal(caughtUp.hosted.functional.status, "passed");
-  assert.equal(hostedReads, lagUntilRead + 1);
+  const noNeeds = await invoke("final-without-needs", [], true, null);
+  assert.equal(noNeeds.status, 1, "without scheduler results the functional gate must reject");
+  const readsBeforeLag = hostedReads;
+  lagUntilRead = Number.MAX_SAFE_INTEGER;
+  const stale = await invoke("final-rest-stale");
+  assert.equal(stale.status, 0, stale.stderr);
+  assert.equal(stale.coverage.status, "passed");
+  assert.equal(stale.functionalGate.status, "passed");
+  assert.equal(stale.hosted.functional.status, "failed");
+  assert.equal(stale.hosted.performance.status, "unknown");
+  assert.equal(hostedReads, readsBeforeLag + 1);
   const savedSnapshot = JSON.parse(
-    readFileSync(join(root, "final-rest-caught-up", "hosted-snapshot.json")),
+    readFileSync(join(root, "final-rest-stale", "hosted-snapshot.json")),
   );
-  assert.equal(savedSnapshot.run.status, "in_progress");
-  assert.equal(savedSnapshot.jobs.at(-1).status, "in_progress");
+  assert.equal(savedSnapshot.run.status, "queued");
+  assert.equal(savedSnapshot.jobs.at(-1).status, "queued");
+  hostedStepFailure = true;
+  const failedStep = await invoke("stale-with-real-step-failure");
+  assert.equal(failedStep.status, 1, "a visible failed step cannot borrow a pending summary");
+  hostedStepFailure = false;
+
+  lagUntilRead = 0;
+  hostedHttpStatus = 503;
+  const httpFailure = await invoke("hosted-http-error");
+  assert.equal(httpFailure.status, 1);
+  assert.equal(httpFailure.functionalGate.status, "failed");
+  assert.match(httpFailure.functionalGate.reasons.join(""), /HOSTED_API_READ_FAILED/);
+  hostedHttpStatus = 200;
+  for (const [job, result] of [
+    ["gates", "failure"],
+    ["test-shards", "cancelled"],
+    ["macos-isolation", "skipped"],
+  ]) {
+    const rejected = await invoke(
+      `needs-${job}-${result}`,
+      [],
+      true,
+      (needs) => (needs[job].result = result),
+    );
+    assert.equal(rejected.status, 1, `${job}:${result}`);
+    assert.equal(rejected.functionalGate.status, "failed");
+  }
+  for (const change of [
+    (needs) => delete needs["candidate-scope"],
+    (needs) => (needs.extra = { result: "success" }),
+    (needs) => (needs["source-plan"].outputs.applicability = "docs"),
+    (needs) => (needs["dependency-review"].result = "success"),
+  ])
+    assert.equal((await invoke("needs-shape", [], true, change)).status, 1);
   const missingWindows = await invoke("final-missing-windows", [], false);
   assert.equal(missingWindows.status, 1, missingWindows.stderr);
   assert.equal(missingWindows.coverage.error, "QUALITY_WINDOWS_RECEIPT_REQUIRED");

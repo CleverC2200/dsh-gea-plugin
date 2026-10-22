@@ -70,7 +70,7 @@ export function verifyDocsResults({ directory, expected, receipts }) {
   };
 }
 
-export function docsHostedJobScope({ snapshot, cores }) {
+export function docsHostedJobScope({ snapshot, cores, finalJobName = "candidate-quality" }) {
   const skipped = new Set([
     "gates",
     "prepare-",
@@ -93,7 +93,7 @@ export function docsHostedJobScope({ snapshot, cores }) {
   if (
     snapshot.jobs.some(
       (job) =>
-        job.name !== "candidate-quality" &&
+        job.name !== finalJobName &&
         !requiredJobs.includes(job.name) &&
         !notApplicableJobs.includes(job.name),
     )
