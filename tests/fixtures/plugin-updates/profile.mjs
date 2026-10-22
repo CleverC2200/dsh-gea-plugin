@@ -67,7 +67,9 @@ export async function controllerFixture(
       );
     }
     const archive = join(root, `${index}.tgz`);
-    execFileSync("tar", ["-czf", archive, "-C", dirname(source), "package"]);
+    execFileSync("tar", ["-czf", archive, "-C", dirname(source), "package"], {
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+    });
     const bytes = await readFile(archive),
       sha256 = digest(bytes),
       url = `https://fixture.invalid/packages/${sha256}/plugin.tgz`;

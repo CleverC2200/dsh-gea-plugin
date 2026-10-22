@@ -9,6 +9,8 @@ import {
   companyPackageNames,
   projectPluginRelease,
   findPluginUpdatePath,
+  planPluginSuiteUpdate,
+  planPluginUpdate,
   comparePluginVersions,
   parsePluginManifest,
   parseInstalledPluginManifest,
@@ -208,13 +210,57 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
   }
   const paths = input.supportedStarts.map((start) => {
     validateCore(start.core);
-    const order = findPluginUpdatePath({
+    const suite = planPluginSuiteUpdate({
       core: start.core,
       installed: start.installed,
       releases: targets.map(({ release }) => release),
     });
+    if (suite.kind === "blocked") fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
+    const updater = start.installed.find((manifest) => manifest.name === companyPackageNames[2]);
+    if (updater.geaPluginUpdateStrategy === "suite")
+      return { id: start.id, strategy: "suite", order: targets.map(({ release }) => release.name) };
+    const bridge = targets.find(({ release }) => release.name === companyPackageNames[2]).release;
+    if (bridge.updateStrategy === "suite") {
+      const first = planPluginUpdate({
+        release: bridge,
+        core: start.core,
+        installed: start.installed,
+      });
+      if (suite.kind === "ready" && first.kind !== "ready")
+        fail("RELEASE_LEGACY_BRIDGE_REQUIRED", start.id);
+      const installed = start.installed.map((manifest) =>
+        manifest.name === bridge.name
+          ? { ...bridge, artifactSha256: bridge.artifact.sha256 }
+          : manifest,
+      );
+      const remaining = planPluginSuiteUpdate({
+        core: start.core,
+        installed,
+        releases: targets.map(({ release }) => release),
+      });
+      if (remaining.kind === "blocked") fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
+      return {
+        id: start.id,
+        strategy: "legacy-bootstrap",
+        order: [bridge.name, ...companyPackageNames.filter((name) => name !== bridge.name)],
+        steps: [
+          { strategy: "legacy", packages: first.kind === "current" ? [] : [bridge.name] },
+          {
+            strategy: "suite",
+            packages:
+              remaining.kind === "ready" ? remaining.releases.map((release) => release.name) : [],
+          },
+        ],
+      };
+    }
+    const order = findPluginUpdatePath({
+      core: start.core,
+      installed: start.installed,
+      releases: targets.map(({ release }) => release),
+      firstStep: companyPackageNames[2],
+    });
     if (!order) fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
-    return { id: start.id, order };
+    return { id: start.id, strategy: "legacy", order };
   });
   return {
     status: "release-preflight-passed",

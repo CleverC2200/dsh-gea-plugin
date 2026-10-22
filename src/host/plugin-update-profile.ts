@@ -335,8 +335,14 @@ async function packages(root: string): Promise<ProfilePackage[]> {
       if (typeof meta.optional !== "boolean") throw Error("PROFILE_GRAPH_INVALID");
       peerDependenciesMeta[peer] = { optional: meta.optional };
     }
-    const parsed = {
+    if (
+      manifest.geaPluginUpdateStrategy !== undefined &&
+      (manifest.name !== companyPackageNames[2] || manifest.geaPluginUpdateStrategy !== "suite")
+    )
+      throw Error("PROFILE_GRAPH_INVALID");
+    const parsed: ProfilePackage = {
       name: manifest.name,
+      ...(manifest.geaPluginUpdateStrategy === "suite" ? { geaPluginUpdateStrategy: "suite" } : {}),
       version: manifest.version,
       dir,
       manifest,

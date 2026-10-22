@@ -44,7 +44,7 @@ export function validatePluginCombination({ core, manifests }) {
   }
   return failures;
 }
-export function planPluginUpdate({ release, core, installed }) {
+function planPluginReplacement({ release, core, installed }) {
   const current = installed.find((manifest) => manifest.name === release.name);
   if (!current) return { kind: "blocked", code: "PACKAGE_NOT_INSTALLED" };
   if (
@@ -62,6 +62,11 @@ export function planPluginUpdate({ release, core, installed }) {
   }
   if (release.dataCompatibility.kind !== "preserve")
     return { kind: "blocked", code: "DATA_MIGRATION_REQUIRED" };
+  return { kind: "ready", release };
+}
+export function planPluginUpdate({ release, core, installed }) {
+  const replacement = planPluginReplacement({ release, core, installed });
+  if (replacement.kind !== "ready") return replacement;
   const candidate = {
     name: release.name,
     version: release.version,
@@ -76,6 +81,30 @@ export function planPluginUpdate({ release, core, installed }) {
   return failures.length
     ? { kind: "blocked", code: "COMBINATION_INCOMPATIBLE", failures }
     : { kind: "ready", release };
+}
+
+export function planPluginSuiteUpdate({ releases, core, installed }) {
+  if (
+    releases.length !== companyPackageNames.length ||
+    !companyPackageNames.every(
+      (name) => releases.filter((release) => release.name === name).length === 1,
+    )
+  )
+    return { kind: "blocked", code: "RELEASE_NOT_PUBLISHED" };
+  const changed = [];
+  for (const release of releases) {
+    const plan = planPluginReplacement({ release, core, installed });
+    if (plan.kind === "blocked") return { ...plan, packageName: release.name };
+    if (plan.kind === "ready") changed.push(release);
+  }
+  const failures = validatePluginCombination({
+    core,
+    manifests: installed.map(
+      (manifest) => changed.find((release) => release.name === manifest.name) ?? manifest,
+    ),
+  });
+  if (failures.length) return { kind: "blocked", code: "COMBINATION_INCOMPATIBLE", failures };
+  return changed.length ? { kind: "ready", releases: changed } : { kind: "current" };
 }
 
 export function findPluginUpdatePath({ core, installed, releases, firstStep }) {
@@ -119,6 +148,9 @@ export function projectPluginRelease({
     schema: 1,
     name: manifest.name,
     version: manifest.version,
+    ...(manifest.geaPluginUpdateStrategy
+      ? { updateStrategy: manifest.geaPluginUpdateStrategy }
+      : {}),
     artifact,
     supportedCores: supportedCores.map(({ head, version }) => ({
       head,
@@ -151,6 +183,11 @@ export function parsePluginRelease(value) {
     value.schema !== 1 ||
     !companyPackageNames.includes(value.name) ||
     !semver.valid(value.version)
+  )
+    fail();
+  if (
+    value.updateStrategy !== undefined &&
+    (value.updateStrategy !== "suite" || value.name !== companyPackageNames[2])
   )
     fail();
   const artifact = value.artifact;
@@ -198,6 +235,7 @@ export function parsePluginRelease(value) {
   if (typeof value.notes !== "string") fail();
   return {
     schema: 1,
+    ...(value.updateStrategy ? { updateStrategy: value.updateStrategy } : {}),
     name: value.name,
     version: value.version,
     artifact: {
@@ -234,6 +272,11 @@ function parseManifest(value, publication) {
     !semver.valid(value.version)
   )
     fail();
+  if (
+    value.geaPluginUpdateStrategy !== undefined &&
+    (value.geaPluginUpdateStrategy !== "suite" || value.name !== companyPackageNames[2])
+  )
+    fail();
   if (!record(value.dependencies ?? {})) fail();
   const peerDependencies = ranges(value.peerDependencies ?? {}),
     dependencies = ranges(
@@ -260,6 +303,9 @@ function parseManifest(value, publication) {
   return {
     name: value.name,
     version: value.version,
+    ...(value.geaPluginUpdateStrategy
+      ? { geaPluginUpdateStrategy: value.geaPluginUpdateStrategy }
+      : {}),
     peerDependencies,
     peerDependenciesMeta,
     dependencies,
@@ -335,12 +381,18 @@ export function parsePluginChannel(value) {
     new Set(combined.map((reference) => reference.name)).size !== combined.length
   )
     throw Error("SOURCE_CHANNEL_INVALID");
+  if (
+    value.suite !== undefined &&
+    (value.suite !== true || combined.length !== companyPackageNames.length)
+  )
+    throw Error("SOURCE_CHANNEL_INVALID");
   return {
     schema: 1,
     channel: value.channel,
     revision: value.revision,
     issuedAt: value.issuedAt,
     expiresAt: value.expiresAt,
+    ...(value.suite ? { suite: true } : {}),
     releases,
     ...(companionReleases ? { companionReleases } : {}),
   };
@@ -348,6 +400,7 @@ export function parsePluginChannel(value) {
 /** Produce the complete next signed payload locally; publishing owns the atomic channel replacement. */
 export function mergePluginChannelRelease({ previous, release, revision, issuedAt, expiresAt }) {
   const channel = parsePluginChannel(previous);
+  if (channel.suite) throw Error("CHANNEL_SUITE_REPLACEMENT_REQUIRED");
   if (!Number.isSafeInteger(revision) || revision <= channel.revision)
     throw Error("CHANNEL_REVISION_REQUIRED");
   const selected =

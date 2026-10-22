@@ -239,6 +239,51 @@ const status = (items = rows()) => ({
   checkTimeoutMs: 1000,
   pollIntervalMs: 1000,
 });
+for (const offline of [false, true])
+  test(`suite action refreshes a cached channel and ${offline ? "refuses a failed refresh" : "submits only the newly verified plans"}`, async (t) => {
+    const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
+    const original = globalThis.fetch;
+    t.after(() => (globalThis.fetch = original));
+    let checked = false,
+      submitted = 0;
+    globalThis.fetch = async (url, options) => {
+      if (url.endsWith("/status"))
+        return Response.json({
+          ok: true,
+          value: status(
+            rows().map((row) => ({
+              ...row,
+              candidateVersion: checked ? "1.2.5" : "1.2.4",
+              planId: checked ? "new-plan" : "cached-plan",
+            })),
+          ),
+        });
+      if (url.endsWith("/check")) {
+        if (offline) throw Error("offline");
+        checked = true;
+        return Response.json({ ok: true, value: {} });
+      }
+      assert(url.endsWith("/update-all"));
+      submitted++;
+      assert.equal(checked, true);
+      assert.deepEqual(
+        JSON.parse(options.body).plans,
+        rows().map(({ packageName }) => ({ packageName, planId: "new-plan" })),
+      );
+      return Response.json({ ok: true, value: {} });
+    };
+    const ctx = new Context(),
+      owner = createPluginDetailUpdates(ctx);
+    t.after(() => ctx.fiber.dispose());
+    t.after(() => owner.dispose());
+    const close = owner.retain();
+    t.after(close);
+    await new Promise(setImmediate);
+    assert.equal(owner.getSnapshot().items[0].candidateVersion, "1.2.4");
+    await owner.updateAll();
+    assert.equal(submitted, offline ? 0 : 1);
+    if (offline) assert.equal(owner.getSnapshot().transportError, "check");
+  });
 test("wire rejects asserted active proofs and duplicate observations", async (t) => {
   const { parseUpdateClientReport } = await subject(t, "src/shared/plugin-update-wire.ts");
   const report = {
@@ -281,7 +326,7 @@ test("detail checks deduplicate and cancel on close while an accepted submission
         }),
       );
     }
-    if (url.endsWith("/update")) {
+    if (url.endsWith("/update-all")) {
       updateSignal = options.signal;
       return new Promise((resolve) => {
         releaseUpdate = () => resolve(Response.json({ ok: true, value: {} }));
@@ -326,7 +371,7 @@ test("a remounted client recovers the actual Host operation without a detail or 
       statuses++;
       return Response.json({ ok: true, value: status(rows(phase)) });
     }
-    assert(url.endsWith("/update"), "recovery must not check or resubmit updates");
+    assert(url.endsWith("/update-all"), "recovery must not check or resubmit updates");
     updates++;
     phase = "installing";
     return Response.json({ ok: true, value: {} });
@@ -368,7 +413,7 @@ test("successive pending notices keep their own operation target after status ch
     if (url.endsWith("/status")) return Response.json({ ok: true, value: status(rows(phase)) });
     if (url.endsWith("/check")) phase = "available";
     else {
-      assert(url.endsWith("/update"));
+      assert(url.endsWith("/update-all"));
       phase = "pending-restart";
     }
     return Response.json({ ok: true, value: {} });
@@ -537,7 +582,7 @@ test("submitted transport failures immediately become unconfirmed and recover on
       return Response.json({ ok: true, value: status(rows(phase)) });
     }
     if (url.endsWith("/check")) throw TypeError("ordinary check failed");
-    assert(url.endsWith("/update"));
+    assert(url.endsWith("/update-all"));
     updates++;
     failure = "offline";
     throw TypeError("submission disconnected");
@@ -744,7 +789,7 @@ test("a submitted update keeps observing after detail close and releases on each
         statuses++;
         return Response.json({ ok: true, value: status(rows(phase)) });
       }
-      assert(url.endsWith("/update"));
+      assert(url.endsWith("/update-all"));
       phase = "verifying";
       return Response.json({ ok: true, value: {} });
     };
