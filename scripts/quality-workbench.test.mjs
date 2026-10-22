@@ -51,6 +51,7 @@ function preparedFixture(t, worktree = false) {
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
     writeFileSync(join(source, "static", id, "page.json"), "{}\n");
   }
+  writeFileSync(join(source, "static/mps/sql.config.json"), '{"agentId":"inventory-mps"}\n');
   mkdirSync(join(source, "business/inventory-dealer"), { recursive: true });
   writeFileSync(
     join(source, "business/inventory-dealer/sql.config.json"),
@@ -94,14 +95,21 @@ function preparedFixture(t, worktree = false) {
   return { source, prepared, head, receipt, git };
 }
 
-function copiedSqlFixture(t) {
+function copiedSqlFixture(t, resource = "business/inventory-apsplan/sql.config.json") {
   const fixture = preparedFixture(t);
-  const resource = "business/inventory-apsplan/sql.config.json";
   const output = "lib/" + resource;
   mkdirSync(join(fixture.prepared, output, ".."), { recursive: true });
   copyFileSync(join(fixture.source, resource), join(fixture.prepared, output));
   return { ...fixture, resource, output };
 }
+
+test("MPS named query copies require the frozen Workbench bytes", async (t) => {
+  const fixture = copiedSqlFixture(t, "static/mps/sql.config.json");
+  const record = await readPreparedWorkbench(fixture);
+  assert.ok(record.files[fixture.output]);
+  writeFileSync(join(fixture.prepared, fixture.output), '{"agentId":"forged"}\n');
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
 
 test("the APS SQL config copy is admitted only from the frozen Workbench blob and remains frozen in assets", async (t) => {
   const fixture = copiedSqlFixture(t);
@@ -193,6 +201,8 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
 
 test("customer and fulfillment build copies require identical caller-frozen Manage blobs", async (t) => {
   for (const suffix of [
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
     "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-orderfulfillment/README.md",
