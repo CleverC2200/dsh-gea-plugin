@@ -376,11 +376,15 @@ test(
       );
 
       // 登记 51：销售计划审批默认不展开筛选。
-      const filterToggle = frame.locator("button[aria-expanded]").first();
+      const filterFrame = await openSalesPlan(page);
+      const filterToggle = filterFrame.locator("button[aria-expanded]").first();
       await filterToggle.waitFor();
       assert.equal(await filterToggle.getAttribute("aria-expanded"), "false");
       assert.equal(
-        await frame.locator("[class*='advancedControls']").first().getAttribute("data-expanded"),
+        await filterFrame
+          .locator("[class*='advancedControls']")
+          .first()
+          .getAttribute("data-expanded"),
         "false",
       );
 

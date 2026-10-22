@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { parse } from "yaml";
 import {
   createExecutionPlan,
@@ -14,11 +15,53 @@ import {
   aggregateSourceCheckShards,
   sourceCheckShard,
   sourceCheckMatrix,
+  sourceCheckCost,
 } from "./source-check-shards.mjs";
 
 const head = "a".repeat(40);
 const expected = { head, runId: "test-run", runAttempt: "1" };
 const write = (file, value) => writeFileSync(file, JSON.stringify(value) + "\n");
+
+test("source planning shows unknown costs and uses valid timings without changing coverage", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "source-cost-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const selection = {
+    joint: true,
+    files: ["tests/a.test.mjs", "tests/b.test.mjs"],
+    runtimeFiles: ["tests/a.test.mjs"],
+  };
+  const environment = {
+    platform: "linux",
+    node: "24.22.0",
+    core: "a".repeat(40),
+    fileConcurrency: 3,
+  };
+  const unknown = sourceCheckCost({ selection, root, environment });
+  assert.equal(unknown.estimates.estimatedMs, null);
+  assert.equal(unknown.estimates.unknownFiles, 2);
+  assert.equal(unknown.estimates.profileFiles, 1);
+  assert.equal(unknown.shards.length, 2);
+  mkdirSync(join(root, "tests"));
+  for (const file of selection.files) writeFileSync(join(root, file), file);
+  const timings = {
+    schemaVersion: 2,
+    source: environment,
+    files: selection.files.map((file, i) => ({
+      file,
+      durationMs: [900, 300][i],
+      sha256: createHash("sha256").update(file).digest("hex"),
+      fixtures: [],
+    })),
+  };
+  const observed = sourceCheckCost({ selection, root, environment, timings });
+  assert.equal(observed.estimates.knownFiles, 2);
+  assert.equal(observed.estimates.estimatedMs, 900);
+  assert.deepEqual(observed.selected, selection.files);
+  writeFileSync(join(root, selection.files[0]), "changed");
+  const changed = sourceCheckCost({ selection, root, environment, timings });
+  assert.equal(changed.estimates.unknownFiles, 1);
+  assert.equal(changed.estimates.estimatedMs, null);
+});
 function fixture(t) {
   const parent = mkdtempSync(join(tmpdir(), "gea-source-shards-"));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
@@ -136,12 +179,26 @@ test("workflow preserves the reusable single job and requires independent receip
     "quality-stages.json",
     "quality-test-execution-plan.json",
     "quality-test-execution.json",
+    "quality-test-results/",
   ])
     assert.ok(upload.with.path.split("\n").includes(receipt), receipt);
   const gate = jobs["candidate-quality"].steps;
   const aggregate = gate.findIndex((step) => step.run?.includes("--aggregate source-check-shards"));
   const final = gate.findIndex((step) => step.run?.includes("--phase final"));
   assert.ok(aggregate > 0 && aggregate < final);
+  const performance = gate.findIndex((step) =>
+    step.run?.includes("--source-report source-budget.json --mode in-gate"),
+  );
+  assert.ok(performance > final);
+  assert.equal(gate[performance].if, "always()");
+  assert.equal(jobs["candidate-quality"].permissions.actions, "read");
+  assert.ok(
+    jobs["source-plan"].steps.some(
+      (step) =>
+        step.with?.name === "source-cost-${{ github.run_attempt }}" &&
+        step.with.path.includes(".runtime/source-check-cost.json"),
+    ),
+  );
   assert.equal(
     gate[aggregate].if,
     "needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'",
