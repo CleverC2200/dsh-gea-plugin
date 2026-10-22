@@ -131,7 +131,7 @@ test(
     await expect.poll(() => readFile(file, "utf8")).toBe("saved from isolated sidebar\n");
     await page.reload();
     // GEA may land on its business page at boot; reopen the saved conversation through history.
-    const history = page.getByRole("button", { name: "工作台", exact: true });
+    const history = page.getByRole("button", { name: "历史对话", exact: true });
     if ((await history.getAttribute("aria-expanded")) !== "true") await history.click();
     await page
       .getByRole("complementary", { name: "业务导航", exact: true })

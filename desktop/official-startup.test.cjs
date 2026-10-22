@@ -5,9 +5,10 @@ const { runInNewContext } = require("node:vm");
 
 function start(ownsLock) {
   const events = [];
+  const env = {};
   runInNewContext(readFileSync(__dirname + "/official-main.cjs", "utf8"), {
     __dirname: "/app",
-    process: { execPath: "/app/GEA", resourcesPath: "/resources", env: {} },
+    process: { execPath: "/app/GEA", resourcesPath: "/resources", env },
     require(name) {
       if (name === "node:path") return require(name);
       if (name === "electron")
@@ -32,8 +33,10 @@ function start(ownsLock) {
             return { status: 0 };
           },
         };
-      if (name === "./lib/main.js") events.push("official-main");
-      else throw Error(name);
+      if (name === "./lib/main.js") {
+        assert.equal(env.GEA_COMPANY_CLIENT, "1");
+        events.push("official-main");
+      } else throw Error(name);
     },
   });
   return events;
@@ -49,6 +52,21 @@ test("the owning desktop bootstraps with the exact legacy GEA root before loadin
   assert.equal(events[1][0], "bootstrap");
   assert.equal(events[1].at(-1), "/user/AppData/Roaming/dsh-gea-desktop");
   assert.equal(events[2], "official-main");
+});
+
+test("the bundled model picker policy applies only in the company client", () => {
+  const { parseDocument } = require("yaml");
+  const document = parseDocument(readFileSync(__dirname + "/../cordis.patch.yml", "utf8"), {
+    customTags: [{ tag: "tag:yaml.org,2002:js", resolve: (value) => ({ expression: value }) }],
+  });
+  assert.deepEqual(document.errors, []);
+  const rows = document.toJS();
+  const expression = rows.find((row) => row.id === "ui-model-selection").config.visibleProviders
+    .expression;
+  const ordinary = runInNewContext(expression, { process: { env: {} } });
+  assert.equal(ordinary, undefined);
+  const company = runInNewContext(expression, { process: { env: { GEA_COMPANY_CLIENT: "1" } } });
+  assert.deepEqual(Array.from(company), ["gea-analysis"]);
 });
 
 test("the company desktop packages every module used by cleanup and refresh", async () => {

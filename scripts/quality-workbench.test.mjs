@@ -51,7 +51,7 @@ function preparedFixture(t, worktree = false) {
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
     writeFileSync(join(source, "static", id, "page.json"), "{}\n");
   }
-  writeFileSync(join(source, "static/mps/sql.config.json"), '{"agentId":"inventory-mps"}\n');
+  writeFileSync(join(source, "static/mps/sql.config.json"), '{"agentId":"mps"}\n');
   mkdirSync(join(source, "business/inventory-dealer"), { recursive: true });
   writeFileSync(
     join(source, "business/inventory-dealer/sql.config.json"),
@@ -158,6 +158,14 @@ test("the APS config exception rejects altered sources, staging, redirects and u
   }
 });
 
+test("MPS static SQL copies require the frozen Workbench blob and reject altered output", async (t) => {
+  const fixture = copiedSqlFixture(t, "static/mps/sql.config.json");
+  const record = await readPreparedWorkbench(fixture);
+  assert.ok(record.files[fixture.output]);
+  writeFileSync(join(fixture.prepared, fixture.output), "changed SQL config\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
 function copiedSkillFixture(
   t,
   resource = "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md",
@@ -208,6 +216,8 @@ test("customer and fulfillment build copies require identical caller-frozen Mana
     "inventory-orderfulfillment/README.md",
     "inventory-orderfulfillment/SOURCE.json",
     "inventory-orderfulfillment/agent-prompt.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
   ]) {
     const fixture = copiedSkillFixture(t, "business-resources/" + suffix);
     const record = await readPreparedWorkbench(fixture);
