@@ -101,6 +101,10 @@ corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json
 
 五个参数都是绝对路径，Home 和 evidence 的父目录已存在，而这两个目标目录必须不存在并互不包含。入口先核所选固定 Core、manifest.supportedCores 和三份 tar 的名称、版本及摘要，再独占新 Home 和独立 evidence。同一 manifest.core 保留构建来源，两次接收的 ACCEPTANCE.core 分别记录实际宿主，两次 artifactSetSha256 必须一致。它复用已验证的普通 profile harness，顺序执行官方安装及实际 Loader/公共服务观察，不复用旧用户 patch、辅助包、SDK source link 或凭据。不启动 Native，不调用模型或业务，对观察过程的出网尝试直接拒绝。
 
+默认在清洗安装环境前，使用 `--pnpm` 指定的工具在调用者 cwd 和原环境中执行 `store path`，再将有效公共内容 store 的绝对路径传给安装子进程。`--store /absolute/content-store` 可显式指定共享 store；`--cold-download` 使用本次新 Home 下的 `pnpm-store`，两项不能同时指定。相对路径、已有文件或不可写目录提前拒绝。直接运行 `scripts/plugin-reception/empty-profile.mjs --mode install` 也接受相同选项。
+
+安装继续隔离 Home/profile、XDG 配置与缓存及空 npm 鉴权配置，metadata 缓存在本次 Home 的 `pnpm-cache`，global virtual store 保持禁用。只共享下载内容，不复用已有 `node_modules`、profile 锁或用户数据。`result.json`、`install.json` 和 `install.json.installation.json` 的 `downloadStore` 记录 `{ mode: "shared" | "cold", path }`；路径选择不证明下载命中率。公共 store 不随本次 Home 清理。
+
 安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、七个业务资源（含受控只读客户库存）、十份文档的完整 standard 和智能编排默认。客户库存已按正式受控只读声明发布预设；订单工作台和订单履约模拟预览仍不得出现在初始预设清单。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
 
 仅成功接收在新 evidence 中生成 ACCEPTANCE.json，绑定交付 manifest、实际三 tar 集合、安装及观察回执 SHA，以及同一个 Core/Profile。`result.json` 为本次入口结果。接收入口不改原 tgz、manifest 或已有交付文件，打包仍只称 packaged。浏览器执行、Native、业务和真实模型不在这个接收结论内。

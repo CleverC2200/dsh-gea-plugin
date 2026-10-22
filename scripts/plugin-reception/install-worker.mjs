@@ -27,8 +27,9 @@ const result = await withFileLock(join(v.profile, "package.json"), () =>
       "add",
       ...v.artifacts.map((row) => row.file),
       "--registry=https://registry.npmjs.org",
-      "--store-dir=" + join(v.home, "pnpm-store"),
+      "--store-dir=" + v.downloadStore.path,
       "--config.cache-dir=" + join(v.home, "pnpm-cache"),
+      "--config.enable-global-virtual-store=false",
     ],
     {
       execution: "service",
@@ -51,6 +52,7 @@ await writeFile(
       timedOut: result.timedOut ?? false,
       logPath: result.logPath,
       outputOmitted: true,
+      downloadStore: v.downloadStore,
     },
     null,
     2,
