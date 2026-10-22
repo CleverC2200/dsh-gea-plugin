@@ -1,7 +1,18 @@
 name: source-quality
-run-name: "Repository source quality — ${{ github.sha }}"
+# Original run-name: "Repository source quality — ${{ github.sha }}"
+
+run-name: 'Cache benchmark ${{ inputs.benchmark_case }} / ${{ inputs.benchmark_epoch }}'
 
 on:
+  workflow_dispatch:
+    inputs:
+      benchmark_case:
+        type: choice
+        options: [cold, warm]
+        required: true
+      benchmark_epoch:
+        type: string
+        required: true
   push:
     branches: [main]
   pull_request:
@@ -11,12 +22,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: source-quality-${{ github.event.pull_request.number || github.ref }}
+  group: benchmark-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  SOURCE_HEAD_SHA: "8c52dedf650ffc5083b574be5e00504288a8e4a4"
+  SOURCE_BASE_SHA: "9d806575ecaba87d86bbce69e66a3fa4a6830b20"
+  CI_BENCH_CASE: "${{ inputs.benchmark_case }}"
+  CI_BENCH_EPOCH: "${{ inputs.benchmark_epoch }}"
+  CI_BENCH_EXPECTED_FILES: "[\"scripts/build-admission.test.mjs\",\"scripts/build.test.mjs\",\"scripts/ci-windows-update.test.mjs\",\"scripts/deliver-packages.test.mjs\",\"scripts/delivery-events.test.mjs\",\"scripts/development-tasks.test.mjs\",\"scripts/package-desktop.test.mjs\",\"scripts/quality-prepared-inputs.test.mjs\",\"scripts/quality-shards.test.mjs\",\"scripts/quality-upstreams.test.mjs\",\"scripts/quality-worker-control.test.mjs\",\"scripts/quality-worker-inputs.test.mjs\",\"scripts/run-quality-checks.test.mjs\",\"scripts/run-quality-ci-stages.test.mjs\",\"scripts/run-quality-ci.test.mjs\",\"scripts/source-quality.test.mjs\",\"scripts/windows-complete-local/core-cache.test.mjs\",\"scripts/windows-complete-local/input.test.mjs\",\"scripts/workflow-preflight.test.mjs\",\"tests/ci-core-policy.test.mjs\",\"tests/plugin-release-source.test.mjs\"]"
+  CI_BENCH_EXPECTED_MATERIALS: "{\"staticChecks\":[\"check:knowledge\",\"lint\",\"format:check\"],\"dependencies\":true,\"sdk\":true,\"upstreams\":\"artifacts\",\"typecheck\":false,\"joint\":false}"
 
 jobs:
   source-plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       workbench-sha: ${{ steps.plan.outputs.workbench-sha }}
@@ -30,12 +49,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: 8c52dedf650ffc5083b574be5e00504288a8e4a4
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 24.22.0
+      - name: Validate benchmark identity
+        run: |
+          node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
       - name: Classify actual Git changes
         id: plan
         run: node scripts/source-quality.mjs --phase plan
@@ -55,7 +77,7 @@ jobs:
   source-checks:
     needs: source-plan
     if: needs.source-plan.outputs.mode != 'docs'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
       run:
@@ -63,14 +85,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: 8c52dedf650ffc5083b574be5e00504288a8e4a4
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
         id: node
         with:
-          node-version: 24
+          node-version: 24.22.0
       - name: Check applicable repository source
         run: node scripts/source-quality.mjs --phase check
       - name: Check committed package version
@@ -127,14 +149,15 @@ jobs:
         working-directory: candidate/dsh-agent-manage
         run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
+        id: downloads-cache
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         with:
+          lookup-only: ${{ inputs.benchmark_case == 'cold' }}
           path: |
             ~/.npm
             ~/.cache/node/corepack
             ${{ steps.cache-path.outputs.store }}
-          key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
-          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+          key: ci-bench-${{ inputs.benchmark_epoch }}-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
       - name: Prepare owned Core source without compiling
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
@@ -146,8 +169,9 @@ jobs:
         if: steps.affected.outputs.sdk == 'true'
         id: sdk-cache
         with:
+          lookup-only: ${{ inputs.benchmark_case == 'cold' }}
           path: ${{ steps.sdk-paths.outputs.paths }}
-          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+          key: ci-bench-${{ inputs.benchmark_epoch }}-sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
       - name: Prepare or verify SDK through existing cache contract
         if: steps.affected.outputs.sdk == 'true'
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
@@ -158,9 +182,46 @@ jobs:
         with:
           path: ${{ steps.sdk-paths.outputs.paths }}
           key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+      - name: Assert benchmark plan and isolated cache state
+        if: needs.source-plan.outputs.engineering == 'true'
+        env:
+          DOWNLOADS_HIT: ${{ steps.downloads-cache.outputs.cache-hit }}
+          DOWNLOADS_KEY: ${{ steps.downloads-cache.outputs.cache-primary-key }}
+          SDK_HIT: ${{ steps.sdk-cache.outputs.cache-hit }}
+          SDK_KEY: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+          BENCH_CONTROLLER: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { cpus, totalmem, release } from 'node:os';
+          const plan = JSON.parse(readFileSync('.runtime/source-checks-plan.json'));
+          const expected = JSON.parse(process.env.CI_BENCH_EXPECTED_MATERIALS);
+          if (JSON.stringify(plan.files) !== process.env.CI_BENCH_EXPECTED_FILES) throw Error('BENCHMARK_TEST_SET_CHANGED');
+          for (const [k,v] of Object.entries(expected)) if (JSON.stringify(plan[k]) !== JSON.stringify(v)) throw Error('BENCHMARK_MATERIALS_CHANGED: ' + k);
+          const warm = process.env.CI_BENCH_CASE === 'warm';
+          for (const [needed, hit, name] of [[plan.dependencies,process.env.DOWNLOADS_HIT,'downloads'],[plan.sdk,process.env.SDK_HIT,'sdk']]) {
+            if (needed && (hit === 'true') !== warm) throw Error('BENCHMARK_CACHE_STATE_REJECTED: ' + name + ': ' + hit);
+          }
+          const git = (...args) => execFileSync('git', args, {encoding:'utf8'}).trim();
+          if (git('rev-parse','HEAD') !== process.env.SOURCE_HEAD_SHA) throw Error('BENCHMARK_SOURCE_CHANGED');
+          const value = {case:process.env.CI_BENCH_CASE,epoch:process.env.CI_BENCH_EPOCH,controller:process.env.BENCH_CONTROLLER,head:git('rev-parse','HEAD'),base:process.env.SOURCE_BASE_SHA,tree:git('rev-parse','HEAD^{tree}'),node:process.version,os:process.env.RUNNER_OS,arch:process.env.RUNNER_ARCH,kernel:release(),cpus:cpus().length,cpu:cpus()[0].model,memory:totalmem(),image:process.env.ImageVersion,downloads:{hit:process.env.DOWNLOADS_HIT,key:process.env.DOWNLOADS_KEY},sdk:{hit:process.env.SDK_HIT,key:process.env.SDK_KEY},plan};
+          writeFileSync('.runtime/benchmark.json', JSON.stringify(value,null,2)+'\n');
+          console.log(JSON.stringify({case:value.case,head:value.head,testFiles:plan.files.length,downloads:value.downloads,sdk:value.sdk}));
+          NODE
       - name: Prepare dependencies consumed by selected checks
         if: steps.affected.outputs.dependencies == 'true'
         run: node scripts/source-quality.mjs --phase affected-prepare
+      - name: Save isolated benchmark package downloads
+        if: success() && inputs.benchmark_case == 'cold' && steps.affected.outputs.dependencies == 'true'
+        uses: actions/cache/save@v4
+        timeout-minutes: 5
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.cache-path.outputs.store }}
+          key: ${{ steps.downloads-cache.outputs.cache-primary-key }}
       - name: Run affected behavior and real TypeScript checks
         if: needs.source-plan.outputs.engineering == 'true'
         run: node scripts/source-quality.mjs --phase affected-check
@@ -168,9 +229,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: source-checks
+          name: benchmark-${{ inputs.benchmark_case }}
           path: |
             candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
+            candidate/dsh-gea-plugin/.runtime/benchmark.json
             candidate/dsh-gea-plugin/quality-checks.json
             quality-test-plan.json
             quality-test-execution-plan.json
@@ -180,7 +242,7 @@ jobs:
   dependency-review:
     needs: source-plan
     if: needs.source-plan.outputs.dependency-review == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -196,17 +258,17 @@ jobs:
   candidate-quality:
     if: always()
     needs: [source-plan, source-checks, dependency-review]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: 8c52dedf650ffc5083b574be5e00504288a8e4a4
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 24.22.0
       - name: Require successful applicable checks
         env:
           PLAN_RESULT: ${{ needs.source-plan.result }}
