@@ -265,7 +265,11 @@ export async function apply(
         (options.provider === "gea-analysis" || profileFor(preset ?? undefined))
       ) {
         await assertSessionResourceAvailable(ctx, options.sessionId, options.signal);
-        business.assertExecutionAllowed(sessionConsumer(ctx, business, options.sessionId));
+        business.assertExecutionAllowed(
+          sessionConsumer(ctx, business, options.sessionId),
+          "view",
+          options.sessionId,
+        );
       }
       yield* next();
     }),
