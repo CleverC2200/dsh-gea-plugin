@@ -8,7 +8,7 @@ import { parse } from "yaml";
 
 const workflow = parse(readFileSync(".github/workflows/delivery-fixtures.yml", "utf8"));
 
-test("delivery retains PR and manual contexts without empty main push runs", () => {
+test("delivery retains PR and manual contexts without triggering empty main push runs", () => {
   assert.deepEqual(Object.keys(workflow.on).sort(), ["pull_request", "workflow_dispatch"]);
   assert.equal(workflow.on.pull_request, null);
   const inputs = workflow.on.workflow_dispatch.inputs;
