@@ -18,6 +18,9 @@ jobs:
   source-plan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
     outputs:
       workbench-sha: ${{ steps.plan.outputs.workbench-sha }}
       manage-sha: ${{ steps.plan.outputs.manage-sha }}
@@ -27,10 +30,13 @@ jobs:
       workflows: ${{ steps.plan.outputs.workflows }}
       dependency-review: ${{ steps.plan.outputs.dependency-review }}
       codeql: ${{ steps.plan.outputs.codeql }}
+      parallel: ${{ steps.source-matrix.outputs.parallel }}
+      shards: ${{ steps.source-matrix.outputs.shards || '["single"]' }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
@@ -51,12 +57,43 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" -C "$RUNNER_TEMP/workflow-preflight" actionlint
           node --input-type=module -e "import { checkWorkflows } from './scripts/workflow-preflight.mjs'; console.log(JSON.stringify(checkWorkflows(JSON.parse(process.env.WORKFLOW_FILES))))"
+      - uses: actions/checkout@v7
+        if: steps.plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ steps.plan.outputs.workbench-sha }}
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: steps.plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ steps.plan.outputs.manage-sha }}
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Plan independent source-check workers
+        if: steps.plan.outputs.engineering == 'true'
+        id: source-matrix
+        run: |
+          node scripts/source-quality.mjs --phase affected-plan
+          node scripts/source-check-shards.mjs --matrix .runtime/source-checks-plan.json
 
   source-checks:
+    name: ${{ matrix.shard == 'single' && 'source-checks' || format('source-checks ({0})', matrix.shard) }}
     needs: source-plan
     if: needs.source-plan.outputs.mode != 'docs'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      GEA_SOURCE_CHECK_SHARD: ${{ matrix.shard != 'single' && matrix.shard || '' }}
     permissions:
       contents: read
       actions: read
@@ -95,7 +132,11 @@ jobs:
       - name: Select affected behavior and type checks before preparation
         if: needs.source-plan.outputs.engineering == 'true'
         id: affected
-        run: node scripts/source-quality.mjs --phase affected-plan
+        run: |
+          node scripts/source-quality.mjs --phase affected-plan
+          if [ -n "$GEA_SOURCE_CHECK_SHARD" ]; then
+            node scripts/source-check-shards.mjs --scope .runtime/source-checks-plan.json --output ../../source-checks-scope.json
+          fi
       - name: Reuse matching merged PR tool checks
         if: needs.source-plan.outputs.engineering == 'true'
         id: reuse
@@ -209,7 +250,7 @@ jobs:
             ${{ steps.cache-path.outputs.store }}
           key: ${{ steps.download-cache.outputs.cache-primary-key }}
       - name: Publish reusable tool-check receipt
-        if: success() && needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
+        if: success() && (matrix.shard == '1' || matrix.shard == 'single') && needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
         id: receipt
         run: node ../../source/dsh-agent-workbench/scripts/source-result.mjs --phase record
       - name: Store reusable tool-check receipt
@@ -226,7 +267,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: source-checks
+          name: source-checks-${{ matrix.shard }}
           include-hidden-files: true
           path: |
             candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
@@ -236,6 +277,9 @@ jobs:
             quality-test-plan.json
             quality-test-execution-plan.json
             quality-checks.json
+            source-checks-scope.json
+            quality-stages.json
+            quality-test-execution.json
           if-no-files-found: ignore
 
   dependency-review:
@@ -268,6 +312,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24.22.0
+      - name: Download source-check shard receipts
+        if: needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: source-checks-*
+          path: source-check-shards
+      - name: Require complete source-check execution
+        if: needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
+        run: node scripts/source-check-shards.mjs --aggregate source-check-shards
       - name: Require successful applicable checks
         env:
           PLAN_RESULT: ${{ needs.source-plan.result }}

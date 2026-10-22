@@ -11,6 +11,7 @@ import {
   verifyExecutionResults,
 } from "./quality-test-execution.mjs";
 import { runQualityChecks } from "./run-quality-checks.mjs";
+import { sourceCheckShard } from "./source-check-shards.mjs";
 /** Public source-event admission and fail-closed workflow aggregation. */
 import { parseArgs, isDeepStrictEqual } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -144,6 +145,21 @@ try {
   if (!/^(2|3|4)$/.test(values["test-file-concurrency"]))
     refuse("QUALITY_TEST_CONCURRENCY_REQUIRED");
   const testFileConcurrency = Number(values["test-file-concurrency"]);
+  const sourceShard = sourceCheckShard();
+  delete process.env.GEA_SOURCE_CHECK_SHARD;
+  if (sourceShard) {
+    if (
+      !values["source-only"] ||
+      values.phase !== "quality" ||
+      values.stage !== "full" ||
+      values["test-shards"] !== "1" ||
+      values["test-shard"] !== undefined ||
+      values["execution-plan"] !== undefined
+    )
+      refuse("SOURCE_CHECK_SHARDS_REJECTED", "source worker full stage required");
+    values["test-shards"] = String(sourceShard.count);
+    values["test-shard"] = sourceShard.id;
+  }
   if (
     ![
       "full",
@@ -455,6 +471,7 @@ try {
     }
     if (
       values["test-shard"] !== undefined &&
+      !sourceShard &&
       (values.stage !== "tests" || !values["execution-plan"])
     )
       refuse("QUALITY_TEST_FROZEN_SHARD_REQUIRED");
