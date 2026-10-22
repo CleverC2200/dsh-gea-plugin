@@ -5,8 +5,9 @@ import { createReadStream } from "node:fs";
 import { chmod, cp, lstat, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { readDesktopInput, readDesktopPluginSource } from "../windows-complete-local/input.mjs";
+import { macBaseline as baseline } from "./baseline.mjs";
 
 assert.equal(process.platform, "darwin");
 assert.equal(process.arch, "arm64");
@@ -29,6 +30,8 @@ assert.equal(git(gea, "rev-parse", "HEAD"), input.geaSourceSha);
 assert.equal(git(core, "rev-parse", "HEAD"), input.seed.core.head);
 const stages = [];
 async function run(name, executable, args, env = process.env) {
+  const started = Date.now();
+  let code = 0;
   console.log(name + " started");
   const path = join(output, name + ".log");
   try {
@@ -38,15 +41,21 @@ async function run(name, executable, args, env = process.env) {
       maxBuffer: 32 * 1024 * 1024,
     });
     await writeFile(path, log);
-    stages.push(name);
     console.log(name + " completed");
   } catch (error) {
+    code = error.status ?? 1;
     await writeFile(path, String(error.stdout ?? "") + String(error.stderr ?? "") + error.message);
     throw error;
+  } finally {
+    stages.push({ name, code, seconds: (Date.now() - started) / 1000 });
+    await writeFile(join(output, "stages.json"), JSON.stringify(stages, null, 2));
   }
 }
 async function download(url, expected, path, limit) {
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(180000) });
+  const response = await fetch(url, {
+    redirect: "error",
+    signal: AbortSignal.timeout(180000),
+  });
   assert.equal(response.status, 200);
   const file = await open(path, "wx");
   let size = 0;
@@ -61,12 +70,29 @@ async function download(url, expected, path, limit) {
   }
   assert.equal(await fileHash(path), expected, "download checksum");
 }
-const baseline = {
-  url: "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/8cfb899ccf21d3662421b99b5f4627842ef712ea/desktop/GEA-Desktop-0.2.0-rc.2.20261020.5-mac-arm64-local.dmg",
-  sha256: "37176852122eea5a326f958ad96a240a12aadcb7fbb6166070cbacff0ec6b5db",
-};
-const dmg = join(output, "baseline.dmg");
-await download(baseline.url, baseline.sha256, dmg, 600 * 1024 * 1024);
+const coreCache = fileURLToPath(
+  new URL("../windows-complete-local/core-cache.mjs", import.meta.url),
+);
+const startedBaseline = Date.now();
+const baselineReuse = JSON.parse(
+  execFileSync(process.execPath, [coreCache, "verify", core, "mac-baseline"], {
+    encoding: "utf8",
+  }),
+);
+const dmg = join(core, "apps/desktop/.desktop-build/baseline/mac-arm64.dmg");
+if (!baselineReuse.hit) {
+  await mkdir(join(dmg, ".."), { recursive: true });
+  await download(baseline.url, baseline.sha256, dmg, 600 * 1024 * 1024);
+  execFileSync(process.execPath, [coreCache, "seal", core, "mac-baseline"], {
+    stdio: "inherit",
+  });
+}
+stages.push({
+  name: "prepare-baseline",
+  code: 0,
+  seconds: (Date.now() - startedBaseline) / 1000,
+});
+await writeFile(join(output, "baseline-reuse.json"), JSON.stringify(baselineReuse, null, 2));
 const mount = join(output, "baseline-mounted");
 await mkdir(mount);
 const app = join(output, "GEA Desktop.app");
@@ -328,6 +354,7 @@ await writeFile(
       artifact,
       sha256: await fileHash(artifact),
       baseline,
+      baselineReuse,
       stages,
       signing: "ad-hoc; not Apple notarized",
       published: false,
