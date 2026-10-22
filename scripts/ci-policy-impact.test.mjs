@@ -791,6 +791,10 @@ test("complete package inputs select existing release and platform contracts", a
   for (const source of [
     "scripts/mac-complete-local/build.mjs",
     "scripts/windows-complete-local/build.mjs",
+    "scripts/windows-complete-local/compile.mjs",
+    "scripts/windows-complete-local/prepare.mjs",
+    "scripts/windows-complete-local/shared-cache.mjs",
+    "scripts/windows-complete-local/cache-report.mjs",
     "scripts/windows-complete-local/input.mjs",
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/windows-complete-local/released-input.fixture.json",

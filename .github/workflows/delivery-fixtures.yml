@@ -4,6 +4,16 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      prepare_windows_cache:
+        description: "Prepare shared Windows Core/runtime caches only; actual default branch dispatch required"
+        default: false
+        required: false
+        type: boolean
+      cache_request:
+        description: "Internal exact preparation keys requested by the release preflight"
+        default: ""
+        required: false
+        type: string
       reuse_prepared_inputs:
         description: "Reuse verified desktop preparation; disable for a cold benchmark or rebuild"
         default: true
@@ -36,7 +46,7 @@ permissions:
 
 jobs:
   core-cache-fixtures:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache
     strategy:
       fail-fast: false
       matrix:
@@ -53,7 +63,7 @@ jobs:
       - run: node --test scripts/windows-complete-local/core-cache.test.mjs
 
   mac-complete-package:
-    if: github.event_name == 'workflow_dispatch' && inputs.mac_complete_input != ''
+    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && inputs.mac_complete_input != ''
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -184,7 +194,7 @@ jobs:
             ${{ runner.temp }}/gea-mac-complete/baseline-reuse.json
             ${{ runner.temp }}/gea-mac-complete/*.log
   delivery-fixtures:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    if: (github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -409,7 +419,10 @@ jobs:
             candidate-group.json
 
   windows-complete-package:
-    if: github.event_name == 'workflow_dispatch' && (inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
+    if: github.event_name == 'workflow_dispatch' && (inputs.prepare_windows_cache || inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
+    permissions:
+      contents: read
+      actions: write
     runs-on: windows-2025
     timeout-minutes: 90
     env:
@@ -421,6 +434,10 @@ jobs:
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_7Z_FILTER: BCJ
+      DSH_DELIVERY_REUSE_INPUTS: ${{ inputs.reuse_prepared_inputs }}
+      GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      DSH_DELIVERY_PREPARE_ONLY: ${{ inputs.prepare_windows_cache }}
+      DSH_DELIVERY_CACHE_EVIDENCE: ${{ github.workspace }}/core/apps/desktop/.desktop-build/targets/win-x64/${{ inputs.prepare_windows_cache && 'gea-preparation' || 'gea-local' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -439,7 +456,13 @@ jobs:
           node-version: "24.14.1"
       - name: Initialize isolated delivery download paths
         run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
+      - name: Require actual default ref for shared cache production
+        if: inputs.prepare_windows_cache
+        env:
+          CACHE_REQUEST: ${{ inputs.cache_request }}
+        run: node gea/scripts/windows-complete-local/shared-cache.mjs check-request core
       - name: Validate fixed input before preparing Core
+        if: "!inputs.prepare_windows_cache"
         working-directory: gea
         env:
           DESKTOP_INPUT_JSON: ${{ inputs.windows_complete_input }}
@@ -472,8 +495,10 @@ jobs:
           $store = corepack pnpm store path --silent
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "store=$store" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
-      - uses: actions/cache@v4
+      - name: Restore tool downloads
+        uses: actions/cache/restore@v4
         id: delivery-downloads
+        continue-on-error: true
         with:
           path: |
             ${{ env.COREPACK_HOME }}
@@ -488,20 +513,30 @@ jobs:
           corepack pnpm install --frozen-lockfile --prefer-offline
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Preflight cold packaging tools
+        id: delivery-tools-verify
         run: node gea/scripts/windows-complete-local/core-cache.mjs preflight core official
       - name: Plan compiled Core cache
         id: delivery-core-plan
         run: node gea/scripts/windows-complete-local/core-cache.mjs plan core official
-      - uses: actions/cache/restore@v4
+      - name: Check default branch caches and prepare missing inputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node gea/scripts/windows-complete-local/shared-cache.mjs preflight core "$env:RUNNER_TEMP/windows-cache-preflight.json"
+      - name: Restore compiled Core
+        uses: actions/cache/restore@v4
         id: delivery-core-restore
+        if: inputs.reuse_prepared_inputs
+        continue-on-error: true
         with:
           path: ${{ steps.delivery-core-plan.outputs.paths }}
           key: ${{ steps.delivery-core-plan.outputs.key }}
       - name: Plan prepared Windows runtime cache
         id: delivery-runtime-plan
         run: node gea/scripts/windows-complete-local/core-cache.mjs plan core windows-runtime
-      - uses: actions/cache/restore@v4
+      - name: Restore prepared Windows runtime
+        uses: actions/cache/restore@v4
         id: delivery-runtime-restore
+        continue-on-error: true
         if: inputs.reuse_prepared_inputs
         with:
           path: ${{ steps.delivery-runtime-plan.outputs.paths }}
@@ -516,14 +551,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
           'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Prepare shared Windows caches without producing an installer
+        if: inputs.prepare_windows_cache
+        run: node gea/scripts/windows-complete-local/prepare.mjs core
       - name: Build full Windows package and verify isolated first installation
+        if: "!inputs.prepare_windows_cache"
+        env:
+          DSH_DELIVERY_CORE_RESTORE: ${{ steps.delivery-core-restore.outcome }}
+          DSH_DELIVERY_RUNTIME_RESTORE: ${{ steps.delivery-runtime-restore.outcome }}
+          DSH_DELIVERY_PREFLIGHT: ${{ runner.temp }}/windows-cache-preflight.json
         run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
       - name: Verify Core output after packaging
         id: delivery-core-after-package
         if: "!cancelled() && steps.delivery-core-plan.outcome == 'success'"
         run: node gea/scripts/windows-complete-local/core-cache.mjs verify core official
       - name: Save verified compiled Core
-        if: "!cancelled() && steps.delivery-core-after-package.outputs.hit == 'true' && steps.delivery-core-restore.outputs.cache-hit != 'true'"
+        if: "!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.delivery-core-after-package.outputs.integrity == 'verified' && steps.delivery-core-restore.outputs.cache-hit != 'true'"
         continue-on-error: true
         timeout-minutes: 2
         uses: actions/cache/save@v4
@@ -535,7 +578,7 @@ jobs:
         if: "!cancelled() && steps.delivery-runtime-plan.outcome == 'success'"
         run: node gea/scripts/windows-complete-local/core-cache.mjs verify core windows-runtime
       - name: Save verified Windows runtime
-        if: "!cancelled() && steps.delivery-runtime-after-package.outputs.hit == 'true' && steps.delivery-runtime-restore.outputs.cache-hit != 'true'"
+        if: "!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.delivery-runtime-after-package.outputs.integrity == 'verified' && steps.delivery-runtime-restore.outputs.cache-hit != 'true'"
         continue-on-error: true
         timeout-minutes: 2
         uses: actions/cache/save@v4
@@ -543,7 +586,7 @@ jobs:
           path: ${{ steps.delivery-runtime-plan.outputs.paths }}
           key: ${{ steps.delivery-runtime-plan.outputs.key }}
       - name: Run approved Native plugin update acceptance bundle
-        if: inputs.native_acceptance_bundle_url != ''
+        if: inputs.prepare_windows_cache == false && inputs.native_acceptance_bundle_url != ''
         env:
           NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
           NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
@@ -553,14 +596,30 @@ jobs:
           $buildReceipt = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/result.json'
           $evidence = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance'
           node gea/scripts/windows-complete-local/run-bundle.mjs --bundle-url "$env:NATIVE_BUNDLE_URL" --bundle-sha256 "$env:NATIVE_BUNDLE_SHA256" --build-receipt $buildReceipt --input "$env:GEA_DESKTOP_INPUT" --output $evidence
+      - name: Save default branch tool downloads
+        if: "!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.delivery-downloads.outputs.cache-hit != 'true'"
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.COREPACK_HOME }}
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+            core/apps/desktop/.desktop-build/downloads
+            ${{ steps.delivery-tool-path.outputs.store }}
+          key: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
       - name: Keep installer and original build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GEA-Desktop-${{ env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
+          name: GEA-Desktop-${{ inputs.prepare_windows_cache && 'cache-preparation' || env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
           if-no-files-found: warn
           compression-level: 0
           path: |
+            ${{ runner.temp }}/windows-cache-preflight.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
@@ -569,3 +628,19 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/bundle-binding.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/public/**
+      - name: Report cache sources and delivery step timings
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DSH_DELIVERY_TOOLS_HIT: ${{ steps.delivery-downloads.outputs.cache-hit }}
+          DSH_DELIVERY_TOOLS_RESTORE: ${{ steps.delivery-downloads.outcome }}
+          DSH_DELIVERY_TOOLS_PREFLIGHT: ${{ steps.delivery-tools-verify.outcome }}
+          DSH_DELIVERY_TOOLS_KEY: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
+        run: node gea/scripts/windows-complete-local/cache-report.mjs core
+      - name: Keep cache and timing receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-cache-report-${{ github.run_id }}
+          if-no-files-found: warn
+          path: core/apps/desktop/.desktop-build/targets/win-x64/**/cache-report.json
