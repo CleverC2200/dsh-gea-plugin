@@ -205,9 +205,8 @@ jobs:
         id: node
         with:
           node-version: "24"
-      # Only the declared semver runtime parser; no Core/SDK checkout, service or secrets.
       - run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22
           ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
       - run: node --run test:release-source
       - run: npm run test:delivery:packages
