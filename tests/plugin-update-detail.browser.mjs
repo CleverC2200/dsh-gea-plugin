@@ -116,11 +116,10 @@ test("official detail slots check, update, close and reenter through controlled 
         }
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
-      if (url.endsWith("/update")) {
+      if (url.endsWith("/update-all")) {
         updates++;
         assert.deepEqual(JSON.parse(body), {
-          packageName: names[2],
-          planId: "plan-one",
+          plans: names.map((packageName) => ({ packageName, planId: "plan-one" })),
         });
         res.on("close", () => {
           if (!res.writableEnded) updateAborted = true;
@@ -174,7 +173,7 @@ test("official detail slots check, update, close and reenter through controlled 
       console.error({ errors, html: await page.locator("body").innerHTML() });
       throw error;
     });
-  await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Update all", exact: true }).waitFor();
   const packageVersion = await page.evaluate(() => window.fixture.packageVersion);
   const packageManifest = JSON.parse(await readFile("package.json", "utf8"));
   assert.deepEqual(packageVersion, {
@@ -200,7 +199,7 @@ test("official detail slots check, update, close and reenter through controlled 
   await page.getByRole("button", { name: "Check for updates", exact: true }).dblclick();
   await page.waitForTimeout(200);
   assert.equal(checks, 1);
-  await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).click();
+  await page.getByRole("button", { name: "Update all", exact: true }).click();
   await until(() => updates === 1);
   await page.getByText("Submitting update", { exact: true }).waitFor();
   assert.equal(await page.getByText("Update accepted", { exact: true }).count(), 0);
@@ -318,7 +317,7 @@ test("official detail slots check, update, close and reenter through controlled 
       { exact: true },
     )
     .waitFor();
-  assert.equal(await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
   assert.equal(
     await page.getByRole("button", { name: "Check for updates", exact: true }).isEnabled(),
     true,
@@ -377,10 +376,7 @@ test("official detail slots check, update, close and reenter through controlled 
     await requirement
       .getByText(problem.requirements.at(-1).consumer, { exact: true })
       .scrollIntoViewIfNeeded();
-    assert.equal(
-      await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(),
-      0,
-    );
+    assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
     assert.equal(
       await page.getByRole("button", { name: "Check for updates", exact: true }).isEnabled(),
       true,
@@ -412,7 +408,7 @@ test("official detail slots check, update, close and reenter through controlled 
       .count(),
     0,
   );
-  assert.equal(await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
   await page.evaluate(() => window.fixture.locale("zh"));
   await page
     .getByText(
@@ -450,10 +446,7 @@ test("official detail slots check, update, close and reenter through controlled 
       await page.locator(".gea-plugin-update-versions dd").nth(3).textContent(),
       "1.2.4",
     );
-    assert.equal(
-      await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).count(),
-      0,
-    );
+    assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
     await page.evaluate(() => window.fixture.locale("zh"));
     await page.getByRole("alert").filter({ hasText: chinese }).waitFor();
     await page.evaluate(() => window.fixture.locale("en"));
@@ -462,10 +455,10 @@ test("official detail slots check, update, close and reenter through controlled 
   phase = "unknown";
   await page.getByRole("alert").filter({ hasText: "The update result is unknown." }).waitFor();
   phase = "available";
-  await page.getByRole("button", { name: "Update to 1.2.4", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Update all", exact: true }).waitFor();
   holdCheck = true;
   await page.getByRole("button", { name: "Check for updates", exact: true }).click();
-  await until(() => checks === 2);
+  await until(() => checks === 3);
   await page.evaluate(() => window.fixture.close());
   for (let i = 0; i < 100 && !checkAborted; i++)
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -481,7 +474,7 @@ test("official detail slots check, update, close and reenter through controlled 
     .waitFor();
   assert.equal(await page.locator(".gea-plugin-update-versions dd").first().textContent(), "1.2.3");
   await page.getByRole("button", { name: "Check for updates", exact: true }).click();
-  await until(() => checks === 3);
+  await until(() => checks === 4);
   await page.waitForTimeout(50);
   await page
     .getByRole("alert")

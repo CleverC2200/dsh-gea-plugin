@@ -12,6 +12,7 @@ import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 import {
   createPluginDetailUpdates,
   pluginUpdateBusy,
+  pluginSuiteReady,
   pluginUpdateObservationMs,
 } from "./plugin-updates-client.ts";
 import { en, zh, pluginUpdateLocale } from "./plugin-update-locales.ts";
@@ -30,15 +31,16 @@ function useDetail(updates: Owner) {
 }
 function UpdateActions({ subject, updates, t }: Props): ReactNode {
   const name = targetName(subject);
-  return name ? <DetailActions name={name} updates={updates} t={t} /> : null;
+  return name ? <DetailActions updates={updates} t={t} /> : null;
 }
 function DetailActions({
-  name,
   updates,
   t,
-}: { name: string; updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
-  const state = useDetail(updates),
-    row = state.items.find((row) => row.packageName === name);
+}: { updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
+  const state = useDetail(updates);
+  const available =
+    state.items.some((row) => row.state === "available" && row.planId) &&
+    pluginSuiteReady(state.items);
   const busy = state.checking || state.submitting !== null || pluginUpdateBusy(state.items);
   return (
     <div className="gea-plugin-update-actions">
@@ -52,16 +54,16 @@ function DetailActions({
       >
         {t("check")}
       </Button>
-      {row?.state === "available" && row.planId && row.candidateVersion ? (
+      {available ? (
         <Button
           size="sm"
           variant="primary"
           disabled={busy}
           onClick={() => {
-            void updates.update(name);
+            void updates.updateAll();
           }}
         >
-          {t("update", { version: row.candidateVersion })}
+          {t("updateAll")}
         </Button>
       ) : null}
     </div>
@@ -85,7 +87,7 @@ function DetailBadge({
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
   const stage =
-    state.submitting === name && (!row || row.state === "available")
+    state.submitting?.split(",").includes(name) && (!row || row.state === "available")
       ? "submitting"
       : state.checking
         ? "checking"
@@ -243,25 +245,6 @@ function ListBadge({ subject, updates, t }: Props): ReactNode {
     </span>
   );
 }
-function ListActions({ subject, updates, t }: Props): ReactNode {
-  const name = targetName(subject);
-  const state = useDetail(updates);
-  const row = state.items.find((item) => item.packageName === name);
-  if (!name || row?.state !== "available" || !row.planId) return null;
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      className="gea-plugin-list-update"
-      disabled={state.checking || state.submitting !== null || pluginUpdateBusy(state.items)}
-      onClick={() => {
-        void updates.update(name);
-      }}
-    >
-      {t("updateShort")}
-    </Button>
-  );
-}
 function ListTools({
   packages,
   registerRefresh,
@@ -270,7 +253,13 @@ function ListTools({
 }: PropsRuntime<"plugins.list.tools"> &
   PropsLocale<typeof pluginUpdateLocale> & { updates: Owner }): ReactNode {
   const state = useDetail(updates);
-  useEffect(() => registerRefresh(() => updates.check()), [registerRefresh, updates]);
+  useEffect(
+    () =>
+      registerRefresh(async () => {
+        await updates.check();
+      }),
+    [registerRefresh, updates],
+  );
   const installed = new Set(packages.map((pkg) => pkg.name));
   const available = state.items.filter(
     (row) => installed.has(row.packageName) && row.state === "available" && row.planId,
@@ -303,13 +292,13 @@ function ListTools({
               ? t("availableCount", { count: String(available.length) })
               : ""}
       </span>
-      {available.length ? (
+      {available.length && pluginSuiteReady(state.items) ? (
         <Button
           size="sm"
           variant="primary"
           disabled={busy}
           onClick={() => {
-            void updates.updateAll(available.map((row) => row.packageName));
+            void updates.updateAll();
           }}
         >
           {t("updateAll")}
@@ -442,17 +431,6 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           inject: () => ({ updates }),
         },
         ListBadge,
-      ),
-    );
-    scope.slots.inject("plugins.list.actions", () =>
-      scope.slots.register(
-        {
-          name: "plugins.list.actions",
-          id: "gea.plugins.list.actions",
-          locale: pluginUpdateLocale,
-          inject: () => ({ updates }),
-        },
-        ListActions,
       ),
     );
     scope.slots.inject("plugins.list.tools", () =>

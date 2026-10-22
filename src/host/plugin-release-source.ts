@@ -227,6 +227,9 @@ export async function inspectPluginArchive(
   return {
     name: projection.name,
     version: projection.version,
+    ...(projection.geaPluginUpdateStrategy
+      ? { geaPluginUpdateStrategy: projection.geaPluginUpdateStrategy }
+      : {}),
     peerDependencies: projection.peerDependencies,
     peerDependenciesMeta: projection.peerDependenciesMeta,
     dependencies: projection.dependencies,
@@ -238,6 +241,7 @@ function sameGraph(manifest: PluginManifest, release: PluginRelease): boolean {
   return (
     manifest.name === release.name &&
     manifest.version === release.version &&
+    manifest.geaPluginUpdateStrategy === release.updateStrategy &&
     sorted(manifest.peerDependencies) === sorted(release.peerDependencies) &&
     sorted(manifest.peerDependenciesMeta) === sorted(release.peerDependenciesMeta) &&
     sorted(manifest.dependencies) === sorted(release.dependencies)

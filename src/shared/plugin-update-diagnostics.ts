@@ -37,6 +37,7 @@ export function parseUpdateProblem(value: unknown) {
         "release-not-published",
         "plan-unconfirmed",
         "conditions",
+        "migration-required",
         "channel-older",
         "content-mismatch",
         "inactive",
@@ -132,7 +133,10 @@ export function planUpdateProblem(
   release: PluginRelease,
   core: FixedCore,
   installed: PluginManifest[],
+  candidates: readonly PluginRelease[] = [release],
 ): PluginUpdateProblem {
+  if (plan.code === "DATA_MIGRATION_REQUIRED")
+    return { kind: "policy", code: "migration-required" };
   if (plan.code === "DOWNGRADE_FORBIDDEN") return { kind: "policy", code: "channel-older" };
   if (plan.code === "SAME_VERSION_CONTENT_MISMATCH")
     return { kind: "policy", code: "content-mismatch" };
@@ -158,7 +162,8 @@ export function planUpdateProblem(
             installed.find((manifest) => manifest.name === row.dependency)?.version ??
             core.sdk[row.dependency] ??
             null,
-          candidate: row.dependency === release.name ? release.version : null,
+          candidate:
+            candidates.find((candidate) => candidate.name === row.dependency)?.version ?? null,
         },
       ];
     });

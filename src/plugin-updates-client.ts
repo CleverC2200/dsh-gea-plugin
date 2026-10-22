@@ -85,6 +85,10 @@ const activeStages: PluginUpdateRow["state"][] = [
 export const pluginUpdateBusy = (items: PluginUpdateRow[]) =>
   items.some((row) => activeStages.includes(row.state));
 
+export const pluginSuiteReady = (items: PluginUpdateRow[]) =>
+  items.length === companyPackageNames.length &&
+  items.every((row) => row.state === "available" || row.state === "current");
+
 export function createPluginDetailUpdates(ctx: Context) {
   const listeners = new Set<() => void>();
   let snapshot: PluginDetailUpdateSnapshot = {
@@ -112,7 +116,7 @@ export function createPluginDetailUpdates(ctx: Context) {
         };
       }
     | undefined;
-  let checking: Promise<void> | undefined, submitting: Promise<void> | undefined;
+  let checking: Promise<boolean> | undefined, submitting: Promise<void> | undefined;
   let disposed = false;
   let resumed = false;
   let notified:
@@ -300,37 +304,37 @@ export function createPluginDetailUpdates(ctx: Context) {
     page = undefined;
     publish({ checking: false });
   };
-  const submitRows = (names: readonly string[]): Promise<void> => {
+  const submitRows = (requestedName?: string): Promise<void> => {
     if (submitting) return submitting;
-    const rows = names.map((name) => snapshot.items.find((row) => row.packageName === name));
-    const selected = rows.filter(
-      (row): row is PluginUpdateRow & { planId: string } =>
-        row?.state === "available" && typeof row.planId === "string",
+    if (!pluginSuiteReady(snapshot.items)) return Promise.resolve();
+    const available = snapshot.items.filter((row) => row.state === "available");
+    const selected = available.filter(
+      (row): row is PluginUpdateRow & { planId: string } => typeof row.planId === "string",
     );
     if (
       !page ||
       snapshot.checking ||
+      snapshot.transportError !== null ||
       pluginUpdateBusy(snapshot.items) ||
-      selected.length !== names.length ||
       !selected.length ||
-      new Set(names).size !== names.length
+      selected.length !== available.length ||
+      (requestedName && !selected.some((row) => row.packageName === requestedName))
     )
       return Promise.resolve();
+    if (requestedName)
+      selected.sort(
+        (left, right) =>
+          Number(right.packageName === requestedName) - Number(left.packageName === requestedName),
+      );
+    const names = selected.map((row) => row.packageName);
     publish({ submitting: names.join(","), transportError: null });
     observe(page, names);
     notify(page, "progress");
     const run = async () => {
       try {
         await request(
-          names.length === 1 ? "update" : "update-all",
-          names.length === 1
-            ? { packageName: selected[0]?.packageName, planId: selected[0]?.planId }
-            : {
-                plans: selected.map((row) => ({
-                  packageName: row.packageName,
-                  planId: row.planId,
-                })),
-              },
+          "update-all",
+          { plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })) },
           AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
         );
       } catch {
@@ -355,6 +359,34 @@ export function createPluginDetailUpdates(ctx: Context) {
     });
     return submitting;
   };
+  function check(): Promise<boolean> {
+    if (checking) return checking;
+    const owner = page;
+    if (!owner || submitting || pluginUpdateBusy(snapshot.items)) return Promise.resolve(false);
+    const cancellation = new AbortController();
+    owner.check = cancellation;
+    const signal = () => AbortSignal.any([signalFor(owner), cancellation.signal]);
+    publish({ checking: true, transportError: null });
+    const run = async () => {
+      try {
+        if (!status) await refresh(owner, signal());
+        await request("check", {}, signal());
+        await refresh(owner, signal());
+        return true;
+      } catch {
+        if (!cancellation.signal.aborted && !owner.lifetime.signal.aborted && page === owner)
+          publish({ transportError: "check" });
+        return false;
+      } finally {
+        if (owner.check === cancellation) owner.check = undefined;
+        if (page === owner) publish({ checking: false });
+      }
+    };
+    checking = run().finally(() => {
+      checking = undefined;
+    });
+    return checking;
+  }
   return {
     getSnapshot: () => snapshot,
     subscribe(listener: () => void) {
@@ -404,34 +436,11 @@ export function createPluginDetailUpdates(ctx: Context) {
         }
       };
     },
-    check(): Promise<void> {
-      if (checking) return checking;
-      const owner = page;
-      if (!owner || submitting || pluginUpdateBusy(snapshot.items)) return Promise.resolve();
-      const cancellation = new AbortController();
-      owner.check = cancellation;
-      const signal = () => AbortSignal.any([signalFor(owner), cancellation.signal]);
-      publish({ checking: true, transportError: null });
-      const run = async () => {
-        try {
-          if (!status) await refresh(owner, signal());
-          await request("check", {}, signal());
-          await refresh(owner, signal());
-        } catch {
-          if (!cancellation.signal.aborted && !owner.lifetime.signal.aborted && page === owner)
-            publish({ transportError: "check" });
-        } finally {
-          if (owner.check === cancellation) owner.check = undefined;
-          if (page === owner) publish({ checking: false });
-        }
-      };
-      checking = run().finally(() => {
-        checking = undefined;
-      });
-      return checking;
+    check,
+    update: (name: string) => submitRows(name),
+    async updateAll() {
+      if (await check()) return submitRows();
     },
-    update: (name: string) => submitRows([name]),
-    updateAll: (names: readonly string[]) => submitRows(names),
     async dispose() {
       disposed = true;
       listeners.clear();
