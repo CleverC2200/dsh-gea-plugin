@@ -6,6 +6,7 @@ import { join, dirname, basename, isAbsolute, relative } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
+import { selectDownloadStore } from "./plugin-reception/download-store.mjs";
 import {
   readSupportedCore,
   coreIdentity,
@@ -56,6 +57,12 @@ export async function receiveDelivery(input) {
   assert(!within(home, evidence) && !within(evidence, home), "RECEPTION_HOME_EVIDENCE_OVERLAP");
   await absent(home);
   await absent(evidence);
+  const downloadStore = await selectDownloadStore({
+    pnpm,
+    home,
+    store: input.store,
+    coldDownload: input["cold-download"],
+  });
   const manifestBytes = await readFile(manifestPath),
     manifest = JSON.parse(manifestBytes);
   assert(
@@ -110,6 +117,7 @@ export async function receiveDelivery(input) {
     businessQueries: 0,
     artifactSetSha256: artifactSetSha256(artifacts),
     manifestSha256: digest(manifestBytes),
+    downloadStore,
   };
   await writeFile(resultFile, JSON.stringify(result, null, 2) + "\n", { mode: 0o600, flag: "wx" });
   try {
@@ -126,6 +134,9 @@ export async function receiveDelivery(input) {
           "install",
           "--pnpm",
           pnpm,
+          ...(downloadStore.mode === "cold"
+            ? ["--cold-download"]
+            : ["--store", downloadStore.path]),
           "--workbench",
           artifacts[0].file,
           "--manage",
@@ -190,7 +201,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const { values } = parseArgs({
       options: Object.fromEntries(
-        ["manifest", "core", "pnpm", "home", "evidence"].map((name) => [name, { type: "string" }]),
+        ["manifest", "core", "pnpm", "home", "evidence", "store"]
+          .map((name) => [name, { type: "string" }])
+          .concat([["cold-download", { type: "boolean", default: false }]]),
       ),
     });
     const result = await receiveDelivery(values);

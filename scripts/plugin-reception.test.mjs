@@ -1,5 +1,6 @@
 import test from "node:test";
 import "./plugin-reception/readiness.test.mjs";
+import "./plugin-reception/download-store.test.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
