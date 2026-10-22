@@ -20,7 +20,8 @@ export function createReceptionReady() {
     commit() {
       if (ready) return;
       ready = true;
-      for (const listener of [...listeners]) listener();
+      const committedListeners = [...listeners];
+      for (const listener of committedListeners) listener();
       listeners.clear();
     },
   };

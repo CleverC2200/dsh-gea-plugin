@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { inspectPluginArchive } from "../src/host/plugin-release-source.ts";
@@ -232,6 +232,14 @@ export async function verifyStepUpgrades(inputFile, output) {
       }
       verified.set(key, path);
       result.paths.push(path);
+      for (const generated of [
+        "profiles/reception/node_modules",
+        "pnpm-store",
+        "pnpm-cache",
+        "agent-plugins/data/selected-resources.json.skills",
+      ])
+        await rm(join(home, generated), { recursive: true, force: true });
+      path.generatedDependenciesRetired = true;
     }
   result.status = "step-upgrades-verified";
   assert.equal(await upgradeObserverSha256(), observerSha256, "UPGRADE_OBSERVER_CHANGED");
