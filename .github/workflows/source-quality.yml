@@ -235,6 +235,7 @@ jobs:
             candidate/dsh-gea-plugin/quality-checks.json
             quality-test-plan.json
             quality-test-execution-plan.json
+            quality-stages.json
             quality-checks.json
           if-no-files-found: ignore
 
