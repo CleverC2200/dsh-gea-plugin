@@ -2,7 +2,7 @@
 
 ## 普通会话与运行态诊断
 
-GEA 在模型步骤按实际 Core 会话预设限制受控业务工具。普通预设可加载规则 Skill；个人 Agent 只有显式引用一个可信已安装 Cube 来源时，才获得该来源授予的两项 Cube 工具。未引用、停用或已撤销的能力同时从模型清单和直接派发中拒绝。官方通用工具和用户独立 MCP 保留。直接派发仍按原业务 guard 校验，角色名称与子智能体 persona 不授予 Consumer 身份；个人引用由 GEA Host 反查来源 owner 和 Consumer，不接受用户填入 Consumer、Token 或网关地址。页面工具还要求同会话当前页面身份已绑定，界面菜单可见不能代替页面绑定。
+GEA 在模型步骤按实际 Core 会话预设限制受控业务工具。普通预设可加载规则 Skill；当前预设声明可用的受管 Cube 来源，或个人 Agent 显式引用一个可信已安装 Cube 来源时，可发现服务端为该 Consumer 发布的 Cube 与知识库 MCP 工具。智能编排保留 `auto-negotiation` 预设，通过 Manage 受管来源以 `workbench` 编码发起模型及 MCP 请求，独立查询无需绑定页面。来源必须已安装、启用且无错误；来源失效、身份变化或引用撤销时，同时限制模型工具清单和直接派发，取消所属在途请求并拒绝迟到结果。官方通用工具和用户独立 MCP 保留。直接派发仍按原业务 guard 校验，角色名称与子智能体 persona 不授予 Consumer 身份；个人引用由 GEA Host 反查来源 owner 和 Consumer，不接受用户填入 Consumer、Token 或网关地址。页面工具还要求同会话当前页面身份已绑定，界面菜单可见不能代替页面绑定。
 
 `gea_runtime_diagnose` 是所有会话可用的只读诊断工具。只返回当前调用 Agent、实际 preset、父会话 ID、资源安装及启用状态、声明 Consumer、页面是否绑定、登录布尔状态、工具名称和最近最多20条工具错误码。它不读取配置或凭据，不返回业务正文、工具参数或历史问题，不请求业务接口或模型。`businessAuthorization=not-checked` 明确保留服务端授权未核结论。无调用 Agent 与无业务预设仍保留 `GEA_BUSINESS_PROFILE_REQUIRED`，错误说明分别给出调用归属缺失与预设身份缺失；未绑定页面给出 `PAGE_NOT_BOUND` 原因。
 

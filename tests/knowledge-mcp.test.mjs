@@ -98,6 +98,43 @@ const successful = (result) => {
   return JSON.parse(result.value);
 };
 
+test("managed orchestration discovers knowledge without a page and preserves Workbench authorization", async (t) => {
+  const f = await fixture(t, { orchestration: true, prompts: true });
+  const state = successful(await invoke(f, "gea_runtime_diagnose", {}, "orchestration"));
+  assert.equal(state.preset, "auto-negotiation");
+  assert.equal(state.businessProfileDeclared, false);
+  assert.equal(state.pageBound, false);
+  assert.equal(state.consumerCode, "workbench");
+  assert.equal(state.businessAuthorization, "not-checked");
+  assert.deepEqual(state.independentQuery, { available: true, pageRequired: false });
+  assert.deepEqual(successful(await invoke(f, catalog, {}, "orchestration")), [
+    library("current-library"),
+  ]);
+  assert.deepEqual(successful(await invoke(f, ask, args, "orchestration")), delivered());
+  const refused = await invoke(f, ask, args, "ordinary");
+  assert.equal(refused.isError, true);
+  const sent = f.calls.filter(({ wire }) => wire.method === "tools/call");
+  assert.equal(sent.length, 3);
+  assert.ok(sent.every(({ wire }) => wire.params._meta.agentCode === "workbench"));
+  f.setHandler((wire, _init, reply) =>
+    wire.params.name === "weknora_list_knowledge_bases"
+      ? reply({ structuredContent: [library("current-library")] })
+      : Response.json({
+          jsonrpc: "2.0",
+          id: wire.id,
+          error: { code: -32000, message: "AGENT_ACCESS_DENIED" },
+        }),
+  );
+  const denied = await invoke(f, ask, args, "orchestration");
+  assert.equal(denied.isError, true);
+  assert.match(JSON.stringify(denied), /AGENT_ACCESS_DENIED/);
+  assert.equal(count(f, "weknora_ask"), 2);
+  f.setEnabled(false);
+  const beforeRevokedCall = f.calls.length;
+  assert.equal((await invoke(f, catalog, {}, "orchestration")).isError, true);
+  assert.equal(f.calls.length, beforeRevokedCall);
+});
+
 test("Manage exposes actual knowledge schemas and a dynamic ASK catalog for the calling Agent", async (t) => {
   let revision = 1;
   const f = await fixture(t, {
