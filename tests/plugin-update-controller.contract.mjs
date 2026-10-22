@@ -653,38 +653,20 @@ async function bridgeControllerFixture(t, { workbenchFirst = false } = {}) {
   return f;
 }
 
-test("dependency blocked companions recommend the executable first step of a verified full channel path", async (t) => {
-  const f = await bridgeControllerFixture(t);
-  const controller = createPluginUpdateController(f.options);
-  t.after(() => controller.dispose());
-  await controller.initialize();
-  await controller.check();
-  const rows = controller.snapshot().items;
-  const gea = rows.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype");
-  assert.equal(gea.state, "available");
-  assert.equal(gea.runningHostVersion, "3.0.0");
-  assert.ok(gea.planId);
-  for (const name of ["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage"]) {
-    const row = rows.find((row) => row.packageName === name);
-    assert.equal(row.state, "blocked");
-    assert.equal(row.problem.kind, "dependencies");
-    assert.deepEqual(row.problem.nextStep, {
-      packageName: "@cleverc2200/gea-dsh-prototype",
-      version: "3.1.0",
-    });
-    assert.equal(row.planId, null);
-  }
-});
+for (const workbenchFirst of [false, true])
+  test(`suite plans the full target without making the user choose an update order (${workbenchFirst})`, async (t) => {
+    const f = await bridgeControllerFixture(t, { workbenchFirst });
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    assert.ok(controller.snapshot().items.every((row) => row.state === "available" && row.planId));
+  });
 
-test("signed bridge keeps the GEA plan while long companion incompatibility remains explicitly blocked", async (t) => {
+test("signed legacy bridge companions form one suite and a legacy single request installs every changed package", async (t) => {
+  const { waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await bridgeControllerFixture(t);
-  const G = "@cleverc2200/gea-dsh-prototype",
-    W = "@cleverc2200/dsh-agent-workbench";
-  const file = join(f.dir, "node_modules", G, "package.json");
-  const manifest = JSON.parse(await readFile(file, "utf8"));
-  const required = Array.from({ length: 25 }, (_, index) => `1.0.${index}`).join(" || ");
-  manifest.peerDependencies[W] = required;
-  await writeFile(file, JSON.stringify(manifest));
+  const G = "@cleverc2200/gea-dsh-prototype";
   const channel = "https://fixture.invalid/channels/test.json";
   const envelope = JSON.parse(f.files.get(channel));
   const payload = JSON.parse(Buffer.from(envelope.payloadBase64, "base64"));
@@ -705,20 +687,22 @@ test("signed bridge keeps the GEA plan while long companion incompatibility rema
   t.after(() => controller.dispose());
   await controller.initialize();
   await controller.check();
-  const rows = controller.snapshot().items;
-  assert.equal(rows.find((row) => row.packageName === G).state, "available");
-  assert(rows.find((row) => row.packageName === G).planId);
-  const workbench = rows.find((row) => row.packageName === W);
-  assert.equal(workbench.state, "blocked");
-  assert.equal(workbench.diagnostic, "COMBINATION_INCOMPATIBLE");
-  assert.equal(workbench.problem.requirements[0].required, required);
-  assert.deepEqual(workbench.problem.nextStep, {
-    packageName: G,
-    version: "3.1.0",
-  });
+  const row = controller.snapshot().items.find((row) => row.packageName === G);
+  const accepted = await controller.submit({ packageName: G, planId: row.planId });
+  assert.equal(accepted.targets.length, 3);
+  assert.equal(
+    (await waitForStage(controller, ["pending-restart", "restored", "unknown"])).stage,
+    "pending-restart",
+  );
+  const calls = (await readFile(join(f.dir, "invocations.ndjson"), "utf8"))
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args.filter((arg) => arg.startsWith("file:")).length, 3);
 });
 
-test("an available bridge is not recommended when another installed consumer makes the full channel unreachable", async (t) => {
+test("an unrelated installed consumer blocks the entire suite and preserves legacy dependency diagnostics", async (t) => {
   const f = await bridgeControllerFixture(t);
   const consumerDir = join(f.dir, "node_modules/fixed-consumer");
   await mkdir(consumerDir);
@@ -736,10 +720,7 @@ test("an available bridge is not recommended when another installed consumer mak
     file,
     JSON.stringify({
       ...manifest,
-      dependencies: {
-        ...manifest.dependencies,
-        "fixed-consumer": "1.0.0",
-      },
+      dependencies: { ...manifest.dependencies, "fixed-consumer": "1.0.0" },
     }),
   );
   const controller = createPluginUpdateController(f.options);
@@ -747,92 +728,101 @@ test("an available bridge is not recommended when another installed consumer mak
   await controller.initialize();
   await controller.check();
   const rows = controller.snapshot().items;
-  assert.equal(
-    rows.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype").state,
-    "available",
-  );
-  const blocked = rows.filter((row) => row.problem?.kind === "dependencies");
-  assert.equal(blocked.length, 2);
-  assert.ok(blocked.every((row) => row.problem.nextStep === undefined));
-});
-
-test("a planner path whose first update is inactive produces no executable recommendation", async (t) => {
-  const f = await bridgeControllerFixture(t);
-  const controller = createPluginUpdateController(f.options);
-  t.after(() => controller.dispose());
-  await controller.initialize();
-  await controller.check();
-  assert.ok(controller.snapshot().items.some((row) => row.problem?.nextStep));
-  f.proofs[2].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
-  await controller.check();
-  const rows = controller.snapshot().items;
-  const first = rows.find((row) => row.packageName === "@cleverc2200/gea-dsh-prototype");
-  assert.equal(first.state, "blocked");
-  assert.equal(first.planId, null);
-  assert.equal(first.problem.code, "inactive");
-  const blocked = rows.filter((row) => row.problem?.kind === "dependencies");
-  assert.equal(blocked.length, 2);
-  assert.ok(blocked.every((row) => row.problem.nextStep === undefined));
-});
-
-test("a different full graph recommends Workbench first when GEA requires its candidate", async (t) => {
-  const f = await bridgeControllerFixture(t, { workbenchFirst: true });
-  const controller = createPluginUpdateController(f.options);
-  t.after(() => controller.dispose());
-  await controller.initialize();
-  await controller.check();
-  const rows = controller.snapshot().items;
-  const first = rows.find((row) => row.packageName === "@cleverc2200/dsh-agent-workbench");
-  assert.equal(first.state, "available");
-  assert.ok(first.planId);
-  for (const name of ["@cleverc2200/gea-dsh-prototype", "dsh-agent-manage"]) {
-    const row = rows.find((row) => row.packageName === name);
-    assert.equal(row.state, "blocked");
-    assert.deepEqual(row.problem.nextStep, {
-      packageName: "@cleverc2200/dsh-agent-workbench",
-      version: "1.1.0",
-    });
-  }
-});
-
-test("legacy dependency status remains readable without next-step facts and unsafe recommendations are rejected", async (t) => {
-  const f = await bridgeControllerFixture(t);
-  const controller = createPluginUpdateController(f.options);
-  t.after(() => controller.dispose());
-  await controller.initialize();
-  await controller.check();
-  const snapshot = controller.snapshot();
+  assert.ok(rows.every((row) => row.state === "blocked" && row.planId === null));
   const value = {
-    revision: snapshot.revision,
+    revision: 1,
     hostProcessIdentity: "fixture-host",
-    challenge: "fixture-nonce",
+    challenge: "nonce",
     checkTimeoutMs: 1000,
     pollIntervalMs: 1000,
-    items: structuredClone(snapshot.items),
+    items: rows,
   };
-  const blocked = value.items.find((row) => row.problem?.kind === "dependencies");
-  delete blocked.problem.nextStep;
+  assert.ok(
+    parseUpdateClientStatus(value).items.every((row) => row.problem.kind === "dependencies"),
+  );
+  const blocked = value.items[0];
   for (const requirement of blocked.problem.requirements) {
     delete requirement.current;
     delete requirement.candidate;
   }
-  const parsed = parseUpdateClientStatus(value).items.find(
-    (row) => row.packageName === blocked.packageName,
+  assert.equal(parseUpdateClientStatus(value).items[0].problem.requirements[0].current, null);
+  blocked.problem.nextStep = { packageName: "/private/credential", version: "3.1.0" };
+  assert.throws(() => parseUpdateClientStatus(value), /UPDATE_STATUS_INVALID/);
+});
+
+test("a legacy updater can install the compatible GEA bridge before the suite updater finishes the companions", async (t) => {
+  const { waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const { planPluginUpdate } = await import("../src/shared/plugin-release.mjs");
+  const { preservedSession } = await import("./fixtures/plugin-updates/preserved-session.mjs");
+  const { runProfilePnpm } = await import(
+    pathToFileURL(join(sdk, "packages/boot/plugin-manager/lib/types/operations.js"))
   );
-  assert.equal(parsed.problem.kind, "dependencies");
-  assert.equal(parsed.problem.nextStep, undefined);
-  assert.equal(parsed.problem.requirements[0].current, null);
-  assert.equal(parsed.problem.requirements[0].candidate, null);
-  blocked.problem.nextStep = {
-    packageName: "/private/credential",
-    version: "3.1.0",
-  };
-  assert.throws(() => parseUpdateClientStatus(value), /UPDATE_STATUS_INVALID/);
-  blocked.problem.nextStep = {
-    packageName: "@cleverc2200/gea-dsh-prototype",
-    version: "/private/credential",
-  };
-  assert.throws(() => parseUpdateClientStatus(value), /UPDATE_STATUS_INVALID/);
+  const { withFileLock } = await import(
+    pathToFileURL(join(sdk, "packages/util/atomic-write/lib/index.js"))
+  );
+  const f = await bridgeControllerFixture(t);
+  const verifySession = await preservedSession(sdk, f.root);
+  const releases = await f.source.check();
+  const bridge = releases.find((row) => row.name === "@cleverc2200/gea-dsh-prototype");
+  const before = await readPluginProfile(f.dir);
+  assert.equal(
+    planPluginUpdate({ release: bridge, core: f.options.core, installed: before.packages }).kind,
+    "ready",
+  );
+  const archivePath = await f.source.download(bridge, join(f.root, "bridge-cache"));
+  const result = await withFileLock(join(f.dir, "package.json"), () =>
+    runProfilePnpm(f.profile, ["add", "file:" + archivePath, "--save-exact", "--ignore-scripts"], {
+      ...f.profile.packageManager,
+      execution: "service",
+      activateNewBundles: false,
+      outputBytes: 16000,
+    }),
+  );
+  assert.equal(result.exitCode, 0);
+  f.proofs[2].host.stamp.version = bridge.version;
+  f.proofs[2].client.stamp.version = bridge.version;
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  assert.equal(controller.snapshot().items[2].state, "current");
+  const selected = controller.snapshot().items.filter((row) => row.state === "available");
+  assert.equal(selected.length, 2);
+  const operation = await controller.submit({
+    packageName: selected[0].packageName,
+    planId: selected[0].planId,
+  });
+  assert.equal(operation.targets.length, 2);
+  assert.equal(
+    (await waitForStage(controller, ["pending-restart", "restored", "unknown"])).stage,
+    "pending-restart",
+  );
+  await verifySession();
+});
+
+test("a missing suite download or a stale whole-suite plan never starts a package writer", async (t) => {
+  const f = await bridgeControllerFixture(t);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const stale = controller.snapshot().items[0];
+  await controller.check();
+  await assert.rejects(
+    controller.submit({ packageName: stale.packageName, planId: stale.planId }),
+    /UPDATE_PLAN_STALE/,
+  );
+  const before = await readPluginProfile(f.dir);
+  const releases = await f.source.check();
+  f.files.delete(releases[1].artifact.url);
+  const selected = controller.snapshot().items[0];
+  await assert.rejects(
+    controller.submit({ packageName: selected.packageName, planId: selected.planId }),
+    /SOURCE_/,
+  );
+  assert.equal((await readPluginProfile(f.dir)).ownedSha256, before.ownedSha256);
+  assert.equal(controller.snapshot().operation, null);
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
 });
 
 test("signed same-version replacement reports a content conflict without disclosing source details", async (t) => {
@@ -1107,7 +1097,7 @@ test("signed/HTTP check failures retain safe distinct status errors while Core a
   assert.deepEqual(core.problem.required, [{ version: "0.2.0-rc.2", revision: "a".repeat(40) }]);
 });
 
-test("a single-package channel leaves omitted installed packages out of the checking state", async (t) => {
+test("an incomplete channel blocks the entire suite without leaving checking rows", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t);
   const originalCheck = f.options.source.check;
@@ -1123,8 +1113,9 @@ test("a single-package channel leaves omitted installed packages out of the chec
   const items = controller.snapshot().items;
   assert.equal(
     items.find((r) => r.packageName === "@cleverc2200/gea-dsh-prototype").state,
-    "available",
+    "blocked",
   );
+  assert.ok(items.every((row) => row.planId === null));
   for (const row of items.filter((r) => r.packageName !== "@cleverc2200/gea-dsh-prototype")) {
     assert.equal(row.state, "blocked");
     assert.deepEqual(row.problem, {
@@ -1181,11 +1172,13 @@ test("Windows accepts pnpm file separators only for the selected exact archive",
   }
 });
 
-for (const mode of ["success", "fail-after-first"]) {
+for (const mode of ["success", "fail-after-first", "corrupt-installed"]) {
   test(`batch update uses one owner and ${mode === "success" ? "installs all packages" : "restores all packages after a partial install"}`, async (t) => {
     const { controllerFixture, waitForStage } =
       await import("./fixtures/plugin-updates/profile.mjs");
     const f = await controllerFixture(t, { mode, allUpdates: true });
+    const { preservedSession } = await import("./fixtures/plugin-updates/preserved-session.mjs");
+    const verifySession = await preservedSession(sdk, f.root);
     const before = await readPluginProfile(f.dir);
     const controller = createPluginUpdateController(f.options);
     t.after(() => controller.dispose());
@@ -1230,35 +1223,35 @@ for (const mode of ["success", "fail-after-first"]) {
       assert.equal(after.ownedSha256, before.ownedSha256);
       assert.deepEqual(after.manifest, before.manifest);
     }
+    await verifySession();
   });
 }
 
-test("inactive package is excluded from batch plans and cannot be disabled after checking", async (t) => {
+test("an inactive companion blocks all plans and disabling a companion after check rejects the whole operation", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t, { allUpdates: true });
-  const inactive = f.proofs[1];
-  inactive.host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  const saved = f.proofs[1].host;
+  f.proofs[1].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
   const controller = createPluginUpdateController(f.options);
   t.after(() => controller.dispose());
   await controller.initialize();
   await controller.check();
-  const blocked = controller.snapshot().items.find((row) => row.packageName === inactive.name);
-  assert.equal(blocked.state, "blocked");
-  assert.equal(blocked.planId, null);
-  assert.deepEqual(blocked.problem, { kind: "policy", code: "inactive" });
+  assert.ok(
+    controller.snapshot().items.every((row) => row.state === "blocked" && row.planId === null),
+  );
+  f.proofs[1].host = saved;
+  await controller.check();
   const selected = controller.snapshot().items.filter((row) => row.state === "available");
-  assert.equal(selected.length, 2);
+  assert.equal(selected.length, 3);
   const before = (await readPluginProfile(f.dir)).sha256;
-  f.proofs[0].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+  f.proofs[1].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
   await assert.rejects(
-    controller.submitBatch(selected.map(({ packageName, planId }) => ({ packageName, planId }))),
+    controller.submit({ packageName: selected[0].packageName, planId: selected[0].planId }),
     /UPDATE_PACKAGE_INACTIVE/,
   );
   assert.equal((await readPluginProfile(f.dir)).sha256, before);
   assert.equal(controller.snapshot().operation, null);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
-    code: "ENOENT",
-  });
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
 });
 
 test("same-version inactive package reports its load diagnosis before current status", async (t) => {

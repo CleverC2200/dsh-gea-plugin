@@ -16,7 +16,7 @@ const names = [
   "@cleverc2200/gea-dsh-prototype",
 ];
 
-test("official installed list checks once, keeps actions beside content, submits one batch and offers restart", async (t) => {
+test("official installed list offers only suite updates, refreshes the channel on click and offers restart", async (t) => {
   execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], { stdio: "pipe" });
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/list-browser-"));
@@ -157,29 +157,10 @@ test("official installed list checks once, keeps actions beside content, submits
   await page.getByRole("button", { name: "刷新", exact: true }).dblclick();
   await page.getByRole("button", { name: "全部更新", exact: true }).waitFor();
   assert.equal(checks, 1);
-  assert.equal(await page.getByRole("button", { name: "更新", exact: true }).count(), 3);
+  assert.equal(await page.getByRole("button", { name: "更新", exact: true }).count(), 0);
   for (const width of [835, 620, 520]) {
     await page.setViewportSize({ width, height: 800 });
-    const geometry = await cards.evaluateAll((rows) =>
-      rows.map((row) => {
-        const action = [...row.querySelectorAll("button")].find((b) => b.textContent === "更新");
-        const toggle = row.querySelector('[role="switch"]');
-        const title = row.querySelector("button[aria-describedby]");
-        const a = action.getBoundingClientRect(),
-          c = title.getBoundingClientRect(),
-          b = toggle.getBoundingClientRect();
-        return {
-          sameRow:
-            a.top < b.bottom && a.bottom > b.top && a.top < row.getBoundingClientRect().bottom,
-          contentBeside: c.right <= a.left,
-          height: row.getBoundingClientRect().height,
-        };
-      }),
-    );
-    assert.ok(
-      geometry.every((row) => row.sameRow && row.contentBeside && row.height < 100),
-      JSON.stringify({ width, geometry }),
-    );
+    assert.equal(await page.getByRole("button", { name: "全部更新", exact: true }).count(), 1);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
       false,
@@ -197,7 +178,7 @@ test("official installed list checks once, keeps actions beside content, submits
   await progress.waitFor();
   await page.evaluate(() => window.fixture.reloadGea());
   await progress.waitFor();
-  assert.equal(checks, 1);
+  assert.equal(checks, 2);
   assert.equal(batches, 1);
   phase = "pending-restart";
   const pending = page
@@ -220,10 +201,7 @@ test("official installed list checks once, keeps actions beside content, submits
   await pending.getByRole("button", { name: "一键重启", exact: true }).click();
   assert.equal(await page.evaluate(() => window.restartCalls), 2);
   phase = "available";
-  await page
-    .locator('[data-plugin-package="dsh-agent-manage"]')
-    .getByRole("button", { name: "更新", exact: true })
-    .click();
+  await page.getByRole("button", { name: "全部更新", exact: true }).click();
   await progress.waitFor();
   await page.getByRole("button", { name: "查看 dsh-agent-workbench", exact: true }).click();
   await page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]').waitFor();
@@ -237,9 +215,12 @@ test("official installed list checks once, keeps actions beside content, submits
     })
     .getByRole("button", { name: "View update status", exact: true })
     .click();
-  const manageDetail = page.locator('[data-plugin-detail="dsh-agent-manage"]');
+  const manageDetail = page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]');
   await manageDetail.waitFor();
-  assert.equal(await manageDetail.locator("[data-plugin-name]").textContent(), "dsh-agent-manage");
+  assert.equal(
+    await manageDetail.locator("[data-plugin-name]").textContent(),
+    "@cleverc2200/dsh-agent-workbench",
+  );
   await manageDetail
     .getByRole("status")
     .filter({
@@ -255,8 +236,8 @@ test("official installed list checks once, keeps actions beside content, submits
     .waitFor();
   await restart.click();
   assert.equal(await page.evaluate(() => window.restartCalls), 3);
-  assert.equal(singles, 1);
-  assert.equal(batches, 1);
+  assert.equal(singles, 0);
+  assert.equal(batches, 2);
   await page.addInitScript(() => {
     Object.defineProperty(window, "dshDesktop", { value: undefined, writable: false });
   });

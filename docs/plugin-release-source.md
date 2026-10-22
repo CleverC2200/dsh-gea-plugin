@@ -1,4 +1,4 @@
-# 签名插件来源与独立 release
+# 签名插件来源与整组更新
 
 Host 使用 [createPluginReleaseSource](../src/host/plugin-release-source.ts) 检查频道并下载已验证归档。配置必须显式声明 `channel`、`channelUrl`、`allowed` 的 HTTPS origin/pathPrefix、`authenticationRef` 和 Ed25519 `trustedKeys` 的 keyId/publicKeyPem。pathPrefix 以 `/` 起止；URL 不含凭据、查询、fragment、编码路径或反斜杠。没有默认 OSS 地址或认证引用。
 
@@ -10,21 +10,23 @@ schema 1 可附带 `companionReleases`，此时 `releases` 只包含 GEA，compa
 
 trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替换。它保存频道 revision/payload 摘要和各包已批准版本/摘要，暂时从频道省略的包仍保留历史准入，不能借此重置回退或同版换内容保护，不含凭据。重建 source 后继续拒绝旧 revision、相同 revision 的不同 payload、包版本回退与同版换内容。损坏回执报错，不重置为首次检查。单 Host 持有该目录，调用者应保持这个归属。缓存目录为 0700，tgz 为 0600；下载失败移除本次 partial，已验证 tgz 保留供官方安装器的 file 引用和恢复使用。
 
-[planPluginUpdate](../src/shared/plugin-release.mjs) 接收 release、实际固定 Core 的 head/version/sdk 及已安装 manifest。Core SDK 版本由可信宿主读取，不从频道选择。被替换包必须已安装；更新不降级，不执行同版本替换。`dataCompatibility.kind=preserve` 才能自动计划，migration-required 必须先完成独立迁移。计划用替换后的完整图检查 candidate 与所有已安装消费者的必需/可选 peers，以及公司包 dependencies；可选 peer 缺席可接受，已安装时必须满足。结果为 ready/current/blocked；没有静默更新依赖。
+[planPluginSuiteUpdate](../src/shared/plugin-release.mjs) 将同一签名频道修订中的三包视为一个更新目标。三个引用必须齐全且唯一；已经匹配的包保留。规划器检查实际 Core、禁止降级、同版内容冲突及数据迁移边界，再检查替换后的完整图，包括未更新的消费者与可选 peer。当前版本不能逐个替换，不代表最终组合不能整组升级。`planPluginUpdate` 保留给旧更新器升级路径验证。
 
-不兼容诊断保留实际 semver 范围。`requirements.required` 限4096字符并校验真实 semver 范围；包名和版本继续限160字符。较长的有效 exact OR 不得使其它可执行更新计划失效，真实不兼容仍显示 blocked。
+不兼容诊断保留实际 semver 范围、当前依赖和整组候选依赖版本。旧诊断的 nextStep 仍能读取，新版统一操作不要求用户挑选更新顺序。
 
 ## 列表与批量更新
 
 公司 Core 保留官方插件页及顺序，只扩展已安装卡片。顶部刷新通过 `plugins.list.tools` 提供的 `registerRefresh` 同时检查公司插件。列表与详情共用同一个更新客户端和 Host 状态；关闭页面取消页面检查，已经受理的安装仍由 Host 持有。中文说明与无个人账号前缀的展示名使用官方 `locale/*.json` 元信息协议，安装标识保持原值。
 
-`update-all` 接收一至三个唯一包的固定 planId。Host 在同一所有权内下载全部归档，取得原 profile 锁后重新核来源、基线、逐包条件及最终组合，只调用一次原包管理器。它使用一份完整备份和一份操作回执。明确失败且确认写者停止时恢复整组；写者或设置归属不明时保持 unknown，不覆盖用户修改。单包路径复用同一实现。
+列表只提供统一“全部更新”，三个详情页也提交相同整组操作。每次点击先重新检查频道，再提交本次验证所得的计划；来源检查失败不使用缓存计划安装。
+
+`update-all` 接收一至三个唯一包的固定 planId。旧 client 的 `update` 请求和子集请求在 Host 校验计划后扩展为本次检查的全部待更新包。任何一个三包成员缺发布、未安装或未装载，整组均不可受理。Host 下载所有变化包后取得原 profile 锁，重新核基线、全部三包的装载与安装位置、整组条件及同一次来源批准，只调用一次原包管理器。它使用一份完整备份和一份操作回执。明确失败且确认写者停止时恢复完整原包图；用户设置归属、写者或结果不明时保持 unknown，保留原证据并阻止再次更新，不覆盖用户修改。
 
 批量回执在原单包字段之外保存 `targets`，每项包含包名、目标版本、摘要与归档路径。重建 Host 时恢复全部行的待重启状态。只有新进程中的每个目标 Host/client 都有对应版本和实际装载归属，且安装图仍匹配，整组才 completed，并保存各自 completionProofs。安装成功和原进程内重建控制器均不算加载完成。
 
 存在待重启且无进行中或未知操作时，桌面显示一键重启。操作调用公司 Core 的无参数桥，复用原任务确认与 Host 收尾；取消不留下延迟重启。普通浏览器不显示不可用的重启按钮。设置中的 GEA 接口日志复用 Workbench 原日志页面及身份投影，不迁移业务认证权威。
 
-未装载的插件不生成更新计划，列表显示启用并重启的原因；受理前再次核装载状态。更新流程不自动启用插件。
+有成员未装载时整组不生成更新计划，列表显示启用并重启的原因；受理前再次核全部成员装载状态。更新流程不自动启用插件。
 
 ## 生成独立发布输入
 
@@ -76,17 +78,17 @@ preflight 使用以下文件合同，所有路径为绝对路径。sources、tar
 
 门禁核实际 source HEAD 与源码修改范围，复用普通交付对 lib/client 生成输出的允许规则，生成输出仍须逐字节匹配构建回执与最终 TGZ。它读取 `deliveryManifest`，将每包的 archive 路径、sha256、name/version、source.head/path、锁和 buildReceipt 摘要绑定到实际文件。构建回执沿[普通交付合同](package-delivery.md)，每个输出同时核当前源码目录和 tar 内字节；相同版本的旧包不能借新 HEAD 的声明通过。
 
-每个目标版本必须不低于所有 deployed 与 supportedStarts 中该包的版本；同版本必须使用相同归档字节。门禁逐步调用真实 `planPluginUpdate`，最多枚举三个包的六种顺序，每一步保留未替换消费者与 Core SDK，并用 `validatePluginCombination` 核最终图。功能名后缀仍按同一版本比较器处理，无合法路径即拒绝。三包同版同字节的频道提升允许 planner 返回 current。
+每个目标版本必须不低于所有 deployed 与 supportedStarts 中该包的版本；同版本必须使用相同归档字节。全部受支持起点先通过整组规划。安装包通过 `geaPluginUpdateStrategy: "suite"` 声明具备整组更新器，该能力随归档投影到 release，下载时与实际 manifest 交叉核对。已具备该能力的起点直接规划整组；旧起点先由真实 `planPluginUpdate` 验证 GEA 过渡包可独立安装，再用新规划器验证剩余整组。旧更新器需要重启加载过渡包，再执行统一更新。能力缺失的历史 release 继续验证原逐包路径。功能名后缀仍按同一版本比较器处理，无合法路径即拒绝。Core 不支持或需要数据迁移时保留阻断，分别更新客户端或完成独立迁移后再检查。三包同版同字节的频道提升允许 planner 返回 current。
 
 metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自最终归档。destination 必须不存在。输出包含 release 文件路径、摘要、preflight 输入与交付清单摘要、各起点的合法顺序及 published=false，不上传 OSS、不更新频道。`test:release-contract` 将公开 CLI 的来源、身份和路径回归纳入 `quality:fast --source-only` 与现有 source CI。`release:preflight --desktop --base-tag <tag>` 保留桌面安装包原有版本准备职责，不代替插件发行门禁。
 
-[mergePluginChannelRelease/signPluginChannel](../scripts/plugin-channel.mjs) 用显式旧频道、一个新引用、递增 revision 和时间生成完整的新签名 envelope，保留已有其他包引用，尚未在频道出现的包可独立加入。部署方持有私钥并负责原子替换频道。此处函数只生成对象；没有网络或频道写入能力。真实 OSS 地址、凭据、公钥与部署验收仍需明确输入。
+发布方使用 [createPluginSuiteChannel](../scripts/plugin-channel.mjs)，输入 previous、preflightInput、三个最终 release 引用及新 revision/时间。该入口重新执行发布门禁，将三个 release 引用摘要绑定到门禁实际投影的 JSON 字节，一次生成完整 payload。旧起点还须证明 GEA 可作为第一步。生成结果带 `suite: true`，以 GEA `releases` 加 Workbench/Manage `companionReleases` 保持旧 reader 可读。`mergePluginChannelRelease` 拒绝修改已标记整组的频道，避免单包发布产生混装目标。发布方使用 `signPluginChannel({payload,keyId,privateKeyPem})` 签完整 payload，再原子替换频道。以上函数只生成本地对象，正式发布仍须有相应授权。
 
 本地 `test:release-source` 使用真实 Ed25519 密钥、真实 tar 和受控 fetch；它验证签名链、篡改/回退、完整 peers、固定 Core、持久回执与实际 conditional exports。fixture 测试不证明真实 OSS、官方安装器、Native 自替换、发布或业务验收。
 
 ## 官方插件页接线与部署输入
 
-GEA client 使用官方既有的 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，向 Workbench、Manage、GEA 三个 bundle 的详情贡献检查、单包更新、状态与版本；公司 Core 的列表扩展见下文。它等待公开 slots、locale、modules 与 pluginNavigation 服务，不要求额外的 Core 更新 provider。中英文随官方 locale 切换；按钮和状态使用官方公共组件与主题，样式随贡献生命周期装载和释放。非目标 bundle、row 与 item 不贡献内容。Host 通过已认证的 `connection.fetch` 注册 status/check/update/update-all/observed 五个 POST 路由，不另建业务登录权威。普通详情关闭中止本页检查与轮询；已提交更新另持有最长两分钟的客户端观察，到真实待重启、完成、恢复、失败或观察到期时释放，安装仍由 Host 生命周期持有。官方列表、详情卸载等控件继续由官方锁和更新前后的基线检查保护。
+GEA client 使用官方既有的 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，向 Workbench、Manage、GEA 三个 bundle 的详情贡献检查、整组更新、状态与版本；公司 Core 的列表扩展见下文。它等待公开 slots、locale、modules 与 pluginNavigation 服务，不要求额外的 Core 更新 provider。中英文随官方 locale 切换；按钮和状态使用官方公共组件与主题，样式随贡献生命周期装载和释放。非目标 bundle、row 与 item 不贡献内容。Host 通过已认证的 `connection.fetch` 注册 status/check/update/update-all/observed 五个 POST 路由，不另建业务登录权威。普通详情关闭中止本页检查与轮询；已提交更新另持有最长两分钟的客户端观察，到真实待重启、完成、恢复、失败或观察到期时释放，安装仍由 Host 生命周期持有。官方列表、详情卸载等控件继续由官方锁和更新前后的基线检查保护。
 
 每次 GEA client 挂载以新 pageIdentity 调用公开 status，按原 nonce 与真实 Loader 观察合同读取 Host 的持久状态。仅实际进行中或待重启的操作恢复上述有界观察，不重发 check/update；无操作即结束，初始状态读取失败最多尝试三次。新 Host 已装载目标而 client 尚未真实就绪时继续有界观察；合法 observed ACK 后再次读取同一 page 的 status，以 Host 最新状态判断是否完成，原 Host 仍为旧版本时照常提示重启。GEA 自有 shell.overlay 使用公共 Toast 呈现进度、待重启与未确认结果，提供“查看更新状态”及适用的一键重启。“查看更新状态”通过公开 `pluginNavigation.openBundle` 打开生成该提示时绑定的更新目标详情；详情沿用官方返回列表按钮，浮层不承诺重置列表选择；浮层本身不保活轮询。传输失败或观察超时只提示未确认，不修改 Host 状态；只有真实活动状态才能恢复进度提示。
 
@@ -105,7 +107,7 @@ Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 imp
 
 ## 分层验证
 
-`test:plugin-updates` 使用 `GEA_PLUGIN_UPDATE_SDK` 的绝对路径运行固定官方公开安装/锁源码合同、Host 路由与恢复回归、真实 pnpm 临时 profile 安装，以及实际生产构建的 client 在官方 Slots/Renderer 下的浏览器行为。浏览器测试检查已构建 `lib/client.js` 的依赖装载、按钮、错误、待重启、关闭/重入、样式及 effect 释放。来源使用本地生成的 Ed25519 签名与临时 TGZ，网络读取由受控 fixture 提供；安装使用官方 `runProfilePnpm` 与项目锁定的 pnpm 实际执行。新子进程通过公开 Host Loader、clientModules graph 和实际 client factory 证明新版本加载。原有故障恢复、锁冲突与 unknown 合同保留。
+`test:plugin-updates` 使用 `GEA_PLUGIN_UPDATE_SDK` 的绝对路径运行固定官方公开安装/锁源码合同、Host 路由与恢复回归、真实 pnpm 临时 profile 安装，以及实际生产构建的 client 在官方 Slots/Renderer 下的浏览器行为。浏览器测试检查已构建 `lib/client.js` 的依赖装载、按钮、错误、待重启、关闭/重入、样式及 effect 释放。来源使用本地生成的 Ed25519 签名与临时 TGZ，网络读取由受控 fixture 提供；安装使用官方 `runProfilePnpm` 与项目锁定的 pnpm 实际执行。新子进程通过公开 Host Loader、clientModules graph 和实际 client factory 证明新版本加载。会话保全回归使用固定 Core 的 JSONL 持久化服务创建历史事件，在整组安装、恢复和新进程核验后重新读取并对照原始文件字节与逻辑事件。原有故障恢复、锁冲突与 unknown 合同保留。
 
 普通 CI 的受影响集合登记实际安装和浏览器测试；`typecheck:plugin-updates` 核未修改 SDK 的现有详情接口，不要求另一个 UI 候选。完整发行图校验和来源准入继续由普通包/发布入口负责。局部通过不代替远端完整 CI、Native、Windows 或业务验收。
 
@@ -117,7 +119,7 @@ Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 imp
 
 输出仍是本地 release JSON 与 `published: false`。签名频道部署、正式 OSS、当前客户端安装、Native 和业务验收需要各自的有效输入与验收记录。
 
-单包发行频道允许只发布 GEA。没有当前 release 的已安装包保持版本并显示“此频道尚未发布该插件”，不进入检查忙碌或更新计划；每次实际更新仍按当前全部已安装消费者校验替换后的完整图。
+旧单包频道仍可读取来源和展示缺失原因。新版 Host 要求三个引用组成完整目标，引用不齐时阻止整组安装，保持现装版本。
 
 ## 官方 Core 桌面包的公司包装
 

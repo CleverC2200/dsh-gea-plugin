@@ -7,6 +7,7 @@ export type FixedCore = CoreIdentity & { sdk: Record<string, string> };
 export type PluginManifest = {
   name: string;
   version: string;
+  geaPluginUpdateStrategy?: "suite";
   peerDependencies?: Record<string, string>;
   peerDependenciesMeta?: Record<string, { optional: boolean }>;
   dependencies?: Record<string, string>;
@@ -14,6 +15,7 @@ export type PluginManifest = {
 };
 export type PluginRelease = {
   schema: 1;
+  updateStrategy?: "suite";
   name: CompanyPackageName;
   version: string;
   artifact: { url: string; size: number; sha256: string };
@@ -47,6 +49,20 @@ export function planPluginUpdate(input: {
   core: FixedCore;
   installed: PluginManifest[];
 }): PluginUpdatePlan;
+export type PluginSuiteUpdatePlan =
+  | { kind: "ready"; releases: PluginRelease[] }
+  | { kind: "current" }
+  | {
+      kind: "blocked";
+      code: string;
+      packageName?: CompanyPackageName;
+      failures?: CombinationFailure[];
+    };
+export function planPluginSuiteUpdate(input: {
+  releases: PluginRelease[];
+  core: FixedCore;
+  installed: PluginManifest[];
+}): PluginSuiteUpdatePlan;
 export function findPluginUpdatePath(input: {
   core: FixedCore;
   installed: PluginManifest[];
@@ -67,7 +83,8 @@ export function parsePluginManifest(
     PluginManifest,
     "name" | "version" | "dependencies" | "peerDependencies" | "peerDependenciesMeta"
   >
->;
+> &
+  Pick<PluginManifest, "geaPluginUpdateStrategy">;
 export function parseInstalledPluginManifest(
   value: unknown,
 ): ReturnType<typeof parsePluginManifest>;
@@ -79,6 +96,7 @@ export type PluginReleaseReference = {
 };
 export type PluginChannel = {
   schema: 1;
+  suite?: true;
   channel: string;
   revision: number;
   issuedAt: string;
