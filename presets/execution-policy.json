@@ -98,7 +98,7 @@
     "gea-html-inventory-orderworkbench": {
       "label": "订单工作台",
       "presetName": "订单工作台Agent",
-      "consumerCode": "orderworkbench-preview",
+      "consumerCode": "order",
       "skills": [
         "inventory-orderworkbench",
         "fulfillment-query-orchestrator",

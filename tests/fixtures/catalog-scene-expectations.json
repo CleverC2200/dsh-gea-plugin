@@ -88,10 +88,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-orderworkbench/skills/orderworkbench/SKILL.md",
-        "sha256": "f4900459de51821c4c580631e5ce92d0431e8a74624a6bb736accd3d0ebc638e",
+        "sha256": "dfc5da3fddff7dc2d9e7cca06c033c7cc98a86a81fe64724b1a995282eb8dacc",
         "name": "inventory-orderworkbench",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "7cd7345bbefb955aa3ad84802ff1fb09a2f13b8a",
         "sourceFile": "business-resources/inventory-orderworkbench/skills/orderworkbench/SKILL.md"
       },
       {
