@@ -1,38 +1,36 @@
 name: source-quality
-# Original run-name: "Repository source quality — ${{ github.sha }}"
-
-run-name: 'Cache benchmark ${{ inputs.benchmark_case }} / ${{ inputs.benchmark_epoch }}'
-
+run-name: Same-runner paired benchmark / ${{ inputs.benchmark_epoch }}
 on:
   workflow_dispatch:
     inputs:
       benchmark_case:
         type: choice
-        options: [cold, warm]
+        options:
+          - paired
         required: true
       benchmark_epoch:
         type: string
         required: true
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    types: [opened, synchronize, reopened]
-
+    types:
+      - opened
+      - synchronize
+      - reopened
 permissions:
   contents: read
-
 concurrency:
   group: benchmark-${{ github.ref }}
   cancel-in-progress: true
-
 env:
-  CI_BENCH_SOURCE_HEAD: "8c52dedf650ffc5083b574be5e00504288a8e4a4"
-  CI_BENCH_SOURCE_BASE: "9d806575ecaba87d86bbce69e66a3fa4a6830b20"
-  CI_BENCH_CASE: "${{ inputs.benchmark_case }}"
-  CI_BENCH_EPOCH: "${{ inputs.benchmark_epoch }}"
-  CI_BENCH_EXPECTED_FILES: "[\"scripts/build-admission.test.mjs\",\"scripts/build.test.mjs\",\"scripts/ci-windows-update.test.mjs\",\"scripts/deliver-packages.test.mjs\",\"scripts/delivery-events.test.mjs\",\"scripts/development-tasks.test.mjs\",\"scripts/package-desktop.test.mjs\",\"scripts/quality-prepared-inputs.test.mjs\",\"scripts/quality-shards.test.mjs\",\"scripts/quality-upstreams.test.mjs\",\"scripts/quality-worker-control.test.mjs\",\"scripts/quality-worker-inputs.test.mjs\",\"scripts/run-quality-checks.test.mjs\",\"scripts/run-quality-ci-stages.test.mjs\",\"scripts/run-quality-ci.test.mjs\",\"scripts/source-quality.test.mjs\",\"scripts/windows-complete-local/core-cache.test.mjs\",\"scripts/windows-complete-local/input.test.mjs\",\"scripts/workflow-preflight.test.mjs\",\"tests/ci-core-policy.test.mjs\",\"tests/plugin-release-source.test.mjs\"]"
-  CI_BENCH_EXPECTED_MATERIALS: "{\"staticChecks\":[\"check:knowledge\",\"lint\",\"format:check\"],\"dependencies\":true,\"sdk\":true,\"upstreams\":\"artifacts\",\"typecheck\":false,\"joint\":false}"
-
+  CI_BENCH_SOURCE_HEAD: 8c52dedf650ffc5083b574be5e00504288a8e4a4
+  CI_BENCH_SOURCE_BASE: 9d806575ecaba87d86bbce69e66a3fa4a6830b20
+  CI_BENCH_CASE: ${{ inputs.benchmark_case }}
+  CI_BENCH_EPOCH: ${{ inputs.benchmark_epoch }}
+  CI_BENCH_EXPECTED_FILES: '["scripts/build-admission.test.mjs","scripts/build.test.mjs","scripts/ci-windows-update.test.mjs","scripts/deliver-packages.test.mjs","scripts/delivery-events.test.mjs","scripts/development-tasks.test.mjs","scripts/package-desktop.test.mjs","scripts/quality-prepared-inputs.test.mjs","scripts/quality-shards.test.mjs","scripts/quality-upstreams.test.mjs","scripts/quality-worker-control.test.mjs","scripts/quality-worker-inputs.test.mjs","scripts/run-quality-checks.test.mjs","scripts/run-quality-ci-stages.test.mjs","scripts/run-quality-ci.test.mjs","scripts/source-quality.test.mjs","scripts/windows-complete-local/core-cache.test.mjs","scripts/windows-complete-local/input.test.mjs","scripts/workflow-preflight.test.mjs","tests/ci-core-policy.test.mjs","tests/plugin-release-source.test.mjs"]'
+  CI_BENCH_EXPECTED_MATERIALS: '{"staticChecks":["check:knowledge","lint","format:check"],"dependencies":true,"sdk":true,"upstreams":"artifacts","typecheck":false,"joint":false}'
 jobs:
   source-plan:
     runs-on: ubuntu-24.04
@@ -57,7 +55,7 @@ jobs:
           node-version: 24.22.0
       - name: Validate benchmark identity
         run: |
-          node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
+          node --input-type=module -e "if (!['cold','warm','paired'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
       - name: Classify actual Git changes
         id: plan
         run: SOURCE_HEAD_SHA="$CI_BENCH_SOURCE_HEAD" SOURCE_BASE_SHA="$CI_BENCH_SOURCE_BASE" node scripts/source-quality.mjs --phase plan
@@ -73,7 +71,6 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" -C "$RUNNER_TEMP/workflow-preflight" actionlint
           node --input-type=module -e "import { checkWorkflows } from './scripts/workflow-preflight.mjs'; console.log(JSON.stringify(checkWorkflows(JSON.parse(process.env.WORKFLOW_FILES))))"
-
   source-checks:
     needs: source-plan
     if: needs.source-plan.outputs.mode != 'docs'
@@ -89,18 +86,30 @@ jobs:
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
+        name: "Cold: Run actions/checkout@v7"
+        env:
+          CI_BENCH_CASE: cold
       - uses: actions/setup-node@v7
-        id: node
+        id: cold-node
         with:
           node-version: 24.22.0
-      - name: Validate benchmark identity
+        name: "Cold: Run actions/setup-node@v7"
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Validate benchmark identity"
         run: |
-          node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
-      - name: Check applicable repository source
+          node --input-type=module -e "if (!['cold','warm','paired'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Check applicable repository source"
         run: SOURCE_HEAD_SHA="$CI_BENCH_SOURCE_HEAD" SOURCE_BASE_SHA="$CI_BENCH_SOURCE_BASE" node scripts/source-quality.mjs --phase check
-      - name: Check committed package version
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Check committed package version"
         if: needs.source-plan.outputs.engineering == 'true'
         run: node scripts/generate-plugin-package-version.mjs --check
+        env:
+          CI_BENCH_CASE: cold
       - uses: actions/checkout@v7
         if: needs.source-plan.outputs.engineering == 'true'
         with:
@@ -110,6 +119,9 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
+        name: "Cold: Run actions/checkout@v7"
+        env:
+          CI_BENCH_CASE: cold
       - uses: actions/checkout@v7
         if: needs.source-plan.outputs.engineering == 'true'
         with:
@@ -119,9 +131,12 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
-      - name: Select affected behavior and type checks before preparation
+        name: "Cold: Run actions/checkout@v7"
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Select affected behavior and type checks before preparation"
         if: needs.source-plan.outputs.engineering == 'true'
-        id: affected
+        id: cold-affected
         run: |
           node --input-type=module <<'NODE'
           import { execFileSync } from 'node:child_process';
@@ -132,76 +147,104 @@ jobs:
           const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
           await sourceChecks(result, "affected-plan");
           NODE
-      - name: Select registered Core for fixed dependency links and SDK consumers
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
-        id: core
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Select registered Core for fixed dependency links and SDK consumers"
+        if: steps.cold-affected.outputs.dependencies == 'true' || steps.cold-affected.outputs.sdk == 'true'
+        id: cold-core
         run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from '../dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
+        env:
+          CI_BENCH_CASE: cold
       - uses: actions/checkout@v7
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        if: steps.cold-affected.outputs.dependencies == 'true' || steps.cold-affected.outputs.sdk == 'true'
         with:
           repository: CleverC2200/deepseek-harness
-          ref: ${{ steps.core.outputs.head }}
+          ref: ${{ steps.cold-core.outputs.head }}
           path: source/official-core
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify selected Core source before dependency preparation
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        name: "Cold: Run actions/checkout@v7"
         env:
-          QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
+          CI_BENCH_CASE: cold
+      - name: "Cold: Verify selected Core source before dependency preparation"
+        if: steps.cold-affected.outputs.dependencies == 'true' || steps.cold-affected.outputs.sdk == 'true'
+        env:
+          QUALITY_CORE_HEAD: ${{ steps.cold-core.outputs.head }}
+          CI_BENCH_CASE: cold
         run: |
           node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
-      - name: Enable declared package managers
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+      - name: "Cold: Enable declared package managers"
+        if: steps.cold-affected.outputs.dependencies == 'true' || steps.cold-affected.outputs.sdk == 'true'
         run: |
           npm install --global npm@11.11.0
           corepack enable
-      - name: Locate existing package download cache
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
-        id: cache-path
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Locate existing package download cache"
+        if: steps.cold-affected.outputs.dependencies == 'true' || steps.cold-affected.outputs.sdk == 'true'
+        id: cold-cache-path
         working-directory: candidate/dsh-agent-manage
         run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+        env:
+          CI_BENCH_CASE: cold
       - uses: actions/cache/restore@v4
-        id: downloads-cache
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        id: cold-downloads-cache
+        if: steps.cold-affected.outputs.dependencies == 'true' || steps.cold-affected.outputs.sdk == 'true'
         with:
-          lookup-only: ${{ inputs.benchmark_case == 'cold' }}
+          lookup-only: ${{ 'cold' == 'cold' }}
           path: |
             ~/.npm
             ~/.cache/node/corepack
-            ${{ steps.cache-path.outputs.store }}
+            ${{ steps.cold-cache-path.outputs.store }}
           key: ci-bench-${{ inputs.benchmark_epoch }}-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
-      - name: Prepare owned Core source without compiling
-        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
-        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
-      - name: Locate SDK artifact cache paths
-        if: steps.affected.outputs.sdk == 'true'
-        id: sdk-paths
+        name: "Cold: Run actions/cache/restore@v4"
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Prepare owned Core source without compiling"
+        if: steps.cold-affected.outputs.dependencies == 'true' || steps.cold-affected.outputs.sdk == 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.cold-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Locate SDK artifact cache paths"
+        if: steps.cold-affected.outputs.sdk == 'true'
+        id: cold-sdk-paths
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+        env:
+          CI_BENCH_CASE: cold
       - uses: actions/cache/restore@v4
-        if: steps.affected.outputs.sdk == 'true'
-        id: sdk-cache
+        if: steps.cold-affected.outputs.sdk == 'true'
+        id: cold-sdk-cache
         with:
-          lookup-only: ${{ inputs.benchmark_case == 'cold' }}
-          path: ${{ steps.sdk-paths.outputs.paths }}
-          key: ci-bench-${{ inputs.benchmark_epoch }}-sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
-      - name: Prepare or verify SDK through existing cache contract
-        if: steps.affected.outputs.sdk == 'true'
-        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+          lookup-only: ${{ 'cold' == 'cold' }}
+          path: ${{ steps.cold-sdk-paths.outputs.paths }}
+          key: ci-bench-${{ inputs.benchmark_epoch }}-sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.cold-node.outputs.node-version }}-${{ steps.cold-core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+        name: "Cold: Run actions/cache/restore@v4"
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Prepare or verify SDK through existing cache contract"
+        if: steps.cold-affected.outputs.sdk == 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.cold-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+        env:
+          CI_BENCH_CASE: cold
       - uses: actions/cache/save@v4
-        if: success() && steps.affected.outputs.sdk == 'true' && steps.sdk-cache.outputs.cache-hit != 'true'
+        if: success() && steps.cold-affected.outputs.sdk == 'true' && steps.cold-sdk-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         timeout-minutes: 1
         with:
-          path: ${{ steps.sdk-paths.outputs.paths }}
-          key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
-      - name: Assert benchmark plan and isolated cache state
+          path: ${{ steps.cold-sdk-paths.outputs.paths }}
+          key: ${{ steps.cold-sdk-cache.outputs.cache-primary-key }}
+        name: "Cold: Run actions/cache/save@v4"
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Assert benchmark plan and isolated cache state"
         if: needs.source-plan.outputs.engineering == 'true'
         env:
-          DOWNLOADS_HIT: ${{ steps.downloads-cache.outputs.cache-hit }}
-          DOWNLOADS_KEY: ${{ steps.downloads-cache.outputs.cache-primary-key }}
-          SDK_HIT: ${{ steps.sdk-cache.outputs.cache-hit }}
-          SDK_KEY: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+          DOWNLOADS_HIT: ${{ steps.cold-downloads-cache.outputs.cache-hit }}
+          DOWNLOADS_KEY: ${{ steps.cold-downloads-cache.outputs.cache-primary-key }}
+          SDK_HIT: ${{ steps.cold-sdk-cache.outputs.cache-hit }}
+          SDK_KEY: ${{ steps.cold-sdk-cache.outputs.cache-primary-key }}
           BENCH_CONTROLLER: ${{ github.sha }}
+          CI_BENCH_CASE: cold
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync, writeFileSync } from 'node:fs';
@@ -221,8 +264,8 @@ jobs:
           writeFileSync('.runtime/benchmark.json', JSON.stringify(value,null,2)+'\n');
           console.log(JSON.stringify({case:value.case,head:value.head,testFiles:plan.files.length,downloads:value.downloads,sdk:value.sdk}));
           NODE
-      - name: Prepare dependencies consumed by selected checks
-        if: steps.affected.outputs.dependencies == 'true'
+      - name: "Cold: Prepare dependencies consumed by selected checks"
+        if: steps.cold-affected.outputs.dependencies == 'true'
         run: |
           node --input-type=module <<'NODE'
           import { execFileSync } from 'node:child_process';
@@ -233,17 +276,21 @@ jobs:
           const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
           await sourceChecks(result, "affected-prepare");
           NODE
-      - name: Save isolated benchmark package downloads
-        if: success() && inputs.benchmark_case == 'cold' && steps.affected.outputs.dependencies == 'true'
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Save isolated benchmark package downloads"
+        if: success() && 'cold' == 'cold' && steps.cold-affected.outputs.dependencies == 'true'
         uses: actions/cache/save@v4
         timeout-minutes: 5
         with:
           path: |
             ~/.npm
             ~/.cache/node/corepack
-            ${{ steps.cache-path.outputs.store }}
-          key: ${{ steps.downloads-cache.outputs.cache-primary-key }}
-      - name: Run affected behavior and real TypeScript checks
+            ${{ steps.cold-cache-path.outputs.store }}
+          key: ${{ steps.cold-downloads-cache.outputs.cache-primary-key }}
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Run affected behavior and real TypeScript checks"
         if: needs.source-plan.outputs.engineering == 'true'
         run: |
           node --input-type=module <<'NODE'
@@ -255,11 +302,13 @@ jobs:
           const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
           await sourceChecks(result, "affected-check");
           NODE
-      - name: Keep source selection and executed check evidence
+        env:
+          CI_BENCH_CASE: cold
+      - name: "Cold: Keep source selection and executed check evidence"
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-${{ inputs.benchmark_case }}
+          name: benchmark-cold
           path: |
             candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
             candidate/dsh-gea-plugin/.runtime/benchmark.json
@@ -268,7 +317,271 @@ jobs:
             quality-test-execution-plan.json
             quality-checks.json
           if-no-files-found: ignore
-
+        env:
+          CI_BENCH_CASE: cold
+      - name: Reset owned workspaces and local contents before warm restore
+        working-directory: ${{ github.workspace }}
+        env:
+          BENCH_STORE: ${{ steps.cold-cache-path.outputs.store }}
+        run: |-
+          node --input-type=module <<'NODE'
+          import { rmSync, existsSync, realpathSync } from 'node:fs';
+          import { resolve, relative, isAbsolute } from 'node:path';
+          import { homedir } from 'node:os';
+          const workspace=realpathSync(process.env.GITHUB_WORKSPACE), home=realpathSync(homedir());
+          if (!workspace.startsWith('/home/runner/work/')) throw Error('BENCHMARK_WORKSPACE_REJECTED');
+          for(const name of ['candidate','source','official-latest-standard','quality-upstreams','upstream-inputs']) {
+            const target=resolve(workspace,name);
+            if (!target.startsWith(workspace+'/')) throw Error('BENCHMARK_PATH_REJECTED');
+            if(existsSync(target)) rmSync(target,{recursive:true});
+          }
+          for(const path of [resolve(home,'.npm'),resolve(home,'.cache/node/corepack'),process.env.BENCH_STORE]) {
+            if(!path)continue;
+            const target=resolve(path), rel=relative(home,target);
+            if(!rel||rel==='..'||rel.startsWith('../')||isAbsolute(rel))throw Error('BENCHMARK_CACHE_PATH_REJECTED');
+            if(existsSync(target))rmSync(target,{recursive:true});
+          }
+          console.log(JSON.stringify({ownedWorkspaceReset:true,localContentReset:true}));
+          NODE
+      - uses: actions/checkout@v7
+        with:
+          ref: 8c52dedf650ffc5083b574be5e00504288a8e4a4
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+        name: "Warm: Run actions/checkout@v7"
+        env:
+          CI_BENCH_CASE: warm
+      - uses: actions/setup-node@v7
+        id: warm-node
+        with:
+          node-version: 24.22.0
+        name: "Warm: Run actions/setup-node@v7"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Validate benchmark identity"
+        run: |
+          node --input-type=module -e "if (!['cold','warm','paired'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Check applicable repository source"
+        run: SOURCE_HEAD_SHA="$CI_BENCH_SOURCE_HEAD" SOURCE_BASE_SHA="$CI_BENCH_SOURCE_BASE" node scripts/source-quality.mjs --phase check
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Check committed package version"
+        if: needs.source-plan.outputs.engineering == 'true'
+        run: node scripts/generate-plugin-package-version.mjs --check
+        env:
+          CI_BENCH_CASE: warm
+      - uses: actions/checkout@v7
+        if: needs.source-plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ needs.source-plan.outputs.workbench-sha }}
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+        name: "Warm: Run actions/checkout@v7"
+        env:
+          CI_BENCH_CASE: warm
+      - uses: actions/checkout@v7
+        if: needs.source-plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ needs.source-plan.outputs.manage-sha }}
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+        name: "Warm: Run actions/checkout@v7"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Select affected behavior and type checks before preparation"
+        if: needs.source-plan.outputs.engineering == 'true'
+        id: warm-affected
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { resolve } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const env = {...process.env, SOURCE_HEAD_SHA:process.env.CI_BENCH_SOURCE_HEAD, SOURCE_BASE_SHA:process.env.CI_BENCH_SOURCE_BASE, GITHUB_OUTPUT:''};
+          const result = JSON.parse(execFileSync(process.execPath,['scripts/source-quality.mjs','--phase','plan'],{env,encoding:'utf8'}));
+          const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
+          await sourceChecks(result, "affected-plan");
+          NODE
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Select registered Core for fixed dependency links and SDK consumers"
+        if: steps.warm-affected.outputs.dependencies == 'true' || steps.warm-affected.outputs.sdk == 'true'
+        id: warm-core
+        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from '../dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
+        env:
+          CI_BENCH_CASE: warm
+      - uses: actions/checkout@v7
+        if: steps.warm-affected.outputs.dependencies == 'true' || steps.warm-affected.outputs.sdk == 'true'
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.warm-core.outputs.head }}
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+        name: "Warm: Run actions/checkout@v7"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Verify selected Core source before dependency preparation"
+        if: steps.warm-affected.outputs.dependencies == 'true' || steps.warm-affected.outputs.sdk == 'true'
+        env:
+          QUALITY_CORE_HEAD: ${{ steps.warm-core.outputs.head }}
+          CI_BENCH_CASE: warm
+        run: |
+          node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
+      - name: "Warm: Enable declared package managers"
+        if: steps.warm-affected.outputs.dependencies == 'true' || steps.warm-affected.outputs.sdk == 'true'
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Locate existing package download cache"
+        if: steps.warm-affected.outputs.dependencies == 'true' || steps.warm-affected.outputs.sdk == 'true'
+        id: warm-cache-path
+        working-directory: candidate/dsh-agent-manage
+        run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+        env:
+          CI_BENCH_CASE: warm
+      - uses: actions/cache/restore@v4
+        id: warm-downloads-cache
+        if: steps.warm-affected.outputs.dependencies == 'true' || steps.warm-affected.outputs.sdk == 'true'
+        with:
+          lookup-only: ${{ 'warm' == 'cold' }}
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.warm-cache-path.outputs.store }}
+          key: ci-bench-${{ inputs.benchmark_epoch }}-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
+        name: "Warm: Run actions/cache/restore@v4"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Prepare owned Core source without compiling"
+        if: steps.warm-affected.outputs.dependencies == 'true' || steps.warm-affected.outputs.sdk == 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.warm-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Locate SDK artifact cache paths"
+        if: steps.warm-affected.outputs.sdk == 'true'
+        id: warm-sdk-paths
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+        env:
+          CI_BENCH_CASE: warm
+      - uses: actions/cache/restore@v4
+        if: steps.warm-affected.outputs.sdk == 'true'
+        id: warm-sdk-cache
+        with:
+          lookup-only: ${{ 'warm' == 'cold' }}
+          path: ${{ steps.warm-sdk-paths.outputs.paths }}
+          key: ci-bench-${{ inputs.benchmark_epoch }}-sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.warm-node.outputs.node-version }}-${{ steps.warm-core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+        name: "Warm: Run actions/cache/restore@v4"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Prepare or verify SDK through existing cache contract"
+        if: steps.warm-affected.outputs.sdk == 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.warm-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+        env:
+          CI_BENCH_CASE: warm
+      - uses: actions/cache/save@v4
+        if: success() && steps.warm-affected.outputs.sdk == 'true' && steps.warm-sdk-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          path: ${{ steps.warm-sdk-paths.outputs.paths }}
+          key: ${{ steps.warm-sdk-cache.outputs.cache-primary-key }}
+        name: "Warm: Run actions/cache/save@v4"
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Assert benchmark plan and isolated cache state"
+        if: needs.source-plan.outputs.engineering == 'true'
+        env:
+          DOWNLOADS_HIT: ${{ steps.warm-downloads-cache.outputs.cache-hit }}
+          DOWNLOADS_KEY: ${{ steps.warm-downloads-cache.outputs.cache-primary-key }}
+          SDK_HIT: ${{ steps.warm-sdk-cache.outputs.cache-hit }}
+          SDK_KEY: ${{ steps.warm-sdk-cache.outputs.cache-primary-key }}
+          BENCH_CONTROLLER: ${{ github.sha }}
+          CI_BENCH_CASE: warm
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { cpus, totalmem, release } from 'node:os';
+          const plan = JSON.parse(readFileSync('.runtime/source-checks-plan.json'));
+          const expected = JSON.parse(process.env.CI_BENCH_EXPECTED_MATERIALS);
+          if (JSON.stringify(plan.files) !== process.env.CI_BENCH_EXPECTED_FILES) throw Error('BENCHMARK_TEST_SET_CHANGED');
+          for (const [k,v] of Object.entries(expected)) if (JSON.stringify(plan[k]) !== JSON.stringify(v)) throw Error('BENCHMARK_MATERIALS_CHANGED: ' + k);
+          const warm = process.env.CI_BENCH_CASE === 'warm';
+          for (const [needed, hit, name] of [[plan.dependencies,process.env.DOWNLOADS_HIT,'downloads'],[plan.sdk,process.env.SDK_HIT,'sdk']]) {
+            if (needed && (hit === 'true') !== warm) throw Error('BENCHMARK_CACHE_STATE_REJECTED: ' + name + ': ' + hit);
+          }
+          const git = (...args) => execFileSync('git', args, {encoding:'utf8'}).trim();
+          if (git('rev-parse','HEAD') !== process.env.CI_BENCH_SOURCE_HEAD) throw Error('BENCHMARK_SOURCE_CHANGED');
+          const value = {case:process.env.CI_BENCH_CASE,epoch:process.env.CI_BENCH_EPOCH,controller:process.env.BENCH_CONTROLLER,head:git('rev-parse','HEAD'),base:process.env.CI_BENCH_SOURCE_BASE,tree:git('rev-parse','HEAD^{tree}'),node:process.version,os:process.env.RUNNER_OS,arch:process.env.RUNNER_ARCH,kernel:release(),cpus:cpus().length,cpu:cpus()[0].model,memory:totalmem(),image:process.env.ImageVersion,downloads:{hit:process.env.DOWNLOADS_HIT,key:process.env.DOWNLOADS_KEY},sdk:{hit:process.env.SDK_HIT,key:process.env.SDK_KEY},plan};
+          writeFileSync('.runtime/benchmark.json', JSON.stringify(value,null,2)+'\n');
+          console.log(JSON.stringify({case:value.case,head:value.head,testFiles:plan.files.length,downloads:value.downloads,sdk:value.sdk}));
+          NODE
+      - name: "Warm: Prepare dependencies consumed by selected checks"
+        if: steps.warm-affected.outputs.dependencies == 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { resolve } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const env = {...process.env, SOURCE_HEAD_SHA:process.env.CI_BENCH_SOURCE_HEAD, SOURCE_BASE_SHA:process.env.CI_BENCH_SOURCE_BASE, GITHUB_OUTPUT:''};
+          const result = JSON.parse(execFileSync(process.execPath,['scripts/source-quality.mjs','--phase','plan'],{env,encoding:'utf8'}));
+          const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
+          await sourceChecks(result, "affected-prepare");
+          NODE
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Save isolated benchmark package downloads"
+        if: success() && 'warm' == 'cold' && steps.warm-affected.outputs.dependencies == 'true'
+        uses: actions/cache/save@v4
+        timeout-minutes: 5
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.warm-cache-path.outputs.store }}
+          key: ${{ steps.warm-downloads-cache.outputs.cache-primary-key }}
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Run affected behavior and real TypeScript checks"
+        if: needs.source-plan.outputs.engineering == 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { resolve } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const env = {...process.env, SOURCE_HEAD_SHA:process.env.CI_BENCH_SOURCE_HEAD, SOURCE_BASE_SHA:process.env.CI_BENCH_SOURCE_BASE, GITHUB_OUTPUT:''};
+          const result = JSON.parse(execFileSync(process.execPath,['scripts/source-quality.mjs','--phase','plan'],{env,encoding:'utf8'}));
+          const {sourceChecks} = await import(pathToFileURL(resolve("../../source/dsh-agent-workbench/scripts/source-checks.mjs")));
+          await sourceChecks(result, "affected-check");
+          NODE
+        env:
+          CI_BENCH_CASE: warm
+      - name: "Warm: Keep source selection and executed check evidence"
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-warm
+          path: |
+            candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
+            candidate/dsh-gea-plugin/.runtime/benchmark.json
+            candidate/dsh-gea-plugin/quality-checks.json
+            quality-test-plan.json
+            quality-test-execution-plan.json
+            quality-checks.json
+          if-no-files-found: ignore
+        env:
+          CI_BENCH_CASE: warm
   dependency-review:
     needs: source-plan
     if: needs.source-plan.outputs.dependency-review == 'true'
@@ -284,10 +597,12 @@ jobs:
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
-
   candidate-quality:
     if: always()
-    needs: [source-plan, source-checks, dependency-review]
+    needs:
+      - source-plan
+      - source-checks
+      - dependency-review
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -301,7 +616,7 @@ jobs:
           node-version: 24.22.0
       - name: Validate benchmark identity
         run: |
-          node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
+          node --input-type=module -e "if (!['cold','warm','paired'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
       - name: Require successful applicable checks
         env:
           PLAN_RESULT: ${{ needs.source-plan.result }}
