@@ -2,6 +2,7 @@
   "name": "@cleverc2200/gea-dsh-prototype",
   "version": "0.0.183",
   "private": true,
+  "geaPluginUpdateStrategy": "suite",
   "packageManager": "pnpm@11.27.0",
   "type": "module",
   "description": "接入 GEA 业务身份、授权与业务工具。",

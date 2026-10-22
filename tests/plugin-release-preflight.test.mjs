@@ -3,10 +3,97 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { companyPackageNames } from "../src/shared/plugin-release.mjs";
 
 const [, M, G] = companyPackageNames;
 import { createReleasePreflightFixture as fixture } from "./fixtures/plugin-release-preflight.mjs";
+test("old updaters bootstrap GEA then atomically install mutually dependent companions; suite-capable starts update directly", async (t) => {
+  const f = await fixture(t, { mutualPeers: true });
+  const result = await f.run();
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.targetCombination.strategy, "legacy-bootstrap");
+  assert.equal(receipt.targetCombination.bootstrap, G);
+  f.input.environment.installed.find((manifest) => manifest.name === G).geaPluginUpdateStrategy =
+    "suite";
+  const modern = await f.run();
+  assert.equal(modern.status, 0, modern.stderr);
+  assert.equal(JSON.parse(modern.stdout).targetCombination.strategy, "suite");
+  const target = receipt.targets.find(({ release }) => release.name === G).release;
+  const missingBootstrap = structuredClone(f.input);
+  const start = missingBootstrap.environment;
+  start.installed = start.installed.map((manifest) =>
+    manifest.name === G ? { ...target, artifactSha256: target.artifact.sha256 } : manifest,
+  );
+  assert.match((await f.run(missingBootstrap)).stderr, /RELEASE_LEGACY_BRIDGE_REQUIRED/);
+});
+test("suite channel replaces all references only after validating the bound archives and the current environment", async (t) => {
+  const { createPluginSuiteChannel, signPluginChannel, mergePluginChannelRelease } =
+    await import("../scripts/plugin-channel.mjs");
+  const { parsePluginChannel } = await import("../src/shared/plugin-release.mjs");
+  const { generateKeyPairSync } = await import("node:crypto");
+  const f = await fixture(t);
+  const result = await f.run();
+  assert.equal(result.status, 0, result.stderr);
+  const preflight = JSON.parse(result.stdout);
+  const references = preflight.targets.map(({ release }) => {
+    const sha256 = createHash("sha256")
+      .update(JSON.stringify(release, null, 2) + "\n")
+      .digest("hex");
+    return { name: release.name, sha256, url: `https://fixture.invalid/${sha256}/release.json` };
+  });
+  const previous = {
+    schema: 1,
+    channel: "test",
+    revision: 1,
+    issuedAt: "2026-10-21T00:00:00.000Z",
+    expiresAt: "2026-10-22T00:00:00.000Z",
+    releases: references,
+  };
+  const input = {
+    previous,
+    preflightInput: f.file,
+    references,
+    revision: 2,
+    issuedAt: "2026-10-22T00:00:00.000Z",
+    expiresAt: "2026-10-23T00:00:00.000Z",
+  };
+  const channel = await createPluginSuiteChannel(input);
+  assert.equal(channel.suite, true);
+  assert.deepEqual(
+    channel.releases.map((row) => row.name),
+    [G],
+  );
+  assert.equal(channel.companionReleases.length, 2);
+  const { privateKey } = generateKeyPairSync("ed25519");
+  const envelope = signPluginChannel({
+    payload: channel,
+    keyId: "fixture",
+    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }),
+  });
+  assert.deepEqual(
+    parsePluginChannel(JSON.parse(Buffer.from(envelope.payloadBase64, "base64"))),
+    channel,
+  );
+  assert.throws(
+    () => mergePluginChannelRelease({ previous: channel, release: references[0], revision: 3 }),
+    /CHANNEL_SUITE_REPLACEMENT_REQUIRED/,
+  );
+  await assert.rejects(
+    createPluginSuiteChannel({ ...input, references: references.slice(1) }),
+    /CHANNEL_SUITE_TARGET_MISMATCH/,
+  );
+  await assert.rejects(
+    createPluginSuiteChannel({
+      ...input,
+      references: references.map((row, i) => (i ? row : { ...row, sha256: "f".repeat(64) })),
+    }),
+    /CHANNEL_SUITE_TARGET_MISMATCH/,
+  );
+  await writeFile(join(f.input.sources[0].path, "uncommitted.mjs"), "changed");
+  await assert.rejects(createPluginSuiteChannel(input), /RELEASE_SOURCE_DIRTY/);
+});
 
 test("public preflight validates only the complete target combination without historical paths", async (t) => {
   const f = await fixture(t),

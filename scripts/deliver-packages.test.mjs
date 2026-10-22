@@ -209,7 +209,13 @@ async function requestFixture(
       repositories,
     }),
   );
-  return { work, input, destination, entry: fixtureEntry };
+  return {
+    work,
+    input,
+    destination,
+    entry: fixtureEntry,
+    env: { ...process.env, TMPDIR: work, TEMP: work, TMP: work, DSH_BUILD_ADMISSION: undefined },
+  };
 }
 
 test("delivery rejects a cwd-relative request before creating output", async (t) => {
@@ -233,7 +239,7 @@ test("the real Manage git repository metadata survives ordinary three-package de
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { cwd: "/", encoding: "utf8" },
+    { cwd: "/", encoding: "utf8", env: fixture.env },
   );
   const diagnostics =
     result.status === 0
@@ -275,7 +281,7 @@ test("git and workspace runtime dependency inputs cannot publish a delivery mani
     const result = spawnSync(
       process.execPath,
       [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-      { cwd: "/", encoding: "utf8" },
+      { cwd: "/", encoding: "utf8", env: fixture.env },
     );
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DELIVERY_SOURCE_DEPENDENCY_IN_PACKAGE/);
@@ -293,7 +299,7 @@ test("the real production formatter rejects missing optional version metadata be
     const result = spawnSync(
       process.execPath,
       [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-      { cwd: "/", encoding: "utf8" },
+      { cwd: "/", encoding: "utf8", env: fixture.env },
     );
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DELIVERY_COMPANION_VERSION_REQUIRED/);
@@ -306,7 +312,7 @@ test("a missing public client export stops before any production dependency comm
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { cwd: "/", encoding: "utf8" },
+    { cwd: "/", encoding: "utf8", env: fixture.env },
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_PUBLIC_EXPORT_MISSING/);
@@ -318,7 +324,7 @@ test("a failing production dependency command cannot publish success or expose i
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { cwd: "/", encoding: "utf8" },
+    { cwd: "/", encoding: "utf8", env: fixture.env },
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_COMMAND_FAILED/);
@@ -345,7 +351,7 @@ test("current owner build output cannot legitimize a stale raw archive", async (
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { cwd: "/", encoding: "utf8" },
+    { cwd: "/", encoding: "utf8", env: fixture.env },
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_STALE_BUILD_ARCHIVE/);
@@ -430,7 +436,7 @@ test("RC2 delivery retains upstream, private and company Core identities", async
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: fixture.env },
   );
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(fixture.destination, "manifest.json"), "utf8"));
@@ -457,7 +463,7 @@ test("version and fixed SHA must select the same Core before output is created",
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: fixture.env },
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_CORE_INCOMPATIBLE/);
@@ -472,7 +478,7 @@ test("three-package delivery validates peer ranges instead of requiring version-
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: fixture.env },
   );
   assert.equal(result.status, 0, result.stderr);
   assert.equal(
@@ -488,7 +494,7 @@ test("three-package delivery rejects a retained exact companion constraint that 
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: fixture.env },
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_THREE_PACKAGE_GRAPH_MISMATCH/);
@@ -503,7 +509,7 @@ test("delivery refuses a requested version that would relabel compiled owner out
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: fixture.env },
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_COMPILED_VERSION_MISMATCH/);

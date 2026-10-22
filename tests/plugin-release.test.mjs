@@ -5,6 +5,7 @@ import { productionManifest } from "../scripts/production-manifest.mjs";
 import {
   validatePluginCombination,
   planPluginUpdate,
+  planPluginSuiteUpdate,
   projectPluginRelease,
 } from "../src/shared/plugin-release.mjs";
 const W = "@cleverc2200/dsh-agent-workbench",
@@ -54,6 +55,71 @@ const release = () =>
     dataCompatibility: { kind: "preserve" },
     notes: "Fix",
   });
+test("suite planning upgrades mutually dependent old versions without intermediate mixtures", () => {
+  const releases = graph.map((manifest, index) =>
+    projectPluginRelease({
+      manifest: {
+        ...manifest,
+        version: ["1.1.0", "2.1.0", "3.1.0"][index],
+        peerDependencies: { [W]: "1.1.0", [M]: "2.1.0", [G]: "3.1.0" },
+      },
+      artifact,
+      supportedCores: [core],
+      dataCompatibility: { kind: "preserve" },
+      notes: "suite",
+    }),
+  );
+  assert.ok(
+    releases.every(
+      (release) => planPluginUpdate({ release, core, installed: graph }).kind === "blocked",
+    ),
+  );
+  const plan = planPluginSuiteUpdate({ releases, core, installed: graph });
+  assert.equal(plan.kind, "ready");
+  assert.deepEqual(plan.releases, releases);
+  const installed = releases.map((r) => ({ ...r, artifactSha256: r.artifact.sha256 }));
+  assert.equal(planPluginSuiteUpdate({ releases, core, installed }).kind, "current");
+  assert.equal(
+    planPluginSuiteUpdate({ releases: releases.slice(1), core, installed: graph }).code,
+    "RELEASE_NOT_PUBLISHED",
+  );
+  assert.equal(
+    planPluginSuiteUpdate({
+      releases: [releases[0], releases[0], releases[2]],
+      core,
+      installed: graph,
+    }).code,
+    "RELEASE_NOT_PUBLISHED",
+  );
+  assert.equal(
+    planPluginSuiteUpdate({
+      releases,
+      core,
+      installed: [
+        ...graph,
+        { name: "consumer", version: "1.0.0", peerDependencies: { [W]: "1.0.0" } },
+      ],
+    }).code,
+    "COMBINATION_INCOMPATIBLE",
+  );
+  for (const [change, code] of [
+    [{ version: "2.9.0" }, "DOWNGRADE_FORBIDDEN"],
+    [{ supportedCores: [] }, "CORE_UNSUPPORTED"],
+    [
+      { dataCompatibility: { kind: "migration-required", note: "manual migration" } },
+      "DATA_MIGRATION_REQUIRED",
+    ],
+  ]) {
+    assert.equal(
+      planPluginSuiteUpdate({
+        releases: releases.map((r) => (r.name === G ? { ...r, ...change } : r)),
+        core,
+        installed: graph,
+      }).code,
+      code,
+    );
+  }
+});
 test("release projection keeps final manifest peers and fixed Core identity; plan prevents downgrade and replacement", () => {
   const r = release();
   assert.deepEqual(r.requires, { [W]: "1.0.0", [M]: "2.0.0" });

@@ -140,6 +140,38 @@ test("signed channel verifies raw bytes, release hashes and durable tgz manifest
     true,
   );
 });
+
+test("a signed suite capability must match the actual updater archive", async (t) => {
+  const f = await fixture(t);
+  const envelope = JSON.parse(f.objects.get(f.channelUrl));
+  const payload = JSON.parse(Buffer.from(envelope.payloadBase64, "base64"));
+  const reference = payload.releases.find((row) => row.name === companyPackageNames[2]);
+  const release = JSON.parse(f.objects.get(reference.url));
+  release.updateStrategy = "suite";
+  const bytes = Buffer.from(JSON.stringify(release));
+  reference.sha256 = digest(bytes);
+  reference.url = `https://fixture.invalid/releases/${reference.sha256}/release.json`;
+  f.objects.set(reference.url, bytes);
+  const signed = Buffer.from(JSON.stringify(payload));
+  f.objects.set(
+    f.channelUrl,
+    Buffer.from(
+      JSON.stringify({
+        ...envelope,
+        payloadBase64: signed.toString("base64"),
+        signatureBase64: sign(null, signed, f.privateKey).toString("base64"),
+      }),
+    ),
+  );
+  const checked = await f.source.check();
+  await assert.rejects(
+    f.source.download(
+      checked.find((row) => row.name === release.name),
+      join(f.dir, "cache"),
+    ),
+    /SOURCE_ARCHIVE_RELEASE_MISMATCH/,
+  );
+});
 test(
   "archive listing accepts Windows CRLF while retaining archive inspection",
   { skip: process.platform === "win32" },

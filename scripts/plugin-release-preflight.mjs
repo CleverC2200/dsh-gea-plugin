@@ -8,7 +8,8 @@ import { inspectPluginArchive } from "../src/host/plugin-release-source.ts";
 import {
   companyPackageNames,
   projectPluginRelease,
-  validatePluginCombination,
+  planPluginSuiteUpdate,
+  planPluginUpdate,
   comparePluginVersions,
   parsePluginManifest,
   parseInstalledPluginManifest,
@@ -206,22 +207,30 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
     }
   }
   validateCore(input.environment.core);
-  for (const { release } of targets) {
-    if (
-      !release.supportedCores.some(
-        (core) =>
-          core.head === input.environment.core.head &&
-          core.version === input.environment.core.version,
-      )
-    )
-      fail("RELEASE_CORE_UNSUPPORTED", release.name);
-  }
-  const combination = input.environment.installed.map(
-    (manifest) =>
-      targets.find(({ release }) => release.name === manifest.name)?.release ?? manifest,
+  const releases = targets.map(({ release }) => release);
+  const suite = planPluginSuiteUpdate({
+    core: input.environment.core,
+    installed: input.environment.installed,
+    releases,
+  });
+  if (suite.kind === "blocked") fail("RELEASE_TARGET_COMBINATION_INCOMPATIBLE");
+  const updater = input.environment.installed.find(
+    (manifest) => manifest.name === companyPackageNames[2],
   );
-  if (validatePluginCombination({ core: input.environment.core, manifests: combination }).length)
-    fail("RELEASE_TARGET_COMBINATION_INCOMPATIBLE");
+  const bridge = releases.find((release) => release.name === companyPackageNames[2]);
+  const bootstrap =
+    updater.geaPluginUpdateStrategy !== "suite" && bridge.updateStrategy === "suite";
+  if (
+    bootstrap &&
+    suite.kind === "ready" &&
+    planPluginUpdate({
+      release: bridge,
+      core: input.environment.core,
+      installed: input.environment.installed,
+    }).kind !== "ready"
+  )
+    fail("RELEASE_LEGACY_BRIDGE_REQUIRED");
+
   return {
     status: "release-preflight-passed",
     inputSha256: digest(await readFile(inputPath)),
@@ -229,6 +238,8 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
     sources: sources.map(({ manifest: _manifest, ...source }) => source),
     targets,
     targetCombination: {
+      strategy: bootstrap ? "legacy-bootstrap" : "suite",
+      ...(bootstrap ? { bootstrap: bridge.name } : {}),
       core: input.environment.core,
       packages: targets.map(({ release }) => ({ name: release.name, version: release.version })),
     },
