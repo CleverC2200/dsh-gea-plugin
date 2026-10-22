@@ -1,0 +1,167 @@
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
+import { execFileSync } from "node:child_process";
+import { executionDigest, verifyExecutionResults } from "./quality-test-execution.mjs";
+import { selectPlatformTests } from "./ci-platform-tests.mjs";
+
+export const sourceCheckShardIds = ["1", "2"];
+const requireValue = (condition, detail) => {
+  if (!condition) throw Error("SOURCE_CHECK_SHARDS_REJECTED: " + detail);
+};
+const json = (file) => JSON.parse(readFileSync(file, "utf8"));
+const same = (left, right) => executionDigest(left) === executionDigest(right);
+
+export function sourceCheckShard(environment = process.env) {
+  const id = environment.GEA_SOURCE_CHECK_SHARD;
+  if (id === undefined || id === "") return undefined;
+  requireValue(sourceCheckShardIds.includes(id), "shard id");
+  return { id, count: sourceCheckShardIds.length };
+}
+
+export function sourceCheckMatrix(plan) {
+  requireValue(typeof plan?.joint === "boolean" && Array.isArray(plan.files), "source plan");
+  const parallel = plan.joint && selectPlatformTests(plan, "linux").files.length > 1;
+  return { parallel, shards: parallel ? sourceCheckShardIds : ["single"] };
+}
+
+export function aggregateSourceCheckShards(directory, { head, runId, runAttempt }) {
+  requireValue(/^[a-f0-9]{40}$/.test(head ?? "") && runId && runAttempt, "expected source run");
+  const names = sourceCheckShardIds.map((id) => "source-checks-" + id);
+  requireValue(same(readdirSync(directory).sort(), names), "worker inventory");
+  const workers = names.map((name, index) => {
+    const root = join(directory, name);
+    const scope = json(join(root, "source-checks-scope.json"));
+    requireValue(
+      scope.schemaVersion === 1 &&
+        scope.head === head &&
+        String(scope.runId) === String(runId) &&
+        String(scope.runAttempt) === String(runAttempt) &&
+        typeof scope.plan?.joint === "boolean" &&
+        Array.isArray(scope.plan.files) &&
+        scope.shard.id === sourceCheckShardIds[index] &&
+        scope.shard.count === sourceCheckShardIds.length,
+      "worker source or assignment",
+    );
+    return { root, scope };
+  });
+  const scope = workers[0].scope;
+  requireValue(
+    workers.every((worker) => same(worker.scope.plan, scope.plan)),
+    "source selection",
+  );
+  requireValue(sourceCheckMatrix(scope.plan).parallel, "parallel source selection");
+  const records = workers.map(({ root, scope: workerScope }) => ({
+    scope: workerScope,
+    plan: json(join(root, "quality-test-execution-plan.json")),
+    stages: json(join(root, "quality-stages.json")),
+    receipt: json(join(root, "quality-test-execution.json")),
+  }));
+  const { plan, stages } = records[0];
+  requireValue(
+    String(plan.binding.runId) === String(runId) &&
+      String(plan.binding.runAttempt) === String(runAttempt) &&
+      plan.binding.platform === "linux" &&
+      plan.binding.manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin")?.head ===
+        head &&
+      same([...plan.selected].sort(), [...scope.plan.files].sort()) &&
+      same(
+        plan.shards.map((shard) => shard.id),
+        sourceCheckShardIds,
+      ),
+    "execution input",
+  );
+  const buildSha256 = executionDigest(stages.artifacts);
+  const results = records.flatMap((record) => {
+    requireValue(
+      same(record.plan, plan) &&
+        same(record.stages.binding.executionPlan, plan) &&
+        same(record.stages.binding.manifest, plan.binding.manifest) &&
+        record.stages.binding.inputSha256 === plan.binding.inputSha256 &&
+        executionDigest(record.stages.artifacts) === buildSha256 &&
+        ["prepare", "build", "checks", "tests"].every(
+          (name) => record.stages.stages[name]?.status === "passed",
+        ),
+      "worker preparation or build",
+    );
+    const receipt = record.receipt;
+    requireValue(
+      receipt.schemaVersion === 1 &&
+        receipt.scope === "shard" &&
+        receipt.terminal === true &&
+        receipt.status === "passed" &&
+        !receipt.error &&
+        receipt.planSha256 === plan.planSha256 &&
+        receipt.buildSha256 === buildSha256 &&
+        receipt.results.length === 1 &&
+        receipt.results[0].shardId === record.scope.shard.id,
+      "worker execution",
+    );
+    return receipt.results;
+  });
+  return verifyExecutionResults({
+    plan,
+    buildSha256,
+    receipt: {
+      schemaVersion: 1,
+      scope: "platform",
+      status: "passed",
+      terminal: true,
+      executionId: "source-checks:" + plan.planSha256,
+      planSha256: plan.planSha256,
+      buildSha256,
+      results,
+    },
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const { values } = parseArgs({
+    options: {
+      matrix: { type: "string" },
+      scope: { type: "string" },
+      output: { type: "string" },
+      aggregate: { type: "string" },
+    },
+  });
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  if (values.matrix && !values.scope && !values.output && !values.aggregate) {
+    const { parallel, shards } = sourceCheckMatrix(json(values.matrix));
+    requireValue(process.env.GITHUB_OUTPUT, "matrix output");
+    const { appendFileSync } = await import("node:fs");
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `parallel=${parallel}\nshards=${JSON.stringify(shards)}\n`,
+    );
+  } else if (values.scope && values.output && !values.aggregate && !values.matrix) {
+    const shard = sourceCheckShard();
+    requireValue(shard, "worker assignment required");
+    writeFileSync(
+      values.output,
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          head,
+          runId: process.env.GITHUB_RUN_ID,
+          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          shard,
+          plan: json(values.scope),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+  } else {
+    requireValue(values.aggregate && !values.scope && !values.output && !values.matrix, "command");
+    console.log(
+      JSON.stringify(
+        aggregateSourceCheckShards(values.aggregate, {
+          head,
+          runId: process.env.GITHUB_RUN_ID,
+          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+        }),
+      ),
+    );
+  }
+}

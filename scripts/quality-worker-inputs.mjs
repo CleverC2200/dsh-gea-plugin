@@ -241,6 +241,7 @@ function baseMetadata(p, manifest) {
         "quality-upstreams.json",
         "quality-workbench.mjs",
         "quality-test-execution.mjs",
+        "source-check-shards.mjs",
         "source-combination-integrity.mjs",
         "supported-cores.json",
       ],
