@@ -280,8 +280,12 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
     hostedNativeConclusion = "success",
     hostedSkippedWorker = false,
     skippedConclusion = "skipped",
-    skippedCopies = 1;
+    skippedCopies = 1,
+    hostedReads = 0,
+    lagUntilRead = 0;
   const server = createServer((request, response) => {
+    if (!request.url.includes("/jobs?")) hostedReads++;
+    const stale = hostedReads <= lagUntilRead;
     const now = Date.now(),
       at = (ms) => new Date(now + ms).toISOString(),
       head = "b".repeat(40);
@@ -330,6 +334,18 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
           run_started_at: at(-age),
           updated_at: at(-500),
         };
+    if (stale) {
+      if (body.jobs) {
+        for (const job of body.jobs) {
+          if (job.name === "candidate-quality" || job.name === hostedRequiredJobs.at(-1))
+            Object.assign(job, {
+              status: job.name === "candidate-quality" ? "queued" : "in_progress",
+              conclusion: null,
+              completed_at: null,
+            });
+        }
+      } else body.status = "queued";
+    }
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify(body));
   });
@@ -390,6 +406,17 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   const green = await invoke("final-green");
   assert.equal(green.status, 0, green.stderr);
   assert.equal(green.hosted.completedMeasurement, false, "in-gate is not completed acceptance");
+  lagUntilRead = hostedReads + 1;
+  const caughtUp = await invoke("final-rest-caught-up");
+  assert.equal(caughtUp.status, 0, caughtUp.stderr);
+  assert.equal(caughtUp.coverage.status, "passed");
+  assert.equal(caughtUp.hosted.functional.status, "passed");
+  assert.equal(hostedReads, lagUntilRead + 1);
+  const savedSnapshot = JSON.parse(
+    readFileSync(join(root, "final-rest-caught-up", "hosted-snapshot.json")),
+  );
+  assert.equal(savedSnapshot.run.status, "in_progress");
+  assert.equal(savedSnapshot.jobs.at(-1).status, "in_progress");
   const missingWindows = await invoke("final-missing-windows", [], false);
   assert.equal(missingWindows.status, 1, missingWindows.stderr);
   assert.equal(missingWindows.coverage.error, "QUALITY_WINDOWS_RECEIPT_REQUIRED");
