@@ -302,6 +302,7 @@ function resourceImpactFixture(t, authoredFiles = [], { desktop = false } = {}) 
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     ...policy.required,
+    ...(policy.versionTests ?? []),
     ...policy.tests.filter((file) => file.startsWith("desktop/")),
     ...policy.rules.flatMap((rule) => rule.tests),
     ...policy.browserFixtures,
@@ -753,6 +754,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
   for (const file of [
     "tests/required.test.mjs",
+    ...(policy.versionTests ?? []),
     ...policy.tests.filter((file) => !file.includes("*")),
     ...policy.browserFixtures,
     "tests/unrelated.test.mjs",
