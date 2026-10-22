@@ -1,8 +1,25 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { stat, access } from "node:fs/promises";
+import { stat, access, realpath, readlink } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+
+async function prospectiveRealpath(path) {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if (error.code !== "ENOENT" || dirname(path) === path)
+      throw Error("RECEPTION_STORE_DIRECTORY_REQUIRED");
+  }
+  const parent = await prospectiveRealpath(dirname(path));
+  const child = join(parent, basename(path));
+  try {
+    return await prospectiveRealpath(resolve(parent, await readlink(child)));
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "EINVAL") return child;
+    throw error;
+  }
+}
 
 export async function selectDownloadStore({ pnpm, home, store, coldDownload = false }) {
   assert(!(coldDownload && store !== undefined), "RECEPTION_STORE_OPTIONS_CONFLICT");
@@ -32,6 +49,14 @@ export async function selectDownloadStore({ pnpm, home, store, coldDownload = fa
       if (error.code === "ENOENT" && dirname(ancestor) !== ancestor) ancestor = dirname(ancestor);
       else throw Error("RECEPTION_STORE_DIRECTORY_REQUIRED");
     }
+  }
+  if (!coldDownload) {
+    const location = relative(await prospectiveRealpath(home), await prospectiveRealpath(path));
+    assert(
+      location !== "" &&
+        (location === ".." || location.startsWith(".." + sep) || isAbsolute(location)),
+      "RECEPTION_STORE_IN_HOME",
+    );
   }
   return { mode: coldDownload ? "cold" : "shared", path };
 }

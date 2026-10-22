@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm, access, realpath } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  rm,
+  access,
+  realpath,
+  symlink,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -77,10 +86,23 @@ test("direct reception supports explicit shared and cold stores and rejects inva
       "RECEPTION_STORE_OPTIONS_CONFLICT",
     ],
     ["bad-default", () => [], "RECEPTION_STORE_ABSOLUTE_REQUIRED"],
+    ["home", (f) => ["--store", f.home], "RECEPTION_STORE_IN_HOME"],
+    ["home-child", (f) => ["--store", join(f.home, "downloads")], "RECEPTION_STORE_IN_HOME"],
+    [
+      "home-alias",
+      (f) => ["--store", join(f.root, "alias/home/downloads")],
+      "RECEPTION_STORE_IN_HOME",
+    ],
+    ["home-link", (f) => ["--store", join(f.root, "alias/downloads")], "RECEPTION_STORE_IN_HOME"],
+    ["default-in-home", () => [], "RECEPTION_STORE_IN_HOME"],
+    ["store-parent", (f) => ["--store", f.root], (f) => ({ mode: "shared", path: f.root })],
   ])
     await t.test(name, async (t) => {
       const f = await fixture(t);
       if (name === "bad-default") f.env.RECEPTION_FIXTURE_STORE = "relative";
+      if (name === "default-in-home") f.env.RECEPTION_FIXTURE_STORE = join(f.home, "downloads");
+      if (name === "home-alias") await symlink(f.root, join(f.root, "alias"), "dir");
+      if (name === "home-link") await symlink(f.home, join(f.root, "alias"), "dir");
       const result = f.run(options(f));
       assert.notEqual(result.status, 0);
       const receipt = JSON.parse(await readFile(f.receipt, "utf8"));
