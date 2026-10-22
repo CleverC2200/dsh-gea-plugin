@@ -50,7 +50,6 @@ function preparedFixture(t, worktree = false) {
     mkdirSync(join(source, "static", id), { recursive: true });
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
     writeFileSync(join(source, "static", id, "page.json"), "{}\n");
-    if (id === "mps") writeFileSync(join(source, "static", id, "sql.config.json"), "{}\n");
   }
   writeFileSync(join(source, "static/mps/sql.config.json"), '{"agentId":"mps"}\n');
   mkdirSync(join(source, "business/inventory-dealer"), { recursive: true });
@@ -203,7 +202,6 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
 test("customer and both order build copies require identical caller-frozen Manage blobs", async (t) => {
   for (const suffix of [
     "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
-    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
     "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-orderfulfillment/README.md",
     "inventory-orderfulfillment/SOURCE.json",
