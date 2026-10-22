@@ -20,6 +20,8 @@ const gatewayMethod = (name: string) =>
   name === "mcp__gea-gateway__weknora_ask";
 const businessMethod = (name: string) =>
   (name.startsWith("gea_") && name !== "gea_runtime_diagnose") || gatewayMethod(name);
+const businessSourceRecovery =
+  "请选用已安装并启用的对应业务资源；使用个人 Agent 时，在其 MCP 配置中选择并启用 GEA Workbench。独立业务查询无需打开或绑定页面，服务端仍按当前 Consumer 校验权限。Skill、角色名称和页面可见不授予 Consumer 权限。";
 
 type AdmissionState = {
   pageReferences?: boolean;
@@ -155,7 +157,7 @@ export function mountBusinessPrompts(
       if (!agent || (!profileOf(agent) && !personalGateway)) {
         if (businessMethod(exec.name))
           return agent
-            ? "GEA_BUSINESS_PROFILE_REQUIRED: 当前实际会话预设未声明业务身份。请使用基地库存 Agent 分析入口或选用相应已启用业务资源；Skill、角色名称和页面可见不授予Consumer权限。"
+            ? `GEA_BUSINESS_PROFILE_REQUIRED: 当前实际会话未接入所需的业务资源或 GEA 工具来源。${businessSourceRecovery}`
             : "GEA_BUSINESS_PROFILE_REQUIRED: reason=CALLING_AGENT_MISSING。工具调用未绑定实际Core Agent，无法判定业务身份；需核对调用归属。";
         return;
       }
@@ -226,7 +228,7 @@ export function mountBusinessPrompts(
       defineTool({
         name: "gea_runtime_diagnose",
         description:
-          "只读核对本次调用的实际会话预设、父会话、业务身份声明、页面绑定及工具名称。不会查询业务数据、读取凭据或授予权限。",
+          "只读核对实际会话、业务资源、GEA 工具来源和恢复路径。独立查询看 independentQuery 与 mcpAccess，不能仅凭 businessProfileDeclared=false 或 pageBound=false 判断不可用；本地接入就绪不代表服务端授权。不会查询业务数据、读取凭据或授予权限。",
         parameters: {},
         output,
         isConcurrencySafe: () => true,
@@ -286,6 +288,27 @@ export function mountBusinessPrompts(
               ];
             })
             .slice(-20);
+          const independentQueryAvailable = !!mcpAccess && "consumerCode" in mcpAccess;
+          let recovery =
+            "当前 GEA 工具来源不可用，请核对所选来源是否已安装、启用及其错误状态；恢复后重试，保留原拒权码，不更换 Consumer。";
+          if (!agent)
+            recovery =
+              "工具调用未绑定实际 Core Agent，请核对调用归属；无法判断当前会话的资源和业务身份。";
+          else if (!business.status().authenticated)
+            recovery =
+              "请通过 GEA 账户入口登录后重试；登录后仍需核对当前会话所选资源与 Consumer 授权。";
+          else if (profile && (!resource?.installed || !resource.enabled || resource.error))
+            recovery =
+              "请在资源目录核对当前业务资源的安装、启用及错误状态，恢复后重新选用；不要更换 Consumer 绕过拒权。";
+          else if (independentQueryAvailable)
+            recovery =
+              "当前会话已接入 GEA 工具来源，独立查询无需打开或绑定页面。仅页面读取或动作需要绑定相应业务页面；实际数据权限仍由服务端按当前 Consumer 校验。";
+          else if (
+            mcpAccess &&
+            "error" in mcpAccess &&
+            mcpAccess.error === "GEA_BUSINESS_PROFILE_REQUIRED"
+          )
+            recovery = businessSourceRecovery;
           return JSON.stringify({
             readOnly: true,
             callingAgentPresent: !!agent,
@@ -307,6 +330,8 @@ export function mountBusinessPrompts(
                   ? mcpAccess.consumerCode
                   : null,
             mcpAccess,
+            independentQuery: { available: independentQueryAvailable, pageRequired: false },
+            recovery,
             pageBound: agent ? pageBound(agent) : false,
             authenticated: business.status().authenticated === true,
             businessAuthorization: "not-checked",

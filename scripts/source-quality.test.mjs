@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -284,4 +284,242 @@ test("JavaScript resources retain security scanning without unrelated engineerin
   };
   assert.equal(repo.run("final", results).status, 0);
   assert.notEqual(repo.run("final", { ...results, CODEQL_RESULT: "skipped" }).status, 0);
+});
+
+test("ordinary JavaScript changes check only current changed sources", (t) => {
+  const repo = fixture(
+    t,
+    { "src/main.js": "export const value = 1;\n", "src/old.js": "broken syntax !" },
+    { "src/main.js": "export const value = 2;\n", "src/added.cjs": "module.exports = 1;\n" },
+  );
+  const result = repo.run("check");
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("syntax checker and parser inputs expand checks to unchanged tracked sources", (t) => {
+  for (const file of [
+    "package.json",
+    "pnpm-lock.yaml",
+    ".nvmrc",
+    "tsconfig.json",
+    "babel.config.cjs",
+    ".oxlintrc.json",
+    ".oxfmtrc.json",
+    "scripts/source-quality.mjs",
+  ]) {
+    const repo = fixture(
+      t,
+      { "src/old.js": "broken syntax !", [file]: file.endsWith(".json") ? "{}" : "before\n" },
+      { [file]: file.endsWith(".json") ? '{"changed":true}' : "after\n" },
+    );
+    const result = repo.run("check");
+    assert.notEqual(result.status, 0, file);
+    assert.match(result.stderr, /old\.js/);
+  }
+});
+
+test("unknown changes and missing comparison bases keep full syntax checks", (t) => {
+  const repo = fixture(
+    t,
+    { "src/old.js": "broken syntax !", "src/input.unknown": "before\n" },
+    { "src/input.unknown": "after\n" },
+  );
+  const unknown = repo.run("check");
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stderr, /old\.js/);
+  const noBase = repo.run("check", { GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: "" });
+  assert.notEqual(noBase.status, 0);
+  assert.match(noBase.stderr, /old\.js/);
+});
+
+test("ordinary JSON changes skip unchanged invalid JSON and reject changed invalid JSON", (t) => {
+  const repo = fixture(
+    t,
+    { "src/data.json": '{"value":1}', "src/old.json": "invalid JSON" },
+    { "src/data.json": '{"value":2}', "src/new.json": '{"added":true}' },
+  );
+  const accepted = repo.run("check");
+  assert.equal(accepted.status, 0, accepted.stderr);
+  writeFileSync(join(repo.root, "src/data.json"), "invalid changed JSON");
+  repo.git("add", ".");
+  repo.git("commit", "-qm", "invalid changed JSON");
+  const rejected = repo.run("check", { SOURCE_HEAD_SHA: repo.git("rev-parse", "HEAD") });
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /SyntaxError/);
+});
+
+test("added and modified JavaScript must parse while deleted sources are not read", (t) => {
+  for (const added of [false, true]) {
+    const repo = fixture(
+      t,
+      { "src/main.mjs": "export const value = 1;\n" },
+      { [added ? "src/new.cjs" : "src/main.mjs"]: "broken changed syntax !" },
+    );
+    const result = repo.run("check");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, added ? /new\.cjs/ : /main\.mjs/);
+  }
+  const deleted = fixture(
+    t,
+    { "src/deleted.js": "broken deleted syntax !", "src/old.js": "broken unchanged syntax !" },
+    { "src/deleted.js": null },
+  );
+  const result = deleted.run("check");
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("mixed code and resource changes still parse the complete affected resource group", (t) => {
+  const repo = fixture(
+    t,
+    {
+      "src/main.js": "export const value = 1;\n",
+      "business-resources/demo/data.json": '{"value":1}',
+      "business-resources/demo/run.js": "broken resource syntax !",
+    },
+    {
+      "src/main.js": "export const value = 2;\n",
+      "business-resources/demo/data.json": '{"value":2}',
+    },
+  );
+  const result = repo.run("check");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /run\.js/);
+});
+
+test("workflow event planning selects only present changed workflows without preparing tools", (t) => {
+  const repo = fixture(
+    t,
+    { "README.md": "Before\n", ".github/workflows/removed.yaml": "name: old\n" },
+    {
+      "README.md": "After\n",
+      ".github/workflows/removed.yaml": null,
+      ".github/workflows/quality.yml": "name: changed\n",
+    },
+  );
+  const output = join(repo.root, ".git/workflow-plan-output");
+  const selected = repo.run("plan", { ACTIONLINT: "/missing/actionlint", GITHUB_OUTPUT: output });
+  assert.equal(selected.status, 0, selected.stderr);
+  const plan = JSON.parse(selected.stdout);
+  assert.equal(plan.workflows, true);
+  assert.deepEqual(JSON.parse(plan["workflow-files"]), [".github/workflows/quality.yml"]);
+  const written = readFileSync(output, "utf8");
+  assert.ok(written.includes("workflows=true\n"));
+  assert.ok(written.includes('workflow-files=[".github/workflows/quality.yml"]\n'));
+  const docs = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  const docsPlan = JSON.parse(docs.run("plan", { ACTIONLINT: "/missing/actionlint" }).stdout);
+  assert.equal(docsPlan.workflows, false);
+  assert.deepEqual(JSON.parse(docsPlan["workflow-files"]), []);
+});
+
+test("local preflight checks staged, unstaged and untracked JavaScript before commit", (t) => {
+  const repo = fixture(
+    t,
+    { "package.json": '{"type":"module"}', "src/main.js": "export const value = 1;\n" },
+    { "README.md": "Docs\n" },
+  );
+  const run = () =>
+    spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
+      cwd: repo.root,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
+    });
+  for (const state of ["unstaged", "staged", "untracked"]) {
+    const file = state === "untracked" ? "src/new.js" : "src/main.js";
+    writeFileSync(join(repo.root, file), "export const broken = ;\n");
+    if (state === "staged") repo.git("add", file);
+    const result = run();
+    assert.notEqual(result.status, 0, state + ": " + result.stdout);
+    assert.match(result.stderr, /SyntaxError/, state);
+    if (state === "untracked") rmSync(join(repo.root, file));
+    else {
+      writeFileSync(join(repo.root, file), "export const value = 1;\n");
+      if (state === "staged") repo.git("add", file);
+    }
+  }
+  assert.equal(run().status, 0);
+});
+
+test("local preflight validates new resource references before they are tracked", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  const directory = join(repo.root, "business-resources/demo");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, "SKILL.md"),
+    "---\nname: demo\ndescription: Demo\n---\n[Rules](rules.md)\n",
+  );
+  const run = () =>
+    spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
+      cwd: repo.root,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
+    });
+  assert.match(run().stderr, /RESOURCE_REFERENCE_MISSING.*rules\.md/);
+  writeFileSync(join(directory, "rules.md"), "Rules\n");
+  const accepted = run();
+  assert.equal(accepted.status, 0, accepted.stderr);
+});
+
+test("local preflight requires the pinned validator for an untracked workflow", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  mkdirSync(join(repo.root, ".github/workflows"), { recursive: true });
+  writeFileSync(join(repo.root, ".github/workflows/new.yml"), "name: New\non: push\njobs: {}\n");
+  const checked = spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
+    cwd: repo.root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_EVENT_PATH: "",
+      SOURCE_BASE_SHA: repo.head,
+      ACTIONLINT: join(repo.root, ".git/no-actionlint"),
+    },
+  });
+  assert.notEqual(checked.status, 0);
+  assert.match(checked.stderr, /WORKFLOW_PREFLIGHT_TOOL_REQUIRED.*ACTIONLINT/);
+});
+
+test("workflow source plans retain behavior contracts alongside semantic preflight", async (t) => {
+  const { selectCiTests } = await import("../../dsh-agent-workbench/scripts/ci-test-plan.mjs");
+  const policy = readFileSync(new URL("./ci-test-policy.json", import.meta.url), "utf8");
+  const files = { "scripts/ci-test-policy.json": policy };
+  for (const pattern of JSON.parse(policy).tests)
+    for (const file of globSync(pattern, { cwd: new URL("../", import.meta.url) }))
+      files[file] = "export const fixture = true;";
+  for (const [workflow, consumers] of [
+    ["quality", ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]],
+    [
+      "delivery-fixtures",
+      ["scripts/delivery-events.test.mjs", "scripts/windows-complete-local/core-cache.test.mjs"],
+    ],
+    ["source-quality", ["scripts/source-quality.test.mjs"]],
+  ]) {
+    await t.test(workflow, (t) => {
+      const file = `.github/workflows/${workflow}.yml`;
+      const repo = fixture(
+        t,
+        { ...files, [file]: "permissions: {contents: read}\n" },
+        { [file]: "permissions: {contents: write}\n" },
+      );
+      const plan = selectCiTests({
+        repositories: [{ repo: "dsh-gea-plugin", path: repo.root, head: repo.head }],
+        repo: "dsh-gea-plugin",
+        base: repo.base,
+        sourceOnly: true,
+      });
+      for (const consumer of ["scripts/workflow-preflight.test.mjs", ...consumers])
+        assert.ok(plan.files.includes(consumer), `${consumer}: ${JSON.stringify(plan)}`);
+    });
+  }
+  const file = "scripts/workflow-preflight.mjs";
+  const repo = fixture(
+    t,
+    { ...files, [file]: "export const revision = 1;" },
+    { [file]: "export const revision = 2;" },
+  );
+  const plan = selectCiTests({
+    repositories: [{ repo: "dsh-gea-plugin", path: repo.root, head: repo.head }],
+    repo: "dsh-gea-plugin",
+    base: repo.base,
+    sourceOnly: true,
+  });
+  assert.deepEqual(plan.files, ["scripts/workflow-preflight.test.mjs"]);
 });

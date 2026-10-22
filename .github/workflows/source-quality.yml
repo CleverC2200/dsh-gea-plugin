@@ -24,6 +24,7 @@ jobs:
       gea-sha: ${{ steps.plan.outputs.gea-sha }}
       mode: ${{ steps.plan.outputs.mode }}
       engineering: ${{ steps.plan.outputs.engineering }}
+      workflows: ${{ steps.plan.outputs.workflows }}
       dependency-review: ${{ steps.plan.outputs.dependency-review }}
       codeql: ${{ steps.plan.outputs.codeql }}
     steps:
@@ -38,6 +39,18 @@ jobs:
       - name: Classify actual Git changes
         id: plan
         run: node scripts/source-quality.mjs --phase plan
+      - name: Check changed workflow semantics
+        if: steps.plan.outputs.workflows == 'true'
+        shell: bash
+        env:
+          WORKFLOW_FILES: ${{ steps.plan.outputs.workflow-files }}
+          ACTIONLINT: ${{ runner.temp }}/workflow-preflight/actionlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/workflow-preflight"
+          curl --fail --location --silent --show-error https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" -C "$RUNNER_TEMP/workflow-preflight" actionlint
+          node --input-type=module -e "import { checkWorkflows } from './scripts/workflow-preflight.mjs'; console.log(JSON.stringify(checkWorkflows(JSON.parse(process.env.WORKFLOW_FILES))))"
 
   source-checks:
     needs: source-plan
@@ -85,7 +98,7 @@ jobs:
         if: needs.source-plan.outputs.engineering == 'true'
         id: affected
         run: node scripts/source-quality.mjs --phase affected-plan
-      - name: Select registered Core only for consumers that need SDK
+      - name: Select registered Core for fixed dependency links and SDK consumers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         id: core
         run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from '../dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
@@ -97,6 +110,12 @@ jobs:
           path: source/official-core
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify selected Core source before dependency preparation
+        if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        env:
+          QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
+        run: |
+          node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
       - name: Enable declared package managers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
         run: |
@@ -118,10 +137,11 @@ jobs:
           restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare owned Core source without compiling
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Locate SDK artifact cache paths
+        if: steps.affected.outputs.sdk == 'true'
         id: sdk-paths
-        run: |
-          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
-          node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
         if: steps.affected.outputs.sdk == 'true'
         id: sdk-cache

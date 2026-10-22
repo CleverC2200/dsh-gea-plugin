@@ -58,6 +58,9 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/workflow-preflight.test.mjs": {
+      "dependencies": false
+    },
     "scripts/run-quality-ci-stages.test.mjs": {
       "dependencies": false
     },
@@ -114,6 +117,23 @@
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^\\.codex/environments/environment\\.toml$",
+      "tests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"],
+      "sourceTests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/workflow-preflight(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/workflow-preflight.test.mjs"],
+      "sourceTests": ["scripts/workflow-preflight.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^\\.github/workflows/[^/]+\\.ya?ml$",
+      "tests": ["scripts/workflow-preflight.test.mjs"]
+    },
     {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/build\\.mjs$",
@@ -385,7 +405,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
-      "tests": ["scripts/delivery-events.test.mjs", "scripts/windows-complete-local/core-cache.test.mjs"]
+      "tests": [
+        "scripts/delivery-events.test.mjs",
+        "scripts/windows-complete-local/core-cache.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -449,27 +472,19 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:scripts/source-quality\\.mjs|\\.github/workflows/source-quality\\.yml)$",
-      "tests": [
-        "scripts/source-quality.test.mjs"
-      ]
+      "tests": ["scripts/source-quality.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:run-quality-ci\\.mjs|ci-test-policy\\.json)$",
       "tests": [],
-      "sourceTests": [
-        "scripts/run-quality-ci.test.mjs",
-        "scripts/run-quality-ci-stages.test.mjs"
-      ]
+      "sourceTests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-peer-baseline\\.json$",
       "tests": [],
-      "sourceTests": [
-        "scripts/run-quality-ci.test.mjs",
-        "scripts/run-quality-ci-stages.test.mjs"
-      ]
+      "sourceTests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     }
   ],
   "testOwners": {
