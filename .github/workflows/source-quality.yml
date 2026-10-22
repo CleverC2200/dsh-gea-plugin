@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_HEAD_SHA: "8c52dedf650ffc5083b574be5e00504288a8e4a4"
-  SOURCE_BASE_SHA: "9d806575ecaba87d86bbce69e66a3fa4a6830b20"
+  CI_BENCH_SOURCE_HEAD: "8c52dedf650ffc5083b574be5e00504288a8e4a4"
+  CI_BENCH_SOURCE_BASE: "9d806575ecaba87d86bbce69e66a3fa4a6830b20"
   CI_BENCH_CASE: "${{ inputs.benchmark_case }}"
   CI_BENCH_EPOCH: "${{ inputs.benchmark_epoch }}"
   CI_BENCH_EXPECTED_FILES: "[\"scripts/build-admission.test.mjs\",\"scripts/build.test.mjs\",\"scripts/ci-windows-update.test.mjs\",\"scripts/deliver-packages.test.mjs\",\"scripts/delivery-events.test.mjs\",\"scripts/development-tasks.test.mjs\",\"scripts/package-desktop.test.mjs\",\"scripts/quality-prepared-inputs.test.mjs\",\"scripts/quality-shards.test.mjs\",\"scripts/quality-upstreams.test.mjs\",\"scripts/quality-worker-control.test.mjs\",\"scripts/quality-worker-inputs.test.mjs\",\"scripts/run-quality-checks.test.mjs\",\"scripts/run-quality-ci-stages.test.mjs\",\"scripts/run-quality-ci.test.mjs\",\"scripts/source-quality.test.mjs\",\"scripts/windows-complete-local/core-cache.test.mjs\",\"scripts/windows-complete-local/input.test.mjs\",\"scripts/workflow-preflight.test.mjs\",\"tests/ci-core-policy.test.mjs\",\"tests/plugin-release-source.test.mjs\"]"
@@ -58,8 +58,14 @@ jobs:
       - name: Validate benchmark identity
         run: |
           node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(process.env.RUNNER_TEMP + '/ci-benchmark-event.json', JSON.stringify({before:process.env.CI_BENCH_SOURCE_BASE,after:process.env.CI_BENCH_SOURCE_HEAD,ref:'refs/heads/main',repository:{full_name:process.env.GITHUB_REPOSITORY}}));
+          NODE
       - name: Classify actual Git changes
         id: plan
+        env:
+          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
         run: node scripts/source-quality.mjs --phase plan
       - name: Check changed workflow semantics
         if: steps.plan.outputs.workflows == 'true'
@@ -93,7 +99,16 @@ jobs:
         id: node
         with:
           node-version: 24.22.0
+      - name: Validate benchmark identity
+        run: |
+          node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(process.env.RUNNER_TEMP + '/ci-benchmark-event.json', JSON.stringify({before:process.env.CI_BENCH_SOURCE_BASE,after:process.env.CI_BENCH_SOURCE_HEAD,ref:'refs/heads/main',repository:{full_name:process.env.GITHUB_REPOSITORY}}));
+          NODE
       - name: Check applicable repository source
+        env:
+          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
         run: node scripts/source-quality.mjs --phase check
       - name: Check committed package version
         if: needs.source-plan.outputs.engineering == 'true'
@@ -119,6 +134,8 @@ jobs:
       - name: Select affected behavior and type checks before preparation
         if: needs.source-plan.outputs.engineering == 'true'
         id: affected
+        env:
+          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
         run: node scripts/source-quality.mjs --phase affected-plan
       - name: Select registered Core for fixed dependency links and SDK consumers
         if: steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true'
@@ -204,13 +221,15 @@ jobs:
             if (needed && (hit === 'true') !== warm) throw Error('BENCHMARK_CACHE_STATE_REJECTED: ' + name + ': ' + hit);
           }
           const git = (...args) => execFileSync('git', args, {encoding:'utf8'}).trim();
-          if (git('rev-parse','HEAD') !== process.env.SOURCE_HEAD_SHA) throw Error('BENCHMARK_SOURCE_CHANGED');
-          const value = {case:process.env.CI_BENCH_CASE,epoch:process.env.CI_BENCH_EPOCH,controller:process.env.BENCH_CONTROLLER,head:git('rev-parse','HEAD'),base:process.env.SOURCE_BASE_SHA,tree:git('rev-parse','HEAD^{tree}'),node:process.version,os:process.env.RUNNER_OS,arch:process.env.RUNNER_ARCH,kernel:release(),cpus:cpus().length,cpu:cpus()[0].model,memory:totalmem(),image:process.env.ImageVersion,downloads:{hit:process.env.DOWNLOADS_HIT,key:process.env.DOWNLOADS_KEY},sdk:{hit:process.env.SDK_HIT,key:process.env.SDK_KEY},plan};
+          if (git('rev-parse','HEAD') !== process.env.CI_BENCH_SOURCE_HEAD) throw Error('BENCHMARK_SOURCE_CHANGED');
+          const value = {case:process.env.CI_BENCH_CASE,epoch:process.env.CI_BENCH_EPOCH,controller:process.env.BENCH_CONTROLLER,head:git('rev-parse','HEAD'),base:process.env.CI_BENCH_SOURCE_BASE,tree:git('rev-parse','HEAD^{tree}'),node:process.version,os:process.env.RUNNER_OS,arch:process.env.RUNNER_ARCH,kernel:release(),cpus:cpus().length,cpu:cpus()[0].model,memory:totalmem(),image:process.env.ImageVersion,downloads:{hit:process.env.DOWNLOADS_HIT,key:process.env.DOWNLOADS_KEY},sdk:{hit:process.env.SDK_HIT,key:process.env.SDK_KEY},plan};
           writeFileSync('.runtime/benchmark.json', JSON.stringify(value,null,2)+'\n');
           console.log(JSON.stringify({case:value.case,head:value.head,testFiles:plan.files.length,downloads:value.downloads,sdk:value.sdk}));
           NODE
       - name: Prepare dependencies consumed by selected checks
         if: steps.affected.outputs.dependencies == 'true'
+        env:
+          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
         run: node scripts/source-quality.mjs --phase affected-prepare
       - name: Save isolated benchmark package downloads
         if: success() && inputs.benchmark_case == 'cold' && steps.affected.outputs.dependencies == 'true'
@@ -224,6 +243,8 @@ jobs:
           key: ${{ steps.downloads-cache.outputs.cache-primary-key }}
       - name: Run affected behavior and real TypeScript checks
         if: needs.source-plan.outputs.engineering == 'true'
+        env:
+          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
         run: node scripts/source-quality.mjs --phase affected-check
       - name: Keep source selection and executed check evidence
         if: always()
@@ -269,8 +290,16 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24.22.0
+      - name: Validate benchmark identity
+        run: |
+          node --input-type=module -e "if (!['cold','warm'].includes(process.env.CI_BENCH_CASE) || !/^[a-z0-9-]{8,64}$/.test(process.env.CI_BENCH_EPOCH)) throw Error('BENCHMARK_INPUT_REJECTED')"
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(process.env.RUNNER_TEMP + '/ci-benchmark-event.json', JSON.stringify({before:process.env.CI_BENCH_SOURCE_BASE,after:process.env.CI_BENCH_SOURCE_HEAD,ref:'refs/heads/main',repository:{full_name:process.env.GITHUB_REPOSITORY}}));
+          NODE
       - name: Require successful applicable checks
         env:
+          GITHUB_EVENT_PATH: ${{ runner.temp }}/ci-benchmark-event.json
           PLAN_RESULT: ${{ needs.source-plan.result }}
           CHECK_RESULT: ${{ needs.source-checks.result }}
           DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
