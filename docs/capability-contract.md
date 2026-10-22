@@ -55,6 +55,6 @@ Manage 的当前安装与启用状态在模型步骤和工具派发前重新核�
 
 ## HTML Agent 配置查询
 
-当已安装 HTML manifest 声明 `sqlConfig: "sql.config.json"` 时，所属页面的 `readSql` 只接受 `{ queryId, parameters }`。GEA Host 校验同目录配置的 Agent 标识和参数，从配置解析 SQL，并使用该页面声明的 Consumer 与统一业务身份执行。页面提交 SQL、Consumer 或数据源等额外字段会被拒绝。没有 sqlConfig 的旧页面继续使用原有接口。
+当已安装 HTML manifest 声明 `sqlConfig: "sql.config.json"` 时，所属页面的 `readSql` 只接受 `{ queryId, parameters }`。GEA Host 校验同目录配置的 Agent 标识和参数，从配置解析 SQL 或固定 Cube 查询，并使用该页面声明的 Consumer 与统一业务身份执行。Cube 通过已授权模块 MCP 调用，页面不能提交成员、路由或任意查询；单月参数绑定为该月实际日期范围，分页、缺值及 partial 状态保留。页面提交 SQL、Consumer 或数据源等额外字段会被拒绝。没有 sqlConfig 的旧页面继续使用原有接口。
 
 配置查询的 LIMIT/OFFSET 和配对计数由配置负责，Host 不叠加请求级分页。返回权限列和结构化失败保留；取消、身份变化、未发布资源和权限拒绝不触发直连回退。配置注册并不代表源表字段已发布或已获用户权限。五个页面及验证状态见相邻 Workbench 的 `docs/unified-gea-adaptation-20261019.md`。
