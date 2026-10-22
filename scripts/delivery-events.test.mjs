@@ -336,6 +336,7 @@ test("manual type step preserves a failing process status and its tee diagnostic
     },
   );
   assert.equal(result.status, 37, result.stdout + result.stderr);
+  assert.equal(step["continue-on-error"], undefined);
   assert.match(
     readFileSync(join(directory, ".runtime/source-types/checks.log"), "utf8"),
     /SOURCE_TYPES_FAILED: real configuration/,
