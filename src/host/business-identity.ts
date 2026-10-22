@@ -53,7 +53,10 @@ export function sessionConsumer(ctx: Context, business: Business, sessionId?: st
   if (profile)
     return preset === "gea-readonly" ? business.config.analysisAgentCode : profile.consumerCode;
   if (agent && ctx.userAgents?.cubeFor(agent)) return WORKBENCH_AGENT_CODE;
-  return business.config.analysisAgentCode;
+  return (
+    (preset ? ctx.agentResources?.cubeSource(preset)?.consumerCode : undefined) ??
+    business.config.analysisAgentCode
+  );
 }
 
 /** Explicit cross-domain paths come from the trusted profile, never model-supplied registration claims. */
