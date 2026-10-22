@@ -717,7 +717,7 @@ test("tool knowledge uses the immutable Core command manifest and refuses unavai
   }
 });
 
-test("PR result reuse skips only the validated body and falls back to every original check", () => {
+test("merged PR result reuse skips only the validated body and preserves every fallback check", () => {
   const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
   const job = workflow.jobs["source-checks"],
     steps = job.steps;
