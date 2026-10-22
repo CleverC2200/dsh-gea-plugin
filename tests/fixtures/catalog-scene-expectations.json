@@ -16,10 +16,10 @@
       {
         "owner": "workbench",
         "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
-        "sha256": "b5890efff3167aec67967ff9247d0198043635efeeda75525dd5d89923bc2992",
+        "sha256": "497f2d5e886bdf055a277e86284d91337c9a86d14150a469cfee0f40f213ace9",
         "name": "inventory-mps",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "8a09d9ae0a13779229b87706915a5736b16b6012",
+        "sourceHead": "5c6acdc45acd1d71254e928cb3c57a0ccf4432b0",
         "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       },
       {
