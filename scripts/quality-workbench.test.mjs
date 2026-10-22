@@ -191,9 +191,10 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
   );
 });
 
-test("customer and fulfillment build copies require identical caller-frozen Manage blobs", async (t) => {
+test("customer and both order build copies require identical caller-frozen Manage blobs", async (t) => {
   for (const suffix of [
     "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
     "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-orderfulfillment/README.md",
     "inventory-orderfulfillment/SOURCE.json",
