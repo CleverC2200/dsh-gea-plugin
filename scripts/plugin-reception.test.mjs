@@ -381,13 +381,23 @@ test("orchestration reception follows packaged declarations across unmanaged and
     { id: "tools", name: "standard-tools" },
   ];
   const input = { prompt: "COO prompt", skillDirectory: "/fixed/skills" };
-  const managed = projectOrchestrationStandard(baseline, { ...input, managed: true });
+  const skillConfig = { skills: [{ name: "declared-skill", enabled: true }], inheritSkills: true };
+  const managed = projectOrchestrationStandard(baseline, { ...input, managed: true, skillConfig });
   assert.deepEqual(managed[0].config, {
     prefix: "Standard\n\nCOO prompt",
     suffix: "",
     complete: true,
   });
-  assert.deepEqual(managed.slice(1), baseline.slice(1));
+  assert.deepEqual(managed.slice(1, -1), baseline.slice(1));
+  assert.deepEqual(managed.at(-1), {
+    id: "user-agent-skills",
+    name: "dsh-agent-manage/user-agent-skills",
+    config: skillConfig,
+  });
+  assert.throws(
+    () => projectOrchestrationStandard(baseline, { ...input, managed: true }),
+    /ORCHESTRATION_SKILL_DECLARATION_REQUIRED/,
+  );
   const filesystem = projectOrchestrationStandard(baseline, { ...input, managed: false });
   assert.deepEqual(filesystem[1].config, {
     customSkillDirs: [input.skillDirectory + (process.platform === "win32" ? "\\" : "/")],
