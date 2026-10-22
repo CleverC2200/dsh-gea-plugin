@@ -15,7 +15,9 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { readPreparedWorkbench } from "./quality-workbench.mjs";
 
 const cli = resolve(import.meta.dirname, "quality-prepared-inputs.mjs");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -557,7 +559,7 @@ test("receive refuses parent redirects, undeclared overwrites, archive tampering
   }
 });
 
-test("the upstream CLI can prepare fixed source checkouts without downloading assets, installing dependencies or building", (t) => {
+test("the upstream CLI can prepare fixed source checkouts without downloading assets, installing dependencies or building", async (t) => {
   const f = fixture(t),
     tools = join(f.root, "tools");
   mkdirSync(tools);
@@ -568,7 +570,7 @@ test("the upstream CLI can prepare fixed source checkouts without downloading as
     const source = join(f.root, "origins", repo);
     mkdirSync(source, { recursive: true });
     f.json("origins/" + repo + "/package.json", {
-      name: repo,
+      name: repo === "genui" ? "@changfenhuang/dsh-genui" : "dsh-better-sidebar",
       packageManager: "pnpm@11.8.0",
       scripts: { build: "touch forbidden-build" },
     });
@@ -619,6 +621,48 @@ test("the upstream CLI can prepare fixed source checkouts without downloading as
     });
   }
   assert.throws(() => statSync(join(output, "upstream-assets")), { code: "ENOENT" });
+  const { bindQualityUpstreamInputs } = await import(
+    pathToFileURL(join(tools, "quality-upstreams.mjs"))
+  );
+  const inputs = join(f.root, "source-inputs");
+  const bound = await bindQualityUpstreamInputs(output, inputs, {
+    prepare: true,
+    sourceOnly: true,
+  });
+  assert.equal(bound.status, "source-only");
+  assert.equal(realpathSync(join(inputs, "genui")), join(output, "upstream-reference/dsh-genui"));
+  assert.equal(
+    realpathSync(join(inputs, "sidebar")),
+    join(output, "upstream-reference/dsh-better-sidebar"),
+  );
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, inputs),
+    /QUALITY_UPSTREAM_MATERIAL_REQUIRED/,
+  );
+  const redirected = join(f.root, "redirected-inputs");
+  symlinkSync(inputs, redirected, "dir");
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, redirected, { prepare: true, sourceOnly: true }),
+    /QUALITY_UPSTREAM_INPUT_PRIVATE_ROOT_REQUIRED/,
+  );
+  rmSync(join(inputs, "sidebar"));
+  symlinkSync(join(output, "upstream-reference/dsh-genui"), join(inputs, "sidebar"), "dir");
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, inputs, { prepare: true, sourceOnly: true }),
+    /QUALITY_UPSTREAM_INPUT_MISMATCH/,
+  );
+  assert.equal(realpathSync(join(inputs, "sidebar")), join(output, "upstream-reference/dsh-genui"));
+  rmSync(join(inputs, "sidebar"));
+  symlinkSync(
+    join(output, "upstream-reference/dsh-better-sidebar"),
+    join(inputs, "sidebar"),
+    "dir",
+  );
+  writeFileSync(join(output, "upstream-reference/dsh-genui/package.json"), "changed source");
+  await assert.rejects(
+    bindQualityUpstreamInputs(output, inputs, { sourceOnly: true }),
+    /QUALITY_UPSTREAM_GENUI_SOURCE_REQUIRED/,
+  );
 });
 
 test("transport reads its own Linux OS and runtime ABI, rejecting drift, missing values and old environment formats", (t) => {
@@ -748,4 +792,145 @@ test("receive retires only clean tracked Workbench declarations omitted by the p
       assert.equal(readFileSync(external, "utf8"), "retired generated declaration\n");
     }
   }
+});
+
+test("runtime export identifies every changed, missing and unexpected Workbench output", (t) => {
+  const f = fixture(t);
+  const plan = { runtime: true, browser: false, files: ["tests/fixture.test.mjs"] };
+  f.json("quality-test-plan.json", plan);
+  const stages = JSON.parse(readFileSync(join(f.root, "quality-stages.json")));
+  stages.binding.plan = plan;
+  delete stages.artifacts[join(f.root, "candidate/dsh-agent-workbench/lib")];
+  f.json("quality-stages.json", stages);
+  f.put("official-latest-standard/apps/web/dist/index.html", "fixed web");
+  f.json("official-latest-standard/.git/dsh-sdk-web.json", {
+    artifacts: [{ path: "apps/web/dist/index.html", sha256: hash("fixed web") }],
+  });
+  const native = `native/system/packages/linux-${process.arch}/flock.node`;
+  f.put("official-latest-standard/" + native, "fixed native");
+  f.json("official-latest-standard/.git/dsh-sdk-flock.json", {
+    artifact: { path: native, sha256: hash("fixed native") },
+  });
+  f.put("candidate/dsh-agent-workbench/lib/host.js", "changed host\n");
+  f.json("prepared-workbench.json", {
+    source: join(f.root, "source/dsh-agent-workbench"),
+    prepared: join(f.root, "candidate/dsh-agent-workbench"),
+    head: "a".repeat(40),
+    files: {
+      "lib/host.js": hash("original host\n"),
+      "lib/client.js": hash("missing client\n"),
+    },
+  });
+  const result = f.run("export");
+  assert.equal(result.status, 1);
+  const prefix = "QUALITY_PREPARED_REJECTED: Workbench lib changed: ";
+  assert.ok(result.stderr.startsWith(prefix), result.stderr);
+  assert.deepEqual(JSON.parse(result.stderr.slice(prefix.length)), [
+    {
+      path: "candidate/dsh-agent-workbench/lib/client.js",
+      expected: hash("missing client\n"),
+      actual: null,
+    },
+    {
+      path: "candidate/dsh-agent-workbench/lib/host.js",
+      expected: hash("original host\n"),
+      actual: hash("changed host\n"),
+    },
+    {
+      path: "candidate/dsh-agent-workbench/lib/types/host.d.ts",
+      expected: null,
+      actual: hash("generated Workbench declarations\n"),
+    },
+  ]);
+  assert.throws(() => statSync(f.bundle), { code: "ENOENT" });
+});
+
+test("runtime export and cold receive preserve the Workbench verification receipt while retiring clean tracked declarations", async (t) => {
+  const f = fixture(t);
+  const plan = { runtime: true, browser: false, files: ["tests/fixture.test.mjs"] };
+  f.json("quality-test-plan.json", plan);
+  const stages = JSON.parse(readFileSync(join(f.root, "quality-stages.json")));
+  stages.binding.plan = plan;
+  delete stages.artifacts[join(f.root, "candidate/dsh-agent-workbench/lib")];
+  f.json("quality-stages.json", stages);
+  f.put("official-latest-standard/apps/web/dist/index.html", "fixed web");
+  f.json("official-latest-standard/.git/dsh-sdk-web.json", {
+    artifacts: [{ path: "apps/web/dist/index.html", sha256: hash("fixed web") }],
+  });
+  const native = `native/system/packages/linux-${process.arch}/flock.node`;
+  f.put("official-latest-standard/" + native, "fixed native");
+  f.json("official-latest-standard/.git/dsh-sdk-flock.json", {
+    artifact: { path: native, sha256: hash("fixed native") },
+  });
+  const prepared = join(f.root, "candidate/dsh-agent-workbench");
+  const source = join(f.root, "source/dsh-agent-workbench");
+  for (const file of ["package.json", "package-lock.json"])
+    f.put("candidate/dsh-agent-workbench/" + file, readFileSync(join(source, file)));
+  f.put("candidate/dsh-agent-workbench/.gitignore", "lib/*.js\n");
+  f.put("candidate/dsh-agent-workbench/src/keep.ts", "authored source\n");
+  const retired = "candidate/dsh-agent-workbench/lib/types/retired.d.ts";
+  f.put(retired, "retired generated declaration\n");
+  freezeCandidateCheckout(f, "dsh-agent-workbench", [
+    "package.json",
+    "package-lock.json",
+    ".gitignore",
+    "src/keep.ts",
+    "lib/types/retired.d.ts",
+  ]);
+  rmSync(source, { recursive: true });
+  const cloned = spawnSync("git", ["clone", "--quiet", prepared, source], { encoding: "utf8" });
+  assert.equal(cloned.status, 0, cloned.stderr);
+  for (const checkout of [source, prepared]) {
+    const remote = spawnSync("git", ["-C", checkout, "remote", "add", "source", prepared], {
+      encoding: "utf8",
+    });
+    assert.equal(remote.status, 0, remote.stderr);
+  }
+  rmSync(join(f.root, retired));
+  for (const file of ["lib/host.js", "lib/client.js", "lib/types/client.d.ts"])
+    f.put("candidate/dsh-agent-workbench/" + file, "generated " + file + "\n");
+  const head = f.binding.manifest.repositories.find(
+    (entry) => entry.repo === "dsh-agent-workbench",
+  ).head;
+  f.json("prepared-workbench.json", await readPreparedWorkbench({ source, prepared, head }));
+  const exported = f.run("export");
+  assert.equal(exported.status, 0, exported.stderr);
+  const digest = hash(readFileSync(f.manifest));
+  const receipt = readFileSync(join(f.root, "prepared-workbench.json"), "utf8");
+  f.clearOutputs();
+  for (const file of [
+    "quality-stages.json",
+    "quality-test-plan.json",
+    "candidate-group.json",
+    "prepared-workbench.json",
+    "official-latest-standard/apps/web/dist",
+    "official-latest-standard/native",
+    "official-latest-standard/.git/dsh-sdk-web.json",
+    "official-latest-standard/.git/dsh-sdk-flock.json",
+  ])
+    rmSync(join(f.root, file), { recursive: true });
+  f.put(retired, "retired generated declaration\n");
+  const received = f.run("receive", ["--manifest-sha256", digest]);
+  assert.equal(received.status, 0, received.stderr);
+  assert.equal(JSON.parse(received.stdout).status, "transport-verified");
+  assert.throws(() => statSync(join(f.root, retired)), { code: "ENOENT" });
+  assert.equal(readFileSync(join(f.root, "prepared-workbench.json"), "utf8"), receipt);
+  const verified = spawnSync(
+    process.execPath,
+    [
+      join(import.meta.dirname, "quality-workbench.mjs"),
+      "--source",
+      source,
+      "--prepared",
+      prepared,
+      "--head",
+      head,
+      "--receipt",
+      join(f.root, "prepared-workbench.json"),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(verified.status, 0, verified.stderr);
+  assert.equal(JSON.parse(verified.stdout).status, "prepared");
+  assert.equal(readFileSync(join(prepared, "src/keep.ts"), "utf8"), "authored source\n");
 });

@@ -38,3 +38,13 @@ command = "corepack pnpm dev"
 name = "完整验收（冻结输入）"
 icon = "tool"
 command = 'node scripts/development-tasks.mjs verify --input "$DSH_QUALITY_INPUT" --sha256 "$DSH_QUALITY_INPUT_SHA256"'
+
+[[actions]]
+name = "本地轻预检"
+icon = "tool"
+command = "node scripts/development-tasks.mjs preflight"
+
+[[actions]]
+name = "本地影响计划"
+icon = "tool"
+command = "node scripts/development-tasks.mjs plan"

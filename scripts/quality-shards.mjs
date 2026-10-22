@@ -121,7 +121,7 @@ export function plannedShardCount({ selection, timings }) {
     0,
   );
   const nodeWallBudgetMs = 220000;
-  return Math.min(14, Math.max(1, Math.ceil(weightedMs / (2 * nodeWallBudgetMs))));
+  return Math.min(8, Math.max(1, Math.ceil(weightedMs / (2 * nodeWallBudgetMs))));
 }
 export function createShardCatalog({ indexes, expected }) {
   requireValue(
