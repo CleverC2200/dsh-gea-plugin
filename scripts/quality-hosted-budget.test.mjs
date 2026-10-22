@@ -1,11 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  assessHostedBudget,
-  readHostedRun,
-  readHostedGate,
-  waitForHostedRun,
-} from "./quality-hosted-budget.mjs";
+import { assessHostedBudget, readHostedRun, waitForHostedRun } from "./quality-hosted-budget.mjs";
 import { createServer } from "node:http";
 import { once } from "node:events";
 
@@ -61,7 +56,8 @@ const assess = (value, options = {}) =>
     ...options,
   });
 
-async function restFixture(t, change = (response) => response, data = snapshot()) {
+async function restFixture(t, change = (response) => response) {
+  const data = snapshot();
   const requests = [];
   const server = createServer((request, response) => {
     const url = new URL(request.url, "http://localhost");
@@ -499,149 +495,4 @@ test("documentation and dependency-review N/A jobs accept only absence or explic
   required.jobs[1].name = "Dependency review";
   required.jobs[1].conclusion = "skipped";
   assert.equal(assess(required, { requiredJobs: ["scope", "Dependency review"] }).passed, false);
-});
-
-function gateSnapshot() {
-  const value = snapshot();
-  Object.assign(value.run, { status: "in_progress", conclusion: null });
-  Object.assign(value.jobs.at(-1), { status: "in_progress", conclusion: null, completed_at: null });
-  return value;
-}
-const gateInput = {
-  ...expected,
-  requiredJobs: ["scope", "gates"],
-  finalJobName: "candidate-quality",
-};
-
-test("the in-gate reader waits for lagging run, final and upstream states through the original attempt pages", async (t) => {
-  let reads = 0;
-  const api = await restFixture(
-    t,
-    (response) => {
-      if (!response.path.endsWith("/jobs")) {
-        reads++;
-        if (reads === 1) response.body.status = "queued";
-      } else if (reads === 1) {
-        for (const job of response.body.jobs) {
-          if (job.name === "gates" || job.name === "candidate-quality") {
-            job.status = job.name === "gates" ? "in_progress" : "queued";
-            job.conclusion = null;
-            job.completed_at = null;
-          }
-        }
-      }
-      return response;
-    },
-    gateSnapshot(),
-  );
-  const { snapshot: value, assessment } = await readHostedGate({
-    ...gateInput,
-    apiBase: api.apiBase,
-    perPage: 1,
-    intervalMs: 1,
-    timeoutMs: 2000,
-  });
-  assert.equal(reads, 2);
-  assert.equal(assessment.functional.status, "passed");
-  assert.equal(assessment.completedMeasurement, false);
-  assert.equal(value.run.status, "in_progress");
-  assert.equal(value.jobs[1].conclusion, "success");
-  assert.equal(value.jobs[2].status, "in_progress");
-  assert.equal(value.pagination.pageCount, 3);
-  assert.ok(api.requests.every((request) => request.path.includes("/runs/123/attempts/1")));
-});
-
-test("the in-gate reader refuses terminal failures, missing and duplicate jobs immediately", async (t) => {
-  for (const change of [
-    (value) => (value.jobs[1].conclusion = "failure"),
-    (value) => (value.jobs[1].conclusion = "cancelled"),
-    (value) => (value.jobs[1].conclusion = "skipped"),
-    (value) => Object.assign(value.jobs[2], { status: "completed", conclusion: "failure" }),
-    (value) => Object.assign(value.run, { status: "completed", conclusion: "cancelled" }),
-    (value) => value.jobs.splice(1, 1),
-    (value) => value.jobs.push({ ...value.jobs[1], id: 4 }),
-    (value) => value.jobs.splice(2, 1),
-  ]) {
-    const value = gateSnapshot();
-    change(value);
-    const api = await restFixture(t, undefined, value);
-    const result = await readHostedGate({
-      ...gateInput,
-      apiBase: api.apiBase,
-      intervalMs: 1,
-      timeoutMs: 2000,
-    });
-    assert.equal(result.assessment.functional.status, "failed");
-    assert.equal(api.requests.filter((request) => !request.path.endsWith("/jobs")).length, 1);
-  }
-});
-
-test("a persistently lagging in-gate snapshot times out as failed and preserves the last raw state", async (t) => {
-  const value = gateSnapshot();
-  Object.assign(value.run, { status: "queued" });
-  Object.assign(value.jobs[1], { status: "in_progress", conclusion: null, completed_at: null });
-  value.jobs[2].status = "queued";
-  const api = await restFixture(t, undefined, value);
-  const { snapshot: last, assessment } = await readHostedGate({
-    ...gateInput,
-    apiBase: api.apiBase,
-    intervalMs: 1,
-    timeoutMs: 50,
-  });
-  assert.equal(assessment.functional.status, "failed");
-  assert.ok(assessment.functional.reasons.includes("HOSTED_GATE_WAIT_TIMEOUT"));
-  assert.equal(assessment.passed, false);
-  assert.equal(last.run.status, "queued");
-  assert.equal(last.jobs[1].status, "in_progress");
-  assert.equal(last.jobs[1].conclusion, null);
-  assert.equal(last.jobs[2].status, "queued");
-});
-
-test("the in-gate reader preserves HTTP, attempt, head and pagination rejection without retrying", async (t) => {
-  for (const [change, error] of [
-    [
-      (r) => {
-        r.status = 503;
-      },
-      /HOSTED_API_READ_FAILED/,
-    ],
-    [
-      (r) => {
-        if (!r.path.endsWith("/jobs")) r.body.run_attempt = 2;
-      },
-      /HOSTED_INPUT_MISMATCH/,
-    ],
-    [
-      (r) => {
-        if (r.page === 2) r.body.jobs[0].head_sha = "b".repeat(40);
-      },
-      /HOSTED_INPUT_MISMATCH/,
-    ],
-    [
-      (r) => {
-        if (r.page === 3) r.body.jobs = [];
-      },
-      /HOSTED_JOBS_INCOMPLETE/,
-    ],
-  ]) {
-    const api = await restFixture(
-      t,
-      (r) => {
-        change(r);
-        return r;
-      },
-      gateSnapshot(),
-    );
-    await assert.rejects(
-      readHostedGate({
-        ...gateInput,
-        apiBase: api.apiBase,
-        perPage: 1,
-        intervalMs: 1,
-        timeoutMs: 2000,
-      }),
-      error,
-    );
-    assert.equal(api.requests.filter((request) => !request.path.endsWith("/jobs")).length, 1);
-  }
 });

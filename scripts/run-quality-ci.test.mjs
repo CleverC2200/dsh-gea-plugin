@@ -128,6 +128,10 @@ test("the workflow binds full source history and the same public quality command
     "windows-plugin-update",
     "dependency-review",
   ]);
+  const finalStep = parse(workflow).jobs["candidate-quality"].steps.find(
+    (step) => step.env?.QUALITY_FINAL_JOB_NAME,
+  );
+  assert.equal(finalStep.env.QUALITY_FINAL_NEEDS, "${{ toJSON(needs) }}");
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);

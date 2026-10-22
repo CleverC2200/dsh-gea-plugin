@@ -1,4 +1,3 @@
-/** GitHub run-attempt clocks only; source admission and execution coverage belong to the caller. */
 const budgetMs = 600000;
 
 export const skippedTestShardsJobName =
@@ -28,66 +27,6 @@ export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000
     if (remaining <= 0) throw Error("HOSTED_WAIT_TIMEOUT");
     await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
     if (performance.now() >= deadline) throw Error("HOSTED_WAIT_TIMEOUT");
-  }
-}
-
-export async function readHostedGate({
-  requiredJobs,
-  notApplicableJobs = [],
-  finalJobName,
-  intervalMs = 3000,
-  timeoutMs = 90000,
-  ...input
-}) {
-  if (
-    !Number.isSafeInteger(intervalMs) ||
-    intervalMs < 1 ||
-    intervalMs >= 60000 ||
-    !Number.isSafeInteger(timeoutMs) ||
-    timeoutMs < 1
-  )
-    throw Error("HOSTED_GATE_WAIT_INPUT_REQUIRED");
-  const deadline = performance.now() + timeoutMs;
-  while (true) {
-    const snapshot = await readHostedRun(input);
-    const assessment = assessHostedBudget({
-      snapshot,
-      requiredJobs,
-      notApplicableJobs,
-      finalJobName,
-      mode: "in-gate",
-    });
-    const result = { snapshot, assessment };
-    if (assessment.functional.status === "passed") return result;
-    const pending = (entry) =>
-      ["queued", "pending", "requested", "in_progress"].includes(entry.status) &&
-      entry.conclusion === null;
-    const final = snapshot.jobs.filter((job) => job.name === finalJobName);
-    const retryable =
-      pending(snapshot.run) &&
-      final.length === 1 &&
-      pending(final[0]) &&
-      requiredJobs.every((name) => {
-        const found = snapshot.jobs.filter((job) => job.name === name);
-        return (
-          found.length === 1 &&
-          ((found[0].status === "completed" && found[0].conclusion === "success") ||
-            pending(found[0]))
-        );
-      }) &&
-      assessment.functional.reasons.every(
-        (reason) =>
-          reason === "HOSTED_FINAL_STATE: " + finalJobName ||
-          requiredJobs.some((name) => reason === "HOSTED_REQUIRED_JOB: " + name),
-      );
-    if (!retryable) return result;
-    const remaining = deadline - performance.now();
-    if (remaining > 0)
-      await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
-    if (performance.now() >= deadline) {
-      assessment.functional.reasons.push("HOSTED_GATE_WAIT_TIMEOUT");
-      return result;
-    }
   }
 }
 
@@ -216,6 +155,103 @@ function verifyHostedSnapshot(snapshot) {
       job.head_sha !== expected.headSha
     )
       throw Error("HOSTED_INPUT_MISMATCH");
+}
+
+export function assessFinalDependencies({
+  snapshot,
+  requiredJobs,
+  notApplicableJobs = [],
+  finalJobName,
+  needs,
+  applicability,
+  hasShards,
+  dependencyReview,
+}) {
+  verifyHostedSnapshot(snapshot);
+  if (
+    !["source", "docs"].includes(applicability) ||
+    typeof hasShards !== "boolean" ||
+    typeof dependencyReview !== "boolean" ||
+    (applicability === "docs" && (hasShards || dependencyReview))
+  )
+    throw Error("QUALITY_FINAL_DEPENDENCIES_INPUT_REQUIRED");
+  const source = applicability === "source";
+  const expected = {
+    "candidate-scope": "success",
+    "source-plan": "success",
+    gates: source ? "success" : "skipped",
+    "plan-test-shards": source ? "success" : "skipped",
+    "test-shards": hasShards ? "success" : "skipped",
+    "macos-isolation": source ? "success" : "skipped",
+    "windows-plugin-update": "success",
+    "dependency-review": dependencyReview ? "success" : "skipped",
+  };
+  const reasons = [];
+  if (
+    !needs ||
+    typeof needs !== "object" ||
+    Array.isArray(needs) ||
+    Object.keys(needs).sort().join(",") !== Object.keys(expected).sort().join(",")
+  )
+    reasons.push("QUALITY_FINAL_DEPENDENCIES_REQUIRED");
+  const dependencies = Object.entries(expected).map(([job, result]) => {
+    const actual = needs?.[job]?.result;
+    if (actual !== result) reasons.push("QUALITY_FINAL_DEPENDENCY_RESULT: " + job);
+    return { job, expected: result, actual: actual ?? null };
+  });
+  if (needs?.["source-plan"]?.outputs?.applicability !== applicability)
+    reasons.push("QUALITY_FINAL_APPLICABILITY_MISMATCH");
+  const observed = assessHostedBudget({
+    snapshot,
+    requiredJobs,
+    notApplicableJobs,
+    finalJobName,
+    mode: "in-gate",
+  });
+  const pending = (entry) =>
+    ["queued", "pending", "requested", "in_progress"].includes(entry?.status) &&
+    entry.conclusion === null;
+  const deferred = [];
+  for (const reason of observed.functional.reasons) {
+    const upstream = requiredJobs.find((name) => reason === "HOSTED_REQUIRED_JOB: " + name);
+    const matches = snapshot.jobs.filter((job) => job.name === (upstream ?? finalJobName));
+    const lagging = upstream
+      ? matches.length === 1 && pending(matches[0])
+      : reason === "HOSTED_FINAL_STATE: " + finalJobName &&
+        pending(snapshot.run) &&
+        matches.length === 1 &&
+        pending(matches[0]);
+    (lagging ? deferred : reasons).push(reason);
+  }
+  for (const job of snapshot.jobs) {
+    if (
+      Array.isArray(job.steps) &&
+      job.steps.some(
+        (step) => step.conclusion != null && !["success", "skipped"].includes(step.conclusion),
+      )
+    )
+      reasons.push("HOSTED_STEP_CONCLUSION: " + job.name);
+    if (
+      job.conclusion !== null &&
+      !(
+        job.status === "completed" &&
+        (job.conclusion === "success" ||
+          (job.conclusion === "skipped" && notApplicableJobs.includes(job.name)))
+      )
+    )
+      reasons.push("HOSTED_JOB_CONCLUSION: " + job.name);
+  }
+  return {
+    schemaVersion: 1,
+    identity: snapshot.expected,
+    basis: "github-needs-with-validated-rest-snapshot",
+    scope: "scheduler-dependencies",
+    applicability,
+    status: reasons.length ? "failed" : "passed",
+    dependencies,
+    reasons: [...new Set(reasons)],
+    observerPending: deferred,
+  };
 }
 
 function timestamp(value) {
