@@ -19,8 +19,10 @@ else {
       windowsHide: true,
     },
   );
-  if (result.status === 0) require("./lib/main.js");
-  else
+  if (result.status === 0) {
+    process.env.GEA_COMPANY_CLIENT = "1";
+    require("./lib/main.js");
+  } else
     app.whenReady().then(() => {
       dialog.showErrorBox(
         "GEA 安装或升级未完成",
