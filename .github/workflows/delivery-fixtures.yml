@@ -4,6 +4,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      reuse_prepared_inputs:
+        description: "Reuse verified desktop preparation; disable for a cold benchmark or rebuild"
+        default: true
+        required: false
+        type: boolean
       windows_complete_input:
         description: "Fixed desktop version, Core8cf, merged GEA SHA and three immutable published package identities as JSON"
         required: false
@@ -134,6 +139,7 @@ jobs:
         run: node gea/scripts/windows-complete-local/core-cache.mjs plan core mac-baseline
       - uses: actions/cache/restore@v4
         id: delivery-baseline-restore
+        if: inputs.reuse_prepared_inputs
         with:
           path: ${{ steps.delivery-baseline-plan.outputs.paths }}
           key: ${{ steps.delivery-baseline-plan.outputs.key }}
@@ -496,9 +502,20 @@ jobs:
         run: node gea/scripts/windows-complete-local/core-cache.mjs plan core windows-runtime
       - uses: actions/cache/restore@v4
         id: delivery-runtime-restore
+        if: inputs.reuse_prepared_inputs
         with:
           path: ${{ steps.delivery-runtime-plan.outputs.paths }}
           key: ${{ steps.delivery-runtime-plan.outputs.key }}
+      - name: Select GNU tar for Unicode published archives
+        shell: pwsh
+        run: |
+          $tarDirectory = Join-Path $env:ProgramFiles 'Git\usr\bin'
+          $tarExecutable = Join-Path $tarDirectory 'tar.exe'
+          if (!(Test-Path -LiteralPath $tarExecutable)) { throw 'DELIVERY_GNU_TAR_REQUIRED' }
+          & $tarExecutable --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
+          'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
       - name: Build full Windows package and verify isolated first installation
         run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
       - name: Verify Core output after packaging

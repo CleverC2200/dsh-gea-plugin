@@ -16,10 +16,20 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "mac_complete_input",
     "native_acceptance_bundle_sha256",
     "native_acceptance_bundle_url",
+    "reuse_prepared_inputs",
     "source_types_input",
     "windows_complete_input",
   ]);
-  for (const input of Object.values(inputs)) {
+  for (const [name, input] of Object.entries(inputs)) {
+    if (name === "reuse_prepared_inputs") {
+      assert.deepEqual(input, {
+        description: "Reuse verified desktop preparation; disable for a cold benchmark or rebuild",
+        default: true,
+        required: false,
+        type: "boolean",
+      });
+      continue;
+    }
     assert.equal(input.type, "string");
     assert.equal(input.required, false);
   }
@@ -116,6 +126,19 @@ test("complete delivery verifies exact Core outputs and cold tools before compil
   }
 });
 
+test("Windows packaging selects GNU tar with literal names and local drive paths", () => {
+  const steps = workflow.jobs["windows-complete-package"].steps;
+  const index = steps.findIndex(
+    (step) => step.name === "Select GNU tar for Unicode published archives",
+  );
+  assert.ok(index >= 0 && index < steps.findIndex((step) => step.name?.startsWith("Build full ")));
+  const step = steps[index];
+  assert.equal(step.shell, "pwsh");
+  assert.match(step.run, /Git\\usr\\bin/);
+  assert.match(step.run, /TAR_OPTIONS=--force-local --quoting-style=literal/);
+  assert.match(step.run, /DELIVERY_GNU_TAR_REQUIRED/);
+});
+
 test("verified Core can be saved after wrapper failure without hiding the failed delivery", () => {
   for (const name of ["mac-complete-package", "windows-complete-package"]) {
     const steps = workflow.jobs[name].steps;
@@ -196,6 +219,7 @@ test("desktop jobs restore exact prepared inputs and save only after verifying u
     );
     assert.match(steps[plan].run, new RegExp(`core-cache\\.mjs plan core ${profile}`));
     assert.match(steps[verify].run, new RegExp(`core-cache\\.mjs verify core ${profile}`));
+    assert.equal(steps[restore].if, "inputs.reuse_prepared_inputs");
     assert.equal(steps[restore].with["restore-keys"], undefined);
     assert.equal(steps[restore].with.key, `\u0024{{ steps.delivery-${id}-plan.outputs.key }}`);
     assert.equal(steps[save].with.path, steps[restore].with.path);
