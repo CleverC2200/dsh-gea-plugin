@@ -38,15 +38,29 @@ export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000
 
 export function assessSourceBudget(snapshot, options = {}) {
   const jobs = snapshot?.jobs ?? [];
-  return assessHostedBudget({
+  const sourceJobs = jobs.some((job) => /^source-checks \([12]\)$/.test(job.name))
+    ? ["source-checks (1)", "source-checks (2)"]
+    : ["source-checks"];
+  const skipped = jobs.filter((job) => job.conclusion === "skipped").map((job) => job.name);
+  const result = assessHostedBudget({
     snapshot,
-    requiredJobs: jobs
-      .filter((job) => job.name !== "candidate-quality" && job.conclusion !== "skipped")
-      .map((job) => job.name),
-    notApplicableJobs: jobs.filter((job) => job.conclusion === "skipped").map((job) => job.name),
+    requiredJobs: [
+      ...new Set([
+        "source-plan",
+        ...sourceJobs,
+        ...jobs.filter((job) => job.name !== "candidate-quality").map((job) => job.name),
+      ]),
+    ].filter((name) => !skipped.includes(name) || name === "source-plan"),
+    notApplicableJobs: skipped.filter((name) => name !== "source-plan"),
     finalJobName: "candidate-quality",
     ...options,
   });
+  if (result.mode === "in-gate" && options.admission !== "success") {
+    result.functional.status = options.admission ? "failed" : "unknown";
+    result.functional.reasons.push("SOURCE_ADMISSION_NOT_PASSED");
+    result.passed = false;
+  }
+  return result;
 }
 
 export async function readHostedRun({
@@ -425,7 +439,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
           headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
           token: process.env.GITHUB_TOKEN,
         });
-    result = assessSourceBudget(snapshot, { mode: values.mode });
+    result = assessSourceBudget(snapshot, {
+      mode: values.mode,
+      admission: process.env.SOURCE_ADMISSION_RESULT,
+    });
   } catch (error) {
     result = {
       schemaVersion: 1,

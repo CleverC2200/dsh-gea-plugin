@@ -16,6 +16,7 @@ test("completed real execution produces a scheduling reference while source chan
   mkdirSync(join(root, "src"));
   writeFileSync(join(root, "tests/a.test.mjs"), "import test from 'node:test';test('a',()=>{});");
   writeFileSync(join(root, "src/host.ts"), "export const value = 1;");
+  writeFileSync(join(root, "package.json"), "{}");
   const environment = {
     platform: process.platform,
     node: process.versions.node,
@@ -41,11 +42,14 @@ test("completed real execution produces a scheduling reference while source chan
     plan,
     receipts: [receipt],
     root,
-    inputs: ["src/host.ts"],
+    inputs: ["src/host.ts", "package.json"],
   });
   assert.equal(timings.source.acceptance, "not-acceptance");
   assert.equal(currentTestTimings({ root, timings, environment }).files.length, 1);
   writeFileSync(join(root, "src/host.ts"), "export const value = 2;");
+  assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
+  writeFileSync(join(root, "src/host.ts"), "export const value = 1;");
+  writeFileSync(join(root, "package.json"), '{"dependencies":{"changed":"1"}}');
   assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
   assert.throws(() => timingsFromExecution({ plan, receipts: [], root, inputs: [] }));
   assert.throws(() =>

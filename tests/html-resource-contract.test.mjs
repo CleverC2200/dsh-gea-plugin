@@ -18,7 +18,11 @@ test("packaging and Host share the exact governed HTML MCP admission", () => {
   };
   assert.doesNotThrow(() => assertHtmlMcp(mcp, "mps", false));
   assert.doesNotThrow(() =>
-    assertHtmlMcp({ ...mcp, capabilities: ["governed-sql-read", "governed-cube-read"] }, "mps", false),
+    assertHtmlMcp(
+      { ...mcp, capabilities: ["governed-sql-read", "governed-cube-read"] },
+      "mps",
+      false,
+    ),
   );
   assert.doesNotThrow(() => assertHtmlMcp({ ...mcp, capabilities: [] }, "mps", true));
   for (const invalid of [

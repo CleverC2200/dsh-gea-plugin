@@ -64,7 +64,7 @@ const assess = (value, options = {}) =>
 test("daily source budgets distinguish functional success, slow completion and missing time", () => {
   const value = snapshot(600001);
   value.jobs[0].name = "source-plan";
-  value.jobs[1].name = "source-checks (1)";
+  value.jobs[1].name = "source-checks";
   const result = assessSourceBudget(value, { mode: "completed", now: value.observedAt });
   assert.equal(result.functional.status, "passed");
   assert.equal(result.performance.status, "failed");
@@ -74,6 +74,38 @@ test("daily source budgets distinguish functional success, slow completion and m
     assessSourceBudget(value, { mode: "completed", now: value.observedAt }).performance.status,
     "unknown",
   );
+});
+
+test("source budget never reports functional success for missing plan or shard evidence", () => {
+  const value = snapshot();
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks (1)";
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "failed");
+  value.jobs[1].name = "source-checks";
+  value.jobs.splice(0, 1);
+  value.pagination.totalCount = value.jobs.length;
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "failed");
+});
+
+test("in-gate source reports preserve a failed final admission", () => {
+  const value = snapshot();
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks";
+  value.run.status = "in_progress";
+  value.run.conclusion = null;
+  value.jobs[2].status = "in_progress";
+  value.jobs[2].conclusion = null;
+  value.jobs[2].completed_at = null;
+  const options = { mode: "in-gate", now: value.observedAt };
+  assert.equal(
+    assessSourceBudget(value, { ...options, admission: "success" }).functional.status,
+    "passed",
+  );
+  assert.equal(
+    assessSourceBudget(value, { ...options, admission: "failure" }).functional.status,
+    "failed",
+  );
+  assert.equal(assessSourceBudget(value, options).functional.status, "unknown");
 });
 
 async function restFixture(t, change = (response) => response) {

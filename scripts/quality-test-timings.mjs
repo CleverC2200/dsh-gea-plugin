@@ -9,7 +9,7 @@ import { verifyExecutionResults, executionDigest } from "./quality-test-executio
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const relativeFile = (file) =>
   typeof file === "string" &&
-  /^(?:tests|scripts|src)\//.test(file) &&
+  /^(?:(?:tests|scripts|src)\/|package\.json$|pnpm-lock\.yaml$)/.test(file) &&
   !file.split("/").some((part) => !part || part === "." || part === "..") &&
   !/[\\\0\r\n]/.test(file);
 
@@ -151,7 +151,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       [
         "status",
         "--porcelain",
-        "--untracked-files=no",
+        "--untracked-files=all",
         "--",
         "src",
         "scripts",
@@ -165,7 +165,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     throw Error("QUALITY_TEST_TIMING_SOURCE_MISMATCH");
   const inputs = execFileSync(
     "git",
-    ["ls-files", "-z", "--", "src", "scripts", "tests/fixtures", "tests/profile.mjs"],
+    [
+      "ls-files",
+      "-z",
+      "--",
+      "src",
+      "scripts",
+      "tests/fixtures",
+      "tests/profile.mjs",
+      "package.json",
+      "pnpm-lock.yaml",
+    ],
     { encoding: "utf8" },
   )
     .split("\0")

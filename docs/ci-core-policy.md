@@ -14,7 +14,7 @@ PR 与 main push 由 `.github/workflows/source-quality.yml` 按实际 Git 差异
 node scripts/quality-test-timings.mjs --plan /absolute/quality-test-execution-plan.json --execution /absolute/worker-1/quality-test-execution.json --execution /absolute/worker-2/quality-test-execution.json --output /absolute/new-timings.json
 ```
 
-单 worker 只传一次 `--execution`。必须是同一冻结计划的完整成功覆盖，部分或取消结果不能更新参考。输出只用于排程，保留来源和共享源码摘要。核对后更新原 `scripts/quality-test-timings.json`，旧运行和报告保留。
+单 worker 只传一次 `--execution`。必须是同一冻结计划的完整成功覆盖，部分或取消结果不能更新参考。输出只用于排程，保留来源、共享源码、包清单和锁文件摘要。日常最终任务另存功能准入和 600 秒预算判断，任务内观察不含后续清理；完整耗时结论需在运行结束后使用 completed 模式核对。核对后更新原 `scripts/quality-test-timings.json`，旧运行和报告保留。
 
 下文描述手动三仓流程及其历史范围，涉及联合合并门禁的旧说明不再适用于日常 PR/main。
 

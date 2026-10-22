@@ -336,6 +336,7 @@ jobs:
         if: needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
         run: node scripts/source-check-shards.mjs --aggregate source-check-shards
       - name: Require successful applicable checks
+        id: admission
         env:
           PLAN_RESULT: ${{ needs.source-plan.result }}
           CHECK_RESULT: ${{ needs.source-checks.result }}
@@ -345,6 +346,7 @@ jobs:
         if: always()
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_ADMISSION_RESULT: ${{ steps.admission.outcome }}
         run: node scripts/quality-hosted-budget.mjs --source-report source-budget.json --mode in-gate
       - name: Keep source workflow performance
         if: always()

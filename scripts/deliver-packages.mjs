@@ -181,12 +181,17 @@ async function preflight(input, destination) {
     try {
       await verifyHtmlCapabilities(path, build.outputs);
     } catch (error) {
-      error.delivery = { ...error.delivery, repo };
+      error.delivery = { ...error.delivery, repo, stage: "html-capability" };
       throw error;
     }
     if (repo !== "dsh-gea-plugin") {
-      const rawManifest = archive(absolute(row.archive), manifest.name, true);
-      builtArchive(row.archive, rawManifest, build.outputs);
+      try {
+        const rawManifest = archive(absolute(row.archive), manifest.name, true);
+        builtArchive(row.archive, rawManifest, build.outputs);
+      } catch (error) {
+        error.delivery = { repo, stage: "raw-archive" };
+        throw error;
+      }
     } else {
       // Prepare uses this same owner formatter. Validate publication metadata
       // here so a missing optional peer version cannot create a failed stage.
@@ -290,8 +295,14 @@ async function deliver(input, destination) {
               gea.path,
             ),
           );
-    const manifest = archive(receipt.artifact, owner.manifest.name);
-    builtArchive(receipt.artifact, manifest, owner.outputs);
+    let manifest;
+    try {
+      manifest = archive(receipt.artifact, owner.manifest.name);
+      builtArchive(receipt.artifact, manifest, owner.outputs);
+    } catch (error) {
+      error.delivery = { repo: owner.repo, stage: "published-archive" };
+      throw error;
+    }
     const installGraph = {
       dependencies: manifest.dependencies,
       optionalDependencies: manifest.optionalDependencies,
@@ -419,7 +430,7 @@ try {
     console.error(
       JSON.stringify({
         repo: error.delivery.repo,
-        stage: "html-capability",
+        stage: error.delivery.stage,
         file: /^[a-z0-9_./-]+$/i.test(error.delivery.file ?? "") ? error.delivery.file : null,
       }),
     );

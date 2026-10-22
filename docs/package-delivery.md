@@ -124,3 +124,5 @@ Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开
 ## 公司桌面构建
 
 公司完整桌面包可只携带三个必要插件，GenUI 仍为可选第四包，现有配置和卸载选择保留。构建版本使用用户确认的完整版本号；Core 身份仍由实际 launcher/runtime 的产品版本、App 的干净提交与完整字节证明确定，不能把带日期的桌面构建版本当成 Core runtime 版本。当前明确登记公司 Core `8cfb899ccf21d3662421b99b5f4627842ef712ea`，允许原 `639ed015397290b3745d163aafe02ffee4aa3f84` 的证明刷新，未知 Core 继续拒绝。
+
+归档的 owner 输出校验一次流式读取，按原始路径核对每个文件的 SHA256，并拒绝缺文件、重复条目和链接。容量检查先于归档检查；原始包和整理后包的失败分别标明 raw-archive 与 published-archive 阶段。此校验不替代最终三包安装和 Host 接收。
