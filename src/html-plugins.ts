@@ -108,7 +108,11 @@ export async function registerHtmlPlugins(
       mcp.contract !== "gea-html-v2" ||
       mcp.consumer?.consumerCode !== manifest.gea.consumerCode ||
       mcp.consumer?.consumerType !== "AGENT" ||
-      JSON.stringify(mcp.capabilities) !== JSON.stringify(mock ? [] : ["governed-sql-read"])
+      !(mock
+        ? JSON.stringify(mcp.capabilities) === "[]"
+        : ['["governed-sql-read"]', '["governed-sql-read","governed-cube-read"]'].includes(
+            JSON.stringify(mcp.capabilities),
+          ))
     )
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
     if (!manifest.declarations || manifest.agentResources?.provider !== "dsh-agent-manage")

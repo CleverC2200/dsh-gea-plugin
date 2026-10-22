@@ -6,6 +6,87 @@ import { tmpdir } from "node:os";
 import { readConfiguredHtmlQuery } from "../src/host/configured-html-query.ts";
 import { createGeaSqlDatabase } from "../src/html-sql.ts";
 const signal = () => new AbortController().signal;
+test("configured Cube keeps installed members and Consumer, binds a leap month and preserves partial NULL", async (t) => {
+  const r = await resource(t, "mps"),
+    calls = [];
+  const business = {
+    pluginSql: async () => {
+      throw Error("Cube must not use SQL");
+    },
+    moduleMcp: async (consumer, s) => {
+      assert.equal(consumer, "mps");
+      assert.equal(s, scope.signal);
+      return {
+        call: async (name, args) => {
+          calls.push({ name, args });
+          const q = args.queries[0];
+          const columns = r.config.queries[q.name].columns;
+          return JSON.stringify({
+            action: "query",
+            status: "completed",
+            executedQueryCount: 1,
+            datasets: [
+              {
+                name: q.name,
+                rows: [
+                  Object.fromEntries(
+                    columns.map((key) => [
+                      key,
+                      key.endsWith("income_excl_tax_local_total") ? null : 0,
+                    ]),
+                  ),
+                ],
+                rowCount: 1,
+                fields: columns.map((name) => ({ name })),
+                dataStatus: "partial",
+                totalRowCount: 1,
+                offset: 0,
+                hasMorePages: false,
+                warnings: [{ code: "METRIC_VALUE_UNAVAILABLE" }],
+              },
+            ],
+          });
+        },
+      };
+    },
+  };
+  const scope = new AbortController();
+  const input = {
+    queryId: "facts.history",
+    parameters: { month: "2024-02-01", page_size: 200, offset: 0 },
+  };
+  const result = await readConfiguredHtmlQuery(r, input, business, scope.signal);
+  assert.equal(result.success, undefined);
+  assert.equal(result.rows[0]["agents_scm_cust_deliv_daily_di.income_excl_tax_local_total"], null);
+  assert.equal(result.dataStatus, "partial");
+  assert.deepEqual(result.warnings, [{ code: "METRIC_VALUE_UNAVAILABLE" }]);
+  assert.equal(calls[0].name, "query_business_data");
+  assert.deepEqual(calls[0].args.queries[0].query.timeDimensions[0], {
+    dimension: "agents_scm_cust_deliv_daily_di.shipment_date",
+    dateRange: ["2024-02-01", "2024-02-29"],
+  });
+  for (const extra of [{ consumerCode: "other" }, { cube: {} }, { sql: "SELECT 1" }]) {
+    const denied = await readConfiguredHtmlQuery(
+      r,
+      { ...input, parameters: { ...input.parameters, ...extra } },
+      business,
+      scope.signal,
+    );
+    assert.equal(denied.success, false);
+  }
+  assert.equal(calls.length, 1);
+  const invalid = await readConfiguredHtmlQuery(
+    r,
+    { ...input, parameters: { ...input.parameters, month: "2024-02-02" } },
+    business,
+    scope.signal,
+  );
+  assert.equal(invalid.success, false);
+  scope.abort();
+  await assert.rejects(readConfiguredHtmlQuery(r, input, business, scope.signal), {
+    name: "AbortError",
+  });
+});
 async function resource(t, id) {
   const directory = await mkdtemp(join(tmpdir(), "configured-gea-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -133,7 +214,11 @@ test("structured permission failures survive configured transport with secret re
     },
   });
   await assert.rejects(
-    db.queryConfigured({ sql: "SELECT 1 AS qty", parameters: {}, includeTotal: false }),
+    db.queryConfigured({
+      sql: "SELECT 1 AS qty",
+      parameters: {},
+      includeTotal: false,
+    }),
     (e) => {
       assert.equal(e.code, "NO_RETURN_COLUMN_ALLOWED");
       assert.equal(e.failure.stage, "BIND");
@@ -172,10 +257,18 @@ for (const flag of [{ complete: false }, { truncated: true }, { hasMore: true },
     const db = createGeaSqlDatabase(() => "fixture-token", {
       endpoint: "https://fixture.invalid/sql",
       signal: signal(),
-      fetch: async () => Response.json({ success: true, result: { rows: [{ qty: 1 }], ...flag } }),
+      fetch: async () =>
+        Response.json({
+          success: true,
+          result: { rows: [{ qty: 1 }], ...flag },
+        }),
     });
     await assert.rejects(
-      db.queryConfigured({ sql: "SELECT 1 AS qty", parameters: {}, includeTotal: false }),
+      db.queryConfigured({
+        sql: "SELECT 1 AS qty",
+        parameters: {},
+        includeTotal: false,
+      }),
       (e) => ["GEA_SQL_RESULT_INCOMPLETE", "GEA_SQL_RESPONSE_INVALID"].includes(e.code),
     );
   });
