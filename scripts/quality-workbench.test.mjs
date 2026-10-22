@@ -50,6 +50,7 @@ function preparedFixture(t, worktree = false) {
     mkdirSync(join(source, "static", id), { recursive: true });
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
     writeFileSync(join(source, "static", id, "page.json"), "{}\n");
+    if (id === "mps") writeFileSync(join(source, "static", id, "sql.config.json"), "{}\n");
   }
   mkdirSync(join(source, "business/inventory-dealer"), { recursive: true });
   writeFileSync(
@@ -94,9 +95,8 @@ function preparedFixture(t, worktree = false) {
   return { source, prepared, head, receipt, git };
 }
 
-function copiedSqlFixture(t) {
+function copiedSqlFixture(t, resource = "business/inventory-apsplan/sql.config.json") {
   const fixture = preparedFixture(t);
-  const resource = "business/inventory-apsplan/sql.config.json";
   const output = "lib/" + resource;
   mkdirSync(join(fixture.prepared, output, ".."), { recursive: true });
   copyFileSync(join(fixture.source, resource), join(fixture.prepared, output));
@@ -675,5 +675,16 @@ test("retired tracked declarations may disappear and their absence stays frozen"
 test("generated declaration removal cannot admit authored source deletion", async (t) => {
   const fixture = preparedFixture(t);
   rmSync(join(fixture.prepared, "src/input.ts"));
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("the MPS SQL config copy retains the same fixed-source byte and redirect checks", async (t) => {
+  const fixture = copiedSqlFixture(t, "static/mps/sql.config.json");
+  const record = await readPreparedWorkbench(fixture);
+  assert.ok(record.files[fixture.output]);
+  writeFileSync(join(fixture.prepared, fixture.output), "changed config\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  rmSync(join(fixture.prepared, fixture.output));
+  symlinkSync(join(fixture.source, fixture.resource), join(fixture.prepared, fixture.output));
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
