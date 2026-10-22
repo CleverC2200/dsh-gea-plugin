@@ -51,6 +51,7 @@ function preparedFixture(t, worktree = false) {
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
     writeFileSync(join(source, "static", id, "page.json"), "{}\n");
   }
+  writeFileSync(join(source, "static/mps/sql.config.json"), "{}\n");
   mkdirSync(join(source, "business/inventory-dealer"), { recursive: true });
   writeFileSync(
     join(source, "business/inventory-dealer/sql.config.json"),
@@ -194,6 +195,7 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
 test("customer and fulfillment build copies require identical caller-frozen Manage blobs", async (t) => {
   for (const suffix of [
     "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
+    "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
     "inventory-orderfulfillment/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-orderfulfillment/README.md",
     "inventory-orderfulfillment/SOURCE.json",
@@ -674,5 +676,16 @@ test("retired tracked declarations may disappear and their absence stays frozen"
 test("generated declaration removal cannot admit authored source deletion", async (t) => {
   const fixture = preparedFixture(t);
   rmSync(join(fixture.prepared, "src/input.ts"));
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("MPS SQL copies retain the frozen source and reject altered bytes", async (t) => {
+  const fixture = preparedFixture(t);
+  const original = join(fixture.source, "static/mps/sql.config.json");
+  const output = join(fixture.prepared, "lib/static/mps/sql.config.json");
+  mkdirSync(join(output, ".."), { recursive: true });
+  copyFileSync(original, output);
+  await readPreparedWorkbench(fixture);
+  writeFileSync(output, "changed config\n");
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
