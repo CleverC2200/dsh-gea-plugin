@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { companyPackageNames } from "../../src/shared/plugin-release.mjs";
+import { artifactSetSha256 } from "../../scripts/plugin-reception/contract.mjs";
 const [W, M, G] = companyPackageNames;
 const defaultCore = {
   head: "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8",
@@ -148,6 +149,66 @@ export async function createReleasePreflightFixture(t, options = {}) {
     });
   }
   await writeFile(input.deliveryManifest, JSON.stringify(delivery));
+  async function refreshUpgrade() {
+    const upgrade = {
+      schema: 1,
+      status: "step-upgrades-verified",
+      core,
+      observerSha256: hash(
+        await readFile(
+          new URL("../../scripts/plugin-reception/observe-worker.mjs", import.meta.url),
+        ),
+      ),
+      targets: delivery.packages,
+      paths: [],
+    };
+    for (const start of input.supportedStarts) {
+      let artifacts = start.installed
+        .filter((row) => companyPackageNames.includes(row.name))
+        .map((row) => ({ name: row.name, version: row.version, sha256: row.artifactSha256 }));
+      const path = {
+        id: start.id,
+        startArtifactSetSha256: artifactSetSha256(artifacts),
+        order: [G, W, M],
+        steps: [],
+      };
+      for (const name of path.order) {
+        artifacts = artifacts.map((row) =>
+          row.name === name ? delivery.packages.find((target) => target.name === name) : row,
+        );
+        const observation = join(root, start.id + "-" + path.steps.length + ".json");
+        const bytes = Buffer.from(
+          JSON.stringify({
+            artifactSetSha256: artifactSetSha256(artifacts),
+            success: true,
+            checkpoint: "complete",
+            credentialsReadOrCopied: false,
+            modelTasks: 0,
+            businessQueries: 0,
+            outgoingAttempts: { fetch: 0, http: 0, https: 0, socket: 0 },
+            plugins: companyPackageNames.map((name) => ({ name, active: true, mounts: 1 })),
+            upgrade: {
+              identityRouteAvailable: true,
+              updateRouteAvailable: true,
+              incompatibleResources: [],
+            },
+          }),
+        );
+        await writeFile(observation, bytes);
+        path.steps.push({
+          packageName: name,
+          installedArchiveBytesVerified: true,
+          artifactSetSha256: artifactSetSha256(artifacts),
+          observation,
+          observationSha256: hash(bytes),
+        });
+      }
+      upgrade.paths.push(path);
+    }
+    input.upgradeVerification = join(root, "upgrade.json");
+    await writeFile(input.upgradeVerification, JSON.stringify(upgrade));
+  }
+  await refreshUpgrade();
   const file = join(root, "input.json");
   const run = async (value = input, entry = "scripts/release-preflight.mjs", args = []) => {
     await writeFile(file, JSON.stringify(value));
@@ -155,5 +216,5 @@ export async function createReleasePreflightFixture(t, options = {}) {
       encoding: "utf8",
     });
   };
-  return { root, file, input, delivery, run };
+  return { root, file, input, delivery, run, refreshUpgrade };
 }

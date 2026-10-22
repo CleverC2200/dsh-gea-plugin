@@ -4,9 +4,44 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { companyPackageNames } from "../src/shared/plugin-release.mjs";
+import { digest } from "../scripts/plugin-reception/contract.mjs";
 
 const [, M, G] = companyPackageNames;
 import { createReleasePreflightFixture as fixture } from "./fixtures/plugin-release-preflight.mjs";
+
+test("release refuses a missing intermediate restart even when the final graph passes", async (t) => {
+  const f = await fixture(t),
+    missing = structuredClone(f.input);
+  delete missing.upgradeVerification;
+  assert.match((await f.run(missing)).stderr, /RELEASE_UPGRADE_RUNTIME_REQUIRED/);
+  const runtime = JSON.parse(await readFile(f.input.upgradeVerification, "utf8"));
+  const step = runtime.paths[0].steps[0];
+  const observation = JSON.parse(await readFile(step.observation, "utf8"));
+  observation.plugins[0].active = false;
+  const bytes = Buffer.from(JSON.stringify(observation));
+  await writeFile(step.observation, bytes);
+  step.observationSha256 = digest(bytes);
+  await writeFile(f.input.upgradeVerification, JSON.stringify(runtime));
+  assert.match((await f.run()).stderr, /RELEASE_UPGRADE_PLUGIN_INACTIVE/);
+  runtime.paths[0].steps.shift();
+  await writeFile(f.input.upgradeVerification, JSON.stringify(runtime));
+  assert.match((await f.run()).stderr, /RELEASE_UPGRADE_STEP_MISSING/);
+});
+
+test("release refuses unresolved resource incompatibility in the final restart", async (t) => {
+  const f = await fixture(t);
+  const runtime = JSON.parse(await readFile(f.input.upgradeVerification, "utf8"));
+  const step = runtime.paths[0].steps.at(-1);
+  const observation = JSON.parse(await readFile(step.observation, "utf8"));
+  observation.upgrade.incompatibleResources = [
+    { id: "inventory-orderfulfillment", code: "INVALID_AGENT_RESOURCE_IDENTITY" },
+  ];
+  const bytes = Buffer.from(JSON.stringify(observation));
+  await writeFile(step.observation, bytes);
+  step.observationSha256 = digest(bytes);
+  await writeFile(f.input.upgradeVerification, JSON.stringify(runtime));
+  assert.match((await f.run()).stderr, /RELEASE_UPGRADE_FINAL_RESOURCE_INCOMPATIBLE/);
+});
 
 test("public preflight finds a GEA-first path from previous stable, sales and resubmit using full installed graphs", async (t) => {
   const f = await fixture(t),
@@ -145,6 +180,7 @@ test("same-version three-package promotion accepts the identical deployed bytes 
   }
   f.input.deployed = [{ id: "test-channel", installed }];
   f.input.supportedStarts = [{ ...f.input.supportedStarts[0], id: "test-promotion", installed }];
+  await f.refreshUpgrade();
   const result = await f.run();
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).paths[0].order.length, 3);

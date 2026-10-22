@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.182",
+  "version": "0.0.183",
   "private": true,
   "packageManager": "pnpm@11.27.0",
   "type": "module",
@@ -77,7 +77,8 @@
     "typecheck:plugin-updates": "node scripts/check-plugin-updates-types.mjs",
     "test:package-version": "node --test scripts/package-version-gate.test.mjs scripts/plugin-package-version.test.mjs",
     "test:plugin-updates:desktop": "node --expose-internals --test tests/acceptance/plugin-update-desktop.mjs",
-    "test:full": "node scripts/run-quality-full.mjs"
+    "test:full": "node scripts/run-quality-full.mjs",
+    "release:verify-steps": "node scripts/verify-step-upgrades.mjs"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",

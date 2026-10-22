@@ -15,6 +15,7 @@ import {
 } from "../src/shared/plugin-release.mjs";
 import { sourceChanges, verifyPackageBuild, builtArchive } from "./package-source-integrity.mjs";
 import { findSupportedCore } from "./supported-cores.mjs";
+import { verifyUpgradeReceipts } from "./step-upgrade-receipts.mjs";
 
 const fail = (code, detail = "") => {
   throw Error(`${code}${detail ? ": " + detail : ""}`);
@@ -206,7 +207,7 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
         );
     }
   }
-  const paths = input.supportedStarts.map((start) => {
+  for (const start of input.supportedStarts) {
     validateCore(start.core);
     const order = findPluginUpdatePath({
       core: start.core,
@@ -214,8 +215,13 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
       releases: targets.map(({ release }) => release),
     });
     if (!order) fail("RELEASE_UPGRADE_PATH_MISSING", start.id);
-    return { id: start.id, order };
-  });
+  }
+  const runtime = await verifyUpgradeReceipts(
+    input.upgradeVerification,
+    input.supportedStarts,
+    targets,
+  );
+  const paths = runtime.paths.map(({ id, order }) => ({ id, order }));
   return {
     status: "release-preflight-passed",
     inputSha256: digest(await readFile(inputPath)),
@@ -223,6 +229,7 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
     sources: sources.map(({ manifest: _manifest, ...source }) => source),
     targets,
     paths,
+    upgradeRuntime: runtime,
   };
 }
 
