@@ -460,7 +460,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/build\\.mjs)$",
+      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/(?:build|baseline)\\.mjs)$",
       "tests": [
         "scripts/windows-complete-local/core-cache.test.mjs",
         "scripts/windows-complete-local/input.test.mjs",
