@@ -117,13 +117,12 @@ export class GeaModelAdapter extends LlmAdapter {
     let responseReceivedMs: number | null = null;
     let textChars = 0;
     const cancellation = new AbortController();
-    const access = await this.htmlAccess(options.sessionId, options.signal);
+    let releaseSource: (() => void) | undefined;
     using watchdog = idleWatchdog(
       AbortSignal.any([
         cancellation.signal,
         ...(options.signal ? [options.signal] : []),
         this.business.identitySignal(),
-        ...(access ? [access.signal] : []),
       ]),
       this.business.config.modelRequestTimeoutMs,
       "GEA_MODEL_IDLE",
@@ -134,7 +133,15 @@ export class GeaModelAdapter extends LlmAdapter {
     let stage = "连接";
     const modelHost = "GEA 模型网关";
     const business = this.business;
+    const htmlAccess = this.htmlAccess;
     const request = async function* (): AsyncGenerator<StreamChunk> {
+      const access = await htmlAccess(options.sessionId, signal);
+      if (access) {
+        const abort = () => cancellation.abort(access.signal.reason);
+        access.signal.addEventListener("abort", abort, { once: true });
+        releaseSource = () => access.signal.removeEventListener("abort", abort);
+        access.signal.throwIfAborted();
+      }
       const consumer = access?.consumerCode;
       business.assertExecutionAllowed(
         consumer ?? business.config.analysisAgentCode,
@@ -269,6 +276,7 @@ export class GeaModelAdapter extends LlmAdapter {
         { requestId: ProviderRequestId(requestId) },
       );
     } finally {
+      releaseSource?.();
       cancellation.abort();
       try {
         await iterator.return(undefined);

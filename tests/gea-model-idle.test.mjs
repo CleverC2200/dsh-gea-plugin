@@ -194,6 +194,28 @@ test("waiting for response headers uses the same idle timeout", async (t) => {
   assert.equal(aborted, true);
 });
 
+test("managed source resolution retains the existing model idle timeout", async (t) => {
+  let aborted = false;
+  const { adapter } = fixture(t, async () => assert.fail("source resolution must finish first"), {
+    access: async (_session, signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      }),
+  });
+  const pending = assert.rejects(collect(adapter.stream(options)), { code: "GEA_NETWORK_TIMEOUT" });
+  await settled();
+  t.mock.timers.tick(1000);
+  await pending;
+  assert.equal(aborted, true);
+});
+
 test("consumer processing time is not model idle time and early return closes the stream", async (t) => {
   const stream = response();
   const { adapter } = fixture(t, async () => stream.value);
