@@ -293,17 +293,20 @@ test(
               Math.abs((rect.left + rect.right - column.left - column.right) / 2) < 2
             );
           });
+          await expect(page.locator(".gea-agent-welcome")).toBeVisible();
           await page.locator(".gea-agent-welcome").evaluate((el) => {
             el.scrollTo({ top: 0, behavior: "instant" });
           });
-          const inset = await page
+          const inset = () => page
             .locator(".gea-agent-welcome")
             .evaluate(
               (el) =>
                 el.querySelector(".gea-agent-identity").getBoundingClientRect().top -
                 el.getBoundingClientRect().top,
             );
-          assert.equal(inset, 28, "plan Agent avatar must match the APS top inset");
+          await expect.poll(inset, {
+            message: "plan Agent avatar must match the APS top inset after view layout settles",
+          }).toBe(28);
           const centered = await page.evaluate(() => {
             const content = document.querySelector(
               ".agent-workbench-native-conversation [data-conversation-scroll]",
