@@ -1,19 +1,19 @@
 name: source-timing-experiment
-run-name: "Current environment timing baseline — 0a5695f61afa44653da87336591aa616f20874d2"
+run-name: "Current environment timing comparison — 4cd00e2cfab506873251882ff61473154458f9d3"
 
 on:
   push:
     branches: [codex/gea-ci-timing-experiment-20261023]
 
 env:
-  SOURCE_HEAD_SHA: 0a5695f61afa44653da87336591aa616f20874d2
+  SOURCE_HEAD_SHA: 4cd00e2cfab506873251882ff61473154458f9d3
   SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
 
 permissions:
   contents: read
 
 concurrency:
-  group: source-timing-measurement-0a5695f61afa44653da87336591aa616f20874d2
+  group: source-timing-measurement-4cd00e2cfab506873251882ff61473154458f9d3
   cancel-in-progress: true
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 0a5695f61afa44653da87336591aa616f20874d2
+          ref: 4cd00e2cfab506873251882ff61473154458f9d3
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -95,7 +95,8 @@ jobs:
           assert.equal(files.length,179);
           assert.equal(createHash('sha256').update(JSON.stringify(files)).digest('hex'),'2361eb56debd204474d1617f99377032c90c0ebd30b495a9b7cccaf596edebb4');
           const cost=JSON.parse(readFileSync('.runtime/source-check-cost.json'));
-          assert.equal(cost.estimates.knownFiles,0);
+          assert.equal(cost.estimates.knownFiles,179);
+          assert.equal(cost.estimates.unknownFiles,0);
           assert.deepEqual(cost.binding.environment,{platform:'linux',node:'24.22.0',core:'0337d907d0c1305edfa0c915886a203e5e55539d',fileConcurrency:3});
           console.log(JSON.stringify({allReferenceTestsRetained:true,files:files.length,selectionSha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')}));
           NODE
@@ -131,7 +132,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 0a5695f61afa44653da87336591aa616f20874d2
+          ref: 4cd00e2cfab506873251882ff61473154458f9d3
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -340,7 +341,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 0a5695f61afa44653da87336591aa616f20874d2
+          ref: 4cd00e2cfab506873251882ff61473154458f9d3
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
