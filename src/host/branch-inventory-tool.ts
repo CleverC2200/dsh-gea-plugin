@@ -6,6 +6,8 @@ import { resolve, sep } from "node:path";
 import type { Business } from "./business.ts";
 import { assertSessionResourceAvailable, sessionConsumer } from "./business-identity.ts";
 import { readConfiguredHtmlQuery } from "./configured-html-query.ts";
+import { orchestrationInventoryAccess } from "./orchestration-inventory-access.ts";
+import { sameCubeAccess } from "./cube-access.ts";
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -74,11 +76,13 @@ export function registerBranchInventoryTool(
           const session = exec.agent.id;
           await assertSessionResourceAvailable(ctx, session, exec.signal);
           const consumer = sessionConsumer(ctx, business, session);
-          if (consumer !== "branch-inventory") throw Error("GEA_BRANCH_INVENTORY_NOT_AVAILABLE");
+          const access = orchestrationInventoryAccess(ctx, business, session);
+          if (consumer !== "branch-inventory" && !access)
+            throw Error("GEA_BRANCH_INVENTORY_NOT_AVAILABLE");
           const resource = packages.find(
             (item) =>
               item.manifest.id === "inventory-fc" &&
-              item.manifest.gea?.consumerCode === consumer &&
+              item.manifest.gea?.consumerCode === "branch-inventory" &&
               item.manifest.mode !== "mock",
           );
           if (!resource || resource.manifest.sqlConfig !== "sql.config.json")
@@ -89,6 +93,7 @@ export function registerBranchInventoryTool(
             exec.signal,
             business.identitySignal(),
             resourceChange.signal,
+            ...(access ? [access.sourceSignal] : []),
           ]);
           try {
             const page = args.page ?? 1;
@@ -140,6 +145,7 @@ export function registerBranchInventoryTool(
                       { queryId: call.queryId, parameters: call.values },
                       business,
                       signal,
+                      consumer,
                     ),
                   summaryOnly: !detail,
                   detailsOnly: detail,
@@ -165,6 +171,11 @@ export function registerBranchInventoryTool(
             await assertSessionResourceAvailable(ctx, session, signal);
             if (sessionConsumer(ctx, business, session) !== consumer)
               throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
+            if (access) {
+              const current = orchestrationInventoryAccess(ctx, business, session);
+              if (!current || !sameCubeAccess(access, current))
+                throw Error("GEA_INVENTORY_SOURCE_CHANGED");
+            }
             return JSON.stringify({
               ...record(result),
               unit: "箱",

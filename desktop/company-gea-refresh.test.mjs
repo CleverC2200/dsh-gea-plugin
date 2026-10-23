@@ -78,7 +78,8 @@ test("disabled, linked, missing and differently named plugins are preserved", ()
 import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { refreshBundledCompanySuite } from "./company-gea-refresh.mjs";
+import { refreshBundledCompanySuite, assertProfileIdle } from "./company-gea-refresh.mjs";
+import { refreshCompanyStartup } from "./company-bootstrap.mjs";
 
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "gea-refresh-"));
@@ -155,27 +156,91 @@ test("the refresh installs one complete suite, keeps user configuration and save
   );
 });
 
-test("an unfinished plugin update blocks refresh before any backup or install write", async (t) => {
+test("a pending restart defers bundled refresh while strict installation stays blocked", async (t) => {
   const f = await fixture(t);
   const id = "00000000-0000-4000-8000-000000000000";
-  await mkdir(join(f.profile, "gea/plugin-updates/operations", id), { recursive: true });
+  const operation = join(f.profile, "gea/plugin-updates/operations", id);
+  await mkdir(operation, { recursive: true });
   await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+  const receipt = JSON.stringify({ id, stage: "pending-restart" });
+  await writeFile(join(operation, "receipt.json"), receipt);
+  await assert.rejects(assertProfileIdle(f.profile), /GEA_REFRESH_UPDATE_PENDING/);
+  const result = await refreshBundledCompanySuite({
+    ...f,
+    install: () => assert.fail("pending restart must not enter installation"),
+  });
+  assert.equal(result.status, "pending-restart-preserved");
+  assert.equal(result.changed, false);
+  assert.equal(await readFile(join(operation, "receipt.json"), "utf8"), receipt);
+  await assert.rejects(access(join(f.profile, "gea/bootstrap/gea-refresh")), { code: "ENOENT" });
+  assert.equal(await readFile(join(f.profile, "package.json"), "utf8"), JSON.stringify(current));
+  const options = { ...f, legacyData: f.home, install: () => assert.fail("must not install") };
+  const startup = await refreshCompanyStartup(options);
+  assert.equal(startup.refresh.status, "pending-restart-preserved");
+  assert.equal(startup.cleanup, null);
+  for (const row of bundledSuite)
+    await writeFile(join(f.profile, "node_modules", row.name, "package.json"), JSON.stringify(row));
+  assert.equal((await refreshCompanyStartup(options)).cleanup, null);
+  await writeFile(join(operation, "receipt.json"), JSON.stringify({ id, stage: "completed" }));
+  const next = await refreshCompanyStartup(options);
+  assert.equal(next.refresh.status, "current-company-suite-preserved");
+  assert.ok(next.cleanup);
+});
+
+test("interrupted updates, unknown receipts and active writers still block startup refresh", async (t) => {
+  const f = await fixture(t);
+  const id = "00000000-0000-4000-8000-000000000000";
+  const operation = join(f.profile, "gea/plugin-updates/operations", id);
+  await mkdir(operation, { recursive: true });
+  await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+  for (const stage of ["accepted", "installing", "verifying", "restoring", "unknown"]) {
+    await writeFile(join(operation, "receipt.json"), JSON.stringify({ id, stage }));
+    await assert.rejects(
+      refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not install") }),
+      /GEA_REFRESH_UPDATE_PENDING/,
+    );
+  }
   await writeFile(
-    join(f.profile, "gea/plugin-updates/operations", id, "receipt.json"),
+    join(operation, "receipt.json"),
+    JSON.stringify({ id: "different", stage: "pending-restart" }),
+  );
+  await assert.rejects(
+    refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not install") }),
+    /GEA_REFRESH_UPDATE_UNKNOWN/,
+  );
+  await writeFile(
+    join(operation, "receipt.json"),
     JSON.stringify({ id, stage: "pending-restart" }),
   );
+  await mkdir(join(f.profile, ".plugin-manager"));
+  await writeFile(join(f.profile, ".plugin-manager/run.json"), "{}");
+  await assert.rejects(
+    refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not install") }),
+    /GEA_REFRESH_PROFILE_BUSY/,
+  );
+});
+
+test("an update that starts after startup admission is still blocked under the install lock", async (t) => {
+  const f = await fixture(t);
+  const id = "00000000-0000-4000-8000-000000000000";
   await assert.rejects(
     refreshBundledCompanySuite({
       ...f,
       install: async (options) => {
+        const operation = join(f.profile, "gea/plugin-updates/operations", id);
+        await mkdir(operation, { recursive: true });
+        await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+        await writeFile(
+          join(operation, "receipt.json"),
+          JSON.stringify({ id, stage: "pending-restart" }),
+        );
         await options.beforeInstall();
-        assert.fail("pending updates must not install");
+        assert.fail("must reject before package-manager writes");
       },
     }),
     /GEA_REFRESH_UPDATE_PENDING/,
   );
   await assert.rejects(access(join(f.profile, "gea/bootstrap/gea-refresh")), { code: "ENOENT" });
-  assert.equal(await readFile(join(f.profile, "package.json"), "utf8"), JSON.stringify(current));
 });
 
 test("failed refreshes retain their backup and require recovery instead of retrying at next startup", async (t) => {

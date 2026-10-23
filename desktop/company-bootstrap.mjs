@@ -639,6 +639,18 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   );
 }
 
+export async function refreshCompanyStartup({ legacyData, ...options }) {
+  const refresh = await refreshBundledCompanySuite({
+    ...options,
+    install: options.install ?? installCompanyPackages,
+  });
+  const cleanup =
+    legacyData && refresh.status !== "pending-restart-preserved"
+      ? await cleanupLegacyGea({ data: legacyData, home: options.home, apply: true })
+      : null;
+  return { refresh, cleanup };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [root, support, seed, legacyData] = process.argv.slice(2);
   const require = createRequire(join(root, "dsh/package.json"));
@@ -654,28 +666,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
   await refreshCompanyCore({ root, seed, home });
   const manifest = await readCompanySeed(seed);
-  console.log(
-    "GEA_BUNDLED_REFRESH",
-    JSON.stringify(
-      await refreshBundledCompanySuite({
-        root,
-        support,
-        seed,
-        home,
-        manifest,
-        install: installCompanyPackages,
-      }),
-    ),
-  );
-  if (legacyData)
-    console.log(
-      "GEA_LEGACY_CLEANUP",
-      JSON.stringify(
-        await cleanupLegacyGea({
-          data: legacyData,
-          home,
-          apply: true,
-        }),
-      ),
-    );
+  const { refresh, cleanup } = await refreshCompanyStartup({
+    root,
+    support,
+    seed,
+    home,
+    manifest,
+    legacyData,
+  });
+  console.log("GEA_BUNDLED_REFRESH", JSON.stringify(refresh));
+  if (cleanup) console.log("GEA_LEGACY_CLEANUP", JSON.stringify(cleanup));
 }
