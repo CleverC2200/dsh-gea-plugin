@@ -76,10 +76,13 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
       await expect(input).toBeEmpty();
       await expect(page.locator(`${root} ${contract.stats}`).first()).toBeVisible();
     } catch (error) {
-      t.diagnostic(JSON.stringify({
-        sessionId, conversation: (await conversation.innerText()).slice(-1800),
-        input: await input.textContent(),
-      }));
+      t.diagnostic(
+        JSON.stringify({
+          sessionId,
+          conversation: (await conversation.innerText()).slice(-1800),
+          input: await input.textContent(),
+        }),
+      );
       throw error;
     }
     await expect(conversation).toHaveAttribute("data-conversation-session", sessionId);

@@ -287,15 +287,20 @@ test(
             iconWidth: icon?.getBoundingClientRect().width,
             plusWidth: plus?.getBoundingClientRect().width,
             contained: Boolean(
-              icon && plus &&
+              icon &&
+              plus &&
               icon.getBoundingClientRect().left > bounds.left &&
               plus.getBoundingClientRect().right < bounds.right &&
-              icon.getBoundingClientRect().right < plus.getBoundingClientRect().left
+              icon.getBoundingClientRect().right < plus.getBoundingClientRect().left,
             ),
           };
         });
       assert.deepEqual(newSession, {
-        display: "flex", align: "center", iconWidth: 22, plusWidth: 20, contained: true,
+        display: "flex",
+        align: "center",
+        iconWidth: 22,
+        plusWidth: 20,
+        contained: true,
       });
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
