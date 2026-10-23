@@ -18,7 +18,7 @@ node scripts/quality-test-timings.mjs --plan /absolute/quality-test-execution-pl
 
 下文描述手动三仓流程及其历史范围，涉及联合合并门禁的旧说明不再适用于日常 PR/main。
 
-当前交付基线为公司 fork 中基于官方 `0.2.0-rc.2` 的欢迎区与工作台 UI 接口候选，配套 Workbench 通过公开接口贡献文案、标题和展开状态。确切提交由下述策略文件固定。此登记只固定源码验证输入，不切换正式客户端或发布频道。阻断与兼容输入统一维护在 `scripts/ci-core-policy.json`；`supported-cores.json` 保留更完整的兼容目录。
+当前交付基线为公司 fork 中基于官方 `0.2.0-rc.2` 的欢迎区与工作台 UI 接口候选，配套 Workbench 通过公开接口贡献文案、标题和展开状态。确切提交由下述策略文件固定。此登记只固定源码验证输入，不切换正式客户端或发布频道。阻断与兼容输入统一维护在 `scripts/ci-core-policy.json`；`supported-cores.json` 保留更完整的兼容目录。桌面新装配和启动按同一 required 输入核实际构建；包内携带该策略及支持目录，历史已登记 Core 只用于旧配置证明的升级核对。
 
 手动 `joint-quality` 只运行 required 基线。rc.2 的质量、适用的 Windows 归档及安全检查仍是联合验收条件。最终门禁继续拒绝失败、取消、缺失或跳过的必需任务。
 

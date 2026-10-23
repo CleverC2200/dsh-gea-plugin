@@ -78,5 +78,19 @@
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
     "scope": "company Core fork; public welcome content and workspace heading/expansion UI inputs"
+  },
+  {
+    "head": "0337d907d0c1305edfa0c915886a203e5e55539d",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "company Core baseline with public model directory and history heading interfaces; no local model-caption or preset-refresh patches"
   }
 ]
