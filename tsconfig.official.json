@@ -1793,6 +1793,9 @@
       ],
       "@cleverc2200/dsh-agent-workbench/api-log": [
         "../dsh-agent-workbench/lib/types/workbench/api-log-contract.d.ts"
+      ],
+      "@cleverc2200/dsh-agent-workbench/configured-facts": [
+        "../dsh-agent-workbench/business/shared/configured-facts.d.mts"
       ]
     }
   },
