@@ -52,6 +52,15 @@ export function officialGeaBranding(config, { companySeed } = {}) {
         resource.to === "icon.png" ? { ...resource, from: icon } : resource,
       ),
       ...(companySeed ? [{ from: companySeed, to: "company-seed", filter: ["**/*"] }] : []),
+      ...(companySeed
+        ? [
+            {
+              from: fileURLToPath(new URL("../scripts", import.meta.url)),
+              to: "scripts",
+              filter: ["ci-core-policy.mjs", "ci-core-policy.json", "supported-cores.json"],
+            },
+          ]
+        : []),
     ],
     ...(companySeed
       ? {

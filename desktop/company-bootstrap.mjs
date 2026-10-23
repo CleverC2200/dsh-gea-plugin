@@ -15,16 +15,17 @@ import {
   companyPackageNames,
 } from "./company-archives.mjs";
 import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
+import { ciCores } from "../scripts/ci-core-policy.mjs";
 
 const names = [...companyPackageNames, "@changfenhuang/dsh-genui"];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const desktopCoreHeads = new Set([
-  "639ed015397290b3745d163aafe02ffee4aa3f84",
-  "8cfb899ccf21d3662421b99b5f4627842ef712ea",
-  "6f88c3ea2d266ba1825d88bab10d92479a6ffde8",
-]);
-const desktopCoreVersion = "0.2.0-rc.2";
+const desktopCore = ciCores("required")[0];
+const registeredCores = await json(new URL("../scripts/supported-cores.json", import.meta.url));
+const desktopCoreHeads = new Set(
+  registeredCores.filter((core) => core.version === desktopCore.version).map((core) => core.head),
+);
+const desktopCoreVersion = desktopCore.version;
 
 function validCoreArtifacts(artifacts) {
   return (
@@ -94,7 +95,7 @@ async function verifyCompanyCore(root, core) {
   const app = await json(join(root, "package.json"));
   const runtime = await json(join(root, "dsh/package.json"));
   if (
-    !desktopCoreHeads.has(core?.head) ||
+    core?.head !== desktopCore.head ||
     core.version !== desktopCoreVersion ||
     !validCoreArtifacts(core.artifacts) ||
     app.dshBuildCommit !== core.head ||
