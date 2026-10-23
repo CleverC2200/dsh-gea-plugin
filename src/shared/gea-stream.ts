@@ -224,9 +224,6 @@ export async function* geaTextStream(
   const finishChunk = (reason: NonNullable<typeof terminal>): StreamChunk => ({
     type: "finish",
     reason: { kind: reason },
-    ...(reasoning && reason !== "max-tokens"
-      ? { replayState: { response: { protocol: "gea-client-reasoning-v1", complete: true } } }
-      : {}),
   });
   try {
     signal?.throwIfAborted();

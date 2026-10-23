@@ -1,4 +1,4 @@
-import { LlmError, type ContentBlock, type GenerateOptions } from "@deepseek-ai/dsh-llm";
+import type { ContentBlock, GenerateOptions } from "@deepseek-ai/dsh-llm";
 import { toolResults } from "../shared/tool-results.ts";
 
 type GeaMessage = {
@@ -45,27 +45,6 @@ export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
         .filter((block) => block.type === "reasoning")
         .map((block) => block.text)
         .join("");
-      if (reasoning) {
-        // Core keeps cancelled prefixes for display. Only our successful finish
-        // supplies this durable replay marker; a partial prefix must not be replayed.
-        const replay = message.source?.replayState;
-        const response =
-          replay && typeof replay === "object" && "response" in replay
-            ? replay.response
-            : undefined;
-        if (
-          !response ||
-          typeof response !== "object" ||
-          !("protocol" in response) ||
-          response.protocol !== "gea-client-reasoning-v1" ||
-          !("complete" in response) ||
-          response.complete !== true
-        )
-          throw new LlmError(
-            "GEA_REASONING_HISTORY_INCOMPLETE: 已保存的思考缺少完整响应标记，请保留原会话并新建会话；不会将部分思考冒充完整历史回传。",
-            "PROVIDER_PROTOCOL",
-          );
-      }
       const calls = message.content
         .filter(
           (block): block is Extract<ContentBlock, { type: "tool-call" }> =>
