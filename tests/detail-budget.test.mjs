@@ -79,7 +79,7 @@ test("detail 结果被投影并截断，不再 SNAPSHOT_TOO_LARGE", { timeout: 9
             planId,
             periodId: "20260901",
             planTypeCode: "Y",
-            dealerCode: "10070026",
+            cust_code: 10070026,
             dealerName: "测试经销商",
             targetAmount: "1539999.99",
             targetQty: "26445",

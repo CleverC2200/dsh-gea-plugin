@@ -30,7 +30,7 @@ test(
       periodId: "20261001",
       planTypeCode: "Y",
       orderType: "Z",
-      dealerCode: "456",
+      cust_code: 456,
       dealerName: "重提纠偏客户",
       status: 6,
       effective: true,

@@ -92,7 +92,7 @@ export const fixture = async (
       status: row.status,
       effective,
       seq: row.seq,
-      dealerCode: row.dealerCode,
+      cust_code: Number(row.dealerCode),
       submitter: originalSubmitter,
       returnReason: "请核对数量与继承确认值",
       targetQty: "1.000",
@@ -203,13 +203,13 @@ export const fixture = async (
             planTypeCode: "Y",
             orderType: "M",
             status: row.status,
-            dealerCode: row.dealerCode,
+            cust_code: Number(row.dealerCode),
             dealerName: row.name,
             orgName: row.name,
-            orgCode: "org-" + planId,
-            provinceCode: "province-" + planId,
+            sales_group_code: "org-" + planId,
+            province_region_code: "province-" + planId,
             provinceName: row.name,
-            areaCode: "area-" + planId,
+            region_code: "area-" + planId,
             areaName: row.name,
             currentQty: "2.000",
             currentAmount: "24.68",
@@ -316,7 +316,7 @@ export const fixture = async (
     if (path.endsWith("/api/v1/internal/sales-plans")) {
       const body = JSON.parse(req.body);
       const planId = [...state.entries()].find(
-        ([, row]) => row.dealerCode === body.dealerCode,
+        ([, row]) => Number(row.dealerCode) === body.cust_code,
       )?.[0];
       assert.ok(planId);
       submitted.push({

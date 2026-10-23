@@ -21,7 +21,7 @@ export class GatewayRequests {
       timeoutMs: number;
       fetch(url: string, init: RequestInit, purpose?: string): Promise<Response>;
       expire(identity: Identity | undefined): void;
-      decode(raw: string): Record<string, unknown>;
+      decode(raw: string, path: string): Record<string, unknown>;
     },
   ) {}
 
@@ -89,7 +89,7 @@ export class GatewayRequests {
     }
     let data: Record<string, unknown>;
     try {
-      data = this.owner.decode(await response.text());
+      data = this.owner.decode(await response.text(), input.path);
     } catch (error) {
       active();
       if (input.kind === "read") throw new Error("GEA_INVALID_JSON");

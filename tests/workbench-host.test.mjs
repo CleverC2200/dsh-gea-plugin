@@ -29,7 +29,7 @@ test(
       } else if (path.endsWith("/plans")) {
         const discovery = req.url.searchParams.get("pageSize") === "200";
         res.end(
-          '{"success":true,"result":{"records":[{"planId":"p-jxs-2026-09-00001","versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' +
+          '{"success":true,"result":{"records":[{"planId":"p-jxs-2026-09-00001","versionId":"version/a","periodId":20260901,"planTypeCode":"Y","orderType":"M","cust_code":9007199254740997,"dealer_name":"经销商A","province_name":"浙江","mPlanQty":37556.000,"mPlanAmount":2796344.64,"targetQty":0.1000,"currentAmount":9007199254740993.0100}],"total":' +
             (discovery ? "1" : "11") +
             ',"current":1,"size":' +
             (discovery ? "200" : "10") +
@@ -395,10 +395,10 @@ test(
           seq: 2,
           periodId: "period-1",
           planTypeCode: "Y",
-          dealerCode,
+          cust_code: dealerCode,
           dealerName: "经销商A",
           orgName: "组织A",
-          baseName: "华东",
+          belong_base: "华东",
           provinceName: null,
           areaName: "大区A",
           status: 5,
