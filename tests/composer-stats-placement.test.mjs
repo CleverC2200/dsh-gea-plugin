@@ -48,7 +48,8 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
     .filter({ hasText: "AI工作台" });
   await expect(newSession).toHaveAccessibleName("新会话");
   await expect(newSession).toContainText("AI工作台");
-  await expect(newSession.locator("svg")).toHaveCount(1);
+  await expect(newSession.locator(".gea-ai-entry-icon svg")).toHaveCount(1);
+  await expect(newSession.locator(".gea-ai-entry-plus")).toHaveCount(1);
   await openReadySalesPlan(page);
   await expect(page.locator("[data-composer-seat]").first()).toBeAttached();
 

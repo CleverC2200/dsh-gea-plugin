@@ -64,10 +64,10 @@ test(
       );
       try {
         await expect.poll(() => discoveries, { timeout: 7000 }).toBeGreaterThan(0);
-        await page
+        const menu = page
           .getByRole("button", { name: /^(业务工作台|Business workbenches)$/ })
-          .first()
-          .click();
+          .first();
+        if ((await menu.getAttribute("aria-expanded")) !== "true") await menu.click();
         const entry = page
           .getByRole("navigation", { name: "业务导航", exact: true })
           .getByRole("button", { name: "分仓库存", exact: true });
