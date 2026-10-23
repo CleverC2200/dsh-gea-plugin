@@ -21,3 +21,4 @@ CI Core 的阻断与兼容范围由 `scripts/ci-core-policy.json` 维护；调�
 | 已登记的 Core 仍须具备本次用途所需的当前运行依赖；源码检查不强制准备运行环境 | `check:environment`；三包 reception 与直接 install/observe 强制调用；`test:environment` 接入现有 source-only 快检与 CI                                                           |
 | 当前兼容范围只在包声明中维护，历史升级案例使用固定输入                       | 包烟测核产物与锁保留声明；`test:release-contract` 验证声明的升级边界并接入 source-only 快检与 CI                                                                                 |
 | 完整桌面包的 Core 跟随当前 required 策略，复用底包须匹配该 Core              | 双端 workflow 从 `ciCores("required")` 选择 checkout 与构建标识；`readDesktopInput` 拒绝旧 Core，Mac 预检拒绝旧底包；`input.test.mjs`、`delivery-events.test.mjs` 随影响选择运行 |
+| 覆盖安装按内置完整三包刷新，完成前核三项实际版本及用户配置保全               | `refreshBundledCompanySuite`；`scripts/desktop-gea-upgrade.test.mjs` 接入现有 source-quality 选择                                                                                |

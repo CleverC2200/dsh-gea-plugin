@@ -3,6 +3,12 @@ import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, join, resolve } from "node:path";
 
+export const companyPackageNames = Object.freeze([
+  "@cleverc2200/dsh-agent-workbench",
+  "dsh-agent-manage",
+  "@cleverc2200/gea-dsh-prototype",
+]);
+
 const genui = "@changfenhuang/dsh-genui";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -28,7 +34,7 @@ async function cacheArchive(home, file, bytes) {
   return target;
 }
 
-function releaseIndex(name, version) {
+export function companyReleaseIndex(name, version) {
   const expression =
     name === "dsh-agent-manage"
       ? /^0\.6\.3-company\.(\d+)$/
@@ -86,7 +92,7 @@ export async function prepareCompanyArchives({ root, seed, home, profile, packag
     let version = installed.version;
     const row = bundled.get(name);
     if (row) {
-      if (releaseIndex(name, installed.version) > releaseIndex(name, row.version))
+      if (companyReleaseIndex(name, installed.version) > companyReleaseIndex(name, row.version))
         throw Error("GEA_LEGACY_ARCHIVE_DOWNGRADE_REJECTED");
       path = row.path;
       version = row.version;

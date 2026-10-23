@@ -5,19 +5,18 @@ import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  refreshBundledGea,
+  refreshBundledCompanySuite,
   assertCompletedGeaRefresh,
   assertProfileIdle,
 } from "./company-gea-refresh.mjs";
-import { prepareCompanyArchives, repointCompanyArchives } from "./company-archives.mjs";
+import {
+  prepareCompanyArchives,
+  repointCompanyArchives,
+  companyPackageNames,
+} from "./company-archives.mjs";
 import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
 
-const names = [
-  "@cleverc2200/dsh-agent-workbench",
-  "dsh-agent-manage",
-  "@cleverc2200/gea-dsh-prototype",
-  "@changfenhuang/dsh-genui",
-];
+const names = [...companyPackageNames, "@changfenhuang/dsh-genui"];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const desktopCoreHeads = new Set([
@@ -657,7 +656,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   console.log(
     "GEA_BUNDLED_REFRESH",
     JSON.stringify(
-      await refreshBundledGea({
+      await refreshBundledCompanySuite({
         root,
         support,
         seed,
