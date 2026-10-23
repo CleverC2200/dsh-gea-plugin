@@ -13,6 +13,7 @@ const fixture = (execute) => {
     enabled = true;
   const identity = new AbortController(),
     calls = [],
+    listeners = new Set(),
     agent = { id: "branch-session" };
   const ctx = {
     effect: (fn) => fn(),
@@ -26,6 +27,10 @@ const fixture = (execute) => {
     sessionProjections: { stateOf: () => preset },
     agentResources: {
       list: async () => [{ id: preset, kind: "prompt", installed: true, enabled }],
+      watch: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
     },
   };
   const business = {
@@ -60,7 +65,9 @@ const fixture = (execute) => {
     },
     disable: () => {
       enabled = false;
+      for (const listener of listeners) listener();
     },
+    listenerCount: () => listeners.size,
     call: (args) => tool.execute(args, { agent, signal: new AbortController().signal }),
   };
 };
@@ -181,4 +188,18 @@ test("identity changes and cancellation prevent late branch data from being publ
     return data(id);
   });
   await assert.rejects(stopped.call({}), { name: "AbortError" });
+});
+
+test("resource changes abort an in-flight branch query and release the watcher", async () => {
+  let f;
+  f = fixture(async (id) => {
+    assert.equal(f.listenerCount(), 1);
+    f.disable();
+    return data(id);
+  });
+  await assert.rejects(f.call({ view: "summary", asOf: "2026-10-23" }), { name: "AbortError" });
+  assert.equal(f.listenerCount(), 0);
+  const unchanged = fixture(async (id) => data(id));
+  await unchanged.call({ view: "summary", asOf: "2026-10-23" });
+  assert.equal(unchanged.listenerCount(), 0);
 });

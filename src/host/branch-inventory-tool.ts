@@ -83,109 +83,119 @@ export function registerBranchInventoryTool(
           );
           if (!resource || resource.manifest.sqlConfig !== "sql.config.json")
             throw Error("GEA_AGENT_RESOURCE_MISSING");
-          const signal = AbortSignal.any([exec.signal, business.identitySignal()]);
-          const page = args.page ?? 1;
-          const cycleDays = args.cycleDays ?? 7;
-          if (!Number.isSafeInteger(page) || page < 1 || page > 1000000)
-            throw Error("INVALID_PAGE");
-          if (!Number.isSafeInteger(cycleDays) || cycleDays < 1 || cycleDays > 365)
-            throw Error("INVALID_CYCLE");
-          const asOf =
-            args.asOf ??
-            new Intl.DateTimeFormat("en-CA", {
-              timeZone: "Asia/Shanghai",
-            }).format(new Date());
-          const filters = Object.fromEntries(
-            [
-              ["warehouse_code", args.warehouseCode],
-              ["sku", args.sku],
-            ].filter(
-              (entry): entry is [string, string] =>
-                typeof entry[1] === "string" && entry[1].trim() !== "",
-            ),
-          );
-          let result: unknown;
+          const resourceChange = new AbortController();
+          const unwatch = ctx.agentResources.watch(() => resourceChange.abort());
+          const signal = AbortSignal.any([
+            exec.signal,
+            business.identitySignal(),
+            resourceChange.signal,
+          ]);
           try {
-            const root = await realpath(resource.directory);
-            const path = await realpath(resolve(root, "sql.config.json"));
-            if (!path.startsWith(root + sep)) throw Error("INVALID_SQL_CONFIG_PATH");
-            const raw = await readFile(path, "utf8");
-            if (Buffer.byteLength(raw) > 5_000_000) throw Error("SQL_CONFIG_TOO_LARGE");
-            const config = record(JSON.parse(raw));
-            if (config?.schemaVersion !== 1 || config.agentId !== resource.manifest.id)
-              throw Error("INVALID_AGENT_SQL_CONFIG");
-            const { readConfiguredFacts } =
-              await import("@cleverc2200/dsh-agent-workbench/configured-facts");
-            const detail = args.view === "replenishment";
-            result = await readConfiguredFacts(
-              config,
-              detail
-                ? "replenishment-suggestions"
-                : args.view === "health"
-                  ? "health"
-                  : "replenishment",
-              { asOf, cycleDays, page, pageSize: 10, filters },
-              {
-                signal,
-                execute: (_request, call) =>
-                  readConfiguredHtmlQuery(
-                    resource,
-                    { queryId: call.queryId, parameters: call.values },
-                    business,
-                    signal,
-                  ),
-                summaryOnly: !detail,
-                detailsOnly: detail,
-              },
+            const page = args.page ?? 1;
+            const cycleDays = args.cycleDays ?? 7;
+            if (!Number.isSafeInteger(page) || page < 1 || page > 1000000)
+              throw Error("INVALID_PAGE");
+            if (!Number.isSafeInteger(cycleDays) || cycleDays < 1 || cycleDays > 365)
+              throw Error("INVALID_CYCLE");
+            const asOf =
+              args.asOf ??
+              new Intl.DateTimeFormat("en-CA", {
+                timeZone: "Asia/Shanghai",
+              }).format(new Date());
+            const filters = Object.fromEntries(
+              [
+                ["warehouse_code", args.warehouseCode],
+                ["sku", args.sku],
+              ].filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === "string" && entry[1].trim() !== "",
+              ),
             );
-          } catch (error) {
+            let result: unknown;
+            try {
+              const root = await realpath(resource.directory);
+              const path = await realpath(resolve(root, "sql.config.json"));
+              if (!path.startsWith(root + sep)) throw Error("INVALID_SQL_CONFIG_PATH");
+              const raw = await readFile(path, "utf8");
+              if (Buffer.byteLength(raw) > 5_000_000) throw Error("SQL_CONFIG_TOO_LARGE");
+              const config = record(JSON.parse(raw));
+              if (config?.schemaVersion !== 1 || config.agentId !== resource.manifest.id)
+                throw Error("INVALID_AGENT_SQL_CONFIG");
+              const { readConfiguredFacts } =
+                await import("@cleverc2200/dsh-agent-workbench/configured-facts");
+              const detail = args.view === "replenishment";
+              result = await readConfiguredFacts(
+                config,
+                detail
+                  ? "replenishment-suggestions"
+                  : args.view === "health"
+                    ? "health"
+                    : "replenishment",
+                { asOf, cycleDays, page, pageSize: 10, filters },
+                {
+                  signal,
+                  execute: (_request, call) =>
+                    readConfiguredHtmlQuery(
+                      resource,
+                      { queryId: call.queryId, parameters: call.values },
+                      business,
+                      signal,
+                    ),
+                  summaryOnly: !detail,
+                  detailsOnly: detail,
+                },
+              );
+            } catch (error) {
+              signal.throwIfAborted();
+              const details = record(error);
+              result = {
+                success: false,
+                errorCode:
+                  details?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" ||
+                  details?.code === "ERR_MODULE_NOT_FOUND"
+                    ? "GEA_WORKBENCH_UPDATE_REQUIRED"
+                    : (details?.code ?? "BRANCH_INVENTORY_READ_FAILED"),
+                message: error instanceof Error ? error.message : "分仓库存读取失败",
+                failure: details?.failure,
+                returnedColumns: details?.returnedColumns,
+                rejectedColumns: details?.rejectedColumns,
+              };
+            }
             signal.throwIfAborted();
-            const details = record(error);
-            result = {
-              success: false,
-              errorCode:
-                details?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" ||
-                details?.code === "ERR_MODULE_NOT_FOUND"
-                  ? "GEA_WORKBENCH_UPDATE_REQUIRED"
-                  : (details?.code ?? "BRANCH_INVENTORY_READ_FAILED"),
-              message: error instanceof Error ? error.message : "分仓库存读取失败",
-              failure: details?.failure,
-              returnedColumns: details?.returnedColumns,
-              rejectedColumns: details?.rejectedColumns,
-            };
+            await assertSessionResourceAvailable(ctx, session, signal);
+            if (sessionConsumer(ctx, business, session) !== consumer)
+              throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
+            return JSON.stringify({
+              ...record(result),
+              unit: "箱",
+              cycleDays,
+              asOf,
+              readonly: true,
+              metricDefinitions: {
+                countGrain: "分仓编码+SKU组合；计数不是去重SKU数。",
+                planPresence:
+                  "plan_count/stock_only_count仅描述计划记录覆盖，不证明有无订单需求或历史发货。",
+                target_gap_qty: {
+                  label: "目标库存差额",
+                  formula: "可用库存+调拨中量-目标库存",
+                  positiveMeans: "富余",
+                  negativeMeans: "不足",
+                  aggregation: "保留各行差额的符号求和；不得取绝对值或称为补货缺口。",
+                },
+                recommended_qty: {
+                  label: "建议补货量",
+                  formula: "每个分仓SKU取max(目标库存-可用库存-调拨中量,0)，再相加",
+                  aggregation: "不同SKU的富余不能抵扣缺口，不能由全范围净差额倒算。",
+                },
+                open_transfer_reported_qty: "调拨备单与在途合计，已含在途，不重复叠加。",
+                currentOrderShortage:
+                  "当前未备单订单缺货另用gea_current_shortage查询，不等于建议补货量或目标库存差额。",
+              },
+              note: "复用页面固定测算；不含未保存计划/草稿，不代表已提交或正式下单。结构符合率按用户要求暂不计算。",
+            });
+          } finally {
+            unwatch();
           }
-          signal.throwIfAborted();
-          await assertSessionResourceAvailable(ctx, session, signal);
-          if (sessionConsumer(ctx, business, session) !== consumer)
-            throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
-          return JSON.stringify({
-            ...record(result),
-            unit: "箱",
-            cycleDays,
-            asOf,
-            readonly: true,
-            metricDefinitions: {
-              countGrain: "分仓编码+SKU组合；计数不是去重SKU数。",
-              planPresence:
-                "plan_count/stock_only_count仅描述计划记录覆盖，不证明有无订单需求或历史发货。",
-              target_gap_qty: {
-                label: "目标库存差额",
-                formula: "可用库存+调拨中量-目标库存",
-                positiveMeans: "富余",
-                negativeMeans: "不足",
-                aggregation: "保留各行差额的符号求和；不得取绝对值或称为补货缺口。",
-              },
-              recommended_qty: {
-                label: "建议补货量",
-                formula: "每个分仓SKU取max(目标库存-可用库存-调拨中量,0)，再相加",
-                aggregation: "不同SKU的富余不能抵扣缺口，不能由全范围净差额倒算。",
-              },
-              open_transfer_reported_qty: "调拨备单与在途合计，已含在途，不重复叠加。",
-              currentOrderShortage:
-                "当前未备单订单缺货另用gea_current_shortage查询，不等于建议补货量或目标库存差额。",
-            },
-            note: "复用页面固定测算；不含未保存计划/草稿，不代表已提交或正式下单。结构符合率按用户要求暂不计算。",
-          });
         },
       }),
     ),
