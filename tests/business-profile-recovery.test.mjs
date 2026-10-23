@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { currentMcp, inspectTool } from "./fixtures/current-mcp.mjs";
+import { defineTool } from "@deepseek-ai/dsh-tools";
 
 const value = (result) => {
   assert.notEqual(result.isError, true, JSON.stringify(result));
@@ -11,6 +12,46 @@ const value = (result) => {
       .join("\n"),
   );
 };
+
+test("orchestration exposes fixed inventory reads while ordinary sessions remain denied", async (t) => {
+  const f = await currentMcp(t, { prompts: true, orchestration: true, personal: true });
+  const original = {
+    name: "original-orchestration-prompt",
+    text: "原提示词保持原样。",
+    complete: true,
+    order: 0,
+  };
+  t.after(f.ctx.systemPrompt.section(original));
+  for (const name of ["gea_branch_inventory", "gea_current_shortage"]) {
+    const remove = f.ctx.tools.register(
+      defineTool({
+        name,
+        description: "fixed inventory fixture",
+        parameters: {},
+        output: {
+          schema: { type: "string" },
+          render: (_args, value) => [{ type: "text", text: value }],
+        },
+        execute: async () => "fixed result",
+      }),
+    );
+    t.after(remove);
+    const result = await f.execute(name, {}, "orchestration");
+    assert.notEqual(result.isError, true, JSON.stringify(result));
+    for (const id of ["ordinary", "personal"])
+      assert.equal((await f.execute(name, {}, id)).isError, true);
+  }
+  const assembled = await f.ctx.systemPrompt.assemble({
+    agent: f.agents.get("orchestration"),
+    messages: [],
+  });
+  assert.ok(assembled.tools.some((tool) => tool.name === "gea_branch_inventory"));
+  assert.ok(assembled.tools.some((tool) => tool.name === "gea_current_shortage"));
+  assert.deepEqual(assembled.sections, [{ name: original.name, text: original.text }]);
+  f.setEnabled(false);
+  for (const name of ["gea_branch_inventory", "gea_current_shortage"])
+    assert.equal((await f.execute(name, {}, "orchestration")).isError, true);
+});
 
 test("ordinary AI diagnosis explains resource recovery without requiring a page or granting access", async (t) => {
   const f = await currentMcp(t, { prompts: true });
