@@ -155,8 +155,7 @@ test("failed streams retain unfinished reasoning without a successful finish", a
     const chunks = [];
     await assert.rejects(
       async () => {
-        for await (const chunk of geaTextStream(bodyOf(wire)))
-          chunks.push(chunk);
+        for await (const chunk of geaTextStream(bodyOf(wire))) chunks.push(chunk);
       },
       (error) => !error.message.includes("PRIVATE_REASONING_SENTINEL"),
     );
@@ -165,9 +164,7 @@ test("failed streams retain unfinished reasoning without a successful finish", a
       false,
     );
     assert.equal(
-      chunks.some(
-        (x) => x.type === "block-end" && x.block.type === "reasoning",
-      ),
+      chunks.some((x) => x.type === "block-end" && x.block.type === "reasoning"),
       false,
     );
   }
@@ -202,10 +199,7 @@ test("token-limited reasoning survives Core assembly and restore before user con
       }),
     );
     const messages = toGeaMessages({
-      messages: [
-        restored,
-        { role: "user", content: [{ type: "text", text: "继续" }] },
-      ],
+      messages: [restored, { role: "user", content: [{ type: "text", text: "继续" }] }],
     });
     assert.deepEqual(messages, [
       { role: "assistant", content, reasoning_content: "部分原文" },
