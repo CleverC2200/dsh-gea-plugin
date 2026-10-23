@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, cpSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -74,7 +74,8 @@ test("macOS complete packaging requires explicit manual input and a fixed compan
   const checkout = job.steps.find(
     (step) => step.with?.repository === "CleverC2200/deepseek-harness",
   );
-  assert.equal(checkout.with.ref, job.env.DSH_DESKTOP_BUILD_COMMIT);
+  assert.equal(checkout.with.ref, "${{ steps.desktop-core.outputs.head }}");
+  assert.equal(job.env.DSH_DESKTOP_BUILD_COMMIT, undefined);
   assert.equal(checkout.with["persist-credentials"], false);
   assert.ok(
     job.steps.some(
@@ -82,6 +83,58 @@ test("macOS complete packaging requires explicit manual input and a fixed compan
         step.run === 'node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"',
     ),
   );
+});
+
+test("both desktop jobs select checkout and build metadata from the required Core policy", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "desktop-core-policy-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const scripts = join(root, "gea/scripts");
+  mkdirSync(scripts, { recursive: true });
+  for (const file of ["ci-core-policy.mjs", "ci-core-policy.json", "supported-cores.json"])
+    cpSync(join("scripts", file), join(scripts, file));
+  const policy = JSON.parse(readFileSync(join(scripts, "ci-core-policy.json"), "utf8"));
+  const registered = JSON.parse(readFileSync(join(scripts, "supported-cores.json"), "utf8"));
+  const alternate = registered.find(
+    (core) =>
+      !core.id &&
+      core.head !== policy.required[0].head &&
+      core.version === policy.required[0].version,
+  );
+  assert.ok(alternate);
+  for (const name of ["mac-complete-package", "windows-complete-package"]) {
+    const job = workflow.jobs[name];
+    const selection = job.steps.findIndex((step) => step.id === "desktop-core");
+    const checkout = job.steps.findIndex(
+      (step) => step.with?.repository === "CleverC2200/deepseek-harness",
+    );
+    assert.ok(selection >= 0 && checkout > selection, name);
+    assert.equal(job.steps[checkout].with.ref, "${{ steps.desktop-core.outputs.head }}");
+    assert.equal(job.env.DSH_DESKTOP_BUILD_COMMIT, undefined);
+    assert.equal(job.steps[selection].shell, "bash");
+    for (const core of [policy.required[0], alternate]) {
+      writeFileSync(
+        join(scripts, "ci-core-policy.json"),
+        JSON.stringify({ ...policy, required: [{ head: core.head, version: core.version }] }),
+      );
+      const output = join(root, "output"),
+        env = join(root, "env");
+      writeFileSync(output, "");
+      writeFileSync(env, "");
+      const result = spawnSync("bash", ["-e", "-c", job.steps[selection].run], {
+        cwd: root,
+        env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_ENV: env },
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(output, "utf8"), `head=${core.head}\n`);
+      assert.equal(readFileSync(env, "utf8"), `DSH_DESKTOP_BUILD_COMMIT=${core.head}\n`);
+    }
+    if (name === "mac-complete-package")
+      assert.match(
+        job.steps.find((step) => step.name === "Validate fixed input before preparing Core").run,
+        /input\.mjs .*--mac-baseline/,
+      );
+  }
 });
 
 test("Windows complete packaging uses its own input or Native bundle without selecting macOS", () => {
