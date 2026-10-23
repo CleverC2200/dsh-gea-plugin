@@ -16,6 +16,7 @@ import { contractFromPlugin, type CapabilityContract } from "./capability/contra
 import { readPluginContract } from "./capability/declarations.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
+import { bindModulePage } from "./host/module-page-scope.ts";
 import { assertHtmlMcp } from "./capability/html-mcp.mjs";
 
 export async function registerHtmlPlugins(
@@ -390,15 +391,17 @@ export async function registerHtmlPlugins(
             let projection = business.currentPageIdentity(session);
             if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
             const grantSignal = AbortSignal.any([started!, lifetime.signal]);
+            const modulePage = bindModulePage(business, session, item.id, grantSignal);
             return {
               signal: grantSignal,
               referenceScope: item.mock ? "mock-browser" : principal!,
               access,
-              observe: () => {
+              observe: (context: Record<string, unknown>) => {
                 grantSignal.throwIfAborted();
                 if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
                 business.touchPageIdentity(session, pageIdentity);
                 projection = business.currentPageIdentity(session);
+                modulePage.observe(context);
               },
               allowsEffect: (
                 effect: import("@cleverc2200/dsh-agent-workbench").PageBusinessGrant extends {
@@ -448,6 +451,7 @@ export async function registerHtmlPlugins(
                   }
                 : {}),
               release: () => {
+                modulePage.release();
                 if (business.currentPageIdentity(session) === projection)
                   business.clearPageIdentity(session, item.id);
                 if (business.surfaceFor(session) === surface)
