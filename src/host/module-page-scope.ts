@@ -2,7 +2,7 @@
 type Page = { id: string; payload?: Record<string, any>; signal: AbortSignal; receivedAt: number };
 const modules = new Set(["inventory-customer", "inventory-orderfulfillment"]);
 const bindings = new WeakMap<object, Map<string, Page>>();
-type Host = { surfaceFor(id: string): { menu?: string } | undefined };
+type Host = { surfaceFor?(id: string): { menu?: string } | undefined };
 export function bindModulePage(host: Host, session: string, id: string, signal: AbortSignal) {
   let map = bindings.get(host);
   if (!map) bindings.set(host, (map = new Map()));
@@ -21,12 +21,12 @@ export function bindModulePage(host: Host, session: string, id: string, signal: 
 }
 function pageFor(host: Host, session: string) {
   const page = bindings.get(host)?.get(session);
-  return page && !page.signal.aborted && host.surfaceFor(session)?.menu === page.id
+  return page && !page.signal.aborted && host.surfaceFor?.(session)?.menu === page.id
     ? page
     : undefined;
 }
 export function modulePagePrompt(host: Host, session: string): string | undefined {
-  const menu = host.surfaceFor(session)?.menu;
+  const menu = host.surfaceFor?.(session)?.menu;
   if (!menu || !modules.has(menu)) return;
   const page = pageFor(host, session);
   const payload = page?.payload?.state === "unavailable" ? undefined : page?.payload;
@@ -98,7 +98,7 @@ export function moduleCubeScopeReceipt(host: Host, session: string, result: stri
 
 /** Add restrictions as AND intersections; unrepresentable page scopes fail closed. */
 export function inheritModuleCubeScope(host: Host, session: string, args: Record<string, any>) {
-  const menu = host.surfaceFor(session)?.menu;
+  const menu = host.surfaceFor?.(session)?.menu;
   if (!menu || !modules.has(menu) || (args.action && args.action !== "query")) return args;
   const payload = pageFor(host, session)?.payload;
   if (!payload || payload.state === "unavailable")
