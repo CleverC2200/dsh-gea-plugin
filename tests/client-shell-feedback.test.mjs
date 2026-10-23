@@ -229,7 +229,7 @@ test(
       );
       await page.getByRole("button", { name: "历史对话", exact: true }).last().click();
       assert.equal(
-        await page.locator(".gea-workspace-heading").getAttribute("aria-expanded"),
+        await page.locator(".gea-drawer-recent > button").getAttribute("aria-expanded"),
         "true",
       );
       assert.equal(

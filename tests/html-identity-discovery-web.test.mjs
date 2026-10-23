@@ -64,10 +64,12 @@ test(
       );
       try {
         await expect.poll(() => discoveries, { timeout: 7000 }).toBeGreaterThan(0);
-        await page
-          .getByRole("button", { name: /^(业务工作台|Business workbenches)$/ })
-          .first()
-          .click();
+        const navigation = page.getByRole("navigation", { name: "业务导航", exact: true });
+        if (!(await navigation.isVisible()))
+          await page
+            .getByRole("button", { name: /^(业务工作台|Business workbenches)$/ })
+            .first()
+            .click();
         const entry = page
           .getByRole("navigation", { name: "业务导航", exact: true })
           .getByRole("button", { name: "分仓库存", exact: true });

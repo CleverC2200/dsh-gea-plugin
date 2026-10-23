@@ -273,7 +273,7 @@ test(
           children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
         JSON.stringify(navRows),
       );
-      // 「AI 工作台」入口（原生新建会话）也走同一条左线：整块贴左、内容左对齐。
+      // Current AI workbench card keeps left-aligned content inside its inset button.
       const newSession = await page
         .getByRole("button")
         .filter({ hasText: "AI工作台" })
@@ -281,13 +281,21 @@ test(
           const icon = button.querySelector("svg, img");
           return {
             justify: getComputedStyle(button).justifyContent,
+            display: getComputedStyle(button).display,
+            textAlign: getComputedStyle(button).textAlign,
             hit: Math.round(button.getBoundingClientRect().x),
             icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
+            iconRight: icon?.getBoundingClientRect().right,
+            labelLeft: button.querySelector(".gea-ai-entry-label")?.getBoundingClientRect().left,
           };
         });
-      assert.equal(newSession.justify, "flex-start", JSON.stringify(newSession));
+      assert.equal(newSession.display, "flex", JSON.stringify(newSession));
+      assert.equal(newSession.textAlign, "left", JSON.stringify(newSession));
+      assert.ok(["normal", "flex-start"].includes(newSession.justify), JSON.stringify(newSession));
       assert.ok(
-        newSession.hit <= 2 && newSession.icon !== null && newSession.icon <= 12,
+        newSession.hit >= navigationBox.x &&
+          newSession.icon > newSession.hit &&
+          newSession.labelLeft > newSession.iconRight,
         JSON.stringify(newSession),
       );
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
