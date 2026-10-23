@@ -420,7 +420,7 @@ test(
       assert.match(await brandLogo.getAttribute("src"), /^data:image\/png;base64,/);
       // GEA business identity and the official Core document title have separate owners.
       assert.equal(await page.locator(".gea-brand-title").textContent(), "Synear GEA");
-      assert.equal(await page.title(), "DSH 本地构建");
+      assert.equal(await page.title(), "DeepSeek Harness");
       assert.equal(
         await page
           .locator('[data-slot="sidebar.brand.name"] span')
