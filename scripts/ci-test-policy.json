@@ -523,6 +523,11 @@
       "repo": "dsh-agent-workbench",
       "pattern": "^scripts/(?:test_current_shortage_source|test_fc_aging_source|test_batch_age_lists|test_qll_structure|update_current_shortage_sql|update-batch-age-lists|update-fc-list-completion|update-qll-list-completion)\\.py$",
       "tests": ["scripts/quality-workbench.test.mjs", "tests/source-assembly.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^\\.gitignore$",
+      "tests": ["scripts/quality-workbench.test.mjs", "scripts/quality-prepared-inputs.test.mjs"]
     }
   ],
   "testOwners": {

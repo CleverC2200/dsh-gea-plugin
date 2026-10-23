@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual; inventory-fc fixed-tool and calculation rules use merged Manage #81 author source",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -70,10 +70,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
-        "sha256": "3b0af130b3e856010328b246394e4920106af560cd0c09a8c036470ea27e91ad",
+        "sha256": "8a394b650630792f708a4f3e0e38c62398259613f00d0d422815b80d7bf06899",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "638f8ebf84d66984cf3e1b7d97c3bdf3da530327",
+        "sourceHead": "3370f3a11fc6c3c2686eca88d6e2c0377af074c8",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
