@@ -85,8 +85,13 @@ if (values["validate-only"]) {
     unpacked = join(work, "unpacked");
   await writeFile(archive, bytes, { flag: "wx" });
   const tar = (args) =>
-    execFileSync("tar", args, { encoding: "utf8", timeout: 30000, maxBuffer: 16 * 1024 * 1024 });
-  const entries = tar(["-tzf", archive]).trim().split(/\r?\n/);
+    execFileSync("tar", args, {
+      cwd: work,
+      encoding: "utf8",
+      timeout: 30000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  const entries = tar(["-tzf", "bundle.tgz"]).trim().split(/\r?\n/);
   if (
     entries.length > 1024 ||
     new Set(entries).size !== entries.length ||
@@ -100,11 +105,11 @@ if (values["validate-only"]) {
     )
   )
     throw Error("DESKTOP_NATIVE_BUNDLE_ARCHIVE_INVALID");
-  const listing = tar(["-tvzf", archive]).trim().split(/\r?\n/);
+  const listing = tar(["-tvzf", "bundle.tgz"]).trim().split(/\r?\n/);
   if (listing.length !== entries.length || listing.some((line) => !["-", "d"].includes(line[0])))
     throw Error("DESKTOP_NATIVE_BUNDLE_LINK_FORBIDDEN");
   await mkdir(unpacked);
-  tar(["-xzf", archive, "-C", unpacked]);
+  tar(["-xzf", "bundle.tgz", "-C", "unpacked"]);
   const env = { ...process.env };
   for (const key of [
     "ELECTRON_RUN_AS_NODE",
