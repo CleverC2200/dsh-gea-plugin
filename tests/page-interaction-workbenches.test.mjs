@@ -1,6 +1,7 @@
 import {
   prepareWorkbenchHtmlRoots,
-  openBusinessPage,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
   htmlFrameElement,
   preparePageStartup,
 } from "./fixtures/business-page.mjs";
@@ -104,7 +105,15 @@ test(
       });
     }
     const app = await profile(t, {
-      beforeStart: prepareWorkbenchHtmlRoots(roots),
+      beforeStart: prepareWorkbenchPageAccess(
+        [
+          ["gea-regional-plan", "区域计划工作台"],
+          ["plan-region-category", "品类计划工作台"],
+          ["plan-category-production", "主生产计划（MPS）工作台"],
+          ...htmlPages,
+        ],
+        prepareWorkbenchHtmlRoots(roots),
+      ),
     });
     app.route((req, _res, reply) => {
       if (!req.url.pathname.endsWith("/ai/gateway/session")) return false;
@@ -143,12 +152,12 @@ test(
     const page = await context.newPage();
     await page.goto(app.origin);
     await preparePageStartup(page);
-    for (const [panel] of [
+    for (const [panel, name] of [
       ["gea-regional-plan", "区域计划工作台"],
       ["plan-region-category", "品类计划工作台"],
       ["plan-category-production", "主生产计划（MPS）工作台"],
     ]) {
-      await openBusinessPage(page, panel);
+      await openRegisteredWorkbenchPage(page, name);
       await page.getByRole("button", { name: "新建对话", exact: true }).click();
       const iframe = htmlFrameElement(page, panel);
       await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-downloads");
@@ -177,7 +186,7 @@ test(
       await expect(editor).toHaveText("");
     }
     for (const [id, name] of htmlPages) {
-      await openBusinessPage(page, id);
+      await openRegisteredWorkbenchPage(page, name);
       const selector = page.locator("[data-page-selection-trigger]");
       await expect(selector).toBeEnabled();
       const frame = htmlFrameElement(page, id).contentFrame();

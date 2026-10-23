@@ -1,7 +1,10 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
-import { openBusinessPage } from "./fixtures/business-page.mjs";
+import {
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+} from "./fixtures/business-page.mjs";
 import { stockReferencePage } from "./fixtures/stock-reference-page.mjs";
 
 test(
@@ -13,6 +16,7 @@ test(
   async (t) => {
     let failReads = false;
     const { app, page } = await stockReferencePage(t, {
+      prepareProfile: prepareWorkbenchPageAccess([["gea-proof", "销售计划"]]),
       preparePage: async (page) => {
         await page.route("**/api/gea-html/identity", (route) =>
           failReads ? route.abort() : route.continue(),
@@ -24,7 +28,7 @@ test(
     const warning = page.locator("[data-gea-identity-error]");
     await expect(warning).toHaveCount(1);
     await expect(warning).toBeVisible();
-    await openBusinessPage(page, "gea-proof");
+    await openRegisteredWorkbenchPage(page, "销售计划");
     await expect(warning).toHaveCount(1);
     await expect(warning).toBeVisible();
     await page

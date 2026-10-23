@@ -1,6 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { SalesReadonlyError } from "../shared/sales-readonly.js";
-import { geaResponseError } from "../shared/gea-error.js";
+import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
+
+const businessDomainPath = "/sys/dict/getDictItems/business_domain";
+const portalSigningKey = "dd05f1c54d63749eda95f9fa6d49v442a";
 
 type Identity = { token: string; tenantId?: string };
 type Request = {
@@ -8,7 +11,7 @@ type Request = {
   identity: Identity | undefined;
   signal: AbortSignal;
 } & (
-  | { kind: "read"; includeTenant: boolean; purpose?: string }
+  | { kind: "read"; includeTenant: boolean; purpose?: string; resultEnvelope?: boolean }
   | { kind: "write"; body: unknown }
   | { kind: "claim"; includeTenant: boolean }
 );
@@ -21,7 +24,7 @@ export class GatewayRequests {
       timeoutMs: number;
       fetch(url: string, init: RequestInit, purpose?: string): Promise<Response>;
       expire(identity: Identity | undefined): void;
-      decode(raw: string): Record<string, unknown>;
+      decode(raw: string, path: string): Record<string, unknown>;
     },
   ) {}
 
@@ -33,6 +36,17 @@ export class GatewayRequests {
     purpose?: string,
   ) {
     return this.request({ kind: "read", path, identity, signal, includeTenant, purpose });
+  }
+
+  readResult(path: string, identity: Identity, signal: AbortSignal) {
+    return this.request({
+      kind: "read",
+      path,
+      identity,
+      signal,
+      includeTenant: true,
+      resultEnvelope: true,
+    });
   }
 
   write(path: string, identity: Identity, signal: AbortSignal, body: unknown) {
@@ -51,7 +65,15 @@ export class GatewayRequests {
       if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
     };
     active();
+    const dictionary = input.kind === "read" && input.path === businessDomainPath;
     const headers: Record<string, string> = { Accept: "application/json" };
+    if (dictionary) {
+      headers["X-TIMESTAMP"] = String(Date.now());
+      headers["X-Sign"] = createHash("md5")
+        .update("{}" + portalSigningKey)
+        .digest("hex")
+        .toUpperCase();
+    }
     if (input.identity) {
       headers["X-Access-Token"] = input.identity.token;
       headers["X-Request-Id"] = randomUUID();
@@ -89,13 +111,27 @@ export class GatewayRequests {
     }
     let data: Record<string, unknown>;
     try {
-      data = this.owner.decode(await response.text());
+      data = this.owner.decode(await response.text(), input.path);
     } catch (error) {
       active();
       if (input.kind === "read") throw new Error("GEA_INVALID_JSON");
       throw error;
     }
     active();
+    if (
+      input.kind === "read" &&
+      input.resultEnvelope &&
+      (data.success !== true || (data.code !== 200 && !(dictionary && data.code === 0)))
+    ) {
+      const safe = new GeaResponseError(response.status, data, [input.identity?.token]);
+      const upstreamCode = safe.details.upstreamCode;
+      const code =
+        typeof upstreamCode === "string" && /^[A-Z][A-Z_0-9]{2,}$/.test(upstreamCode)
+          ? upstreamCode
+          : "GEA_REQUEST_REJECTED";
+      if (data.code === 401) this.owner.expire(input.identity);
+      throw Object.assign(Error(safe.message.replace(/^GEA_HTTP_200[：]?/, "") || code), { code });
+    }
     if (data.success !== true) {
       const code = data.errorCode;
       if (

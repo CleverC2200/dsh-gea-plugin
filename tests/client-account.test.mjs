@@ -219,3 +219,70 @@ for (const [desktop, authenticated, expected] of [
     if (expected) assert.equal(opened[0], "gea-proof");
     for (const dispose of disposers) dispose?.();
   });
+
+test("the public catalog provider uses Host RPC and refreshes the same identity projection after directory failure", async () => {
+  const module = { exports: {} },
+    provided = new Map(),
+    requests = [];
+  let authenticated = true,
+    failed = false,
+    pending;
+  const catalog = {
+    agents: [{ id: "fixture-agent", agentCode: null, agentName: null, businessDomain: null }],
+    domains: { kind: "unavailable", message: "业务分类暂不可用" },
+  };
+  runInNewContext(outputFiles[0].text, {
+    module,
+    exports: module.exports,
+    require,
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      if (url === "/api/gea-html/identity")
+        return Response.json({
+          scope: authenticated ? "catalog-scope" : null,
+          status: {
+            environment: "production",
+            authenticated,
+            loginState: authenticated ? "authenticated" : "expired",
+            user: null,
+          },
+        });
+      assert.equal(url, "/api/gea-proof/navigation/catalog");
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), {});
+      if (pending) return pending.promise;
+      if (failed) {
+        authenticated = false;
+        return Response.json({ ok: false, error: { code: "GEA_HTTP_401", message: "请重新登录" } });
+      }
+      return Response.json({ ok: true, value: catalog });
+    },
+    Response,
+    AbortController,
+    AbortSignal,
+    CustomEvent,
+    window: new EventTarget(),
+    crypto: globalThis.crypto,
+    console,
+    setTimeout,
+    clearTimeout,
+  });
+  module.exports.apply({ effect: () => {}, provide: (name, value) => provided.set(name, value) });
+  const navigation = provided.get("businessNavigation"),
+    account = provided.get("businessAccount");
+  assert.ok(navigation, "GEA must provide Workbench's public businessNavigation contract");
+  const signal = new AbortController().signal;
+  await account.refreshIdentity(signal);
+  assert.deepEqual(JSON.parse(JSON.stringify(await navigation.read(signal))), catalog);
+  failed = true;
+  await assert.rejects(navigation.read(signal), /请重新登录/);
+  assert.equal(account.getSnapshot().status.loginState, "expired");
+  assert.equal(provided.get("geaIdentity").getSnapshot().scope, null);
+  pending = Promise.withResolvers();
+  const controller = new AbortController();
+  const cancelled = navigation.read(controller.signal);
+  controller.abort();
+  pending.resolve(Response.json({ ok: true, value: catalog }));
+  await assert.rejects(cancelled, { name: "AbortError" });
+  assert.equal(requests.filter((request) => request.url === "/api/gea-html/identity").length, 2);
+});

@@ -11,22 +11,22 @@ import { openSalesPlan } from "./fixtures/business-page.mjs";
  * 这里在本地把两种上游结果都摆出来，验证「客户端发出的报文是否一致」以及
  * 「混合结果是否逐笔如实呈现」——用来把差异范围收敛到服务端。
  */
-const plan = (id, provinceCode) => ({
+const plan = (id, province_region_code) => ({
   planId: id,
   versionId: "v" + id.slice(-1),
   seq: 1,
   periodId: "period-1",
   planTypeCode: "Y",
   orderType: "M",
-  dealerCode: "d" + id.slice(-1),
+  cust_code: 10070026 + Number(id.slice(-1)),
   dealerName: "客户" + id.slice(-1),
-  baseName: "base-" + id.slice(-1),
-  areaCode: "area-" + id.slice(-1),
+  belong_base: "base-" + id.slice(-1),
+  region_code: "area-" + id.slice(-1),
   areaName: "大区" + id.slice(-1),
-  orgCode: "org-" + id.slice(-1),
+  sales_group_code: "org-" + id.slice(-1),
   orgName: "组织" + id.slice(-1),
-  provinceCode,
-  provinceName: "省区" + provinceCode,
+  province_region_code,
+  provinceName: "省区" + province_region_code,
   status: 1,
   currentQty: "20",
   currentAmount: "200",
@@ -129,8 +129,8 @@ const openWorkbench = async (t) => {
     const action = /\/versions\/(v\d)\/actions$/.exec(path);
     if (action) {
       const row = plans.find((item) => item.versionId === action[1]);
-      writes.push({ provinceCode: row.provinceCode, body: JSON.parse(req.body) });
-      if (!SUCCESS_PROVINCES.includes(row.provinceCode)) {
+      writes.push({ province_region_code: row.province_region_code, body: JSON.parse(req.body) });
+      if (!SUCCESS_PROVINCES.includes(row.province_region_code)) {
         reply(UPSTREAM_NOTIFICATION_PAYLOAD_INVALID, 409);
         return true;
       }

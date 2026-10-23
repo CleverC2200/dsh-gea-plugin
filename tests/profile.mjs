@@ -144,6 +144,46 @@ async function createProfile(t, options) {
             success: true,
             result: { success: true, token: "fixture-gea-token" },
           });
+        else if (path.endsWith("/aiportal/agent/market"))
+          reply({
+            success: true,
+            code: 200,
+            result: [
+              {
+                id: "market-base",
+                agentCode: "base-safety-stock",
+                agentName: "基地库存",
+                businessDomain: "inventory",
+              },
+              {
+                id: "market-sales",
+                agentCode: "sales_forecast",
+                agentName: "销售计划",
+                businessDomain: "plan",
+              },
+              {
+                id: "market-branch",
+                agentCode: "branch-inventory",
+                agentName: "分仓库存",
+                businessDomain: "inventory",
+              },
+              {
+                id: "market-chain",
+                agentCode: "full-chain-inventory",
+                agentName: "全链库存工作台",
+                businessDomain: "inventory",
+              },
+            ],
+          });
+        else if (path.endsWith("/sys/dict/getDictItems/business_domain"))
+          reply({
+            success: true,
+            code: 0,
+            result: [
+              { value: "plan", text: "计划管理", description: null },
+              { value: "inventory", text: "库存管理", description: null },
+            ],
+          });
         else if (path.endsWith("/getUserInfo"))
           reply({
             success: true,
@@ -239,7 +279,7 @@ async function createProfile(t, options) {
           });
         else if (path.endsWith("/plans")) {
           res.end(
-            '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version-1","planTypeCode":"Y","status":5,"currentQty":1.2300,"targetQty":2.3400,"currentAmount":10.10,"targetAmount":12.30,"baseName":"华东","orgName":"组织A","provinceName":"浙江"}],"total":1,"current":1,"size":10}}',
+            '{"success":true,"result":{"records":[{"planId":9007199254740993,"versionId":"version-1","planTypeCode":"Y","status":5,"currentQty":1.2300,"targetQty":2.3400,"currentAmount":10.10,"targetAmount":12.30,"belong_base":"华东","orgName":"组织A","provinceName":"浙江"}],"total":1,"current":1,"size":10}}',
           );
         } else reply({ message: "fixture route absent" }, 404);
       } catch (error) {
