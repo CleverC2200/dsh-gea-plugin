@@ -7,13 +7,14 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readDesktopInput, readDesktopPluginSource } from "../windows-complete-local/input.mjs";
-import { macBaseline as baseline } from "./baseline.mjs";
+import { macBaseline as baseline, assertMacBaseline } from "./baseline.mjs";
 
 assert.equal(process.platform, "darwin");
 assert.equal(process.arch, "arm64");
 const core = resolve(process.argv[2]);
 const gea = resolve(process.argv[3]);
 const input = await readDesktopInput(process.argv[4], process.env.GITHUB_SHA);
+assertMacBaseline(input.seed.core.head);
 const pluginSource = readDesktopPluginSource(input, gea);
 const output = join(process.env.RUNNER_TEMP, "gea-mac-complete");
 await mkdir(output, { recursive: false });
@@ -129,6 +130,7 @@ for (const row of originalSeed.core.artifacts) {
     );
 }
 const originalMetadata = JSON.parse(asar.extractFile(archive, "package.json"));
+assert.equal(originalMetadata.dshBuildCommit, input.seed.core.head);
 assert.equal(originalMetadata.dshBuildDirty, false);
 assert.equal(originalMetadata.dshMandatoryUpdatePolicy, undefined);
 const framework = join(

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readDesktopInput } from "./input.mjs";
+import { readDesktopInput, desktopCoreHead } from "./input.mjs";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -54,7 +54,7 @@ if (values["validate-only"]) {
   if (
     build.status !== "packaged-and-runtime-smoke-passed" ||
     build.geaSha !== process.env.GITHUB_SHA ||
-    build.coreSha !== "8cfb899ccf21d3662421b99b5f4627842ef712ea"
+    build.coreSha !== desktopCoreHead
   )
     throw Error("DESKTOP_NATIVE_BUILD_REQUIRED");
   const fixed = await readDesktopInput(inputPath, process.env.GITHUB_SHA);

@@ -20,7 +20,7 @@ on:
         required: false
         type: boolean
       windows_complete_input:
-        description: "Fixed desktop version, Core8cf, merged GEA SHA and three immutable published package identities as JSON"
+        description: "Desktop version, required policy Core, merged GEA SHA and three immutable published packages as JSON"
         required: false
         type: string
       mac_complete_input:
@@ -71,7 +71,6 @@ jobs:
       DSH_DESKTOP_TARGET_ARCH: arm64
       DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
       DSH_DESKTOP_UNSIGNED: "1"
-      DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
@@ -80,16 +79,27 @@ jobs:
           path: gea
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: CleverC2200/deepseek-harness
-          ref: 8cfb899ccf21d3662421b99b5f4627842ef712ea
-          path: core
-          persist-credentials: false
       - uses: actions/setup-node@v4
         id: node
         with:
           node-version: "24.14.1"
+      - name: Select required desktop Core
+        id: desktop-core
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { ciCores } from './gea/scripts/ci-core-policy.mjs';
+          const core = ciCores('required')[0];
+          appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + core.head + '\n');
+          appendFileSync(process.env.GITHUB_ENV, 'DSH_DESKTOP_BUILD_COMMIT=' + core.head + '\n');
+          NODE
+      - uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.desktop-core.outputs.head }}
+          path: core
+          persist-credentials: false
       - name: Initialize isolated delivery download paths
         run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
       - name: Validate fixed input before preparing Core
@@ -102,7 +112,7 @@ jobs:
           ln -s "$PWD/.runtime/fixture-dependencies/node_modules/semver" node_modules/semver
           inputPath="$RUNNER_TEMP/gea-desktop-input.json"
           printenv DESKTOP_INPUT_JSON > "$inputPath"
-          node scripts/windows-complete-local/input.mjs --input "$inputPath" --source-sha "$GITHUB_SHA"
+          node scripts/windows-complete-local/input.mjs --input "$inputPath" --source-sha "$GITHUB_SHA" --mac-baseline
           echo "DSH_DESKTOP_BUILD_VERSION=$(node -p 'JSON.parse(process.env.DESKTOP_INPUT_JSON).desktopVersion')" >> "$GITHUB_ENV"
           echo "GEA_DESKTOP_INPUT=$inputPath" >> "$GITHUB_ENV"
       - name: Locate declared tool download cache
@@ -429,7 +439,6 @@ jobs:
       DSH_DESKTOP_TARGET_ARCH: x64
       DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
       DSH_DESKTOP_UNSIGNED: "1"
-      DSH_DESKTOP_BUILD_COMMIT: 8cfb899ccf21d3662421b99b5f4627842ef712ea
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_7Z_FILTER: BCJ
@@ -443,16 +452,27 @@ jobs:
           path: gea
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: CleverC2200/deepseek-harness
-          ref: 8cfb899ccf21d3662421b99b5f4627842ef712ea
-          path: core
-          persist-credentials: false
       - uses: actions/setup-node@v4
         id: node
         with:
           node-version: "24.14.1"
+      - name: Select required desktop Core
+        id: desktop-core
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { ciCores } from './gea/scripts/ci-core-policy.mjs';
+          const core = ciCores('required')[0];
+          appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + core.head + '\n');
+          appendFileSync(process.env.GITHUB_ENV, 'DSH_DESKTOP_BUILD_COMMIT=' + core.head + '\n');
+          NODE
+      - uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.desktop-core.outputs.head }}
+          path: core
+          persist-credentials: false
       - name: Initialize isolated delivery download paths
         run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
       - name: Require actual default ref for shared cache production
