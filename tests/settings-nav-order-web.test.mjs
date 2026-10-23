@@ -6,7 +6,11 @@ import { resolve } from "node:path";
 import YAML from "yaml";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import {
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+  salesPlanFrame,
+} from "./fixtures/business-page.mjs";
 
 // This private package uses Core's published client loader and settings.section ledger.
 const settingsClient = `window.__ModuleLoader__.load({
@@ -43,7 +47,8 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 test("设置扩展保持顺序且插件管理位于末尾", { timeout: 90000 }, async (t) => {
   let fixtureFiles, profilePatch;
   const app = await profile(t, {
-    async beforeStart({ runtime }) {
+    async beforeStart(input) {
+      const { runtime } = input;
       const directory = resolve(runtime, "fixtures/settings-order");
       await mkdir(directory, { recursive: true });
       const files = {
@@ -82,6 +87,7 @@ test("设置扩展保持顺序且插件管理位于末尾", { timeout: 90000 }, 
         insert: [{ id: "fixture-settings-order", name: resolve(directory, "index.js") }],
       });
       await writeFile(patch, JSON.stringify(entries));
+      await prepareWorkbenchPageAccess([["gea-proof", "销售计划"]])(input);
       profilePatch = {
         path: patch,
         sha256: digest(await readFile(patch)),
@@ -125,7 +131,8 @@ test("设置扩展保持顺序且插件管理位于末尾", { timeout: 90000 }, 
     .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
     .getByRole("button", { name: "继续", exact: true })
     .click();
-  const frame = await openSalesPlan(page);
+  await openRegisteredWorkbenchPage(page, "销售计划");
+  const frame = salesPlanFrame(page);
   await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
   allowLogin = true;
   await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();

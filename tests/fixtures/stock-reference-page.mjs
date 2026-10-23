@@ -12,7 +12,7 @@ import { stockState, installStockRoutes } from "./branch-stock.mjs";
 
 export async function stockReferencePage(
   t,
-  { editable = false, holdMessage, environments = false, preparePage } = {},
+  { editable = false, holdMessage, environments = false, preparePage, prepareProfile } = {},
 ) {
   const identity = { userId: "9007199254740993", tenantId: "0" };
   const state = stockState();
@@ -51,7 +51,8 @@ export async function stockReferencePage(
   );
   fixtureEnvironment(t, { GEA_TEST_MODEL_KEY: "fixture-key" });
   const app = await profile(t, {
-    beforeStart: async ({ runtime }) => {
+    beforeStart: async (input) => {
+      const { runtime } = input;
       const path = resolve(runtime, "home/profiles/plugin-split-validation");
       await mkdir(path, { recursive: true });
       await writeFile(
@@ -66,6 +67,7 @@ export async function stockReferencePage(
           },
         ]),
       );
+      await prepareProfile?.(input);
     },
     config: (base) => ({
       cubeMcpCodes: { production: "cube", test: "cube" },

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import {
-  openSalesPlan,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
   salesPlanFrameElement,
   salesPlanFrame,
   preparePageStartup,
@@ -37,7 +38,9 @@ test(
   "Chrome logout works from both shells, retries failure and signs out other tabs",
   { timeout: 90000 },
   async (t) => {
-    const app = await profile(t);
+    const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess([["gea-proof", "销售计划"]]),
+    });
     app.route((request, _res, reply) => {
       if (!request.url.pathname.endsWith("/getUserInfo")) return false;
       reply({
@@ -88,7 +91,8 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const businessFrame = await openSalesPlan(page);
+    await openRegisteredWorkbenchPage(page, "销售计划");
+    const businessFrame = salesPlanFrame(page);
     await businessFrame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
     // Login belongs to the current business Document; it never replaces the Core shell.
     await expect(salesPlanFrameElement(page)).toBeVisible();
