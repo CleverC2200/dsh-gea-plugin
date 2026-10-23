@@ -23,3 +23,4 @@ CI Core 的阻断与兼容范围由 `scripts/ci-core-policy.json` 维护；调�
 | 完整桌面包的 Core 跟随当前 required 策略，复用底包须匹配该 Core                   | 双端 workflow 从 `ciCores("required")` 选择 checkout 与构建标识；`readDesktopInput` 拒绝旧 Core，Mac 预检拒绝旧底包；`input.test.mjs`、`delivery-events.test.mjs` 随影响选择运行 |
 | 覆盖安装按内置完整三包刷新，完成前核三项实际版本及用户配置保全                    | `refreshBundledCompanySuite`；`scripts/desktop-gea-upgrade.test.mjs` 接入现有 source-quality 选择                                                                                |
 | 等待重启的更新由新 Host/client 确认，启动前保持安装图和回执并暂缓刷新及旧目录清理 | `refreshCompanyStartup`、`refreshBundledCompanySuite`；严格写入仍调用 `assertProfileIdle`；`scripts/desktop-gea-upgrade.test.mjs`                                                |
+| 修复 PR 统一以 main 为目标，冻结交付使用固定提交                                  | `source-quality.mjs --phase plan` 拒绝非 main 的 PR；工作流覆盖目标分支变更，`source-quality.test.mjs` 验证真实错误目标                                                          |
