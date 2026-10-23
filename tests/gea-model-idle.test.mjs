@@ -320,7 +320,7 @@ test("reasoning beyond the former character bound reaches the completed Core blo
       .text,
     reasoning,
   );
-  assert.equal(chunks.at(-1).replayState.response.complete, true);
+  assert.deepEqual(chunks.at(-1).reason, { kind: "stop" });
 });
 
 test("finish waits for late usage and protocol termination beyond the former tail deadline", async (t) => {

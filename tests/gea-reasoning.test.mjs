@@ -41,12 +41,11 @@ const collect = async (wire, split = false, offered) => {
     chunks.push(chunk);
   return chunks;
 };
-const completeSource = {
+const modelSource = {
   provider: "gea-analysis",
   model: "id",
-  replayState: { response: { protocol: "gea-client-reasoning-v1", complete: true } },
 };
-const assistant = (text, source = completeSource) => ({
+const assistant = (text, source = modelSource) => ({
   role: "assistant",
   source,
   content: [
@@ -147,7 +146,7 @@ test("known invalid reasoning types fail safely, unknown extension fields remain
   );
 });
 
-test("cancelled, truncated and failed reasoning cannot be replayed as a complete assistant", async () => {
+test("failed streams retain unfinished reasoning without a successful finish", async () => {
   for (const wire of [
     event({ reasoning_content: "部分原文" }),
     event({ reasoning_content: "部分原文" }) +
@@ -169,20 +168,60 @@ test("cancelled, truncated and failed reasoning cannot be replayed as a complete
       false,
     );
   }
-  const truncated = await collect(
-    event({ reasoning_content: "部分原文", content: "部分答案" }, "length"),
-  );
-  assert.equal(truncated.at(-1).reason.kind, "max-tokens");
-  assert.equal(truncated.at(-1).replayState, undefined);
-  assert.throws(
-    () => toGeaMessages({ messages: [assistant("部分原文", {})] }),
-    /GEA_REASONING_HISTORY_INCOMPLETE/,
-  );
-  assert.doesNotThrow(() =>
-    toGeaMessages({
-      messages: [{ role: "assistant", content: [{ type: "text", text: "无思考答案" }] }],
-    }),
-  );
+});
+
+test("token-limited reasoning survives Core assembly and restore before user continuation", async () => {
+  for (const content of [undefined, "部分答案"]) {
+    const chunks = await collect(
+      event({ reasoning_content: "部分原文", content }) +
+        event({
+          tool_calls: [
+            {
+              index: 0,
+              id: "partial",
+              type: "function",
+              function: { name: "query", arguments: '{"x":' },
+            },
+          ],
+        }) +
+        event({}, "length"),
+      false,
+      { names: ["query"] },
+    );
+    const assembler = new BlockAssembler();
+    for (const chunk of chunks) assembler.push(chunk);
+    assert.equal(chunks.at(-1).reason.kind, "max-tokens");
+    const restored = JSON.parse(
+      JSON.stringify({
+        role: "assistant",
+        source: modelSource,
+        content: assembler.blocks(),
+      }),
+    );
+    const messages = toGeaMessages({
+      messages: [restored, { role: "user", content: [{ type: "text", text: "继续" }] }],
+    });
+    assert.deepEqual(messages, [
+      { role: "assistant", content, reasoning_content: "部分原文" },
+      { role: "user", content: "继续" },
+    ]);
+  }
+});
+
+test("reasoning history does not require private replay metadata", () => {
+  for (const source of [
+    modelSource,
+    {
+      ...modelSource,
+      replayState: {
+        response: { protocol: "gea-client-reasoning-v1", complete: true },
+      },
+    },
+  ]) {
+    assert.deepEqual(toGeaMessages({ messages: [assistant("原文", source)] }), [
+      { role: "assistant", content: "答案", reasoning_content: "原文" },
+    ]);
+  }
 });
 
 test("late increments are ignored but a trailing SSE error still prevents successful finish", async () => {
