@@ -9,7 +9,9 @@ const [root, support, seed, output] = process.argv.slice(2).map((path) => resolv
 const { installCompanyPackages, bootstrapCompanyProfile, readCompanySeed } = await import(
   pathToFileURL(join(root, "company-bootstrap.mjs"))
 );
-const { refreshBundledGea } = await import(pathToFileURL(join(root, "company-gea-refresh.mjs")));
+const { refreshBundledCompanySuite } = await import(
+  pathToFileURL(join(root, "company-gea-refresh.mjs"))
+);
 const home = join(output, "home");
 const profile = join(home, "profiles/desktop");
 const old = join(output, "old-client/company-seed/archives");
@@ -63,7 +65,7 @@ await rm(join(output, "old-client"), { recursive: true });
 const manifest = await readCompanySeed(seed);
 const options = { root, support, seed, home, manifest, install: installCompanyPackages };
 await assert.rejects(
-  refreshBundledGea({
+  refreshBundledCompanySuite({
     ...options,
     install: (args) => installCompanyPackages({ ...args, seed: undefined }),
   }),
@@ -76,7 +78,7 @@ const log = await readFile(failed.diagnostic.slice("GEA_COMPANY_INSTALL_FAILED: 
 assert.match(log, /\[ENOENT\].*dsh-genui-0\.11\.3\.tgz/);
 await writeFile(join(output, "failure-pnpm.log"), log);
 await writeFile(join(output, "failed-receipt.json"), JSON.stringify(failed, null, 2));
-const recovered = await refreshBundledGea(options);
+const recovered = await refreshBundledCompanySuite(options);
 assert.equal(recovered.status, "completed");
 assert.deepEqual(
   JSON.parse(
@@ -131,7 +133,7 @@ await installCompanyPackages({
   offline: false,
 });
 await rm(join(output, "same-version-client"), { recursive: true });
-const sameVersion = await refreshBundledGea(options);
+const sameVersion = await refreshBundledCompanySuite(options);
 assert.equal(sameVersion.status, "completed");
 assert.equal(sameVersion.from, sameVersion.to);
 const plain = await readFile(join(profile, "package.json"));
