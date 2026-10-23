@@ -200,7 +200,8 @@ try {
       if (process.env[key] !== "success") refuse("QUALITY_COMPATIBILITY_REQUIRED", key);
   } else if (values.phase === "docs-final") {
     const { verifyDocsResults, docsHostedJobScope } = await import("./quality-docs.mjs");
-    const { readHostedRun, assessHostedBudget } = await import("./quality-hosted-budget.mjs");
+    const { readHostedRun, assessHostedBudget, assessFinalDependencies } =
+      await import("./quality-hosted-budget.mjs");
     const expected = {
       cores: JSON.parse(process.env.QUALITY_FINAL_CORES),
       runId: process.env.GITHUB_RUN_ID,
@@ -229,6 +230,7 @@ try {
     const { requiredJobs, notApplicableJobs } = docsHostedJobScope({
       snapshot,
       cores: expected.cores,
+      finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
     });
     const hosted = assessHostedBudget({
       snapshot,
@@ -237,15 +239,31 @@ try {
       finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
       mode: "in-gate",
     });
+    let functionalGate;
+    try {
+      functionalGate = assessFinalDependencies({
+        snapshot,
+        requiredJobs,
+        notApplicableJobs,
+        finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
+        needs: JSON.parse(process.env.QUALITY_FINAL_NEEDS ?? "null"),
+        applicability: result.applicability,
+        hasShards: false,
+        dependencyReview: false,
+      });
+    } catch (error) {
+      functionalGate = { status: "failed", reasons: [error.message] };
+    }
     const output = resolve(values["final-output"]);
     mkdirSync(output, { recursive: true });
     for (const [name, data] of Object.entries({
       coverage: result,
       "hosted-budget": hosted,
       "hosted-snapshot": snapshot,
+      "final-dependencies": functionalGate,
     }))
       writeFileSync(resolve(output, name + ".json"), JSON.stringify(data, null, 2) + "\n");
-    if (hosted.functional.status !== "passed") refuse("QUALITY_DOCS_FINAL_REJECTED");
+    if (functionalGate.status !== "passed") refuse("QUALITY_DOCS_FINAL_REJECTED");
   } else if (values.phase === "final") {
     if (
       !values.catalog ||
@@ -255,7 +273,8 @@ try {
     )
       refuse("QUALITY_FINAL_INPUT_REQUIRED");
     const { shardCli, createShardCatalog } = await import("./quality-shards.mjs");
-    const { readHostedRun, assessHostedBudget } = await import("./quality-hosted-budget.mjs");
+    const { readHostedRun, assessHostedBudget, assessFinalDependencies } =
+      await import("./quality-hosted-budget.mjs");
     const output = resolve(values["final-output"]);
     mkdirSync(output, { recursive: true });
     let coverage, catalog;
@@ -306,7 +325,7 @@ try {
       coverage = { status: "failed", error: error.message };
       writeFileSync(resolve(output, "coverage.json"), JSON.stringify(coverage, null, 2) + "\n");
     }
-    let hosted;
+    let hosted, functionalGate;
     try {
       const snapshot = await readHostedRun({
         repository: process.env.GITHUB_REPOSITORY,
@@ -322,15 +341,23 @@ try {
         resolve(output, "hosted-snapshot.json"),
         JSON.stringify(snapshot, null, 2) + "\n",
       );
-      hosted = assessHostedBudget({
-        snapshot,
+      const scope = {
         requiredJobs: catalog?.requiredJobs ?? ["candidate-scope", "plan-test-shards"],
         notApplicableJobs: catalog?.notApplicableJobs ?? [],
         finalJobName: process.env.QUALITY_FINAL_JOB_NAME ?? "candidate-quality",
-        mode: "in-gate",
+      };
+      hosted = assessHostedBudget({ snapshot, ...scope, mode: "in-gate" });
+      functionalGate = assessFinalDependencies({
+        snapshot,
+        ...scope,
+        needs: JSON.parse(process.env.QUALITY_FINAL_NEEDS ?? "null"),
+        applicability: "source",
+        hasShards: catalog?.hasShards === true,
+        dependencyReview: scope.requiredJobs.includes("Dependency review"),
       });
     } catch (error) {
-      hosted = {
+      functionalGate = { status: "failed", reasons: [error.message] };
+      hosted ??= {
         passed: false,
         functional: { status: "unknown", error: error.message },
         performance: { status: "unknown", error: error.message },
@@ -341,9 +368,18 @@ try {
       hosted.functional = { status: "unknown", reasons: ["QUALITY_CATALOG_REQUIRED"] };
       hosted.passed = false;
     }
+    functionalGate ??= {
+      status: "failed",
+      reasons: [hosted.functional.error ?? "QUALITY_CATALOG_REQUIRED"],
+    };
+    if (!catalog) functionalGate = { status: "failed", reasons: ["QUALITY_CATALOG_REQUIRED"] };
+    writeFileSync(
+      resolve(output, "final-dependencies.json"),
+      JSON.stringify(functionalGate, null, 2) + "\n",
+    );
     writeFileSync(resolve(output, "hosted-budget.json"), JSON.stringify(hosted, null, 2) + "\n");
-    console.log(JSON.stringify({ coverage, hosted }));
-    if (coverage.status !== "passed" || hosted.functional?.status !== "passed")
+    console.log(JSON.stringify({ coverage, hosted, functionalGate }));
+    if (coverage.status !== "passed" || functionalGate.status !== "passed")
       refuse("QUALITY_FINAL_REJECTED");
   } else if (values.phase === "input") {
     refuse(

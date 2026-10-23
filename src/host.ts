@@ -360,7 +360,7 @@ export async function apply(
     ctx.effect(() => {
       const registration = ctx.llm.registerAdapter(
         ["gea-analysis"],
-        new GeaModelAdapter(business, htmlPlugins.consumerForSession),
+        new GeaModelAdapter(business, htmlPlugins.modelAccessForSession),
       );
       let identity = business.identitySignal();
       let authenticated = business.status().authenticated;

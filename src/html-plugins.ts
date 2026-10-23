@@ -460,9 +460,24 @@ export async function registerHtmlPlugins(
   }
 
   return {
-    consumerForSession: async (session?: string, signal?: AbortSignal) => {
+    modelAccessForSession: async (session?: string, signal?: AbortSignal) => {
       await assertSessionResourceAvailable(ctx, session, signal);
-      return sessionConsumer(ctx, business, session);
+      const agent = session ? ctx.agents.get(session) : undefined;
+      const preset = agent
+        ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
+        : undefined;
+      const association =
+        agent && !profileFor(preset ?? undefined) ? ctx.userAgents?.cubeFor(agent) : undefined;
+      const source = ctx.agentResources.cubeSource(association?.sourceRef ?? preset);
+      return {
+        consumerCode: sessionConsumer(ctx, business, session),
+        signal: AbortSignal.any([
+          business.identitySignal(),
+          lifetime.signal,
+          ...(source ? [source.signal] : []),
+          ...(association ? [association.signal] : []),
+        ]),
+      };
     },
     capabilityContracts,
   };

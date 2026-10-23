@@ -169,39 +169,49 @@ export function registerCurrentShortageTool(
               item.manifest.mode !== "mock",
           );
           if (!resource) throw Error("GEA_AGENT_RESOURCE_MISSING");
-          const signal = AbortSignal.any([exec.signal, business.identitySignal()]);
-          const detail = args.view === "detail",
-            locations = args.view === "locations",
-            page = args.page ?? 1;
-          if (!Number.isSafeInteger(page) || page < 1 || page > 1000000)
-            throw Error("CURRENT_SHORTAGE_PAGE_INVALID");
-          const parameters = {
-            base: args.base ?? null,
-            warehouse_code: args.warehouseCode ?? null,
-            sku: args.sku ?? null,
-            category: args.category ?? null,
-            ...(detail ? { page_size: 10, offset: (page - 1) * 10 } : {}),
-          };
-          const result = await readConfiguredHtmlQuery(
-            resource,
-            {
-              queryId: detail
-                ? "current-shortage.detail"
-                : locations
-                  ? "current-shortage.locations"
-                  : "current-shortage.summary",
-              parameters,
-            },
-            business,
-            signal,
-          );
-          signal.throwIfAborted();
-          await assertSessionResourceAvailable(ctx, session, signal);
-          if (sessionConsumer(ctx, business, session) !== consumer)
-            throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
-          return JSON.stringify(
-            currentShortageResult(result, locations ? "locations" : detail, page),
-          );
+          const resourceChange = new AbortController();
+          const unwatch = ctx.agentResources.watch(() => resourceChange.abort());
+          const signal = AbortSignal.any([
+            exec.signal,
+            business.identitySignal(),
+            resourceChange.signal,
+          ]);
+          try {
+            const detail = args.view === "detail",
+              locations = args.view === "locations",
+              page = args.page ?? 1;
+            if (!Number.isSafeInteger(page) || page < 1 || page > 1000000)
+              throw Error("CURRENT_SHORTAGE_PAGE_INVALID");
+            const parameters = {
+              base: args.base ?? null,
+              warehouse_code: args.warehouseCode ?? null,
+              sku: args.sku ?? null,
+              category: args.category ?? null,
+              ...(detail ? { page_size: 10, offset: (page - 1) * 10 } : {}),
+            };
+            const result = await readConfiguredHtmlQuery(
+              resource,
+              {
+                queryId: detail
+                  ? "current-shortage.detail"
+                  : locations
+                    ? "current-shortage.locations"
+                    : "current-shortage.summary",
+                parameters,
+              },
+              business,
+              signal,
+            );
+            signal.throwIfAborted();
+            await assertSessionResourceAvailable(ctx, session, signal);
+            if (sessionConsumer(ctx, business, session) !== consumer)
+              throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
+            return JSON.stringify(
+              currentShortageResult(result, locations ? "locations" : detail, page),
+            );
+          } finally {
+            unwatch();
+          }
         },
       }),
     ),

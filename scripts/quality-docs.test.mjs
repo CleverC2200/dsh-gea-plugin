@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createExecutionPlan } from "./quality-test-execution.mjs";
 import { verifyDocsResults, docsHostedJobScope } from "./quality-docs.mjs";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createServer } from "node:http";
+import { once } from "node:events";
+import { spawn } from "node:child_process";
+import { windowsNativeInput } from "./ci-windows-update.mjs";
 import { assessHostedBudget, unexpandedSkippedJobNames } from "./quality-hosted-budget.mjs";
 
 const expected = {
@@ -118,4 +124,123 @@ test("the actual failed docs run recognizes only its exact skipped matrix names 
       /QUALITY_DOCS_JOB_REJECTED/,
     );
   }
+});
+
+test("the public docs final accepts only the scheduler docs path and preserves stale REST observations", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "docs-final-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "docs"));
+  mkdirSync(join(root, "windows"));
+  writeFileSync(join(root, "docs", "receipt.json"), JSON.stringify(receipt()));
+  writeFileSync(
+    join(root, "windows", "windows-update-scope.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      applicable: false,
+      sourceHead: expected.sources[0].head,
+      group: { groupId: expected.groupId, repositories: expected.sources },
+      runtime: windowsNativeInput,
+    }),
+  );
+  const needs = {
+    "candidate-scope": { result: "success" },
+    "source-plan": { result: "success", outputs: { applicability: "docs" } },
+    gates: { result: "skipped" },
+    "plan-test-shards": { result: "skipped" },
+    "test-shards": { result: "skipped" },
+    "macos-isolation": { result: "skipped" },
+    "windows-plugin-update": { result: "success" },
+    "dependency-review": { result: "skipped" },
+  };
+  const jobs = [
+    "candidate-scope",
+    "windows-plugin-update",
+    "source-plan-" + expected.cores[0],
+    "joint-quality",
+  ].map((name, i) => ({
+    id: i + 1,
+    name,
+    run_id: 123,
+    run_attempt: 1,
+    head_sha: expected.sources[0].head,
+    status: "queued",
+    conclusion: null,
+    started_at: null,
+    completed_at: null,
+    steps: [{ name: "Post Run actions/setup-node", status: "completed", conclusion: "skipped" }],
+  }));
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        request.url.includes("/jobs?")
+          ? { total_count: jobs.length, jobs }
+          : {
+              id: 123,
+              run_attempt: 1,
+              head_sha: expected.sources[0].head,
+              status: "queued",
+              conclusion: null,
+              created_at: new Date().toISOString(),
+              run_started_at: null,
+              updated_at: new Date().toISOString(),
+            },
+      ),
+    );
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => server.close());
+  const invoke = async (name, schedulerNeeds = needs) => {
+    const output = join(root, name);
+    const child = spawn(
+      process.execPath,
+      [
+        "scripts/run-quality-ci.mjs",
+        "--phase",
+        "docs-final",
+        "--docs-results",
+        join(root, "docs"),
+        "--windows-results",
+        join(root, "windows"),
+        "--final-output",
+        output,
+      ],
+      {
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+          GITHUB_RUN_ID: "123",
+          GITHUB_RUN_ATTEMPT: "1",
+          QUALITY_EXPECTED_WORKFLOW_SHA: expected.sources[0].head,
+          QUALITY_FINAL_MANAGE_SHA: expected.sources[1].head,
+          QUALITY_FINAL_WORKBENCH_SHA: expected.sources[2].head,
+          QUALITY_FINAL_GROUP_ID: expected.groupId,
+          QUALITY_FINAL_CORES: JSON.stringify(expected.cores),
+          QUALITY_FINAL_JOB_NAME: "joint-quality",
+          QUALITY_FINAL_NEEDS: JSON.stringify(schedulerNeeds),
+          QUALITY_HOSTED_API_BASE: `http://127.0.0.1:${server.address().port}`,
+        },
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+    let stderr = "";
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    const [status] = await once(child, "exit");
+    return { status, stderr, output };
+  };
+  const good = await invoke("good");
+  assert.equal(good.status, 0, good.stderr);
+  const read = (file) => JSON.parse(readFileSync(join(good.output, file + ".json")));
+  assert.equal(read("final-dependencies").status, "passed");
+  assert.equal(read("hosted-budget").functional.status, "failed");
+  assert.equal(read("hosted-budget").performance.status, "unknown");
+  assert.equal(read("hosted-snapshot").jobs.at(-1).status, "queued");
+  assert.equal(read("coverage").tests, "not-applicable");
+  assert.equal((await invoke("missing", null)).status, 1);
+  const invalid = structuredClone(needs);
+  invalid.gates.result = "success";
+  assert.equal((await invoke("wrong-scope", invalid)).status, 1);
+  Object.assign(jobs[2], { status: "completed", conclusion: "failure" });
+  assert.equal((await invoke("actual-failure")).status, 1);
 });

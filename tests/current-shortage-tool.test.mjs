@@ -45,6 +45,7 @@ function fixture(
     preset = "gea-html-inventory-" + agent,
     enabled = true;
   const calls = [],
+    listeners = new Set(),
     identity = new AbortController(),
     coreAgent = { id: "current-session" };
   const ctx = {
@@ -59,6 +60,10 @@ function fixture(
     sessionProjections: { stateOf: () => preset },
     agentResources: {
       list: async () => [{ id: preset, kind: "prompt", installed: true, enabled }],
+      watch: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
     },
   };
   const business = {
@@ -89,7 +94,18 @@ function fixture(
       }),
     calls,
     identity,
-    disable: () => (enabled = false),
+    setEnabled: (value) => {
+      enabled = value;
+      for (const listener of listeners) listener();
+    },
+    disable: () => {
+      enabled = false;
+      for (const listener of listeners) listener();
+    },
+    replace: () => {
+      for (const listener of listeners) listener();
+    },
+    listeners,
     switchTo: (value) => (preset = value),
   };
 }
@@ -226,6 +242,38 @@ test("disabled, changed and unrelated identities cannot execute or receive data"
   });
   await assert.rejects(aborted.call({}), { name: "AbortError" });
 });
+for (const change of ["disable and re-enable", "replace with the same ID"]) {
+  test(`a pending query cannot survive resource ${change}`, async () => {
+    const started = Promise.withResolvers();
+    const held = Promise.withResolvers();
+    let signal;
+    let first = true;
+    const f = fixture("aqkc", async (_request, activeSignal) => {
+      signal = activeSignal;
+      if (first) {
+        first = false;
+        started.resolve();
+        await held.promise;
+      }
+      return { rows: [row], returnedColumns: columns };
+    });
+    const pending = assert.rejects(f.call({}), { name: "AbortError" });
+    await started.promise;
+    if (change === "disable and re-enable") {
+      f.setEnabled(false);
+      f.setEnabled(true);
+    } else {
+      f.replace();
+    }
+    assert.equal(signal.aborted, true);
+    held.resolve();
+    await pending;
+    assert.equal(f.listeners.size, 0);
+    assert.equal(JSON.parse(await f.call({})).rows[0].shortage, "5");
+    assert.equal(f.listeners.size, 0);
+  });
+}
+
 test("missing fields, invalid rows and partial pages cannot become zero shortage", () => {
   for (const r of [
     { ...row, invalid: 1 },
