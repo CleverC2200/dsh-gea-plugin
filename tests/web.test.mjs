@@ -150,18 +150,31 @@ test(
       .click();
     const frame = await openSalesPlan(page);
     try {
-      await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
+      await frame
+        .getByRole("button", { name: "刷新二维码", exact: true })
+        .waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).waitFor();
-      assert.equal(await frame.getByRole("radio", { name: "测试", exact: true }).isChecked(), true);
-      assert.equal(await frame.locator('input[type="url"], input[type="text"]').count(), 0);
+      assert.equal(
+        await frame
+          .getByRole("radio", { name: "测试", exact: true })
+          .isChecked(),
+        true,
+      );
+      assert.equal(
+        await frame.locator('input[type="url"], input[type="text"]').count(),
+        0,
+      );
       assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
       const loginBounds = await salesPlanFrameElement(page).boundingBox();
       // The native page fills its Workbench business column inside Core's standard main.
       const businessInsets = () =>
         salesPlanFrameElement(page).evaluate((iframe) => {
           const column = iframe.closest(".agent-workbench-business");
-          if (!column) throw Error("Current Workbench must own the native business column");
+          if (!column)
+            throw Error(
+              "Current Workbench must own the native business column",
+            );
           const a = iframe.getBoundingClientRect(),
             b = column.getBoundingClientRect();
           return [a.x - b.x, a.y - b.y, a.width - b.width, a.height - b.height];
@@ -172,14 +185,22 @@ test(
           page
             .locator("[data-rightbar-col]")
             .evaluate((column) =>
-              Number.parseFloat(getComputedStyle(column.parentElement).gridTemplateColumns),
+              Number.parseFloat(
+                getComputedStyle(column.parentElement).gridTemplateColumns,
+              ),
             ),
         )
         .toBe(280);
-      const navigationLayout = await page.locator("[data-rightbar-col]").evaluate((column) => ({
-        sidebar: Number.parseFloat(getComputedStyle(column.parentElement).gridTemplateColumns),
-        collapsed: column.parentElement.getAttribute("data-sidebar-collapsed"),
-      }));
+      const navigationLayout = await page
+        .locator("[data-rightbar-col]")
+        .evaluate((column) => ({
+          sidebar: Number.parseFloat(
+            getComputedStyle(column.parentElement).gridTemplateColumns,
+          ),
+          collapsed: column.parentElement.getAttribute(
+            "data-sidebar-collapsed",
+          ),
+        }));
       assert.deepEqual(navigationLayout, { sidebar: 280, collapsed: null });
       const documentChrome = await page
         .locator("[data-workbench-window-chrome]:visible")
@@ -199,11 +220,16 @@ test(
       await page.screenshot({ path: ".runtime/web-evidence/login-mobile.png" });
       await page.setViewportSize({ width: 1536, height: 920 });
       await frame.getByRole("radio", { name: "正式", exact: true }).check();
-      await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
+      await frame
+        .getByRole("button", { name: "刷新二维码", exact: true })
+        .waitFor();
       await frame.getByRole("radio", { name: "测试", exact: true }).check();
       await frame.locator(".gea-login-qr img").waitFor();
       const opening = page.waitForRequest((request) => {
-        if (!request.url().endsWith("/api/agent-workbench/page") || request.method() !== "POST")
+        if (
+          !request.url().endsWith("/api/agent-workbench/page") ||
+          request.method() !== "POST"
+        )
           return false;
         const input = request.postDataJSON();
         return (
@@ -228,7 +254,9 @@ test(
           status: response.status(),
           body: await response.json(),
         })),
-        frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor(),
+        frame
+          .getByRole("heading", { name: "销售计划审批", exact: true })
+          .waitFor(),
       ]);
       assert.match(request.postDataJSON().sessionId, /^session-[0-9a-f-]{36}$/);
       const owner = reply.body.owner;
@@ -242,7 +270,9 @@ test(
         ),
       );
       await frame.getByText("华东", { exact: true }).first().waitFor();
-      await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
+      await page
+        .getByRole("navigation", { name: "业务导航", exact: true })
+        .waitFor();
       // 侧栏二级条目要和一级标题左对齐：文字同一竖线，命中区同一左边缘，二级只少一个图标。
       const navRows = await page
         .locator(".gea-shell-nav-heading, [data-gea-business-entry]")
@@ -250,12 +280,17 @@ test(
           buttons.map((button) => ({
             child: button.hasAttribute("data-gea-business-entry"),
             hit: Math.round(button.getBoundingClientRect().x),
-            label: Math.round(button.querySelector("span").getBoundingClientRect().x),
+            label: Math.round(
+              button.querySelector("span").getBoundingClientRect().x,
+            ),
           })),
         );
       const headings = navRows.filter((row) => !row.child);
       const children = navRows.filter((row) => row.child);
-      assert.ok(headings.length > 0 && children.length > 0, JSON.stringify(navRows));
+      assert.ok(
+        headings.length > 0 && children.length > 0,
+        JSON.stringify(navRows),
+      );
       assert.deepEqual(
         [...new Set(children.map((row) => row.label))],
         [headings[0].label],
@@ -267,7 +302,9 @@ test(
         JSON.stringify(navRows),
       );
       // 业务条目与其导航容器左边缘一致；主线原生侧栏保留外层留白。
-      const navigationBox = await page.locator(".gea-shell-navigation").boundingBox();
+      const navigationBox = await page
+        .locator(".gea-shell-navigation")
+        .boundingBox();
       assert.ok(
         Math.abs(headings[0].hit - navigationBox.x) <= 2 &&
           children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
@@ -287,23 +324,33 @@ test(
             iconWidth: icon?.getBoundingClientRect().width,
             plusWidth: plus?.getBoundingClientRect().width,
             contained: Boolean(
-              icon && plus &&
-              icon.getBoundingClientRect().left > bounds.left &&
-              plus.getBoundingClientRect().right < bounds.right &&
-              icon.getBoundingClientRect().right < plus.getBoundingClientRect().left
+              icon &&
+                plus &&
+                icon.getBoundingClientRect().left > bounds.left &&
+                plus.getBoundingClientRect().right < bounds.right &&
+                icon.getBoundingClientRect().right <
+                  plus.getBoundingClientRect().left,
             ),
           };
         });
       assert.deepEqual(newSession, {
-        display: "flex", align: "center", iconWidth: 22, plusWidth: 20, contained: true,
+        display: "flex",
+        align: "center",
+        iconWidth: 22,
+        plusWidth: 20,
+        contained: true,
       });
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
       await expect
         .poll(() =>
           page.locator("[data-rightbar-col]").evaluate((column) => ({
-            sidebar: Number.parseFloat(getComputedStyle(column.parentElement).gridTemplateColumns),
-            collapsed: column.parentElement.getAttribute("data-sidebar-collapsed"),
+            sidebar: Number.parseFloat(
+              getComputedStyle(column.parentElement).gridTemplateColumns,
+            ),
+            collapsed: column.parentElement.getAttribute(
+              "data-sidebar-collapsed",
+            ),
           })),
         )
         .toEqual(navigationLayout);
@@ -327,10 +374,15 @@ test(
           .poll(() =>
             table.evaluate((element) => ({
               viewport: element.clientWidth,
-              table: Math.round(element.querySelector("table").getBoundingClientRect().width),
+              table: Math.round(
+                element.querySelector("table").getBoundingClientRect().width,
+              ),
             })),
           )
-          .toMatchObject({ viewport: width - 1, table: Math.max(864, width - 1) });
+          .toMatchObject({
+            viewport: width - 1,
+            table: Math.max(864, width - 1),
+          });
         const headers = await table.locator("thead th").evaluateAll((cells) =>
           cells.map((cell) => ({
             left: cell.getBoundingClientRect().left,
@@ -338,7 +390,10 @@ test(
           })),
         );
         for (let index = 1; index < headers.length; index++) {
-          assert.ok(headers[index].left >= headers[index - 1].right - 1, JSON.stringify(headers));
+          assert.ok(
+            headers[index].left >= headers[index - 1].right - 1,
+            JSON.stringify(headers),
+          );
         }
         await expect(table.locator("thead th").last()).toHaveText("退回原因");
         await table.evaluate((element) => {
@@ -348,8 +403,12 @@ test(
           .poll(() =>
             table.evaluate((element) => {
               const viewport = element.getBoundingClientRect();
-              const last = element.querySelector("thead th:last-child").getBoundingClientRect();
-              return last.left >= viewport.left && last.right <= viewport.right + 1;
+              const last = element
+                .querySelector("thead th:last-child")
+                .getBoundingClientRect();
+              return (
+                last.left >= viewport.left && last.right <= viewport.right + 1
+              );
             }),
           )
           .toBe(true);
@@ -372,17 +431,27 @@ test(
       await expect(reject).toBeEnabled();
       // Approval now submits directly; exercise the cancellable rejection form without writing.
       await reject.click();
-      const approvalDialog = frame.getByRole("dialog", { name: "退回", exact: true });
+      const approvalDialog = frame.getByRole("dialog", {
+        name: "退回",
+        exact: true,
+      });
       await expect(
-        approvalDialog.getByRole("textbox", { name: "退回原因（必填）", exact: true }),
+        approvalDialog.getByRole("textbox", {
+          name: "退回原因（必填）",
+          exact: true,
+        }),
       ).toBeVisible();
       await expect(
         approvalDialog.getByRole("button", { name: "确认退回", exact: true }),
       ).toBeDisabled();
-      await approvalDialog.getByRole("button", { name: "取消", exact: true }).click();
+      await approvalDialog
+        .getByRole("button", { name: "取消", exact: true })
+        .click();
       if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
         await frame.getByTestId("regional-approval-flow-toggle").click();
-      await expect(frame.getByTestId("regional-approval-stage-province")).toBeDisabled();
+      await expect(
+        frame.getByTestId("regional-approval-stage-province"),
+      ).toBeDisabled();
       const currentStage = frame.getByTestId("regional-approval-stage-region");
       await currentStage.click();
       await expect(currentStage).toHaveAttribute("aria-pressed", "false");
@@ -390,26 +459,46 @@ test(
       await currentStage.click();
       await expect(currentStage).toHaveAttribute("aria-pressed", "true");
       assert.equal(
-        app.requests.some((r) => r.method === "POST" && r.url.pathname.endsWith("/actions")),
+        app.requests.some(
+          (r) => r.method === "POST" && r.url.pathname.endsWith("/actions"),
+        ),
         false,
       );
 
-      assert.equal(await frame.getByRole("combobox", { name: "分析范围", exact: true }).count(), 0);
       assert.equal(
-        await frame.getByRole("button", { name: "预览发送范围", exact: true }).count(),
+        await frame
+          .getByRole("combobox", { name: "分析范围", exact: true })
+          .count(),
+        0,
+      );
+      assert.equal(
+        await frame
+          .getByRole("button", { name: "预览发送范围", exact: true })
+          .count(),
         0,
       );
       const brand = page.locator(".gea-brand-switch");
       const avatarImage = page.locator(".gea-user-avatar img");
-      await expect(avatarImage).toHaveAttribute("src", "https://avatar.example.test/lark.png");
-      await expect.poll(() => avatarImage.evaluate((img) => img.naturalWidth)).toBe(1);
+      await expect(avatarImage).toHaveAttribute(
+        "src",
+        "https://avatar.example.test/lark.png",
+      );
+      await expect
+        .poll(() => avatarImage.evaluate((img) => img.naturalWidth))
+        .toBe(1);
       await avatarImage.dispatchEvent("error");
       await expect(page.locator(".gea-user-avatar")).toHaveText("测");
       const brandLogo = page.locator(".gea-shell-logo");
       assert.equal(await brandLogo.evaluate((el) => el.tagName), "IMG");
-      assert.match(await brandLogo.getAttribute("src"), /^data:image\/png;base64,/);
+      assert.match(
+        await brandLogo.getAttribute("src"),
+        /^data:image\/png;base64,/,
+      );
       // GEA business identity and the official Core document title have separate owners.
-      assert.equal(await page.locator(".gea-brand-title").textContent(), "Synear GEA");
+      assert.equal(
+        await page.locator(".gea-brand-title").textContent(),
+        "Synear GEA",
+      );
       assert.equal(await page.title(), "DSH 本地构建");
       assert.equal(
         await page
@@ -418,7 +507,9 @@ test(
         "rgb(215, 10, 28)",
       );
       assert.equal(
-        await page.locator(".gea-user-avatar").evaluate((el) => getComputedStyle(el).borderRadius),
+        await page
+          .locator(".gea-user-avatar")
+          .evaluate((el) => getComputedStyle(el).borderRadius),
         "50%",
       );
       // The brand mark is a label now: clicking it must not swap the page.
@@ -431,45 +522,74 @@ test(
           await expect(salesPlanFrameElement(page)).toBeHidden();
           await expect
             .poll(async () => {
-              const response = await fetch(app.origin + "/api/agent-workbench/page", {
-                method: "POST",
-                headers: {
-                  Cookie: app.cookie,
-                  "Content-Type": "application/json",
-                  Origin: app.origin,
+              const response = await fetch(
+                app.origin + "/api/agent-workbench/page",
+                {
+                  method: "POST",
+                  headers: {
+                    Cookie: app.cookie,
+                    "Content-Type": "application/json",
+                    Origin: app.origin,
+                  },
+                  body: JSON.stringify({
+                    operation: "context",
+                    owner: releasedOwner,
+                  }),
                 },
-                body: JSON.stringify({ operation: "context", owner: releasedOwner }),
-              });
+              );
               return { status: response.status, ...(await response.json()) };
             })
             .toMatchObject({ status: 400, error: "PAGE_OWNER_RELEASED" });
         }
-        await page.getByRole("button", { name: "账户菜单", exact: true }).click();
+        await page
+          .getByRole("button", { name: "账户菜单", exact: true })
+          .click();
         await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-        await page.getByRole("button", { name: "通用设置", exact: true }).waitFor();
+        await page
+          .getByRole("button", { name: "通用设置", exact: true })
+          .waitFor();
         await page.getByRole("button", { name: "关闭", exact: true }).click();
       }
       // Back to the business page so the reload below still restores the workbench.
       await openSalesPlan(page);
       await expect(salesPlanFrameElement(page)).toBeVisible();
-      assert.equal(await page.getByRole("button", { name: "DSH 对话", exact: true }).count(), 0);
+      assert.equal(
+        await page
+          .getByRole("button", { name: "DSH 对话", exact: true })
+          .count(),
+        0,
+      );
       await page.reload();
-      await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
+      await frame
+        .getByRole("heading", { name: "销售计划审批", exact: true })
+        .waitFor();
       await page.setViewportSize({ width: 700, height: 1000 });
-      const conversation = page.getByRole("complementary", { name: "AI对话", exact: true });
+      const conversation = page.getByRole("complementary", {
+        name: "AI对话",
+        exact: true,
+      });
       await expect(conversation).toBeVisible();
-      await expect.poll(async () => (await conversation.boundingBox())?.width).toBe(320);
+      await expect
+        .poll(async () => (await conversation.boundingBox())?.width)
+        .toBe(320);
       await expect(
         page.getByRole("separator", { name: "调整业务与AI栏宽", exact: true }),
       ).toBeHidden();
       await expect(
-        page.getByRole("button", { name: "同时显示中间区域和会话区", exact: true }),
+        page.getByRole("button", {
+          name: "同时显示中间区域和会话区",
+          exact: true,
+        }),
       ).toHaveAttribute("aria-pressed", "true");
       assert.equal(
-        await conversation.evaluate((element) => getComputedStyle(element).transitionDuration),
+        await conversation.evaluate(
+          (element) => getComputedStyle(element).transitionDuration,
+        ),
         "0s",
       );
-      await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
+      await frame
+        .getByRole("heading", { name: "销售计划审批", exact: true })
+        .waitFor();
       await page.locator('[contenteditable="true"]').waitFor();
       const narrowFrame = await salesPlanFrameElement(page).boundingBox();
       assert.ok(
@@ -478,7 +598,8 @@ test(
       );
       const narrowConversation = await conversation.boundingBox();
       assert.ok(
-        narrowConversation && narrowFrame.x + narrowFrame.width <= narrowConversation.x,
+        narrowConversation &&
+          narrowFrame.x + narrowFrame.width <= narrowConversation.x,
         JSON.stringify({ narrowFrame, narrowConversation }),
       );
       await page.screenshot({ path: ".runtime/web-evidence/narrow.png" });
