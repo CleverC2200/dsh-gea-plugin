@@ -1,5 +1,5 @@
 name: source-timing-experiment
-run-name: "Current environment timing comparison — 4cd00e2cfab506873251882ff61473154458f9d3"
+run-name: "Repeat unchanged timing comparison after FC001 visibility failure — 4cd00e2cfab506873251882ff61473154458f9d3"
 
 on:
   push:
