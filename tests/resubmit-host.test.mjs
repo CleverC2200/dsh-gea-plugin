@@ -11,7 +11,7 @@ const version = {
   status: 7,
   effective: true,
   seq: 1,
-  dealerCode: "456",
+  cust_code: 456,
   targetQty: "1.000",
   targetAmount: "12.34",
 };
@@ -80,7 +80,7 @@ test(
                   ...version,
                   versionId: "v1",
                   orgName: "Fixture returned region",
-                  orgCode: "org",
+                  sales_group_code: "org",
                   currentQty: "2.000",
                   currentAmount: "24.68",
                 },
@@ -127,7 +127,8 @@ test(
       if (path.endsWith("/api/v1/internal/sales-plans")) {
         writes++;
         assert.equal(req.headers.authorization, "Bearer fixture-service");
-        assert.deepEqual(JSON.parse(req.body), expectedRequest);
+        const { dealerCode, ...unchanged } = expectedRequest;
+        assert.deepEqual(JSON.parse(req.body), { ...unchanged, cust_code: Number(dealerCode) });
         reply({
           success: true,
           result: {

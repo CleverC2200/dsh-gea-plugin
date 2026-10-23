@@ -71,7 +71,7 @@ test(
                 periodId: "20261001",
                 orderType: "M",
                 planTypeCode: "Y",
-                baseName: "华东",
+                belong_base: "华东",
                 status: 2,
                 skuCount: 1,
                 updatedAt: "stable",

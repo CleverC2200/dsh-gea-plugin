@@ -45,7 +45,7 @@ test(
                 status: 1,
                 currentQty: revoked ? "11" : "10",
                 currentAmount: "20",
-                baseName: "fixture-base",
+                belong_base: "fixture-base",
               },
             ],
             total: 1,

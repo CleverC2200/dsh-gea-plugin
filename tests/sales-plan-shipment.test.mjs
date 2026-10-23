@@ -43,7 +43,7 @@ function fixture(t, sqlResult, planRows) {
           {
             planId: "p-jxs-2026-10-00001",
             periodId: "17",
-            dealerCode: "001",
+            cust_code: 1001,
             currentQty: "100",
             currentAmount: "500",
             targetAmount: "1000",
@@ -51,14 +51,14 @@ function fixture(t, sqlResult, planRows) {
           {
             planId: "p-jxs-2026-10-00002",
             periodId: "17",
-            dealerCode: "001",
+            cust_code: 1001,
             currentQty: "50",
             currentAmount: "200",
           },
           {
             planId: "p-jxs-2026-10-00003",
             periodId: "17",
-            dealerCode: "002",
+            cust_code: 1002,
             currentQty: "70",
             currentAmount: "400",
           },
@@ -99,15 +99,15 @@ test("correction list adds monthly shipment quantities for visible customers wit
   const { business, sqlRequests } = fixture(t, (request) =>
     request.sql.includes("agents_order_execute_isontime_mi")
       ? {
-          rows: [{ cust_code: "001", ship_qty: "12.5000" }],
+          rows: [{ cust_code: "1001", ship_qty: "12.5000" }],
           total: 1,
           returnedColumns: ["cust_code", "ship_qty"],
           rejectedColumns: [],
         }
       : {
           rows: [
-            { cust_code: "001", ship_amount: "125.00" },
-            { cust_code: "002", ship_amount: "0" },
+            { cust_code: "1001", ship_amount: "125.00" },
+            { cust_code: "1002", ship_amount: "0" },
           ],
           total: 2,
           returnedColumns: ["cust_code", "ship_amount"],
@@ -150,7 +150,7 @@ test("correction list adds monthly shipment quantities for visible customers wit
   assert.match(sqlRequests[1].sql, /ship_month\s*=/);
   assert.deepEqual(
     Object.values(sqlRequests[1].parameters).filter((value) => typeof value === "string"),
-    ["202610", "001", "002"],
+    ["202610", "1001", "1002"],
   );
   assert.match(sqlRequests[0].sql, /agents_order_execute_isontime_mi/);
   assert.match(sqlRequests[0].sql, /SUM\(qtyshipped\)/i);
@@ -158,7 +158,7 @@ test("correction list adds monthly shipment quantities for visible customers wit
   assert.match(sqlRequests[0].sql, /fromorderno_month\s*</);
   assert.deepEqual(
     Object.values(sqlRequests[0].parameters).filter((value) => typeof value === "string"),
-    ["2026-10-01", "2026-11-01", "001", "002"],
+    ["2026-10-01", "2026-11-01", "1001", "1002"],
   );
 });
 
@@ -195,7 +195,7 @@ test("an unavailable amount source preserves shipment quantities and original pl
     if (request.sql.includes("agents_scm_cust_deliv_daily_di"))
       throw Error("amount-permission-denied");
     return {
-      rows: [{ cust_code: "001", ship_qty: "12.5000" }],
+      rows: [{ cust_code: "1001", ship_qty: "12.5000" }],
       total: 1,
       returnedColumns: ["cust_code", "ship_qty"],
       rejectedColumns: [],
@@ -214,8 +214,8 @@ test("an unavailable amount source preserves shipment quantities and original pl
 
 test("M and Z lists reject every wrong or missing requested period before shipment queries", async (t) => {
   const rows = [
-    { planId: "p-jxs-2026-10-00001", periodId: "17", dealerCode: "001" },
-    { planId: "p-jxs-2026-10-00002", periodId: "18", dealerCode: "002" },
+    { planId: "p-jxs-2026-10-00001", periodId: "17", cust_code: 1001 },
+    { planId: "p-jxs-2026-10-00002", periodId: "18", cust_code: 1002 },
   ];
   const { business, sqlRequests } = fixture(t, Error("must-not-query-shipments"), rows);
   for (const orderType of ["M", "Z"]) {
@@ -238,14 +238,14 @@ test("M and Z matching periods preserve original plan values with string and num
     {
       planId: "p-jxs-2026-10-00001",
       periodId: 17,
-      dealerCode: "001",
+      cust_code: 1001,
       currentQty: "100",
       currentAmount: "500",
     },
     {
       planId: "p-jxs-2026-10-00002",
       periodId: "17",
-      dealerCode: "002",
+      cust_code: 1002,
       currentQty: "70",
       currentAmount: "400",
     },
@@ -275,8 +275,8 @@ test("M and Z matching periods preserve original plan values with string and num
 
 test("unfiltered period discovery and an empty filtered summary keep their existing contracts", async (t) => {
   const rows = [
-    { planId: "p-jxs-2026-10-00001", periodId: "17", dealerCode: "001" },
-    { planId: "p-jxs-2026-11-00001", periodId: "18", dealerCode: "001" },
+    { planId: "p-jxs-2026-10-00001", periodId: "17", cust_code: 1001 },
+    { planId: "p-jxs-2026-11-00001", periodId: "18", cust_code: 1001 },
   ];
   const { business, sqlRequests } = fixture(t, Error("must-not-query-shipments"), rows);
   const discovered = await business.workbenchQuery(
