@@ -2,7 +2,7 @@
 
 ## 普通会话与运行态诊断
 
-GEA 在模型步骤按实际 Core 会话预设限制受控业务工具。普通预设可加载规则 Skill；个人 Agent 只有显式引用一个可信已安装 Cube 来源时，才获得该来源授予的两项 Cube 工具。未引用、停用或已撤销的能力同时从模型清单和直接派发中拒绝。官方通用工具和用户独立 MCP 保留。直接派发仍按原业务 guard 校验，角色名称与子智能体 persona 不授予 Consumer 身份；个人引用由 GEA Host 反查来源 owner 和 Consumer，不接受用户填入 Consumer、Token 或网关地址。页面工具还要求同会话当前页面身份已绑定，界面菜单可见不能代替页面绑定。
+GEA 在模型步骤按实际 Core 会话预设限制受控业务工具。普通预设可加载规则 Skill；当前预设声明可用的受管 Cube 来源，或个人 Agent 显式引用一个可信已安装 Cube 来源时，可发现服务端为该 Consumer 发布的 Cube 与知识库 MCP 工具。智能编排保留 `auto-negotiation` 预设，通过 Manage 受管来源以 `workbench` 编码发起模型及 MCP 请求，独立查询无需绑定页面。来源必须已安装、启用且无错误；来源失效、身份变化或引用撤销时，同时限制模型工具清单和直接派发，取消所属在途请求并拒绝迟到结果。官方通用工具和用户独立 MCP 保留。直接派发仍按原业务 guard 校验，角色名称与子智能体 persona 不授予 Consumer 身份；个人引用由 GEA Host 反查来源 owner 和 Consumer，不接受用户填入 Consumer、Token 或网关地址。页面工具还要求同会话当前页面身份已绑定，界面菜单可见不能代替页面绑定。
 
 `gea_runtime_diagnose` 是所有会话可用的只读诊断工具。只返回当前调用 Agent、实际 preset、父会话 ID、资源安装及启用状态、声明 Consumer、页面是否绑定、登录布尔状态、工具名称和最近最多20条工具错误码。它不读取配置或凭据，不返回业务正文、工具参数或历史问题，不请求业务接口或模型。`businessAuthorization=not-checked` 明确保留服务端授权未核结论。无调用 Agent 与无业务预设仍保留 `GEA_BUSINESS_PROFILE_REQUIRED`，错误说明分别给出调用归属缺失与预设身份缺失；未绑定页面给出 `PAGE_NOT_BOUND` 原因。
 
@@ -58,3 +58,9 @@ Manage 的当前安装与启用状态在模型步骤和工具派发前重新核�
 当已安装 HTML manifest 声明 `sqlConfig: "sql.config.json"` 时，所属页面的 `readSql` 只接受 `{ queryId, parameters }`。GEA Host 校验同目录配置的 Agent 标识和参数，从配置解析 SQL 或固定 Cube 查询，并使用该页面声明的 Consumer 与统一业务身份执行。Cube 通过已授权模块 MCP 调用，页面不能提交成员、路由或任意查询；单月参数绑定为该月实际日期范围，分页、缺值及 partial 状态保留。页面提交 SQL、Consumer 或数据源等额外字段会被拒绝。没有 sqlConfig 的旧页面继续使用原有接口。
 
 配置查询的 LIMIT/OFFSET 和配对计数由配置负责，Host 不叠加请求级分页。返回权限列和结构化失败保留；取消、身份变化、未发布资源和权限拒绝不触发直连回退。配置注册并不代表源表字段已发布或已获用户权限。五个页面及验证状态见相邻 Workbench 的 `docs/unified-gea-adaptation-20261019.md`。
+
+## 当前订单与缺货独立问数
+
+`gea_current_shortage` 只对基地、分仓、全链及产销协同的可信 Session profile 开放，不依赖页面绑定，也不打开模型自由 SQL 开关。Host 从实际 Session 决定 Consumer，解析对应已安装页面的 `current-shortage.summary/detail` 固定配置；调用者仅提供基地名称、分仓编码、SKU、品类和明细页码。业务身份、已安装启用状态在执行前后复核，身份变化或取消不发布迟到结果。
+
+此入口复用页面 SQL 和同一网关授权，不查询 Cube、不用本地库回退。完整范围汇总与地点+SKU分页分别声明覆盖范围；缺少返回列、异常行或不完整页不能转成零值。共享库存缺口不能分摊为订单缺口或影响订单数。旧 Skill 的 Cube 说明继续适用于其它已发布指标，当前订单及缺货的固定入口由 Host 提供明确路由，不覆盖用户自定义提示词或 Skill。

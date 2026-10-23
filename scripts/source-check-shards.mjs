@@ -3,8 +3,13 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { execFileSync } from "node:child_process";
-import { executionDigest, verifyExecutionResults } from "./quality-test-execution.mjs";
+import {
+  executionDigest,
+  verifyExecutionResults,
+  createExecutionPlan,
+} from "./quality-test-execution.mjs";
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
+import { currentTestTimings } from "./quality-test-timings.mjs";
 
 export const sourceCheckShardIds = ["1", "2"];
 const requireValue = (condition, detail) => {
@@ -24,6 +29,17 @@ export function sourceCheckMatrix(plan) {
   requireValue(typeof plan?.joint === "boolean" && Array.isArray(plan.files), "source plan");
   const parallel = plan.joint && selectPlatformTests(plan, "linux").files.length > 1;
   return { parallel, shards: parallel ? sourceCheckShardIds : ["single"] };
+}
+
+export function sourceCheckCost({ selection, root, environment, timings }) {
+  return createExecutionPlan({
+    selection,
+    platformPlan: selectPlatformTests(selection, environment.platform),
+    binding: { kind: "estimate-only", environment },
+    shardCount: sourceCheckMatrix(selection).shards.length,
+    concurrency: environment.fileConcurrency,
+    timings: timings ? currentTestTimings({ timings, root, environment }) : undefined,
+  });
 }
 
 export function aggregateSourceCheckShards(directory, { head, runId, runAttempt }) {
@@ -127,7 +143,29 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   });
   const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   if (values.matrix && !values.scope && !values.output && !values.aggregate) {
-    const { parallel, shards } = sourceCheckMatrix(json(values.matrix));
+    const selection = json(values.matrix);
+    const { parallel, shards } = sourceCheckMatrix(selection);
+    const { ciCores } = await import("./ci-core-policy.mjs");
+    const plan = sourceCheckCost({
+      selection,
+      root: process.cwd(),
+      environment: {
+        platform: "linux",
+        node: process.versions.node,
+        core: ciCores("required")[0].head,
+        fileConcurrency: 3,
+      },
+      timings: json("scripts/quality-test-timings.json"),
+    });
+    writeFileSync(".runtime/source-check-cost.json", JSON.stringify(plan, null, 2) + "\n");
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      const e = plan.estimates;
+      const { appendFileSync } = await import("node:fs");
+      appendFileSync(
+        process.env.GITHUB_STEP_SUMMARY,
+        `## Source check cost before preparation\n\nSelected ${e.selectedFiles} files; Profile ${e.profileFiles}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Estimated tests: ${e.estimatedMs === null ? "unknown" : e.estimatedMs + " ms"}. Preparation, scheduling and finalization are excluded. This is a cost estimate, not execution evidence.\n`,
+      );
+    }
     requireValue(process.env.GITHUB_OUTPUT, "matrix output");
     const { appendFileSync } = await import("node:fs");
     appendFileSync(

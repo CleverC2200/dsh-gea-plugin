@@ -6,6 +6,8 @@
 
 ## 准备输入
 
+交付先核支持的 Core 与输入形状，再在归档扫描前取得原容量准入。owner 构建回执中的 HTML 资源使用与 Host 相同的 MCP 能力校验；非法能力在生产依赖准备或安装前拒绝，诊断标明仓库、阶段和资源文件。归档缺少构建回执声明的输出返回 `DELIVERY_BUILD_OUTPUT_MISSING_IN_ARCHIVE`，不再折叠为普通输入错误。最终包字节核验和隔离安装接收仍分别执行。
+
 在各自隔离 checkout 先按 owner 固定工具链完成构建。Workbench 完整构建还需 APS 子目录独立 package-lock 的冻结安装。Manage 正常 prepare/prepack 的构建应有实际记录，普通 raw pack 可在已完成生命周期后使用 `npm pack --ignore-scripts`，本入口只整理发布元数据。各仓自有依赖和输出不能共享。
 
 request.json 的所有输入路径须为绝对路径，destination 必须是不存在的新目录，且不能落在源码 checkout 或 Core 内。命令不依赖调用者 cwd。以下路径、提交与版本都是占位输入，须以同次冻结记录和 [支持声明](../scripts/supported-cores.json) 替换；用户安装说明不包含这些源码路径。
@@ -101,6 +103,10 @@ corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json
 
 五个参数都是绝对路径，Home 和 evidence 的父目录已存在，而这两个目标目录必须不存在并互不包含。入口先核所选固定 Core、manifest.supportedCores 和三份 tar 的名称、版本及摘要，再独占新 Home 和独立 evidence。同一 manifest.core 保留构建来源，两次接收的 ACCEPTANCE.core 分别记录实际宿主，两次 artifactSetSha256 必须一致。它复用已验证的普通 profile harness，顺序执行官方安装及实际 Loader/公共服务观察，不复用旧用户 patch、辅助包、SDK source link 或凭据。不启动 Native，不调用模型或业务，对观察过程的出网尝试直接拒绝。
 
+默认在清洗安装环境前，使用 `--pnpm` 指定的工具在调用者 cwd 和原环境中执行 `store path`，再将有效公共内容 store 的绝对路径传给安装子进程。`--store /absolute/content-store` 可显式指定共享 store；`--cold-download` 使用本次新 Home 下的 `pnpm-store`，两项不能同时指定。相对路径、已有文件或不可写目录提前拒绝。共享 store 不得等于或位于本次 Home 内，已有软链接别名也按实际路径判断；Home 外的 store 父目录仍可使用。直接运行 `scripts/plugin-reception/empty-profile.mjs --mode install` 也接受相同选项。
+
+安装继续隔离 Home/profile、XDG 配置与缓存及空 npm 鉴权配置，metadata 缓存在本次 Home 的 `pnpm-cache`，global virtual store 保持禁用。只共享下载内容，不复用已有 `node_modules`、profile 锁或用户数据。`result.json`、`install.json` 和 `install.json.installation.json` 的 `downloadStore` 记录 `{ mode: "shared" | "cold", path }`；路径选择不证明下载命中率。公共 store 不随本次 Home 清理。
+
 安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、七个业务资源（含受控只读客户库存）、十份文档的完整 standard 和智能编排默认。客户库存已按正式受控只读声明发布预设；订单工作台和订单履约模拟预览仍不得出现在初始预设清单。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
 
 仅成功接收在新 evidence 中生成 ACCEPTANCE.json，绑定交付 manifest、实际三 tar 集合、安装及观察回执 SHA，以及同一个 Core/Profile。`result.json` 为本次入口结果。接收入口不改原 tgz、manifest 或已有交付文件，打包仍只称 packaged。浏览器执行、Native、业务和真实模型不在这个接收结论内。
@@ -122,6 +128,8 @@ Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开
 ## 公司桌面构建
 
 公司完整桌面包可只携带三个必要插件，GenUI 仍为可选第四包，现有配置和卸载选择保留。构建版本使用用户确认的完整版本号；Core 身份仍由实际 launcher/runtime 的产品版本、App 的干净提交与完整字节证明确定，不能把带日期的桌面构建版本当成 Core runtime 版本。当前明确登记公司 Core `8cfb899ccf21d3662421b99b5f4627842ef712ea`，允许原 `639ed015397290b3745d163aafe02ffee4aa3f84` 的证明刷新，未知 Core 继续拒绝。
+
+归档的 owner 输出校验一次流式读取，按原始路径核对每个文件的 SHA256，并拒绝缺文件、重复条目和链接。容量检查先于归档检查；原始包和整理后包的失败分别标明 raw-archive 与 published-archive 阶段。此校验不替代最终三包安装和 Host 接收。
 
 ## 当前目标组合验收
 

@@ -1,6 +1,7 @@
 import { verifyRuntimeModules } from "../runtime-environment.mjs";
 import { artifactSetSha256 } from "./contract.mjs";
 import { readSupportedCore } from "../supported-cores.mjs";
+import { selectDownloadStore } from "./download-store.mjs";
 /** Install only three ordinary artifacts in a new explicit profile, then observe in a clean child. */
 import assert from "node:assert/strict";
 import { parseArgs } from "node:util";
@@ -13,9 +14,12 @@ import { createHash } from "node:crypto";
 
 const { values: v } = parseArgs({
   options: Object.fromEntries(
-    ["mode", "core", "home", "profile", "pnpm", "workbench", "manage", "gea", "receipt"].map(
-      (key) => [key, { type: "string" }],
-    ),
+    ["mode", "core", "home", "profile", "pnpm", "workbench", "manage", "gea", "receipt"]
+      .map((key) => [key, { type: "string" }])
+      .concat([
+        ["store", { type: "string" }],
+        ["cold-download", { type: "boolean", default: false }],
+      ]),
   ),
 });
 assert(["install", "observe"].includes(v.mode), "MODE_INSTALL_OR_OBSERVE_REQUIRED");
@@ -44,6 +48,11 @@ const owned = join(v.home, ".three-plugin-reception.json");
 const env = {
   PATH: process.env.PATH ?? "/usr/bin:/bin",
   DSH_HOME: v.home,
+  HOME: v.home,
+  USERPROFILE: v.home,
+  XDG_CONFIG_HOME: join(v.home, "config"),
+  XDG_CACHE_HOME: join(v.home, "cache"),
+  XDG_DATA_HOME: join(v.home, "data"),
   DSH_TELEMETRY_DISABLED: "1",
   npm_config_userconfig: join(v.home, "empty.npmrc"),
   npm_config_globalconfig: join(v.home, "empty.npmrc"),
@@ -65,6 +74,13 @@ await writeFile(v.receipt, JSON.stringify({ ...base, pending: true }) + "\n", {
   flag: "wx",
 });
 try {
+  if (v.mode === "install")
+    base.downloadStore = await selectDownloadStore({
+      pnpm: v.pnpm,
+      home: v.home,
+      store: v.store,
+      coldDownload: v["cold-download"],
+    });
   const coreIdentity = await readSupportedCore(v.core);
   base.coreVersion = coreIdentity.version;
   base.coreHead = coreIdentity.head;
@@ -114,7 +130,11 @@ try {
     );
     // Installation child receives no inherited credential/token/proxy configuration.
     const installInput = v.receipt + ".input.json";
-    await writeFile(installInput, JSON.stringify({ ...v, artifacts }), { mode: 0o600, flag: "wx" });
+    await writeFile(
+      installInput,
+      JSON.stringify({ ...v, artifacts, downloadStore: base.downloadStore }),
+      { mode: 0o600, flag: "wx" },
+    );
     const worker = fileURLToPath(new URL("./install-worker.mjs", import.meta.url));
     const result = await child(worker, [installInput], env);
     base.installProcess = result;

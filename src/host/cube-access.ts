@@ -12,11 +12,12 @@ export function resolveCubeAccess(ctx: Context, business: Business, sessionId: s
   const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset") ?? undefined;
   const profile = profileFor(preset);
   const association = profile ? undefined : ctx.userAgents?.cubeFor(agent);
-  if (!profile && !association) throw Error("GEA_BUSINESS_PROFILE_REQUIRED: CUBE_NOT_SELECTED");
   association?.signal.throwIfAborted();
-  const sourceRef = association?.sourceRef ?? preset!;
-  const source = ctx.agentResources.cubeSource(sourceRef);
-  if (!source) throw Error("GEA_CUBE_SOURCE_UNAVAILABLE");
+  const sourceRef = association?.sourceRef ?? preset;
+  const source = sourceRef ? ctx.agentResources.cubeSource(sourceRef) : undefined;
+  if (!profile && !association && !source)
+    throw Error("GEA_BUSINESS_PROFILE_REQUIRED: CUBE_NOT_SELECTED");
+  if (!sourceRef || !source) throw Error("GEA_CUBE_SOURCE_UNAVAILABLE");
   source.signal.throwIfAborted();
   const identity = business.identitySignal();
   identity.throwIfAborted();

@@ -154,6 +154,7 @@ export async function currentMcp(t, options = {}) {
     ["ordinary", "standard"],
     ...(options.dealer ? [["dealer", "gea-html-inventory-dealer"]] : []),
     ...(options.personal ? [["personal", "personal-knowledge"]] : []),
+    ...(options.orchestration ? [["orchestration", "auto-negotiation"]] : []),
   ]) {
     const agent = {
       id,
@@ -186,18 +187,26 @@ export async function currentMcp(t, options = {}) {
   });
   let enabled = true;
   const sourceSignal = new AbortController().signal;
+  const sourceIds = [
+    "gea-readonly",
+    ...(options.dealer ? ["gea-html-inventory-dealer"] : []),
+    ...(options.orchestration ? ["auto-negotiation"] : []),
+  ];
   ctx.provide("agentResources", {
     cubeSource: (id) =>
-      enabled &&
-      ["gea-readonly", ...(options.dealer ? ["gea-html-inventory-dealer"] : [])].includes(id)
+      enabled && sourceIds.includes(id)
         ? {
             consumerCode:
-              id === "gea-readonly" ? "sales_forecast" : "dealer-inventory-replenishment",
+              id === "auto-negotiation"
+                ? "workbench"
+                : id === "gea-readonly"
+                  ? "sales_forecast"
+                  : "dealer-inventory-replenishment",
             signal: sourceSignal,
           }
         : undefined,
     list: async () =>
-      ["gea-readonly", ...(options.dealer ? ["gea-html-inventory-dealer"] : [])].map((id) => ({
+      sourceIds.map((id) => ({
         id,
         kind: "prompt",
         installed: true,
