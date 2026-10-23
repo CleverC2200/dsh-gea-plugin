@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { SalesReadonlyError } from "../shared/sales-readonly.js";
-import { geaResponseError } from "../shared/gea-error.js";
+import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 
 type Identity = { token: string; tenantId?: string };
 type Request = {
@@ -8,7 +8,7 @@ type Request = {
   identity: Identity | undefined;
   signal: AbortSignal;
 } & (
-  | { kind: "read"; includeTenant: boolean; purpose?: string }
+  | { kind: "read"; includeTenant: boolean; purpose?: string; resultEnvelope?: boolean }
   | { kind: "write"; body: unknown }
   | { kind: "claim"; includeTenant: boolean }
 );
@@ -33,6 +33,17 @@ export class GatewayRequests {
     purpose?: string,
   ) {
     return this.request({ kind: "read", path, identity, signal, includeTenant, purpose });
+  }
+
+  readResult(path: string, identity: Identity, signal: AbortSignal) {
+    return this.request({
+      kind: "read",
+      path,
+      identity,
+      signal,
+      includeTenant: true,
+      resultEnvelope: true,
+    });
   }
 
   write(path: string, identity: Identity, signal: AbortSignal, body: unknown) {
@@ -96,6 +107,20 @@ export class GatewayRequests {
       throw error;
     }
     active();
+    if (
+      input.kind === "read" &&
+      input.resultEnvelope &&
+      (data.success !== true || data.code !== 200)
+    ) {
+      const safe = new GeaResponseError(response.status, data, [input.identity?.token]);
+      const upstreamCode = safe.details.upstreamCode;
+      const code =
+        typeof upstreamCode === "string" && /^[A-Z][A-Z_0-9]{2,}$/.test(upstreamCode)
+          ? upstreamCode
+          : "GEA_REQUEST_REJECTED";
+      if (data.code === 401) this.owner.expire(input.identity);
+      throw Object.assign(Error(safe.message.replace(/^GEA_HTTP_200[：]?/, "") || code), { code });
+    }
     if (data.success !== true) {
       const code = data.errorCode;
       if (
