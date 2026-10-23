@@ -459,6 +459,56 @@ test("the desktop seed accepts exactly the three required plugins without GenUI"
   await assert.rejects(readCompanySeed(seed), /GEA_SEED_INVALID/);
 });
 
+test("a registered historical Core cannot enter a new desktop installation", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "gea-required-desktop-core-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const root = join(home, "app");
+  const seed = join(home, "seed");
+  await mkdir(join(root, "dsh"), { recursive: true });
+  await mkdir(join(seed, "archives"), { recursive: true });
+  const runtime = JSON.stringify({
+    name: "@deepseek-ai/dsh-desktop-runtime",
+    version: "0.2.0-rc.2",
+  });
+  await writeFile(join(root, "dsh/package.json"), runtime);
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({
+      dshBuildCommit: currentCore.head,
+      dshBuildDirty: false,
+    }),
+  );
+  const bytes = Buffer.from("fixture archive");
+  await writeFile(join(seed, "archives/plugin.tgz"), bytes);
+  const packages = [
+    "@cleverc2200/dsh-agent-workbench",
+    "dsh-agent-manage",
+    "@cleverc2200/gea-dsh-prototype",
+  ].map((name) => ({
+    name,
+    version: "1.0.0",
+    file: "plugin.tgz",
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  }));
+  await writeFile(
+    join(seed, "manifest.json"),
+    JSON.stringify({
+      schema: 1,
+      packages,
+      core: {
+        ...currentCore,
+        artifacts: [
+          { path: "dsh/package.json", sha256: createHash("sha256").update(runtime).digest("hex") },
+        ],
+      },
+    }),
+  );
+  await assert.rejects(
+    bootstrapCompanyProfile({ root, support: "unused", seed, home: join(home, "profile-home") }),
+    /GEA_SEED_CORE_MISMATCH/,
+  );
+});
+
 test("an existing three-plugin profile without a bootstrap receipt stays untouched", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "gea-existing-three-"));
   const { rm } = await import("node:fs/promises");

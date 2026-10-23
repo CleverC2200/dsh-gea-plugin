@@ -7,6 +7,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import * as YAML from "yaml";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { ciCores } from "./ci-core-policy.mjs";
 import { refreshCompanyCore } from "../desktop/company-bootstrap.mjs";
 import { repairPluginStore } from "./repair-plugin-store.mjs";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
@@ -108,11 +109,12 @@ test("an old updater without a store argument can install after the local bridge
   );
 });
 
+const { head, version } = ciCores("required")[0];
 const currentCore = {
   kind: "desktop",
   root: "/Applications/GEA Desktop.app/Contents/Resources/app.asar",
-  head: "639ed015397290b3745d163aafe02ffee4aa3f84",
-  version: "0.2.0-rc.2",
+  head,
+  version,
   artifacts: [{ path: "package.json", sha256: "a".repeat(64) }],
 };
 

@@ -87,4 +87,10 @@ test("the company desktop packages every module used by cleanup and refresh", as
     "physical-fs.mjs",
   ])
     assert.ok(files.includes(file), file);
+  const policy = result.extraResources.find((resource) => resource.to === "scripts");
+  assert.deepEqual(policy?.filter, [
+    "ci-core-policy.mjs",
+    "ci-core-policy.json",
+    "supported-cores.json",
+  ]);
 });
