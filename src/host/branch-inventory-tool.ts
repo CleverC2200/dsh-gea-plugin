@@ -15,7 +15,10 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 export const BRANCH_INVENTORY_ROUTING =
   "分仓库存结构与补货问题直接使用gea_branch_inventory：summary返回全范围库存、可用、占用、冻结、目标及补货测算；health返回分仓货龄与超龄风险汇总；replenishment返回正建议量清单，按建议量降序，每页10条。" +
   "与分仓页面共用固定SQL、快照、周期和计算，不要求打开页面，也不改用Cube重算。追问沿用已返回的分仓编码、SKU和周期；下一页保留筛选并递增page。" +
-  "该清单只是只读建议，不是正式下单；不含未保存的页面计划/草稿。结构符合率没有已确认公式时先提供数量、目标与缺口事实，不编造比例或阈值。";
+  "该清单只是只读建议，不是正式下单；不含未保存的页面计划/草稿。结构符合率暂不计算。" +
+  "所有行计数均为分仓+SKU组合数，不是去重SKU数。plan_count/stock_only_count只代表是否有计划表记录，不能据此认定有无订单需求或历史发货。" +
+  "target_gap_qty=可用库存+调拨中量-目标库存，正数表示富余、负数表示不足，必须保留符号，不能称为绝对值缺口。" +
+  "recommended_qty是逐分仓SKU截零后的建议量之和，不得跨SKU抵扣富余或用汇总差额倒算。回答用业务名称，不照抄内部字段名。";
 
 /** Independent dialogue uses the same date, snapshot and pagination reader as the page. */
 export function registerBranchInventoryTool(
@@ -161,7 +164,27 @@ export function registerBranchInventoryTool(
             cycleDays,
             asOf,
             readonly: true,
-            note: "复用页面固定测算；不含未保存计划/草稿，不代表已提交或正式下单。结构符合率公式未确认时不推算比例。",
+            metricDefinitions: {
+              countGrain: "分仓编码+SKU组合；计数不是去重SKU数。",
+              planPresence:
+                "plan_count/stock_only_count仅描述计划记录覆盖，不证明有无订单需求或历史发货。",
+              target_gap_qty: {
+                label: "目标库存差额",
+                formula: "可用库存+调拨中量-目标库存",
+                positiveMeans: "富余",
+                negativeMeans: "不足",
+                aggregation: "保留各行差额的符号求和；不得取绝对值或称为补货缺口。",
+              },
+              recommended_qty: {
+                label: "建议补货量",
+                formula: "每个分仓SKU取max(目标库存-可用库存-调拨中量,0)，再相加",
+                aggregation: "不同SKU的富余不能抵扣缺口，不能由全范围净差额倒算。",
+              },
+              open_transfer_reported_qty: "调拨备单与在途合计，已含在途，不重复叠加。",
+              currentOrderShortage:
+                "当前未备单订单缺货另用gea_current_shortage查询，不等于建议补货量或目标库存差额。",
+            },
+            note: "复用页面固定测算；不含未保存计划/草稿，不代表已提交或正式下单。结构符合率按用户要求暂不计算。",
           });
         },
       }),
