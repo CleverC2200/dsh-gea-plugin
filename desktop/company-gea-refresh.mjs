@@ -55,7 +55,7 @@ export function planBundledCompanyRefresh(current, installed, bundled) {
   return { status: "ready", changed: false, from: identity.from, to: identity.to, targets };
 }
 
-export async function assertProfileIdle(profile) {
+async function readProfileUpdateState(profile) {
   if (await optional(join(profile, ".plugin-manager/run.json")))
     throw Error("GEA_REFRESH_PROFILE_BUSY");
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
@@ -66,7 +66,14 @@ export async function assertProfileIdle(profile) {
   const receipt = JSON.parse(
     await readFile(join(profile, "gea/plugin-updates/operations", pointer.id, "receipt.json")),
   );
-  if (receipt.id !== pointer.id || !["completed", "restored", "failed"].includes(receipt.stage))
+  if (receipt.id !== pointer.id) throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+  if (!["pending-restart", "completed", "restored", "failed"].includes(receipt.stage))
+    throw Error("GEA_REFRESH_UPDATE_PENDING");
+  return receipt.stage;
+}
+
+export async function assertProfileIdle(profile) {
+  if ((await readProfileUpdateState(profile)) === "pending-restart")
     throw Error("GEA_REFRESH_UPDATE_PENDING");
 }
 
@@ -155,6 +162,8 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
   const journal = join(directory, "receipt.json");
   const currentBytes = await optional(join(profile, "package.json"));
   if (!currentBytes) return { status: "company-profile-not-installed", changed: false };
+  if ((await readProfileUpdateState(profile)) === "pending-restart")
+    return { status: "pending-restart-preserved", changed: false };
   const installedFiles = new Map(
     await Promise.all(
       companyPackageNames.map(async (name) => [
