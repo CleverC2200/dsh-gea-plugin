@@ -1,7 +1,6 @@
 import {
   prepareWorkbenchHtmlRoots,
   htmlFrameElement,
-  openBusinessPage,
   openRegisteredWorkbenchPage,
   prepareWorkbenchPageAccess,
 } from "./fixtures/business-page.mjs";
@@ -48,7 +47,10 @@ test(
     );
     const app = await profile(t, {
       beforeStart: prepareWorkbenchPageAccess(
-        [["gea-api-log", "接口日志"]],
+        [
+          ["gea-api-log", "接口日志"],
+          ["inventory-customer", "项目清单样板"],
+        ],
         prepareWorkbenchHtmlRoots([root]),
       ),
     });
@@ -91,7 +93,7 @@ test(
         .getByRole("dialog", { name: /内测声明|预览版说明/ })
         .getByRole("button", { name: "继续", exact: true })
         .click();
-      await openBusinessPage(page, "inventory-customer");
+      await openRegisteredWorkbenchPage(page, "项目清单样板");
       // The shipped sample is static; use the public Core conversation action for draft checks.
       await page
         .locator(".agent-workbench-document")

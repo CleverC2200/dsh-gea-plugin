@@ -2,7 +2,11 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import {
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+  salesPlanFrame,
+} from "./fixtures/business-page.mjs";
 import { composerStatsContract } from "./fixtures/composer-stats.mjs";
 
 test(
@@ -11,6 +15,7 @@ test(
   async (t) => {
     const contract = await composerStatsContract();
     const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess([["gea-proof", "销售计划"]]),
       config: (base) => ({
         environment: "test",
         analysis: { mode: "receipt" },
@@ -40,7 +45,8 @@ test(
         : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
     );
     await page.goto(app.origin);
-    const frame = await openSalesPlan(page);
+    await openRegisteredWorkbenchPage(page, "销售计划");
+    const frame = salesPlanFrame(page);
     await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
     allowLogin = true;
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();

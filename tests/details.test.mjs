@@ -18,7 +18,7 @@ test(
       const path = req.url.pathname;
       if (path.endsWith("/plans")) {
         res.end(
-          '{"success":true,"result":{"records":[{"planId":"p-jxs-2026-09-00001","versionId":"version-1","periodId":20260901,"planTypeCode":"Y","orderType":"M","dealerCode":9007199254740997,"status":5,"targetQty":2.3400,"targetAmount":12.30,"currentQty":1.2300,"currentAmount":10.10}],"total":1,"current":1,"size":200,"pages":1}}',
+          '{"success":true,"result":{"records":[{"planId":"p-jxs-2026-09-00001","versionId":"version-1","periodId":20260901,"planTypeCode":"Y","orderType":"M","cust_code":9007199254740997,"status":5,"targetQty":2.3400,"targetAmount":12.30,"currentQty":1.2300,"currentAmount":10.10}],"total":1,"current":1,"size":200,"pages":1}}',
         );
         return true;
       }

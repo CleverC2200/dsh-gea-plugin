@@ -53,6 +53,7 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
     if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:category-approve"] };
     else if (path.endsWith("/plans"))
       result = typeof listPage === "function" ? listPage(url) : listPage;
+    else if (path.endsWith("/plans/p/versions")) result = detailPatch.versions ?? [];
     else if (path.endsWith("/plans/p"))
       result = {
         currentVersion: {
@@ -450,211 +451,251 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
   assert.equal(f.writes(), 2);
 });
 
-test("public Business resubmits returned M with opaque period 17, separate service identity and nullable audit receipt", async (t) => {
-  process.env.GEA_CONTRACT_CLIENT = "contract-client";
-  process.env.GEA_CONTRACT_SECRET = "contract-secret";
-  t.after(() => {
-    delete process.env.GEA_CONTRACT_CLIENT;
-    delete process.env.GEA_CONTRACT_SECRET;
-  });
-  const business = new module.exports.Business({
-    geaBaseUrl: "https://localhost",
-    analysisAgentCode: "sales_forecast",
-    requestTimeoutMs: 2000,
-    inputByteBudget: 30000,
-    pageSize: 20,
-    periodPageSize: 100,
-    serviceAccounts: {
-      production: {
-        clientIdEnv: "GEA_CONTRACT_CLIENT",
-        clientSecretEnv: "GEA_CONTRACT_SECRET",
+for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
+  test(`public Business resubmits returned M with exact customer ${customerCode}, separate service identity and nullable audit receipt`, async (t) => {
+    process.env.GEA_CONTRACT_CLIENT = "contract-client";
+    process.env.GEA_CONTRACT_SECRET = "contract-secret";
+    t.after(() => {
+      delete process.env.GEA_CONTRACT_CLIENT;
+      delete process.env.GEA_CONTRACT_SECRET;
+    });
+    const business = new module.exports.Business({
+      geaBaseUrl: "https://localhost",
+      analysisAgentCode: "sales_forecast",
+      requestTimeoutMs: 2000,
+      inputByteBudget: 30000,
+      pageSize: 20,
+      periodPageSize: 100,
+      serviceAccounts: {
+        production: {
+          clientIdEnv: "GEA_CONTRACT_CLIENT",
+          clientSecretEnv: "GEA_CONTRACT_SECRET",
+          tenantId: "1",
+          allowedUserIds: ["user-1"],
+        },
+      },
+    });
+    business.restoreDesktopLogin({
+      schema: 1,
+      environment: "production",
+      base: "https://localhost",
+      auth: {
+        token: "employee-token",
         tenantId: "1",
-        allowedUserIds: ["user-1"],
+        name: "Test",
+        id: "user-1",
+        username: "test",
+        roles: [{ code: "sales_plan_region_approver", name: "区域审批" }],
       },
-    },
-  });
-  business.restoreDesktopLogin({
-    schema: 1,
-    environment: "production",
-    base: "https://localhost",
-    auth: {
-      token: "employee-token",
-      tenantId: "1",
-      name: "Test",
-      id: "user-1",
-      username: "test",
-      roles: [{ code: "sales_plan_region_approver", name: "区域审批" }],
-    },
-  });
-  t.after(() => business.dispose());
-  const planId = "p-jxs-2026-10-00001";
-  const version = {
-    id: "v1",
-    planId,
-    periodId: "17",
-    planTypeCode: "Y",
-    orderType: "M",
-    status: 7,
-    effective: true,
-    seq: 1,
-    dealerCode: "456",
-    targetQty: "1.000",
-    targetAmount: "12.34",
-  };
-  const sku = {
-    id: "s1",
-    versionId: "v1",
-    skuCode: "789",
-    productCategName: "Category",
-    baseQty: "1.000",
-    qty: "2.000",
-    price: "12.3400",
-    amt: "24.68",
-    amtBase: "12.34",
-  };
-  const request = {
-    orderType: "M",
-    status: 2,
-    periodId: "17",
-    periodMonth: "2026-10",
-    planTypeCode: "Y",
-    channelCode: "jxs",
-    dealerCode: "456",
-    targetQty: "1.000",
-    targetAmount: "12.34",
-    submitterCode: "user-1",
-    submitterName: "test",
-    items: [
-      {
-        skuCode: "789",
-        productCategName: "Category",
-        baseQty: "1.000",
-        qty: "2.000",
-        price: "12.3400",
-      },
-    ],
-  };
-  let tokens = 0,
-    writes = 0,
-    refuse = false;
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    const path = new URL(url).pathname;
-    if (path.endsWith("/api/v1/internal/auth/token")) {
-      tokens++;
-      assert.equal(init.headers["X-Access-Token"], undefined);
-      return Response.json({
-        success: true,
-        result: {
-          access_token: "service-" + tokens,
-          token_type: "Bearer",
-          expires_in: 600,
-          scope: "sales-plan:write",
+    });
+    t.after(() => business.dispose());
+    const planId = "p-jxs-2026-10-00001";
+    const version = {
+      id: "v1",
+      planId,
+      periodId: "17",
+      planTypeCode: "Y",
+      orderType: "M",
+      status: 7,
+      effective: true,
+      seq: 1,
+      cust_code: JSON.rawJSON(customerCode),
+      region_code: "27",
+      province_region_code: "0005",
+      sales_group_code: "578",
+      belong_base: "郑州",
+      targetQty: "1.000",
+      targetAmount: "12.34",
+    };
+    const sku = {
+      id: "s1",
+      versionId: "v1",
+      skuCode: "789",
+      productCategName: "Category",
+      baseQty: "1.000",
+      qty: "2.000",
+      price: "12.3400",
+      amt: "24.68",
+      amtBase: "12.34",
+    };
+    const request = {
+      orderType: "M",
+      status: 2,
+      periodId: "17",
+      periodMonth: "2026-10",
+      planTypeCode: "Y",
+      channelCode: "jxs",
+      dealerCode: customerCode,
+      areaCode: "27",
+      provinceCode: "0005",
+      orgCode: "578",
+      baseName: "郑州",
+      targetQty: "1.000",
+      targetAmount: "12.34",
+      submitterCode: "user-1",
+      submitterName: "test",
+      items: [
+        {
+          skuCode: "789",
+          productCategName: "Category",
+          baseQty: "1.000",
+          qty: "2.000",
+          price: "12.3400",
         },
-      });
-    }
-    if (path.endsWith("/api/v1/internal/sales-plans")) {
-      writes++;
-      assert.equal(init.headers.Authorization, "Bearer service-" + tokens);
-      assert.equal(init.headers["X-Access-Token"], undefined);
-      assert.deepEqual(JSON.parse(init.body), request);
-      if (refuse)
-        return Response.json(
-          { errorCode: "UNAUTHORIZED", message: "服务授权失效", traceId: "service-failure" },
-          { status: 401 },
+      ],
+    };
+    let tokens = 0,
+      writes = 0,
+      refuse = false;
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/api/v1/internal/auth/token")) {
+        tokens++;
+        assert.equal(init.headers["X-Access-Token"], undefined);
+        return Response.json({
+          success: true,
+          result: {
+            access_token: "service-" + tokens,
+            token_type: "Bearer",
+            expires_in: 600,
+            scope: "sales-plan:write",
+          },
+        });
+      }
+      if (path.endsWith("/api/v1/internal/sales-plans")) {
+        writes++;
+        assert.equal(init.headers.Authorization, "Bearer service-" + tokens);
+        assert.equal(init.headers["X-Access-Token"], undefined);
+        const {
+          dealerCode: _dealerCode,
+          areaCode: _areaCode,
+          provinceCode: _provinceCode,
+          orgCode: _orgCode,
+          baseName: _baseName,
+          ...unchanged
+        } = request;
+        const sent = JSON.parse(init.body, (key, value, context) =>
+          key === "cust_code" ? { type: typeof value, source: context.source } : value,
         );
-      return Response.json({
-        success: true,
-        result: {
-          planId,
-          versionId: "v2",
-          seq: 2,
-          status: 2,
-          replayed: false,
+        assert.deepEqual(sent, {
+          ...unchanged,
+          cust_code: { type: "number", source: customerCode },
+          region_code: "27",
+          province_region_code: "0005",
+          sales_group_code: "578",
+          belong_base: "郑州",
+        });
+        if (refuse)
+          return Response.json(
+            { errorCode: "UNAUTHORIZED", message: "服务授权失效", traceId: "service-failure" },
+            { status: 401 },
+          );
+        return Response.json({
+          success: true,
+          result: {
+            planId,
+            versionId: "v2",
+            seq: 2,
+            status: 2,
+            replayed: false,
+            requestId: init.headers["X-Request-Id"],
+            traceId: "trace",
+            auditId: null,
+          },
+        });
+      }
+      if (!path.endsWith("/sql/execute"))
+        assert.equal(init.headers["X-Access-Token"], "employee-token");
+      assert.equal(init.headers.Authorization, undefined);
+      let result;
+      if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:region-approve"] };
+      else if (path.endsWith("/plans/" + planId))
+        result = { currentVersion: version, versions: [version], skus: [sku], logs: [] };
+      else if (path.endsWith("/versions/v1/skus")) result = [sku];
+      else if (path.endsWith("/plans"))
+        result = {
+          records: [{ ...version, versionId: "v1" }],
+          total: 1,
+          pages: 1,
+          current: 1,
+          size: 200,
+        };
+      else if (path.endsWith("/agent/session"))
+        result = {
+          accessDecision: { allowed: true },
+          delegationToken: "delegation",
+          gatewayContext: { sessionId: "session" },
+        };
+      else if (path.endsWith("/current-user/resolve"))
+        result = {
+          success: true,
+          roles: [{ code: "sales_plan_region_approver", name: "区域审批" }],
+        };
+      else if (path.endsWith("/sql/execute")) {
+        const body = JSON.parse(init.body);
+        const rows = ["0", "1", "2", "3", "4", "Y"].map((node, level) => ({
+          id: level + 1,
+          type_code: "Y",
+          examine_level: String(level),
+          node_num: node,
+        }));
+        result = {
           requestId: init.headers["X-Request-Id"],
-          traceId: "trace",
-          auditId: null,
-        },
-      });
-    }
-    if (!path.endsWith("/sql/execute"))
-      assert.equal(init.headers["X-Access-Token"], "employee-token");
-    assert.equal(init.headers.Authorization, undefined);
-    let result;
-    if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:region-approve"] };
-    else if (path.endsWith("/plans/" + planId))
-      result = { currentVersion: version, versions: [version], skus: [sku], logs: [] };
-    else if (path.endsWith("/versions/v1/skus")) result = [sku];
-    else if (path.endsWith("/plans"))
-      result = {
-        records: [{ ...version, versionId: "v1" }],
-        total: 1,
-        pages: 1,
-        current: 1,
-        size: 200,
-      };
-    else if (path.endsWith("/agent/session"))
-      result = {
-        accessDecision: { allowed: true },
-        delegationToken: "delegation",
-        gatewayContext: { sessionId: "session" },
-      };
-    else if (path.endsWith("/current-user/resolve"))
-      result = { success: true, roles: [{ code: "sales_plan_region_approver", name: "区域审批" }] };
-    else if (path.endsWith("/sql/execute")) {
-      const body = JSON.parse(init.body);
-      const rows = ["0", "1", "2", "3", "4", "Y"].map((node, level) => ({
-        id: level + 1,
-        type_code: "Y",
-        examine_level: String(level),
-        node_num: node,
-      }));
-      result = {
-        requestId: init.headers["X-Request-Id"],
-        operation: "SELECT",
-        tables: ["agents_scm_plan_workflow_config"],
-        total: rows.length,
-        pageNo: body.pageNo,
-        pageSize: body.pageSize,
-        rows,
-      };
-    } else throw Error("Unexpected contract route: " + path);
-    return Response.json({ success: true, code: 200, result });
-  });
-  const command = (id) => ({
-    source: { planId, versionId: "v1" },
-    request,
-    requestId: id,
-    idempotencyKey: id,
-  });
-  const signal = new AbortController().signal;
-  await business.refreshApprovalRoles(signal);
-  const receipt = await business.salesPlanSubmit(command("first"), signal);
-  assert.equal(receipt.auditId, null);
-  assert.equal(receipt.status, 2);
-  await business.salesPlanSubmit(command("second"), signal);
-  assert.equal(tokens, 1);
-  assert.equal(writes, 2);
-  refuse = true;
-  await assert.rejects(
-    business.salesPlanSubmit(command("service-failure"), signal),
-    (error) => error.details.authentication === "service",
-  );
-  assert.equal(writes, 4);
-  assert.equal(tokens, 2);
-  assert.equal(business.status().loginState, "authenticated");
-  const records = business
-    .apiLogSnapshot({})
-    .records.filter((record) =>
-      ["service.submit", "plans.detail", "plans.version-skus"].includes(record.catalogId),
+          operation: "SELECT",
+          tables: ["agents_scm_plan_workflow_config"],
+          total: rows.length,
+          pageNo: body.pageNo,
+          pageSize: body.pageSize,
+          rows,
+        };
+      } else throw Error("Unexpected contract route: " + path);
+      return Response.json({ success: true, code: 200, result });
+    });
+    const command = (id) => ({
+      source: { planId, versionId: "v1" },
+      request,
+      requestId: id,
+      idempotencyKey: id,
+    });
+    const signal = new AbortController().signal;
+    await business.refreshApprovalRoles(signal);
+    const receipt = await business.salesPlanSubmit(command("first"), signal);
+    assert.equal(receipt.auditId, null);
+    assert.equal(receipt.status, 2);
+    assert.deepEqual(await business.salesPlanSubmit(command("first"), signal), receipt);
+    assert.equal(writes, 1);
+    await assert.rejects(
+      business.salesPlanSubmit(
+        { ...command("first"), request: { ...request, targetQty: "2.000" } },
+        signal,
+      ),
+      /幂等键/,
     );
-  assert.ok(records.length > 0);
-  assert.equal(
-    records.some((record) => record.replayAvailable),
-    false,
-  );
-  assert.equal(JSON.stringify(records).includes('"789"'), false);
-  assert.equal(JSON.stringify(records).includes("contract-secret"), false);
-});
+    assert.equal(writes, 1);
+    await business.salesPlanSubmit(command("second"), signal);
+    assert.equal(tokens, 1);
+    assert.equal(writes, 2);
+    refuse = true;
+    await assert.rejects(
+      business.salesPlanSubmit(command("service-failure"), signal),
+      (error) => error.details.authentication === "service",
+    );
+    assert.equal(writes, 4);
+    assert.equal(tokens, 2);
+    assert.equal(business.status().loginState, "authenticated");
+    const records = business
+      .apiLogSnapshot({})
+      .records.filter((record) =>
+        ["service.submit", "plans.detail", "plans.version-skus"].includes(record.catalogId),
+      );
+    assert.ok(records.length > 0);
+    assert.equal(
+      records.some((record) => record.replayAvailable),
+      false,
+    );
+    assert.equal(JSON.stringify(records).includes('"789"'), false);
+    assert.equal(JSON.stringify(records).includes("contract-secret"), false);
+  });
 
 function correctionFixture(t, actionReply) {
   const detail = {
@@ -1214,4 +1255,227 @@ test("original list and detail queries carry selected read node without permitti
     ),
   );
   assert.equal(f.writes(), 0);
+});
+
+test("Business sends the five HTTP dimensions and preserves the internal sales model", async (t) => {
+  let received;
+  const f = fixture(t, undefined, undefined, {}, (url) => {
+    received = new URL(url);
+    return {
+      records: [
+        {
+          planId: "p",
+          versionId: "v",
+          cust_code: 10070026,
+          region_code: "27",
+          province_region_code: "0005",
+          sales_group_code: "578",
+          belong_base: "郑州",
+          dealer_name: "客户",
+          province_name: "省区",
+          orgName: "销售组",
+          areaName: "大区",
+          status: 7,
+          currentQty: "2.000",
+          currentAmount: "4.00",
+        },
+      ],
+      total: 1,
+      current: 1,
+      size: 20,
+      pages: 1,
+    };
+  });
+  const result = await f.business.workbenchQuery(
+    {
+      kind: "list",
+      query: {
+        dealerCode: "10070026",
+        areaCode: "27",
+        provinceCode: "0005",
+        orgCode: "578",
+        baseName: "郑州",
+        orderType: "M",
+      },
+    },
+    new AbortController().signal,
+  );
+  assert.deepEqual(Object.fromEntries(received.searchParams), {
+    pageNo: "1",
+    pageSize: "20",
+    cust_code: "10070026",
+    region_code: "27",
+    province_region_code: "0005",
+    sales_group_code: "578",
+    belong_base: "郑州",
+    orderType: "M",
+  });
+  assert.deepEqual(result.records[0], {
+    planId: "p",
+    versionId: "v",
+    dealerCode: "10070026",
+    areaCode: "27",
+    provinceCode: "0005",
+    orgCode: "578",
+    baseName: "郑州",
+    dealerName: "客户",
+    provinceName: "省区",
+    orgName: "销售组",
+    areaName: "大区",
+    status: 7,
+    currentQty: "2.000",
+    currentAmount: "4.00",
+  });
+});
+
+test("all Business sales reads decode exact Long customers, nullable dimensions and untouched SKU approvals", async (t) => {
+  const version = {
+    id: "v",
+    planId: "p",
+    periodId: "17",
+    cust_code: JSON.rawJSON("9007199254740993"),
+    region_code: null,
+    province_region_code: "0005",
+    sales_group_code: "578",
+    belong_base: null,
+    status: 7,
+    targetQty: JSON.rawJSON("1.2300"),
+    targetAmount: JSON.rawJSON("12.30"),
+  };
+  const historical = { ...version, id: "old", cust_code: JSON.rawJSON("9223372036854775807") };
+  const f = fixture(
+    t,
+    undefined,
+    undefined,
+    {
+      currentVersion: version,
+      versions: [historical],
+      skus: [
+        {
+          id: "s",
+          versionId: "v",
+          skuCode: "789",
+          regionConfirmedQty: JSON.rawJSON("2.125"),
+          provinceConfirmedQty: "3.000",
+          areaConfirmedQty: "4.000",
+        },
+      ],
+      logs: [],
+    },
+    {
+      records: [{ ...version, versionId: "v", dealer_name: "客户" }],
+      total: 1,
+      current: 1,
+      size: 20,
+    },
+  );
+  const signal = new AbortController().signal;
+  const page = await f.business.plans({}, signal);
+  assert.equal(page.records[0].dealerCode, "9007199254740993");
+  assert.equal(page.records[0].dealerName, "客户");
+  const selection = { queryId: page.queryId, planId: "p" };
+  const detail = await f.business.detail(selection, signal);
+  assert.equal(detail.currentVersion.dealerCode, "9007199254740993");
+  assert.equal(detail.currentVersion.areaCode, null);
+  assert.equal(detail.currentVersion.baseName, null);
+  assert.equal(detail.currentVersion.provinceCode, "0005");
+  assert.equal(detail.currentVersion.targetQty, "1.2300");
+  assert.equal(detail.currentVersion.targetAmount, "12.30");
+  assert.equal(
+    (await f.business.versions(selection, signal)).records[0].dealerCode,
+    "9223372036854775807",
+  );
+  const current = await f.business.workbenchQuery(
+    { kind: "detail", query: { planId: "p" } },
+    signal,
+  );
+  assert.equal(current.currentVersion.dealerCode, "9007199254740993");
+  assert.equal(current.versions[0].dealerCode, "9223372036854775807");
+  assert.equal(current.skus[0].regionConfirmedQty, "2.125");
+  assert.equal(current.skus[0].provinceConfirmedQty, "3.000");
+  assert.equal(current.skus[0].areaConfirmedQty, "4.000");
+  assert.equal(
+    (await f.business.workbenchQuery({ kind: "versions", query: { planId: "p" } }, signal))[0]
+      .dealerCode,
+    "9223372036854775807",
+  );
+  const agent = JSON.parse(
+    await f.business.agentQuery({ kind: "detail", query: { planId: "p" } }, signal),
+  );
+  assert.equal(agent.value.currentVersion.dealerCode, "9007199254740993");
+  assert.equal(agent.value.versions[0].dealerCode, "9223372036854775807");
+});
+
+test("Business rejects invalid customer HTTP values and query values without rounding or coercion", async (t) => {
+  let customer = null;
+  let calls = 0;
+  const f = fixture(t, undefined, undefined, {}, () => {
+    calls++;
+    return {
+      records: [{ planId: "p", versionId: "v", cust_code: customer }],
+      total: 1,
+      current: 1,
+      size: 20,
+    };
+  });
+  const signal = new AbortController().signal;
+  const read = () => f.business.workbenchQuery({ kind: "list", query: {} }, signal);
+  assert.equal((await read()).records[0].dealerCode, null);
+  for (const token of [
+    "0",
+    "-1",
+    "1.5",
+    "1e3",
+    "9223372036854775808",
+    '"10070026"',
+    "true",
+    "{}",
+    "[]",
+  ]) {
+    customer = JSON.rawJSON(token === "{}" || token === "[]" ? "null" : token);
+    if (token === "{}") customer = {};
+    if (token === "[]") customer = [];
+    await assert.rejects(read(), /GEA_INVALID_JSON/, token);
+  }
+  const before = calls;
+  for (const dealerCode of [
+    "0",
+    "-1",
+    "1.5",
+    "1e3",
+    "001",
+    "abc",
+    "9223372036854775808",
+    9007199254740992,
+  ])
+    await assert.rejects(
+      f.business.workbenchQuery({ kind: "list", query: { dealerCode } }, signal),
+      /GEA_INVALID_CUSTOMER/,
+    );
+  assert.equal(calls, before);
+});
+
+test("Business enforces string organization dimensions while preserving leading zeros", async (t) => {
+  let area = 27;
+  let calls = 0;
+  const f = fixture(t, undefined, undefined, {}, () => {
+    calls++;
+    return { records: [{ planId: "p", region_code: area }], total: 1, current: 1, size: 20 };
+  });
+  const signal = new AbortController().signal;
+  await assert.rejects(
+    f.business.workbenchQuery({ kind: "list", query: {} }, signal),
+    /GEA_INVALID_JSON/,
+  );
+  area = "x".repeat(65);
+  await assert.rejects(
+    f.business.workbenchQuery({ kind: "list", query: {} }, signal),
+    /GEA_INVALID_JSON/,
+  );
+  const before = calls;
+  await assert.rejects(
+    f.business.workbenchQuery({ kind: "list", query: { provinceCode: "x".repeat(65) } }, signal),
+    /GEA_INVALID_DIMENSION/,
+  );
+  assert.equal(calls, before);
 });

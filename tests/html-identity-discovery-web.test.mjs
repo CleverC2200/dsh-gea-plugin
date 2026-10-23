@@ -7,7 +7,7 @@ import { profile } from "./profile.mjs";
 import { preparePageStartup, prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
 
 test(
-  "a stalled initial identity request cannot block HTML page discovery",
+  "a stalled identity keeps HTML discovery available and the business catalog hidden",
   {
     skip: process.env.GEA_TEST_SOURCE_CORE !== "1",
     timeout: 90000,
@@ -71,7 +71,13 @@ test(
         const entry = page
           .getByRole("navigation", { name: "业务导航", exact: true })
           .getByRole("button", { name: "分仓库存", exact: true });
-        await expect(entry).toBeVisible();
+        await expect(entry).toHaveCount(0);
+        assert.equal(
+          app.requests.filter((request) => request.url.pathname.endsWith("/aiportal/agent/market"))
+            .length,
+          0,
+          "unconfirmed identity must not start market reads",
+        );
         await expect.poll(() => aborted, { timeout: 7000 }).toBeGreaterThan(0);
       } finally {
         await mkdir(".runtime/review-08-evidence", { recursive: true });
@@ -84,7 +90,7 @@ test(
               discoveries,
               statusAvailable: available.status.ok,
               catalogContainsBranch: true,
-              registeredEntries: await page
+              marketEntries: await page
                 .getByRole("navigation", { name: "业务导航", exact: true })
                 .getByRole("button", { name: "分仓库存", exact: true })
                 .count(),

@@ -45,7 +45,7 @@ for (const batchSize of [1, 3])
                   orderType: "M",
                   planTypeCode: "Y",
                   status: 1,
-                  baseName: "fixture",
+                  belong_base: "fixture",
                   currentQty: "42",
                   currentAmount: "12.3400",
                 },

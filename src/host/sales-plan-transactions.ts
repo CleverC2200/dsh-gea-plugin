@@ -1,3 +1,4 @@
+import { serializeSalesPlanSubmission } from "./sales-plan-wire.ts";
 import {
   correctionDecimal,
   salesPlanAccessForRow,
@@ -218,7 +219,7 @@ export class SalesPlanTransactions {
           });
         if (scope.signal.aborted) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
-        attempt.body = JSON.stringify(prepared.request);
+        attempt.body = serializeSalesPlanSubmission(prepared.request);
       }
       const receipt = await this.serviceAccount.submit(
         config,

@@ -16,10 +16,10 @@ test(
       planTypeCode: "Y",
       orderType: "M",
       status,
-      baseName: `scope-${status}-row`,
-      orgCode: "region-a",
+      belong_base: `scope-${status}-row`,
+      sales_group_code: "region-a",
       orgName: "region-a",
-      dealerCode: `c${status}`,
+      cust_code: 10070026 + status,
       currentQty: "1",
       currentAmount: "10",
       targetAmount: "10",
@@ -71,7 +71,7 @@ test(
             .slice(0, size)
             .map((p) =>
               req.url.searchParams.get("orderType") === "Z"
-                ? { ...p, orderType: "Z", dealerName: p.baseName, monthlyApproved: false }
+                ? { ...p, orderType: "Z", dealerName: p.belong_base, monthlyApproved: false }
                 : p,
             ),
           total: rows.length,

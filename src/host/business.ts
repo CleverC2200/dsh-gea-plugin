@@ -1,3 +1,10 @@
+import {
+  decodeSalesPlanResult,
+  salesPlanCustomer,
+  salesPlanDimensionsPath,
+  salesPlanQueryValue,
+  salesPlanWireKey,
+} from "./sales-plan-wire.ts";
 import { InventoryReadCache } from "./inventory-read-cache.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
@@ -14,6 +21,8 @@ import { SalesPlanTransactions } from "./sales-plan-transactions.ts";
 import { object, text, keys } from "./payload.ts";
 export { object } from "./payload.ts";
 import { GatewayRequests } from "./gateway-requests.ts";
+import { navigationAgents, navigationDomains } from "./navigation-catalog.ts";
+import type { BusinessNavigationCatalog } from "@cleverc2200/dsh-agent-workbench/client";
 import { avatarUrl } from "./avatar.ts";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -67,7 +76,7 @@ import { sharedAgentCapability, WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
-export type Row = Record<string, string | number | boolean>;
+export type Row = Record<string, string | number | boolean | null>;
 
 export interface Deployment {
   /** Optional fixed-run SQL allowance; zero refuses before credentials and transport. */
@@ -293,8 +302,12 @@ class MaterialNameIndex {
 const exactNumber = /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase|qtyDelta|amountDelta)$/;
 
 /** 在 JavaScript 进行舍入前保留小数词法形式和不透明标识。 */
-function parseJson(text: string): unknown {
+function parseJson(text: string, salesDimensions = false): unknown {
   return JSON.parse(text, (key: string, value: unknown, context?: { source?: string }) => {
+    if (salesDimensions && key === "cust_code" && value !== null) {
+      if (typeof value !== "number" || !context?.source) throw new Error("GEA_INVALID_CUSTOMER");
+      return salesPlanCustomer(context.source);
+    }
     if (typeof value === "number" && exactNumber.test(key)) {
       if (!context?.source) throw new Error("EXACT_JSON_RUNTIME_REQUIRED");
       return context.source;
@@ -463,9 +476,10 @@ function project(value: unknown, fields: readonly string[]): Row {
   const row = object(value);
   return Object.fromEntries(
     fields
-      .filter((key) => row[key] != null)
+      .filter((key) => row[key] != null || (row[key] === null && salesPlanWireKey(key) !== key))
       .map((key) => {
         const v = row[key];
+        if (v === null) return [key, null];
         if (!["string", "number", "boolean"].includes(typeof v))
           throw new Error("GEA_INVALID_RECORD");
         return [key, v as string | number | boolean];
@@ -832,7 +846,12 @@ export class Business {
       expire: (identity) => {
         if (identity && this.auth?.token === identity.token) this.clearLogin(true);
       },
-      decode: (raw) => object(parseJson(raw)),
+      decode: (raw, path) => {
+        if (path === "/aiportal/agent/market" || path === "/sys/dict/getDictItems/business_domain")
+          return object(JSON.parse(raw));
+        const data = object(parseJson(raw, salesPlanDimensionsPath(path)));
+        return { ...data, result: decodeSalesPlanResult(path, data.result) };
+      },
     });
     this.salesTransactions = new SalesPlanTransactions({
       scope: (effect) => {
@@ -1464,6 +1483,35 @@ export class Business {
 
   salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     return this.salesTransactions.action(payload, caller);
+  }
+
+  async navigationCatalog(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+  ): Promise<BusinessNavigationCatalog> {
+    this.assertOperation("navigation/catalog");
+    keys(payload, []);
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const agents = navigationAgents(
+      await this.gatewayRequests.readResult("/aiportal/agent/market", auth, signal),
+    );
+    let domains: BusinessNavigationCatalog["domains"];
+    try {
+      const items = navigationDomains(
+        await this.gatewayRequests.readResult(
+          "/sys/dict/getDictItems/business_domain",
+          auth,
+          signal,
+        ),
+      );
+      domains = { kind: "available", items };
+    } catch {
+      signal.throwIfAborted();
+      domains = { kind: "unavailable", message: "业务分类暂不可用" };
+    }
+    signal.throwIfAborted();
+    return { agents, domains };
   }
 
   /** 导航使用当前用户与身份取消信号，原始 Reference 不进入 API 正文日志中心。 */
@@ -3390,7 +3438,11 @@ export class Business {
         );
       else if (key === "status" && kind !== "periods") params.set(key, String(integer(value, 0)));
       else if (key === "versionIds" || key === "statuses") params.set(key, String(value));
-      else params.set(key, text(value));
+      else
+        params.set(
+          salesPlanWireKey(key),
+          salesPlanQueryValue(key, key === "dealerCode" ? value : text(value)),
+        );
     }
     const result = await this.gatewayRequests.read(
       paths[kind]() + (params.size ? "?" + params : ""),
@@ -3412,18 +3464,12 @@ export class Business {
         throw new Error("GEA_INCOMPLETE_COLLECTION");
       return page.records.map(object);
     };
-    const listRecord = (value: unknown) => {
-      const { dealer_name, province_name, ...row } = object(value);
-      if (row.dealerName == null && dealer_name != null) row.dealerName = dealer_name;
-      if (row.provinceName == null && province_name != null) row.provinceName = province_name;
-      return row;
-    };
     if (paged) {
       const page = object(result);
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_COLLECTION");
       const total = integer(page.total, page.records.length);
       const pageSize = integer(page.size ?? size, 1);
-      const planRows = page.records.map(kind === "list" ? listRecord : object);
+      const planRows = page.records.map(object);
       if (
         kind === "list" &&
         query.periodId != null &&

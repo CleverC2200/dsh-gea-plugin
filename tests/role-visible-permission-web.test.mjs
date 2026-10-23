@@ -17,10 +17,10 @@ test(
       planTypeCode: "Y",
       orderType: "M",
       status: 2,
-      baseName: "跨节点区域审批",
-      orgCode: "region-a",
+      belong_base: "跨节点区域审批",
+      sales_group_code: "region-a",
       orgName: "region-a",
-      dealerCode: "customer-a",
+      cust_code: 10070026,
       currentQty: "1",
       currentAmount: "10",
       targetAmount: "10",
@@ -119,7 +119,7 @@ test(
     const region = frame.getByTestId("regional-approval-stage-region");
     await expect(region).toHaveAttribute("aria-pressed", "true");
     await region.click(); // Include tracking rows, not only this role's pending queue.
-    const row = frame.locator("tbody tr").filter({ hasText: plan.baseName }).first();
+    const row = frame.locator("tbody tr").filter({ hasText: plan.belong_base }).first();
     await expect(row).toBeVisible();
     await row.locator("label.arco-checkbox").click();
     const approve = frame.getByRole("button", { name: "通过", exact: true });
