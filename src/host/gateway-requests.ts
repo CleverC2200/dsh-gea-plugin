@@ -1,6 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { SalesReadonlyError } from "../shared/sales-readonly.js";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
+
+const businessDomainPath = "/sys/dict/getDictItems/business_domain";
+const portalSigningKey = "dd05f1c54d63749eda95f9fa6d49v442a";
 
 type Identity = { token: string; tenantId?: string };
 type Request = {
@@ -62,7 +65,15 @@ export class GatewayRequests {
       if (timeout.aborted) throw new Error("GEA_REQUEST_TIMEOUT");
     };
     active();
+    const dictionary = input.kind === "read" && input.path === businessDomainPath;
     const headers: Record<string, string> = { Accept: "application/json" };
+    if (dictionary) {
+      headers["X-TIMESTAMP"] = String(Date.now());
+      headers["X-Sign"] = createHash("md5")
+        .update("{}" + portalSigningKey)
+        .digest("hex")
+        .toUpperCase();
+    }
     if (input.identity) {
       headers["X-Access-Token"] = input.identity.token;
       headers["X-Request-Id"] = randomUUID();
@@ -110,7 +121,7 @@ export class GatewayRequests {
     if (
       input.kind === "read" &&
       input.resultEnvelope &&
-      (data.success !== true || data.code !== 200)
+      (data.success !== true || (data.code !== 200 && !(dictionary && data.code === 0)))
     ) {
       const safe = new GeaResponseError(response.status, data, [input.identity?.token]);
       const upstreamCode = safe.details.upstreamCode;

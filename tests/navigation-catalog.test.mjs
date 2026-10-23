@@ -110,6 +110,46 @@ test("catalog reads the full authorized market with Host credentials independent
   }
 });
 
+test("the business-domain dictionary uses the portal signature and accepts its native zero success code", async (t) => {
+  const business = fixture(t);
+  let now = 1792746360000;
+  const timestamps = [];
+  t.mock.method(Date, "now", () => now);
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    const headers = new Headers(init.headers);
+    if (url.endsWith("/market")) {
+      assert.equal(headers.has("X-Sign"), false);
+      assert.equal(headers.has("X-TIMESTAMP"), false);
+      return Response.json(envelope([{ id: "authorized" }]));
+    }
+    assert.equal(new URL(url).search, "");
+    timestamps.push(headers.get("X-TIMESTAMP"));
+    const signed =
+      headers.get("X-TIMESTAMP") === String(now) &&
+      headers.get("X-Sign") === "E19D6243CB1945AB4F7202A1B00F77D5";
+    return Response.json(
+      signed
+        ? {
+            ...envelope([{ value: "supply_chain", text: "产销协同", description: "lucide:boxes" }]),
+            code: 0,
+          }
+        : { success: false, code: 500, message: "Sign签名校验失败，请求参数不完整！" },
+    );
+  });
+  const first = await business.navigationCatalog({}, signal());
+  assert.equal(first.domains.kind, "available");
+  assert.deepEqual(
+    first.agents.map((item) => item.id),
+    ["authorized"],
+  );
+  assert.deepEqual(first.domains.items, [
+    { value: "supply_chain", text: "产销协同", description: "lucide:boxes" },
+  ]);
+  now += 1000;
+  assert.equal((await business.navigationCatalog({}, signal())).domains.kind, "available");
+  assert.deepEqual(timestamps, ["1792746360000", "1792746361000"]);
+});
+
 test("dictionary failure keeps the market order and a successful empty market stays empty", async (t) => {
   const business = fixture(t);
   let market = [{ id: "b" }, { id: "a", businessDomain: "unknown" }];
@@ -126,6 +166,20 @@ test("dictionary failure keeps the market order and a successful empty market st
   assert.deepEqual(catalog.domains, { kind: "unavailable", message: "业务分类暂不可用" });
   market = [];
   assert.deepEqual((await business.navigationCatalog({}, signal())).agents, []);
+  for (const body of [
+    { ...envelope([]), code: 500, message: "字典失败" },
+    { ...envelope([]), success: false, code: 0, message: "访问被拒绝" },
+  ]) {
+    t.mock.method(globalThis, "fetch", async (url) =>
+      Response.json(url.endsWith("/market") ? envelope([{ id: "retained" }]) : body),
+    );
+    const rejected = await business.navigationCatalog({}, signal());
+    assert.deepEqual(
+      rejected.agents.map((item) => item.id),
+      ["retained"],
+    );
+    assert.equal(rejected.domains.kind, "unavailable");
+  }
 });
 
 test("market HTTP and business failures are preserved without trusting success alone or optional tracking fields", async (t) => {
@@ -151,6 +205,8 @@ test("market HTTP and business failures are preserved without trusting success a
     (error) =>
       error.code === "GEA_REQUEST_REJECTED" && !error.message.includes("catalog-fixture-token"),
   );
+  response = () => Response.json({ ...envelope([]), code: 0 });
+  await assert.rejects(business.navigationCatalog({}, signal()), { code: "GEA_REQUEST_REJECTED" });
   response = () => Response.json({ ...envelope([]), code: undefined });
   await assert.rejects(business.navigationCatalog({}, signal()), { code: "GEA_REQUEST_REJECTED" });
   response = () => Response.json(envelope({ records: [] }));
