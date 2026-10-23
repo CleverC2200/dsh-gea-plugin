@@ -13,6 +13,7 @@ import { isMainSurface } from "./workbench-surface.ts";
 import { allowedTools, profileFor, promptMeasurement, TOOL_DESCRIPTIONS } from "./prompt-policy.ts";
 import { cubeAllowed, resolveCubeAccess } from "./cube-access.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
+import { modulePagePrompt } from "./module-page-scope.ts";
 
 const gatewayMethod = (name: string) =>
   name === "mcp__gea-gateway__inspect_cube_model" ||
@@ -465,7 +466,14 @@ export function mountBusinessPrompts(
           resultChars: state.returned,
         }),
       );
-      return { ...assembled, tools, sections };
+      const pageContext = modulePagePrompt(business, agent.id);
+      return {
+        ...assembled,
+        tools,
+        sections: pageContext
+          ? [...sections, { name: "current-module-page", text: pageContext }]
+          : sections,
+      };
     });
   });
   return () => {
