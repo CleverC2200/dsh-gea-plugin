@@ -1,566 +1,35 @@
-name: Delivery fixture checks
-
+name: Windows Native diagnostics (unpublished)
 on:
-  pull_request:
   workflow_dispatch:
     inputs:
-      prepare_windows_cache:
-        description: "Prepare shared Windows Core/runtime caches only; actual default branch dispatch required"
-        default: false
-        required: false
-        type: boolean
-      cache_request:
-        description: "Internal exact preparation keys requested by the release preflight"
-        default: ""
-        required: false
+      bundle_url:
+        required: true
         type: string
-      reuse_prepared_inputs:
-        description: "Reuse verified desktop preparation; disable for a cold benchmark or rebuild"
-        default: true
-        required: false
-        type: boolean
-      windows_complete_input:
-        description: "Desktop version, required policy Core, merged GEA SHA and three immutable published packages as JSON"
-        required: false
+      bundle_sha256:
+        required: true
         type: string
-      mac_complete_input:
-        description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
-        required: false
-        type: string
-      source_types_input:
-        description: "Optional immutable workbench/manage/gea SHA JSON for the four real source TypeScript configurations"
-        default: ""
-        required: false
-        type: string
-      native_acceptance_bundle_url:
-        description: "Optional approved R9 TGZ at immutable OSS verification/<sha256>/<name>.tgz"
-        required: false
-        type: string
-      native_acceptance_bundle_sha256:
-        description: "Expected R9 bundle SHA256; bundle failures fail the job"
-        required: false
-        type: string
-
 permissions:
   contents: read
-
+  actions: read
 jobs:
-  core-cache-fixtures:
-    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-2025, macos-15]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24.14.1"
-      - run: node --test scripts/windows-complete-local/core-cache.test.mjs
-
-  mac-complete-package:
-    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && inputs.mac_complete_input != ''
-    runs-on: macos-15
-    timeout-minutes: 90
-    env:
-      DSH_DESKTOP_TARGET_PLATFORM: darwin
-      DSH_DESKTOP_TARGET_ARCH: arm64
-      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
-      DSH_DESKTOP_UNSIGNED: "1"
-      DSH_DESKTOP_BUILD_DIRTY: "0"
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: gea
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        id: node
-        with:
-          node-version: "24.14.1"
-      - name: Select required desktop Core
-        id: desktop-core
-        shell: bash
-        run: |
-          node --input-type=module <<'NODE'
-          import { appendFileSync } from 'node:fs';
-          import { ciCores } from './gea/scripts/ci-core-policy.mjs';
-          const core = ciCores('required')[0];
-          appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + core.head + '\n');
-          appendFileSync(process.env.GITHUB_ENV, 'DSH_DESKTOP_BUILD_COMMIT=' + core.head + '\n');
-          NODE
-      - uses: actions/checkout@v4
-        with:
-          repository: CleverC2200/deepseek-harness
-          ref: ${{ steps.desktop-core.outputs.head }}
-          path: core
-          persist-credentials: false
-      - name: Initialize isolated delivery download paths
-        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
-      - name: Validate fixed input before preparing Core
-        working-directory: gea
-        env:
-          DESKTOP_INPUT_JSON: ${{ inputs.mac_complete_input }}
-        run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
-          mkdir node_modules
-          ln -s "$PWD/.runtime/fixture-dependencies/node_modules/semver" node_modules/semver
-          inputPath="$RUNNER_TEMP/gea-desktop-input.json"
-          printenv DESKTOP_INPUT_JSON > "$inputPath"
-          node scripts/windows-complete-local/input.mjs --input "$inputPath" --source-sha "$GITHUB_SHA" --mac-baseline
-          echo "DSH_DESKTOP_BUILD_VERSION=$(node -p 'JSON.parse(process.env.DESKTOP_INPUT_JSON).desktopVersion')" >> "$GITHUB_ENV"
-          echo "GEA_DESKTOP_INPUT=$inputPath" >> "$GITHUB_ENV"
-      - name: Locate declared tool download cache
-        id: delivery-tool-path
-        working-directory: core
-        run: |
-          corepack enable
-          echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
-        id: delivery-downloads
-        with:
-          path: |
-            ${{ env.COREPACK_HOME }}
-            ${{ env.ELECTRON_CACHE }}
-            ${{ env.ELECTRON_BUILDER_CACHE }}
-            core/apps/desktop/.desktop-build/downloads
-            ${{ steps.delivery-tool-path.outputs.store }}
-          key: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
-      - name: Prepare declared Core toolchain
-        working-directory: core
-        run: |
-          corepack pnpm install --frozen-lockfile --prefer-offline
-      - name: Preflight cold packaging tools
-        run: node gea/scripts/windows-complete-local/core-cache.mjs preflight core host
-      - name: Plan compiled Core cache
-        id: delivery-core-plan
-        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core host
-      - uses: actions/cache/restore@v4
-        id: delivery-core-restore
-        with:
-          path: ${{ steps.delivery-core-plan.outputs.paths }}
-          key: ${{ steps.delivery-core-plan.outputs.key }}
-      - name: Verify restored Core output
-        id: delivery-core-verify
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core host
-      - name: Compile missing Core tools
-        if: steps.delivery-core-verify.outputs.hit != 'true'
-        working-directory: core
-        run: |
-          corepack pnpm run build:lib:host
-          node ../gea/scripts/windows-complete-local/core-cache.mjs seal . host
-      - name: Plan immutable macOS baseline cache
-        id: delivery-baseline-plan
-        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core mac-baseline
-      - uses: actions/cache/restore@v4
-        id: delivery-baseline-restore
-        if: inputs.reuse_prepared_inputs
-        with:
-          path: ${{ steps.delivery-baseline-plan.outputs.paths }}
-          key: ${{ steps.delivery-baseline-plan.outputs.key }}
-      - name: Build full macOS package and verify isolated first installation
-        run: node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"
-      - name: Verify Core output after packaging
-        id: delivery-core-after-package
-        if: "!cancelled() && steps.delivery-core-plan.outcome == 'success'"
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core host
-      - name: Save verified compiled Core
-        if: "!cancelled() && steps.delivery-core-after-package.outputs.hit == 'true' && steps.delivery-core-restore.outputs.cache-hit != 'true'"
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.delivery-core-plan.outputs.paths }}
-          key: ${{ steps.delivery-core-plan.outputs.key }}
-      - name: Verify macOS baseline after packaging
-        id: delivery-baseline-after-package
-        if: "!cancelled() && steps.delivery-baseline-plan.outcome == 'success'"
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core mac-baseline
-      - name: Save verified macOS baseline
-        if: "!cancelled() && steps.delivery-baseline-after-package.outputs.hit == 'true' && steps.delivery-baseline-restore.outputs.cache-hit != 'true'"
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.delivery-baseline-plan.outputs.paths }}
-          key: ${{ steps.delivery-baseline-plan.outputs.key }}
-      - name: Keep installer and original build evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: GEA-Desktop-${{ env.DSH_DESKTOP_BUILD_VERSION }}-mac-arm64-complete
-          if-no-files-found: warn
-          compression-level: 0
-          path: |
-            ${{ runner.temp }}/gea-mac-complete/artifacts/*.dmg
-            ${{ runner.temp }}/gea-mac-complete/result.json
-            ${{ runner.temp }}/gea-mac-complete/first-install-receipt.json
-            ${{ runner.temp }}/gea-mac-complete/stages.json
-            ${{ runner.temp }}/gea-mac-complete/baseline-reuse.json
-            ${{ runner.temp }}/gea-mac-complete/*.log
-  delivery-fixtures:
-    if: (github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        id: node
-        with:
-          node-version: "24"
-      - run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22
-          ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
-      - run: node --run test:release-source
-      - run: npm run test:delivery:packages
-      - run: node --run test:delivery
-      - run: node --run test:fixture-inputs
-      - run: node --run test:prompt-execution
-      - run: node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs
-
-      - name: "Source types: validate the explicit manual tuple"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        id: source-types-input
-        env:
-          SOURCE_TYPES_INPUT: ${{ inputs.source_types_input }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { appendFileSync } from 'node:fs';
-          const tuple = JSON.parse(process.env.SOURCE_TYPES_INPUT);
-          if (process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || process.env.GITHUB_REPOSITORY !== 'CleverC2200/dsh-gea-plugin' ||
-            !tuple || Object.keys(tuple).sort().join(',') !== 'gea,manage,workbench' ||
-            Object.values(tuple).some(sha => typeof sha !== 'string' || !/^[a-f0-9]{40}$/.test(sha)) || tuple.gea !== process.env.GITHUB_SHA)
-            throw Error('SOURCE_TYPES_INPUT_REQUIRED: three immutable heads bound to the actual dispatch');
-          for (const [repo, head] of Object.entries(tuple)) appendFileSync(process.env.GITHUB_OUTPUT, `${repo}=${head}\n`);
-          NODE
-      - name: "Source types: checkout the actual GEA event"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: candidate/dsh-gea-plugin
-          fetch-depth: 0
-          persist-credentials: false
-      - name: "Source types: checkout frozen Workbench"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        uses: actions/checkout@v4
-        with:
-          repository: CleverC2200/dsh-agent-workbench
-          ref: ${{ steps.source-types-input.outputs.workbench }}
-          path: source/dsh-agent-workbench
-          fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
-          persist-credentials: false
-      - name: "Source types: checkout frozen Manage"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        uses: actions/checkout@v4
-        with:
-          repository: CleverC2200/dsh-agent-manage
-          ref: ${{ steps.source-types-input.outputs.manage }}
-          path: candidate/dsh-agent-manage
-          fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
-          persist-credentials: false
-      - name: "Source types: select the required CI Core"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        id: source-types-core
-        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from './candidate/dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
-      - name: "Source types: checkout the registered Core source"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        uses: actions/checkout@v4
-        with:
-          repository: CleverC2200/deepseek-harness
-          ref: ${{ steps.source-types-core.outputs.head }}
-          path: source/official-core
-          fetch-depth: 0
-          persist-credentials: false
-      - name: "Source types: bind and admit the actual joint group"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        env:
-          QUALITY_GROUP_GEA: ${{ steps.source-types-input.outputs.gea }}
-          QUALITY_GROUP_MANAGE: ${{ steps.source-types-input.outputs.manage }}
-          QUALITY_GROUP_WORKBENCH: ${{ steps.source-types-input.outputs.workbench }}
-          QUALITY_EXPECTED_SHA: ${{ github.sha }}
-          QUALITY_SCOPE_ALLOWED: "true"
-        run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
-          import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-          import { resolve } from 'node:path';
-          import { createHash } from 'node:crypto';
-          import { readFinalGroup } from './source/dsh-agent-workbench/scripts/candidate-input.mjs';
-          import { resourceDigests } from './candidate/dsh-gea-plugin/scripts/source-combination-integrity.mjs';
-          const root = process.cwd(), gea = resolve('candidate/dsh-gea-plugin'), workbench = resolve('source/dsh-agent-workbench');
-          const observed = JSON.parse(execFileSync(process.execPath, [resolve(workbench, 'scripts/read-hosted-peer-input.mjs'), '--repo', 'dsh-gea-plugin'], { cwd: gea, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: '' } }));
-          const env = { ...process.env, QUALITY_GROUP_ID: observed['group-id'], QUALITY_SOURCE_KIND: observed['source-kind'], QUALITY_BASELINE_ID: observed['baseline-id'], GITHUB_OUTPUT: '' };
-          const { ciCores } = await import('./candidate/dsh-gea-plugin/scripts/ci-core-policy.mjs');
-          const core = ciCores('required')[0].head;
-          execFileSync(process.execPath, [resolve(workbench, 'scripts/write-hosted-group.mjs'), '--root', root, '--repo', 'dsh-gea-plugin', '--core-head', core, '--workbench-source'], { cwd: gea, env, stdio: 'inherit' });
-          const sha256 = createHash('sha256').update(readFileSync('candidate-input.json')).digest('hex');
-          const admitted = await readFinalGroup({ input: resolve('candidate-input.json'), sha256, checkout: gea, coreSource: resolve('source/official-core'), expectedSha: process.env.GITHUB_SHA, ci: true });
-          const lib = {};
-          for (const entry of admitted.manifest.repositories) lib[entry.repo] = existsSync(resolve(entry.path, 'lib')) ? await resourceDigests(resolve(entry.path, 'lib')) : null;
-          mkdirSync('.runtime/source-types', { recursive: true });
-          writeFileSync('.runtime/source-types/admitted.json', JSON.stringify({ sha256, core, receipt: admitted.receipt, lib }, null, 2) + '\n');
-          NODE
-      - name: "Source types: enable the declared package managers"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        run: |
-          npm install --global npm@11.11.0
-          corepack enable
-      - name: "Source types: locate the existing download cache"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        id: source-types-cache-path
-        working-directory: candidate/dsh-agent-manage
-        run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - name: "Source types: restore existing package downloads"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.npm
-            ~/.cache/node/corepack
-            ${{ steps.source-types-cache-path.outputs.store }}
-          key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
-          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
-      - name: "Source types: prepare owned Core source without compiling"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        id: source-types-sdk-paths
-        working-directory: candidate/dsh-gea-plugin
-        run: |
-          node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.source-types-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
-          node ../dsh-agent-manage/scripts/sdk-artifact-cache.mjs --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
-      - name: "Source types: restore the verified SDK cache"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        id: source-types-sdk-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.source-types-sdk-paths.outputs.paths }}
-          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.source-types-core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
-      - name: "Source types: prepare or verify the SDK once"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        working-directory: candidate/dsh-gea-plugin
-        run: node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.source-types-core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
-      - name: "Source types: save only the verified SDK cache"
-        if: success() && github.event_name == 'workflow_dispatch' && inputs.source_types_input != '' && steps.source-types-sdk-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        timeout-minutes: 1
-        with:
-          path: ${{ steps.source-types-sdk-paths.outputs.paths }}
-          key: ${{ steps.source-types-sdk-cache.outputs.cache-primary-key }}
-      - name: "Source types: prepare locked owner dependencies and existing upstreams"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
-          import { readFileSync, symlinkSync, realpathSync } from 'node:fs';
-          import { resolve } from 'node:path';
-          import { acquireBuild } from './candidate/dsh-gea-plugin/scripts/build-admission.mjs';
-          import { prepareQualityUpstreams, bindQualityUpstreamInputs } from './candidate/dsh-gea-plugin/scripts/quality-upstreams.mjs';
-          const upstream = resolve('quality-upstreams'), inputs = resolve('upstream-inputs');
-          const release = acquireBuild({ operation: 'prepare', cwd: process.cwd(), output: upstream, scopes: [upstream, inputs] });
-          try { await prepareQualityUpstreams(upstream); await bindQualityUpstreamInputs(upstream, inputs, { prepare: true }); } finally { release(); }
-          symlinkSync(resolve('source/dsh-agent-workbench'), resolve('candidate/dsh-agent-workbench'), 'dir');
-          if (realpathSync('candidate/dsh-agent-workbench') !== realpathSync('source/dsh-agent-workbench')) throw Error('SOURCE_PEER_LINK_MISMATCH');
-          for (const entry of JSON.parse(readFileSync('candidate-input.json')).repositories) {
-            const release = acquireBuild({ operation: 'prepare', cwd: entry.path });
-            try {
-              if (entry.repo === 'dsh-agent-workbench') execFileSync('npm', ['ci', '--ignore-scripts', '--prefer-offline', '--no-audit', '--no-fund'], { cwd: entry.path, stdio: 'inherit' });
-              else execFileSync('corepack', ['pnpm', 'install', '--frozen-lockfile', '--ignore-scripts', '--prefer-offline'], { cwd: entry.path, stdio: 'inherit' });
-            } finally { release(); }
-          }
-          NODE
-      - name: "Source types: run the four real configurations and retain source identity"
-        if: github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        run: |
-          set -o pipefail
-          node --input-type=module <<'NODE' 2>&1 | tee .runtime/source-types/checks.log
-          import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-          import { resolve } from 'node:path';
-          import { checkTypes } from './source/dsh-agent-workbench/scripts/source-checks.mjs';
-          import { readFinalGroup } from './source/dsh-agent-workbench/scripts/candidate-input.mjs';
-          import { verifyOfficialSDK } from './candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs';
-          import { resourceDigests } from './candidate/dsh-gea-plugin/scripts/source-combination-integrity.mjs';
-          const root = process.cwd(), admitted = JSON.parse(readFileSync('.runtime/source-types/admitted.json'));
-          const manifest = JSON.parse(readFileSync('candidate-input.json')), completed = [];
-          let failure, sourceIntegrity = { status: 'passed' };
-          for (const entry of manifest.repositories) {
-            process.chdir(entry.path);
-            let sdk;
-            try {
-              sdk = verifyOfficialSDK({ consumer: entry.path, core: resolve(root, 'official-latest-standard'), coreHead: admitted.core, withArtifactReceipt: true });
-              await checkTypes(entry.path, manifest.repositories, entry.repo);
-              completed.push({ repo: entry.repo, head: entry.head, sdk, status: 'passed' });
-            } catch (error) {
-              completed.push({ repo: entry.repo, head: entry.head, sdk, status: 'failed', error: error.message });
-              failure ??= error;
-              console.error(error);
-            }
-          }
-          process.chdir(root);
-          try {
-            await readFinalGroup({ input: resolve('candidate-input.json'), sha256: admitted.sha256, checkout: resolve('candidate/dsh-gea-plugin'), coreSource: resolve('source/official-core'), expectedSha: process.env.GITHUB_SHA, ci: true });
-            for (const entry of manifest.repositories) {
-              const lib = existsSync(resolve(entry.path, 'lib')) ? await resourceDigests(resolve(entry.path, 'lib')) : null;
-              if (JSON.stringify(lib) !== JSON.stringify(admitted.lib[entry.repo])) throw Error('SOURCE_TYPES_CHANGED_BUSINESS_OUTPUT: ' + entry.repo);
-            }
-          } catch (error) { sourceIntegrity = { status: 'failed', error: error.message }; failure ??= error; }
-          writeFileSync('.runtime/source-types/result.json', JSON.stringify({ status: failure ? 'failed' : 'passed', inputSha256: admitted.sha256, core: admitted.core, completed, sourceIntegrity, error: failure?.message }, null, 2) + '\n');
-          if (failure) throw failure;
-          NODE
-      - name: "Source types: keep the frozen input and actual diagnostics"
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.source_types_input != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: source-types-${{ github.sha }}
-          if-no-files-found: warn
-          path: |
-            .runtime/source-types/
-            candidate-input.json
-            candidate-group.json
-
-  windows-complete-package:
-    if: github.event_name == 'workflow_dispatch' && (inputs.prepare_windows_cache || inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
-    permissions:
-      contents: read
-      actions: write
+  native-only-diagnostic:
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 40
     env:
-      DSH_DESKTOP_TARGET_PLATFORM: win32
-      DSH_DESKTOP_TARGET_ARCH: x64
-      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
-      DSH_DESKTOP_UNSIGNED: "1"
-      DSH_DESKTOP_BUILD_DIRTY: "0"
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      ELECTRON_BUILDER_7Z_FILTER: BCJ
-      DSH_DELIVERY_REUSE_INPUTS: ${{ inputs.reuse_prepared_inputs }}
-      GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      DSH_DELIVERY_PREPARE_ONLY: ${{ inputs.prepare_windows_cache }}
-      DSH_DELIVERY_CACHE_EVIDENCE: ${{ github.workspace }}/core/apps/desktop/.desktop-build/targets/win-x64/${{ inputs.prepare_windows_cache && 'gea-preparation' || 'gea-local' }}
+      TAR_OPTIONS: --force-local --quoting-style=literal
     steps:
-      - uses: actions/checkout@v4
-        with:
-          path: gea
-          fetch-depth: 0
-          persist-credentials: false
       - uses: actions/setup-node@v4
-        id: node
         with:
-          node-version: "24.14.1"
-      - name: Select required desktop Core
-        id: desktop-core
-        shell: bash
-        run: |
-          node --input-type=module <<'NODE'
-          import { appendFileSync } from 'node:fs';
-          import { ciCores } from './gea/scripts/ci-core-policy.mjs';
-          const core = ciCores('required')[0];
-          appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + core.head + '\n');
-          appendFileSync(process.env.GITHUB_ENV, 'DSH_DESKTOP_BUILD_COMMIT=' + core.head + '\n');
-          NODE
-      - uses: actions/checkout@v4
+          node-version: '24.14.1'
+      - uses: actions/download-artifact@v4
         with:
-          repository: CleverC2200/deepseek-harness
-          ref: ${{ steps.desktop-core.outputs.head }}
-          path: core
-          persist-credentials: false
-      - name: Initialize isolated delivery download paths
-        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
-      - name: Require actual default ref for shared cache production
-        if: inputs.prepare_windows_cache
-        env:
-          CACHE_REQUEST: ${{ inputs.cache_request }}
-        run: node gea/scripts/windows-complete-local/shared-cache.mjs check-request core
-      - name: Validate fixed input before preparing Core
-        if: "!inputs.prepare_windows_cache"
-        working-directory: gea
-        env:
-          DESKTOP_INPUT_JSON: ${{ inputs.windows_complete_input }}
-          NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
-          NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
-        run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
-          $inputPath = Join-Path $env:RUNNER_TEMP 'gea-desktop-input.json'
-          [IO.File]::WriteAllText($inputPath, $env:DESKTOP_INPUT_JSON, [Text.UTF8Encoding]::new($false))
-          node scripts/windows-complete-local/input.mjs --input $inputPath --source-sha $env:GITHUB_SHA
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ($env:NATIVE_BUNDLE_URL -or $env:NATIVE_BUNDLE_SHA256) {
-            node scripts/windows-complete-local/run-bundle.mjs --bundle-url "$env:NATIVE_BUNDLE_URL" --bundle-sha256 "$env:NATIVE_BUNDLE_SHA256" --validate-only
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          $fixed = Get-Content -Raw $inputPath | ConvertFrom-Json
-          "DSH_DESKTOP_BUILD_VERSION=$($fixed.desktopVersion)" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "GEA_DESKTOP_INPUT=$inputPath" | Out-File -Append -FilePath $env:GITHUB_ENV
-      - uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-      - name: Locate declared tool download cache
-        id: delivery-tool-path
-        working-directory: core
-        run: |
-          corepack enable
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $store = corepack pnpm store path --silent
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          "store=$store" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
-      - name: Restore tool downloads
-        uses: actions/cache/restore@v4
-        id: delivery-downloads
-        continue-on-error: true
-        with:
-          path: |
-            ${{ env.COREPACK_HOME }}
-            ${{ env.ELECTRON_CACHE }}
-            ${{ env.ELECTRON_BUILDER_CACHE }}
-            core/apps/desktop/.desktop-build/downloads
-            ${{ steps.delivery-tool-path.outputs.store }}
-          key: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
-      - name: Prepare declared Core toolchain
-        working-directory: core
-        run: |
-          corepack pnpm install --frozen-lockfile --prefer-offline
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Preflight cold packaging tools
-        id: delivery-tools-verify
-        run: node gea/scripts/windows-complete-local/core-cache.mjs preflight core official
-      - name: Plan compiled Core cache
-        id: delivery-core-plan
-        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core official
-      - name: Check default branch caches and prepare missing inputs
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node gea/scripts/windows-complete-local/shared-cache.mjs preflight core "$env:RUNNER_TEMP/windows-cache-preflight.json"
-      - name: Restore compiled Core
-        uses: actions/cache/restore@v4
-        id: delivery-core-restore
-        if: inputs.reuse_prepared_inputs
-        continue-on-error: true
-        with:
-          path: ${{ steps.delivery-core-plan.outputs.paths }}
-          key: ${{ steps.delivery-core-plan.outputs.key }}
-      - name: Plan prepared Windows runtime cache
-        id: delivery-runtime-plan
-        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core windows-runtime
-      - name: Restore prepared Windows runtime
-        uses: actions/cache/restore@v4
-        id: delivery-runtime-restore
-        continue-on-error: true
-        if: inputs.reuse_prepared_inputs
-        with:
-          path: ${{ steps.delivery-runtime-plan.outputs.paths }}
-          key: ${{ steps.delivery-runtime-plan.outputs.key }}
-      - name: Select GNU tar for Unicode published archives
+          repository: CleverC2200/dsh-gea-plugin
+          run-id: 39973150615
+          artifact-ids: 12510483336
+          github-token: ${{ github.token }}
+          path: artifact
+          merge-multiple: true
+      - name: Select declared GNU tar for the existing archive contract
         shell: pwsh
         run: |
           $tarDirectory = Join-Path $env:ProgramFiles 'Git\usr\bin'
@@ -569,97 +38,45 @@ jobs:
           & $tarExecutable --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
-          'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
-      - name: Prepare shared Windows caches without producing an installer
-        if: inputs.prepare_windows_cache
-        run: node gea/scripts/windows-complete-local/prepare.mjs core
-      - name: Build full Windows package and verify isolated first installation
-        if: "!inputs.prepare_windows_cache"
+      - name: Prepare isolated diagnostic dependencies
+        shell: pwsh
+        run: npm install --prefix deps --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 app-builder-lib@26.15.3 pnpm@11.7.0 yaml@2.9.0 7zip-bin@5.2.0
+      - name: Read immutable diagnostic bundle and reuse exact installer
         env:
-          DSH_DELIVERY_CORE_RESTORE: ${{ steps.delivery-core-restore.outcome }}
-          DSH_DELIVERY_RUNTIME_RESTORE: ${{ steps.delivery-runtime-restore.outcome }}
-          DSH_DELIVERY_PREFLIGHT: ${{ runner.temp }}/windows-cache-preflight.json
-        run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
-      - name: Verify Core output after packaging
-        id: delivery-core-after-package
-        if: "!cancelled() && steps.delivery-core-plan.outcome == 'success'"
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core official
-      - name: Save verified compiled Core
-        if: "!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.delivery-core-after-package.outputs.integrity == 'verified' && steps.delivery-core-restore.outputs.cache-hit != 'true'"
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.delivery-core-plan.outputs.paths }}
-          key: ${{ steps.delivery-core-plan.outputs.key }}
-      - name: Verify prepared Windows runtime after packaging
-        id: delivery-runtime-after-package
-        if: "!cancelled() && steps.delivery-runtime-plan.outcome == 'success'"
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core windows-runtime
-      - name: Save verified Windows runtime
-        if: "!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.delivery-runtime-after-package.outputs.integrity == 'verified' && steps.delivery-runtime-restore.outputs.cache-hit != 'true'"
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.delivery-runtime-plan.outputs.paths }}
-          key: ${{ steps.delivery-runtime-plan.outputs.key }}
-      - name: Run approved Native plugin update acceptance bundle
-        if: inputs.prepare_windows_cache == false && inputs.native_acceptance_bundle_url != ''
-        env:
-          NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
-          NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
+          BUNDLE_URL: ${{ inputs.bundle_url }}
+          BUNDLE_SHA256: ${{ inputs.bundle_sha256 }}
+        shell: bash
         run: |
-          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $buildReceipt = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/result.json'
-          $evidence = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance'
-          node gea/scripts/windows-complete-local/run-bundle.mjs --bundle-url "$env:NATIVE_BUNDLE_URL" --bundle-sha256 "$env:NATIVE_BUNDLE_SHA256" --build-receipt $buildReceipt --input "$env:GEA_DESKTOP_INPUT" --output $evidence
-      - name: Save default branch tool downloads
-        if: "!cancelled() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.delivery-downloads.outputs.cache-hit != 'true'"
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ env.COREPACK_HOME }}
-            ${{ env.ELECTRON_CACHE }}
-            ${{ env.ELECTRON_BUILDER_CACHE }}
-            core/apps/desktop/.desktop-build/downloads
-            ${{ steps.delivery-tool-path.outputs.store }}
-          key: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
-      - name: Keep installer and original build evidence
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { writeFileSync, mkdirSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          import { execFileSync } from 'node:child_process';
+          const sha = process.env.BUNDLE_SHA256, url = new URL(process.env.BUNDLE_URL);
+          assert(/^[a-f0-9]{64}$/.test(sha));
+          assert.equal(url.href, 'https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/verification/' + sha + '/startup-restart-acceptance.tgz');
+          const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(120000) });
+          assert.equal(response.status, 200);
+          const bytes = Buffer.from(await response.arrayBuffer());
+          assert(bytes.length < 16 * 1024 * 1024);
+          assert.equal(createHash('sha256').update(bytes).digest('hex'), sha);
+          mkdirSync('bundle'); writeFileSync('bundle/input.tgz', bytes);
+          const tar = args => execFileSync('tar', args, { cwd: resolve('bundle'), encoding: 'utf8' });
+          const files = tar(['-tzf', 'input.tgz']).trim().split(/\r?\n/);
+          assert(files.length < 1024 && files.includes('package/diagnostic-replay.mjs'));
+          assert(files.every(file => file.startsWith('package/') && !/[\\:\r\t]/.test(file) && !file.split('/').some(part => part === '..' || part === '.')));
+          assert(tar(['-tvzf', 'input.tgz']).trim().split(/\r?\n/).every(line => ['-', 'd'].includes(line[0])));
+          tar(['-xzf', 'input.tgz']);
+          execFileSync(process.execPath, ['bundle/package/diagnostic-replay.mjs', 'artifact', 'deps', 'diagnostic-evidence'], { stdio: 'inherit', timeout: 30 * 60000 });
+          NODE
+      - name: Keep diagnostic evidence only
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GEA-Desktop-${{ inputs.prepare_windows_cache && 'cache-preparation' || env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
+          name: native-only-diagnostic-${{ github.run_id }}
           if-no-files-found: warn
-          compression-level: 0
           path: |
-            ${{ runner.temp }}/windows-cache-preflight.json
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.json
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.log
-            core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.json
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.log
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/bundle-binding.json
-            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/public/**
-      - name: Report cache sources and delivery step timings
-        if: always()
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          DSH_DELIVERY_TOOLS_HIT: ${{ steps.delivery-downloads.outputs.cache-hit }}
-          DSH_DELIVERY_TOOLS_RESTORE: ${{ steps.delivery-downloads.outcome }}
-          DSH_DELIVERY_TOOLS_PREFLIGHT: ${{ steps.delivery-tools-verify.outcome }}
-          DSH_DELIVERY_TOOLS_KEY: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
-        run: node gea/scripts/windows-complete-local/cache-report.mjs core
-      - name: Keep cache and timing receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-cache-report-${{ github.run_id }}
-          if-no-files-found: warn
-          path: core/apps/desktop/.desktop-build/targets/win-x64/**/cache-report.json
+            diagnostic-evidence/*.json
+            diagnostic-evidence/native/**/*.json
+            diagnostic-evidence/native/public/**/*.png
