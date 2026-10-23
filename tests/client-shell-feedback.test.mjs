@@ -9,6 +9,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import {
+  openSalesPlan,
   openBusinessPage,
   openRegisteredWorkbenchPage,
   prepareWorkbenchPageAccess,
