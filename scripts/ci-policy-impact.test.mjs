@@ -545,6 +545,33 @@ test("unmapped Workbench source still rejects selection", (t) => {
   );
 });
 
+test("Workbench inventory SQL scripts select source assembly contracts while unknown Python still rejects", async (t) => {
+  const contracts = ["scripts/quality-workbench.test.mjs", "tests/source-assembly.test.mjs"];
+  for (const name of [
+    "test_batch_age_lists",
+    "test_qll_structure",
+    "update-batch-age-lists",
+    "update-fc-list-completion",
+    "update-qll-list-completion",
+  ])
+    await t.test(name, (t) => {
+      const fixture = resourceImpactFixture(t);
+      const file = `scripts/${name}.py`;
+      fixture.change(fixture.peer, file);
+      const plan = fixture.plan();
+      assert.deepEqual(plan.changes, [{ repo: fixture.peer.repo, file }]);
+      assert.deepEqual(plan.reasons[fixture.peer.repo + "/" + file], contracts);
+      assert.deepEqual(plan.required, businessCore);
+      assert.deepEqual(plan.files, [...businessCore, ...contracts].sort());
+    });
+  const fixture = resourceImpactFixture(t);
+  const file = "scripts/update-batch-age-lists-unowned.py";
+  fixture.change(fixture.peer, file);
+  assert.throws(() => fixture.plan(), {
+    message: "CI_TEST_IMPACT_UNMAPPED: " + fixture.peer.repo + "/" + file,
+  });
+});
+
 test("unknown own and peer commands cannot fall back to configuration tests", (t) => {
   for (const repo of ["dsh-gea-plugin", "dsh-agent-workbench", "dsh-agent-manage"]) {
     const fixture = resourceImpactFixture(t);
