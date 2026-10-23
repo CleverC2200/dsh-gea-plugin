@@ -35,7 +35,11 @@ const row = {
 };
 function fixture(
   agent = "aqkc",
-  execute = async () => ({ rows: [row], returnedColumns: columns, rejectedColumns: [] }),
+  execute = async () => ({
+    rows: [row],
+    returnedColumns: columns,
+    rejectedColumns: [],
+  }),
 ) {
   let tool,
     preset = "gea-html-inventory-" + agent,
@@ -78,7 +82,11 @@ function fixture(
   }));
   registerCurrentShortageTool(ctx, business, packages);
   return {
-    call: (args) => tool.execute(args, { agent: coreAgent, signal: new AbortController().signal }),
+    call: (args) =>
+      tool.execute(args, {
+        agent: coreAgent,
+        signal: new AbortController().signal,
+      }),
     calls,
     identity,
     disable: () => (enabled = false),
@@ -106,6 +114,82 @@ test("four Session profiles reuse their installed page SQL without a page or Cub
     assert.ok(allowedTools(PROFILES["gea-html-inventory-" + agent]).has("gea_current_shortage"));
   }
   assert.equal(allowedTools(PROFILES["gea-readonly"]).has("gea_current_shortage"), false);
+});
+test("branch ranking and a follow-up SKU page reuse one Session with explicit warehouse codes", async () => {
+  const config = JSON.parse(
+    await readFile("../dsh-agent-workbench/business/inventory-fc/sql.config.json", "utf8"),
+  );
+  const locations = [
+    {
+      ...row,
+      location_type: "分仓",
+      location_code: "W2",
+      location_name: "乙分仓",
+      base: "郑州",
+      warehouse_code: "W2",
+      shortage: 3,
+    },
+    {
+      ...row,
+      location_type: "分仓",
+      location_code: "W1",
+      location_name: "甲分仓",
+      base: "郑州",
+      warehouse_code: "W1",
+      shortage: 8,
+    },
+  ];
+  const locationColumns = config.queries["current-shortage.locations"].resultColumns;
+  const detailColumns = config.queries["current-shortage.detail"].resultColumns;
+  const f = fixture("fc", async (request) =>
+    request.sql === config.queries["current-shortage.locations"].request.sql
+      ? {
+          rows: locations,
+          returnedColumns: locationColumns,
+          rejectedColumns: [],
+          hasMorePages: false,
+          totalRowCount: 2,
+        }
+      : {
+          rows: [
+            {
+              ...locations[1],
+              sku: "S1",
+              page_scope_total: 1,
+              page_row_present: 1,
+            },
+          ],
+          returnedColumns: detailColumns,
+          rejectedColumns: [],
+        },
+  );
+  const ranking = JSON.parse(await f.call({ view: "locations" }));
+  assert.equal(f.calls[0].request.sql, config.queries["current-shortage.locations"].request.sql);
+  assert.equal(ranking.coverage, "complete-location-ranking");
+  assert.deepEqual(
+    ranking.rows.map((r) => r.location_code),
+    ["W1", "W2"],
+  );
+  const detail = JSON.parse(
+    await f.call({
+      view: "detail",
+      warehouseCode: ranking.rows[0].location_code,
+    }),
+  );
+  assert.equal(detail.rows[0].sku, "S1");
+  assert.equal(f.calls[1].request.parameters.gea_p2, "W1");
+  assert.ok(f.calls.every((c) => c.request.consumerCode === "branch-inventory"));
+});
+test("a truncated location collection cannot claim a complete ranking", () => {
+  assert.throws(
+    () =>
+      currentShortageResult(
+        { rows: [row], returnedColumns: columns, hasMorePages: true },
+        "locations",
+        1,
+      ),
+    /CURRENT_SHORTAGE_INCOMPLETE/,
+  );
 });
 test("a GEA authorization failure is preserved once with no fallback or zero", async () => {
   const f = fixture("aqkc", async () => {

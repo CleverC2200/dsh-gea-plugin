@@ -104,3 +104,9 @@ M/Z 查询和审批复用原接口。`salesPlanAction` 从新鲜明细核对有�
 [0.0.100 原执行说明](history/current-docs-before-20261010/docs/execution-logic.md) 保留旧自动派生、扫描、页面 Consumer 选择、正式发布流程、失败、未验收项和独特实现理由。原命令、端口与支持矩阵仅供追溯。
 
 个人 Agent 的知识与 Cube 查询复用 Manage 保留的可信资源关联。Host 沿该来源解析 Consumer；来源、身份或关联变化取消在途请求，引用不授予业务写入或页面动作。
+
+## 分仓连续问数与补货只读建议
+
+`gea_current_shortage` 的 `locations` 使用所属 Agent 的已安装地点汇总，完整性检查后按当前缺货量降序返回；后续 SKU 查询沿返回的地点编码，不由仓名猜编码。summary、地点排行、SKU分页分别声明覆盖范围。
+
+仅 `branch-inventory` Session 可用 `gea_branch_inventory`。它经 Workbench 的公开 `configured-facts` reader 复用分仓页面的期间、快照、周期、固定SQL和原子分页；summary 是全范围库存与测算，replenishment 只在 SQL 分页前选择正建议量。Host仍决定资源与Consumer，执行前后核安装、启用、身份和取消，不接受SQL或路由参数，不调用Cube或直连回退。用户页面未保存计划/草稿不进入独立问数，建议不是正式提交。结构符合率无已确认规则时保持未定义，不另造比例。
