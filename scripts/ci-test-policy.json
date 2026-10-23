@@ -432,7 +432,7 @@
     },
     {
       "repo": "dsh-agent-workbench",
-      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-orderworkbench|build-output|build-static-authors|static-author-provenance)\\.mjs$",
+      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-orderworkbench|build-output|build-static-authors|mps-compute-build|static-author-provenance)\\.mjs$",
       "tests": [
         "scripts/quality-workbench.test.mjs",
         "scripts/quality-prepared-inputs.test.mjs",
@@ -499,6 +499,30 @@
       "pattern": "^scripts/quality-peer-baseline\\.json$",
       "tests": [],
       "sourceTests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/(?:source-quality|workflow-preflight)(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/source-quality.test.mjs", "scripts/workflow-preflight.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:source-checks|source-result|source-tools)\\.mjs$",
+      "tests": [
+        "scripts/source-quality.test.mjs",
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:source-quality|workflow-preflight)(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/source-quality.test.mjs", "scripts/workflow-preflight.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:test_current_shortage_source|test_fc_aging_source|test_batch_age_lists|test_qll_structure|update_current_shortage_sql|update-batch-age-lists|update-fc-list-completion|update-qll-list-completion)\\.py$",
+      "tests": ["scripts/quality-workbench.test.mjs", "tests/source-assembly.test.mjs"]
     }
   ],
   "testOwners": {

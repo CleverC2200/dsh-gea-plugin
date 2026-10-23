@@ -1,4 +1,3 @@
-/** GitHub run-attempt clocks only; source admission and execution coverage belong to the caller. */
 const budgetMs = 600000;
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -188,6 +187,103 @@ function verifyHostedSnapshot(snapshot) {
       job.head_sha !== expected.headSha
     )
       throw Error("HOSTED_INPUT_MISMATCH");
+}
+
+export function assessFinalDependencies({
+  snapshot,
+  requiredJobs,
+  notApplicableJobs = [],
+  finalJobName,
+  needs,
+  applicability,
+  hasShards,
+  dependencyReview,
+}) {
+  verifyHostedSnapshot(snapshot);
+  if (
+    !["source", "docs"].includes(applicability) ||
+    typeof hasShards !== "boolean" ||
+    typeof dependencyReview !== "boolean" ||
+    (applicability === "docs" && (hasShards || dependencyReview))
+  )
+    throw Error("QUALITY_FINAL_DEPENDENCIES_INPUT_REQUIRED");
+  const source = applicability === "source";
+  const expected = {
+    "candidate-scope": "success",
+    "source-plan": "success",
+    gates: source ? "success" : "skipped",
+    "plan-test-shards": source ? "success" : "skipped",
+    "test-shards": hasShards ? "success" : "skipped",
+    "macos-isolation": source ? "success" : "skipped",
+    "windows-plugin-update": "success",
+    "dependency-review": dependencyReview ? "success" : "skipped",
+  };
+  const reasons = [];
+  if (
+    !needs ||
+    typeof needs !== "object" ||
+    Array.isArray(needs) ||
+    Object.keys(needs).sort().join(",") !== Object.keys(expected).sort().join(",")
+  )
+    reasons.push("QUALITY_FINAL_DEPENDENCIES_REQUIRED");
+  const dependencies = Object.entries(expected).map(([job, result]) => {
+    const actual = needs?.[job]?.result;
+    if (actual !== result) reasons.push("QUALITY_FINAL_DEPENDENCY_RESULT: " + job);
+    return { job, expected: result, actual: actual ?? null };
+  });
+  if (needs?.["source-plan"]?.outputs?.applicability !== applicability)
+    reasons.push("QUALITY_FINAL_APPLICABILITY_MISMATCH");
+  const observed = assessHostedBudget({
+    snapshot,
+    requiredJobs,
+    notApplicableJobs,
+    finalJobName,
+    mode: "in-gate",
+  });
+  const pending = (entry) =>
+    ["queued", "pending", "requested", "in_progress"].includes(entry?.status) &&
+    entry.conclusion === null;
+  const deferred = [];
+  for (const reason of observed.functional.reasons) {
+    const upstream = requiredJobs.find((name) => reason === "HOSTED_REQUIRED_JOB: " + name);
+    const matches = snapshot.jobs.filter((job) => job.name === (upstream ?? finalJobName));
+    const lagging = upstream
+      ? matches.length === 1 && pending(matches[0])
+      : reason === "HOSTED_FINAL_STATE: " + finalJobName &&
+        pending(snapshot.run) &&
+        matches.length === 1 &&
+        pending(matches[0]);
+    (lagging ? deferred : reasons).push(reason);
+  }
+  for (const job of snapshot.jobs) {
+    if (
+      Array.isArray(job.steps) &&
+      job.steps.some(
+        (step) => step.conclusion != null && !["success", "skipped"].includes(step.conclusion),
+      )
+    )
+      reasons.push("HOSTED_STEP_CONCLUSION: " + job.name);
+    if (
+      job.conclusion !== null &&
+      !(
+        job.status === "completed" &&
+        (job.conclusion === "success" ||
+          (job.conclusion === "skipped" && notApplicableJobs.includes(job.name)))
+      )
+    )
+      reasons.push("HOSTED_JOB_CONCLUSION: " + job.name);
+  }
+  return {
+    schemaVersion: 1,
+    identity: snapshot.expected,
+    basis: "github-needs-with-validated-rest-snapshot",
+    scope: "scheduler-dependencies",
+    applicability,
+    status: reasons.length ? "failed" : "passed",
+    dependencies,
+    reasons: [...new Set(reasons)],
+    observerPending: deferred,
+  };
 }
 
 function timestamp(value) {
