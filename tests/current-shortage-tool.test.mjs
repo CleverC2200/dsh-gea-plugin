@@ -47,6 +47,7 @@ function fixture(
   const calls = [],
     listeners = new Set(),
     identity = new AbortController(),
+    source = new AbortController(),
     coreAgent = { id: "current-session" };
   const ctx = {
     effect: (fn) => fn(),
@@ -59,6 +60,10 @@ function fixture(
     agents: { get: () => coreAgent },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
+      cubeSource: (id) =>
+        enabled && id === "auto-negotiation"
+          ? { consumerCode: "workbench", signal: source.signal }
+          : undefined,
       list: async () => [{ id: preset, kind: "prompt", installed: true, enabled }],
       watch: (listener) => {
         listeners.add(listener);
@@ -67,6 +72,7 @@ function fixture(
     },
   };
   const business = {
+    status: () => ({ authenticated: true }),
     config: { requestTimeoutMs: 1000, analysisAgentCode: "sales_forecast" },
     identitySignal: () => identity.signal,
     pluginSql: async (request, signal, configured) => {
@@ -100,6 +106,7 @@ function fixture(
     },
     disable: () => {
       enabled = false;
+      source.abort();
       for (const listener of listeners) listener();
     },
     replace: () => {
@@ -109,6 +116,33 @@ function fixture(
     switchTo: (value) => (preset = value),
   };
 }
+test("orchestration selects the explicit fixed location scope without borrowing its Consumer", async () => {
+  const f = fixture();
+  f.switchTo("auto-negotiation");
+  for (const [locationType, agent] of [
+    ["基地", "aqkc"],
+    ["分仓", "fc"],
+  ]) {
+    const result = JSON.parse(await f.call({ locationType, view: "summary" }));
+    const config = JSON.parse(
+      await readFile(
+        "../dsh-agent-workbench/business/inventory-" + agent + "/sql.config.json",
+        "utf8",
+      ),
+    );
+    assert.equal(result.rows[0].shortage, "5");
+    assert.equal(f.calls.at(-1).request.consumerCode, "workbench");
+    assert.equal(
+      f.calls.at(-1).request.sql,
+      config.queries["current-shortage.summary"].request.sql,
+    );
+  }
+  await assert.rejects(f.call({}), /LOCATION_TYPE_REQUIRED/);
+  f.disable();
+  const count = f.calls.length;
+  await assert.rejects(f.call({ locationType: "分仓" }), /GEA_|abort/i);
+  assert.equal(f.calls.length, count);
+});
 test("four Session profiles reuse their installed page SQL without a page or Cube", async () => {
   for (const [agent, consumer] of definitions) {
     const f = fixture(agent),

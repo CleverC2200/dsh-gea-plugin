@@ -12,6 +12,8 @@ GEA 在模型步骤按实际 Core 会话预设限制受控业务工具。普通�
 
 ## HTML 声明输入
 
+默认智能编排 `auto-negotiation` 的已启用受管 `workbench` 来源可读取已安装的固定库存查询：分仓库存、目标及补货沿 `gea_branch_inventory`；当前缺口沿 `gea_current_shortage` 并明确基地或分仓范围。只复用 SQL 定义，实际委托始终使用该会话的 `workbench` Consumer，不借用页面 Consumer，不扩大服务器行/字段权限，也不回退 Cube 重算。来源撤销、替换或身份变化会取消在途读取；普通会话与个人 Cube 引用不因此获得固定库存工具。
+
 当前 [HTML 装载入口](../src/html-plugins.ts) 要求安装包明确提供 page/capability 分离声明，以及 Manage 的 Agent 资源贡献。`plugin.json` 声明如下引用，文件必须位于该安装目录内：
 
 ```json

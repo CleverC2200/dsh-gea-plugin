@@ -4,6 +4,8 @@ import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import type { Business } from "./business.ts";
 import { assertSessionResourceAvailable, sessionConsumer } from "./business-identity.ts";
 import { readConfiguredHtmlQuery } from "./configured-html-query.ts";
+import { orchestrationInventoryAccess } from "./orchestration-inventory-access.ts";
+import { sameCubeAccess } from "./cube-access.ts";
 import {
   CURRENT_SHORTAGE_DESCRIPTION,
   currentShortageResource,
@@ -121,6 +123,11 @@ export function registerCurrentShortageTool(
         name: "gea_current_shortage",
         description: CURRENT_SHORTAGE_DESCRIPTION,
         parameters: {
+          locationType: {
+            type: "string",
+            enum: ["基地", "分仓"],
+            description: "智能编排必须按问题指定基地或分仓；业务Agent沿原资源范围。",
+          },
           view: {
             type: "string",
             enum: ["summary", "locations", "detail"],
@@ -160,12 +167,19 @@ export function registerCurrentShortageTool(
           const session = exec.agent.id;
           await assertSessionResourceAvailable(ctx, session, exec.signal);
           const consumer = sessionConsumer(ctx, business, session);
-          const id = currentShortageResource(consumer);
+          const access = orchestrationInventoryAccess(ctx, business, session);
+          if (access && !args.locationType) throw Error("CURRENT_SHORTAGE_LOCATION_TYPE_REQUIRED");
+          const resourceConsumer = access
+            ? args.locationType === "分仓"
+              ? "branch-inventory"
+              : "base-safety-stock"
+            : consumer;
+          const id = currentShortageResource(resourceConsumer);
           if (!id) throw Error("GEA_CURRENT_SHORTAGE_NOT_AVAILABLE");
           const resource = packages.find(
             (item) =>
               item.manifest.id === id &&
-              item.manifest.gea?.consumerCode === consumer &&
+              item.manifest.gea?.consumerCode === resourceConsumer &&
               item.manifest.mode !== "mock",
           );
           if (!resource) throw Error("GEA_AGENT_RESOURCE_MISSING");
@@ -175,6 +189,7 @@ export function registerCurrentShortageTool(
             exec.signal,
             business.identitySignal(),
             resourceChange.signal,
+            ...(access ? [access.sourceSignal] : []),
           ]);
           try {
             const detail = args.view === "detail",
@@ -201,11 +216,17 @@ export function registerCurrentShortageTool(
               },
               business,
               signal,
+              consumer,
             );
             signal.throwIfAborted();
             await assertSessionResourceAvailable(ctx, session, signal);
             if (sessionConsumer(ctx, business, session) !== consumer)
               throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
+            if (access) {
+              const current = orchestrationInventoryAccess(ctx, business, session);
+              if (!current || !sameCubeAccess(access, current))
+                throw Error("GEA_INVENTORY_SOURCE_CHANGED");
+            }
             return JSON.stringify(
               currentShortageResult(result, locations ? "locations" : detail, page),
             );

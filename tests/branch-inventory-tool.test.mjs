@@ -12,6 +12,7 @@ const fixture = (execute) => {
     preset = "gea-html-inventory-fc",
     enabled = true;
   const identity = new AbortController(),
+    source = new AbortController(),
     calls = [],
     listeners = new Set(),
     agent = { id: "branch-session" };
@@ -26,6 +27,10 @@ const fixture = (execute) => {
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
+      cubeSource: (id) =>
+        enabled && id === "auto-negotiation"
+          ? { consumerCode: "workbench", signal: source.signal }
+          : undefined,
       list: async () => [{ id: preset, kind: "prompt", installed: true, enabled }],
       watch: (listener) => {
         listeners.add(listener);
@@ -34,6 +39,7 @@ const fixture = (execute) => {
     },
   };
   const business = {
+    status: () => ({ authenticated: true }),
     config: { requestTimeoutMs: 1000 },
     identitySignal: () => identity.signal,
     pluginSql: async (request, signal, configured) => {
@@ -65,18 +71,33 @@ const fixture = (execute) => {
     },
     disable: () => {
       enabled = false;
+      source.abort();
       for (const listener of listeners) listener();
     },
     listenerCount: () => listeners.size,
     call: (args) => tool.execute(args, { agent, signal: new AbortController().signal }),
   };
 };
+test("managed orchestration reads page targets using its own Workbench authorization", async () => {
+  const f = fixture(async (id) => data(id));
+  f.switchTo("auto-negotiation");
+  const result = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23" }));
+  assert.equal(result.summary.recommended_qty, 35);
+  assert.equal(result.summary.available_qty, 85);
+  assert.equal(result.summary.target_inventory_qty, 150);
+  assert.ok(f.calls.length > 0);
+  assert.ok(f.calls.every((call) => call.request.consumerCode === "workbench"));
+  f.disable();
+  const count = f.calls.length;
+  await assert.rejects(f.call({}), /GEA_|abort/i);
+  assert.equal(f.calls.length, count);
+});
 function data(id) {
   const q = config.queries[id];
   const values =
     id === "source.branch-stock-date" || id === "source.health-date"
       ? { day: "2026-10-22" }
-      : id === "health.summary"
+      : ["health.summary", "health.cards"].includes(id)
         ? {
             row_count: 2,
             total_qty: 130,
@@ -96,6 +117,7 @@ function data(id) {
               available_qty: 85,
               occupied_qty: 45,
               frozen_qty: 0,
+              target_inventory_qty: 150,
             }
           : {
               warehouse_code: "W1",
@@ -110,6 +132,31 @@ function data(id) {
     rejectedColumns: [],
   };
 }
+test("orchestration denied SQL is not retried under the branch identity or Cube", async () => {
+  const f = fixture(async () => ({
+    success: false,
+    errorCode: "ROW_SCOPE_DENIED",
+    failure: { stage: "AUTHORIZE", reasonCode: "ROW_SCOPE_DENIED" },
+  }));
+  f.switchTo("auto-negotiation");
+  const result = JSON.parse(await f.call({ view: "summary" }));
+  assert.equal(result.success, false);
+  assert.equal(result.failure.reasonCode, "ROW_SCOPE_DENIED");
+  assert.equal(result.summary, undefined);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].request.consumerCode, "workbench");
+});
+test("withdrawn orchestration source cancels pending inventory results", async () => {
+  let f;
+  f = fixture(async (id) => {
+    f.disable();
+    return data(id);
+  });
+  f.switchTo("auto-negotiation");
+  await assert.rejects(f.call({ view: "summary" }), /abort/i);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.listenerCount(), 0);
+});
 test("branch summary and follow-up suggestions use installed page calculations and fresh scoped parameters", async () => {
   const f = fixture(async (id) => data(id));
   const summary = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23", cycleDays: 10 }));
@@ -172,7 +219,7 @@ test("branch age and risk questions use the same scoped page health summary", as
   assert.equal(result.summary.total_qty, 130);
   assert.deepEqual(
     f.calls.map((call) => call.id),
-    ["source.health-date", "health.summary"],
+    ["source.health-date", "health.cards"],
   );
 });
 test("identity changes and cancellation prevent late branch data from being published", async () => {
