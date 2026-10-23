@@ -41,6 +41,10 @@ function plan() {
     !workingTree && process.env.GITHUB_EVENT_PATH
       ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"))
       : {};
+  if (!workingTree && event.pull_request && event.pull_request.base?.ref !== "main")
+    throw Error(
+      "SOURCE_PR_TARGET_MAIN_REQUIRED: retarget the PR to main; freeze build inputs by SHA",
+    );
   const head =
     (!workingTree && process.env.SOURCE_HEAD_SHA) ||
     event.pull_request?.head?.sha ||
