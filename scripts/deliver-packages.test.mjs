@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { builtArchive } from "./package-source-integrity.mjs";
 
 const entry = join(import.meta.dirname, "deliver-packages.mjs");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -27,6 +28,7 @@ async function requestFixture(
     successfulPackageManager = false,
     coreVersion = "0.2.1-alpha.1",
     geaCompanionRange,
+    invalidHtmlCapability = false,
   } = {},
 ) {
   const work = await mkdtemp(join(tmpdir(), "delivery-owner-inputs-"));
@@ -58,9 +60,14 @@ async function requestFixture(
     await copyFile(join(import.meta.dirname, file), join(copiedScripts, file));
   const fixtureEntry = join(copiedScripts, "deliver-packages.mjs");
   const cliSource = await readFile(entry, "utf8");
-  await copyFile(
-    join(import.meta.dirname, "package-source-integrity.mjs"),
+  await writeFile(
     join(copiedScripts, "package-source-integrity.mjs"),
+    (await readFile(join(import.meta.dirname, "package-source-integrity.mjs"), "utf8"))
+      .replace(
+        "../src/capability/html-mcp.mjs",
+        new URL("../src/capability/html-mcp.mjs", import.meta.url).href,
+      )
+      .replace('from "tar"', `from ${JSON.stringify(import.meta.resolve("tar"))}`),
   );
   // The temporary CLI exercises the production validator with its declared runtime dependency.
   await writeFile(
@@ -159,6 +166,29 @@ async function requestFixture(
     const outputs = [
       { path: "lib/host.js", sha256: hash(await readFile(join(path, "lib/host.js"))) },
     ];
+    if (invalidHtmlCapability && repo === "dsh-agent-workbench") {
+      const directory = join(path, "lib/static/mps");
+      await mkdir(directory, { recursive: true });
+      for (const [file, data] of Object.entries({
+        "plugin.json": {
+          id: "inventory-mps",
+          mcp: "mcp.json",
+          gea: { consumerCode: "mps", contract: "gea-html-v2" },
+        },
+        "mcp.json": {
+          provider: "gea",
+          transport: "host-provided",
+          contract: "gea-html-v2",
+          consumer: { consumerCode: "mps", consumerType: "AGENT" },
+          capabilities: ["governed-sql-read", "unsupported-capability"],
+        },
+      })) {
+        const output = "lib/static/mps/" + file;
+        const bytes = JSON.stringify(data);
+        await writeFile(join(path, output), bytes);
+        outputs.push({ path: output, sha256: hash(bytes) });
+      }
+    }
     if (!(missingClient && repo === "dsh-agent-workbench"))
       outputs.push({
         path: "lib/client.js",
@@ -229,6 +259,54 @@ test("delivery rejects a cwd-relative request before creating output", async (t)
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_ABSOLUTE_PATH_REQUIRED/);
   assert.deepEqual(await readdir(cwd), []);
+});
+
+test("unsupported HTML capabilities reject before production preparation or installation", async (t) => {
+  const fixture = await requestFixture(t, { invalidHtmlCapability: true });
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { cwd: "/", encoding: "utf8", env: fixture.env },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DELIVERY_HTML_CAPABILITY_INVALID/);
+  assert.match(result.stderr, /"repo":"dsh-agent-workbench"/);
+  assert.match(result.stderr, /"file":"lib\/static\/mps\/plugin.json"/);
+  await assert.rejects(access(fixture.destination));
+});
+
+test("capacity rejection precedes expensive archive and public-export checks", async (t) => {
+  const fixture = await requestFixture(t, { missingClient: true });
+  await writeFile(
+    join(fixture.work, "cli/build-admission.mjs"),
+    'export function holdBuildAdmission() { throw Error("BUILD_CAPACITY_INSUFFICIENT"); }',
+  );
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { cwd: "/", encoding: "utf8", env: fixture.env },
+  );
+  assert.match(result.stderr, /BUILD_CAPACITY_INSUFFICIENT/);
+  await assert.rejects(access(fixture.destination));
+});
+
+test("a missing archived build output has a specific preflight diagnostic", async (t) => {
+  const fixture = await requestFixture(t);
+  const request = JSON.parse(await readFile(fixture.input, "utf8"));
+  const owner = request.repositories.find((row) => row.repo === "dsh-agent-workbench");
+  const bytes = "{}\n";
+  await writeFile(join(owner.path, "lib/provenance.json"), bytes);
+  const build = JSON.parse(await readFile(owner.buildReceipt, "utf8"));
+  build.outputs.push({ path: "lib/provenance.json", sha256: hash(bytes) });
+  await writeFile(owner.buildReceipt, JSON.stringify(build));
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { cwd: "/", encoding: "utf8", env: fixture.env },
+  );
+  assert.match(result.stderr, /DELIVERY_BUILD_OUTPUT_MISSING_IN_ARCHIVE/);
+  assert.match(result.stderr, /"repo":"dsh-agent-workbench","stage":"raw-archive"/);
+  await assert.rejects(access(fixture.destination));
 });
 
 test("the real Manage git repository metadata survives ordinary three-package delivery", async (t) => {
@@ -514,4 +592,39 @@ test("delivery refuses a requested version that would relabel compiled owner out
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DELIVERY_COMPILED_VERSION_MISMATCH/);
   await assert.rejects(access(fixture.destination));
+});
+
+test("one-pass archive validation retains binary hashes, missing output and link rejection", async (t) => {
+  const work = await mkdtemp(join(tmpdir(), "archive-integrity-"));
+  t.after(() => rm(work, { recursive: true, force: true }));
+  await mkdir(join(work, "package/lib"), { recursive: true });
+  const bytes = Buffer.from([0, 255, 13, 10, 7]);
+  await writeFile(join(work, "package/lib/host.js"), bytes);
+  await writeFile(join(work, "package/lib/client.js"), "client");
+  const manifest = { exports: { ".": "./lib/host.js", "./client": "./lib/client.js" } };
+  const outputs = [
+    { path: "lib/host.js", sha256: hash(bytes) },
+    { path: "lib/client.js", sha256: hash("client") },
+  ];
+  const archive = join(work, "package.tgz");
+  const pack = () => execFileSync("tar", ["-czf", archive, "-C", work, "package"]);
+  pack();
+  assert.doesNotThrow(() => builtArchive(archive, manifest, outputs));
+  assert.throws(
+    () =>
+      builtArchive(archive, manifest, [...outputs, { path: "lib/missing.js", sha256: hash("") }]),
+    /DELIVERY_BUILD_OUTPUT_MISSING_IN_ARCHIVE/,
+  );
+  const duplicate = join(work, "duplicate.tar");
+  execFileSync("tar", ["-cf", duplicate, "-C", work, "package"]);
+  execFileSync("tar", ["-rf", duplicate, "-C", work, "package/lib/host.js"]);
+  assert.throws(() => builtArchive(duplicate, manifest, outputs), /DELIVERY_ARCHIVE_INVALID/);
+  await writeFile(join(work, "package/lib/host.js"), "changed");
+  pack();
+  assert.throws(() => builtArchive(archive, manifest, outputs), /DELIVERY_STALE_BUILD_ARCHIVE/);
+  await rm(join(work, "package/lib/host.js"));
+  const { symlink } = await import("node:fs/promises");
+  await symlink("client.js", join(work, "package/lib/host.js"));
+  pack();
+  assert.throws(() => builtArchive(archive, manifest, outputs), /DELIVERY_ARCHIVE_INVALID/);
 });

@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual; inventory-fc fixed-tool and calculation rules use merged Manage #81 author source",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -16,10 +16,10 @@
       {
         "owner": "workbench",
         "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
-        "sha256": "b5890efff3167aec67967ff9247d0198043635efeeda75525dd5d89923bc2992",
+        "sha256": "497f2d5e886bdf055a277e86284d91337c9a86d14150a469cfee0f40f213ace9",
         "name": "inventory-mps",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "8a09d9ae0a13779229b87706915a5736b16b6012",
+        "sourceHead": "5c6acdc45acd1d71254e928cb3c57a0ccf4432b0",
         "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       },
       {
@@ -34,19 +34,19 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-apsplan/skills/aps/SKILL.md",
-        "sha256": "555d6e3698cbdff78f795500ae1ce28ecd1218c33960dff82abb9ac1ccd9f6dc",
+        "sha256": "61762426f1078f24b5a1bafbf4c2bb84f8f728a18ca52c75aa6c1f5ae721cadc",
         "name": "inventory-apsplan",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "638f8ebf84d66984cf3e1b7d97c3bdf3da530327",
         "sourceFile": "business-resources/inventory-apsplan/skills/aps/SKILL.md"
       },
       {
         "owner": "workbench",
         "file": "lib/business/inventory-aqkc/skills/aqkc/SKILL.md",
-        "sha256": "41b8fb11d166ff89afb926f0e5632b0a4f4c0da3866e3ddaafc654597aa29454",
+        "sha256": "863de24e291ab40c5e1717de12211369422078c12aa2786b3dc2389967214ac0",
         "name": "inventory-aqkc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
+        "sourceHead": "638f8ebf84d66984cf3e1b7d97c3bdf3da530327",
         "sourceFile": "business-resources/inventory-aqkc/skills/aqkc/SKILL.md"
       },
       {
@@ -70,10 +70,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
-        "sha256": "e423a08d7926d215f82c0c44784b27dd2f3deb19a9c42c804d8dc363c87b648c",
+        "sha256": "8a394b650630792f708a4f3e0e38c62398259613f00d0d422815b80d7bf06899",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "2950d988a7ca531cc971484899ae9c6385fcfc1c",
+        "sourceHead": "3370f3a11fc6c3c2686eca88d6e2c0377af074c8",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
@@ -97,10 +97,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-qll/skills/qll/SKILL.md",
-        "sha256": "6b929538f1936d93fa3f063e7180ec20b560c685775b766ecc1eb3046cac3736",
+        "sha256": "f7700d22101f7aaf00ee47736f0e3975d6927a0692ee5efec5807b672a4e13c2",
         "name": "inventory-qll",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "ab75a9942428c955d57dd34cd002be5901d2b87b",
+        "sourceHead": "638f8ebf84d66984cf3e1b7d97c3bdf3da530327",
         "sourceFile": "business-resources/inventory-qll/skills/qll/SKILL.md"
       },
       {

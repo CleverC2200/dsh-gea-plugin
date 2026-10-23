@@ -229,7 +229,9 @@ test(
       );
       await page.getByRole("button", { name: "历史对话", exact: true }).last().click();
       assert.equal(
-        await page.locator(".gea-workspace-heading").getAttribute("aria-expanded"),
+        await page
+          .getByRole("button", { name: "历史会话", exact: true })
+          .getAttribute("aria-expanded"),
         "true",
       );
       assert.equal(
@@ -291,17 +293,23 @@ test(
               Math.abs((rect.left + rect.right - column.left - column.right) / 2) < 2
             );
           });
+          await expect(page.locator(".gea-agent-welcome")).toBeVisible();
           await page.locator(".gea-agent-welcome").evaluate((el) => {
             el.scrollTo({ top: 0, behavior: "instant" });
           });
-          const inset = await page
-            .locator(".gea-agent-welcome")
-            .evaluate(
-              (el) =>
-                el.querySelector(".gea-agent-identity").getBoundingClientRect().top -
-                el.getBoundingClientRect().top,
-            );
-          assert.equal(inset, 28, "plan Agent avatar must match the APS top inset");
+          const inset = () =>
+            page
+              .locator(".gea-agent-welcome")
+              .evaluate(
+                (el) =>
+                  el.querySelector(".gea-agent-identity").getBoundingClientRect().top -
+                  el.getBoundingClientRect().top,
+              );
+          await expect
+            .poll(inset, {
+              message: "plan Agent avatar must match the APS top inset after view layout settles",
+            })
+            .toBe(28);
           const centered = await page.evaluate(() => {
             const content = document.querySelector(
               ".agent-workbench-native-conversation [data-conversation-scroll]",
@@ -376,11 +384,15 @@ test(
       );
 
       // 登记 51：销售计划审批默认不展开筛选。
-      const filterToggle = frame.locator("button[aria-expanded]").first();
+      const filterFrame = await openSalesPlan(page);
+      const filterToggle = filterFrame.locator("button[aria-expanded]").first();
       await filterToggle.waitFor();
       assert.equal(await filterToggle.getAttribute("aria-expanded"), "false");
       assert.equal(
-        await frame.locator("[class*='advancedControls']").first().getAttribute("data-expanded"),
+        await filterFrame
+          .locator("[class*='advancedControls']")
+          .first()
+          .getAttribute("data-expanded"),
         "false",
       );
 

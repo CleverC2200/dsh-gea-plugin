@@ -128,6 +128,10 @@ test("the workflow binds full source history and the same public quality command
     "windows-plugin-update",
     "dependency-review",
   ]);
+  const finalStep = parse(workflow).jobs["candidate-quality"].steps.find(
+    (step) => step.env?.QUALITY_FINAL_JOB_NAME,
+  );
+  assert.equal(finalStep.env.QUALITY_FINAL_NEEDS, "${{ toJSON(needs) }}");
   assert.match(workflow, /node scripts\/run-quality-ci.mjs --phase final/);
   assert.match(workflow, /PLUGIN_SPLIT_READ_TOKEN/);
   assert.match(workflow, /npm install --global npm@11\.11\.0/);
@@ -518,6 +522,23 @@ test("the current source impact maps changed paths without feature history and s
     "scripts/run-quality-ci.mjs",
     "scripts/run-quality-ci.test.mjs",
   ].sort();
+  const peerChanges = [
+    ["dsh-agent-manage", "scripts/source-quality.mjs"],
+    ["dsh-agent-manage", "scripts/source-quality.test.mjs"],
+    ["dsh-agent-manage", "scripts/workflow-preflight.mjs"],
+    ["dsh-agent-manage", "scripts/workflow-preflight.test.mjs"],
+    ["dsh-agent-workbench", "scripts/mps-compute-build.mjs"],
+    ["dsh-agent-workbench", "scripts/source-checks.mjs"],
+    ["dsh-agent-workbench", "scripts/source-quality.mjs"],
+    ["dsh-agent-workbench", "scripts/source-quality.test.mjs"],
+    ["dsh-agent-workbench", "scripts/source-result.mjs"],
+    ["dsh-agent-workbench", "scripts/source-tools.mjs"],
+    ["dsh-agent-workbench", "scripts/test_current_shortage_source.py"],
+    ["dsh-agent-workbench", "scripts/test_fc_aging_source.py"],
+    ["dsh-agent-workbench", "scripts/update_current_shortage_sql.py"],
+    ["dsh-agent-workbench", "scripts/workflow-preflight.mjs"],
+    ["dsh-agent-workbench", "scripts/workflow-preflight.test.mjs"],
+  ];
   const repositories = [];
   for (const [repo, input] of [
     [
@@ -537,7 +558,9 @@ test("the current source impact maps changed paths without feature history and s
       if (
         !existsSync(join(input, file)) ||
         file.startsWith("lib/") ||
-        (!/\.(?:[cm]?[jt]sx?|css|html|json|ya?ml)$/.test(file) && !changedPaths.includes(file))
+        (!/\.(?:[cm]?[jt]sx?|css|html|json|ya?ml)$/.test(file) &&
+          !changedPaths.includes(file) &&
+          !peerChanges.some(([owner, input]) => owner === repo && input === file))
       )
         continue;
       const target = join(path, file);
@@ -563,6 +586,11 @@ test("the current source impact maps changed paths without feature history and s
     }),
   );
   const base = commit(gea.path, "current authored source snapshot");
+  for (const [repo, file] of peerChanges) {
+    const entry = repositories.find((item) => item.repo === repo);
+    appendFileSync(join(entry.path, file), "\n");
+    entry.head = commit(entry.path, "peer source impact fixture changes");
+  }
   // Make the known paths differ without changing the current code graph or policy semantics.
   for (const file of changedPaths) appendFileSync(join(gea.path, file), "\n");
   gea.head = commit(gea.path, "source impact fixture changes");
@@ -575,7 +603,23 @@ test("the current source impact maps changed paths without feature history and s
   ).testOwners;
   const request = { repositories, repo: "dsh-gea-plugin", base, testOwners };
   const plan = selectCiTests(request);
-  assert.deepEqual(plan.changes.map((entry) => entry.file).sort(), changedPaths);
+  assert.deepEqual(
+    plan.changes.map((entry) => `${entry.repo}/${entry.file}`).sort(),
+    [
+      ...changedPaths.map((file) => `dsh-gea-plugin/${file}`),
+      ...peerChanges.map(([repo, file]) => `${repo}/${file}`),
+    ].sort(),
+  );
+  assert.ok(
+    plan.reasons["dsh-agent-manage/scripts/source-quality.mjs"].includes(
+      "scripts/source-quality.test.mjs",
+    ),
+  );
+  assert.ok(
+    plan.reasons["dsh-agent-workbench/scripts/mps-compute-build.mjs"].includes(
+      "scripts/quality-workbench.test.mjs",
+    ),
+  );
   for (const entry of plan.changes.filter((entry) => !entry.file.endsWith(".md")))
     assert.ok(plan.reasons[`${entry.repo}/${entry.file}`].length > 0, entry.file);
   for (const file of ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"])

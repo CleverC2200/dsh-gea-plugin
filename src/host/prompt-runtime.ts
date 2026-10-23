@@ -1,3 +1,5 @@
+import { CURRENT_SHORTAGE_ROUTING, currentShortageResource } from "./current-shortage-contract.ts";
+import { BRANCH_INVENTORY_ROUTING } from "./branch-inventory-tool.ts";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 import { sessionConsumer, assertSessionResourceAvailable } from "./business-identity.ts";
 import { businessToolDisplay } from "./business-tool-display.ts";
@@ -12,6 +14,11 @@ import { isMainSurface } from "./workbench-surface.ts";
 import { allowedTools, profileFor, promptMeasurement, TOOL_DESCRIPTIONS } from "./prompt-policy.ts";
 import { cubeAllowed, resolveCubeAccess } from "./cube-access.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
+import { modulePagePrompt } from "./module-page-scope.ts";
+import { orchestrationInventoryAllowed } from "./orchestration-inventory-access.ts";
+
+const fixedInventoryMethod = (name: string) =>
+  name === "gea_branch_inventory" || name === "gea_current_shortage";
 
 const gatewayMethod = (name: string) =>
   name === "mcp__gea-gateway__inspect_cube_model" ||
@@ -83,6 +90,10 @@ export function mountBusinessPrompts(
   const refreshMask = (agent: Agent) => {
     const state = stateOf(agent);
     const names = profileOf(agent) ? namesFor(agent, state) : new Set<string>();
+    if (orchestrationInventoryAllowed(ctx, business, agent.id)) {
+      names.add("gea_branch_inventory");
+      names.add("gea_current_shortage");
+    }
     if (cubeAllowed(ctx, business, agent.id)) {
       names.add("mcp__gea-gateway__inspect_cube_model");
       names.add("mcp__gea-gateway__query_business_data");
@@ -149,12 +160,13 @@ export function mountBusinessPrompts(
   offs.push(
     ctx.tools.guard((exec) => {
       const agent = exec.agent;
-      const personalGateway =
-        gatewayMethod(exec.name) &&
+      const independentTool =
         !!agent &&
         !profileOf(agent) &&
-        cubeAllowed(ctx, business, agent.id);
-      if (!agent || (!profileOf(agent) && !personalGateway)) {
+        ((gatewayMethod(exec.name) && cubeAllowed(ctx, business, agent.id)) ||
+          (fixedInventoryMethod(exec.name) &&
+            orchestrationInventoryAllowed(ctx, business, agent.id)));
+      if (!agent || (!profileOf(agent) && !independentTool)) {
         if (businessMethod(exec.name))
           return agent
             ? `GEA_BUSINESS_PROFILE_REQUIRED: 当前实际会话未接入所需的业务资源或 GEA 工具来源。${businessSourceRecovery}`
@@ -163,7 +175,7 @@ export function mountBusinessPrompts(
       }
       const state = stateOf(agent);
       if (!businessMethod(exec.name)) return;
-      if (!personalGateway && !namesFor(agent, state).has(exec.name))
+      if (!independentTool && !namesFor(agent, state).has(exec.name))
         return ["gea_page", "gea_workbench_apply"].includes(exec.name) && !pageBound(agent)
           ? "GEA_BUSINESS_TOOL_NOT_ALLOWED: reason=PAGE_NOT_BOUND。当前业务会话未绑定页面；打开相应业务页面并连接当前会话后再读取页面证据。独立查询结果不能代替页面确定性结果。"
           : "GEA_BUSINESS_TOOL_NOT_ALLOWED: 当前业务角色未声明此工具能力。";
@@ -330,7 +342,10 @@ export function mountBusinessPrompts(
                   ? mcpAccess.consumerCode
                   : null,
             mcpAccess,
-            independentQuery: { available: independentQueryAvailable, pageRequired: false },
+            independentQuery: {
+              available: independentQueryAvailable,
+              pageRequired: false,
+            },
             recovery,
             pageBound: agent ? pageBound(agent) : false,
             authenticated: business.status().authenticated === true,
@@ -429,15 +444,19 @@ export function mountBusinessPrompts(
       const agent = context.agent as Agent | undefined;
       const profile = profileOf(agent);
       if (!agent) return assembled;
-      if (!profile)
+      if (!profile) {
+        const inventory = orchestrationInventoryAllowed(ctx, business, agent.id);
+        refreshMask(agent);
         return {
           ...assembled,
           tools: assembled.tools.filter(
             (tool) =>
               !businessMethod(tool.name) ||
-              (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)),
+              (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)) ||
+              (fixedInventoryMethod(tool.name) && inventory),
           ),
         };
+      }
       const state = executionState.snapshot(agent);
       refreshMask(agent);
       const visible = new Set(ctx.tools.schemas(agent).map((tool) => tool.name));
@@ -449,8 +468,21 @@ export function mountBusinessPrompts(
             description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,
           }),
         );
+      const sections = currentShortageResource(profile.consumerCode)
+        ? [
+            ...assembled.sections,
+            {
+              name: "gea-current-shortage",
+              text:
+                CURRENT_SHORTAGE_ROUTING +
+                (profile.consumerCode === "branch-inventory"
+                  ? "\n\n" + BRANCH_INVENTORY_ROUTING
+                  : ""),
+            },
+          ]
+        : assembled.sections;
       const measurement = promptMeasurement(
-        assembled.sections.map((section) => section.text).join("\n\n"),
+        sections.map((section) => section.text).join("\n\n"),
         tools,
       );
       console.info(
@@ -461,7 +493,14 @@ export function mountBusinessPrompts(
           resultChars: state.returned,
         }),
       );
-      return { ...assembled, tools };
+      const pageContext = modulePagePrompt(business, agent.id);
+      return {
+        ...assembled,
+        tools,
+        sections: pageContext
+          ? [...sections, { name: "current-module-page", text: pageContext }]
+          : sections,
+      };
     });
   });
   return () => {

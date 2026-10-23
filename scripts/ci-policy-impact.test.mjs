@@ -62,6 +62,26 @@ test("desktop wrapper children have one execution owner instead of a second inde
   assert.equal(plan.executedBy[child], owner);
 });
 
+test("bundled suite source changes select their complete upgrade owner once and keep full window admission in integration checks", (t) => {
+  const owner = "scripts/desktop-gea-upgrade.test.mjs";
+  const fixture = resourceImpactFixture(t, [owner], { desktop: true });
+  for (const file of [
+    "desktop/company-archives.mjs",
+    "desktop/company-bootstrap.mjs",
+    "desktop/company-gea-refresh.mjs",
+  ])
+    fixture.change(
+      fixture.own,
+      file,
+      readFileSync(new URL("../" + file, import.meta.url), "utf8") + "\n",
+    );
+  const source = fixture.plan({ sourceOnly: true });
+  assert.deepEqual(source.files, [owner]);
+  for (const change of source.changes)
+    assert.deepEqual(source.reasons[`${change.repo}/${change.file}`], [owner]);
+  assert.ok(fixture.plan().files.includes("tests/window-launch-admission.test.mjs"));
+});
+
 test("a docs-only change declares no source, browser or runtime obligation", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "README.md", "Changed documentation\n");
@@ -302,6 +322,8 @@ function resourceImpactFixture(t, authoredFiles = [], { desktop = false } = {}) 
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     ...policy.required,
+    ...Object.keys(policy.sourceFixtures ?? {}),
+    ...(policy.versionTests ?? []),
     ...policy.tests.filter((file) => file.startsWith("desktop/")),
     ...policy.rules.flatMap((rule) => rule.tests),
     ...policy.browserFixtures,
@@ -333,8 +355,14 @@ function resourceImpactFixture(t, authoredFiles = [], { desktop = false } = {}) 
       put(entry.path, file, value);
       entry.head = commit(entry.path);
     },
-    plan: () =>
-      selectCiTests({ repositories, repo: own.repo, base, testOwners: policy.testOwners }),
+    plan: (options = {}) =>
+      selectCiTests({
+        repositories,
+        repo: own.repo,
+        base,
+        testOwners: policy.testOwners,
+        ...options,
+      }),
   };
 }
 
@@ -542,6 +570,33 @@ test("unmapped Workbench source still rejects selection", (t) => {
     () => fixture.plan(),
     /CI_TEST_IMPACT_UNMAPPED: dsh-agent-workbench\/src\/unowned-source\.ts/,
   );
+});
+
+test("Workbench inventory SQL scripts select source assembly contracts while unknown Python still rejects", async (t) => {
+  const contracts = ["scripts/quality-workbench.test.mjs", "tests/source-assembly.test.mjs"];
+  for (const name of [
+    "test_batch_age_lists",
+    "test_qll_structure",
+    "update-batch-age-lists",
+    "update-fc-list-completion",
+    "update-qll-list-completion",
+  ])
+    await t.test(name, (t) => {
+      const fixture = resourceImpactFixture(t);
+      const file = `scripts/${name}.py`;
+      fixture.change(fixture.peer, file);
+      const plan = fixture.plan();
+      assert.deepEqual(plan.changes, [{ repo: fixture.peer.repo, file }]);
+      assert.deepEqual(plan.reasons[fixture.peer.repo + "/" + file], contracts);
+      assert.deepEqual(plan.required, businessCore);
+      assert.deepEqual(plan.files, [...businessCore, ...contracts].sort());
+    });
+  const fixture = resourceImpactFixture(t);
+  const file = "scripts/update-batch-age-lists-unowned.py";
+  fixture.change(fixture.peer, file);
+  assert.throws(() => fixture.plan(), {
+    message: "CI_TEST_IMPACT_UNMAPPED: " + fixture.peer.repo + "/" + file,
+  });
 });
 
 test("unknown own and peer commands cannot fall back to configuration tests", (t) => {
@@ -753,6 +808,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
   for (const file of [
     "tests/required.test.mjs",
+    ...(policy.versionTests ?? []),
     ...policy.tests.filter((file) => !file.includes("*")),
     ...policy.browserFixtures,
     "tests/unrelated.test.mjs",
@@ -789,6 +845,10 @@ test("complete package inputs select existing release and platform contracts", a
   for (const source of [
     "scripts/mac-complete-local/build.mjs",
     "scripts/windows-complete-local/build.mjs",
+    "scripts/windows-complete-local/compile.mjs",
+    "scripts/windows-complete-local/prepare.mjs",
+    "scripts/windows-complete-local/shared-cache.mjs",
+    "scripts/windows-complete-local/cache-report.mjs",
     "scripts/windows-complete-local/input.mjs",
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/windows-complete-local/released-input.fixture.json",

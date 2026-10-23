@@ -1,21 +1,57 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planBundledGeaRefresh } from "./company-gea-refresh.mjs";
+import { planBundledCompanyRefresh } from "./company-gea-refresh.mjs";
 
 const name = "@cleverc2200/gea-dsh-prototype";
+const companions = [
+  {
+    name: "@cleverc2200/dsh-agent-workbench",
+    from: "0.1.25",
+    version: "0.1.28",
+    file: "workbench.tgz",
+  },
+  {
+    name: "dsh-agent-manage",
+    from: "0.6.3-company.28",
+    version: "0.6.3-company.30",
+    file: "manage.tgz",
+  },
+];
 const current = {
-  dependencies: { [name]: "file:/old/gea.tgz", "my-plugin": "1.0.0" },
-  dsh: { profile: { bundles: [name, "my-plugin"] } },
+  dependencies: {
+    [name]: "file:/old/gea.tgz",
+    "my-plugin": "1.0.0",
+    ...Object.fromEntries(companions.map((row) => [row.name, "file:/old/" + row.file])),
+  },
+  dsh: { profile: { bundles: [name, "my-plugin", ...companions.map((row) => row.name)] } },
 };
 const bundled = { name, version: "0.0.166" };
 const installed = { name, version: "0.0.130" };
+const bundledSuite = [...companions, { ...bundled, file: "gea.tgz" }];
+const installedSuite = (gea = installed) => [
+  ...companions.map((row) => ({ name: row.name, version: row.from })),
+  gea,
+];
 
-test("only an enabled older GEA release is replaced by the bundled GEA", () => {
+test("an older company release produces a complete bundled suite plan", () => {
   const before = structuredClone(current);
-  assert.equal(planBundledGeaRefresh(current, installed, bundled).status, "ready");
+  const plan = planBundledCompanyRefresh(current, installedSuite(), bundledSuite);
+  assert.equal(plan.status, "ready");
+  assert.deepEqual(
+    plan.targets.map((row) => row.name),
+    bundledSuite.map((row) => row.name),
+  );
   assert.deepEqual(current, before);
-  for (const version of ["0.0.166", "0.0.167", "0.0.166-beta.1", "custom"])
-    assert.equal(planBundledGeaRefresh(current, { name, version }, bundled).changed, false);
+  for (const version of ["0.0.167", "0.0.166-beta.1", "custom"])
+    assert.equal(
+      planBundledCompanyRefresh(current, installedSuite({ name, version }), bundledSuite).changed,
+      false,
+    );
+  assert.equal(planBundledCompanyRefresh(current, bundledSuite, bundledSuite).changed, false);
+  assert.throws(
+    () => planBundledCompanyRefresh(current, [installed], [bundled]),
+    /GEA_BUNDLED_COMPANY_SUITE_REQUIRED/,
+  );
 });
 
 test("disabled, linked, missing and differently named plugins are preserved", () => {
@@ -25,9 +61,16 @@ test("disabled, linked, missing and differently named plugins are preserved", ()
     { ...current, dependencies: { [name]: "file:/my-gea" } },
     { ...current, dependencies: {} },
   ])
-    assert.equal(planBundledGeaRefresh(manifest, installed, bundled).changed, false);
+    assert.equal(
+      planBundledCompanyRefresh(manifest, installedSuite(), bundledSuite).changed,
+      false,
+    );
   assert.equal(
-    planBundledGeaRefresh(current, { ...installed, name: "my-plugin" }, bundled).changed,
+    planBundledCompanyRefresh(
+      current,
+      installedSuite({ ...installed, name: "my-plugin" }),
+      bundledSuite,
+    ).changed,
     false,
   );
 });
@@ -35,7 +78,8 @@ test("disabled, linked, missing and differently named plugins are preserved", ()
 import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { refreshBundledGea } from "./company-gea-refresh.mjs";
+import { refreshBundledCompanySuite, assertProfileIdle } from "./company-gea-refresh.mjs";
+import { refreshCompanyStartup } from "./company-bootstrap.mjs";
 
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "gea-refresh-"));
@@ -44,6 +88,13 @@ async function fixture(t) {
   await mkdir(join(profile, "node_modules", name), { recursive: true });
   await writeFile(join(profile, "package.json"), JSON.stringify(current));
   await writeFile(join(profile, "node_modules", name, "package.json"), JSON.stringify(installed));
+  for (const row of companions) {
+    await mkdir(join(profile, "node_modules", row.name), { recursive: true });
+    await writeFile(
+      join(profile, "node_modules", row.name, "package.json"),
+      JSON.stringify({ name: row.name, version: row.from }),
+    );
+  }
   await writeFile(join(profile, "cordis.patch.yml"), "# user configuration\n- id: custom\n");
   await writeFile(join(profile, "pnpm-lock.yaml"), "old lock");
   return {
@@ -52,28 +103,41 @@ async function fixture(t) {
     root: "unused",
     support: "unused",
     seed: "/bundled",
-    manifest: { packages: [{ ...bundled, file: "gea.tgz" }] },
+    manifest: { packages: bundledSuite },
   };
 }
 
-test("the refresh installs only GEA, keeps user configuration and saves the original graph declarations", async (t) => {
+test("the refresh installs one complete suite, keeps user configuration and saves original declarations", async (t) => {
   const f = await fixture(t);
-  const result = await refreshBundledGea({
+  const result = await refreshBundledCompanySuite({
     ...f,
     install: async (options) => {
-      assert.deepEqual(options.packages, ["/bundled/archives/gea.tgz"]);
+      assert.deepEqual(
+        options.packages,
+        bundledSuite.map((row) => "/bundled/archives/" + row.file),
+      );
       await options.beforeInstall();
       await writeFile(
         join(f.profile, "package.json"),
         JSON.stringify({
           ...current,
-          dependencies: { ...current.dependencies, [name]: "file:/bundled/archives/gea.tgz" },
+          dependencies: {
+            ...current.dependencies,
+            ...Object.fromEntries(
+              bundledSuite.map((row) => [row.name, "file:/bundled/archives/" + row.file]),
+            ),
+          },
         }),
       );
       await writeFile(
         join(f.profile, "node_modules", name, "package.json"),
         JSON.stringify(bundled),
       );
+      for (const row of companions)
+        await writeFile(
+          join(f.profile, "node_modules", row.name, "package.json"),
+          JSON.stringify({ name: row.name, version: row.version }),
+        );
       await options.complete({ writeFileAtomic: writeFile });
     },
   });
@@ -86,38 +150,103 @@ test("the refresh installs only GEA, keeps user configuration and saves the orig
     "# user configuration\n- id: custom\n",
   );
   assert.equal(
-    (await refreshBundledGea({ ...f, install: () => assert.fail("must not reinstall") })).changed,
+    (await refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not reinstall") }))
+      .changed,
     false,
   );
 });
 
-test("an unfinished plugin update blocks refresh before any backup or install write", async (t) => {
+test("a pending restart defers bundled refresh while strict installation stays blocked", async (t) => {
   const f = await fixture(t);
   const id = "00000000-0000-4000-8000-000000000000";
-  await mkdir(join(f.profile, "gea/plugin-updates/operations", id), { recursive: true });
+  const operation = join(f.profile, "gea/plugin-updates/operations", id);
+  await mkdir(operation, { recursive: true });
   await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+  const receipt = JSON.stringify({ id, stage: "pending-restart" });
+  await writeFile(join(operation, "receipt.json"), receipt);
+  await assert.rejects(assertProfileIdle(f.profile), /GEA_REFRESH_UPDATE_PENDING/);
+  const result = await refreshBundledCompanySuite({
+    ...f,
+    install: () => assert.fail("pending restart must not enter installation"),
+  });
+  assert.equal(result.status, "pending-restart-preserved");
+  assert.equal(result.changed, false);
+  assert.equal(await readFile(join(operation, "receipt.json"), "utf8"), receipt);
+  await assert.rejects(access(join(f.profile, "gea/bootstrap/gea-refresh")), { code: "ENOENT" });
+  assert.equal(await readFile(join(f.profile, "package.json"), "utf8"), JSON.stringify(current));
+  const options = { ...f, legacyData: f.home, install: () => assert.fail("must not install") };
+  const startup = await refreshCompanyStartup(options);
+  assert.equal(startup.refresh.status, "pending-restart-preserved");
+  assert.equal(startup.cleanup, null);
+  for (const row of bundledSuite)
+    await writeFile(join(f.profile, "node_modules", row.name, "package.json"), JSON.stringify(row));
+  assert.equal((await refreshCompanyStartup(options)).cleanup, null);
+  await writeFile(join(operation, "receipt.json"), JSON.stringify({ id, stage: "completed" }));
+  const next = await refreshCompanyStartup(options);
+  assert.equal(next.refresh.status, "current-company-suite-preserved");
+  assert.ok(next.cleanup);
+});
+
+test("interrupted updates, unknown receipts and active writers still block startup refresh", async (t) => {
+  const f = await fixture(t);
+  const id = "00000000-0000-4000-8000-000000000000";
+  const operation = join(f.profile, "gea/plugin-updates/operations", id);
+  await mkdir(operation, { recursive: true });
+  await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+  for (const stage of ["accepted", "installing", "verifying", "restoring", "unknown"]) {
+    await writeFile(join(operation, "receipt.json"), JSON.stringify({ id, stage }));
+    await assert.rejects(
+      refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not install") }),
+      /GEA_REFRESH_UPDATE_PENDING/,
+    );
+  }
   await writeFile(
-    join(f.profile, "gea/plugin-updates/operations", id, "receipt.json"),
-    JSON.stringify({ id, stage: "pending-restart" }),
+    join(operation, "receipt.json"),
+    JSON.stringify({ id: "different", stage: "pending-restart" }),
   );
   await assert.rejects(
-    refreshBundledGea({
+    refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not install") }),
+    /GEA_REFRESH_UPDATE_UNKNOWN/,
+  );
+  await writeFile(
+    join(operation, "receipt.json"),
+    JSON.stringify({ id, stage: "pending-restart" }),
+  );
+  await mkdir(join(f.profile, ".plugin-manager"));
+  await writeFile(join(f.profile, ".plugin-manager/run.json"), "{}");
+  await assert.rejects(
+    refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not install") }),
+    /GEA_REFRESH_PROFILE_BUSY/,
+  );
+});
+
+test("an update that starts after startup admission is still blocked under the install lock", async (t) => {
+  const f = await fixture(t);
+  const id = "00000000-0000-4000-8000-000000000000";
+  await assert.rejects(
+    refreshBundledCompanySuite({
       ...f,
       install: async (options) => {
+        const operation = join(f.profile, "gea/plugin-updates/operations", id);
+        await mkdir(operation, { recursive: true });
+        await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+        await writeFile(
+          join(operation, "receipt.json"),
+          JSON.stringify({ id, stage: "pending-restart" }),
+        );
         await options.beforeInstall();
-        assert.fail("pending updates must not install");
+        assert.fail("must reject before package-manager writes");
       },
     }),
     /GEA_REFRESH_UPDATE_PENDING/,
   );
   await assert.rejects(access(join(f.profile, "gea/bootstrap/gea-refresh")), { code: "ENOENT" });
-  assert.equal(await readFile(join(f.profile, "package.json"), "utf8"), JSON.stringify(current));
 });
 
 test("failed refreshes retain their backup and require recovery instead of retrying at next startup", async (t) => {
   const f = await fixture(t);
   await assert.rejects(
-    refreshBundledGea({
+    refreshBundledCompanySuite({
       ...f,
       install: async (options) => {
         await options.beforeInstall();
@@ -127,7 +256,7 @@ test("failed refreshes retain their backup and require recovery instead of retry
     /package manager failed/,
   );
   await assert.rejects(
-    refreshBundledGea({ ...f, install: () => assert.fail("must not retry") }),
+    refreshBundledCompanySuite({ ...f, install: () => assert.fail("must not retry") }),
     /GEA_REFRESH_RECOVERY_REQUIRED/,
   );
   const receipt = JSON.parse(
@@ -283,14 +412,15 @@ test("only the logged pre-write missing GenUI archive failure may resume and the
     if (variant === "changed")
       await writeFile(join(f.profile, "cordis.patch.yml"), "changed by user");
     if (variant === "retried") await writeFile(join(backup, "failed-receipt.json"), failed);
-    const task = refreshBundledGea({
+    const task = refreshBundledCompanySuite({
       ...f,
       install: async (options) => {
         await options.beforeInstall();
-        await writeFile(
-          join(f.profile, "node_modules", name, "package.json"),
-          JSON.stringify({ name, version: "0.0.177" }),
-        );
+        for (const row of f.manifest.packages)
+          await writeFile(
+            join(f.profile, "node_modules", row.name, "package.json"),
+            JSON.stringify({ name: row.name, version: row.version }),
+          );
         await options.complete({ writeFileAtomic: writeFile });
       },
     });
@@ -313,13 +443,133 @@ test("the same bundled GEA version still repairs old installer archive reference
         "file:D:/Program Files/DSH/resources/company-seed/archives/dsh-genui-0.11.3.tgz",
     },
   };
-  assert.equal(planBundledGeaRefresh(manifest, bundled, bundled).status, "ready");
+  assert.equal(planBundledCompanyRefresh(manifest, bundledSuite, bundledSuite).status, "ready");
   assert.equal(
-    planBundledGeaRefresh(current, bundled, bundled).status,
-    "current-or-custom-gea-preserved",
+    planBundledCompanyRefresh(current, bundledSuite, bundledSuite).status,
+    "current-company-suite-preserved",
   );
   assert.equal(
-    planBundledGeaRefresh(manifest, { ...bundled, version: "0.0.167" }, bundled).status,
-    "current-or-custom-gea-preserved",
+    planBundledCompanyRefresh(
+      manifest,
+      installedSuite({ ...bundled, version: "0.0.167" }),
+      bundledSuite,
+    ).status,
+    "newer-company-suite-preserved",
   );
+});
+
+test("desktop replacement refreshes the whole bundled suite when GEA is already current", async (t) => {
+  const f = await fixture(t);
+  const versions = [
+    ["@cleverc2200/dsh-agent-workbench", "0.1.25", "0.1.28"],
+    ["dsh-agent-manage", "0.6.3-company.28", "0.6.3-company.30"],
+    [name, "0.0.187", "0.0.187"],
+  ];
+  const before = structuredClone(current);
+  before.dsh.profile.bundles = versions.map(([name]) => name);
+  for (const [packageName, version] of versions) {
+    before.dependencies[packageName] = "file:/persistent-cache/" + version + ".tgz";
+    await mkdir(join(f.profile, "node_modules", packageName), { recursive: true });
+    await writeFile(
+      join(f.profile, "node_modules", packageName, "package.json"),
+      JSON.stringify({ name: packageName, version }),
+    );
+  }
+  await writeFile(join(f.profile, "package.json"), JSON.stringify(before));
+  const packages = versions.map(([name, , version], index) => ({
+    name,
+    version,
+    file: "company-" + index + ".tgz",
+  }));
+  const result = await refreshBundledCompanySuite({
+    ...f,
+    manifest: { packages },
+    install: async (options) => {
+      assert.deepEqual(
+        options.packages,
+        packages.map((row) => "/bundled/archives/" + row.file),
+      );
+      await options.beforeInstall();
+      const after = structuredClone(before);
+      for (const row of packages) {
+        after.dependencies[row.name] = "file:/bundled/archives/" + row.file;
+        await writeFile(
+          join(f.profile, "node_modules", row.name, "package.json"),
+          JSON.stringify({ name: row.name, version: row.version }),
+        );
+      }
+      await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
+      await options.complete({ writeFileAtomic: writeFile });
+    },
+  });
+  assert.equal(result.status, "completed");
+  for (const row of packages)
+    assert.equal(
+      JSON.parse(await readFile(join(f.profile, "node_modules", row.name, "package.json"))).version,
+      row.version,
+    );
+  assert.equal(
+    await readFile(join(f.profile, "cordis.patch.yml"), "utf8"),
+    "# user configuration\n- id: custom\n",
+  );
+  assert.equal(
+    (
+      await refreshBundledCompanySuite({
+        ...f,
+        manifest: { packages },
+        install: () => assert.fail("current suite must not reinstall"),
+      })
+    ).changed,
+    false,
+  );
+});
+
+test("one disabled, custom or newer companion preserves the complete existing suite", () => {
+  for (const companion of companions) {
+    const disabled = structuredClone(current);
+    disabled.dsh.profile.bundles = disabled.dsh.profile.bundles.filter(
+      (name) => name !== companion.name,
+    );
+    assert.equal(
+      planBundledCompanyRefresh(disabled, installedSuite(), bundledSuite).status,
+      "disabled-company-profile-preserved",
+    );
+    const custom = structuredClone(current);
+    custom.dependencies[companion.name] = "link:/development";
+    assert.equal(
+      planBundledCompanyRefresh(custom, installedSuite(), bundledSuite).status,
+      "custom-company-profile-preserved",
+    );
+    const newer = installedSuite().map((row) =>
+      row.name === companion.name
+        ? { ...row, version: companion.name === "dsh-agent-manage" ? "0.6.3-company.31" : "0.1.29" }
+        : row,
+    );
+    assert.equal(
+      planBundledCompanyRefresh(current, newer, bundledSuite).status,
+      "newer-company-suite-preserved",
+    );
+  }
+});
+
+test("a partial companion installation cannot publish a successful suite receipt", async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(
+    refreshBundledCompanySuite({
+      ...f,
+      install: async (options) => {
+        await options.beforeInstall();
+        await writeFile(
+          join(f.profile, "node_modules", name, "package.json"),
+          JSON.stringify(bundled),
+        );
+        await options.complete({ writeFileAtomic: writeFile });
+      },
+    }),
+    /GEA_REFRESH_PROFILE_NOT_PRESERVED/,
+  );
+  const receipt = JSON.parse(
+    await readFile(join(f.profile, "gea/bootstrap/gea-refresh/receipt.json")),
+  );
+  assert.equal(receipt.status, "failed");
 });

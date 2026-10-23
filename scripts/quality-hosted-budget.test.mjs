@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assessHostedBudget, readHostedRun, waitForHostedRun } from "./quality-hosted-budget.mjs";
+import {
+  assessHostedBudget,
+  assessSourceBudget,
+  readHostedRun,
+  waitForHostedRun,
+} from "./quality-hosted-budget.mjs";
 import { createServer } from "node:http";
 import { once } from "node:events";
 
@@ -55,6 +60,62 @@ const assess = (value, options = {}) =>
     now: value.observedAt,
     ...options,
   });
+
+test("daily source budgets distinguish functional success, slow completion and missing time", () => {
+  const value = snapshot(600001);
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks";
+  const result = assessSourceBudget(value, { mode: "completed", now: value.observedAt });
+  assert.equal(result.functional.status, "passed");
+  assert.equal(result.performance.status, "failed");
+  assert.equal(result.completedMeasurement, true);
+  value.jobs[1].completed_at = null;
+  assert.equal(
+    assessSourceBudget(value, { mode: "completed", now: value.observedAt }).performance.status,
+    "unknown",
+  );
+});
+
+test("source budget never reports functional success for missing plan or shard evidence", () => {
+  const value = snapshot();
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks (1)";
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "failed");
+  value.jobs[1].name = "source-checks";
+  value.jobs.splice(0, 1);
+  value.pagination.totalCount = value.jobs.length;
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "failed");
+});
+
+test("in-gate source reports preserve a failed final admission", () => {
+  const value = snapshot();
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks";
+  value.run.status = "in_progress";
+  value.run.conclusion = null;
+  value.jobs[2].status = "in_progress";
+  value.jobs[2].conclusion = null;
+  value.jobs[2].completed_at = null;
+  const options = { mode: "in-gate", now: value.observedAt };
+  assert.equal(
+    assessSourceBudget(value, { ...options, admission: "success" }).functional.status,
+    "passed",
+  );
+  assert.equal(
+    assessSourceBudget(value, { ...options, admission: "failure" }).functional.status,
+    "failed",
+  );
+  assert.equal(assessSourceBudget(value, options).functional.status, "unknown");
+});
+
+test("source budget accepts the workflow's skipped dependency-review job", () => {
+  const value = snapshot();
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks";
+  value.jobs.push({ ...value.jobs[1], id: 4, name: "dependency-review", conclusion: "skipped" });
+  value.pagination.totalCount = 4;
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "passed");
+});
 
 async function restFixture(t, change = (response) => response) {
   const data = snapshot();

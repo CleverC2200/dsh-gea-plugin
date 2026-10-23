@@ -1,5 +1,9 @@
-/** GitHub run-attempt clocks only; source admission and execution coverage belong to the caller. */
 const budgetMs = 600000;
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { parseArgs } from "node:util";
 
 export const skippedTestShardsJobName =
   "matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards'";
@@ -29,6 +33,33 @@ export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000
     await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
     if (performance.now() >= deadline) throw Error("HOSTED_WAIT_TIMEOUT");
   }
+}
+
+export function assessSourceBudget(snapshot, options = {}) {
+  const jobs = snapshot?.jobs ?? [];
+  const sourceJobs = jobs.some((job) => /^source-checks \([12]\)$/.test(job.name))
+    ? ["source-checks (1)", "source-checks (2)"]
+    : ["source-checks"];
+  const skipped = jobs.filter((job) => job.conclusion === "skipped").map((job) => job.name);
+  const result = assessHostedBudget({
+    snapshot,
+    requiredJobs: [
+      ...new Set([
+        "source-plan",
+        ...sourceJobs,
+        ...jobs.filter((job) => job.name !== "candidate-quality").map((job) => job.name),
+      ]),
+    ].filter((name) => !skipped.includes(name) || name === "source-plan"),
+    notApplicableJobs: skipped.filter((name) => name !== "source-plan"),
+    finalJobName: "candidate-quality",
+    ...options,
+  });
+  if (result.mode === "in-gate" && options.admission !== "success") {
+    result.functional.status = options.admission ? "failed" : "unknown";
+    result.functional.reasons.push("SOURCE_ADMISSION_NOT_PASSED");
+    result.passed = false;
+  }
+  return result;
 }
 
 export async function readHostedRun({
@@ -158,6 +189,103 @@ function verifyHostedSnapshot(snapshot) {
       throw Error("HOSTED_INPUT_MISMATCH");
 }
 
+export function assessFinalDependencies({
+  snapshot,
+  requiredJobs,
+  notApplicableJobs = [],
+  finalJobName,
+  needs,
+  applicability,
+  hasShards,
+  dependencyReview,
+}) {
+  verifyHostedSnapshot(snapshot);
+  if (
+    !["source", "docs"].includes(applicability) ||
+    typeof hasShards !== "boolean" ||
+    typeof dependencyReview !== "boolean" ||
+    (applicability === "docs" && (hasShards || dependencyReview))
+  )
+    throw Error("QUALITY_FINAL_DEPENDENCIES_INPUT_REQUIRED");
+  const source = applicability === "source";
+  const expected = {
+    "candidate-scope": "success",
+    "source-plan": "success",
+    gates: source ? "success" : "skipped",
+    "plan-test-shards": source ? "success" : "skipped",
+    "test-shards": hasShards ? "success" : "skipped",
+    "macos-isolation": source ? "success" : "skipped",
+    "windows-plugin-update": "success",
+    "dependency-review": dependencyReview ? "success" : "skipped",
+  };
+  const reasons = [];
+  if (
+    !needs ||
+    typeof needs !== "object" ||
+    Array.isArray(needs) ||
+    Object.keys(needs).sort().join(",") !== Object.keys(expected).sort().join(",")
+  )
+    reasons.push("QUALITY_FINAL_DEPENDENCIES_REQUIRED");
+  const dependencies = Object.entries(expected).map(([job, result]) => {
+    const actual = needs?.[job]?.result;
+    if (actual !== result) reasons.push("QUALITY_FINAL_DEPENDENCY_RESULT: " + job);
+    return { job, expected: result, actual: actual ?? null };
+  });
+  if (needs?.["source-plan"]?.outputs?.applicability !== applicability)
+    reasons.push("QUALITY_FINAL_APPLICABILITY_MISMATCH");
+  const observed = assessHostedBudget({
+    snapshot,
+    requiredJobs,
+    notApplicableJobs,
+    finalJobName,
+    mode: "in-gate",
+  });
+  const pending = (entry) =>
+    ["queued", "pending", "requested", "in_progress"].includes(entry?.status) &&
+    entry.conclusion === null;
+  const deferred = [];
+  for (const reason of observed.functional.reasons) {
+    const upstream = requiredJobs.find((name) => reason === "HOSTED_REQUIRED_JOB: " + name);
+    const matches = snapshot.jobs.filter((job) => job.name === (upstream ?? finalJobName));
+    const lagging = upstream
+      ? matches.length === 1 && pending(matches[0])
+      : reason === "HOSTED_FINAL_STATE: " + finalJobName &&
+        pending(snapshot.run) &&
+        matches.length === 1 &&
+        pending(matches[0]);
+    (lagging ? deferred : reasons).push(reason);
+  }
+  for (const job of snapshot.jobs) {
+    if (
+      Array.isArray(job.steps) &&
+      job.steps.some(
+        (step) => step.conclusion != null && !["success", "skipped"].includes(step.conclusion),
+      )
+    )
+      reasons.push("HOSTED_STEP_CONCLUSION: " + job.name);
+    if (
+      job.conclusion !== null &&
+      !(
+        job.status === "completed" &&
+        (job.conclusion === "success" ||
+          (job.conclusion === "skipped" && notApplicableJobs.includes(job.name)))
+      )
+    )
+      reasons.push("HOSTED_JOB_CONCLUSION: " + job.name);
+  }
+  return {
+    schemaVersion: 1,
+    identity: snapshot.expected,
+    basis: "github-needs-with-validated-rest-snapshot",
+    scope: "scheduler-dependencies",
+    applicability,
+    status: reasons.length ? "failed" : "passed",
+    dependencies,
+    reasons: [...new Set(reasons)],
+    observerPending: deferred,
+  };
+}
+
 function timestamp(value) {
   if (typeof value !== "string") return null;
   const match = value.match(
@@ -197,7 +325,7 @@ export function assessHostedBudget({
     new Set(notApplicableJobs).size !== notApplicableJobs.length ||
     notApplicableJobs.some(
       (name) =>
-        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
+        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|dependency-review|source-checks(?: \([12]\))?|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
           name,
         ) &&
           !unexpandedSkippedJobNames.includes(name)) ||
@@ -385,4 +513,46 @@ export function assessHostedBudget({
     performance,
     passed: functional.status === "passed" && performance.status === "passed",
   };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const { values } = parseArgs({
+    options: {
+      "source-report": { type: "string" },
+      snapshot: { type: "string" },
+      mode: { type: "string", default: "in-gate" },
+    },
+  });
+  if (!values["source-report"]) throw Error("SOURCE_BUDGET_OUTPUT_REQUIRED");
+  let result;
+  try {
+    const snapshot = values.snapshot
+      ? JSON.parse(readFileSync(values.snapshot, "utf8"))
+      : await readHostedRun({
+          repository: process.env.GITHUB_REPOSITORY,
+          runId: process.env.GITHUB_RUN_ID,
+          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+          token: process.env.GITHUB_TOKEN,
+        });
+    result = assessSourceBudget(snapshot, {
+      mode: values.mode,
+      admission: process.env.SOURCE_ADMISSION_RESULT,
+    });
+  } catch (error) {
+    result = {
+      schemaVersion: 1,
+      mode: values.mode,
+      completedMeasurement: false,
+      functional: { status: "unknown" },
+      performance: { status: "unknown", budgetMs, reasons: [error.message] },
+      passed: false,
+    };
+  }
+  writeFileSync(values["source-report"], JSON.stringify(result, null, 2) + "\n");
+  if (process.env.GITHUB_STEP_SUMMARY)
+    appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `## Source workflow performance\n\nFunctional: ${result.functional.status}. Performance: ${result.performance.status}. Budget: ${budgetMs} ms. Workflow to observation: ${result.performance.workflowToDecisionMs ?? "unknown"} ms. Queue: ${result.performance.triggerQueueMs ?? "unknown"} ms. Measurement: ${values.mode}; completed workflow: ${result.completedMeasurement}.\n\nThis report does not replace functional admission. In-gate observations exclude later cleanup; use completed mode after the run ends before claiming the ten-minute target.\n`,
+    );
 }

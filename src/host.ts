@@ -332,7 +332,7 @@ export async function apply(
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
   ctx.provide("geaMcp", createGatewayMcpService(ctx, business));
-  registerGeaTools(ctx, business, capability);
+  registerGeaTools(ctx, business, capability, htmlPackages);
   ctx.effect(() => mountBusinessPrompts(ctx, business, capability));
   const resetReadTurn = (scope: string) => {
     business.clearTurnReplays(scope);
@@ -360,7 +360,7 @@ export async function apply(
     ctx.effect(() => {
       const registration = ctx.llm.registerAdapter(
         ["gea-analysis"],
-        new GeaModelAdapter(business, htmlPlugins.consumerForSession),
+        new GeaModelAdapter(business, htmlPlugins.modelAccessForSession),
       );
       let identity = business.identitySignal();
       let authenticated = business.status().authenticated;

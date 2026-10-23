@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, cpSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,19 +8,47 @@ import { parse } from "yaml";
 
 const workflow = parse(readFileSync(".github/workflows/delivery-fixtures.yml", "utf8"));
 
+function eligible(
+  condition,
+  steps,
+  cancelled = false,
+  github = { ref: "refs/heads/main", event: { repository: { default_branch: "main" } } },
+) {
+  return Function(
+    "cancelled",
+    "steps",
+    "github",
+    "format",
+    `return (${condition.replace(/steps\.([\w-]+)(?:\.outputs\.([\w-]+))?/g, (_, id, output) => (output ? `steps["${id}"].outputs["${output}"]` : `steps["${id}"]`))})`,
+  )(
+    () => cancelled,
+    steps,
+    github,
+    (template, ...values) => template.replace(/\{(\d+)\}/g, (_, index) => values[Number(index)]),
+  );
+}
+
 test("delivery retains PR and manual contexts without empty main push runs", () => {
   assert.deepEqual(Object.keys(workflow.on).sort(), ["pull_request", "workflow_dispatch"]);
   assert.equal(workflow.on.pull_request, null);
   const inputs = workflow.on.workflow_dispatch.inputs;
   assert.deepEqual(Object.keys(inputs).sort(), [
+    "cache_request",
     "mac_complete_input",
     "native_acceptance_bundle_sha256",
     "native_acceptance_bundle_url",
+    "prepare_windows_cache",
     "reuse_prepared_inputs",
     "source_types_input",
     "windows_complete_input",
   ]);
   for (const [name, input] of Object.entries(inputs)) {
+    if (name === "prepare_windows_cache") {
+      assert.equal(input.type, "boolean");
+      assert.equal(input.default, false);
+      assert.equal(input.required, false);
+      continue;
+    }
     if (name === "reuse_prepared_inputs") {
       assert.deepEqual(input, {
         description: "Reuse verified desktop preparation; disable for a cold benchmark or rebuild",
@@ -39,14 +67,15 @@ test("macOS complete packaging requires explicit manual input and a fixed compan
   const job = workflow.jobs["mac-complete-package"];
   assert.equal(
     job.if,
-    "github.event_name == 'workflow_dispatch' && inputs.mac_complete_input != ''",
+    "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && inputs.mac_complete_input != ''",
   );
   assert.equal(job.env.DSH_DESKTOP_TARGET_PLATFORM, "darwin");
   assert.equal(job.env.DSH_DESKTOP_TARGET_ARCH, "arm64");
   const checkout = job.steps.find(
     (step) => step.with?.repository === "CleverC2200/deepseek-harness",
   );
-  assert.equal(checkout.with.ref, job.env.DSH_DESKTOP_BUILD_COMMIT);
+  assert.equal(checkout.with.ref, "${{ steps.desktop-core.outputs.head }}");
+  assert.equal(job.env.DSH_DESKTOP_BUILD_COMMIT, undefined);
   assert.equal(checkout.with["persist-credentials"], false);
   assert.ok(
     job.steps.some(
@@ -56,10 +85,62 @@ test("macOS complete packaging requires explicit manual input and a fixed compan
   );
 });
 
+test("both desktop jobs select checkout and build metadata from the required Core policy", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "desktop-core-policy-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const scripts = join(root, "gea/scripts");
+  mkdirSync(scripts, { recursive: true });
+  for (const file of ["ci-core-policy.mjs", "ci-core-policy.json", "supported-cores.json"])
+    cpSync(join("scripts", file), join(scripts, file));
+  const policy = JSON.parse(readFileSync(join(scripts, "ci-core-policy.json"), "utf8"));
+  const registered = JSON.parse(readFileSync(join(scripts, "supported-cores.json"), "utf8"));
+  const alternate = registered.find(
+    (core) =>
+      !core.id &&
+      core.head !== policy.required[0].head &&
+      core.version === policy.required[0].version,
+  );
+  assert.ok(alternate);
+  for (const name of ["mac-complete-package", "windows-complete-package"]) {
+    const job = workflow.jobs[name];
+    const selection = job.steps.findIndex((step) => step.id === "desktop-core");
+    const checkout = job.steps.findIndex(
+      (step) => step.with?.repository === "CleverC2200/deepseek-harness",
+    );
+    assert.ok(selection >= 0 && checkout > selection, name);
+    assert.equal(job.steps[checkout].with.ref, "${{ steps.desktop-core.outputs.head }}");
+    assert.equal(job.env.DSH_DESKTOP_BUILD_COMMIT, undefined);
+    assert.equal(job.steps[selection].shell, "bash");
+    for (const core of [policy.required[0], alternate]) {
+      writeFileSync(
+        join(scripts, "ci-core-policy.json"),
+        JSON.stringify({ ...policy, required: [{ head: core.head, version: core.version }] }),
+      );
+      const output = join(root, "output"),
+        env = join(root, "env");
+      writeFileSync(output, "");
+      writeFileSync(env, "");
+      const result = spawnSync("bash", ["-e", "-c", job.steps[selection].run], {
+        cwd: root,
+        env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_ENV: env },
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(output, "utf8"), `head=${core.head}\n`);
+      assert.equal(readFileSync(env, "utf8"), `DSH_DESKTOP_BUILD_COMMIT=${core.head}\n`);
+    }
+    if (name === "mac-complete-package")
+      assert.match(
+        job.steps.find((step) => step.name === "Validate fixed input before preparing Core").run,
+        /input\.mjs .*--mac-baseline/,
+      );
+  }
+});
+
 test("Windows complete packaging uses its own input or Native bundle without selecting macOS", () => {
   assert.equal(
     workflow.jobs["windows-complete-package"].if,
-    "github.event_name == 'workflow_dispatch' && (inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')",
+    "github.event_name == 'workflow_dispatch' && (inputs.prepare_windows_cache || inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')",
   );
 });
 
@@ -68,7 +149,7 @@ test("standalone delivery retains package Prompt and source checks while candida
   const steps = job.steps;
   assert.equal(
     job.if,
-    "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
+    "(github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
   );
   assert.deepEqual(
     steps
@@ -83,7 +164,21 @@ test("standalone delivery retains package Prompt and source checks while candida
       "node --test tests/explicit-source-contract.test.mjs tests/source-composition.test.mjs",
     ],
   );
-  const packageScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
+  const manifest = JSON.parse(readFileSync("package.json", "utf8"));
+  const preparation = steps.findIndex((step) =>
+    step.run?.startsWith("npm install --prefix .runtime/fixture-dependencies "),
+  );
+  assert.ok(
+    preparation >= 0 &&
+      preparation < steps.findIndex((step) => step.run === "node --run test:release-source"),
+  );
+  const preparationArguments = steps[preparation].run.split(/\s+/);
+  for (const name of ["semver", "tar"])
+    assert.ok(
+      preparationArguments.includes(`${name}@${manifest.dependencies[name]}`),
+      `missing declared fixture dependency: ${name}`,
+    );
+  const packageScripts = manifest.scripts;
   for (const name of [
     "test:release-source",
     "test:delivery:packages",
@@ -111,7 +206,10 @@ test("complete delivery verifies exact Core outputs and cold tools before compil
     assert.equal(steps[restore].with["restore-keys"], undefined);
     assert.equal(steps[restore].with.path, "${{ steps.delivery-core-plan.outputs.paths }}");
     const downloads = steps.find((step) => step.id === "delivery-downloads");
-    assert.equal(downloads.uses, "actions/cache@v4");
+    assert.equal(
+      downloads.uses,
+      name === "windows-complete-package" ? "actions/cache/restore@v4" : "actions/cache@v4",
+    );
     assert.doesNotMatch(downloads.with.path, /node_modules|profile|seed|install/);
     const afterPackaging = steps.findIndex(
       (step) => step.name === "Verify Core output after packaging",
@@ -146,24 +244,12 @@ test("verified Core can be saved after wrapper failure without hiding the failed
     const save = steps.find((step) => step.name === "Save verified compiled Core");
     const packaging = steps.find((step) => step.name?.startsWith("Build full "));
     assert.equal(verify.id, "delivery-core-after-package");
-    assert.equal(verify.if, "!cancelled() && steps.delivery-core-plan.outcome == 'success'");
-    assert.equal(
-      save.if,
-      "!cancelled() && steps.delivery-core-after-package.outputs.hit == 'true' && steps.delivery-core-restore.outputs.cache-hit != 'true'",
-    );
     assert.equal(packaging["continue-on-error"], undefined);
-    const eligible = (condition, steps, cancelled = false) =>
-      Function(
-        "cancelled",
-        "steps",
-        `return (${condition.replace(/steps\.([\w-]+)(?:\.outputs\.([\w-]+))?/g, (_, id, output) =>
-          output ? `steps["${id}"].outputs["${output}"]` : `steps["${id}"]`,
-        )})`,
-      )(() => cancelled, steps);
     const context = {
       "delivery-core-plan": { outcome: "success" },
-      "delivery-core-after-package": { outputs: { hit: "true" } },
+      "delivery-core-after-package": { outputs: { hit: "true", integrity: "verified" } },
       "delivery-core-restore": { outputs: { "cache-hit": "false" } },
+      wrapper: { outcome: "failure" },
     };
     assert.equal(eligible(verify.if, context), true);
     assert.equal(eligible(save.if, context), true);
@@ -171,11 +257,34 @@ test("verified Core can be saved after wrapper failure without hiding the failed
     assert.equal(eligible(save.if, context, true), false);
     context["delivery-core-plan"].outcome = "failure";
     assert.equal(eligible(verify.if, context), false);
+    context["delivery-core-plan"].outcome = "success";
     for (const hit of ["false", "", undefined]) {
       context["delivery-core-after-package"].outputs.hit = hit;
-      assert.equal(eligible(save.if, context), false);
+      assert.equal(eligible(save.if, context), name === "windows-complete-package");
     }
     context["delivery-core-after-package"].outputs.hit = "true";
+    if (name === "windows-complete-package") {
+      for (const integrity of ["rejected", "not-restored", "", undefined]) {
+        context["delivery-core-after-package"].outputs.integrity = integrity;
+        assert.equal(eligible(save.if, context), false);
+      }
+      context["delivery-core-after-package"].outputs.integrity = "verified";
+      for (const ref of ["refs/heads/feature", "refs/tags/release"])
+        assert.equal(
+          eligible(save.if, context, false, {
+            ref,
+            event: { repository: { default_branch: "main" } },
+          }),
+          false,
+        );
+      assert.equal(
+        eligible(save.if, context, false, {
+          ref: "refs/heads/release-main",
+          event: { repository: { default_branch: "release-main" } },
+        }),
+        true,
+      );
+    }
     context["delivery-core-restore"].outputs["cache-hit"] = "true";
     assert.equal(eligible(save.if, context), false);
   }
@@ -184,7 +293,7 @@ test("verified Core can be saved after wrapper failure without hiding the failed
 test("manual delivery runs dependency-free Core cache fixtures on Windows and macOS", () => {
   const job = workflow.jobs["core-cache-fixtures"];
   assert.ok(job);
-  assert.equal(job.if, "github.event_name == 'workflow_dispatch'");
+  assert.equal(job.if, "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache");
   assert.deepEqual(job.strategy.matrix.os, ["windows-2025", "macos-15"]);
   assert.equal(job.strategy["fail-fast"], false);
   assert.equal(job["runs-on"], "${{ matrix.os }}");
@@ -224,10 +333,28 @@ test("desktop jobs restore exact prepared inputs and save only after verifying u
     assert.equal(steps[restore].with.key, `\u0024{{ steps.delivery-${id}-plan.outputs.key }}`);
     assert.equal(steps[save].with.path, steps[restore].with.path);
     assert.equal(steps[save].with.key, steps[restore].with.key);
-    assert.match(
-      steps[save].if,
-      new RegExp(`steps.delivery-${id}-after-package.outputs.hit == 'true'`),
-    );
+    const context = {
+      [`delivery-${id}-after-package`]: { outputs: { hit: "true", integrity: "verified" } },
+      [`delivery-${id}-restore`]: { outputs: { "cache-hit": "false" } },
+    };
+    assert.equal(eligible(steps[save].if, context), true);
+    assert.equal(eligible(steps[save].if, context, true), false);
+    context[`delivery-${id}-after-package`].outputs.hit = "false";
+    assert.equal(eligible(steps[save].if, context), id === "runtime");
+    if (id === "runtime") {
+      assert.equal(
+        eligible(steps[save].if, context, false, {
+          ref: "refs/tags/release",
+          event: { repository: { default_branch: "main" } },
+        }),
+        false,
+      );
+      context[`delivery-${id}-after-package`].outputs.integrity = "rejected";
+      assert.equal(eligible(steps[save].if, context), false);
+      context[`delivery-${id}-after-package`].outputs.integrity = "verified";
+    }
+    context[`delivery-${id}-restore`].outputs["cache-hit"] = "true";
+    assert.equal(eligible(steps[save].if, context), false);
     assert.equal(steps[save]["continue-on-error"], true);
     assert.equal(steps[save]["timeout-minutes"], 2);
   }

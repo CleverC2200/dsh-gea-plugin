@@ -211,3 +211,58 @@ test("configured SQL uses the authenticated Consumer delegation and forwards one
   await assert.rejects(business.pluginSql(configured, new AbortController().signal, true));
   assert.equal(requests.length, 2, "logged-out reads must not reach the gateway");
 });
+
+test("four inventory Consumers reuse completed SQL snapshots and explicit refresh bypasses them", async (t) => {
+  const business = fixture(t),
+    consumers = ["base-safety-stock", "branch-inventory", "full-chain-inventory", "aps"];
+  business.setCapabilities(
+    module.exports.createCapabilityRegistry(
+      consumers.map((consumerCode) => ({
+        id: consumerCode,
+        label: consumerCode,
+        maxEffect: "view",
+        skills: [],
+        routing: { keywords: [], summary: consumerCode },
+        data: { consumerCode, tables: [], rules: [] },
+      })),
+    ),
+  );
+  let physicalReads = 0;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    if (url.endsWith("/execute")) physicalReads++;
+    return success(url, init);
+  });
+  for (const consumerCode of consumers) {
+    const input = { consumerCode, sql: "SELECT t.sku AS sku FROM inventory AS t", parameters: {} };
+    for (let i = 0; i < 2; i++)
+      assert.equal(
+        (await business.pluginSql(input, new AbortController().signal, true)).rows[0].sku,
+        "A",
+      );
+  }
+  assert.equal(physicalReads, 4);
+  await business.pluginSql(
+    {
+      consumerCode: consumers[0],
+      sql: "SELECT t.sku AS sku FROM inventory AS t",
+      parameters: {},
+      cacheFreshAfter: Date.now() + 1,
+    },
+    new AbortController().signal,
+    true,
+  );
+  assert.equal(physicalReads, 5);
+  business.setCapabilities(module.exports.createCapabilityRegistry([]));
+  await assert.rejects(
+    business.pluginSql(
+      {
+        consumerCode: consumers[0],
+        sql: "SELECT t.sku AS sku FROM inventory AS t",
+        parameters: {},
+      },
+      new AbortController().signal,
+      true,
+    ),
+  );
+  assert.equal(physicalReads, 5, "current capability must still gate cache hits");
+});

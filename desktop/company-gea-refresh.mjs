@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { createHash } from "node:crypto";
+import { companyPackageNames, companyReleaseIndex } from "./company-archives.mjs";
 
 const gea = "@cleverc2200/gea-dsh-prototype";
 const files = ["package.json", "cordis.patch.yml", "pnpm-lock.yaml", "pnpm-workspace.yaml"];
@@ -14,45 +16,46 @@ const optional = async (path) => {
 };
 const release = (value) => (/^0\.0\.(0|[1-9]\d*)$/.test(value) ? Number(value.split(".")[2]) : NaN);
 
-export function planBundledGeaRefresh(current, installed, bundled) {
-  const spec = current?.dependencies?.[gea];
-  if (!spec || installed?.name !== gea || bundled?.name !== gea)
-    return { status: "unrecognized-gea", changed: false };
-  if (!current.dsh?.profile?.bundles?.includes(gea))
-    return { status: "disabled-gea-preserved", changed: false };
-  if (typeof spec !== "string" || !(/^0\.0\.\d+$/.test(spec) || /^file:.+\.tgz$/.test(spec)))
-    return { status: "custom-gea-preserved", changed: false };
-  const legacy = Object.entries(current.dependencies).some(
-    ([name, value]) =>
-      [
-        gea,
-        "@cleverc2200/dsh-agent-workbench",
-        "dsh-agent-manage",
-        "@changfenhuang/dsh-genui",
-      ].includes(name) &&
-      typeof value === "string" &&
-      value.startsWith("file:") &&
-      value.replaceAll("\\", "/").includes("/company-seed/archives/") &&
-      value.endsWith(".tgz"),
-  );
+export function planBundledCompanyRefresh(current, installed, bundled) {
   if (
-    !(release(installed.version) < release(bundled.version)) &&
-    !(
-      legacy &&
-      Number.isFinite(release(installed.version)) &&
-      installed.version === bundled.version
-    )
+    !Array.isArray(bundled) ||
+    bundled.length !== companyPackageNames.length ||
+    !companyPackageNames.every((name) => bundled.filter((row) => row.name === name).length === 1)
   )
-    return { status: "current-or-custom-gea-preserved", changed: false };
-  return {
-    status: "ready",
-    changed: false,
-    from: installed.version,
-    to: bundled.version,
-  };
+    throw Error("GEA_BUNDLED_COMPANY_SUITE_REQUIRED");
+  const targets = [];
+  for (const row of bundled) {
+    const actual = installed.find((item) => item.name === row.name);
+    const spec = current?.dependencies?.[row.name];
+    if (!actual || !spec) return { status: "unrecognized-company-profile", changed: false };
+    if (!current.dsh?.profile?.bundles?.includes(row.name))
+      return { status: "disabled-company-profile-preserved", changed: false };
+    try {
+      if (typeof spec !== "string" || (!/^file:.+\.tgz$/.test(spec) && spec !== actual.version))
+        throw Error("CUSTOM_COMPANY_SOURCE");
+      const from = companyReleaseIndex(row.name, actual.version);
+      const to = companyReleaseIndex(row.name, row.version);
+      if (from > to) return { status: "newer-company-suite-preserved", changed: false };
+      targets.push({ name: row.name, from: actual.version, to: row.version, file: row.file });
+    } catch {
+      return { status: "custom-company-profile-preserved", changed: false };
+    }
+  }
+  const legacy = Object.entries(current.dependencies).some(
+    ([name, spec]) =>
+      [...companyPackageNames, "@changfenhuang/dsh-genui"].includes(name) &&
+      typeof spec === "string" &&
+      spec.startsWith("file:") &&
+      spec.replaceAll("\\", "/").includes("/company-seed/archives/") &&
+      spec.endsWith(".tgz"),
+  );
+  if (!legacy && targets.every((row) => row.from === row.to))
+    return { status: "current-company-suite-preserved", changed: false };
+  const identity = targets.find((row) => row.name === gea);
+  return { status: "ready", changed: false, from: identity.from, to: identity.to, targets };
 }
 
-export async function assertProfileIdle(profile) {
+async function readProfileUpdateState(profile) {
   if (await optional(join(profile, ".plugin-manager/run.json")))
     throw Error("GEA_REFRESH_PROFILE_BUSY");
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
@@ -63,7 +66,14 @@ export async function assertProfileIdle(profile) {
   const receipt = JSON.parse(
     await readFile(join(profile, "gea/plugin-updates/operations", pointer.id, "receipt.json")),
   );
-  if (receipt.id !== pointer.id || !["completed", "restored", "failed"].includes(receipt.stage))
+  if (receipt.id !== pointer.id) throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+  if (!["pending-restart", "completed", "restored", "failed"].includes(receipt.stage))
+    throw Error("GEA_REFRESH_UPDATE_PENDING");
+  return receipt.stage;
+}
+
+export async function assertProfileIdle(profile) {
+  if ((await readProfileUpdateState(profile)) === "pending-restart")
     throw Error("GEA_REFRESH_UPDATE_PENDING");
 }
 
@@ -84,7 +94,10 @@ export async function assertCompletedGeaRefresh(profile, { allowArchiveRecovery 
         !prior.diagnostic.startsWith(prefix)
       )
         throw Error("NOT_RECOVERABLE");
-      const backup = join(directory, "before-" + prior.from + "-to-" + prior.to);
+      const backup = prior.backup ?? join(directory, "before-" + prior.from + "-to-" + prior.to);
+      const localBackup = relative(directory, backup).split(/[\\/]/);
+      if (localBackup.length !== 1 || !/^before-[a-zA-Z0-9.-]+$/.test(localBackup[0]))
+        throw Error("UNSAFE_BACKUP");
       if (await optional(join(backup, "failed-receipt.json"))) throw Error("ALREADY_RETRIED");
       for (const path of [
         join(profile, "gea"),
@@ -143,26 +156,44 @@ export async function assertCompletedGeaRefresh(profile, { allowArchiveRecovery 
   throw Error("GEA_REFRESH_RECOVERY_REQUIRED");
 }
 
-export async function refreshBundledGea({ root, support, seed, home, manifest, install }) {
+export async function refreshBundledCompanySuite({ root, support, seed, home, manifest, install }) {
   const profile = join(home, "profiles/desktop");
   const directory = join(profile, "gea/bootstrap/gea-refresh");
   const journal = join(directory, "receipt.json");
   const currentBytes = await optional(join(profile, "package.json"));
-  const installedBytes = await optional(join(profile, "node_modules", gea, "package.json"));
-  if (!currentBytes || !installedBytes) return { status: "gea-not-installed", changed: false };
+  if (!currentBytes) return { status: "company-profile-not-installed", changed: false };
+  if ((await readProfileUpdateState(profile)) === "pending-restart")
+    return { status: "pending-restart-preserved", changed: false };
+  const installedFiles = new Map(
+    await Promise.all(
+      companyPackageNames.map(async (name) => [
+        name,
+        await optional(join(profile, "node_modules", name, "package.json")),
+      ]),
+    ),
+  );
+  if ([...installedFiles.values()].some((bytes) => !bytes))
+    return { status: "company-profile-incomplete", changed: false };
   const recovery = await assertCompletedGeaRefresh(profile, {
     allowArchiveRecovery: true,
   });
   const current = JSON.parse(currentBytes);
-  const installed = JSON.parse(installedBytes);
-  const bundled = manifest.packages.find((row) => row.name === gea);
-  const plan = planBundledGeaRefresh(current, installed, bundled);
+  const installed = [...installedFiles.values()].map((bytes) => JSON.parse(bytes));
+  const plan = planBundledCompanyRefresh(current, installed, manifest.packages);
   if (plan.status !== "ready") return plan;
-  const entry = await lstat(join(profile, "node_modules", gea));
-  if (!entry.isDirectory() || entry.isSymbolicLink())
-    return { status: "linked-gea-preserved", changed: false };
+  for (const name of companyPackageNames) {
+    const entry = await lstat(join(profile, "node_modules", name));
+    if (!entry.isDirectory() || entry.isSymbolicLink())
+      return { status: "linked-company-profile-preserved", changed: false };
+  }
   let started = false;
   let before;
+  const suffix =
+    plan.from === plan.to
+      ? "-" +
+        createHash("sha256").update(currentBytes).update(JSON.stringify(plan.targets)).digest("hex")
+      : "";
+  const backup = join(directory, "before-" + plan.from + "-to-" + plan.to + suffix);
   try {
     await install({
       root,
@@ -170,26 +201,23 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
       seed,
       home,
       profile,
-      packages: [join(seed, "archives", bundled.file)],
+      packages: plan.targets.map((row) => join(seed, "archives", row.file)),
       store: join(home, "desktop-company-cache/gea-refresh/store"),
       offline: false,
       strictPeers: true,
       beforeInstall: async () => {
         await assertProfileIdle(profile);
-        if (
-          !(await readFile(join(profile, "package.json"))).equals(currentBytes) ||
-          !(await readFile(join(profile, "node_modules", gea, "package.json"))).equals(
-            installedBytes,
-          )
-        )
+        if (!(await readFile(join(profile, "package.json"))).equals(currentBytes))
           throw Error("GEA_REFRESH_PROFILE_CHANGED");
+        for (const [name, bytes] of installedFiles)
+          if (!(await readFile(join(profile, "node_modules", name, "package.json"))).equals(bytes))
+            throw Error("GEA_REFRESH_PROFILE_CHANGED");
         await assertCompletedGeaRefresh(profile, {
           allowArchiveRecovery: true,
         });
         before = new Map(
           await Promise.all(files.map(async (file) => [file, await optional(join(profile, file))])),
         );
-        const backup = join(directory, "before-" + plan.from + "-to-" + plan.to);
         for (const path of [
           join(profile, "gea"),
           join(profile, "gea/bootstrap"),
@@ -226,9 +254,17 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
       },
       complete: async ({ writeFileAtomic, archiveReplacements = [] }) => {
         const after = JSON.parse(await readFile(join(profile, "package.json")));
-        const actual = JSON.parse(
-          await readFile(join(profile, "node_modules", gea, "package.json")),
-        );
+        for (const target of plan.targets) {
+          const actual = JSON.parse(
+            await readFile(join(profile, "node_modules", target.name, "package.json")),
+          );
+          if (
+            actual.name !== target.name ||
+            actual.version !== target.to ||
+            typeof after.dependencies?.[target.name] !== "string"
+          )
+            throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
+        }
         const expected = structuredClone(current);
         for (const replacement of archiveReplacements) {
           if (expected.dependencies[replacement.name] !== replacement.before)
@@ -241,16 +277,12 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
           expected.dependencies[replacement.name] =
             "file:" + replacement.path.replaceAll("\\", "/");
         }
-        const withoutGea = (value) => {
+        const withoutCompany = (value) => {
           const copy = structuredClone(value);
-          delete copy.dependencies[gea];
+          for (const name of companyPackageNames) delete copy.dependencies[name];
           return copy;
         };
-        if (
-          actual.name !== gea ||
-          actual.version !== bundled.version ||
-          !isDeepStrictEqual(withoutGea(after), withoutGea(expected))
-        )
+        if (!isDeepStrictEqual(withoutCompany(after), withoutCompany(expected)))
           throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
         const patch = await optional(join(profile, "cordis.patch.yml"));
         if (
@@ -260,7 +292,7 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
           throw Error("GEA_REFRESH_CONFIG_NOT_PRESERVED");
         await writeFileAtomic(
           journal,
-          JSON.stringify({ ...plan, status: "completed", changed: true }) + "\n",
+          JSON.stringify({ ...plan, status: "completed", changed: true, backup }) + "\n",
           { mode: 0o600 },
         );
       },
@@ -272,6 +304,7 @@ export async function refreshBundledGea({ root, support, seed, home, manifest, i
         journal,
         JSON.stringify({
           ...plan,
+          backup,
           status: "failed",
           diagnostic: error.message,
         }) + "\n",

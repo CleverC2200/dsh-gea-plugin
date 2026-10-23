@@ -273,23 +273,35 @@ test(
           children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
         JSON.stringify(navRows),
       );
-      // 「AI 工作台」入口（原生新建会话）也走同一条左线：整块贴左、内容左对齐。
+      // The current AI workbench entry retains both its identity icon and new-session action.
       const newSession = await page
         .getByRole("button")
         .filter({ hasText: "AI工作台" })
         .evaluate((button) => {
-          const icon = button.querySelector("svg, img");
+          const icon = button.querySelector(".gea-ai-entry-icon svg");
+          const plus = button.querySelector(".gea-ai-entry-plus");
+          const bounds = button.getBoundingClientRect();
           return {
-            justify: getComputedStyle(button).justifyContent,
-            hit: Math.round(button.getBoundingClientRect().x),
-            icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
+            display: getComputedStyle(button).display,
+            align: getComputedStyle(button).alignItems,
+            iconWidth: icon?.getBoundingClientRect().width,
+            plusWidth: plus?.getBoundingClientRect().width,
+            contained: Boolean(
+              icon &&
+              plus &&
+              icon.getBoundingClientRect().left > bounds.left &&
+              plus.getBoundingClientRect().right < bounds.right &&
+              icon.getBoundingClientRect().right < plus.getBoundingClientRect().left,
+            ),
           };
         });
-      assert.equal(newSession.justify, "flex-start", JSON.stringify(newSession));
-      assert.ok(
-        newSession.hit <= 2 && newSession.icon !== null && newSession.icon <= 12,
-        JSON.stringify(newSession),
-      );
+      assert.deepEqual(newSession, {
+        display: "flex",
+        align: "center",
+        iconWidth: 22,
+        plusWidth: 20,
+        contained: true,
+      });
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
       await expect

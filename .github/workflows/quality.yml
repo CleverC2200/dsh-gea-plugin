@@ -888,6 +888,7 @@ jobs:
         if: always()
         env:
           QUALITY_FINAL_JOB_NAME: joint-quality
+          QUALITY_FINAL_NEEDS: ${{ toJSON(needs) }}
           QUALITY_APPLICABILITY: ${{ needs.source-plan.outputs.applicability }}
           GITHUB_TOKEN: ${{ github.token }}
           QUALITY_EXPECTED_WORKFLOW_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

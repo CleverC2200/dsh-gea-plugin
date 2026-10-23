@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "versionTests": [
+    "scripts/plugin-package-version.test.mjs",
+    "tests/plugin-release.test.mjs",
+    "tests/plugin-release-preflight.test.mjs"
+  ],
   "required": [
     "tests/controlled-execution.test.mjs",
     "tests/plugin-sql-cancel.test.mjs",
@@ -119,6 +124,16 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:ci-core-policy\\.(?:json|mjs)|supported-cores\\.json)$",
+      "tests": ["scripts/windows-complete-local/input.test.mjs", "scripts/delivery-events.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/capability/html-mcp(?:\\.mjs|\\.d\\.mts)$",
+      "tests": ["tests/html-resource-contract.test.mjs", "scripts/deliver-packages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^\\.codex/environments/environment\\.toml$",
       "tests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"],
       "sourceTests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"]
@@ -151,7 +166,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/plugin-reception/(?:observe-worker|preset-discovery|readiness(?:\\.test)?)\\.mjs$",
+      "pattern": "^scripts/plugin-reception/(?:empty-profile|install-worker|download-store(?:\\.test)?|observe-worker|preset-discovery|readiness(?:\\.test)?)\\.mjs$",
       "tests": ["scripts/plugin-reception.test.mjs", "scripts/deliver-packages.test.mjs"]
     },
     {
@@ -333,6 +348,12 @@
     },
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^desktop/company-(?:archives|bootstrap|gea-refresh)\\.mjs$",
+      "tests": ["scripts/desktop-gea-upgrade.test.mjs"],
+      "sourceTests": ["scripts/desktop-gea-upgrade.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^desktop/",
       "tests": ["tests/window-launch-admission.test.mjs"]
     },
@@ -407,7 +428,8 @@
       "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
       "tests": [
         "scripts/delivery-events.test.mjs",
-        "scripts/windows-complete-local/core-cache.test.mjs"
+        "scripts/windows-complete-local/core-cache.test.mjs",
+        "scripts/windows-complete-local/input.test.mjs"
       ]
     },
     {
@@ -422,7 +444,7 @@
     },
     {
       "repo": "dsh-agent-workbench",
-      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-orderworkbench|build-output|build-static-authors|static-author-provenance)\\.mjs$",
+      "pattern": "^scripts/(?:build|build-aps-metrics|build-customer-prototype|build-dms-prototype|build-inventory|build-order-fulfillment|build-orderworkbench|build-output|build-static-authors|mps-compute-build|static-author-provenance)\\.mjs$",
       "tests": [
         "scripts/quality-workbench.test.mjs",
         "scripts/quality-prepared-inputs.test.mjs",
@@ -460,7 +482,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/(?:build|baseline)\\.mjs)$",
+      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|compile|prepare|shared-cache|cache-report|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/(?:build|baseline)\\.mjs)$",
       "tests": [
         "scripts/windows-complete-local/core-cache.test.mjs",
         "scripts/windows-complete-local/input.test.mjs",
@@ -489,6 +511,35 @@
       "pattern": "^scripts/quality-peer-baseline\\.json$",
       "tests": [],
       "sourceTests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-manage",
+      "pattern": "^scripts/(?:source-quality|workflow-preflight)(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/source-quality.test.mjs", "scripts/workflow-preflight.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:source-checks|source-result|source-tools)\\.mjs$",
+      "tests": [
+        "scripts/source-quality.test.mjs",
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:source-quality|workflow-preflight)(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/source-quality.test.mjs", "scripts/workflow-preflight.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:test_current_shortage_source|test_fc_aging_source|test_batch_age_lists|test_qll_structure|update_current_shortage_sql|update-batch-age-lists|update-fc-list-completion|update-qll-list-completion)\\.py$",
+      "tests": ["scripts/quality-workbench.test.mjs", "tests/source-assembly.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^\\.gitignore$",
+      "tests": ["scripts/quality-workbench.test.mjs", "scripts/quality-prepared-inputs.test.mjs"]
     }
   ],
   "testOwners": {
@@ -503,6 +554,7 @@
     "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
+    "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
     "scripts/run-quality-ci.test.mjs": ["yaml"]
   }

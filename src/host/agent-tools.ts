@@ -1,3 +1,6 @@
+import { registerCurrentShortageTool } from "./current-shortage-tool.ts";
+import { registerBranchInventoryTool } from "./branch-inventory-tool.ts";
+import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import { TOOL_DESCRIPTIONS } from "./prompt-policy.ts";
 /** 固定的 GEA 读取通过原生 Harness 工具生命周期呈现并记录。 */
 import type { Context } from "@deepseek-ai/cordis";
@@ -91,7 +94,10 @@ export function registerGeaTools(
   ctx: Context,
   business: Business,
   capability?: CapabilityRegistry,
+  htmlPackages: readonly HtmlPackage[] = [],
 ): void {
+  registerCurrentShortageTool(ctx, business, htmlPackages);
+  registerBranchInventoryTool(ctx, business, htmlPackages);
   /**
    * 宿主替模型算好的通道顺序：当前页是谁、命中哪个模块、该先用哪条道。
    * 线上实测"选通道"这一步最容易翻车，所以不由模型自己猜（见 capability/channel.ts）。

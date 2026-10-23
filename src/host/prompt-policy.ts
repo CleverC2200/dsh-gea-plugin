@@ -1,3 +1,4 @@
+import { currentShortageResource } from "./current-shortage-contract.ts";
 import policy from "../../presets/execution-policy.json" with { type: "json" };
 
 export const PROMPT_VERSION = policy.version;
@@ -57,6 +58,8 @@ export const CORE_TOOLS = [
 ];
 export function allowedTools(profile: PromptProfile, pageTool?: string): Set<string> {
   const names = new Set(CORE_TOOLS);
+  if (currentShortageResource(profile.consumerCode)) names.add("gea_current_shortage");
+  if (profile.consumerCode === "branch-inventory") names.add("gea_branch_inventory");
   for (const name of [
     "skill",
     "skill_reference_read",

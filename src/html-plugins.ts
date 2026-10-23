@@ -16,6 +16,8 @@ import { contractFromPlugin, type CapabilityContract } from "./capability/contra
 import { readPluginContract } from "./capability/declarations.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
+import { bindModulePage } from "./host/module-page-scope.ts";
+import { assertHtmlMcp } from "./capability/html-mcp.mjs";
 
 export async function registerHtmlPlugins(
   ctx: any,
@@ -103,19 +105,11 @@ export async function registerHtmlPlugins(
     const mcpPath = await realpath(resolve(directory, manifest.mcp ?? ""));
     if (!mcpPath.startsWith(directory + sep)) throw Error("INVALID_MCP_PATH");
     const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
-    if (
-      mcp.provider !== "gea" ||
-      mcp.transport !== "host-provided" ||
-      mcp.contract !== "gea-html-v2" ||
-      mcp.consumer?.consumerCode !== manifest.gea.consumerCode ||
-      mcp.consumer?.consumerType !== "AGENT" ||
-      !(mock
-        ? JSON.stringify(mcp.capabilities) === "[]"
-        : ['["governed-sql-read"]', '["governed-sql-read","governed-cube-read"]'].includes(
-            JSON.stringify(mcp.capabilities),
-          ))
-    )
+    try {
+      assertHtmlMcp(mcp, manifest.gea.consumerCode, mock);
+    } catch {
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
+    }
     if (!manifest.declarations || manifest.agentResources?.provider !== "dsh-agent-manage")
       throw Error(`UNSUPPORTED_HTML_RESOURCE_PROTOCOL [source: ${directory}/plugin.json]`);
     const preset = "gea-html-" + manifest.id;
@@ -397,15 +391,17 @@ export async function registerHtmlPlugins(
             let projection = business.currentPageIdentity(session);
             if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
             const grantSignal = AbortSignal.any([started!, lifetime.signal]);
+            const modulePage = bindModulePage(business, session, item.id, grantSignal);
             return {
               signal: grantSignal,
               referenceScope: item.mock ? "mock-browser" : principal!,
               access,
-              observe: () => {
+              observe: (context: Record<string, unknown>) => {
                 grantSignal.throwIfAborted();
                 if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
                 business.touchPageIdentity(session, pageIdentity);
                 projection = business.currentPageIdentity(session);
+                modulePage.observe(context);
               },
               allowsEffect: (
                 effect: import("@cleverc2200/dsh-agent-workbench").PageBusinessGrant extends {
@@ -455,6 +451,7 @@ export async function registerHtmlPlugins(
                   }
                 : {}),
               release: () => {
+                modulePage.release();
                 if (business.currentPageIdentity(session) === projection)
                   business.clearPageIdentity(session, item.id);
                 if (business.surfaceFor(session) === surface)
@@ -467,9 +464,24 @@ export async function registerHtmlPlugins(
   }
 
   return {
-    consumerForSession: async (session?: string, signal?: AbortSignal) => {
+    modelAccessForSession: async (session?: string, signal?: AbortSignal) => {
       await assertSessionResourceAvailable(ctx, session, signal);
-      return sessionConsumer(ctx, business, session);
+      const agent = session ? ctx.agents.get(session) : undefined;
+      const preset = agent
+        ? ctx.sessionProjections.stateOf(agent.session, "agentPreset")
+        : undefined;
+      const association =
+        agent && !profileFor(preset ?? undefined) ? ctx.userAgents?.cubeFor(agent) : undefined;
+      const source = ctx.agentResources.cubeSource(association?.sourceRef ?? preset);
+      return {
+        consumerCode: sessionConsumer(ctx, business, session),
+        signal: AbortSignal.any([
+          business.identitySignal(),
+          lifetime.signal,
+          ...(source ? [source.signal] : []),
+          ...(association ? [association.signal] : []),
+        ]),
+      };
     },
     capabilityContracts,
   };

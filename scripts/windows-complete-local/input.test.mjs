@@ -1,15 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
-import { readDesktopInput, readDesktopPluginSource } from "./input.mjs";
+import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
+import { assertMacBaseline, macBaseline } from "../mac-complete-local/baseline.mjs";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 const cli = fileURLToPath(new URL("./input.mjs", import.meta.url));
-const baseline = JSON.parse(
+const released = JSON.parse(
   await readFile(new URL("./released-input.fixture.json", import.meta.url)),
 );
+const baseline = structuredClone(released);
+baseline.seed.core.head = desktopCoreHead;
 
 async function check(t, input, source = baseline.geaSourceSha) {
   const directory = await mkdtemp(join(tmpdir(), "gea-desktop-input-"));
@@ -29,16 +32,48 @@ test("complete Windows input refuses missing company archives before building", 
   assert.match(result.stderr, /DESKTOP_THREE_PACKAGES_REQUIRED/);
 });
 
-test("released three-package identities validate without building or writing outputs", async (t) => {
+test("required Core and immutable package identities validate without building", async (t) => {
   const result = await check(t, baseline);
   assert.equal(result.status, 0, result.stderr);
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.status, "input-validated");
   assert.equal(receipt.built, false);
+  assert.equal(receipt.core.head, desktopCoreHead);
   assert.equal(
     receipt.packages[0].sha256,
     "d570e74a4b782394e6eaef6edefa050092a694698ef81d4c0acd92ab9d140d03",
   );
+});
+
+test("historical Core8cf input is refused even when its archives and proof are self-consistent", async (t) => {
+  const result = await check(t, released);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DESKTOP_CORE_POLICY_MISMATCH/);
+  assert.ok(result.stderr.includes(desktopCoreHead));
+  assert.match(result.stderr, /scripts\/ci-core-policy.json/);
+});
+
+test("macOS refuses the real old baseline before downloading or creating output", async (t) => {
+  assert.throws(
+    () => assertMacBaseline(desktopCoreHead, { coreHead: released.seed.core.head }),
+    /DESKTOP_MAC_BASELINE_CORE_MISMATCH/,
+  );
+  assert.doesNotThrow(() => assertMacBaseline(desktopCoreHead, { coreHead: desktopCoreHead }));
+  const directory = await mkdtemp(join(tmpdir(), "gea-mac-input-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "input.json");
+  await writeFile(path, JSON.stringify(baseline));
+  const result = spawnSync(
+    process.execPath,
+    [cli, "--input", path, "--source-sha", baseline.geaSourceSha, "--mac-baseline"],
+    { encoding: "utf8" },
+  );
+  if (macBaseline.coreHead !== desktopCoreHead) {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DESKTOP_MAC_BASELINE_CORE_MISMATCH/);
+  } else {
+    assert.equal(result.status, 0, result.stderr);
+  }
 });
 
 test("complete Windows input refuses a different workflow source", async (t) => {
@@ -86,7 +121,7 @@ test("complete Windows input refuses mutable archives, wrong Core and version ro
       },
     ],
     [
-      "DESKTOP_CORE_INVALID",
+      "DESKTOP_CORE_POLICY_MISMATCH",
       (input) => {
         input.seed.core.head = "a0d854bd72b1d052fe24005cf10b8e72bb8f17f8";
       },

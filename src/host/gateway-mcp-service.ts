@@ -7,6 +7,11 @@ import { gatewaySessionExpired, stopExpiredGateway } from "./agent-tools.ts";
 import type { GatewayMcpTool } from "./gateway-mcp-client.ts";
 import { isDeepStrictEqual } from "node:util";
 import { knowledgeArguments, knowledgeSelection } from "./knowledge-mcp.ts";
+import {
+  inheritModuleCubeScope,
+  moduleScopeSignature,
+  moduleCubeScopeReceipt,
+} from "./module-page-scope.ts";
 
 export function createGatewayMcpService(ctx: Context, business: Business) {
   return {
@@ -94,11 +99,21 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
             throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
           knowledgeSelection(catalog, args);
         }
-        const result = await module.call(name, args, signal);
+        const scopedArgs =
+          name === "query_business_data" ? inheritModuleCubeScope(business, sessionId, args) : args;
+        const scopeSignature = moduleScopeSignature(business, sessionId);
+        const result = await module.call(name, scopedArgs, signal);
         throwIfAborted(signal);
         if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
           throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
-        return result;
+        if (
+          name === "query_business_data" &&
+          scopeSignature !== moduleScopeSignature(business, sessionId)
+        )
+          throw Error("GEA_PAGE_SCOPE_CHANGED: 查询期间页面范围已变，本次结果不用于新页面。");
+        return name === "query_business_data"
+          ? moduleCubeScopeReceipt(business, sessionId, result)
+          : result;
       } catch (error) {
         const current =
           !signal.aborted &&

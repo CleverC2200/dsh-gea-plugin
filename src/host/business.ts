@@ -5,6 +5,7 @@ import {
   salesPlanQueryValue,
   salesPlanWireKey,
 } from "./sales-plan-wire.ts";
+import { InventoryReadCache } from "./inventory-read-cache.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
@@ -722,6 +723,7 @@ export class Business {
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
+  private readonly inventoryReads = new InventoryReadCache();
   private readonly pluginDelegations = new Map<
     string,
     { authToken: string; delegationToken: string }
@@ -2382,6 +2384,7 @@ export class Business {
       "packing",
       "resultShape",
       "includeTotal",
+      "cacheFreshAfter",
       "query",
     ]);
     const consumerCode = text(payload.consumerCode ?? query.consumerCode);
@@ -2391,7 +2394,27 @@ export class Business {
     const sqlValue = query.sql;
     if (typeof sqlValue !== "string" || !sqlValue.trim() || sqlValue.length > 200_000)
       throw new Error("GEA_PLUGIN_SQL_INVALID");
-    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const identity = this.epoch.signal;
+    const signal = AbortSignal.any([caller, identity]);
+    signal.throwIfAborted();
+    const freshAfter = payload.cacheFreshAfter ?? 0;
+    if (
+      typeof freshAfter !== "number" ||
+      !Number.isSafeInteger(freshAfter) ||
+      freshAfter < 0 ||
+      freshAfter > Date.now() + 1000
+    )
+      throw Error("INVALID_QUERY_CACHE_REFRESH");
+    const cacheable =
+      configured &&
+      ["base-safety-stock", "branch-inventory", "full-chain-inventory", "aps"].includes(
+        consumerCode,
+      );
+    const cacheKey = JSON.stringify([consumerCode, query.sql, query.parameters]);
+    if (cacheable) {
+      const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
+      if (cached !== undefined) return cached;
+    }
     let rejectedCurrentLogin: { error: GeaResponseError; epoch: AbortController } | undefined;
     const getDelegation = async () => {
       let delegation = this.pluginDelegations.get(consumerCode);
@@ -2461,6 +2484,8 @@ export class Business {
                 includeTotal: false,
               } as ConfiguredSqlRequest)
             : await readHtmlQuery(withDefaultPaging(query), transport);
+          signal.throwIfAborted();
+          if (cacheable) this.inventoryReads.set(identity, cacheKey, result);
           return result;
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {

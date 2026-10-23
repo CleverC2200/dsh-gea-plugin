@@ -25,7 +25,7 @@ import {
   prepareWorkbenchAssets,
 } from "./quality-workbench.mjs";
 
-function preparedFixture(t, worktree = false) {
+function preparedFixture(t, worktree = false, ignoredOutputs = []) {
   const root = mkdtempSync(join(tmpdir(), "gea-prepared-metadata-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, "source"),
@@ -38,7 +38,7 @@ function preparedFixture(t, worktree = false) {
     '{"name":"@cleverc2200/dsh-agent-workbench","version":"1.0.0","exports":{"./client":"lib/client.js"}}',
   );
   writeFileSync(join(source, "package-lock.json"), "{}");
-  writeFileSync(join(source, ".gitignore"), "node_modules/\n");
+  writeFileSync(join(source, ".gitignore"), ["node_modules/", ...ignoredOutputs, ""].join("\n"));
   writeFileSync(join(source, "cordis.patch.yml"), "- insert: []\n");
   writeFileSync(join(source, "src/input.ts"), "export const input = true;\n");
   mkdirSync(join(source, "business/inventory-apsplan"), { recursive: true });
@@ -707,4 +707,20 @@ test("the MPS SQL config copy retains the same fixed-source byte and redirect ch
   rmSync(join(fixture.prepared, fixture.output));
   symlinkSync(join(fixture.source, fixture.resource), join(fixture.prepared, fixture.output));
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("declared ignored public build outputs remain frozen by the prepared receipt", async (t) => {
+  const outputs = ["lib/public-api.mjs", "lib/public-api.d.mts"];
+  const fixture = preparedFixture(
+    t,
+    false,
+    outputs.map((file) => "/" + file),
+  );
+  for (const file of outputs) writeFileSync(join(fixture.prepared, file), "built public output\n");
+  const record = await readPreparedWorkbench(fixture);
+  for (const file of outputs) assert.match(record.files[file], /^[a-f0-9]{64}$/);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, outputs[0]), "changed runtime output\n");
+  await assert.rejects(verifyPreparedWorkbench(fixture), /QUALITY_WORKBENCH_ASSET_MISMATCH/);
 });

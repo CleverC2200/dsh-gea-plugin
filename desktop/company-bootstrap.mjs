@@ -5,19 +5,18 @@ import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  refreshBundledGea,
+  refreshBundledCompanySuite,
   assertCompletedGeaRefresh,
   assertProfileIdle,
 } from "./company-gea-refresh.mjs";
-import { prepareCompanyArchives, repointCompanyArchives } from "./company-archives.mjs";
+import {
+  prepareCompanyArchives,
+  repointCompanyArchives,
+  companyPackageNames,
+} from "./company-archives.mjs";
 import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
 
-const names = [
-  "@cleverc2200/dsh-agent-workbench",
-  "dsh-agent-manage",
-  "@cleverc2200/gea-dsh-prototype",
-  "@changfenhuang/dsh-genui",
-];
+const names = [...companyPackageNames, "@changfenhuang/dsh-genui"];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const desktopCoreHeads = new Set([
@@ -639,6 +638,18 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
   );
 }
 
+export async function refreshCompanyStartup({ legacyData, ...options }) {
+  const refresh = await refreshBundledCompanySuite({
+    ...options,
+    install: options.install ?? installCompanyPackages,
+  });
+  const cleanup =
+    legacyData && refresh.status !== "pending-restart-preserved"
+      ? await cleanupLegacyGea({ data: legacyData, home: options.home, apply: true })
+      : null;
+  return { refresh, cleanup };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [root, support, seed, legacyData] = process.argv.slice(2);
   const require = createRequire(join(root, "dsh/package.json"));
@@ -654,28 +665,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
   await refreshCompanyCore({ root, seed, home });
   const manifest = await readCompanySeed(seed);
-  console.log(
-    "GEA_BUNDLED_REFRESH",
-    JSON.stringify(
-      await refreshBundledGea({
-        root,
-        support,
-        seed,
-        home,
-        manifest,
-        install: installCompanyPackages,
-      }),
-    ),
-  );
-  if (legacyData)
-    console.log(
-      "GEA_LEGACY_CLEANUP",
-      JSON.stringify(
-        await cleanupLegacyGea({
-          data: legacyData,
-          home,
-          apply: true,
-        }),
-      ),
-    );
+  const { refresh, cleanup } = await refreshCompanyStartup({
+    root,
+    support,
+    seed,
+    home,
+    manifest,
+    legacyData,
+  });
+  console.log("GEA_BUNDLED_REFRESH", JSON.stringify(refresh));
+  if (cleanup) console.log("GEA_LEGACY_CLEANUP", JSON.stringify(cleanup));
 }
