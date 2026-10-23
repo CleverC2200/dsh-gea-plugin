@@ -8,7 +8,12 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan, openBusinessPage } from "./fixtures/business-page.mjs";
+import {
+  openBusinessPage,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+  salesPlanFrame,
+} from "./fixtures/business-page.mjs";
 
 const plan = {
   planId: "9007199254740993",
@@ -35,6 +40,7 @@ test(
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess([["gea-proof", "销售计划"]]),
       config: (base) => ({
         environment: "test",
         geaEnvironments: { production: base + "/production", test: base + "/test" },
@@ -105,7 +111,8 @@ test(
         .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
         .getByRole("button", { name: "继续", exact: true })
         .click();
-      const frame = await openSalesPlan(page);
+      await openRegisteredWorkbenchPage(page, "销售计划");
+      const frame = salesPlanFrame(page);
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       allowLogin = true;
       await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
@@ -115,10 +122,13 @@ test(
       await menu.waitFor();
 
       // 业务目录保留完整父子层级；分组标题贴齐抽屉左沿，子项文字与标题文字对齐。
-      const supplyHeading = page.getByRole("button", { name: "产销协同", exact: true });
-      await supplyHeading.waitFor();
-      assert.equal(await supplyHeading.getAttribute("aria-expanded"), "true");
-      await page.getByRole("button", { name: "产销协同工作台", exact: true }).waitFor();
+      const planHeading = menu.getByRole("button", { name: "计划管理", exact: true });
+      await planHeading.waitFor();
+      assert.equal(await planHeading.getAttribute("aria-expanded"), "true");
+      await menu.getByRole("button", { name: "销售计划", exact: true }).waitFor();
+      await expect(menu.getByRole("button", { name: "产销协同工作台", exact: true })).toHaveCount(
+        0,
+      );
       const menuIndent = await page.evaluate(() => {
         const workspace = Array.from(document.querySelectorAll("button")).find(
           (item) => item.textContent?.trim() === "业务工作台",

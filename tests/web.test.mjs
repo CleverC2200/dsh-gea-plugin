@@ -5,6 +5,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { profile } from "./profile.mjs";
 import {
   openSalesPlan,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+  salesPlanFrame,
   openWorkbenchPage,
   salesPlanFrameElement,
 } from "./fixtures/business-page.mjs";
@@ -35,6 +38,7 @@ test(
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess([["gea-proof", "销售计划"]]),
       config: (base) => ({
         environment: "test",
         geaEnvironments: {
@@ -148,7 +152,8 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = await openSalesPlan(page);
+    await openRegisteredWorkbenchPage(page, "销售计划");
+    const frame = salesPlanFrame(page);
     try {
       await frame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
       await frame.locator(".gea-login-qr img").waitFor();
