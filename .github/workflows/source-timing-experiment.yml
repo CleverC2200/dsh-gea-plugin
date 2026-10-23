@@ -1,12 +1,12 @@
 name: source-timing-experiment
-run-name: "Timing profile comparison — c5c974667b3e789b2c0fa24391f0a3cf05a83463"
+run-name: "Ordered runner baseline — 27bbb321eb5a6f4f6581ae652743f29481c99842"
 
 on:
   push:
     branches: [codex/gea-ci-timing-experiment-20261023]
 
 env:
-  SOURCE_HEAD_SHA: c5c974667b3e789b2c0fa24391f0a3cf05a83463
+  SOURCE_HEAD_SHA: 27bbb321eb5a6f4f6581ae652743f29481c99842
   SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: c5c974667b3e789b2c0fa24391f0a3cf05a83463
+          ref: 27bbb321eb5a6f4f6581ae652743f29481c99842
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -83,7 +83,7 @@ jobs:
         run: |
           node scripts/source-quality.mjs --phase affected-plan
           node scripts/source-check-shards.mjs --matrix .runtime/source-checks-plan.json
-      - name: Require unchanged comparison test selection
+      - name: Require all original comparison tests plus selected control regressions
         run: |
           node --input-type=module <<'NODE'
           import {readFileSync} from 'node:fs';
@@ -92,9 +92,9 @@ jobs:
           import {selectPlatformTests} from './scripts/ci-platform-tests.mjs';
           const plan=JSON.parse(readFileSync('.runtime/source-checks-plan.json'));
           const files=selectPlatformTests(plan,'linux').files.sort();
-          assert.equal(files.length,160);
-          assert.equal(createHash('sha256').update(JSON.stringify(files)).digest('hex'),'adc60ee4e53925877a8947e7927e9eba811c605b0b846546546b93aa3e274b08');
-          console.log(JSON.stringify({sameReferenceSelection:true,files:files.length}));
+          const reference=["scripts/build.test.mjs","scripts/page-interaction-package.test.mjs","scripts/plugin-package-version.test.mjs","scripts/plugin-reception.test.mjs","scripts/quality-docs.test.mjs","scripts/quality-prepared-inputs.test.mjs","scripts/quality-shards.test.mjs","scripts/quality-test-timings.test.mjs","scripts/quality-upstreams.test.mjs","scripts/quality-workbench.test.mjs","scripts/quality-worker-control.test.mjs","scripts/quality-worker-inputs.test.mjs","scripts/quality.test.mjs","scripts/run-quality-ci-stages.test.mjs","scripts/run-quality-ci.test.mjs","scripts/runtime-environment.test.mjs","scripts/source-check-shards.test.mjs","tests/action-error-copy-web.test.mjs","tests/action-errors.test.mjs","tests/agent-tools.test.mjs","tests/aionui.test.mjs","tests/api-log-web.test.mjs","tests/approval-batch-selection-web.test.mjs","tests/approval-draft-web.test.mjs","tests/approval-notification-decoupled.test.mjs","tests/approval-permissions.test.mjs","tests/approval-roles-refresh-web.test.mjs","tests/approval-visibility-web.test.mjs","tests/aps-mock-reception.test.mjs","tests/aps-sql-consumer.test.mjs","tests/auth.test.mjs","tests/authorized-cube-loop.test.mjs","tests/batch-province-outcome-web.test.mjs","tests/branch-stock-ability-web.test.mjs","tests/branch-stock-agent.test.mjs","tests/branch-stock-context-text.test.mjs","tests/branch-stock-export-context.test.mjs","tests/branch-stock-identity-owner-web.test.mjs","tests/branch-stock-lifecycle-web.test.mjs","tests/branch-stock-upgrade-web.test.mjs","tests/branch-stock-web.test.mjs","tests/catalog-scene-input.test.mjs","tests/category-plan-page.test.mjs","tests/client-shell-feedback.test.mjs","tests/composer-stats-placement.test.mjs","tests/composer-stats-web.test.mjs","tests/core-default-slots-web.test.mjs","tests/correction-resubmit-web.test.mjs","tests/correction-web.test.mjs","tests/current-startup-web.test.mjs","tests/dealer-prompt.test.mjs","tests/deployment-mcp.test.mjs","tests/deployment-service-account.test.mjs","tests/detail-budget.test.mjs","tests/detail-summary-web.test.mjs","tests/details.test.mjs","tests/direct-model.test.mjs","tests/disabled-model-resource.test.mjs","tests/draft-host.test.mjs","tests/environments.test.mjs","tests/evidence-budget-stop.test.mjs","tests/explicit-source-contract.test.mjs","tests/gea-messages.test.mjs","tests/gea-model-context.test.mjs","tests/gea-model-core.test.mjs","tests/gea-model-identity.test.mjs","tests/gea-model-idle.test.mjs","tests/gea-model.test.mjs","tests/gea-reasoning-effort.test.mjs","tests/gea-reasoning-profile.test.mjs","tests/gea-reasoning.test.mjs","tests/gea-stream.test.mjs","tests/genui-source-web.test.mjs","tests/global-identity-error-web.test.mjs","tests/group-selection-web.test.mjs","tests/host-config.test.mjs","tests/html-client-first-handshake.test.mjs","tests/html-client-pages.test.mjs","tests/html-identity-discovery-web.test.mjs","tests/html-plugin-public-resources.test.mjs","tests/html-self-report-web.test.mjs","tests/html-shared-theme-web.test.mjs","tests/inline-draft-status-web.test.mjs","tests/launch.test.mjs","tests/lifecycle.test.mjs","tests/logout.test.mjs","tests/mcp-evidence-loop.test.mjs","tests/mock-validation-execution.test.mjs","tests/model.test.mjs","tests/month-aggregation-context-web.test.mjs","tests/mps-plan-page.test.mjs","tests/native-page-identity-web.test.mjs","tests/native-reference-authority.test.mjs","tests/native-status-projection-web.test.mjs","tests/navigation-catalog-rpc.test.mjs","tests/notifications.test.mjs","tests/ordinary-profile-startup.test.mjs","tests/page-interaction-web.test.mjs","tests/page-interaction-workbenches.test.mjs","tests/page-reference-columns-web.test.mjs","tests/page-reference-identity-web.test.mjs","tests/page-reference-reload-web.test.mjs","tests/partial-evidence.test.mjs","tests/pending-adjustments-web.test.mjs","tests/plugin-sql-delegation-expiry.test.mjs","tests/plugin-update-detail.browser.mjs","tests/plugin-update-list.browser.mjs","tests/preset-modes.test.mjs","tests/profile-before-start-cleanup.test.mjs","tests/profile-cube-boundary.test.mjs","tests/profile-lifecycle.test.mjs","tests/profile-window.test.mjs","tests/progress-column-web.test.mjs","tests/prompt-qa-regression.test.mjs","tests/prompt-v2.test.mjs","tests/published-runtime.test.mjs","tests/read-paging.test.mjs","tests/receipt-classification.test.mjs","tests/receipt.test.mjs","tests/regional-plan-page.test.mjs","tests/reject-dialog-close-web.test.mjs","tests/resubmit-host.test.mjs","tests/resubmit-web.test.mjs","tests/returned-resubmit-web.test.mjs","tests/returned-review-reject-web.test.mjs","tests/returned-review-roles-web.test.mjs","tests/role-approval-host.test.mjs","tests/role-visible-permission-web.test.mjs","tests/safety-stock-prompt.test.mjs","tests/sales-readonly-host.test.mjs","tests/sales-result-runtime.test.mjs","tests/save-host.test.mjs","tests/save-web.test.mjs","tests/selection.test.mjs","tests/settings-nav-order-web.test.mjs","tests/shared-theme-native-web.test.mjs","tests/shared-theme-source-web.test.mjs","tests/sidebar-source-web.test.mjs","tests/source-assembly.test.mjs","tests/source-combination.test.mjs","tests/source-composition.test.mjs","tests/source-selection-start.test.mjs","tests/source-update-web.test.mjs","tests/source-update.test.mjs","tests/split-declarations-web.test.mjs","tests/sql-read-limit.test.mjs","tests/stage-lane-web.test.mjs","tests/stage-progress-detail-web.test.mjs","tests/v16-visual.test.mjs","tests/v16-web.test.mjs","tests/variance-color-web.test.mjs","tests/verify-workbench.test.mjs","tests/web.test.mjs","tests/window-launch-admission.test.mjs","tests/workbench-boot.test.mjs","tests/workbench-contract-runner.test.mjs","tests/workbench-host.test.mjs","tests/workbench-status-identity-race-web.test.mjs","tests/workbench-update-bridge.test.mjs","tests/workflow-config.test.mjs"];
+          assert.ok(reference.every(file=>files.includes(file)));
+          console.log(JSON.stringify({allReferenceTestsRetained:true,files:files.length,selectionSha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')}));
           NODE
       - name: Keep preparation-free selection and cost
         if: always() && steps.plan.outputs.engineering == 'true'
@@ -128,7 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: c5c974667b3e789b2c0fa24391f0a3cf05a83463
+          ref: 27bbb321eb5a6f4f6581ae652743f29481c99842
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -337,7 +337,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: c5c974667b3e789b2c0fa24391f0a3cf05a83463
+          ref: 27bbb321eb5a6f4f6581ae652743f29481c99842
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
