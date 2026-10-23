@@ -1,12 +1,12 @@
 name: source-timing-experiment
-run-name: "Ordered runner baseline — 27bbb321eb5a6f4f6581ae652743f29481c99842"
+run-name: "Ordered runner baseline — 612d913d68eef182653f70397492d14d84776773"
 
 on:
   push:
     branches: [codex/gea-ci-timing-experiment-20261023]
 
 env:
-  SOURCE_HEAD_SHA: 27bbb321eb5a6f4f6581ae652743f29481c99842
+  SOURCE_HEAD_SHA: 612d913d68eef182653f70397492d14d84776773
   SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 27bbb321eb5a6f4f6581ae652743f29481c99842
+          ref: 612d913d68eef182653f70397492d14d84776773
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -128,7 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 27bbb321eb5a6f4f6581ae652743f29481c99842
+          ref: 612d913d68eef182653f70397492d14d84776773
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -337,7 +337,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 27bbb321eb5a6f4f6581ae652743f29481c99842
+          ref: 612d913d68eef182653f70397492d14d84776773
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
