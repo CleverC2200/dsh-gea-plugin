@@ -141,7 +141,8 @@ test(
     await page.unroute("**/api/gea-proof/logout");
     await page.getByRole("menuitem", { name: "退出登录", exact: true }).click();
     for (const tab of [page, second]) {
-      const loginFrame = tab === page ? await openSalesPlan(tab) : salesPlanFrame(tab);
+      if (tab === page) await openRegisteredWorkbenchPage(tab, "销售计划");
+      const loginFrame = salesPlanFrame(tab);
       await expect(
         loginFrame.getByRole("button", { name: "刷新二维码", exact: true }),
       ).toBeVisible();
