@@ -125,7 +125,12 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-test-node-runner\\.mjs$",
-      "tests": ["scripts/quality-test-execution.test.mjs", "scripts/quality-test-reporter.test.mjs"]
+      "tests": [
+        "scripts/quality-test-execution.test.mjs",
+        "scripts/quality-test-reporter.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
