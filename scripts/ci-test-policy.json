@@ -124,6 +124,11 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:ci-core-policy\\.(?:json|mjs)|supported-cores\\.json)$",
+      "tests": ["scripts/windows-complete-local/input.test.mjs", "scripts/delivery-events.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^src/capability/html-mcp(?:\\.mjs|\\.d\\.mts)$",
       "tests": ["tests/html-resource-contract.test.mjs", "scripts/deliver-packages.test.mjs"]
     },
@@ -417,7 +422,8 @@
       "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
       "tests": [
         "scripts/delivery-events.test.mjs",
-        "scripts/windows-complete-local/core-cache.test.mjs"
+        "scripts/windows-complete-local/core-cache.test.mjs",
+        "scripts/windows-complete-local/input.test.mjs"
       ]
     },
     {
@@ -542,6 +548,7 @@
     "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
+    "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
     "scripts/run-quality-ci.test.mjs": ["yaml"]
   }

@@ -3,8 +3,11 @@ import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { companyPackageNames, comparePluginVersions } from "../../src/shared/plugin-release.mjs";
+import { ciCores } from "../ci-core-policy.mjs";
+import { assertMacBaseline } from "../mac-complete-local/baseline.mjs";
 
-export const desktopCoreHead = "8cfb899ccf21d3662421b99b5f4627842ef712ea";
+const desktopCore = ciCores("required")[0];
+export const desktopCoreHead = desktopCore.head;
 export const coreArtifactPaths = [
   "package.json",
   "lib/main.js",
@@ -53,9 +56,11 @@ export async function readDesktopInput(file, sourceSha) {
     throw Error("DESKTOP_VERSION_INVALID");
   }
   const core = input.seed.core;
+  if (core?.head !== desktopCore.head || core?.version !== desktopCore.version)
+    throw Error(
+      `DESKTOP_CORE_POLICY_MISMATCH: seed.core must use ${desktopCore.head} (${desktopCore.version}) from scripts/ci-core-policy.json required; regenerate the desktop input and Core artifact proof`,
+    );
   if (
-    core?.head !== desktopCoreHead ||
-    core.version !== "0.2.0-rc.2" ||
     !Array.isArray(core.artifacts) ||
     core.artifacts.length !== coreArtifactPaths.length ||
     new Set(core.artifacts.map((row) => row?.path)).size !== coreArtifactPaths.length ||
@@ -137,15 +142,21 @@ export function readDesktopPluginSource(input, checkout) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
-    options: { input: { type: "string" }, "source-sha": { type: "string" } },
+    options: {
+      input: { type: "string" },
+      "source-sha": { type: "string" },
+      "mac-baseline": { type: "boolean" },
+    },
   });
   const input = await readDesktopInput(values.input, values["source-sha"]);
+  if (values["mac-baseline"]) assertMacBaseline(input.seed.core.head);
   console.log(
     JSON.stringify({
       status: "input-validated",
       built: false,
       desktopVersion: input.desktopVersion,
       geaSourceSha: input.geaSourceSha,
+      core: { head: input.seed.core.head, version: input.seed.core.version },
       packages: input.seed.packages,
     }),
   );
