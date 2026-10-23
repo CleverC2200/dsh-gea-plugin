@@ -343,6 +343,12 @@
     },
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^desktop/company-(?:archives|bootstrap|gea-refresh)\\.mjs$",
+      "tests": ["scripts/desktop-gea-upgrade.test.mjs"],
+      "sourceTests": ["scripts/desktop-gea-upgrade.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^desktop/",
       "tests": ["tests/window-launch-admission.test.mjs"]
     },

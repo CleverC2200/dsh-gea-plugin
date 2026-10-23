@@ -62,6 +62,26 @@ test("desktop wrapper children have one execution owner instead of a second inde
   assert.equal(plan.executedBy[child], owner);
 });
 
+test("bundled suite source changes select their complete upgrade owner once and keep full window admission in integration checks", (t) => {
+  const owner = "scripts/desktop-gea-upgrade.test.mjs";
+  const fixture = resourceImpactFixture(t, [owner], { desktop: true });
+  for (const file of [
+    "desktop/company-archives.mjs",
+    "desktop/company-bootstrap.mjs",
+    "desktop/company-gea-refresh.mjs",
+  ])
+    fixture.change(
+      fixture.own,
+      file,
+      readFileSync(new URL("../" + file, import.meta.url), "utf8") + "\n",
+    );
+  const source = fixture.plan({ sourceOnly: true });
+  assert.deepEqual(source.files, [owner]);
+  for (const change of source.changes)
+    assert.deepEqual(source.reasons[`${change.repo}/${change.file}`], [owner]);
+  assert.ok(fixture.plan().files.includes("tests/window-launch-admission.test.mjs"));
+});
+
 test("a docs-only change declares no source, browser or runtime obligation", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "README.md", "Changed documentation\n");
@@ -302,6 +322,7 @@ function resourceImpactFixture(t, authoredFiles = [], { desktop = false } = {}) 
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
   for (const file of [
     ...policy.required,
+    ...Object.keys(policy.sourceFixtures ?? {}),
     ...(policy.versionTests ?? []),
     ...policy.tests.filter((file) => file.startsWith("desktop/")),
     ...policy.rules.flatMap((rule) => rule.tests),
@@ -334,8 +355,14 @@ function resourceImpactFixture(t, authoredFiles = [], { desktop = false } = {}) 
       put(entry.path, file, value);
       entry.head = commit(entry.path);
     },
-    plan: () =>
-      selectCiTests({ repositories, repo: own.repo, base, testOwners: policy.testOwners }),
+    plan: (options = {}) =>
+      selectCiTests({
+        repositories,
+        repo: own.repo,
+        base,
+        testOwners: policy.testOwners,
+        ...options,
+      }),
   };
 }
 
