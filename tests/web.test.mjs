@@ -273,31 +273,35 @@ test(
           children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
         JSON.stringify(navRows),
       );
-      // Current AI workbench card keeps left-aligned content inside its inset button.
+      // The current AI workbench entry retains both its identity icon and new-session action.
       const newSession = await page
         .getByRole("button")
         .filter({ hasText: "AI工作台" })
         .evaluate((button) => {
-          const icon = button.querySelector("svg, img");
+          const icon = button.querySelector(".gea-ai-entry-icon svg");
+          const plus = button.querySelector(".gea-ai-entry-plus");
+          const bounds = button.getBoundingClientRect();
           return {
-            justify: getComputedStyle(button).justifyContent,
             display: getComputedStyle(button).display,
-            textAlign: getComputedStyle(button).textAlign,
-            hit: Math.round(button.getBoundingClientRect().x),
-            icon: icon ? Math.round(icon.getBoundingClientRect().x) : null,
-            iconRight: icon?.getBoundingClientRect().right,
-            labelLeft: button.querySelector(".gea-ai-entry-label")?.getBoundingClientRect().left,
+            align: getComputedStyle(button).alignItems,
+            iconWidth: icon?.getBoundingClientRect().width,
+            plusWidth: plus?.getBoundingClientRect().width,
+            contained: Boolean(
+              icon &&
+              plus &&
+              icon.getBoundingClientRect().left > bounds.left &&
+              plus.getBoundingClientRect().right < bounds.right &&
+              icon.getBoundingClientRect().right < plus.getBoundingClientRect().left,
+            ),
           };
         });
-      assert.equal(newSession.display, "flex", JSON.stringify(newSession));
-      assert.equal(newSession.textAlign, "left", JSON.stringify(newSession));
-      assert.ok(["normal", "flex-start"].includes(newSession.justify), JSON.stringify(newSession));
-      assert.ok(
-        newSession.hit >= navigationBox.x &&
-          newSession.icon > newSession.hit &&
-          newSession.labelLeft > newSession.iconRight,
-        JSON.stringify(newSession),
-      );
+      assert.deepEqual(newSession, {
+        display: "flex",
+        align: "center",
+        iconWidth: 22,
+        plusWidth: 20,
+        contained: true,
+      });
       assert.equal(await page.locator(".gea-agent-panel").count(), 0);
       assert.equal(await frame.locator("textarea").count(), 0);
       await expect

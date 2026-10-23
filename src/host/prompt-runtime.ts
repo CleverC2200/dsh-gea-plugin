@@ -1,4 +1,5 @@
 import { CURRENT_SHORTAGE_ROUTING, currentShortageResource } from "./current-shortage-contract.ts";
+import { BRANCH_INVENTORY_ROUTING } from "./branch-inventory-tool.ts";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 import { sessionConsumer, assertSessionResourceAvailable } from "./business-identity.ts";
 import { businessToolDisplay } from "./business-tool-display.ts";
@@ -332,7 +333,10 @@ export function mountBusinessPrompts(
                   ? mcpAccess.consumerCode
                   : null,
             mcpAccess,
-            independentQuery: { available: independentQueryAvailable, pageRequired: false },
+            independentQuery: {
+              available: independentQueryAvailable,
+              pageRequired: false,
+            },
             recovery,
             pageBound: agent ? pageBound(agent) : false,
             authenticated: business.status().authenticated === true,
@@ -452,7 +456,17 @@ export function mountBusinessPrompts(
           }),
         );
       const sections = currentShortageResource(profile.consumerCode)
-        ? [...assembled.sections, { name: "gea-current-shortage", text: CURRENT_SHORTAGE_ROUTING }]
+        ? [
+            ...assembled.sections,
+            {
+              name: "gea-current-shortage",
+              text:
+                CURRENT_SHORTAGE_ROUTING +
+                (profile.consumerCode === "branch-inventory"
+                  ? "\n\n" + BRANCH_INVENTORY_ROUTING
+                  : ""),
+            },
+          ]
         : assembled.sections;
       const measurement = promptMeasurement(
         sections.map((section) => section.text).join("\n\n"),

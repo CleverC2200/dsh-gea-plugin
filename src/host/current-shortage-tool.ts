@@ -19,7 +19,9 @@ const quantity = (value: unknown): boolean =>
   Number.isFinite(Number(value));
 
 /** Failed or partially authorized queries never become a zero-valued business answer. */
-export function currentShortageResult(input: unknown, detail: boolean, page: number) {
+export function currentShortageResult(input: unknown, view: boolean | "locations", page: number) {
+  const detail = view === true;
+  const locations = view === "locations";
   const result = record(input);
   if (!result) throw Error("CURRENT_SHORTAGE_RESULT_INVALID");
   if (result.success === false) return result;
@@ -36,6 +38,7 @@ export function currentShortageResult(input: unknown, detail: boolean, page: num
   ];
   if (detail)
     required.push("location_code", "location_name", "sku", "page_scope_total", "page_row_present");
+  if (locations) required.push("location_code", "location_name", "base", "warehouse_code");
   if (
     !Array.isArray(columns) ||
     required.some((name) => !columns.includes(name)) ||
@@ -62,6 +65,21 @@ export function currentShortageResult(input: unknown, detail: boolean, page: num
   )
     throw Error("CURRENT_SHORTAGE_INCOMPLETE");
   let total = present.length;
+  if (locations) {
+    if (
+      result.hasMorePages === true ||
+      (result.totalRowCount != null && Number(result.totalRowCount) !== present.length) ||
+      present.some((row) => !row.location_code || !row.location_name) ||
+      new Set(present.map((row) => JSON.stringify([row.location_type, row.location_code]))).size !==
+        present.length
+    )
+      throw Error("CURRENT_SHORTAGE_INCOMPLETE");
+    present.sort(
+      (a, b) =>
+        Number(b.shortage) - Number(a.shortage) ||
+        String(a.location_code).localeCompare(String(b.location_code)),
+    );
+  }
   if (detail) {
     const count = rows[0]?.page_scope_total;
     if (!quantity(count) || !Number.isSafeInteger(Number(count)) || Number(count) < 0)
@@ -78,7 +96,11 @@ export function currentShortageResult(input: unknown, detail: boolean, page: num
     rows: present,
     total,
     dataStatus: present.length ? "ok" : "empty",
-    coverage: detail ? "location-sku-page" : "complete-scope-summary",
+    coverage: detail
+      ? "location-sku-page"
+      : locations
+        ? "complete-location-ranking"
+        : "complete-scope-summary",
     unit: "箱",
     temporalScope: "current-state",
     orderShortageCount: null,
@@ -101,11 +123,18 @@ export function registerCurrentShortageTool(
         parameters: {
           view: {
             type: "string",
-            enum: ["summary", "detail"],
-            description: "默认summary，完整范围汇总；detail为地点+SKU分页。",
+            enum: ["summary", "locations", "detail"],
+            description:
+              "默认summary为完整范围汇总；locations按当前缺货量降序返回完整地点排行；detail为地点+SKU分页。",
           },
-          base: { type: "string", description: "基地名称，如郑州；省略为当前Agent授权范围。" },
-          warehouseCode: { type: "string", description: "分仓编码；不填仓库名称。" },
+          base: {
+            type: "string",
+            description: "基地名称，如郑州；省略为当前Agent授权范围。",
+          },
+          warehouseCode: {
+            type: "string",
+            description: "分仓编码；不填仓库名称。",
+          },
           sku: { type: "string", description: "商品编码。" },
           category: { type: "string", description: "源中的产品大类名称。" },
           page: { type: "integer", description: "detail页码，1起，每页10条。" },
@@ -121,7 +150,11 @@ export function registerCurrentShortageTool(
         },
         timeoutMs: Math.max(business.config.requestTimeoutMs, 60000),
         isConcurrencySafe: () => true,
-        presentCall: (args) => ({ card: "generic", title: "GEA · 当前订单与缺货", rawInput: args }),
+        presentCall: (args) => ({
+          card: "generic",
+          title: "GEA · 当前订单与缺货",
+          rawInput: args,
+        }),
         async execute(args, exec) {
           if (!exec.agent) throw Error("GEA_BUSINESS_SESSION_REQUIRED");
           const session = exec.agent.id;
@@ -145,6 +178,7 @@ export function registerCurrentShortageTool(
           ]);
           try {
             const detail = args.view === "detail",
+              locations = args.view === "locations",
               page = args.page ?? 1;
             if (!Number.isSafeInteger(page) || page < 1 || page > 1000000)
               throw Error("CURRENT_SHORTAGE_PAGE_INVALID");
@@ -158,7 +192,11 @@ export function registerCurrentShortageTool(
             const result = await readConfiguredHtmlQuery(
               resource,
               {
-                queryId: detail ? "current-shortage.detail" : "current-shortage.summary",
+                queryId: detail
+                  ? "current-shortage.detail"
+                  : locations
+                    ? "current-shortage.locations"
+                    : "current-shortage.summary",
                 parameters,
               },
               business,
@@ -168,7 +206,9 @@ export function registerCurrentShortageTool(
             await assertSessionResourceAvailable(ctx, session, signal);
             if (sessionConsumer(ctx, business, session) !== consumer)
               throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
-            return JSON.stringify(currentShortageResult(result, detail, page));
+            return JSON.stringify(
+              currentShortageResult(result, locations ? "locations" : detail, page),
+            );
           } finally {
             unwatch();
           }

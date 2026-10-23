@@ -70,10 +70,21 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
       /Local receipt/,
     );
     const input = page.locator(`${root} [contenteditable="true"]`).first();
-    await input.click();
-    await input.type("1");
-    await page.keyboard.press("Enter");
-    await expect(page.locator(`${root} ${contract.stats}`).first()).toBeVisible();
+    await input.fill("1");
+    await input.press("Enter");
+    try {
+      await expect(input).toBeEmpty();
+      await expect(page.locator(`${root} ${contract.stats}`).first()).toBeVisible();
+    } catch (error) {
+      t.diagnostic(
+        JSON.stringify({
+          sessionId,
+          conversation: (await conversation.innerText()).slice(-1800),
+          input: await input.textContent(),
+        }),
+      );
+      throw error;
+    }
     await expect(conversation).toHaveAttribute("data-conversation-session", sessionId);
     await expect(input).toBeEditable();
     return sessionId;
