@@ -144,6 +144,46 @@ async function createProfile(t, options) {
             success: true,
             result: { success: true, token: "fixture-gea-token" },
           });
+        else if (path.endsWith("/aiportal/agent/market"))
+          reply({
+            success: true,
+            code: 200,
+            result: [
+              {
+                id: "market-base",
+                agentCode: "base-safety-stock",
+                agentName: "基地库存",
+                businessDomain: "inventory",
+              },
+              {
+                id: "market-sales",
+                agentCode: "sales_forecast",
+                agentName: "销售计划",
+                businessDomain: "plan",
+              },
+              {
+                id: "market-branch",
+                agentCode: "branch-inventory",
+                agentName: "分仓库存",
+                businessDomain: "inventory",
+              },
+              {
+                id: "market-chain",
+                agentCode: "full-chain-inventory",
+                agentName: "全链库存工作台",
+                businessDomain: "inventory",
+              },
+            ],
+          });
+        else if (path.endsWith("/sys/dict/getDictItems/business_domain"))
+          reply({
+            success: true,
+            code: 0,
+            result: [
+              { value: "plan", text: "计划管理", description: null },
+              { value: "inventory", text: "库存管理", description: null },
+            ],
+          });
         else if (path.endsWith("/getUserInfo"))
           reply({
             success: true,

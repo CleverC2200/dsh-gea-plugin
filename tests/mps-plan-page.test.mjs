@@ -2,13 +2,19 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openBusinessPage, htmlFrameElement } from "./fixtures/business-page.mjs";
+import {
+  openBusinessPage,
+  openRegisteredWorkbenchPage,
+  prepareWorkbenchPageAccess,
+  htmlFrameElement,
+} from "./fixtures/business-page.mjs";
 
 test(
-  "主生产计划（MPS） is its own menu page and reuses the 主计划参谋 assistant",
+  "registered 主生产计划（MPS） page reuses its assistant and preserves the Core Session",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t, {
+      beforeStart: prepareWorkbenchPageAccess([["plan-category-production", "主生产计划（MPS）"]]),
       config: (base) => ({
         environment: "test",
         geaEnvironments: {
@@ -42,10 +48,9 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
 
-    // 「主生产计划（MPS）(开发中)」不再是灰色占位，而是挂了「月计划协调数字人」原型的可点页面。
     const entry = page.locator('[data-gea-business-entry="plan-category-production"]');
-    await openBusinessPage(page, "plan-category-production");
-    await expect(entry).toBeEnabled();
+    await openRegisteredWorkbenchPage(page, "主生产计划（MPS）");
+    await expect(entry).toHaveCount(0);
     await page
       .locator(".agent-workbench-document")
       .getByRole("button", { name: "新建对话", exact: true })
@@ -95,7 +100,7 @@ test(
     const regionalFrame = htmlFrameElement(page, "gea-regional-plan");
     await expect(regionalFrame).toBeVisible();
     await expect(frame).toBeHidden();
-    await openBusinessPage(page, "plan-category-production");
+    await openRegisteredWorkbenchPage(page, "主生产计划（MPS）");
     await expect(frame).toBeVisible();
     await expect(regionalFrame).toBeHidden();
     await expect(sessionContent).toHaveAttribute("data-conversation-session", sessionId);
