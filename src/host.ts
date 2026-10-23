@@ -464,6 +464,7 @@ export async function apply(
     return attempt.result;
   }
   const endpoints = [
+    "navigation/catalog",
     "navigation/poll",
     "navigation/finish",
     "navigation/retry",
@@ -513,6 +514,9 @@ export async function apply(
             const payload = object(await request.json());
             let value: unknown;
             switch (endpoint) {
+              case "navigation/catalog":
+                value = await business.navigationCatalog(payload, request.signal);
+                break;
               case "navigation/poll":
               case "navigation/retry":
                 if (Object.keys(payload).length) throw Error("NAVIGATION_REQUEST_INVALID");

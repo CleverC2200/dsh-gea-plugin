@@ -20,6 +20,8 @@ import { SalesPlanTransactions } from "./sales-plan-transactions.ts";
 import { object, text, keys } from "./payload.ts";
 export { object } from "./payload.ts";
 import { GatewayRequests } from "./gateway-requests.ts";
+import { navigationAgents, navigationDomains } from "./navigation-catalog.ts";
+import type { BusinessNavigationCatalog } from "@cleverc2200/dsh-agent-workbench/client";
 import { avatarUrl } from "./avatar.ts";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -843,6 +845,8 @@ export class Business {
         if (identity && this.auth?.token === identity.token) this.clearLogin(true);
       },
       decode: (raw, path) => {
+        if (path === "/aiportal/agent/market" || path === "/sys/dict/getDictItems/business_domain")
+          return object(JSON.parse(raw));
         const data = object(parseJson(raw, salesPlanDimensionsPath(path)));
         return { ...data, result: decodeSalesPlanResult(path, data.result) };
       },
@@ -1477,6 +1481,35 @@ export class Business {
 
   salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     return this.salesTransactions.action(payload, caller);
+  }
+
+  async navigationCatalog(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+  ): Promise<BusinessNavigationCatalog> {
+    this.assertOperation("navigation/catalog");
+    keys(payload, []);
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    const agents = navigationAgents(
+      await this.gatewayRequests.readResult("/aiportal/agent/market", auth, signal),
+    );
+    let domains: BusinessNavigationCatalog["domains"];
+    try {
+      const items = navigationDomains(
+        await this.gatewayRequests.readResult(
+          "/sys/dict/getDictItems/business_domain",
+          auth,
+          signal,
+        ),
+      );
+      domains = { kind: "available", items };
+    } catch {
+      signal.throwIfAborted();
+      domains = { kind: "unavailable", message: "业务分类暂不可用" };
+    }
+    signal.throwIfAborted();
+    return { agents, domains };
   }
 
   /** 导航使用当前用户与身份取消信号，原始 Reference 不进入 API 正文日志中心。 */

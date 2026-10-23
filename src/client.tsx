@@ -1,5 +1,5 @@
 import { mountPluginUpdatesClient } from "./plugin-detail-updates.tsx";
-import type {} from "@cleverc2200/dsh-agent-workbench/client";
+import type { BusinessNavigationCatalog } from "@cleverc2200/dsh-agent-workbench/client";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
@@ -18,6 +18,18 @@ export function apply(ctx: Context): void {
     readScope: identity.readScope,
   });
   ctx.effect(() => identity.start());
+  ctx.provide("businessNavigation", {
+    read: async (signal) => {
+      try {
+        const catalog = await request<BusinessNavigationCatalog>("navigation/catalog", {}, signal);
+        signal.throwIfAborted();
+        return catalog;
+      } catch (error) {
+        if (!signal.aborted) await identity.refresh(signal).catch(() => {});
+        throw error;
+      }
+    },
+  });
   ctx.provide("businessAccount", {
     refreshIdentity: identity.refresh,
     getSnapshot: identity.getSnapshot,
@@ -64,7 +76,12 @@ async function request<T>(
   });
   const result = await response.json();
   if (!response.ok || result.ok !== true)
-    throw Error(result.error?.message ?? result.error?.code ?? "GEA_REQUEST_FAILED");
+    throw Object.assign(
+      Error(result.error?.message ?? result.error?.code ?? "GEA_REQUEST_FAILED"),
+      {
+        code: result.error?.code ?? "GEA_REQUEST_FAILED",
+      },
+    );
   return result.value as T;
 }
 
