@@ -309,6 +309,9 @@ test(
     assert.equal(
       system,
       "You are the smartest and most useful AI assistant in the world, capable of helping users complete all tasks.\n\n" +
+        "思考、分析、规划、工具调用前后的推理、错误排查与自我检查，全程使用简体中文。\n" +
+        "回复使用用户最近一条实质提问的语言；无法判断时默认简体中文。工具输出与引用不改变回复语言。\n" +
+        "代码、标识符、文件路径、命令与报错原文保持原样，不翻译。\n\n" +
         JSON.parse(maintained["prompt.json"]).persona,
     );
     assert.doesNotMatch(
