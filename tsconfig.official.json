@@ -36,9 +36,7 @@
       "@deepseek-ai/cosmokit": [
         "../../official-latest-standard/vendor/cosmokit/lib/types/index.d.ts"
       ],
-      "@deepseek-ai/cordis": [
-        "../../official-latest-standard/vendor/cordis/lib/types/index.d.ts"
-      ],
+      "@deepseek-ai/cordis": ["../../official-latest-standard/vendor/cordis/lib/types/index.d.ts"],
       "@deepseek-ai/dsh/profile-boot": [
         "../../official-latest-standard/apps/cli/lib/types/profile-boot.d.ts"
       ],
@@ -804,9 +802,7 @@
       "@deepseek-ai/dsh-fs-local": [
         "../../official-latest-standard/packages/fs/fs-local/lib/types/index.d.ts"
       ],
-      "@deepseek-ai/dsh-fs": [
-        "../../official-latest-standard/packages/fs/fs/lib/types/index.d.ts"
-      ],
+      "@deepseek-ai/dsh-fs": ["../../official-latest-standard/packages/fs/fs/lib/types/index.d.ts"],
       "@deepseek-ai/dsh-message-feedback": [
         "../../official-latest-standard/packages/feedback/message-feedback/lib/types/index.d.ts"
       ],
@@ -1755,12 +1751,8 @@
       "@deepseek-ai/dsh-acp": [
         "../../official-latest-standard/packages/acp/acp/lib/types/index.d.ts"
       ],
-      "@cleverc2200/dsh-agent-workbench": [
-        "../dsh-agent-workbench/lib/types/host.d.ts"
-      ],
-      "@cleverc2200/dsh-agent-workbench/client": [
-        "../dsh-agent-workbench/lib/types/client.d.ts"
-      ],
+      "@cleverc2200/dsh-agent-workbench": ["../dsh-agent-workbench/lib/types/host.d.ts"],
+      "@cleverc2200/dsh-agent-workbench/client": ["../dsh-agent-workbench/lib/types/client.d.ts"],
       "dsh-agent-manage/business-resources": [
         "../dsh-agent-manage/lib/types/runtime/business-resources.d.ts"
       ],
