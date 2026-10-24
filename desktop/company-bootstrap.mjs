@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, writeFile, lstat, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, lstat, rm, mkdtemp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
@@ -168,7 +168,7 @@ export async function refreshCompanyCore({ root, seed, home, apply = true }) {
   );
 }
 
-async function assertCompletedInstallation(record, profile) {
+async function assertCompletedInstallation(record, profile, { allowInterrupted = false } = {}) {
   let receipt;
   try {
     receipt = await json(join(record, "receipt.json"));
@@ -177,6 +177,17 @@ async function assertCompletedInstallation(record, profile) {
     throw Error("GEA_COMPANY_INSTALL_INCOMPLETE", { cause: error });
   }
   if (receipt?.status === "installed") return receipt;
+  if (
+    allowInterrupted &&
+    receipt?.status === "installing" &&
+    Object.keys(receipt).every((key) => ["status", "packages"].includes(key)) &&
+    Array.isArray(receipt.packages) &&
+    receipt.packages.length === companyPackageNames.length &&
+    companyPackageNames.every(
+      (name) => receipt.packages.filter((item) => item === name).length === 1,
+    )
+  )
+    return receipt;
   try {
     const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
     if (
@@ -404,7 +415,7 @@ export async function installCompanyPackages({
   );
 }
 
-async function normalizeProfileEncoding(root, home) {
+async function normalizeProfileEncoding(root, home, allowInterrupted = false) {
   const profile = join(home, "profiles/desktop");
   const path = join(profile, "package.json");
   const original = await readFile(path).catch((error) => {
@@ -444,9 +455,13 @@ async function normalizeProfileEncoding(root, home) {
   return withFileLock(
     path,
     async () => {
-      await assertCompletedInstallation(join(profile, "gea/bootstrap"), profile);
+      await assertCompletedInstallation(join(profile, "gea/bootstrap"), profile, {
+        allowInterrupted,
+      });
       await assertCompletedGeaRefresh(profile);
-      await assertProfileIdle(profile);
+      await assertProfileIdle(profile, {
+        allowExitedPackageRun: allowInterrupted,
+      });
       if (!(await readFile(path)).equals(original)) throw Error("GEA_REFRESH_PROFILE_CHANGED");
       const entry = await lstat(path);
       if (!entry.isFile() || entry.isSymbolicLink())
@@ -470,11 +485,20 @@ async function normalizeProfileEncoding(root, home) {
   );
 }
 
-export async function bootstrapCompanyProfile({ root, support, seed, home }) {
+export async function bootstrapCompanyProfile({
+  root,
+  support,
+  seed,
+  home,
+  install = installCompanyPackages,
+}) {
   const profile = join(home, "profiles/desktop");
   const record = join(profile, "gea/bootstrap");
-  const receipt = await assertCompletedInstallation(record, profile);
-  const encoding = await normalizeProfileEncoding(root, home);
+  const receipt = await assertCompletedInstallation(record, profile, {
+    allowInterrupted: true,
+  });
+  const recovering = receipt?.status === "installing";
+  const encoding = await normalizeProfileEncoding(root, home, recovering);
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
@@ -485,19 +509,21 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
         !current?.dependencies?.[name] &&
         (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
     );
-  if (!missing.length && receipt?.status !== "failed")
+  if (!missing.length && receipt?.status !== "failed" && !recovering)
     return { status: "existing-profile-preserved", ...encoding };
   const manifest = await readCompanySeed(seed);
   const core = await verifyCompanyCore(root, manifest.core);
   await mkdir(record, { recursive: true, mode: 0o700 });
   const requireLock = createRequire(join(root, "dsh/package.json"));
-  const { withFileLock } = await import(
+  const { withFileLock, writeFileAtomic } = await import(
     pathToFileURL(requireLock.resolve("@deepseek-ai/dsh-atomic-write"))
   );
   return withFileLock(
     join(record, "installation"),
     async () => {
-      const latestReceipt = await assertCompletedInstallation(record, profile);
+      const latestReceipt = await assertCompletedInstallation(record, profile, {
+        allowInterrupted: true,
+      });
       const latest = existsSync(join(profile, "package.json"))
         ? await json(join(profile, "package.json"))
         : undefined;
@@ -508,16 +534,15 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
             !latest?.dependencies?.[name] &&
             (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
         );
+      if (latestReceipt?.status === "installing")
+        missing = manifest.packages.map((row) => row.name);
       if (!missing.length) {
         if (latestReceipt?.status === "failed") throw Error("GEA_COMPANY_INSTALL_INCOMPLETE");
         return { status: "existing-profile-preserved", changed: false };
       }
-      for (const file of [
-        "package.json",
-        "cordis.patch.yml",
-        "pnpm-lock.yaml",
-        "pnpm-workspace.yaml",
-      ]) {
+      for (const file of latestReceipt?.status === "installing"
+        ? []
+        : ["package.json", "cordis.patch.yml", "pnpm-lock.yaml", "pnpm-workspace.yaml"]) {
         if (existsSync(join(profile, file)) && !existsSync(join(record, "before-" + file)))
           await cp(join(profile, file), join(record, "before-" + file), {
             errorOnExist: true,
@@ -544,9 +569,10 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           force: false,
         });
       let operationStarted = false;
+      let disabled = [];
       try {
         const selected = manifest.packages.filter((row) => missing.includes(row.name));
-        await installCompanyPackages({
+        await install({
           root,
           support,
           seed,
@@ -556,14 +582,68 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           store,
           offline: true,
           beforeInstall: async () => {
-            const rejected = await assertCompletedInstallation(record, profile);
-            if (rejected)
+            const rejected = await assertCompletedInstallation(record, profile, {
+              allowInterrupted: true,
+            });
+            if (rejected?.status === "installing") {
+              await assertCompletedGeaRefresh(profile);
+              await assertProfileIdle(profile, { allowExitedPackageRun: true });
+              for (const path of [
+                profile,
+                join(profile, "gea"),
+                record,
+                ...[
+                  "package.json",
+                  "cordis.patch.yml",
+                  "pnpm-lock.yaml",
+                  "pnpm-workspace.yaml",
+                  "gea/bootstrap/receipt.json",
+                  "gea/bootstrap/before-package.json",
+                ].map((file) => join(profile, file)),
+              ]) {
+                const entry = await lstat(path).catch((error) => {
+                  if (error.code === "ENOENT") return null;
+                  throw error;
+                });
+                if (entry?.isSymbolicLink()) throw Error("GEA_COMPANY_INSTALL_UNSAFE_PATH");
+              }
+              const before = existsSync(join(record, "before-package.json"))
+                ? await json(join(record, "before-package.json"))
+                : { dependencies: {} };
+              const current = existsSync(join(profile, "package.json"))
+                ? await json(join(profile, "package.json"))
+                : { dependencies: {} };
+              disabled = selected
+                .filter(
+                  ({ name }) =>
+                    before.dependencies?.[name] &&
+                    current.dependencies?.[name] &&
+                    !current.dsh?.profile?.bundles?.includes(name),
+                )
+                .map(({ name }) => name);
+              const backup = await mkdtemp(join(record, "interrupted-"));
+              for (const file of [
+                "package.json",
+                "cordis.patch.yml",
+                "pnpm-lock.yaml",
+                "pnpm-workspace.yaml",
+              ])
+                if (existsSync(join(profile, file)))
+                  await cp(join(profile, file), join(backup, file), {
+                    force: false,
+                    errorOnExist: true,
+                  });
+              await cp(join(record, "receipt.json"), join(backup, "receipt.json"), {
+                force: false,
+                errorOnExist: true,
+              });
+            } else if (rejected)
               await cp(
                 join(record, "receipt.json"),
                 join(record, "before-store-conflict-retry.json"),
                 { force: false, errorOnExist: true },
               );
-            await writeFile(
+            await writeFileAtomic(
               join(record, "receipt.json"),
               JSON.stringify({ status: "installing", packages: missing }) + "\n",
               { mode: 0o600 },
@@ -574,9 +654,29 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
             const installed = await json(join(profile, "package.json"));
             for (const row of selected) {
               const actual = await json(join(profile, "node_modules", row.name, "package.json"));
+              if (actual.version !== row.version) throw Error("GEA_COMPANY_ACTIVATION_INCOMPLETE");
+            }
+            if (latestReceipt?.status === "installing") {
+              installed.dsh ??= {};
+              installed.dsh.profile ??= {};
+              installed.dsh.profile.bundles = [
+                ...new Set([
+                  ...(installed.dsh.profile.bundles ?? []),
+                  ...selected
+                    .filter(({ name }) => !disabled.includes(name))
+                    .map(({ name }) => name),
+                ]),
+              ];
+              await writeFileAtomic(
+                join(profile, "package.json"),
+                JSON.stringify(installed, null, 2) + "\n",
+                { mode: 0o600 },
+              );
+            }
+            for (const row of selected) {
               if (
-                actual.version !== row.version ||
-                !installed.dsh?.profile?.bundles?.includes(row.name)
+                !installed.dsh?.profile?.bundles?.includes(row.name) &&
+                !disabled.includes(row.name)
               )
                 throw Error("GEA_COMPANY_ACTIVATION_INCOMPLETE");
             }
@@ -621,13 +721,17 @@ export async function bootstrapCompanyProfile({ root, support, seed, home }) {
           changed: true,
           packages: selected.map(({ name, version }) => ({ name, version })),
         };
-        await writeFile(join(record, "receipt.json"), JSON.stringify(result, null, 2) + "\n", {
-          mode: 0o600,
-        });
+        await writeFileAtomic(
+          join(record, "receipt.json"),
+          JSON.stringify(result, null, 2) + "\n",
+          {
+            mode: 0o600,
+          },
+        );
         return result;
       } catch (error) {
         if (operationStarted)
-          await writeFile(
+          await writeFileAtomic(
             join(record, "receipt.json"),
             JSON.stringify({ status: "failed", diagnostic: error.message }) + "\n",
             { mode: 0o600 },
@@ -646,7 +750,11 @@ export async function refreshCompanyStartup({ legacyData, ...options }) {
   });
   const cleanup =
     legacyData && refresh.status !== "pending-restart-preserved"
-      ? await cleanupLegacyGea({ data: legacyData, home: options.home, apply: true })
+      ? await cleanupLegacyGea({
+          data: legacyData,
+          home: options.home,
+          apply: true,
+        })
       : null;
   return { refresh, cleanup };
 }

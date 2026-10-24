@@ -20,6 +20,8 @@ import {
   writeCompanySeedLock,
 } from "./company-bootstrap.mjs";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 test("a relocated seed lock preserves dependency versions and rewrites peer graph paths", () => {
   const old = "file:C:\\Build (company)\\archives\\company.tgz";
@@ -654,5 +656,189 @@ test("BOM normalization leaves failed refreshes, active installs, invalid JSON a
     await assert.rejects(access(join(f.profile, "gea/bootstrap/profile-encoding")), {
       code: "ENOENT",
     });
+  }
+});
+
+async function interruptedProfile(t, { partial = false, active = false } = {}) {
+  const f = await bomProfile(t);
+  await writeFile(join(f.profile, "package.json"), f.manifest);
+  const record = join(f.profile, "gea/bootstrap");
+  await mkdir(record, { recursive: true });
+  const packages = [
+    {
+      name: "@cleverc2200/dsh-agent-workbench",
+      version: "0.1.29",
+      file: "workbench.tgz",
+    },
+    {
+      name: "dsh-agent-manage",
+      version: "0.6.3-company.31",
+      file: "manage.tgz",
+    },
+    {
+      name: "@cleverc2200/gea-dsh-prototype",
+      version: "0.0.188",
+      file: "gea.tgz",
+    },
+  ];
+  const receipt = JSON.stringify({
+    status: "installing",
+    packages: packages.map((row) => row.name),
+  });
+  await writeFile(join(record, "receipt.json"), receipt);
+  if (!partial) await writeFile(join(record, "before-package.json"), f.manifest);
+  await writeFile(
+    join(f.profile, "cordis.patch.yml"),
+    "- id: user-choice\n  config:\n    preserved: true\n",
+  );
+  await mkdir(join(f.profile, "sessions"));
+  await writeFile(join(f.profile, "sessions/old.jsonl"), "existing user history\n");
+  await mkdir(join(f.profile, ".plugin-manager"));
+  await writeFile(
+    join(f.profile, ".plugin-manager/run.json"),
+    JSON.stringify({ pid: active ? process.pid : 2147483647, grouped: false }),
+  );
+  const require = createRequire(import.meta.url);
+  await symlink(
+    join(require.resolve("yaml/package.json"), ".."),
+    join(f.root, "dsh/node_modules/yaml"),
+    "dir",
+  );
+  const required = JSON.parse(
+    await readFile(new URL("../scripts/ci-core-policy.json", import.meta.url), "utf8"),
+  ).required[0];
+  const core = {
+    head: required.head,
+    version: required.version,
+    artifacts: [],
+  };
+  const app = JSON.stringify({
+    dshBuildCommit: core.head,
+    dshBuildDirty: false,
+  });
+  await writeFile(join(f.root, "package.json"), app);
+  await writeFile(
+    join(f.root, "dsh/package.json"),
+    JSON.stringify({
+      name: "@deepseek-ai/dsh-desktop-runtime",
+      version: core.version,
+    }),
+  );
+  core.artifacts.push({
+    path: "package.json",
+    sha256: createHash("sha256").update(app).digest("hex"),
+  });
+  const seed = join(f.home, "seed");
+  for (const dir of ["archives", "store", "metadata"])
+    await mkdir(join(seed, dir), { recursive: true });
+  for (const row of packages) {
+    const bytes = Buffer.from(row.name);
+    row.sha256 = createHash("sha256").update(bytes).digest("hex");
+    await writeFile(join(seed, "archives", row.file), bytes);
+  }
+  await writeFile(
+    join(seed, "manifest.json"),
+    JSON.stringify({
+      schema: 1,
+      core,
+      packages,
+      source: { channelUrl: "https://example.test/channel.json" },
+    }),
+  );
+  let calls = 0;
+  const install = async ({ beforeInstall, complete }) => {
+    const atomic = await import(
+      pathToFileURL(join(f.root, "dsh/node_modules/@deepseek-ai/dsh-atomic-write/index.mjs"))
+    );
+    return atomic.withFileLock(join(f.profile, "package.json"), async () => {
+      await beforeInstall();
+      calls++;
+      const manifest = JSON.parse(await readFile(join(f.profile, "package.json"), "utf8"));
+      for (const row of packages) {
+        manifest.dependencies[row.name] = row.version;
+        await mkdir(join(f.profile, "node_modules", row.name), {
+          recursive: true,
+        });
+        await writeFile(
+          join(f.profile, "node_modules", row.name, "package.json"),
+          JSON.stringify(row),
+        );
+      }
+      await writeFile(join(f.profile, "package.json"), JSON.stringify(manifest));
+      await complete(atomic);
+    });
+  };
+  return { ...f, seed, install, receipt, record, calls: () => calls };
+}
+
+test("a bare interrupted three-plugin installation resumes without losing disabled choices or history", async (t) => {
+  const f = await interruptedProfile(t);
+  const result = await bootstrapCompanyProfile(f);
+  assert.equal(result.status, "installed");
+  assert.equal(f.calls(), 1);
+  const manifest = JSON.parse(await readFile(join(f.profile, "package.json"), "utf8"));
+  assert.deepEqual(manifest.dsh.profile.bundles, ["dsh-agent-manage"]);
+  const backup = (await readdir(f.record)).find((name) => name.startsWith("interrupted-"));
+  assert.equal(await readFile(join(f.record, backup, "receipt.json"), "utf8"), f.receipt);
+  assert.equal(
+    await readFile(join(f.profile, "sessions/old.jsonl"), "utf8"),
+    "existing user history\n",
+  );
+  assert.match(await readFile(join(f.profile, "cordis.patch.yml"), "utf8"), /preserved: true/);
+  assert.equal((await bootstrapCompanyProfile(f)).status, "existing-profile-preserved");
+  assert.equal(f.calls(), 1);
+});
+
+test("an interrupted initial installation completes three-plugin activation", async (t) => {
+  const f = await interruptedProfile(t, { partial: true });
+  await bootstrapCompanyProfile(f);
+  const manifest = JSON.parse(await readFile(join(f.profile, "package.json"), "utf8"));
+  for (const name of [
+    "@cleverc2200/dsh-agent-workbench",
+    "dsh-agent-manage",
+    "@cleverc2200/gea-dsh-prototype",
+  ])
+    assert(manifest.dsh.profile.bundles.includes(name));
+});
+
+test("an interrupted installation does not retry while its package process remains alive", async (t) => {
+  const f = await interruptedProfile(t, { active: true });
+  const original = await readFile(join(f.profile, "package.json"));
+  await assert.rejects(bootstrapCompanyProfile(f), /GEA_REFRESH_PROFILE_BUSY/);
+  assert.equal(f.calls(), 0);
+  assert.equal(await readFile(join(f.record, "receipt.json"), "utf8"), f.receipt);
+  assert.deepEqual(await readFile(join(f.profile, "package.json")), original);
+});
+
+test("interrupted recovery retains pending updates and rejects unknown processes and linked configuration", async (t) => {
+  for (const variant of ["pending", "unknown-process", "linked"]) {
+    const f = await interruptedProfile(t);
+    let expected;
+    if (variant === "pending") {
+      const id = "00000000-0000-4000-8000-000000000000";
+      const runtime = join(f.profile, "gea/plugin-updates");
+      await mkdir(join(runtime, "operations", id), { recursive: true });
+      await writeFile(join(runtime, "latest.json"), JSON.stringify({ id }));
+      await writeFile(
+        join(runtime, "operations", id, "receipt.json"),
+        JSON.stringify({ id, stage: "pending-restart" }),
+      );
+      expected = /GEA_REFRESH_UPDATE_PENDING/;
+    } else if (variant === "unknown-process") {
+      await writeFile(
+        join(f.profile, ".plugin-manager/run.json"),
+        JSON.stringify({ pid: 0, grouped: false }),
+      );
+      expected = /GEA_REFRESH_PROFILE_BUSY/;
+    } else {
+      const patch = join(f.profile, "cordis.patch.yml");
+      await writeFile(join(f.home, "outside.yml"), await readFile(patch));
+      await rm(patch);
+      await symlink(join(f.home, "outside.yml"), patch);
+      expected = /GEA_COMPANY_INSTALL_UNSAFE_PATH/;
+    }
+    await assert.rejects(bootstrapCompanyProfile(f), expected);
+    assert.equal(f.calls(), 0);
+    assert.equal(await readFile(join(f.record, "receipt.json"), "utf8"), f.receipt);
   }
 });

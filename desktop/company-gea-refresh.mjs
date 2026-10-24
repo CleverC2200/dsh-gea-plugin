@@ -36,7 +36,12 @@ export function planBundledCompanyRefresh(current, installed, bundled) {
       const from = companyReleaseIndex(row.name, actual.version);
       const to = companyReleaseIndex(row.name, row.version);
       if (from > to) return { status: "newer-company-suite-preserved", changed: false };
-      targets.push({ name: row.name, from: actual.version, to: row.version, file: row.file });
+      targets.push({
+        name: row.name,
+        from: actual.version,
+        to: row.version,
+        file: row.file,
+      });
     } catch {
       return { status: "custom-company-profile-preserved", changed: false };
     }
@@ -52,12 +57,29 @@ export function planBundledCompanyRefresh(current, installed, bundled) {
   if (!legacy && targets.every((row) => row.from === row.to))
     return { status: "current-company-suite-preserved", changed: false };
   const identity = targets.find((row) => row.name === gea);
-  return { status: "ready", changed: false, from: identity.from, to: identity.to, targets };
+  return {
+    status: "ready",
+    changed: false,
+    from: identity.from,
+    to: identity.to,
+    targets,
+  };
 }
 
-async function readProfileUpdateState(profile) {
-  if (await optional(join(profile, ".plugin-manager/run.json")))
-    throw Error("GEA_REFRESH_PROFILE_BUSY");
+async function readProfileUpdateState(profile, { allowExitedPackageRun = false } = {}) {
+  const recorded = await optional(join(profile, ".plugin-manager/run.json"));
+  if (recorded) {
+    if (!allowExitedPackageRun) throw Error("GEA_REFRESH_PROFILE_BUSY");
+    const run = JSON.parse(recorded);
+    if (!Number.isSafeInteger(run.pid) || run.pid < 1 || typeof run.grouped !== "boolean")
+      throw Error("GEA_REFRESH_PROFILE_BUSY");
+    try {
+      process.kill(run.grouped && process.platform !== "win32" ? -run.pid : run.pid, 0);
+      throw Error("GEA_REFRESH_PROFILE_BUSY");
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+    }
+  }
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
   if (!latest) return;
   const pointer = JSON.parse(latest);
@@ -72,8 +94,8 @@ async function readProfileUpdateState(profile) {
   return receipt.stage;
 }
 
-export async function assertProfileIdle(profile) {
-  if ((await readProfileUpdateState(profile)) === "pending-restart")
+export async function assertProfileIdle(profile, options) {
+  if ((await readProfileUpdateState(profile, options)) === "pending-restart")
     throw Error("GEA_REFRESH_UPDATE_PENDING");
 }
 
@@ -292,7 +314,12 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
           throw Error("GEA_REFRESH_CONFIG_NOT_PRESERVED");
         await writeFileAtomic(
           journal,
-          JSON.stringify({ ...plan, status: "completed", changed: true, backup }) + "\n",
+          JSON.stringify({
+            ...plan,
+            status: "completed",
+            changed: true,
+            backup,
+          }) + "\n",
           { mode: 0o600 },
         );
       },
