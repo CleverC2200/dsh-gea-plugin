@@ -1,19 +1,19 @@
 name: source-timing-experiment
-run-name: "S1 fixed environment timing — a034b066f30e195c97b82e2a4101cb1c64cde93d"
+run-name: "S1 fixed environment timing — 2dbc09b18140767613bc3f96d11fa867fd9b0d83"
 
 on:
   push:
     branches: [codex/gea-ci-s1-timing-20261024]
 
 env:
-  SOURCE_HEAD_SHA: a034b066f30e195c97b82e2a4101cb1c64cde93d
+  SOURCE_HEAD_SHA: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
   SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
 
 permissions:
   contents: read
 
 concurrency:
-  group: source-timing-measurement-a034b066f30e195c97b82e2a4101cb1c64cde93d
+  group: source-timing-measurement-2dbc09b18140767613bc3f96d11fa867fd9b0d83
   cancel-in-progress: true
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: a034b066f30e195c97b82e2a4101cb1c64cde93d
+          ref: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -133,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: a034b066f30e195c97b82e2a4101cb1c64cde93d
+          ref: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -342,7 +342,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: a034b066f30e195c97b82e2a4101cb1c64cde93d
+          ref: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
