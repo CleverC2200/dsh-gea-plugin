@@ -92,8 +92,8 @@ jobs:
           import {selectPlatformTests} from './scripts/ci-platform-tests.mjs';
           const plan=JSON.parse(readFileSync('.runtime/source-checks-plan.json'));
           const files=selectPlatformTests(plan,'linux').files.sort();
-          assert.equal(files.length,205);
-          assert.equal(createHash('sha256').update(JSON.stringify(files)).digest('hex'),'c98a95ed873e1dd5744d65597cf2e0560017005d7718337b472e7e69d5380f62');
+          assert.equal(files.length,206);
+          assert.equal(createHash('sha256').update(JSON.stringify(files)).digest('hex'),'5a051e21e4cd1bea1d323ecc59f602e696afec71ab7e2997354991864f88827c');
           const cost=JSON.parse(readFileSync('.runtime/source-check-cost.json'));
           assert.equal(cost.estimates.knownFiles,0);
           assert.equal(cost.shards.length,2);
