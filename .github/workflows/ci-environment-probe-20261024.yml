@@ -1,0 +1,40 @@
+name: S1 isolated environment probe
+on:
+  push:
+    branches: [codex/gea-ci-s1-environment-20261024]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Record host and pull fixed image
+        env:
+          IMAGE: mcr.microsoft.com/playwright@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/s1-evidence"
+          started=$(date +%s)
+          docker pull "$IMAGE"
+          finished=$(date +%s)
+          printf '{"pullSeconds":%s,"image":"%s"}\n' "$((finished-started))" "$IMAGE" > "$RUNNER_TEMP/s1-evidence/pull.json"
+          docker image inspect "$IMAGE" > "$RUNNER_TEMP/s1-evidence/image.json"
+      - name: Probe browser and exact Core native dependency
+        env:
+          IMAGE: mcr.microsoft.com/playwright@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d
+        run: |
+          set -euo pipefail
+          docker run --rm --init --shm-size=1g \
+            -v "$GITHUB_WORKSPACE/scripts/ci-environment-probe-20261024.cjs:/probe-script.cjs:ro" \
+            -v "$RUNNER_TEMP/s1-evidence:/evidence" \
+            "$IMAGE" bash -lc 'set -e; mkdir /probe; npm install --prefix /probe --no-audit --no-fund @playwright/test@1.58.2 node-pty@1.2.0-beta.15; node /probe-script.cjs'
+      - name: Preserve probe evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: s1-environment-probe
+          path: ${{ runner.temp }}/s1-evidence
