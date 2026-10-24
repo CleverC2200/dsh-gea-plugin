@@ -60,6 +60,7 @@ export async function profile(t, options = {}) {
   return withSourceSetup(t, () => createProfile(t, options));
 }
 async function createProfile(t, options) {
+  const initializationStartedAt = new Date().toISOString();
   t.signal?.throwIfAborted();
   const root = options.pluginRoot ?? defaultRoot;
   const sourcesFile = options.sourcesFile ?? process.env.GEA_TEST_SOURCE_INPUTS;
@@ -109,7 +110,7 @@ async function createProfile(t, options) {
         { mode: 0o600 },
       );
   };
-  recordLifecycle({ event: "temporary-directory-created" });
+  recordLifecycle({ event: "temporary-directory-created", initializationStartedAt });
   const recordAbort = () => recordLifecycle({ event: "fixture-aborted" });
   t.signal?.addEventListener("abort", recordAbort, { once: true });
   const requests = [];
@@ -316,6 +317,7 @@ async function createProfile(t, options) {
     origin = "";
   async function stop() {
     if (!child || childIsClosed) return;
+    recordLifecycle({ event: "host-stop-started" });
     const signalTree = (signal) => {
       try {
         if (process.platform === "win32") {
@@ -344,9 +346,11 @@ async function createProfile(t, options) {
     } finally {
       clearTimeout(timer);
       clearTimeout(deadline);
+      recordLifecycle({ event: "host-stop-finished", exited: childIsClosed });
     }
   }
   t.after(async () => {
+    recordLifecycle({ event: "fixture-cleanup-started" });
     t.signal?.removeEventListener("abort", recordAbort);
     let stopped = false;
     const errors = [];
