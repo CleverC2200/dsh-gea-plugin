@@ -6,6 +6,7 @@ permissions:
   contents: read
 jobs:
   probe:
+    if: github.event.head_commit.message != '验证有界宿主浏览器准备'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,3 +39,54 @@ jobs:
         with:
           name: s1-environment-probe
           path: ${{ runner.temp }}/s1-evidence
+
+  host-probe:
+    if: github.event.head_commit.message == '验证有界宿主浏览器准备'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - name: Prepare isolated exact dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/s1-host-evidence" "$RUNNER_TEMP/s1-packages"
+          npm install --prefix "$RUNNER_TEMP/s1-packages" --no-audit --no-fund @playwright/test@1.58.2 node-pty@1.2.0-beta.15
+      - name: Run bounded host browser preparation
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/s1-owned/.quality-browser
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { mkdirSync } from 'node:fs';
+          import { installCommands, browserPreparationBudget } from './scripts/quality-worker-inputs.mjs';
+          import { qualityStageRun } from './scripts/quality-ci-stages.mjs';
+          const root = process.env.RUNNER_TEMP;
+          mkdirSync(process.env.PLAYWRIGHT_BROWSERS_PATH,{recursive:true});
+          const stages = qualityStageRun({file:root+'/s1-host-evidence/quality-stages.json',binding:{scope:'isolated-host-probe',sha:process.env.GITHUB_SHA},requested:'full'});
+          stages.start('prepare'); stages.finish(); stages.start('build');
+          const owned = installCommands({errorCode:'S1_HOST_BROWSER_FAILED'});
+          try {
+            const budgetMs=browserPreparationBudget();
+            await stages.step('browser-install',{budgetMs},()=>owned.run(process.execPath,[root+'/s1-packages/node_modules/playwright/cli.js','install','--with-deps','chromium'],root+'/s1-packages',{timeoutMs:budgetMs,forwardOutput:true}));
+            stages.finish();
+          } catch(error) { stages.finish(error); throw error; }
+          finally { await owned.close(); }
+          NODE
+      - name: Probe host browser and native runtime
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/s1-owned/.quality-browser
+          GEA_PROBE_PACKAGE_ROOT: ${{ runner.temp }}/s1-packages
+          GEA_PROBE_OWNED_ROOT: ${{ runner.temp }}/s1-owned/.quality-browser
+          GEA_PROBE_EVIDENCE: ${{ runner.temp }}/s1-host-evidence
+        run: node scripts/ci-environment-probe-20261024.cjs
+      - name: Preserve host evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: s1-host-environment-probe
+          path: ${{ runner.temp }}/s1-host-evidence

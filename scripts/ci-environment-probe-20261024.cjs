@@ -1,12 +1,13 @@
 const fs = require('node:fs');
 const cp = require('node:child_process');
-const { chromium } = require('/probe/node_modules/@playwright/test');
+const packageRoot = process.env.GEA_PROBE_PACKAGE_ROOT || '/probe';
+const { chromium } = require(packageRoot + '/node_modules/@playwright/test');
 const report = {
   node: process.version,
   platform: process.platform,
   architecture: process.arch,
   modules: process.versions.modules,
-  playwright: require('/probe/node_modules/@playwright/test/package.json').version,
+  playwright: require(packageRoot + '/node_modules/@playwright/test/package.json').version,
   os: fs.readFileSync('/etc/os-release', 'utf8'),
   executable: chromium.executablePath(),
   browsersRoot: process.env.PLAYWRIGHT_BROWSERS_PATH,
@@ -25,7 +26,7 @@ const report = {
     }
   }
   try {
-    const pty = require('/probe/node_modules/node-pty');
+    const pty = require(packageRoot + '/node_modules/node-pty');
     report.native = await new Promise((resolve, reject) => {
       const terminal = pty.spawn('/bin/sh', ['-c', 'printf GEA_NATIVE_READY'], { cols: 80, rows: 24 });
       let output = '';
@@ -41,12 +42,12 @@ const report = {
   }
   report.directAdoption = {
     nodeMatches: process.version === 'v24.22.0',
-    browsersStayInOwnedRoot: report.executable.startsWith('/work/.quality-browser/'),
+    browsersStayInOwnedRoot: report.executable.startsWith((process.env.GEA_PROBE_OWNED_ROOT || '/work/.quality-browser') + '/'),
     chromiumLaunch: report.probes[0].status,
     systemChromeLaunch: report.probes[1].status,
     native: report.native.status,
   };
   report.verdict = Object.values(report.directAdoption).every(value => value === true || value === 'passed') ? 'candidate-compatible' : 'candidate-rejected';
-  fs.writeFileSync('/evidence/image-probe.json', JSON.stringify(report, null, 2));
+  fs.writeFileSync((process.env.GEA_PROBE_EVIDENCE || '/evidence') + '/image-probe.json', JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 })().catch(error => { console.error(error); process.exitCode = 1; });
