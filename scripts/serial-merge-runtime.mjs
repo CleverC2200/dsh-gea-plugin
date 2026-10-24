@@ -146,6 +146,7 @@ export function createSerialMergeRuntime({
       ruleset.conditions.ref_name.exclude?.length ||
       ruleset.rules?.length !== 1 ||
       ruleset.rules[0].type !== "update" ||
+      ruleset.rules[0].parameters?.update_allows_fetch_and_merge !== false ||
       bypass?.length !== 1 ||
       bypass[0].actor_type !== "Integration" ||
       bypass[0].actor_id !== policy.appId ||

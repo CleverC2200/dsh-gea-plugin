@@ -9,7 +9,7 @@
 - `gea-serial-merge` environment 仅允许 main。私钥只保存为该 environment 的 `GEA_MERGE_APP_PRIVATE_KEY`，不放仓库级 secret、不传给 PR workflow 或个人 Codex。
 - 配置 `GEA_MERGE_APP_ID`、`GEA_MERGE_INSTALLATION_ID`，与策略中已核实的 App/installation 一致。App 仅选择 GEA。每次 installation token 又显式限定 `repositories: ['dsh-gea-plugin']` 及现有四项权限，不因未来 App 安装范围扩大而扩大令牌。
 - 保留 main 的 strict/admin 保护及来自 GitHub Actions App15368 的 `candidate-quality`。专用合并 App 不加入质量或 review 绕过名单。
-- 建立仅限制 main 更新的 active branch ruleset，规则为 `update`，唯一 bypass 为专用 App 的 `pull_request` 模式。将实际规则 ID 写入 `GEA_MERGE_RULESET_ID`。其他普通合并入口受该规则限制。运行器会在每次写入前核对这些条件。
+- 建立仅限制 main 更新的 active branch ruleset，规则为 `update`，`parameters.update_allows_fetch_and_merge=false`，唯一 bypass 为专用 App 的 `pull_request` 模式。将实际规则 ID 写入 `GEA_MERGE_RULESET_ID`。其他普通合并入口受该规则限制。运行器会在每次写入前核对这些条件。参数含义见 [GitHub rules REST](https://docs.github.com/en/rest/repos/rules#create-a-repository-ruleset)。
 - 首次部署 workflow 到 main 后，读取其服务端 workflow ID 并冻结为 `GEA_MERGE_WORKFLOW_ID`。运行器和历史恢复都校验该 ID。删除重建 workflow 前先对账旧历史；更换 ID 需另行审查迁移，不能作为清空 unknown 的手段。
 - 最后配置 `GEA_MERGE_ENABLED=true` 才接收实际请求。当前代码没有配置这些部署项，也没有启用写入。
 

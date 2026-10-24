@@ -69,7 +69,7 @@ function fixture() {
         target: "branch",
         enforcement: "active",
         conditions: { ref_name: { include: ["refs/heads/main"], exclude: [] } },
-        rules: [{ type: "update" }],
+        rules: [{ type: "update", parameters: { update_allows_fetch_and_merge: false } }],
         bypass_actors: [
           { actor_type: "Integration", actor_id: 5451618, bypass_mode: "pull_request" },
         ],
@@ -196,18 +196,27 @@ test("the production workflow keeps dispatch SHA checkout and confines private-k
 });
 
 test("changed single-writer rules, quality protection or a cancelled service run prevent an intent from reaching GitHub writes", async () => {
-  for (const condition of ["ruleset", "quality", "cancelled"]) {
+  for (const condition of ["ruleset", "fetch", "quality", "cancelled"]) {
     const f = fixture();
-    if (condition === "ruleset")
+    if (["ruleset", "fetch"].includes(condition))
       f.overrides.set("/repos/CleverC2200/dsh-gea-plugin/rulesets/10", {
         data: {
           id: 10,
           enforcement: "active",
           target: "branch",
           conditions: { ref_name: { include: ["refs/heads/main"], exclude: [] } },
-          rules: [{ type: "update" }],
+          rules: [
+            {
+              type: "update",
+              parameters: { update_allows_fetch_and_merge: condition === "fetch" },
+            },
+          ],
           bypass_actors: [
-            { actor_type: "Integration", actor_id: 15368, bypass_mode: "pull_request" },
+            {
+              actor_type: "Integration",
+              actor_id: condition === "ruleset" ? 15368 : 5451618,
+              bypass_mode: "pull_request",
+            },
           ],
         },
       });
