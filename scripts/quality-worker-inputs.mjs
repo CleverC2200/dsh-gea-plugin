@@ -40,17 +40,24 @@ function command(file, args, cwd, env = {}) {
     reject(file + ": " + (r.error?.message ?? r.signal ?? r.stderr ?? r.status));
   return r.stdout.trim();
 }
+export function browserPreparationBudget(value) {
+  if (value === undefined) return 300000;
+  if (!/^[1-9]\d*$/.test(value) || Number(value) > 300000)
+    throw Error("QUALITY_BROWSER_BUDGET_REQUIRED: 1..300000 ms");
+  return Number(value);
+}
 /** Own only this invocation's POSIX install groups, including ordinary inherited descendants. */
-function installCommands() {
+export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) {
   const running = new Set();
   const cancellation = new AbortController();
   let firstError;
-  const alive = (pid) => {
+  const alive = (pid, rootGroupCleanup = false) => {
     try {
       process.kill(-pid, 0);
       return true;
     } catch (e) {
       if (e.code === "ESRCH") return false;
+      if (e.code === "EPERM" && rootGroupCleanup) return true;
       throw e;
     }
   };
@@ -59,7 +66,32 @@ function installCommands() {
     try {
       process.kill(-entry.child.pid, value);
     } catch (e) {
-      if (e.code !== "ESRCH") entry.cleanupError = e;
+      if (e.code !== "ESRCH" && !(e.code === "EPERM" && entry.rootGroupCleanup))
+        entry.cleanupError = e;
+    }
+    if (entry.rootGroupCleanup) {
+      const result = spawnSync("sudo", ["-n", "kill", "-s", value, "--", "-" + entry.child.pid], {
+        encoding: "utf8",
+        timeout: 2000,
+        killSignal: "SIGKILL",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      if ((result.error || result.status !== 0) && alive(entry.child.pid, true))
+        entry.cleanupError = Error(
+          errorCode +
+            ": privileged install group cleanup failed: " +
+            (result.error?.message ?? result.stderr ?? result.status),
+        );
+      if (value === "SIGKILL" && !entry.drainTimer) {
+        entry.child.kill("SIGKILL");
+        entry.drainTimer = setTimeout(() => {
+          entry.cleanupError ??= Error(
+            errorCode + ": owned install group did not drain after SIGKILL",
+          );
+          entry.child.stdout?.destroy();
+          entry.child.stderr?.destroy();
+        }, 2000);
+      }
     }
   };
   const stop = (error) => {
@@ -72,8 +104,8 @@ function installCommands() {
     }
     return firstError;
   };
-  const onTerm = () => stop(Error("QUALITY_WORKER_REJECTED: installation cancelled by SIGTERM"));
-  const onInt = () => stop(Error("QUALITY_WORKER_REJECTED: installation cancelled by SIGINT"));
+  const onTerm = () => stop(Error(errorCode + ": installation cancelled by SIGTERM"));
+  const onInt = () => stop(Error(errorCode + ": installation cancelled by SIGINT"));
   process.on("SIGTERM", onTerm);
   process.on("SIGINT", onInt);
   return {
@@ -87,7 +119,17 @@ function installCommands() {
       process.off("SIGTERM", onTerm);
       process.off("SIGINT", onInt);
     },
-    run(file, args, cwd) {
+    run(
+      file,
+      args,
+      cwd,
+      {
+        timeoutMs,
+        label = "browser preparation",
+        forwardOutput = false,
+        rootGroupCleanup = false,
+      } = {},
+    ) {
       if (firstError) return Promise.reject(firstError);
       const child = spawn(file, args, {
         cwd,
@@ -95,12 +137,13 @@ function installCommands() {
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      const entry = { child };
+      const entry = { child, rootGroupCleanup: rootGroupCleanup && process.platform === "linux" };
       let stdout = "",
         stderr = "",
         commandError;
-      const failure = (detail) => Error("QUALITY_WORKER_REJECTED: " + file + ": " + detail);
+      const failure = (detail) => Error(errorCode + ": " + file + ": " + detail);
       const collect = (data, output) => {
+        if (forwardOutput) process[output].write(data);
         if (output === "stdout") stdout += data;
         else stderr += data;
         if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) > 1024 * 1024) {
@@ -120,13 +163,13 @@ function installCommands() {
       });
       child.on("exit", (code, sig) => {
         if (code !== 0 || sig) {
-          commandError ??= failure(sig ?? (stderr || code));
+          commandError ??= failure(sig ?? "exit " + code + (stderr ? ": " + stderr : ""));
           stop(commandError);
         } else {
           // Descendants can hold stdio open after a successful leader exits,
           // so group cleanup must start without waiting for close.
           try {
-            if (child.pid && alive(child.pid)) {
+            if (child.pid && alive(child.pid, entry.rootGroupCleanup)) {
               commandError ??= failure("install left an owned process group");
               stop(commandError);
             }
@@ -139,16 +182,16 @@ function installCommands() {
       entry.closed = new Promise((resolvePromise, rejectPromise) => {
         child.on("close", async (code, sig) => {
           if (code !== 0 || sig) {
-            commandError ??= failure(sig ?? (stderr || code));
-            if (!sig && stderr) commandError.message = failure(stderr).message;
+            commandError ??= failure(sig ?? "exit " + code + (stderr ? ": " + stderr : ""));
           }
           try {
-            if (child.pid && alive(child.pid)) {
+            if (child.pid && alive(child.pid, entry.rootGroupCleanup)) {
               stop(commandError ?? failure("install left an owned process group"));
               const until = Date.now() + 2000;
-              while (alive(child.pid) && Date.now() < until)
+              while (alive(child.pid, entry.rootGroupCleanup) && Date.now() < until)
                 await new Promise((r) => setTimeout(r, 10));
-              if (alive(child.pid)) throw failure("owned install group did not terminate");
+              if (alive(child.pid, entry.rootGroupCleanup))
+                throw entry.cleanupError ?? failure("owned install group did not terminate");
             }
             if (entry.cleanupError) throw entry.cleanupError;
           } catch (e) {
@@ -157,12 +200,19 @@ function installCommands() {
             commandError ??= e;
           }
           clearTimeout(entry.timer);
+          clearTimeout(entry.deadline);
+          clearTimeout(entry.drainTimer);
           running.delete(entry);
-          if (commandError || firstError) rejectPromise(commandError ?? firstError);
+          if (commandError || firstError) rejectPromise(firstError ?? commandError);
           else resolvePromise(stdout.trim());
         });
       });
       running.add(entry);
+      if (timeoutMs !== undefined)
+        entry.deadline = setTimeout(
+          () => stop(failure(label + " timed out after " + timeoutMs + " ms")),
+          timeoutMs,
+        );
       return entry.closed;
     },
   };
@@ -414,6 +464,7 @@ export async function prepareWorkerInputs(values) {
     if (!values[name]) reject("five explicit transport parameters required");
   const p = paths(values.root),
     receipt = join(p.root, "quality-worker-inputs.json");
+  const browserBudgetMs = browserPreparationBudget(values["browser-preparation-timeout-ms"]);
   if (realpathSync(process.cwd()) !== p.gea) reject("registered GEA cwd required");
   const record = {
     schemaVersion: 1,
@@ -425,10 +476,11 @@ export async function prepareWorkerInputs(values) {
     steps: [],
   };
   writeFileSync(receipt, JSON.stringify(record), { flag: "wx" });
-  const step = async (name, execute) => {
-    const result = { name, status: "running", startedAt: new Date().toISOString() };
+  const step = async (name, execute, metadata = {}) => {
+    const result = { name, ...metadata, status: "running", startedAt: new Date().toISOString() };
     record.steps.push(result);
     writeExecutionReceipt(receipt, record);
+    console.log(JSON.stringify({ stage: "prepare", step: name, tests: "not-run", ...result }));
     try {
       const value = await execute();
       result.status = "passed";
@@ -442,6 +494,7 @@ export async function prepareWorkerInputs(values) {
       result.finishedAt = new Date().toISOString();
       result.durationMs = Date.parse(result.finishedAt) - Date.parse(result.startedAt);
       writeExecutionReceipt(receipt, record);
+      console.log(JSON.stringify({ stage: "prepare", step: name, tests: "not-run", ...result }));
     }
   };
   try {
@@ -1016,45 +1069,57 @@ export async function prepareWorkerInputs(values) {
         : [tasks]) {
         if (early && batch[0]?.name === "dsh-gea-plugin") {
           if (sourceControl.runtime)
-            await step("early-browser-system-libraries", async () => {
-              verifyConfiguration();
-              const declared = (directory) => {
-                const pkg = json(join(directory, "package.json"));
-                return (
-                  pkg.devDependencies?.["@playwright/test"] ??
-                  pkg.dependencies?.["@playwright/test"]
+            await step(
+              "early-browser-system-libraries",
+              async () => {
+                verifyConfiguration();
+                const declared = (directory) => {
+                  const pkg = json(join(directory, "package.json"));
+                  return (
+                    pkg.devDependencies?.["@playwright/test"] ??
+                    pkg.dependencies?.["@playwright/test"]
+                  );
+                };
+                const version = declared(p.gea);
+                if (
+                  typeof version !== "string" ||
+                  !/^\d+\.\d+\.\d+$/.test(version) ||
+                  declared(p.manage) !== version
+                )
+                  return {
+                    status: "deferred",
+                    reason: "declared Playwright versions incompatible",
+                  };
+                const before = readBrowserDependencyClosure({ directory: p.manage, version });
+                if (before.status === "deferred") return before;
+                await installs.run(
+                  process.execPath,
+                  [before.executable, "install-deps", "chromium"],
+                  p.manage,
+                  {
+                    timeoutMs: browserBudgetMs,
+                    forwardOutput: true,
+                    rootGroupCleanup: process.platform === "linux",
+                  },
                 );
-              };
-              const version = declared(p.gea);
-              if (
-                typeof version !== "string" ||
-                !/^\d+\.\d+\.\d+$/.test(version) ||
-                declared(p.manage) !== version
-              )
-                return { status: "deferred", reason: "declared Playwright versions incompatible" };
-              const before = readBrowserDependencyClosure({ directory: p.manage, version });
-              if (before.status === "deferred") return before;
-              await installs.run(
-                process.execPath,
-                [before.executable, "install-deps", "chromium"],
-                p.manage,
-              );
-              const after = readBrowserDependencyClosure({ directory: p.manage, version });
-              if (executionDigest(before) !== executionDigest(after))
-                reject("early browser CLI changed its shipped packages");
-              verifyConfiguration();
-              earlyBrowserLibraries = before.inventory;
-              return {
-                status: "executed",
-                inventorySha256: executionDigest(before.inventory),
-                localWiring: before.localWiring,
-                localWiringSha256: executionDigest(before.localWiring),
-                packageEntries: before.inventory.packages.map((x) => ({
-                  name: x.name,
-                  entries: x.entries.length,
-                })),
-              };
-            });
+                const after = readBrowserDependencyClosure({ directory: p.manage, version });
+                if (executionDigest(before) !== executionDigest(after))
+                  reject("early browser CLI changed its shipped packages");
+                verifyConfiguration();
+                earlyBrowserLibraries = before.inventory;
+                return {
+                  status: "executed",
+                  inventorySha256: executionDigest(before.inventory),
+                  localWiring: before.localWiring,
+                  localWiringSha256: executionDigest(before.localWiring),
+                  packageEntries: before.inventory.packages.map((x) => ({
+                    name: x.name,
+                    entries: x.entries.length,
+                  })),
+                };
+              },
+              { budgetMs: browserBudgetMs },
+            );
           await receivePrepared(installs);
           verifyConfiguration();
         }
@@ -1164,16 +1229,34 @@ export async function prepareWorkerInputs(values) {
       await step("system-chrome-mount", () =>
         mountSystemChrome({ root: p.root, expected: binding.worker.browser.systemChrome }),
       );
-      await step("browser-system-libraries", () => {
-        if (earlyBrowserLibraries)
-          return {
-            command: "previous owned Node Playwright install-deps chromium",
-            status: "executed-before-producer-wait",
-            inventorySha256: executionDigest(earlyBrowserLibraries),
-          };
-        command("corepack", ["pnpm", "exec", "playwright", "install-deps", "chromium"], p.gea);
-        return { command: "corepack pnpm exec playwright install-deps chromium" };
-      });
+      await step(
+        "browser-system-libraries",
+        async () => {
+          if (earlyBrowserLibraries)
+            return {
+              command: "previous owned Node Playwright install-deps chromium",
+              status: "executed-before-producer-wait",
+              inventorySha256: executionDigest(earlyBrowserLibraries),
+            };
+          const browserInstall = installCommands();
+          try {
+            await browserInstall.run(
+              "corepack",
+              ["pnpm", "exec", "playwright", "install-deps", "chromium"],
+              p.gea,
+              {
+                timeoutMs: browserBudgetMs,
+                forwardOutput: true,
+                rootGroupCleanup: process.platform === "linux",
+              },
+            );
+          } finally {
+            await browserInstall.close();
+          }
+          return { command: "corepack pnpm exec playwright install-deps chromium" };
+        },
+        { budgetMs: browserBudgetMs },
+      );
       await step("browser-availability", async () => {
         const current = browserMetadata(p, true);
         if (JSON.stringify(current) !== JSON.stringify(binding.worker.browser))
@@ -1234,6 +1317,7 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
           "manifest-sha256",
           "early-control",
           "early-sha256",
+          "browser-preparation-timeout-ms",
         ].map((x) => [x, { type: "string" }]),
       ),
     });
