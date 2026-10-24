@@ -186,9 +186,19 @@ for (const panel of ["gea-proof", "gea-inbox"])
       await expect.poll(async () => (await binding())?.sessionId).toMatch(/^session-/);
       const before = await binding(),
         session = before.sessionId;
-      await app.rpc("logout");
-      await expect.poll(async () => (await binding())?.sessionId).not.toBe(session);
-      await app.login();
+      // The mounted account view can start its own QR challenge on logout.
+      // Keep this identity test on the fixture-driven login so two challenges do not cancel each other.
+      const loginPath = "**/api/gea-proof/login/start";
+      const blockViewLogin = (route) => route.abort();
+      await page.route(loginPath, blockViewLogin);
+      try {
+        await app.rpc("logout");
+        await expect.poll(async () => (await binding())?.sessionId).not.toBe(session);
+        const login = await app.login();
+        assert.equal(login.ok, true);
+      } finally {
+        await page.unroute(loginPath, blockViewLogin);
+      }
       // Login completion can precede the Host user projection. Bind only its confirmed scope.
       let projection;
       await expect
