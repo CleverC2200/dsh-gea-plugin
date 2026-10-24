@@ -865,6 +865,36 @@ test("browser-only changes and their dedicated fixtures select their browser con
   }
 });
 
+test("returned compile-cache fixtures select their lifecycle and resubmission consumers without accepting unknown fixtures", async (t) => {
+  const consumers = ["tests/profile-lifecycle.test.mjs", "tests/returned-resubmit-web.test.mjs"];
+  for (const file of [
+    "tests/fixtures/returned-compile-cache.mjs",
+    "tests/fixtures/returned-compile-cache-probe.mjs",
+  ]) {
+    await t.test(file, (t) => {
+      const fixture = resourceImpactFixture(t);
+      fixture.change(
+        fixture.own,
+        file,
+        readFileSync(new URL("../" + file, import.meta.url), "utf8") + "\n",
+      );
+      for (const sourceOnly of [false, true]) {
+        const plan = fixture.plan({ sourceOnly });
+        assert.deepEqual(plan.reasons[fixture.own.repo + "/" + file], consumers);
+        assert.ok(consumers.every((consumer) => plan.files.includes(consumer)));
+        assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+      }
+      fixture.change(
+        fixture.own,
+        "tests/fixtures/returned-compile-cache-unowned.mjs",
+        "export const unknown = true;\n",
+      );
+      assert.throws(() => fixture.plan(), /CI_TEST_IMPACT_UNMAPPED/);
+      assert.throws(() => fixture.plan({ sourceOnly: true }), /CI_TEST_IMPACT_UNMAPPED/);
+    });
+  }
+});
+
 test("the shared returned-review fixture selects every isolated browser scenario", (t) => {
   const consumers = [
     "tests/returned-resubmit-web.test.mjs",
