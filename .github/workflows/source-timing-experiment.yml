@@ -1,0 +1,379 @@
+name: source-timing-experiment
+run-name: "S1 fixed environment timing — a034b066f30e195c97b82e2a4101cb1c64cde93d"
+
+on:
+  push:
+    branches: [codex/gea-ci-s1-timing-20261024]
+
+env:
+  SOURCE_HEAD_SHA: a034b066f30e195c97b82e2a4101cb1c64cde93d
+  SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-timing-measurement-a034b066f30e195c97b82e2a4101cb1c64cde93d
+  cancel-in-progress: true
+
+jobs:
+  source-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
+    outputs:
+      workbench-sha: ${{ steps.plan.outputs.workbench-sha }}
+      manage-sha: ${{ steps.plan.outputs.manage-sha }}
+      gea-sha: ${{ steps.plan.outputs.gea-sha }}
+      mode: ${{ steps.plan.outputs.mode }}
+      engineering: ${{ steps.plan.outputs.engineering }}
+      workflows: ${{ steps.plan.outputs.workflows }}
+      dependency-review: ${{ steps.plan.outputs.dependency-review }}
+      codeql: ${{ steps.plan.outputs.codeql }}
+      parallel: ${{ steps.source-matrix.outputs.parallel }}
+      shards: ${{ steps.source-matrix.outputs.shards || '["single"]' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: a034b066f30e195c97b82e2a4101cb1c64cde93d
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - name: Classify actual Git changes
+        id: plan
+        run: node scripts/source-quality.mjs --phase plan
+      - name: Check changed workflow semantics
+        if: steps.plan.outputs.workflows == 'true'
+        shell: bash
+        env:
+          WORKFLOW_FILES: ${{ steps.plan.outputs.workflow-files }}
+          ACTIONLINT: ${{ runner.temp }}/workflow-preflight/actionlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/workflow-preflight"
+          curl --fail --location --silent --show-error https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" -C "$RUNNER_TEMP/workflow-preflight" actionlint
+          node --input-type=module -e "import { checkWorkflows } from './scripts/workflow-preflight.mjs'; console.log(JSON.stringify(checkWorkflows(JSON.parse(process.env.WORKFLOW_FILES))))"
+      - uses: actions/checkout@v7
+        if: steps.plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ steps.plan.outputs.workbench-sha }}
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: steps.plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ steps.plan.outputs.manage-sha }}
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Plan independent source-check workers
+        if: steps.plan.outputs.engineering == 'true'
+        id: source-matrix
+        run: |
+          node scripts/source-quality.mjs --phase affected-plan
+          node scripts/source-check-shards.mjs --matrix .runtime/source-checks-plan.json
+      - name: Require the frozen comparison selection and environment
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import assert from 'node:assert/strict';
+          import {selectPlatformTests} from './scripts/ci-platform-tests.mjs';
+          const plan=JSON.parse(readFileSync('.runtime/source-checks-plan.json'));
+          const files=selectPlatformTests(plan,'linux').files.sort();
+          assert.equal(files.length,205);
+          assert.equal(createHash('sha256').update(JSON.stringify(files)).digest('hex'),'c98a95ed873e1dd5744d65597cf2e0560017005d7718337b472e7e69d5380f62');
+          const cost=JSON.parse(readFileSync('.runtime/source-check-cost.json'));
+          assert.equal(cost.estimates.knownFiles,0);
+          assert.equal(cost.shards.length,2);
+          assert.equal(cost.concurrency,3);
+          assert.deepEqual(cost.binding.environment,{platform:'linux',node:'24.22.0',core:'0337d907d0c1305edfa0c915886a203e5e55539d',fileConcurrency:3});
+          console.log(JSON.stringify({allReferenceTestsRetained:true,files:files.length,selectionSha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')}));
+          NODE
+      - name: Keep preparation-free selection and cost
+        if: always() && steps.plan.outputs.engineering == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-cost-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
+            candidate/dsh-gea-plugin/.runtime/source-check-cost.json
+          if-no-files-found: ignore
+
+  source-checks:
+    name: ${{ matrix.shard == 'single' && 'source-checks' || format('source-checks ({0})', matrix.shard) }}
+    needs: source-plan
+    if: needs.source-plan.outputs.mode != 'docs'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GEA_SOURCE_CHECK_SHARD: ${{ matrix.shard != 'single' && matrix.shard || '' }}
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: a034b066f30e195c97b82e2a4101cb1c64cde93d
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        id: node
+        with:
+          node-version: 24.22.0
+      - uses: actions/checkout@v7
+        if: needs.source-plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ needs.source-plan.outputs.workbench-sha }}
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        if: needs.source-plan.outputs.engineering == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ needs.source-plan.outputs.manage-sha }}
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Select affected behavior and type checks before preparation
+        if: needs.source-plan.outputs.engineering == 'true'
+        id: affected
+        run: |
+          node scripts/source-quality.mjs --phase affected-plan
+          if [ -n "$GEA_SOURCE_CHECK_SHARD" ]; then
+            node scripts/source-check-shards.mjs --scope .runtime/source-checks-plan.json --output ../../source-checks-scope.json
+          fi
+      - name: Reuse matching merged PR tool checks
+        if: needs.source-plan.outputs.engineering == 'true'
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node ../../source/dsh-agent-workbench/scripts/source-result.mjs --phase lookup
+      - name: Check applicable repository source
+        if: steps.reuse.outputs.hit != 'true'
+        run: node scripts/source-quality.mjs --phase check
+      - name: Check committed package version
+        if: needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
+        run: node scripts/generate-plugin-package-version.mjs --check
+      - name: Select registered Core for fixed dependency links and SDK consumers
+        if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        id: core
+        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { ciCores } from '../dsh-gea-plugin/scripts/ci-core-policy.mjs'; appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + ciCores('required')[0].head + '\n')"
+      - uses: actions/checkout@v7
+        if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.core.outputs.head }}
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify selected Core source before dependency preparation
+        if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        env:
+          QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
+        run: |
+          node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
+      - name: Read fixed Core command metadata for knowledge checks
+        if: steps.affected.outputs.tooling == 'true' && steps.reuse.outputs.hit != 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          import { ciCores } from './scripts/ci-core-policy.mjs';
+          import { prepareCoreCommandMetadata } from '../../source/dsh-agent-workbench/scripts/source-tools.mjs';
+          console.log(JSON.stringify({ coreMetadata: await prepareCoreCommandMetadata(ciCores('required')[0].head, process.env.GITHUB_WORKSPACE) }));
+          NODE
+      - name: Enable declared package managers
+        if: (steps.affected.outputs.dependencies == 'true' || steps.affected.outputs.sdk == 'true') && steps.reuse.outputs.hit != 'true'
+        run: |
+          if [ "${{ steps.affected.outputs.tooling }}" != 'true' ]; then
+            npm install --global npm@11.11.0
+          fi
+          corepack enable
+      - name: Locate existing package download cache
+        if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        id: cache-path
+        working-directory: candidate/dsh-agent-manage
+        run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: download-cache
+        if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.cache-path.outputs.store }}
+          key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
+          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+      - uses: actions/cache/restore@v4
+        if: steps.affected.outputs.tooling == 'true' && steps.reuse.outputs.hit != 'true'
+        id: tool-download-cache
+        with:
+          path: ${{ steps.affected.outputs.tools-downloads }}
+          key: source-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.affected.outputs.tools-key }}
+      - name: Prepare owned Core source without compiling
+        if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Locate SDK artifact cache paths
+        if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true'
+        id: sdk-paths
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+      - uses: actions/cache/restore@v4
+        if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true'
+        id: sdk-cache
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.core.outputs.head }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - name: Prepare or verify SDK through existing cache contract
+        if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true'
+        run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
+      - uses: actions/cache/save@v4
+        if: success() && steps.affected.outputs.sdk == 'true' && steps.sdk-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+      - name: Prepare dependencies consumed by selected checks
+        if: steps.affected.outputs.dependencies == 'true' && steps.reuse.outputs.hit != 'true'
+        run: node scripts/source-quality.mjs --phase affected-prepare
+      - uses: actions/cache/save@v4
+        if: success() && steps.affected.outputs.tooling == 'true' && steps.tool-download-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          path: ${{ steps.affected.outputs.tools-downloads }}
+          key: ${{ steps.tool-download-cache.outputs.cache-primary-key }}
+      - name: Run affected behavior and real TypeScript checks
+        if: needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
+        run: node scripts/source-quality.mjs --phase affected-check
+      - uses: actions/cache/save@v4
+        if: success() && steps.affected.outputs.core == 'true' && steps.download-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.cache-path.outputs.store }}
+          key: ${{ steps.download-cache.outputs.cache-primary-key }}
+      - name: Publish reusable tool-check receipt
+        if: success() && (matrix.shard == '1' || matrix.shard == 'single') && needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
+        id: receipt
+        run: node ../../source/dsh-agent-workbench/scripts/source-result.mjs --phase record
+      - name: Store reusable tool-check receipt
+        if: steps.receipt.outputs.published == 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-result-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: candidate/dsh-gea-plugin/.runtime/source-result.json
+          if-no-files-found: error
+      - name: Keep source selection and executed check evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-checks-${{ matrix.shard }}
+          include-hidden-files: true
+          path: |
+            candidate/dsh-gea-plugin/.runtime/source-checks-plan.json
+            candidate/dsh-gea-plugin/.runtime/source-tools.json
+            candidate/dsh-gea-plugin/.runtime/source-result-reuse.json
+            candidate/dsh-gea-plugin/.runtime/quality-fast.json
+            candidate/dsh-gea-plugin/quality-checks.json
+            quality-test-plan.json
+            quality-test-execution-plan.json
+            quality-stages.json
+            quality-checks.json
+            source-checks-scope.json
+            quality-stages.json
+            quality-test-execution.json
+            quality-test-results/
+          if-no-files-found: ignore
+
+  dependency-review:
+    needs: source-plan
+    if: needs.source-plan.outputs.dependency-review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+
+  candidate-quality:
+    permissions:
+      contents: read
+      actions: read
+    if: always()
+    needs: [source-plan, source-checks, dependency-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: a034b066f30e195c97b82e2a4101cb1c64cde93d
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - name: Download source-check shard receipts
+        if: needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: source-checks-*
+          path: source-check-shards
+      - name: Require complete source-check execution
+        if: needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
+        run: node scripts/source-check-shards.mjs --aggregate source-check-shards
+      - name: Require successful applicable checks
+        id: admission
+        env:
+          PLAN_RESULT: ${{ needs.source-plan.result }}
+          CHECK_RESULT: ${{ needs.source-checks.result }}
+          DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
+        run: node scripts/source-quality.mjs --phase final
+      - name: Report functional and performance results separately
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_ADMISSION_RESULT: ${{ steps.admission.outcome }}
+        run: node scripts/quality-hosted-budget.mjs --source-report source-budget.json --mode in-gate
+      - name: Keep source workflow performance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-budget-${{ github.run_attempt }}
+          path: source-budget.json
+          if-no-files-found: error
