@@ -16,6 +16,7 @@ const env = { ...process.env, QUALITY_EXPECTED_SHA: process.env.SOURCE_HEAD_SHA,
 run([resolve(reader, "write-hosted-group.mjs"), "--repo", "dsh-gea-plugin", "--root", root, "--core-head", "0337d907d0c1305edfa0c915886a203e5e55539d", "--workbench-source"], env);
 const input = resolve(root, "candidate-input.json");
 const args = ["scripts/run-quality-ci.mjs", "--source-only", "--input", input,
+  "--final-group-workbench", resolve(root, "source/dsh-agent-workbench"),
   "--core-source", resolve(root, "source/official-core"), "--final-group-sha256", createHash("sha256").update(readFileSync(input)).digest("hex"),
   "--prepare-inputs", "--prepare-sdk", "--test-file-concurrency", "3"];
 run([...args, "--stage", "prepare"], env);
