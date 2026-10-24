@@ -127,6 +127,16 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-test-node-runner\\.mjs$",
+      "tests": [
+        "scripts/quality-test-execution.test.mjs",
+        "scripts/quality-test-reporter.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:serial-merge-controller(?:\\.test)?\\.mjs|fixtures/serial-merge-controller\\.json)$",
       "tests": ["scripts/serial-merge-controller.test.mjs"],
       "sourceTests": ["scripts/serial-merge-controller.test.mjs"]

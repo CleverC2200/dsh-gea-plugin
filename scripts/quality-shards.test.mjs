@@ -891,9 +891,9 @@ test("aggregation observes real child reports and rejects omitted, duplicate, st
   );
 });
 
-test("historical scheduling weights retain their measured source and leave new tests unknown", async () => {
+test("measured scheduling weights retain their execution source and leave new tests unknown", async () => {
   const timings = JSON.parse(readFileSync(new URL("./quality-test-timings.json", import.meta.url)));
-  assert.equal(timings.source.kind, "historical-reference-only");
+  assert.equal(timings.source.kind, "measured-reference-only");
   assert.equal(timings.source.fileConcurrency, 3);
   assert.equal(timings.source.acceptance, "not-acceptance");
   assert.match(timings.source.head, /^[a-f0-9]{40}$/);
