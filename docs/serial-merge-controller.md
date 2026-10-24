@@ -4,7 +4,7 @@
 
 ## 启用前
 
-只允许 `CleverC2200/dsh-gea-plugin` 的同仓 PR，目标为 main。固定身份、预算及来源路径由 [serial-merge-policy.json](../scripts/serial-merge-policy.json) 维护。部署必须同时满足以下条件。
+只允许 `CleverC2200/dsh-gea-plugin` 的同仓 PR，目标为 main。固定身份、预算及来源路径由 [serial-merge-policy.json](../scripts/serial-merge-policy.json) 维护。部署必须同时满足以下条件。下列非敏感变量使用 repository variables，确保 job 准入条件能在启动前读取；私钥只放限定 environment。
 
 - `gea-serial-merge` environment 仅允许 main。私钥只保存为该 environment 的 `GEA_MERGE_APP_PRIVATE_KEY`，不放仓库级 secret、不传给 PR workflow 或个人 Codex。
 - 配置 `GEA_MERGE_APP_ID`、`GEA_MERGE_INSTALLATION_ID`，与策略中已核实的 App/installation 一致。App 仅选择 GEA。每次 installation token 又显式限定 `repositories: ['dsh-gea-plugin']` 及现有四项权限，不因未来 App 安装范围扩大而扩大令牌。
