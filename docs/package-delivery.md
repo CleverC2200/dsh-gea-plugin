@@ -107,7 +107,7 @@ corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json
 
 安装继续隔离 Home/profile、XDG 配置与缓存及空 npm 鉴权配置，metadata 缓存在本次 Home 的 `pnpm-cache`，global virtual store 保持禁用。只共享下载内容，不复用已有 `node_modules`、profile 锁或用户数据。`result.json`、`install.json` 和 `install.json.installation.json` 的 `downloadStore` 记录 `{ mode: "shared" | "cold", path }`；路径选择不证明下载命中率。公共 store 不随本次 Home 清理。
 
-安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、七个业务资源（含受控只读客户库存）、十份文档的完整 standard 和智能编排默认。客户库存已按正式受控只读声明发布预设；订单工作台和订单履约模拟预览仍不得出现在初始预设清单。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
+安装成功后还必须确认三 Host、三个 client graph 入口、所有已声明 SDK peer 的实际宿主路由、八个业务资源（含受控只读客户库存和订单工作台）、十一份文档的完整 standard 和智能编排默认。客户库存、订单履约和订单工作台按当前已登记的受控声明发布预设；发现资源不授予业务访问或写入权限。任何一步失败返回非零，保留失败 Home、阶段及私有诊断，不执行下一步，不生成 ACCEPTANCE.json。终端只输出稳定错误码或成功阶段，不输出原日志。
 
 仅成功接收在新 evidence 中生成 ACCEPTANCE.json，绑定交付 manifest、实际三 tar 集合、安装及观察回执 SHA，以及同一个 Core/Profile。`result.json` 为本次入口结果。接收入口不改原 tgz、manifest 或已有交付文件，打包仍只称 packaged。浏览器执行、Native、业务和真实模型不在这个接收结论内。
 
