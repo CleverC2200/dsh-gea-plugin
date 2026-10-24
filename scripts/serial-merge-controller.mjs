@@ -52,6 +52,10 @@ export function createGitHubReader(readJson) {
     readBranch: async (request) => readJson(`${path(request)}/branches/main`),
     readProtection: async (request) => readJson(`${path(request)}/branches/main/protection`),
     readCommit: async (request, sha) => readJson(commit(request, sha)),
+    readCheckWorkflow: async (request, suiteId) => {
+      if (!Number.isSafeInteger(suiteId) || suiteId < 1) throw new Error("invalid check suite");
+      return readJson(`${path(request)}/actions/runs?check_suite_id=${suiteId}&per_page=100`);
+    },
     readChecks: async (request, sha) => {
       const check_runs = [];
       for (let page = 1; page <= 100; page++) {
@@ -64,6 +68,88 @@ export function createGitHubReader(readJson) {
       }
       throw new Error("incomplete check pagination");
     },
+  };
+}
+
+export async function readSerialMergeChecks(request, api, head, workflow) {
+  const protection = await api.readProtection(request);
+  const required = protection.required_status_checks;
+  if (
+    !required?.strict ||
+    !required.checks?.length ||
+    !protection.enforce_admins?.enabled ||
+    required.checks.some((check) => !Number.isSafeInteger(check.app_id) || check.app_id < 1)
+  )
+    return { status: "unverified", receipts: [] };
+  if (
+    workflow &&
+    !required.checks.some(
+      (check) =>
+        check.context === workflow.requiredCheck && check.app_id === workflow.requiredCheckAppId,
+    )
+  )
+    return { status: "unverified", receipts: [] };
+  const checks = await api.readChecks(request, head);
+  const receipts = [];
+  for (const check of required.checks) {
+    const candidates = checks.check_runs
+      .filter(
+        (run) =>
+          run.name === check.context && run.head_sha === head && run.app?.id === check.app_id,
+      )
+      .sort((a, b) => b.id - a.id);
+    let receipt;
+    for (const candidate of candidates) {
+      if (workflow) {
+        if (!candidate.check_suite?.id) continue;
+        const runs = await api.readCheckWorkflow(request, candidate.check_suite.id);
+        if (
+          !runs.workflow_runs?.some(
+            (run) =>
+              run.workflow_id === workflow.sourceWorkflowId &&
+              run.path === workflow.sourceWorkflowPath &&
+              run.event === "pull_request" &&
+              run.head_sha === head &&
+              run.head_branch === request.sourceBranch &&
+              run.repository?.id === workflow.repositoryId &&
+              run.head_repository?.id === workflow.repositoryId &&
+              run.pull_requests?.some(
+                (pull) =>
+                  pull.number === request.pr &&
+                  pull.head?.repo?.id === workflow.repositoryId &&
+                  pull.base?.repo?.id === workflow.repositoryId &&
+                  pull.head.ref === request.sourceBranch &&
+                  pull.base.ref === "main",
+              ),
+          )
+        )
+          continue;
+      }
+      receipt = candidate;
+      break;
+    }
+    receipts.push(receipt);
+  }
+  if (
+    receipts.some(
+      (run) =>
+        run?.status === "completed" &&
+        [
+          "failure",
+          "cancelled",
+          "timed_out",
+          "action_required",
+          "startup_failure",
+          "stale",
+        ].includes(run.conclusion),
+    )
+  )
+    return { status: "failed", receipts };
+  return {
+    status: receipts.every((run) => run?.status === "completed" && run.conclusion === "success")
+      ? "passed"
+      : "pending",
+    receipts,
   };
 }
 
@@ -172,46 +258,10 @@ export async function runSerialMerge(input, policy, api, now = Date.now()) {
         return finish("updated_head_not_approved");
       if (pr.head.sha !== active.head) return finish("head_changed");
       if (branch.commit.sha !== active.base) return finish("base_advanced");
-      const protection = await api.readProtection(active.request);
-      const required = protection.required_status_checks;
-      if (
-        !required?.strict ||
-        !required.checks?.length ||
-        !protection.enforce_admins?.enabled ||
-        required.checks.some((check) => !Number.isSafeInteger(check.app_id) || check.app_id < 1)
-      )
-        return finish("protection_unverified");
-      const checks = await api.readChecks(active.request, active.head);
-      const receipts = required.checks.map(
-        (check) =>
-          checks.check_runs
-            .filter(
-              (run) =>
-                run.name === check.context &&
-                run.head_sha === active.head &&
-                run.app?.id === check.app_id,
-            )
-            .sort((a, b) => b.id - a.id)[0],
-      );
-      if (
-        receipts.some(
-          (run) =>
-            run?.status === "completed" &&
-            [
-              "failure",
-              "cancelled",
-              "timed_out",
-              "action_required",
-              "startup_failure",
-              "stale",
-            ].includes(run.conclusion),
-        )
-      )
-        return finish("checks_failed");
-      if (
-        pr.mergeable_state !== "clean" ||
-        receipts.some((run) => !run || run.status !== "completed" || run.conclusion !== "success")
-      )
+      const checks = await readSerialMergeChecks(active.request, api, active.head, policy.workflow);
+      if (checks.status === "unverified") return finish("protection_unverified");
+      if (checks.status === "failed") return finish("checks_failed");
+      if (pr.mergeable_state !== "clean" || checks.status !== "passed")
         return result({ action: "wait_checks", requestId: active.request.id, head: active.head });
       const currentPull = await api.readPullRequest(active.request);
       const currentBranch = await api.readBranch(active.request);

@@ -33,6 +33,7 @@
 - [当前三核心插件安装](install.md)
 - [交互与引用授权入口](interaction-permission-contract.md)
 - [本地依赖与按需检查](local-development.md)
+- [GEA 串行合并候选与操作边界](serial-merge-operations.md)
 - [三包本地交付入口](package-delivery.md)
 - [页面自述试点追溯](page-bridge-v2-pilot.md)
 - [页面桥与 GEA 执行边界](page-bridge.md)

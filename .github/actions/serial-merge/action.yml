@@ -1,0 +1,12 @@
+name: GEA trusted serial merge
+description: Execute one authorized same-repository request with durable intent checkpoints
+inputs:
+  github-token:
+    description: Workflow token with Actions read access
+    required: true
+  app-private-key:
+    description: Dedicated App key from the main-only environment
+    required: true
+runs:
+  using: node24
+  main: index.mjs
