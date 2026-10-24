@@ -2,6 +2,8 @@
 
 三仓的原生 Actions 由各自 `.codex/environments/environment.toml` 维护，setup 只检查工具。先从项目根 `docs/agents/current-development.md` 进入本票冻结输入，再核登记 checkout、HEAD、owner 和未提交修改。已有任务保留自己的输入和动作默认值。
 
+GEA 桌面安装版和源码开发实例使用系统分配的监听端口，通过 Host 就绪回执获取实际地址，不约定固定服务端口。项目的源码 Host 入口 `pnpm start` 默认 `--port 0`；开发时保留各自的 home、profile 和 Electron userData，不复用官方客户端的 `19387`，也不把测试选出的空闲端口写成新的固定默认值。需要固定端口的显式 `--port` 或 `webserver.config.port` 覆盖由该实例维护者负责避让。
+
 本地轻预检与影响计划使用现有开发 CLI，从目标仓运行：
 
 ```sh
