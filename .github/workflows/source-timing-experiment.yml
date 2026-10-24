@@ -1,24 +1,24 @@
 name: source-timing-experiment
-run-name: "S1 fixed environment timing — 2dbc09b18140767613bc3f96d11fa867fd9b0d83"
+run-name: "S1 fixed environment timing — c1e0eb37ba07f999ad7ef14268208ed7ce1ee0b5"
 
 on:
   push:
     branches: [codex/gea-ci-s1-timing-20261024]
 
 env:
-  SOURCE_HEAD_SHA: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
+  SOURCE_HEAD_SHA: c1e0eb37ba07f999ad7ef14268208ed7ce1ee0b5
   SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
 
 permissions:
   contents: read
 
 concurrency:
-  group: source-timing-measurement-2dbc09b18140767613bc3f96d11fa867fd9b0d83
+  group: source-timing-measurement-c1e0eb37ba07f999ad7ef14268208ed7ce1ee0b5
   cancel-in-progress: true
 
 jobs:
   source-plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     defaults:
       run:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
+          ref: c1e0eb37ba07f999ad7ef14268208ed7ce1ee0b5
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -92,8 +92,14 @@ jobs:
           import {selectPlatformTests} from './scripts/ci-platform-tests.mjs';
           const plan=JSON.parse(readFileSync('.runtime/source-checks-plan.json'));
           const files=selectPlatformTests(plan,'linux').files.sort();
-          assert.equal(files.length,206);
-          assert.equal(createHash('sha256').update(JSON.stringify(files)).digest('hex'),'5a051e21e4cd1bea1d323ecc59f602e696afec71ab7e2997354991864f88827c');
+          assert.equal(files.length,209);
+          assert.equal(createHash('sha256').update(JSON.stringify(files)).digest('hex'),'dd861d3161b01c3929e6ce1dd8fe2b8066673e53b0bca1c7eeabd6c500fa4596');
+          const added=['scripts/serial-merge-artifacts.test.mjs','scripts/serial-merge-runner.test.mjs','scripts/serial-merge-runtime.test.mjs'];
+          for(const file of added) assert.ok(files.includes(file),file);
+          const retainedReference=files.filter(file=>!added.includes(file));
+          assert.equal(retainedReference.length,206);
+          assert.equal(createHash('sha256').update(JSON.stringify(retainedReference)).digest('hex'),'5a051e21e4cd1bea1d323ecc59f602e696afec71ab7e2997354991864f88827c');
+          assert.deepEqual(selectPlatformTests(plan,'linux').platformTasks,[{platform:'darwin',phase:'macos-isolation',files:['scripts/isolated-validation.test.mjs','tests/host-config-keychain.test.mjs']}]);
           const cost=JSON.parse(readFileSync('.runtime/source-check-cost.json'));
           assert.equal(cost.estimates.knownFiles,0);
           assert.equal(cost.shards.length,2);
@@ -120,7 +126,7 @@ jobs:
       fail-fast: false
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       GEA_SOURCE_CHECK_SHARD: ${{ matrix.shard != 'single' && matrix.shard || '' }}
@@ -133,7 +139,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
+          ref: c1e0eb37ba07f999ad7ef14268208ed7ce1ee0b5
           path: candidate/dsh-gea-plugin
           fetch-depth: 0
           persist-credentials: false
@@ -318,7 +324,7 @@ jobs:
   dependency-review:
     needs: source-plan
     if: needs.source-plan.outputs.dependency-review == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -337,12 +343,12 @@ jobs:
       actions: read
     if: always()
     needs: [source-plan, source-checks, dependency-review]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 2dbc09b18140767613bc3f96d11fa867fd9b0d83
+          ref: c1e0eb37ba07f999ad7ef14268208ed7ce1ee0b5
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
