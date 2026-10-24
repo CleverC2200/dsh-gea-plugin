@@ -16,7 +16,7 @@ try {
       config: { type: "string" },
       sources: { type: "string" },
       runtime: { type: "string" },
-      port: { type: "string", default: "3198" },
+      port: { type: "string", default: "0" },
       dev: { type: "boolean" },
       help: { type: "boolean" },
     },
