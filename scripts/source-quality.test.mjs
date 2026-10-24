@@ -35,11 +35,14 @@ function fixture(t, files, changed) {
     JSON.stringify({ pull_request: { base: { ref: "main", sha: base }, head: { sha: head } } }),
   );
   const env = { ...process.env, GITHUB_EVENT_NAME: "pull_request", GITHUB_EVENT_PATH: event };
+  delete env.SOURCE_HEAD_SHA;
+  delete env.SOURCE_BASE_SHA;
   return {
     root,
     git,
     base,
     head,
+    env,
     run: (phase, extra = {}) =>
       spawnSync(process.execPath, [cli, "--phase", phase], {
         cwd: root,
@@ -545,7 +548,7 @@ test("local preflight checks staged, unstaged and untracked JavaScript before co
     spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
       cwd: repo.root,
       encoding: "utf8",
-      env: { ...process.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
+      env: { ...repo.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
     });
   for (const state of ["unstaged", "staged", "untracked"]) {
     const file = state === "untracked" ? "src/new.js" : "src/main.js";
@@ -575,7 +578,7 @@ test("local preflight validates new resource references before they are tracked"
     spawnSync(process.execPath, [cli, "--phase", "check", "--working-tree"], {
       cwd: repo.root,
       encoding: "utf8",
-      env: { ...process.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
+      env: { ...repo.env, GITHUB_EVENT_PATH: "", SOURCE_BASE_SHA: repo.head },
     });
   assert.match(run().stderr, /RESOURCE_REFERENCE_MISSING.*rules\.md/);
   writeFileSync(join(directory, "rules.md"), "Rules\n");
@@ -591,7 +594,7 @@ test("local preflight requires the pinned validator for an untracked workflow", 
     cwd: repo.root,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...repo.env,
       GITHUB_EVENT_PATH: "",
       SOURCE_BASE_SHA: repo.head,
       ACTIONLINT: join(repo.root, ".git/no-actionlint"),
