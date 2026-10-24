@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 test("the public quality CLI rejects an unknown stage before preparation", () => {
   const result = spawnSync(process.execPath, ["scripts/run-quality-ci.mjs", "--stage", "unknown"], {
@@ -8,6 +8,27 @@ test("the public quality CLI rejects an unknown stage before preparation", () =>
   });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /QUALITY_STAGE_REQUIRED/);
+});
+
+test("the public observe stage reports unknown for missing or unreadable evidence", (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "quality-observe-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const bytes of [null, "not JSON", JSON.stringify({ schemaVersion: 1, stages: {} })]) {
+    if (bytes !== null) writeFileSync(join(root, "quality-stages.json"), bytes);
+    const result = spawnSync(
+      process.execPath,
+      ["scripts/run-quality-ci.mjs", "--stage", "observe", "--root", root],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const observed = JSON.parse(result.stdout);
+    assert.equal(observed.status, "unknown");
+    assert.equal(observed.lastConfirmedStage, null);
+    assert.equal(observed.testsStarted, null);
+    assert.equal(existsSync(join(root, "quality-checks.json")), false);
+    if (bytes !== null)
+      assert.equal(readFileSync(join(root, "quality-stages.json"), "utf8"), bytes);
+  }
 });
 
 import {
@@ -20,6 +41,7 @@ import {
   rmSync,
   writeFileSync,
   appendFileSync,
+  watch,
 } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -53,11 +75,18 @@ const fixtureSourceFiles = [
   "quality-runner-environment.mjs",
   "quality-system-chrome.mjs",
   "fixtures/quality-ci-commands.mjs",
+  "fixtures/quality-browser-install.cjs",
   "fixtures/delivery-history/navigation-r7-setup-failure.json.raw",
 ];
 function fixture(
   t,
-  { additionalTests = [], docs = false, docsWhitespace = false, macos = false } = {},
+  {
+    additionalTests = [],
+    docs = false,
+    docsWhitespace = false,
+    macos = false,
+    browser = false,
+  } = {},
 ) {
   const job = realpathSync(mkdtempSync(join(tmpdir(), "gea-ci-stages-")));
   t.after(() => rmSync(job, { recursive: true, force: true }));
@@ -221,7 +250,7 @@ function fixture(
   });
   write(
     join(gea, "scripts/stage-fixture.test.mjs"),
-    `import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.GEA_SOURCE_CHECK_SHARD, undefined); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
+    `${browser ? "import '@playwright/test';" : ""}import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.GEA_SOURCE_CHECK_SHARD, undefined); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
   );
   for (const file of additionalTests)
     write(
@@ -238,6 +267,21 @@ function fixture(
         join(gea, file),
         `import test from 'node:test'; import '../lib/host.js'; import { appendFileSync } from 'node:fs'; test('prepared Host reaches the native task', () => appendFileSync(${JSON.stringify(join(job, "native-tests-executed"))}, ${JSON.stringify(file + "\n")}));\n`,
       );
+  }
+  if (browser) {
+    const directories = ["chromium", "headless", "ffmpeg"].map((name) =>
+      join(job, ".quality-browser", name),
+    );
+    for (const directory of directories) write(join(directory, "executable"), "fixture browser");
+    json(join(gea, "node_modules/@playwright/test/package.json"), {
+      type: "module",
+      version: "1.58.2",
+      exports: "./index.mjs",
+    });
+    write(
+      join(gea, "node_modules/@playwright/test/index.mjs"),
+      `export const chromium={executablePath:()=>${JSON.stringify(join(directories[0], "executable"))}};`,
+    );
   }
   const geaHead = commit(gea);
   const manifest = {
@@ -291,7 +335,7 @@ function fixture(
     };
     for (const key of ["CI", "QUALITY_EXPECTED_SHA", "NODE_TEST_CONTEXT"])
       if (!Object.hasOwn(extra, key)) delete env[key];
-    return spawnSync(
+    return (execution.async ? spawn : spawnSync)(
       process.execPath,
       [
         "scripts/run-quality-ci.mjs",
@@ -322,6 +366,150 @@ function fixture(
     read: () => JSON.parse(readFileSync(join(job, "quality-stages.json"))),
   };
 }
+
+function cleanupBrowserFixture(job, child) {
+  const pids = [
+    child.pid,
+    ...["browser-leader-ready", "browser-grandchild-ready"]
+      .filter((name) => existsSync(join(job, name)))
+      .map((name) => Number(readFileSync(join(job, name), "utf8"))),
+  ];
+  for (const pid of pids)
+    for (const target of [-pid, pid]) {
+      try {
+        process.kill(target, "SIGKILL");
+      } catch (e) {
+        if (e.code !== "ESRCH") throw e;
+      }
+    }
+}
+
+for (const signal of [null, "SIGTERM", "SIGINT"]) {
+  test(
+    "public browser preparation " +
+      (signal ?? "timeout") +
+      " stops before tests and reaps inherited descendants",
+    async (t) => {
+      const f = fixture(t, { browser: true });
+      const prepared = f.run("prepare");
+      assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+      const child = f.run(
+        "build",
+        { BROWSER_SCENARIO: "hang" },
+        ["--browser-preparation-timeout-ms", signal ? "5000" : "500"],
+        { async: true, detached: true },
+      );
+      let stdout = "",
+        stderr = "";
+      child.stdout.on("data", (data) => (stdout += data));
+      child.stderr.on("data", (data) => (stderr += data));
+      const closed = new Promise((resolve, reject) => {
+        child.on("error", reject);
+        child.on("close", (code, signal) => resolve({ code, signal }));
+      });
+      let readyTimer, deadlineTimer, watcher;
+      try {
+        await new Promise((resolveReady, reject) => {
+          readyTimer = setTimeout(() => reject(Error("browser fixture did not start")), 5000);
+          const check = () => {
+            if (existsSync(join(f.job, "browser-grandchild-ready"))) {
+              clearTimeout(readyTimer);
+              watcher?.close();
+              resolveReady();
+            }
+          };
+          watcher = watch(f.job, check);
+          check();
+        });
+        const beforeObserve = readFileSync(f.stageFile, "utf8");
+        const observation = f.run("observe");
+        assert.equal(observation.status, 0, observation.stderr);
+        const observed = JSON.parse(observation.stdout);
+        assert.equal(observed.lastConfirmedStage, "build");
+        assert.equal(observed.lastConfirmedStep, "browser-install");
+        assert.equal(observed.stepStatus, "running");
+        assert.equal(observed.testsStarted, false);
+        assert.ok(Number.isFinite(Date.parse(observed.lastConfirmedAt)));
+        assert.equal(readFileSync(f.stageFile, "utf8"), beforeObserve);
+        if (signal) child.kill(signal);
+        const result = await Promise.race([
+          closed,
+          new Promise((_, reject) => {
+            deadlineTimer = setTimeout(
+              () => reject(Error("browser preparation did not stop at its budget")),
+              5000,
+            );
+          }),
+        ]);
+        assert.equal(result.code, 1, stdout + stderr);
+        assert.match(
+          stderr,
+          signal ? new RegExp("cancelled by " + signal) : /browser.*timed out.*500/,
+        );
+        assert.match(stdout, /browser install output/);
+        assert.match(stderr, /browser install diagnostic/);
+        const record = f.read();
+        assert.equal(record.stages.build.status, "failed");
+        assert.equal(record.stages.build.steps[0].status, "failed");
+        assert.equal(record.stages.build.steps[0].budgetMs, signal ? 5000 : 500);
+        assert.equal(record.stages.tests, undefined);
+        assert.equal(existsSync(join(f.job, "tests-executed")), false);
+        assert.equal(existsSync(join(f.job, "browser-preparation.json")), false);
+        for (const name of ["browser-leader-ready", "browser-grandchild-ready"])
+          assert.throws(() => process.kill(Number(readFileSync(join(f.job, name), "utf8")), 0), {
+            code: "ESRCH",
+          });
+      } finally {
+        clearTimeout(readyTimer);
+        clearTimeout(deadlineTimer);
+        watcher?.close();
+        cleanupBrowserFixture(f.job, child);
+        await closed;
+      }
+    },
+  );
+}
+
+test("public browser preparation keeps normal and nonzero command results in its build evidence", (t) => {
+  for (const scenario of ["normal", "fail"]) {
+    const f = fixture(t, { browser: true });
+    const prepare = f.run("prepare");
+    assert.equal(prepare.status, 0, prepare.stdout + prepare.stderr);
+    const result = f.run("build", { BROWSER_SCENARIO: scenario });
+    assert.equal(result.status, scenario === "fail" ? 1 : 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /browser install output/);
+    assert.match(result.stderr, /browser install diagnostic/);
+    if (scenario === "fail") assert.match(result.stderr, /exit 19/);
+    const build = f.read().stages.build;
+    assert.equal(build.status, scenario === "fail" ? "failed" : "passed");
+    assert.equal(build.steps[0].budgetMs, 300000);
+    assert.equal(build.steps[0].status, build.status);
+    assert.ok(build.steps[0].finishedAt);
+    assert.equal(existsSync(join(f.job, "browser-preparation.json")), scenario !== "fail");
+    assert.equal(existsSync(join(f.job, "tests-executed")), false);
+    if (scenario === "normal") {
+      for (const stage of ["checks", "tests"]) {
+        const ran = f.run(stage);
+        assert.equal(ran.status, 0, ran.stdout + ran.stderr);
+      }
+      const observation = JSON.parse(f.run("observe").stdout);
+      assert.equal(observation.lastConfirmedStage, "tests");
+      assert.equal(observation.testsStarted, true);
+      assert.equal(observation.stageStatus, "passed");
+    }
+  }
+});
+
+test("browser preparation budgets can be shortened but cannot exceed the fixed upper bound", (t) => {
+  const f = fixture(t, { browser: true });
+  const prepared = f.run("prepare");
+  assert.equal(prepared.status, 0, prepared.stderr);
+  const result = f.run("build", {}, ["--browser-preparation-timeout-ms", "300001"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /QUALITY_BROWSER_BUDGET_REQUIRED/);
+  assert.equal(existsSync(join(f.job, "browser-preparation.json")), false);
+  assert.equal(existsSync(join(f.job, "tests-executed")), false);
+});
 
 test("static quality builds current Workbench types and pure model, rejecting either failure before GEA build", (t) => {
   for (const failure of [null, "declarations", "workbench-model"]) {

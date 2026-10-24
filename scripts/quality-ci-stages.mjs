@@ -53,6 +53,69 @@ export function verifyQualityBuildInventory(root, artifacts) {
 }
 
 export const qualityStages = ["prepare", "build", "checks", "tests"];
+export function observeQualityStages(file) {
+  const unknown = {
+    status: "unknown",
+    lastConfirmedStage: null,
+    lastConfirmedAt: null,
+    testsStarted: null,
+  };
+  let observed = unknown;
+  try {
+    const record = JSON.parse(readFileSync(file));
+    if (record.schemaVersion !== 1 || !record.stages) throw Error("stage evidence missing");
+    const name = qualityStages.findLast((stage) => record.stages[stage]);
+    const stage = record.stages[name];
+    if (!stage || !["running", "passed", "failed"].includes(stage.status))
+      throw Error("stage evidence missing");
+    const step = stage.steps?.at(-1);
+    const at = stage.finishedAt ?? step?.finishedAt ?? step?.startedAt ?? stage.startedAt;
+    if (!Number.isFinite(Date.parse(at))) throw Error("stage time missing");
+    observed = {
+      status: "observed",
+      source: file,
+      lastConfirmedStage: name,
+      lastConfirmedAt: at,
+      stageStatus: stage.status,
+      ...(step
+        ? { lastConfirmedStep: step.name, stepStatus: step.status, budgetMs: step.budgetMs }
+        : {}),
+      testsStarted: Boolean(record.stages.tests?.startedAt),
+    };
+  } catch (error) {
+    observed = { ...unknown, reason: error.message };
+  }
+  const workerFile = resolve(file, "../quality-worker-inputs.json");
+  if (existsSync(workerFile)) {
+    try {
+      const worker = JSON.parse(readFileSync(workerFile));
+      if (
+        worker.schemaVersion !== 1 ||
+        !["running", "failed", "worker-inputs-ready"].includes(worker.status) ||
+        !Array.isArray(worker.steps)
+      )
+        throw Error("worker stage evidence missing");
+      const step = worker.steps.at(-1);
+      const at = worker.finishedAt ?? step?.finishedAt ?? step?.startedAt ?? worker.startedAt;
+      if (!Number.isFinite(Date.parse(at))) throw Error("worker stage time missing");
+      if (observed.status === "unknown" || Date.parse(at) > Date.parse(observed.lastConfirmedAt))
+        observed = {
+          status: "observed",
+          source: workerFile,
+          lastConfirmedStage: "prepare",
+          lastConfirmedAt: at,
+          stageStatus: worker.status === "worker-inputs-ready" ? "passed" : worker.status,
+          ...(step
+            ? { lastConfirmedStep: step.name, stepStatus: step.status, budgetMs: step.budgetMs }
+            : {}),
+          testsStarted: false,
+        };
+    } catch (error) {
+      return { ...unknown, reason: error.message };
+    }
+  }
+  return observed;
+}
 export function qualityStageRun({ file, binding, requested }) {
   const persist = () => {
     writeFileSync(file + ".tmp", JSON.stringify(record, null, 2) + "\n");
@@ -109,6 +172,42 @@ export function qualityStageRun({ file, binding, requested }) {
       console.log(JSON.stringify({ stage: name, ...record.stages[name] }));
     },
     finish,
+    async step(name, metadata, execute) {
+      if (!current) throw Error("QUALITY_STAGE_REQUIRED: browser step");
+      const parent = current;
+      const step = { name, ...metadata, status: "running", startedAt: new Date().toISOString() };
+      (record.stages[parent].steps ??= []).push(step);
+      persist();
+      console.log(
+        JSON.stringify({
+          stage: parent,
+          step: name,
+          testsStarted: Boolean(record.stages.tests),
+          ...step,
+        }),
+      );
+      try {
+        const result = await execute();
+        step.status = "passed";
+        return result;
+      } catch (error) {
+        step.status = "failed";
+        step.error = error.message;
+        throw error;
+      } finally {
+        step.finishedAt = new Date().toISOString();
+        step.durationMs = Date.parse(step.finishedAt) - Date.parse(step.startedAt);
+        persist();
+        console.log(
+          JSON.stringify({
+            stage: parent,
+            step: name,
+            testsStarted: Boolean(record.stages.tests),
+            ...step,
+          }),
+        );
+      }
+    },
     summarize({ workflowResults = false } = {}) {
       const results = qualityStages.map((name) => ({ name, ...record.stages[name] }));
       const failed =
