@@ -3,6 +3,7 @@ import {
   qualityStageRun,
   qualityBuildOutputs,
   verifyQualityBuildInventory,
+  observeQualityStages,
 } from "./quality-ci-stages.mjs";
 import {
   createExecutionPlan,
@@ -12,6 +13,7 @@ import {
 } from "./quality-test-execution.mjs";
 import { runQualityChecks } from "./run-quality-checks.mjs";
 import { sourceCheckShard } from "./source-check-shards.mjs";
+import { installCommands, browserPreparationBudget } from "./quality-worker-inputs.mjs";
 /** Public source-event admission and fail-closed workflow aggregation. */
 import { parseArgs, isDeepStrictEqual } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -117,6 +119,7 @@ try {
       "core-source": { type: "string" },
       "core-head": { type: "string" },
       "prepare-inputs": { type: "boolean" },
+      "browser-preparation-timeout-ms": { type: "string" },
       "source-only": { type: "boolean" },
       "final-group-sha256": { type: "string" },
       "final-group-workbench": { type: "string" },
@@ -137,6 +140,12 @@ try {
       "windows-results": { type: "string" },
     },
   });
+  if (values.stage === "observe") {
+    if (values.phase !== "quality") refuse("QUALITY_STAGE_PHASE", values.phase);
+    const root = values.root ?? dirname(dirname(process.cwd()));
+    console.log(JSON.stringify(observeQualityStages(resolve(root, "quality-stages.json"))));
+    process.exit(0);
+  }
   if (
     (values["early-controls"] !== undefined || values["early-allocation"] !== undefined) &&
     (values.phase !== "final" || !values["early-controls"] || !values["early-allocation"])
@@ -987,15 +996,41 @@ try {
       dirname(dirname(process.cwd())),
       ".quality-browser",
     );
-    if (building && plan.browser && values["prepare-inputs"])
-      run("corepack", [
+    if (building && plan.browser && values["prepare-inputs"]) {
+      const budgetMs = browserPreparationBudget(values["browser-preparation-timeout-ms"]);
+      const args = [
         "pnpm",
         "exec",
         "playwright",
         "install",
         ...(process.platform === "linux" ? ["--with-deps"] : []),
         "chromium",
-      ]);
+      ];
+      const browserInstall = installCommands({ errorCode: "QUALITY_BROWSER_PREPARATION_FAILED" });
+      const release = createRequire(import.meta.url)("./build-admission.mjs").acquireBuild({
+        operation: "prepare",
+        cwd: process.cwd(),
+      });
+      try {
+        finalGroup?.verifyUnchanged();
+        const execute = () =>
+          browserInstall.run("corepack", args, process.cwd(), {
+            timeoutMs: budgetMs,
+            forwardOutput: true,
+          });
+        if (stages)
+          await stages.step(
+            "browser-install",
+            { command: ["corepack", ...args], budgetMs },
+            execute,
+          );
+        else await execute();
+        finalGroup?.verifyUnchanged();
+      } finally {
+        await browserInstall.close();
+        release();
+      }
+    }
     if (plan.browser) {
       const { chromium } = await import("@playwright/test");
       const browserRoot = process.env.PLAYWRIGHT_BROWSERS_PATH;
