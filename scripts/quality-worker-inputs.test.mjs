@@ -598,7 +598,10 @@ cp.spawn=(command,args,options={})=>{
  return realSpawn(command,args,options);
 };
 const real=cp.spawnSync;
+const realKill=process.kill.bind(process);
+if(process.env.FIXTURE_REQUIRE_SUDO==='1')process.kill=(pid,signal)=>{if(pid<0&&signal!==0)throw Object.assign(Error('controlled root-owned group'),{code:'EPERM'});return realKill(pid,signal)};
 cp.spawnSync=(command,args,options={})=>{
+ if(command==='sudo'){appendFileSync(${JSON.stringify(join(root, "commands.jsonl"))},JSON.stringify({command,args,cwd:options.cwd})+'\\n');try{realKill(Number(args.at(-1)),args[3]);return {status:0,stdout:'',stderr:''}}catch(error){if(error.code!=='ESRCH')throw error;return {status:1,stdout:'',stderr:'No such process'}}}
  if(${publicQuality}&&command===process.execPath&&args[0]?.endsWith('/prepare-official-sdk.mjs')&&args.includes('--with-web')){appendFileSync(${JSON.stringify(join(root, "commands.jsonl"))},JSON.stringify({command:'sdk-consumer',args})+'\\n');return {status:0,stdout:'',stderr:''};}
  if(command==='/opt/google/chrome/chrome')return {status:0,stdout:(process.env.CHROME_VERSION??'Chrome fixture 1')+'\\n',stderr:''};
  if(['npm','corepack'].includes(command)){
@@ -962,7 +965,7 @@ test("early worker browser installation times out before producer wait and leave
   const { f, apiBase } = await earlyWorkerFixture(t);
   const run = f.earlyReceiveAsync(
     apiBase,
-    { EARLY_BROWSER_CLOSURE: "1", BROWSER_SCENARIO: "hang" },
+    { EARLY_BROWSER_CLOSURE: "1", BROWSER_SCENARIO: "hang", FIXTURE_REQUIRE_SUDO: "1" },
     ["--browser-preparation-timeout-ms", "500"],
   );
   try {
@@ -993,6 +996,9 @@ test("early worker browser installation times out before producer wait and leave
       false,
     );
     assert.equal(existsSync(join(f.root, "api-polled")), false);
+    assert.ok(
+      f.commands().some((entry) => entry.command === "sudo" && entry.args.includes("SIGKILL")),
+    );
     assert.equal(existsSync(join(f.root, "tests-executed")), false);
     for (const name of ["browser-leader-ready", "browser-grandchild-ready"])
       assert.throws(() => process.kill(Number(readFileSync(join(f.root, name), "utf8")), 0), {
@@ -1438,10 +1444,11 @@ for (const signal of [null, "SIGTERM", "SIGINT"]) {
       assert.equal(f.exportBundle().status, 0);
       f.clear();
       const browserLaunches = readFileSync(join(f.root, "browser-launches.jsonl"), "utf8");
-      const run = f.receiveAsync({ BROWSER_SCENARIO: "hang" }, undefined, [
-        "--browser-preparation-timeout-ms",
-        signal ? "5000" : "500",
-      ]);
+      const run = f.receiveAsync(
+        { BROWSER_SCENARIO: "hang", FIXTURE_REQUIRE_SUDO: "1" },
+        undefined,
+        ["--browser-preparation-timeout-ms", signal ? "5000" : "500"],
+      );
       try {
         await fileReady(join(f.root, "browser-grandchild-ready"), 15000);
         const observation = f.run(join(own, "scripts/run-quality-ci.mjs"), [
@@ -1465,6 +1472,13 @@ for (const signal of [null, "SIGTERM", "SIGINT"]) {
         const receipt = f.read("quality-worker-inputs.json");
         assert.equal(receipt.status, "failed");
         assert.equal(receipt.tests, "not-run");
+        const cleanup = f.commands().filter((entry) => entry.command === "sudo");
+        assert.ok(cleanup.some((entry) => entry.args.includes("SIGKILL")));
+        for (const command of cleanup)
+          assert.equal(
+            command.args.at(-1),
+            "-" + readFileSync(join(f.root, "browser-leader-ready"), "utf8"),
+          );
         assert.equal(
           receipt.steps.find((x) => x.name === "browser-system-libraries").status,
           "failed",
@@ -2025,6 +2039,10 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
         writeFileSync(join(f.root, "release-grandchild"), "release");
         assert.ok(!existsSync(join(f.root, "late-write")));
         assert.ok(!receipt.steps.some((x) => x.name === "sdk-cache"));
+        assert.equal(
+          f.commands().some((entry) => entry.command === "sudo"),
+          false,
+        );
       } catch (error) {
         failure = error;
         throw error;
