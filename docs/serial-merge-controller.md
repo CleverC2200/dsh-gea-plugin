@@ -51,7 +51,7 @@ gh workflow run serial-merge.yml --repo CleverC2200/dsh-gea-plugin --ref main \
 
 ## 原生 artifact 协议探针
 
-独立实验分支 `codex/gea-ci-s1-artifact-probe-20261024` 的 push 触发 [artifact probe](../.github/workflows/serial-merge-artifact-probe.yml)。它不使用合并 environment、App 私钥或仓库写 token，使用与生产相同的 SDK 锁和适配器。首次普通提交验证 upload 和 API 可见；第二次提交首行用 `serial-artifact-read:首次runID` 验证跨 run download；consumer 按同样方法核对服务端明确的实验 heads 分支及 producer 祖先关系。不得把本地夹具通过写成原生协议通过。
+独立实验分支 `codex/gea-ci-s1-artifact-probe-20261024` 的 push 触发 [artifact probe](../.github/workflows/serial-merge-artifact-probe.yml)。它不使用合并 environment、App 私钥或仓库写 token，使用与生产相同的 SDK 锁和适配器。首次普通提交验证 upload 和 API 可见；第二次提交首行用 `serial-artifact-read:首次runID` 验证跨 run download；consumer 按同样方法核对服务端明确的实验 heads 分支及 producer 祖先关系。探针只回读指定 producer 的唯一首轮意图，中间失败 run 保留；生产 restore 仍检查完整历史并拒绝缺失回执。不得把本地夹具通过写成原生协议通过。
 
 启用前仍需 root 执行该短探针，并在获准的独立演练 PR 上验证 202 的 App actor/父提交/门禁、多个排队请求、普通失败释放、取消和未知响应恢复，以及最终 main CI。部署代码合入 main 的批准与演练 PR 的合并批准分开记录；候选 PR 不自动合并。
 

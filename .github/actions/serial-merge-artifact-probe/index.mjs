@@ -75,10 +75,22 @@ if (
 )
   throw Error("artifact_probe_previous_run_required");
 if (previous) {
-  const { records } = await store.restore();
-  const record = records.find((item) => item.request.id === previous[1]);
+  const listed = await readJson(
+    `repos/${repository}/actions/runs/${previous[1]}/artifacts?per_page=100&page=1`,
+  );
+  const name = `gea-serial-${previous[1]}-1-${previous[1]}-1-intent`;
+  if (
+    listed.total_count !== 1 ||
+    !Array.isArray(listed.artifacts) ||
+    listed.artifacts.length !== 1 ||
+    listed.artifacts[0].name !== name
+  )
+    throw Error("artifact_probe_unique_producer_required");
+  const record = await store.read(listed.artifacts[0]);
   if (
     !record ||
+    record.probe !== true ||
+    record.request.id !== previous[1] ||
     record.owner.runId !== Number(previous[1]) ||
     record.revision !== 1 ||
     record.state.active?.phase !== "updating" ||

@@ -318,7 +318,7 @@ export function createSerialMergeArtifacts({
       try {
         const downloaded = await artifact.downloadArtifact(remote.id, {
           path: temporary,
-          expectedHash: remote.digest.replace(/^sha256:/, ""),
+          expectedHash: remote.digest,
           findBy: {
             token: githubToken,
             workflowRunId: remote.workflow_run.id,

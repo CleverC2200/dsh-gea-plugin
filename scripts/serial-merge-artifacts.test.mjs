@@ -113,7 +113,10 @@ function fixture(t) {
     downloadArtifact: async (id, options) => {
       calls.push(["download", id, options]);
       writeFileSync(join(options.path, "state.json"), bytes.get(id));
-      return { downloadPath: options.path, digestMismatch: false };
+      return {
+        downloadPath: options.path,
+        digestMismatch: options.expectedHash !== "sha256:" + digest,
+      };
     },
   };
   const readJson = async (path) => {
@@ -218,7 +221,7 @@ test("cross-run download uses the read token and rejects a state belonging to an
   const download = f.calls.find(([method]) => method === "download");
   assert.equal(download[2].findBy.workflowRunId, 100);
   assert.equal(download[2].findBy.token, "fixture-read-token");
-  assert.equal(download[2].expectedHash, f.digest);
+  assert.equal(download[2].expectedHash, "sha256:" + f.digest);
   f.artifact.downloadArtifact = async (id, options) => {
     writeFileSync(
       join(options.path, "state.json"),
@@ -253,11 +256,13 @@ test("a native download digest mismatch is a persistence failure rather than a u
   const store = createSerialMergeArtifacts({ ...f, githubToken: "fixture-read-token" });
   await store.checkpoint(f.record, "intent");
   const download = f.artifact.downloadArtifact;
-  f.artifact.downloadArtifact = async (...args) => ({
-    ...(await download(...args)),
-    digestMismatch: true,
-  });
-  await assert.rejects(store.read(f.metadata.get(7)), /checkpoint_digest_mismatch/);
+  for (const digestMismatch of [true, undefined]) {
+    f.artifact.downloadArtifact = async (...args) => ({
+      ...(await download(...args)),
+      digestMismatch,
+    });
+    await assert.rejects(store.read(f.metadata.get(7)), /checkpoint_digest_mismatch/);
+  }
 });
 
 test("incomplete state or a different nested request is rejected before creating a durable artifact", async (t) => {
@@ -728,4 +733,44 @@ test("the isolated probe verifies its exact heads branch and can consume an olde
     createSerialMergeArtifacts(consumer).restore(),
     /untrusted_controller_source/,
   );
+});
+
+test("a probe can explicitly read its unique producer while full restore retains a failed consumer's missing-checkpoint block", async (t) => {
+  const f = fixture(t);
+  const branch = "codex/gea-ci-s1-artifact-probe-20261024";
+  f.branchRef.ref = "refs/heads/" + branch;
+  f.record.probe = true;
+  Object.assign(f.runs.get(100), { head_branch: branch, event: "push" });
+  const config = {
+    ...f,
+    githubToken: "fixture-read-token",
+    controllerBranch: branch,
+    controllerEvent: "push",
+  };
+  await createSerialMergeArtifacts(config).checkpoint(f.record, "intent");
+  f.addRun(101, { head_branch: branch, event: "push", status: "completed", conclusion: "failure" });
+  f.addRun(102, { head_branch: branch, event: "push" });
+  const consumer = createSerialMergeArtifacts({ ...config, owner: { ...f.owner, runId: 102 } });
+  await assert.rejects(consumer.restore(), /checkpoint_missing/);
+  const listed = await f.readJson(
+    `repos/${f.policy.repository}/actions/runs/100/artifacts?per_page=100&page=1`,
+  );
+  assert.equal(listed.total_count, 1);
+  const record = await consumer.read(listed.artifacts[0]);
+  assert.deepEqual(record, f.record);
+  const receipt = await consumer.checkpoint(
+    {
+      ...record,
+      revision: 2,
+      state: {
+        queue: [],
+        active: null,
+        finished: [{ request: record.request, reason: "artifact_probe_complete" }],
+      },
+    },
+    "terminal",
+  );
+  assert.equal(receipt.id, 8);
+  assert.equal(f.runs.get(101).conclusion, "failure");
+  await assert.rejects(consumer.restore(), /checkpoint_missing/);
 });
