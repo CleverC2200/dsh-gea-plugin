@@ -75,6 +75,9 @@
     "scripts/source-quality.test.mjs": {
       "dependencies": false
     },
+    "scripts/serial-merge-controller.test.mjs": {
+      "dependencies": false
+    },
     "scripts/build-admission.test.mjs": {
       "dependencies": false
     },
@@ -122,6 +125,12 @@
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:serial-merge-controller(?:\\.test)?\\.mjs|fixtures/serial-merge-controller\\.json)$",
+      "tests": ["scripts/serial-merge-controller.test.mjs"],
+      "sourceTests": ["scripts/serial-merge-controller.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:ci-core-policy\\.(?:json|mjs)|supported-cores\\.json)$",
