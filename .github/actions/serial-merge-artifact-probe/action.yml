@@ -1,0 +1,10 @@
+name: Serial merge artifact probe
+description: Check the native artifact checkpoint and cross-run reader without repository writes.
+inputs:
+  request:
+    description: Use serial-artifact-read followed by a colon and the previous run ID to read.
+    required: false
+    default: ""
+runs:
+  using: node24
+  main: index.mjs

@@ -683,12 +683,19 @@ test("dependency review applies only to consumed GEA dependency inputs on PRs an
     "desktop/diagnostic-package.json",
     "desktop/tools/package.json",
     "desktop/tools/package-lock.json",
+    ".github/actions/serial-merge/package.json",
+    ".github/actions/serial-merge/pnpm-lock.yaml",
   ]) {
     const changes = [{ repo: "dsh-gea-plugin", file }];
     assert.equal(requiresDependencyReview(changes, "pull_request"), true, file);
     assert.equal(requiresDependencyReview(changes, "push"), false, file);
   }
-  for (const file of ["docs/README.md", "src/style.css", "tests/fixtures/package.json"])
+  for (const file of [
+    "docs/README.md",
+    "src/style.css",
+    "tests/fixtures/package.json",
+    ".github/actions/unregistered/package.json",
+  ])
     assert.equal(
       requiresDependencyReview([{ repo: "dsh-gea-plugin", file }], "pull_request"),
       false,
@@ -770,13 +777,15 @@ test("merged PR result reuse skips only the validated body and preserves every f
   const check = steps.findIndex((step) => step.name === "Check applicable repository source");
   assert.ok(affected < lookup && lookup < check);
   assert.equal(job.permissions.actions, "read");
-  assert.equal(workflow.jobs["candidate-quality"].if, "always()");
-  assert.ok(workflow.jobs["candidate-quality"].needs.includes("source-checks"));
-  const evaluate = (condition, hit) =>
+  const final = workflow.jobs["candidate-quality"];
+  assert.match(final.if, /^always\(\) &&/);
+  assert.ok(final.needs.includes("source-checks"));
+  const evaluate = (condition, hit, validate = "true", succeeded = true) =>
     Function(
       "steps",
       "needs",
       "success",
+      "always",
       "return (" +
         condition.replace(
           /(steps|needs)\.([\w-]+)\.outputs\.([\w-]+)/g,
@@ -788,9 +797,25 @@ test("merged PR result reuse skips only the validated body and preserves every f
         reuse: { outputs: { hit } },
         affected: { outputs: { dependencies: "true", sdk: "false" } },
       },
-      { "source-plan": { outputs: { engineering: "true" } } },
+      {
+        "source-plan": {
+          result: succeeded ? "success" : "failure",
+          outputs: { engineering: "true", validate },
+        },
+        "source-checks": { result: succeeded ? "success" : "failure" },
+      },
+      () => succeeded,
       () => true,
     );
+  const name = final.name.replace(/^\$\{\{|\}\}$/g, "").trim();
+  for (const validate of ["true", "", "unknown"]) {
+    assert.equal(evaluate(final.if, "false", validate, false), true, validate);
+    assert.equal(evaluate(name, "false", validate, false), "candidate-quality", validate);
+  }
+  for (const succeeded of [true, false]) {
+    assert.equal(evaluate(final.if, "false", "false", succeeded), false);
+    assert.notEqual(evaluate(name, "false", "false", succeeded), "candidate-quality");
+  }
   for (const name of [
     "Check applicable repository source",
     "Check committed package version",

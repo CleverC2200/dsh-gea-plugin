@@ -25,7 +25,7 @@ export function requiresDependencyReview(changes, event) {
     changes.some(
       ({ repo, file }) =>
         repo === "dsh-gea-plugin" &&
-        /^(?:package\.json|pnpm-lock\.yaml|npm-shrinkwrap\.json|desktop\/(?:package\.json|diagnostic-package\.json|tools\/(?:package\.json|package-lock\.json)))$/.test(
+        /^(?:package\.json|pnpm-lock\.yaml|npm-shrinkwrap\.json|\.github\/actions\/serial-merge\/(?:package\.json|pnpm-lock\.yaml)|desktop\/(?:package\.json|diagnostic-package\.json|tools\/(?:package\.json|package-lock\.json)))$/.test(
           file,
         ),
     )

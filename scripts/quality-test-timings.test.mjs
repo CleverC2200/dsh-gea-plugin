@@ -1,68 +1,140 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { currentTestTimings, timingsFromExecution } from "./quality-test-timings.mjs";
 import { createExecutionPlan, runExecutionPlan } from "./quality-test-execution.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-test("completed real execution produces a scheduling reference while source changes invalidate it", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "timing-refresh-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  mkdirSync(join(root, "tests"));
-  mkdirSync(join(root, "src"));
-  writeFileSync(join(root, "tests/a.test.mjs"), "import test from 'node:test';test('a',()=>{});");
-  writeFileSync(join(root, "src/host.ts"), "export const value = 1;");
-  writeFileSync(join(root, "package.json"), "{}");
-  const environment = {
-    platform: process.platform,
-    node: process.versions.node,
-    core: "a".repeat(40),
-    fileConcurrency: 2,
-  };
-  const plan = createExecutionPlan({
-    selection: { files: ["tests/a.test.mjs"] },
-    platformPlan: { files: ["tests/a.test.mjs"] },
-    binding: {
-      ...environment,
-      runId: "123",
-      runAttempt: "1",
-      manifest: { core: environment.core },
+for (const file of ["tests/a.test.mjs", "desktop/timing.test.mjs"])
+  test(
+    "completed real execution and the timing CLI bind " + file + " and its shared inputs",
+    (t) => {
+      const root = mkdtempSync(join(tmpdir(), "timing-refresh-"));
+      t.after(() => rmSync(root, { recursive: true, force: true }));
+      const put = (name, bytes) => {
+        mkdirSync(dirname(join(root, name)), { recursive: true });
+        writeFileSync(join(root, name), bytes);
+      };
+      put(file, "import test from 'node:test';test('measured',()=>{});");
+      put("src/host.ts", "export const value = 1;");
+      put("package.json", "{}");
+      if (file.startsWith("desktop/")) {
+        put("desktop/runtime.mjs", "export const runtime = 1;");
+        put("desktop/fixtures/owned.json", '{"owned":true}');
+      }
+      const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+      git("init", "-q");
+      git("add", ".");
+      const commit = () =>
+        git(
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@invalid",
+          "commit",
+          "-qam",
+          "fixed timing inputs",
+        );
+      commit();
+      const environment = {
+        platform: process.platform,
+        node: process.versions.node,
+        core: "a".repeat(40),
+        fileConcurrency: 2,
+      };
+      const plan = createExecutionPlan({
+        selection: { files: [file] },
+        platformPlan: { files: [file] },
+        binding: {
+          ...environment,
+          runId: "123",
+          runAttempt: "1",
+          manifest: {
+            core: environment.core,
+            repositories: [{ repo: "dsh-gea-plugin", head: git("rev-parse", "HEAD") }],
+          },
+        },
+      });
+      const resultFile = join(root, "execution.json"),
+        planFile = join(root, "plan.json"),
+        output = join(root, "timings.json");
+      writeFileSync(planFile, JSON.stringify(plan));
+      runExecutionPlan({
+        plan,
+        root,
+        resultFile,
+        reporter: resolve("scripts/quality-test-reporter.mjs"),
+        buildSha256: "b".repeat(64),
+        environment: { NODE_TEST_CONTEXT: undefined },
+      });
+      const receipt = JSON.parse(readFileSync(resultFile));
+      const timings = timingsFromExecution({
+        plan,
+        receipts: [receipt],
+        root,
+        inputs: ["src/host.ts", "package.json"],
+      });
+      assert.equal(timings.source.acceptance, "not-acceptance");
+      assert.equal(timings.source.runId, 123);
+      assert.equal(timings.source.runAttempt, 1);
+      assert.equal(currentTestTimings({ root, timings, environment }).files.length, 1);
+      const cli = () =>
+        spawnSync(
+          process.execPath,
+          [
+            resolve(import.meta.dirname, "quality-test-timings.mjs"),
+            "--plan",
+            planFile,
+            "--execution",
+            resultFile,
+            "--output",
+            output,
+          ],
+          { cwd: root, encoding: "utf8" },
+        );
+      const generated = cli();
+      assert.equal(generated.status, 0, generated.stdout + generated.stderr);
+      const measured = JSON.parse(readFileSync(output));
+      assert.equal(currentTestTimings({ root, timings: measured, environment }).files.length, 1);
+      for (const input of ["desktop/runtime.mjs", "desktop/fixtures/owned.json"].filter(() =>
+        file.startsWith("desktop/"),
+      )) {
+        const before = readFileSync(join(root, input));
+        assert.equal(measured.inputs[input], hash(before));
+        writeFileSync(join(root, input), "changed bytes");
+        assert.equal(currentTestTimings({ root, timings: measured, environment }).files.length, 0);
+        assert.match(cli().stderr, /QUALITY_TEST_TIMING_SOURCE_MISMATCH/);
+        writeFileSync(join(root, input), before);
+      }
+      const duplicate = structuredClone(receipt);
+      duplicate.results[0].report.files[0].startCount = 2;
+      assert.throws(
+        () => timingsFromExecution({ plan, receipts: [duplicate], root, inputs: [] }),
+        /file execution count/,
+      );
+      writeFileSync(join(root, "src/host.ts"), "export const value = 2;");
+      assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
+      assert.match(cli().stderr, /QUALITY_TEST_TIMING_SOURCE_MISMATCH/);
+      writeFileSync(join(root, "src/host.ts"), "export const value = 1;");
+      writeFileSync(join(root, "package.json"), '{"dependencies":{"changed":"1"}}');
+      assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
+      commit();
+      assert.match(cli().stderr, /QUALITY_TEST_TIMING_SOURCE_MISMATCH/);
+      assert.throws(() => timingsFromExecution({ plan, receipts: [], root, inputs: [] }));
+      assert.throws(() =>
+        timingsFromExecution({
+          plan,
+          receipts: [{ ...receipt, status: "failed" }],
+          root,
+          inputs: [],
+        }),
+      );
     },
-  });
-  const resultFile = join(root, "execution.json");
-  runExecutionPlan({
-    plan,
-    root,
-    resultFile,
-    reporter: resolve("scripts/quality-test-reporter.mjs"),
-    buildSha256: "b".repeat(64),
-    environment: { NODE_TEST_CONTEXT: undefined },
-  });
-  const receipt = JSON.parse(readFileSync(resultFile));
-  const timings = timingsFromExecution({
-    plan,
-    receipts: [receipt],
-    root,
-    inputs: ["src/host.ts", "package.json"],
-  });
-  assert.equal(timings.source.acceptance, "not-acceptance");
-  assert.equal(timings.source.runId, 123);
-  assert.equal(timings.source.runAttempt, 1);
-  assert.equal(currentTestTimings({ root, timings, environment }).files.length, 1);
-  writeFileSync(join(root, "src/host.ts"), "export const value = 2;");
-  assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
-  writeFileSync(join(root, "src/host.ts"), "export const value = 1;");
-  writeFileSync(join(root, "package.json"), '{"dependencies":{"changed":"1"}}');
-  assert.equal(currentTestTimings({ root, timings, environment }).files.length, 0);
-  assert.throws(() => timingsFromExecution({ plan, receipts: [], root, inputs: [] }));
-  assert.throws(() =>
-    timingsFromExecution({ plan, receipts: [{ ...receipt, status: "failed" }], root, inputs: [] }),
   );
-});
 test("costs invalidate changed tests, changed or deleted fixtures, and incompatible environments", (t) => {
   const root = mkdtempSync(join(tmpdir(), "gea-timing-inputs-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -119,6 +191,9 @@ test("costs invalidate changed tests, changed or deleted fixtures, and incompati
   for (const files of [
     [timings.files[0], timings.files[0]],
     [{ file: "tests/../escape", durationMs: 1 }],
+    [{ file: "desktop/../escape", durationMs: 1 }],
+    [{ file: "desktop//bad.test.mjs", durationMs: 1 }],
+    [{ file: "unknown/bad.test.mjs", durationMs: 1 }],
   ])
     assert.throws(() => read({ ...timings, files }), /QUALITY_TEST_TIMING_INVALID/);
 });

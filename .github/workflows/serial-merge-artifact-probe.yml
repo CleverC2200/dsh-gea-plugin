@@ -1,0 +1,30 @@
+name: Serial merge artifact probe
+on:
+  push:
+    branches: [codex/gea-ci-s1-artifact-probe-20261024]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: serial-merge-artifact-probe
+  cancel-in-progress: false
+jobs:
+  artifact-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - name: Install the locked native artifact SDK without lifecycle scripts
+        working-directory: .github/actions/serial-merge
+        run: corepack pnpm --ignore-workspace install --frozen-lockfile --ignore-scripts
+      - uses: ./.github/actions/serial-merge-artifact-probe
+        with:
+          request: ${{ github.event.head_commit.message }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

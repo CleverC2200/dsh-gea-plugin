@@ -95,6 +95,7 @@ function fixture(
     "quality-workbench.mjs",
     "source-combination-integrity.mjs",
     "quality-test-execution.mjs",
+    "quality-test-node-runner.mjs",
     "source-check-shards.mjs",
     "quality-test-timings.mjs",
     "quality-hosted-budget.mjs",
@@ -520,6 +521,10 @@ function fixture(
       "import api from './index.cjs';export const chromium=api.chromium;",
     );
   put(
+    "browser-process.cjs",
+    readFileSync(join(own, "scripts/fixtures/quality-browser-install.cjs")),
+  );
+  put(
     "install-process.mjs",
     String.raw`
 import { spawn, spawnSync } from 'node:child_process';
@@ -527,6 +532,7 @@ import { appendFileSync, writeFileSync, existsSync, watch } from 'node:fs';
 import { join, basename } from 'node:path';
 const [command, encoded] = process.argv.slice(2), args = JSON.parse(encoded);
 const root = process.env.FIXTURE_PROCESS_ROOT, cwd = process.cwd();
+if(args.includes('install-deps')&&process.env.BROWSER_SCENARIO){await import(join(root,'browser-process.cjs'));if(process.env.BROWSER_SCENARIO==='hang')await new Promise(()=>{});}
 const install = args.includes('ci') || args.includes('install');
 const trace = event => appendFileSync(join(root,'install-processes.jsonl'),JSON.stringify({event,pid:process.pid,cwd})+'\n');
 if ((install || (process.env.INSTALL_SCENARIO==='cancel-path'&&args.includes('root'))) && process.env.PROCESS_INSTALLS === '1') {
@@ -593,10 +599,14 @@ cp.spawn=(command,args,options={})=>{
  return realSpawn(command,args,options);
 };
 const real=cp.spawnSync;
+const realKill=process.kill.bind(process);
+if(process.env.FIXTURE_REQUIRE_SUDO==='1')process.kill=(pid,signal)=>{if(pid<0&&signal!==0)throw Object.assign(Error('controlled root-owned group'),{code:'EPERM'});return realKill(pid,signal)};
 cp.spawnSync=(command,args,options={})=>{
+ if(command==='sudo'){appendFileSync(${JSON.stringify(join(root, "commands.jsonl"))},JSON.stringify({command,args,cwd:options.cwd})+'\\n');try{realKill(Number(args.at(-1)),args[3]);return {status:0,stdout:'',stderr:''}}catch(error){if(error.code!=='ESRCH')throw error;return {status:1,stdout:'',stderr:'No such process'}}}
  if(${publicQuality}&&command===process.execPath&&args[0]?.endsWith('/prepare-official-sdk.mjs')&&args.includes('--with-web')){appendFileSync(${JSON.stringify(join(root, "commands.jsonl"))},JSON.stringify({command:'sdk-consumer',args})+'\\n');return {status:0,stdout:'',stderr:''};}
  if(command==='/opt/google/chrome/chrome')return {status:0,stdout:(process.env.CHROME_VERSION??'Chrome fixture 1')+'\\n',stderr:''};
  if(['npm','corepack'].includes(command)){
+  if(args.includes('install-deps')&&process.env.BROWSER_SCENARIO)return real(process.execPath,[${JSON.stringify(join(root, "install-process.mjs"))},command,JSON.stringify(args)],{...options,env:{...options.env,FIXTURE_PROCESS_ROOT:${JSON.stringify(root)}}});
   if(process.env.PROCESS_INSTALLS==='1'&&!process.env.FIXTURE_INSTALL_CHILD&&(args.includes('ci')||args.includes('install')))return real(process.execPath,[${JSON.stringify(join(root, "install-process.mjs"))},command,JSON.stringify(args)],{...options,env:{...options.env,FIXTURE_PROCESS_ROOT:${JSON.stringify(root)}}});
   appendFileSync(${JSON.stringify(join(root, "commands.jsonl"))},JSON.stringify({command,args,cwd:options.cwd})+'\\n');
   if(args.includes('config')&&args.includes('get'))return {status:0,stdout:(args.includes('globalconfig')?JSON.stringify(${JSON.stringify(join(root, "fixture-global-config.yaml"))}):'undefined')+'\\n',stderr:''};
@@ -615,7 +625,7 @@ cp.spawnSync=(command,args,options={})=>{
    mkdirSync(join(options.cwd,'node_modules'),{recursive:true});writeFileSync(join(options.cwd,'node_modules/fixture'),'independent');writeFileSync(join(options.cwd,'node_modules/.modules.yaml'),'fixture install metadata');
    if(${browser}&&process.env.EARLY_BROWSER_CLOSURE==='1'&&[${JSON.stringify(gea)},${JSON.stringify(manage)}].includes(options.cwd)){
     const packageRoots=Object.fromEntries(['@playwright/test','playwright','playwright-core'].map(name=>[name,join(options.cwd,'node_modules/.pnpm',name.replace('/','+')+'@1.58.2','node_modules',name)]));
-    for(const name of ['@playwright/test','playwright','playwright-core']){const target=packageRoots[name];mkdirSync(target,{recursive:true});const metadata={name,type:'commonjs',version:'1.58.2',bin:{[name==='playwright-core'?'playwright-core':'playwright']:'cli.js'},dependencies:name==='@playwright/test'?{playwright:'1.58.2'}:name==='playwright'?{'playwright-core':'1.58.2'}:{},...(name==='playwright'?{optionalDependencies:{fsevents:'2.3.2'}}:{}),...(name==='@playwright/test'?{exports:{'.':{require:'./index.cjs',import:'./index.mjs'},'./package.json':'./package.json'}}:{})};writeFileSync(join(target,'package.json'),JSON.stringify(metadata));writeFileSync(join(target,'shipped.txt'),process.env.MUTATE_LATE_BROWSER==='1'&&options.cwd===${JSON.stringify(gea)}?'late changed bytes':'same shipped bytes');writeFileSync(join(target,'cli.js'),"const fs=require('node:fs'),p=require('node:path');fs.writeFileSync(p.join(process.env.GITHUB_WORKSPACE,'early-apt-executed'),'actual Node CLI');if(process.env.MUTATE_EARLY_BROWSER==='1')fs.writeFileSync(p.join(__dirname,'shipped.txt'),'during CLI');if(process.env.MUTATE_EARLY_WIRING==='1')fs.writeFileSync(p.join(__dirname,'node_modules/.bin/playwright'),'mutated generated shim');if(process.env.FAIL_EARLY_APT==='1')process.exit(19);");if(name==='@playwright/test'){writeFileSync(join(target,'index.cjs'),"module.exports = require('./api.cjs');");writeFileSync(join(target,'index.mjs'),"import api from './index.cjs';export const chromium=api.chromium;");writeFileSync(join(target,'api.cjs'),readFileSync(${JSON.stringify(join(root, "fake-playwright.cjs"))}))}}
+    for(const name of ['@playwright/test','playwright','playwright-core']){const target=packageRoots[name];mkdirSync(target,{recursive:true});const metadata={name,type:'commonjs',version:'1.58.2',bin:{[name==='playwright-core'?'playwright-core':'playwright']:'cli.js'},dependencies:name==='@playwright/test'?{playwright:'1.58.2'}:name==='playwright'?{'playwright-core':'1.58.2'}:{},...(name==='playwright'?{optionalDependencies:{fsevents:'2.3.2'}}:{}),...(name==='@playwright/test'?{exports:{'.':{require:'./index.cjs',import:'./index.mjs'},'./package.json':'./package.json'}}:{})};writeFileSync(join(target,'package.json'),JSON.stringify(metadata));writeFileSync(join(target,'shipped.txt'),process.env.MUTATE_LATE_BROWSER==='1'&&options.cwd===${JSON.stringify(gea)}?'late changed bytes':'same shipped bytes');writeFileSync(join(target,'cli.js'),"const fs=require('node:fs'),p=require('node:path');if(process.env.BROWSER_SCENARIO)require(process.env.GITHUB_WORKSPACE+'/browser-process.cjs');fs.writeFileSync(p.join(process.env.GITHUB_WORKSPACE,'early-apt-executed'),'actual Node CLI');if(process.env.MUTATE_EARLY_BROWSER==='1')fs.writeFileSync(p.join(__dirname,'shipped.txt'),'during CLI');if(process.env.MUTATE_EARLY_WIRING==='1')fs.writeFileSync(p.join(__dirname,'node_modules/.bin/playwright'),'mutated generated shim');if(process.env.FAIL_EARLY_APT==='1')process.exit(19);");if(name==='@playwright/test'){writeFileSync(join(target,'index.cjs'),"module.exports = require('./api.cjs');");writeFileSync(join(target,'index.mjs'),"import api from './index.cjs';export const chromium=api.chromium;");writeFileSync(join(target,'api.cjs'),readFileSync(${JSON.stringify(join(root, "fake-playwright.cjs"))}))}}
     fs.mkdirSync(join(options.cwd,'node_modules/@playwright'),{recursive:true});
     for(const [link,target] of [[join(options.cwd,'node_modules/@playwright/test'),packageRoots['@playwright/test']],[join(dirname(dirname(packageRoots['@playwright/test'])),'playwright'),packageRoots.playwright],[join(dirname(packageRoots.playwright),'playwright-core'),packageRoots['playwright-core']]])fs.symlinkSync(relative(dirname(link),target),link);
     for(const name of ['@playwright/test','playwright','playwright-core']){const target=packageRoots[name];fs.mkdirSync(join(target,'lib/node_modules/vendor'),{recursive:true});fs.writeFileSync(join(target,'lib/node_modules/vendor/resource.js'),'shipped vendor bytes');if(name!=='playwright-core'){fs.mkdirSync(join(target,'node_modules/.bin'),{recursive:true});const bin=join(target,'node_modules/.bin',name==='@playwright/test'?'playwright':'playwright-core');fs.writeFileSync(bin,'# generated manager shim for '+options.cwd);fs.chmodSync(bin,0o755)}}
@@ -762,7 +772,7 @@ cp.spawnSync=(command,args,options={})=>{
       ],
       extra,
     );
-  const receiveAsync = (extra = {}, earlyArgs) => {
+  const receiveAsync = (extra = {}, earlyArgs, extraArgs = []) => {
     const child = spawn(
       process.execPath,
       [
@@ -779,6 +789,7 @@ cp.spawnSync=(command,args,options={})=>{
           "--manifest-sha256",
           hash(readFileSync(join(root, "transport.json"))),
         ]),
+        ...extraArgs,
       ],
       { cwd: gea, env: { ...env, ...extra }, detached: true, stdio: ["ignore", "pipe", "pipe"] },
     );
@@ -807,7 +818,7 @@ cp.spawnSync=(command,args,options={})=>{
     clear,
     receive,
     receiveAsync,
-    earlyReceiveAsync: (apiBase, extra = {}) =>
+    earlyReceiveAsync: (apiBase, extra = {}, extraArgs = []) =>
       receiveAsync(
         {
           GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
@@ -823,6 +834,7 @@ cp.spawnSync=(command,args,options={})=>{
           "--early-sha256",
           hash(readFileSync(join(root, "early.json"))),
         ],
+        extraArgs,
       ),
     run,
     quality,
@@ -949,6 +961,55 @@ writeFileSync(join(root,'download-'+(name.includes('-index-')?'index':'bundle'))
   f.clear();
   return { f, apiBase: "http://127.0.0.1:" + server.address().port };
 }
+
+test("early worker browser installation times out before producer wait and leaves no owned descendants", async (t) => {
+  const { f, apiBase } = await earlyWorkerFixture(t);
+  const run = f.earlyReceiveAsync(
+    apiBase,
+    { EARLY_BROWSER_CLOSURE: "1", BROWSER_SCENARIO: "hang", FIXTURE_REQUIRE_SUDO: "1" },
+    ["--browser-preparation-timeout-ms", "500"],
+  );
+  try {
+    await fileReady(join(f.root, "browser-grandchild-ready"), 15000);
+    const observation = f.run(join(own, "scripts/run-quality-ci.mjs"), [
+      "--stage",
+      "observe",
+      "--root",
+      f.root,
+    ]);
+    assert.equal(observation.status, 0, observation.stderr);
+    assert.equal(JSON.parse(observation.stdout).lastConfirmedStage, "prepare");
+    assert.equal(
+      JSON.parse(observation.stdout).lastConfirmedStep,
+      "early-browser-system-libraries",
+    );
+    const result = await deadline(run.closed);
+    assert.equal(result.code, 1, result.stderr);
+    assert.match(result.stderr, /browser.*timed out.*500/);
+    const receipt = f.read("quality-worker-inputs.json");
+    assert.equal(receipt.status, "failed");
+    const step = receipt.steps.find((x) => x.name === "early-browser-system-libraries");
+    assert.equal(step.status, "failed");
+    assert.equal(step.budgetMs, 500);
+    assert.equal(receipt.tests, "not-run");
+    assert.equal(
+      receipt.steps.some((x) => x.name === "producer-wait"),
+      false,
+    );
+    assert.equal(existsSync(join(f.root, "api-polled")), false);
+    assert.ok(
+      f.commands().some((entry) => entry.command === "sudo" && entry.args.includes("SIGKILL")),
+    );
+    assert.equal(existsSync(join(f.root, "tests-executed")), false);
+    for (const name of ["browser-leader-ready", "browser-grandchild-ready"])
+      assert.throws(() => process.kill(Number(readFileSync(join(f.root, name), "utf8")), 0), {
+        code: "ESRCH",
+      });
+  } finally {
+    cleanupInstallFixture(f, run.child);
+    await run.closed;
+  }
+});
 
 test("one live three-file worker prepares five independent locks before receiving this run then reaches the original tests CLI", async (t) => {
   const { f, apiBase } = await earlyWorkerFixture(t, { concurrency: 3 });
@@ -1373,6 +1434,69 @@ test("runtime workers install the inherited npm inventory lock separately and as
   assert.ok(record.steps.some((x) => x.name === "workbench-assets" && x.status === "passed"));
 });
 
+for (const signal of [null, "SIGTERM", "SIGINT"]) {
+  test(
+    "worker browser installation " +
+      (signal ?? "timeout") +
+      " reaps its owned descendants before readiness",
+    async (t) => {
+      const f = fixture(t, { browser: true });
+      assert.equal(f.produce().status, 0);
+      assert.equal(f.exportBundle().status, 0);
+      f.clear();
+      const browserLaunches = readFileSync(join(f.root, "browser-launches.jsonl"), "utf8");
+      const run = f.receiveAsync(
+        { BROWSER_SCENARIO: "hang", FIXTURE_REQUIRE_SUDO: "1" },
+        undefined,
+        ["--browser-preparation-timeout-ms", signal ? "5000" : "500"],
+      );
+      try {
+        await fileReady(join(f.root, "browser-grandchild-ready"), 15000);
+        const observation = f.run(join(own, "scripts/run-quality-ci.mjs"), [
+          "--stage",
+          "observe",
+          "--root",
+          f.root,
+        ]);
+        assert.equal(observation.status, 0, observation.stderr);
+        assert.equal(JSON.parse(observation.stdout).lastConfirmedStage, "prepare");
+        assert.equal(JSON.parse(observation.stdout).lastConfirmedStep, "browser-system-libraries");
+        if (signal) run.child.kill(signal);
+        const r = await deadline(run.closed);
+        assert.equal(r.code, 1, r.stderr);
+        assert.match(
+          r.stderr,
+          signal ? new RegExp("cancelled by " + signal) : /browser.*timed out.*500/,
+        );
+        assert.match(r.stdout, /browser install output/);
+        assert.match(r.stderr, /browser install diagnostic/);
+        const receipt = f.read("quality-worker-inputs.json");
+        assert.equal(receipt.status, "failed");
+        assert.equal(receipt.tests, "not-run");
+        const cleanup = f.commands().filter((entry) => entry.command === "sudo");
+        assert.ok(cleanup.some((entry) => entry.args.includes("SIGKILL")));
+        for (const command of cleanup)
+          assert.equal(
+            command.args.at(-1),
+            "-" + readFileSync(join(f.root, "browser-leader-ready"), "utf8"),
+          );
+        assert.equal(
+          receipt.steps.find((x) => x.name === "browser-system-libraries").status,
+          "failed",
+        );
+        assert.equal(readFileSync(join(f.root, "browser-launches.jsonl"), "utf8"), browserLaunches);
+        for (const name of ["browser-leader-ready", "browser-grandchild-ready"]) {
+          const pid = Number(readFileSync(join(f.root, name), "utf8"));
+          assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+        }
+      } finally {
+        cleanupInstallFixture(f, run.child);
+        await run.closed;
+      }
+    },
+  );
+}
+
 test("each browser worker prepares system libraries and probes both system Chrome and received Chromium before readiness", (t) => {
   const f = fixture(t, { browser: true });
   const made = f.produce();
@@ -1430,7 +1554,7 @@ test("missing VM browser libraries, unavailable browsers and system Chrome drift
   }
 });
 
-test("the real selector maps only the worker implementation to its public CLI contract", async (t) => {
+test("the real selector maps the shared worker implementation to both public CLI contracts", async (t) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "worker-policy-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (cwd, ...args) => {
@@ -1493,6 +1617,8 @@ test("the real selector maps only the worker implementation to its public CLI co
   const plan = selectCiTests({ repositories, repo: ownRepo.repo, base });
   assert.deepEqual(plan.reasons[ownRepo.repo + "/scripts/quality-worker-inputs.mjs"], [
     "scripts/quality-worker-inputs.test.mjs",
+    "scripts/run-quality-ci-stages.test.mjs",
+    "scripts/run-quality-ci.test.mjs",
   ]);
   assert.ok(plan.files.includes("scripts/quality-worker-inputs.test.mjs"));
   assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
@@ -1739,11 +1865,25 @@ function cleanupInstallFixture(f, child) {
   const events = existsSync(file)
     ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map(JSON.parse)
     : [];
-  for (const pid of [child.pid, ...events.filter((e) => e.event === "start").map((e) => e.pid)]) {
+  const browserPids = ["browser-leader-ready", "browser-grandchild-ready"]
+    .filter((name) => existsSync(join(f.root, name)))
+    .map((name) => Number(readFileSync(join(f.root, name), "utf8")));
+  for (const pid of [
+    child.pid,
+    ...events.filter((e) => e.event === "start").map((e) => e.pid),
+    ...browserPids,
+  ]) {
     try {
       process.kill(-pid, "SIGKILL");
     } catch (e) {
       if (e.code !== "ESRCH") throw e;
+    }
+    if (browserPids.includes(pid)) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (e) {
+        if (e.code !== "ESRCH") throw e;
+      }
     }
   }
 }
@@ -1900,6 +2040,10 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
         writeFileSync(join(f.root, "release-grandchild"), "release");
         assert.ok(!existsSync(join(f.root, "late-write")));
         assert.ok(!receipt.steps.some((x) => x.name === "sdk-cache"));
+        assert.equal(
+          f.commands().some((entry) => entry.command === "sudo"),
+          false,
+        );
       } catch (error) {
         failure = error;
         throw error;
