@@ -43,6 +43,7 @@ const fixtureSourceFiles = [
   "ci-platform-tests.mjs",
   "quality-test-reporter.mjs",
   "quality-test-execution.mjs",
+  "quality-test-node-runner.mjs",
   "source-check-shards.mjs",
   "quality-test-timings.mjs",
   "quality-shards.mjs",
