@@ -23,6 +23,15 @@ function admission(request, policy) {
   return null;
 }
 
+function pullRejection(pr, request) {
+  if (pr.draft) return "draft";
+  if (pr.state !== "open") return "closed";
+  if (pr.head.repo?.full_name !== request.repository) return "fork";
+  if (pr.base.ref !== request.base || pr.base.repo.full_name !== request.repository)
+    return "base_changed";
+  return null;
+}
+
 export function createGitHubReader(readJson) {
   const path = (request) => {
     if (
@@ -111,6 +120,7 @@ export async function runSerialMerge(input, policy, api, now = Date.now()) {
   try {
     if (!["queued", "updating", "checking", "reconciling"].includes(active.phase))
       return pause("invalid_active_phase");
+    if (active.outcome === "failed") return finish("operation_failed");
     if (active.phase === "reconciling") {
       const pr = await api.readPullRequest(active.request);
       if (pr.merged && pr.head.sha === active.head && fullSha(pr.merge_commit_sha))
@@ -119,25 +129,20 @@ export async function runSerialMerge(input, policy, api, now = Date.now()) {
     }
     const denied = admission(active.request, policy);
     if (denied && active.phase !== "updating") return finish(denied);
-    if (active.outcome === "failed") return finish("operation_failed");
     if (now - active.startedAt >= policy.budgetMs && active.phase !== "updating")
       return finish("timeout");
     const pr = await api.readPullRequest(active.request);
-    if (
-      active.phase === "updating" &&
-      active.outcome === "unknown" &&
-      (pr.draft || pr.state !== "open")
-    )
-      return pause("update_outcome_unknown");
-    if (pr.draft) return finish("draft");
-    if (pr.state !== "open") return finish("closed");
-    if (pr.head.repo?.full_name !== active.request.repository) return finish("fork");
-    if (pr.base.ref !== active.request.base || pr.base.repo.full_name !== active.request.repository)
-      return finish("base_changed");
+    const rejected = pullRejection(pr, active.request);
+    if (rejected && active.phase !== "updating") return finish(rejected);
     const branch = await api.readBranch(active.request);
     if (active.phase === "updating") {
       if (pr.head.sha === active.head) {
-        if (denied || now - active.startedAt >= policy.budgetMs || active.outcome === "unknown")
+        if (
+          denied ||
+          rejected ||
+          now - active.startedAt >= policy.budgetMs ||
+          active.outcome === "unknown"
+        )
           return pause("update_outcome_unknown");
         return result({ action: "wait_update", requestId: active.request.id });
       }
@@ -147,9 +152,7 @@ export async function runSerialMerge(input, policy, api, now = Date.now()) {
         commit.parents[0].sha !== active.head ||
         commit.parents[1].sha !== active.base
       )
-        return active.outcome === "unknown"
-          ? pause("update_outcome_unknown")
-          : finish("unexpected_update");
+        return pause("update_outcome_unknown");
       const approval = policy.approvals.find((item) =>
         binding.every((key) => item[key] === active.request[key]),
       );
@@ -157,6 +160,7 @@ export async function runSerialMerge(input, policy, api, now = Date.now()) {
       active.head = pr.head.sha;
       active.phase = "checking";
       if (denied) return finish(denied);
+      if (rejected) return finish(rejected);
       if (branch.commit.sha !== active.base) return finish("base_advanced");
       return result({ action: "wait_checks", requestId: active.request.id, head: active.head });
     }
@@ -211,6 +215,8 @@ export async function runSerialMerge(input, policy, api, now = Date.now()) {
         return result({ action: "wait_checks", requestId: active.request.id, head: active.head });
       const currentPull = await api.readPullRequest(active.request);
       const currentBranch = await api.readBranch(active.request);
+      const rejectedCurrent = pullRejection(currentPull, active.request);
+      if (rejectedCurrent) return finish(rejectedCurrent);
       if (currentPull.head.sha !== active.head) return finish("head_changed");
       if (currentBranch.commit.sha !== active.base) return finish("base_advanced");
       active.phase = "reconciling";
