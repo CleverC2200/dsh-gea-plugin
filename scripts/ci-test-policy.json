@@ -119,9 +119,18 @@
     },
     "scripts/quality-worker-inputs.test.mjs": {
       "dependencies": true
+    },
+    "tests/aps-default-policy.test.mjs": {
+      "dependencies": false
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^presets/(?:execution|prompt)-policy\\.json$",
+      "tests": ["tests/aps-default-policy.test.mjs"],
+      "sourceTests": ["tests/aps-default-policy.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:ci-core-policy\\.(?:json|mjs)|supported-cores\\.json)$",
