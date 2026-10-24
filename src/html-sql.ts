@@ -322,10 +322,12 @@ export function createGeaSqlDatabase(
           responseCode >= 300
         ) {
           const safeDiagnostic = new GeaResponseError(response.status, body, [token]);
+          const reasonCode = failureFrom(body)?.reasonCode;
           const upstreamCode = record(body)
             ? [
-                failureFrom(body)?.reasonCode,
+                reasonCode === "AUTHENTICATION_FAILED" ? undefined : reasonCode,
                 body.errorCode,
+                reasonCode,
                 body.code,
                 body.message,
                 body.msg,
@@ -335,11 +337,12 @@ export function createGeaSqlDatabase(
           // therefore means the delegation can be renewed; a 403 remains a
           // genuine access decision and must not trigger a retry.
           const rejected =
-            response.status === 401 ||
-            (typeof upstreamCode === "string" &&
-              /^(AI_GATEWAY_SESSION_(MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED|NOT_FOUND)|GEA_GATEWAY_SESSION_REJECTED)$/.test(
-                upstreamCode,
-              ));
+            response.status !== 403 &&
+            (response.status === 401 ||
+              (typeof upstreamCode === "string" &&
+                /^(AI_GATEWAY_SESSION_(MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED|NOT_FOUND)|GEA_GATEWAY_SESSION_REJECTED)$/.test(
+                  upstreamCode,
+                )));
           const denied = response.status === 403;
           const failure = new GeaSqlError(
             rejected
