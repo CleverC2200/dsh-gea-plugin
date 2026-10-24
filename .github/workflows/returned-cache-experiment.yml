@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 env:
-  SOURCE_HEAD_SHA: da40ed0a2f5243ee7243916dbb8b6de36ac6607b
+  SOURCE_HEAD_SHA: 64a5d694356795a1302edf6b38461f674310be86
   SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
 concurrency:
   group: returned-compile-cache-measurement
