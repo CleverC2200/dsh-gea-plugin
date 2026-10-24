@@ -98,6 +98,33 @@ test("source workflow keeps metadata edits outside active formal checks and the 
   assert.match(workflow, /if: always\(\) && needs\.source-plan\.outputs\.validate != 'false'/);
 });
 
+test("base and target edits supersede obsolete formal checks while metadata edits cannot cancel them", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  const group = workflow.match(/^  group: (.+)$/m)[1];
+  const concurrency = (action, changes, ref = "main", run_id = 100) =>
+    group.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) =>
+      Function("github", `return (${expression})`)({
+        event: { action, changes, pull_request: { number: 42, base: { ref } } },
+        run_id,
+      }),
+    );
+  const formal = "source-quality-42-source";
+  assert.equal(concurrency("synchronize", {}), formal);
+  assert.notEqual(concurrency("edited", { title: { from: "Old" } }), formal);
+  assert.notEqual(concurrency("edited", { body: { from: null } }), formal);
+  assert.notEqual(
+    concurrency("edited", { title: { from: "Old" } }, "main", 100),
+    concurrency("edited", { title: { from: "Old" } }, "main", 101),
+  );
+  assert.equal(concurrency("edited", { base: { ref: { from: "release" } } }), formal);
+  assert.equal(concurrency("edited", { head: { from: "old" } }), formal);
+  assert.equal(concurrency("edited", { title: { from: "Old" } }, "release"), formal);
+  assert.equal(concurrency("edited", { unknown: { from: "old" } }), formal);
+});
+
 test("source admission keeps base, head, target and unknown event changes on the formal validation path", (t) => {
   const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
   const path = join(repo.root, ".git/event.json");

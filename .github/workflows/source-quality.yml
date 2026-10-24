@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: source-quality-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'edited' && github.run_id || 'source' }}
+  group: source-quality-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'edited' && github.event.pull_request.base.ref == 'main' && (github.event.changes.title || github.event.changes.body) && !github.event.changes.base && !github.event.changes.head && github.run_id || 'source' }}
   cancel-in-progress: true
 
 jobs:
