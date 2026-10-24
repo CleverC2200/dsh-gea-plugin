@@ -1,0 +1,127 @@
+name: returned-cache-experiment
+run-name: "Returned 17 cases, same-VM compile cache off/on"
+on:
+  push:
+    branches: [codex/gea-returned-compile-cache-20261024]
+permissions:
+  contents: read
+env:
+  SOURCE_HEAD_SHA: da40ed0a2f5243ee7243916dbb8b6de36ac6607b
+  SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
+concurrency:
+  group: returned-compile-cache-measurement
+  cancel-in-progress: false
+jobs:
+  crossover:
+    strategy:
+      fail-fast: false
+      matrix:
+        sequence: [off-on, on-off]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      CACHE_SEQUENCE: ${{ matrix.sequence }}
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: experiment
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_HEAD_SHA }}
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        id: node
+        with:
+          node-version: 24.22.0
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: 10988577fd6008ee953eb6533265f873825eddc2
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: d1ef8d47737e73d00e967342a85814ba9ace2da3
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: 0337d907d0c1305edfa0c915886a203e5e55539d
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read-only capacity and owned experiment preflight
+        run: |
+          df -h "$GITHUB_WORKSPACE"
+          lscpu
+          node -e 'const os=require("os");if(os.availableParallelism()<4||os.totalmem()<12*1024**3)throw Error("EXPERIMENT_CAPACITY_REQUIRED")'
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Select preparation requirements, without executing selected tests
+        run: node scripts/source-quality.mjs --phase affected-plan
+      - name: Enable declared package managers
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+      - name: Locate package download cache
+        id: cache-path
+        working-directory: candidate/dsh-agent-manage
+        run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.cache-path.outputs.store }}
+          key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
+          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+      - name: Prepare owned Core SDK source
+        run: node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head 0337d907d0c1305edfa0c915886a203e5e55539d --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Locate SDK artifact paths
+        id: sdk-paths
+        run: node ../dsh-agent-manage/scripts/sdk-artifact-cache.mjs --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-0337d907d0c1305edfa0c915886a203e5e55539d-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - name: Verify or prepare SDK
+        run: node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head 0337d907d0c1305edfa0c915886a203e5e55539d --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Prepare existing immutable upstream inputs
+        run: node scripts/source-quality.mjs --phase affected-prepare
+      - name: Prepare dependencies and build once per VM, without checks or tests
+        run: node "$GITHUB_WORKSPACE/experiment/.github/experiments/prepare.mjs"
+      - name: Run only the 17 returned-resubmit cases with cache off/on
+        timeout-minutes: 38
+        run: node "$GITHUB_WORKSPACE/experiment/.github/experiments/returned-cache.mjs"
+      - name: Preserve raw returned compile-cache evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: returned-cache-${{ matrix.sequence }}
+          include-hidden-files: true
+          if-no-files-found: warn
+          path: |
+            returned-cache-results/environment.json
+            returned-cache-results/complete.json
+            returned-cache-results/resources.jsonl
+            returned-cache-results/*/round.json
+            returned-cache-results/*/tests/*.json
+            returned-cache-results/*/tests/*.jsonl
+            returned-cache-results/*/tests/quality-test-results/
+            returned-cache-results/*/anchor-before/
+            returned-cache-results/*/anchor-after/
+            quality-stages.json
+            browser-preparation.json
+            candidate-group.json
