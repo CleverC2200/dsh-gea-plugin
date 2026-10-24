@@ -7,10 +7,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const cli = fileURLToPath(new URL("./source-quality.mjs", import.meta.url));
-test("S1 expected failure: isolated metadata event validation only; never merge", () => {
-  assert.fail("S1 expected failure for hosted metadata filtering verification");
-});
-
 function fixture(t, files, changed) {
   const root = mkdtempSync(join(tmpdir(), "source-quality-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
