@@ -20,6 +20,8 @@ import { ciCores } from "../scripts/ci-core-policy.mjs";
 const names = [...companyPackageNames, "@changfenhuang/dsh-genui"];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const recoveringInstallation = (receipt) =>
+  receipt?.status === "installing" || receipt?.recovery === "offline-dependency";
 const desktopCore = ciCores("required")[0];
 const registeredCores = await json(new URL("../scripts/supported-cores.json", import.meta.url));
 const desktopCoreHeads = new Set(
@@ -193,8 +195,7 @@ async function assertCompletedInstallation(record, profile, { allowInterrupted =
     if (
       receipt?.status !== "failed" ||
       typeof receipt.diagnostic !== "string" ||
-      !receipt.diagnostic.startsWith(prefix) ||
-      existsSync(join(record, "before-store-conflict-retry.json"))
+      !receipt.diagnostic.startsWith(prefix)
     )
       throw Error("NOT_RECOVERABLE");
     const log = receipt.diagnostic.slice(prefix.length);
@@ -203,8 +204,16 @@ async function assertCompletedInstallation(record, profile, { allowInterrupted =
       !isAbsolute(log) ||
       local.length !== 2 ||
       !/^operation-[a-zA-Z0-9_-]+$/.test(local[0]) ||
-      local[1] !== "pnpm.log" ||
-      !(await readFile(log, "utf8")).startsWith("[ERR_PNPM_UNEXPECTED_STORE]")
+      local[1] !== "pnpm.log"
+    )
+      throw Error("NOT_RECOVERABLE");
+    if ((await lstat(log)).isSymbolicLink()) throw Error("NOT_RECOVERABLE");
+    const output = await readFile(log, "utf8");
+    if (allowInterrupted && /^\[ERR_PNPM_NO_OFFLINE_TARBALL\](?: |$)/m.test(output))
+      return { ...receipt, recovery: "offline-dependency" };
+    if (
+      !output.startsWith("[ERR_PNPM_UNEXPECTED_STORE]") ||
+      existsSync(join(record, "before-store-conflict-retry.json"))
     )
       throw Error("NOT_RECOVERABLE");
     const current = await json(join(profile, "package.json"));
@@ -339,16 +348,21 @@ export async function installCompanyPackages({
       });
       boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
       const current = await json(join(profile, "package.json"));
-      const hasUserDependencies = Object.keys(current.dependencies ?? {}).length > 0;
-      if (offline && hasUserDependencies) offlineArguments = ["--prefer-offline"];
+      const hasUserDependencies = ["dependencies", "devDependencies", "optionalDependencies"].some(
+        (field) =>
+          Object.keys(current[field] ?? {}).some((name) => !companyPackageNames.includes(name)),
+      );
+      if (offline && hasUserDependencies)
+        offlineArguments = ["--prefer-offline", "--offline=false"];
       const lockPath = join(profile, "pnpm-lock.yaml");
       const previousLock = existsSync(lockPath) ? await readFile(lockPath) : undefined;
       let seededLock = false;
-      if (offline && seed && !hasUserDependencies && previousLock === undefined) {
+      if (offline && seed && !hasUserDependencies) {
         const manifest = await readCompanySeed(seed);
-        if (manifest.dependencyLockSha256) {
-          if (archives.packages.length !== manifest.packages.length)
-            throw Error("GEA_SEED_DEPENDENCY_LOCK_PARTIAL_INSTALL");
+        if (
+          manifest.dependencyLockSha256 &&
+          archives.packages.length === manifest.packages.length
+        ) {
           const YAML = require("yaml");
           const lock = YAML.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
           const replacements = manifest.packages.map((row, index) => [
@@ -402,7 +416,10 @@ export async function installCompanyPackages({
         );
         if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
       } catch (error) {
-        if (seededLock) await rm(lockPath, { force: true });
+        if (seededLock) {
+          if (previousLock === undefined) await rm(lockPath, { force: true });
+          else await writeFileAtomic(lockPath, previousLock, { mode: 0o600 });
+        }
         throw error;
       }
       await complete?.({
@@ -497,7 +514,7 @@ export async function bootstrapCompanyProfile({
   const receipt = await assertCompletedInstallation(record, profile, {
     allowInterrupted: true,
   });
-  const recovering = receipt?.status === "installing";
+  const recovering = recoveringInstallation(receipt);
   const encoding = await normalizeProfileEncoding(root, home, recovering);
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
@@ -534,13 +551,12 @@ export async function bootstrapCompanyProfile({
             !latest?.dependencies?.[name] &&
             (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
         );
-      if (latestReceipt?.status === "installing")
-        missing = manifest.packages.map((row) => row.name);
+      if (recoveringInstallation(latestReceipt)) missing = manifest.packages.map((row) => row.name);
       if (!missing.length) {
         if (latestReceipt?.status === "failed") throw Error("GEA_COMPANY_INSTALL_INCOMPLETE");
         return { status: "existing-profile-preserved", changed: false };
       }
-      for (const file of latestReceipt?.status === "installing"
+      for (const file of recoveringInstallation(latestReceipt)
         ? []
         : ["package.json", "cordis.patch.yml", "pnpm-lock.yaml", "pnpm-workspace.yaml"]) {
         if (existsSync(join(profile, file)) && !existsSync(join(record, "before-" + file)))
@@ -552,7 +568,9 @@ export async function bootstrapCompanyProfile({
       const store = join(
         home,
         "desktop-company-cache",
-        digest(Buffer.from(JSON.stringify(manifest.packages))),
+        digest(
+          Buffer.from(JSON.stringify([manifest.packages, manifest.dependencyLockSha256 ?? null])),
+        ),
         "store",
       );
       if (!existsSync(store))
@@ -585,7 +603,7 @@ export async function bootstrapCompanyProfile({
             const rejected = await assertCompletedInstallation(record, profile, {
               allowInterrupted: true,
             });
-            if (rejected?.status === "installing") {
+            if (recoveringInstallation(rejected)) {
               await assertCompletedGeaRefresh(profile);
               await assertProfileIdle(profile, { allowExitedPackageRun: true });
               for (const path of [
@@ -656,7 +674,7 @@ export async function bootstrapCompanyProfile({
               const actual = await json(join(profile, "node_modules", row.name, "package.json"));
               if (actual.version !== row.version) throw Error("GEA_COMPANY_ACTIVATION_INCOMPLETE");
             }
-            if (latestReceipt?.status === "installing") {
+            if (recoveringInstallation(latestReceipt)) {
               installed.dsh ??= {};
               installed.dsh.profile ??= {};
               installed.dsh.profile.bundles = [

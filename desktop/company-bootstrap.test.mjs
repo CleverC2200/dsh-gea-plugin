@@ -18,6 +18,7 @@ import {
   planCompanyCoreRefresh,
   relocateCompanyLock,
   writeCompanySeedLock,
+  installCompanyPackages,
 } from "./company-bootstrap.mjs";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
@@ -787,6 +788,109 @@ test("a bare interrupted three-plugin installation resumes without losing disabl
   assert.match(await readFile(join(f.profile, "cordis.patch.yml"), "utf8"), /preserved: true/);
   assert.equal((await bootstrapCompanyProfile(f)).status, "existing-profile-preserved");
   assert.equal(f.calls(), 1);
+});
+
+test("an offline dependency failure resumes the suite and retains its failed receipt and log", async (t) => {
+  const f = await interruptedProfile(t);
+  const log = join(f.profile, ".plugin-manager/logs/operation-offline/pnpm.log");
+  await mkdir(join(log, ".."), { recursive: true });
+  const message =
+    "Progress: resolved 139\n[ERR_PNPM_NO_OFFLINE_TARBALL] A package is missing from the store\nhttps://registry.npmjs.org/body-parser/-/body-parser-2.3.0.tgz\n";
+  await writeFile(log, message);
+  const failed = JSON.stringify({
+    status: "failed",
+    diagnostic: "GEA_COMPANY_INSTALL_FAILED: " + log,
+  });
+  await writeFile(join(f.record, "receipt.json"), failed);
+  const result = await bootstrapCompanyProfile(f);
+  assert.equal(result.status, "installed");
+  assert.equal(f.calls(), 1);
+  const backup = (await readdir(f.record)).find((name) => name.startsWith("interrupted-"));
+  assert.equal(await readFile(join(f.record, backup, "receipt.json"), "utf8"), failed);
+  assert.equal(await readFile(log, "utf8"), message);
+  assert.equal(
+    await readFile(join(f.profile, "sessions/old.jsonl"), "utf8"),
+    "existing user history\n",
+  );
+  assert.deepEqual(
+    JSON.parse(await readFile(join(f.profile, "package.json"), "utf8")).dsh.profile.bundles,
+    ["dsh-agent-manage"],
+  );
+});
+
+test("bundled installation aligns an existing company lock and restores it on failure without replacing user dependencies", async (t) => {
+  for (const mode of ["company", "failure", "user"]) {
+    const f = await interruptedProfile(t);
+    const moduleRoot = join(f.root, "dsh/node_modules/@deepseek-ai");
+    for (const name of ["dsh-app-boot", "dsh-plugin-manager"]) {
+      await mkdir(join(moduleRoot, name), { recursive: true });
+      await writeFile(
+        join(moduleRoot, name, "package.json"),
+        JSON.stringify({
+          type: "module",
+          exports: { ".": "./index.mjs", "./operations": "./index.mjs" },
+        }),
+      );
+    }
+    await writeFile(
+      join(moduleRoot, "dsh-app-boot/index.mjs"),
+      "export const PROFILE_TEMPLATES={web:{bundles:[]}};export function initProfile(){}",
+    );
+    await writeFile(
+      join(moduleRoot, "dsh-plugin-manager/index.mjs"),
+      `import {readFile,writeFile} from 'node:fs/promises';import {join} from 'node:path';export async function runProfilePnpm(context,args){await writeFile(join(context.dir,'call.json'),JSON.stringify({args,lock:await readFile(join(context.dir,'pnpm-lock.yaml'),'utf8')}));return {exitCode:${mode === "failure" ? 1 : 0},logPath:join(context.dir,'pnpm.log')}}`,
+    );
+    const require = createRequire(join(f.root, "dsh/package.json"));
+    const YAML = require("yaml");
+    const manifest = JSON.parse(await readFile(join(f.seed, "manifest.json"), "utf8"));
+    const dependencies = Object.fromEntries(
+      manifest.packages.map((row) => [
+        row.name,
+        {
+          specifier: "file:company-seed/archives/" + row.file,
+          version: "file:company-seed/archives/" + row.file,
+        },
+      ]),
+    );
+    const lock = YAML.stringify({
+      importers: { ".": { dependencies } },
+      packages: { "body-parser@2.4.0": {} },
+    });
+    await writeFile(join(f.seed, "dependency-lock.yaml"), lock);
+    manifest.dependencyLockSha256 = createHash("sha256").update(lock).digest("hex");
+    await writeFile(join(f.seed, "manifest.json"), JSON.stringify(manifest));
+    const original = "lockfileVersion: 9\npackages:\n  body-parser@2.3.0: {}\n";
+    await writeFile(join(f.profile, "pnpm-lock.yaml"), original);
+    if (mode === "user") {
+      const current = JSON.parse(await readFile(join(f.profile, "package.json"), "utf8"));
+      current.dependencies["user-plugin"] = "1.0.0";
+      await writeFile(join(f.profile, "package.json"), JSON.stringify(current));
+    }
+    const operation = installCompanyPackages({
+      root: f.root,
+      support: "unused",
+      home: f.home,
+      profile: f.profile,
+      seed: f.seed,
+      packages: manifest.packages.map((row) => join(f.seed, "archives", row.file)),
+      store: join(f.home, "store"),
+      offline: true,
+    });
+    if (mode === "failure") await assert.rejects(operation, /GEA_COMPANY_INSTALL_FAILED/);
+    else await operation;
+    const called = JSON.parse(await readFile(join(f.profile, "call.json"), "utf8"));
+    if (mode === "user") {
+      assert.equal(called.lock, original);
+      assert(called.args.includes("--offline=false"));
+      assert(!called.args.includes("--config.frozen-lockfile=true"));
+    } else {
+      assert.match(called.lock, /body-parser@2\.4\.0/);
+      assert.doesNotMatch(called.lock, /body-parser@2\.3\.0/);
+      assert(called.args.includes("--config.frozen-lockfile=true"));
+    }
+    if (mode === "failure")
+      assert.equal(await readFile(join(f.profile, "pnpm-lock.yaml"), "utf8"), original);
+  }
 });
 
 test("an interrupted initial installation completes three-plugin activation", async (t) => {
