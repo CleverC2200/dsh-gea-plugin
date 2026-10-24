@@ -321,3 +321,20 @@ test("recreating the controller workflow cannot silently replace the frozen hist
     false,
   );
 });
+
+test("history provenance uses the existing contents-read workflow token without minting an App token", async () => {
+  const f = fixture();
+  await f.runtime.readJson("repos/CleverC2200/dsh-gea-plugin/git/ref/heads/main");
+  await f.runtime.readJson(
+    "repos/CleverC2200/dsh-gea-plugin/compare/" +
+      "a".repeat(40) +
+      "..." +
+      "b".repeat(40) +
+      "?per_page=1",
+  );
+  assert.equal(f.calls.length, 2);
+  assert.equal(
+    f.calls.every((call) => call.headers.authorization === "Bearer fixture-actions-read-token"),
+    true,
+  );
+});

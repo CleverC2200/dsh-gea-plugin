@@ -45,13 +45,13 @@ gh workflow run serial-merge.yml --repo CleverC2200/dsh-gea-plugin --ref main \
   -f operation=recover -f recovery_request_id=原控制器runID
 ```
 
-恢复先读取同一可信 main workflow 的历史 run/attempt 和 artifact。它只回查旧写入，不重发未知 update/merge；确认更新来源后可按原候选继续检查。恢复不批准作者并行 push 的替换 head。普通新请求不能借 recover 输入绕过请求身份或原 head。
+恢复先读取同一可信 main workflow 的历史 run/attempt 和 artifact。每个宿主 SHA 还须由服务端明确 `refs/heads/main` 的当前 commit 证明相同或祖先关系；分支字符串、同名 tag 或仅 owner/run 自洽不提供源码归属。main 前进允许旧可信快照，来源读取失败或比较未知仍闭锁。它只回查旧写入，不重发未知 update/merge；确认更新来源后可按原候选继续检查。恢复不批准作者并行 push 的替换 head。普通新请求不能借 recover 输入绕过请求身份或原 head。
 
 历史缺失、过期、内容归属错误、分页未完成或多笔未知均拒绝新写入。没有实际执行的 queued/skipped attempt 只有通过完整 jobs 元数据证明无 runner/steps 才可跳过。保留期到期后不得直接删证据或设置“忽略旧 run”；需先人工保存并审计可回读的终态证据，再另行审查恢复方案。当前候选不提供清空历史或强制放行开关。
 
 ## 原生 artifact 协议探针
 
-独立实验分支 `codex/gea-ci-s1-artifact-probe-20261024` 的 push 触发 [artifact probe](../.github/workflows/serial-merge-artifact-probe.yml)。它不使用合并 environment、App 私钥或仓库写 token，使用与生产相同的 SDK 锁和适配器。首次普通提交验证 upload、API 可见与 download；第二次提交首行用 `serial-artifact-read:首次runID` 验证跨 run 读取。不得把本地夹具通过写成原生协议通过。
+独立实验分支 `codex/gea-ci-s1-artifact-probe-20261024` 的 push 触发 [artifact probe](../.github/workflows/serial-merge-artifact-probe.yml)。它不使用合并 environment、App 私钥或仓库写 token，使用与生产相同的 SDK 锁和适配器。首次普通提交验证 upload 和 API 可见；第二次提交首行用 `serial-artifact-read:首次runID` 验证跨 run download；consumer 按同样方法核对服务端明确的实验 heads 分支及 producer 祖先关系。不得把本地夹具通过写成原生协议通过。
 
 启用前仍需 root 执行该短探针，并在获准的独立演练 PR 上验证 202 的 App actor/父提交/门禁、多个排队请求、普通失败释放、取消和未知响应恢复，以及最终 main CI。部署代码合入 main 的批准与演练 PR 的合并批准分开记录；候选 PR 不自动合并。
 

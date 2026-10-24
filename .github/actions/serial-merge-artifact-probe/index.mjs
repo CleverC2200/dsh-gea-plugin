@@ -16,7 +16,12 @@ if (
   throw Error("artifact_probe_scope_required");
 
 const readJson = async (endpoint) => {
-  if (!endpoint.startsWith(`repos/${repository}/actions/`))
+  const comparePrefix = `repos/${repository}/compare/`;
+  const provenance =
+    endpoint === `repos/${repository}/git/ref/heads/${branch}` ||
+    (endpoint.startsWith(comparePrefix) &&
+      /^[a-f0-9]{40}\.\.\.[a-f0-9]{40}\?per_page=1$/.test(endpoint.slice(comparePrefix.length)));
+  if (!endpoint.startsWith(`repos/${repository}/actions/`) && !provenance)
     throw Error("artifact_probe_endpoint_rejected");
   const response = await fetch("https://api.github.com/" + endpoint, {
     headers: {

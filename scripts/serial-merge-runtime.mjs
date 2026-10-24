@@ -81,10 +81,15 @@ export function createSerialMergeRuntime({
   };
   const readJson = async (path) => {
     if (!path.startsWith(`repos/${policy.repository}/`)) throw Error("read_target_rejected");
+    const comparePrefix = `repos/${policy.repository}/compare/`;
+    const provenance =
+      path === `repos/${policy.repository}/git/ref/heads/main` ||
+      (path.startsWith(comparePrefix) &&
+        /^[a-f0-9]{40}\.\.\.[a-f0-9]{40}\?per_page=1$/.test(path.slice(comparePrefix.length)));
     const response = await http(
       path,
       "GET",
-      path.includes("/actions/") ? githubToken : await appToken(),
+      path.includes("/actions/") || provenance ? githubToken : await appToken(),
     );
     if (response.status !== 200) throw Error("github_read_failed");
     return response.data;

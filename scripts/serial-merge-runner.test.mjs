@@ -643,6 +643,8 @@ test("the public runner persists real artifact-adapter envelopes before each sim
     githubToken: "fixture-actions-token",
     now: f.runtime.clock.now,
     readJson: async (path) => {
+      if (path.endsWith("/git/ref/heads/main"))
+        return { ref: "refs/heads/main", object: { type: "commit", sha: f.self.head_sha } };
       if (path.endsWith("/runs/100/attempts/1")) return structuredClone(f.self);
       if (path.includes("/workflows/55/runs?"))
         return { total_count: 1, workflow_runs: [structuredClone(f.self)] };
