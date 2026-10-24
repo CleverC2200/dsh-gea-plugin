@@ -100,6 +100,7 @@ export function createSerialMergeRuntime({
     const self = await readJson(`repos/${policy.repository}/actions/runs/${context.runId}`);
     if (
       self.status !== "in_progress" ||
+      self.workflow_id !== context.controllerWorkflowId ||
       self.repository?.id !== policy.repositoryId ||
       self.path !== policy.controllerWorkflowPath ||
       self.event !== "workflow_dispatch" ||
@@ -206,6 +207,12 @@ export function createSerialMergeRuntime({
     signal,
     async identity() {
       const self = await readJson(`repos/${policy.repository}/actions/runs/${context.runId}`);
+      if (
+        !Number.isSafeInteger(context.controllerWorkflowId) ||
+        context.controllerWorkflowId < 1 ||
+        self.workflow_id !== context.controllerWorkflowId
+      )
+        throw Error("controller_workflow_mismatch");
       if (context.ref !== "refs/heads/main" || self.run_attempt !== context.attempt)
         throw Error("trusted_main_required");
       const owner = {
@@ -214,7 +221,13 @@ export function createSerialMergeRuntime({
         workflowId: self.workflow_id,
         controllerSha: context.checkoutSha,
       };
-      journal = journalFactory({ owner, self, readJson, githubToken, policy });
+      journal = journalFactory({
+        owner,
+        self,
+        readJson,
+        githubToken,
+        policy: { ...policy, controllerWorkflowId: context.controllerWorkflowId },
+      });
       return { ...context, self, eventSenderId: event.sender?.id };
     },
     async checkpoint(record, kind) {

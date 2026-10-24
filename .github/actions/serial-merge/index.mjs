@@ -11,6 +11,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => cancellat
 try {
   if (process.env.GITHUB_ACTIONS !== "true") throw Error("github_actions_required");
   const context = {
+    controllerWorkflowId: Number(process.env.GEA_MERGE_WORKFLOW_ID),
     runId: Number(process.env.GITHUB_RUN_ID),
     attempt: Number(process.env.GITHUB_RUN_ATTEMPT),
     actor: process.env.GITHUB_ACTOR,

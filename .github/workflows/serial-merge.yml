@@ -31,6 +31,7 @@ jobs:
     timeout-minutes: 55
     environment: gea-serial-merge
     env:
+      GEA_MERGE_WORKFLOW_ID: ${{ vars.GEA_MERGE_WORKFLOW_ID }}
       GEA_MERGE_ENABLED: ${{ vars.GEA_MERGE_ENABLED }}
       GEA_MERGE_APP_ID: ${{ vars.GEA_MERGE_APP_ID }}
       GEA_MERGE_INSTALLATION_ID: ${{ vars.GEA_MERGE_INSTALLATION_ID }}

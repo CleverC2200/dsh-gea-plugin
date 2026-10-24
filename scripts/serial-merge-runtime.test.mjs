@@ -24,6 +24,7 @@ function fixture() {
     actor: { id: 42, login: "maintainer", type: "User" },
   };
   const context = {
+    controllerWorkflowId: 55,
     runId: 100,
     attempt: 1,
     actor: "maintainer",
@@ -296,6 +297,16 @@ test("an intent upload that exhausts the active budget cannot cause a late App w
     "intent",
   );
   assert.equal((await f.runtime.merge(request, head)).outcome, "failed");
+  assert.equal(
+    f.calls.some((call) => call.method === "PUT"),
+    false,
+  );
+});
+
+test("recreating the controller workflow cannot silently replace the frozen history identity", async () => {
+  const f = fixture();
+  f.self.workflow_id = 56;
+  await assert.rejects(f.runtime.identity(), /controller_workflow_mismatch/);
   assert.equal(
     f.calls.some((call) => call.method === "PUT"),
     false,
