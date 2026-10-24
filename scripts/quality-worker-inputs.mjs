@@ -51,12 +51,13 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
   const running = new Set();
   const cancellation = new AbortController();
   let firstError;
-  const alive = (pid) => {
+  const alive = (pid, rootGroupCleanup = false) => {
     try {
       process.kill(-pid, 0);
       return true;
     } catch (e) {
       if (e.code === "ESRCH") return false;
+      if (e.code === "EPERM" && rootGroupCleanup) return true;
       throw e;
     }
   };
@@ -65,7 +66,32 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
     try {
       process.kill(-entry.child.pid, value);
     } catch (e) {
-      if (e.code !== "ESRCH") entry.cleanupError = e;
+      if (e.code !== "ESRCH" && !(e.code === "EPERM" && entry.rootGroupCleanup))
+        entry.cleanupError = e;
+    }
+    if (entry.rootGroupCleanup) {
+      const result = spawnSync("sudo", ["-n", "kill", "-s", value, "--", "-" + entry.child.pid], {
+        encoding: "utf8",
+        timeout: 2000,
+        killSignal: "SIGKILL",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      if ((result.error || result.status !== 0) && alive(entry.child.pid, true))
+        entry.cleanupError = Error(
+          errorCode +
+            ": privileged install group cleanup failed: " +
+            (result.error?.message ?? result.stderr ?? result.status),
+        );
+      if (value === "SIGKILL" && !entry.drainTimer) {
+        entry.child.kill("SIGKILL");
+        entry.drainTimer = setTimeout(() => {
+          entry.cleanupError ??= Error(
+            errorCode + ": owned install group did not drain after SIGKILL",
+          );
+          entry.child.stdout?.destroy();
+          entry.child.stderr?.destroy();
+        }, 2000);
+      }
     }
   };
   const stop = (error) => {
@@ -93,7 +119,17 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
       process.off("SIGTERM", onTerm);
       process.off("SIGINT", onInt);
     },
-    run(file, args, cwd, { timeoutMs, label = "browser preparation", forwardOutput = false } = {}) {
+    run(
+      file,
+      args,
+      cwd,
+      {
+        timeoutMs,
+        label = "browser preparation",
+        forwardOutput = false,
+        rootGroupCleanup = false,
+      } = {},
+    ) {
       if (firstError) return Promise.reject(firstError);
       const child = spawn(file, args, {
         cwd,
@@ -101,7 +137,7 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      const entry = { child };
+      const entry = { child, rootGroupCleanup: rootGroupCleanup && process.platform === "linux" };
       let stdout = "",
         stderr = "",
         commandError;
@@ -133,7 +169,7 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
           // Descendants can hold stdio open after a successful leader exits,
           // so group cleanup must start without waiting for close.
           try {
-            if (child.pid && alive(child.pid)) {
+            if (child.pid && alive(child.pid, entry.rootGroupCleanup)) {
               commandError ??= failure("install left an owned process group");
               stop(commandError);
             }
@@ -149,12 +185,13 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
             commandError ??= failure(sig ?? "exit " + code + (stderr ? ": " + stderr : ""));
           }
           try {
-            if (child.pid && alive(child.pid)) {
+            if (child.pid && alive(child.pid, entry.rootGroupCleanup)) {
               stop(commandError ?? failure("install left an owned process group"));
               const until = Date.now() + 2000;
-              while (alive(child.pid) && Date.now() < until)
+              while (alive(child.pid, entry.rootGroupCleanup) && Date.now() < until)
                 await new Promise((r) => setTimeout(r, 10));
-              if (alive(child.pid)) throw failure("owned install group did not terminate");
+              if (alive(child.pid, entry.rootGroupCleanup))
+                throw entry.cleanupError ?? failure("owned install group did not terminate");
             }
             if (entry.cleanupError) throw entry.cleanupError;
           } catch (e) {
@@ -164,6 +201,7 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
           }
           clearTimeout(entry.timer);
           clearTimeout(entry.deadline);
+          clearTimeout(entry.drainTimer);
           running.delete(entry);
           if (commandError || firstError) rejectPromise(firstError ?? commandError);
           else resolvePromise(stdout.trim());
@@ -1058,7 +1096,11 @@ export async function prepareWorkerInputs(values) {
                   process.execPath,
                   [before.executable, "install-deps", "chromium"],
                   p.manage,
-                  { timeoutMs: browserBudgetMs, forwardOutput: true },
+                  {
+                    timeoutMs: browserBudgetMs,
+                    forwardOutput: true,
+                    rootGroupCleanup: process.platform === "linux",
+                  },
                 );
                 const after = readBrowserDependencyClosure({ directory: p.manage, version });
                 if (executionDigest(before) !== executionDigest(after))
@@ -1202,7 +1244,11 @@ export async function prepareWorkerInputs(values) {
               "corepack",
               ["pnpm", "exec", "playwright", "install-deps", "chromium"],
               p.gea,
-              { timeoutMs: browserBudgetMs, forwardOutput: true },
+              {
+                timeoutMs: browserBudgetMs,
+                forwardOutput: true,
+                rootGroupCleanup: process.platform === "linux",
+              },
             );
           } finally {
             await browserInstall.close();

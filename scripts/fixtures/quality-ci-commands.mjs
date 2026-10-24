@@ -13,10 +13,20 @@ os.tmpdir = () => job;
 if (process.env.FIXTURE_PLATFORM)
   Object.defineProperty(process, "platform", { value: process.env.FIXTURE_PLATFORM });
 const originalSpawn = commands.spawnSync;
+const originalKill = process.kill.bind(process);
+if (process.env.FIXTURE_REQUIRE_SUDO === "1")
+  process.kill = (pid, signal) => {
+    if (pid < 0 && signal !== 0)
+      throw Object.assign(Error("controlled root-owned group"), { code: "EPERM" });
+    return originalKill(pid, signal);
+  };
 const originalExec = commands.execFileSync;
 const success = { status: 0, stdout: "", stderr: "" };
-const log = (command, args, cwd) =>
-  appendFileSync(resolve(job, "commands.jsonl"), JSON.stringify({ command, args, cwd }) + "\n");
+const log = (command, args, cwd, shell) =>
+  appendFileSync(
+    resolve(job, "commands.jsonl"),
+    JSON.stringify({ command, args, cwd, shell }) + "\n",
+  );
 commands.execFileSync = (command, args, options = {}) => {
   if (command === "corepack" && args.includes("--dry-run"))
     return ["chromium", "headless", "ffmpeg"]
@@ -37,8 +47,24 @@ commands.spawn = (command, args, options = {}) =>
     ? originalAsyncSpawn(process.execPath, [browserFixture], options)
     : originalAsyncSpawn(command, args, options);
 commands.spawnSync = (command, args, options = {}) => {
+  if (command === "sudo") {
+    log(command, args, options.cwd);
+    if (process.env.FIXTURE_SUDO_FAIL === "1")
+      return { ...success, status: 1, stderr: "controlled sudo denial" };
+    try {
+      originalKill(Number(args.at(-1)), args[3]);
+      return success;
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+      return { ...success, status: 1, stderr: "No such process" };
+    }
+  }
+  if (["corepack.cmd", "npm.cmd"].includes(command)) {
+    log(command, args, options.cwd, options.shell);
+    command = command.slice(0, -4);
+  }
   if (browserCommand(command, args))
-    return originalSpawn(process.execPath, [browserFixture], options);
+    return originalSpawn(process.execPath, [browserFixture], { ...options, shell: false });
   const cwd = options.cwd ?? process.cwd();
   if (command === process.execPath && args[0] === "node_modules/typescript/bin/tsc") {
     log("workbench-declarations", args, cwd);

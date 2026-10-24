@@ -1006,29 +1006,37 @@ try {
         ...(process.platform === "linux" ? ["--with-deps"] : []),
         "chromium",
       ];
-      const browserInstall = installCommands({ errorCode: "QUALITY_BROWSER_PREPARATION_FAILED" });
-      const release = createRequire(import.meta.url)("./build-admission.mjs").acquireBuild({
-        operation: "prepare",
-        cwd: process.cwd(),
-      });
-      try {
-        finalGroup?.verifyUnchanged();
-        const execute = () =>
-          browserInstall.run("corepack", args, process.cwd(), {
-            timeoutMs: budgetMs,
-            forwardOutput: true,
-          });
+      if (process.platform === "win32") {
+        const execute = () => run("corepack", args);
         if (stages)
-          await stages.step(
-            "browser-install",
-            { command: ["corepack", ...args], budgetMs },
-            execute,
-          );
-        else await execute();
-        finalGroup?.verifyUnchanged();
-      } finally {
-        await browserInstall.close();
-        release();
+          await stages.step("browser-install", { command: ["corepack", ...args] }, execute);
+        else execute();
+      } else {
+        const browserInstall = installCommands({ errorCode: "QUALITY_BROWSER_PREPARATION_FAILED" });
+        const release = createRequire(import.meta.url)("./build-admission.mjs").acquireBuild({
+          operation: "prepare",
+          cwd: process.cwd(),
+        });
+        try {
+          finalGroup?.verifyUnchanged();
+          const execute = () =>
+            browserInstall.run("corepack", args, process.cwd(), {
+              timeoutMs: budgetMs,
+              forwardOutput: true,
+              rootGroupCleanup: process.platform === "linux",
+            });
+          if (stages)
+            await stages.step(
+              "browser-install",
+              { command: ["corepack", ...args], budgetMs },
+              execute,
+            );
+          else await execute();
+          finalGroup?.verifyUnchanged();
+        } finally {
+          await browserInstall.close();
+          release();
+        }
       }
     }
     if (plan.browser) {
