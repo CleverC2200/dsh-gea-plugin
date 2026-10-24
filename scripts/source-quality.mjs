@@ -36,11 +36,38 @@ const availableFiles = () =>
     ...(workingTree ? ["--others", "--exclude-standard"] : []),
     "-z",
   ).filter((file) => existsSync(file));
+const readEvent = () =>
+  !workingTree && process.env.GITHUB_EVENT_PATH
+    ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"))
+    : {};
+function eventAdmission() {
+  const event = readEvent();
+  const changes = event.changes;
+  const metadataOnly =
+    process.env.GITHUB_EVENT_NAME === "pull_request" &&
+    !process.env.SOURCE_HEAD_SHA &&
+    !process.env.SOURCE_BASE_SHA &&
+    event.action === "edited" &&
+    event.pull_request?.base?.ref === "main" &&
+    /^[a-f0-9]{40}$/.test(event.pull_request?.base?.sha || "") &&
+    /^[a-f0-9]{40}$/.test(event.pull_request?.head?.sha || "") &&
+    changes &&
+    !Array.isArray(changes) &&
+    Object.keys(changes).length > 0 &&
+    Object.entries(changes).every(
+      ([field, change]) =>
+        ["title", "body"].includes(field) &&
+        change &&
+        Object.keys(change).length === 1 &&
+        Object.hasOwn(change, "from") &&
+        (typeof change.from === "string" || (field === "body" && change.from === null)),
+    );
+  return metadataOnly
+    ? { validate: false, reason: "metadata-only" }
+    : { validate: true, reason: "source-validation-required" };
+}
 function plan() {
-  const event =
-    !workingTree && process.env.GITHUB_EVENT_PATH
-      ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"))
-      : {};
+  const event = readEvent();
   if (!workingTree && event.pull_request && event.pull_request.base?.ref !== "main")
     throw Error(
       "SOURCE_PR_TARGET_MAIN_REQUIRED: retarget the PR to main; freeze build inputs by SHA",
@@ -255,9 +282,14 @@ function check(result) {
 const phase = process.argv[process.argv.indexOf("--phase") + 1];
 if (workingTree && !["plan", "check", "affected-plan"].includes(phase))
   throw Error("SOURCE_WORKING_TREE_PLAN_ONLY");
-const result = plan();
-if (phase === "plan") {
-  if (!workingTree && result.mode === "code" && existsSync("scripts/quality-peer-baseline.json")) {
+const result = phase === "event" ? eventAdmission() : plan();
+if (phase === "plan" || phase === "event") {
+  if (
+    phase === "plan" &&
+    !workingTree &&
+    result.mode === "code" &&
+    existsSync("scripts/quality-peer-baseline.json")
+  ) {
     const own = basename(process.cwd());
     const baseline = JSON.parse(readFileSync("scripts/quality-peer-baseline.json", "utf8"));
     for (const [key, repo] of [
