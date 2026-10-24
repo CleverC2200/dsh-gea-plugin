@@ -60,6 +60,11 @@ function fixture(t) {
   const jobs = new Map();
   const attempts = new Map();
   const digest = "d".repeat(64);
+  const branchRef = {
+    ref: "refs/heads/main",
+    object: { type: "commit", sha: owner.controllerSha },
+  };
+  const comparisons = new Map();
   const addRun = (id, extra = {}) => {
     const run = {
       id,
@@ -113,6 +118,13 @@ function fixture(t) {
   };
   const readJson = async (path) => {
     calls.push(["GET", path]);
+    if (path.includes("/git/ref/heads/")) return structuredClone(branchRef);
+    if (path.includes("/compare/")) {
+      const result = comparisons.get(path.split("/compare/")[1].split("?")[0]);
+      if (result instanceof Error) throw result;
+      if (!result) throw Error("missing ancestry proof");
+      return structuredClone(result);
+    }
     const artifactId = /\/actions\/artifacts\/(\d+)$/.exec(path);
     if (artifactId) return structuredClone(metadata.get(Number(artifactId[1])));
     const attempt = /\/actions\/runs\/(\d+)\/attempts\/(\d+)$/.exec(path);
@@ -157,6 +169,8 @@ function fixture(t) {
     jobs,
     attempts,
     digest,
+    branchRef,
+    comparisons,
   };
 }
 
@@ -421,6 +435,12 @@ test("older controller commits remain readable and newer trusted terminal revisi
     f.record,
     "intent",
   );
+  f.branchRef.object.sha = "f".repeat(40);
+  f.comparisons.set(f.owner.controllerSha + "..." + f.branchRef.object.sha, {
+    status: "ahead",
+    base_commit: { sha: f.owner.controllerSha },
+    merge_base_commit: { sha: f.owner.controllerSha },
+  });
   f.addRun(101, { head_sha: "f".repeat(40) });
   const later = createSerialMergeArtifacts({
     ...f,
@@ -581,4 +601,131 @@ test("an obsolete artifact still cannot certify a different repository's attempt
   );
   f.metadata.get(7).workflow_run.repository_id = 999;
   await assert.rejects(later.restore(), /invalid_checkpoint/);
+});
+
+test("an off-main producer cannot replace a trusted unknown intent with a higher terminal revision", async (t) => {
+  const f = fixture(t);
+  await createSerialMergeArtifacts({ ...f, githubToken: "fixture-read-token" }).checkpoint(
+    f.record,
+    "intent",
+  );
+  const attackerSha = "f".repeat(40);
+  f.addRun(101, { head_sha: attackerSha, status: "completed", conclusion: "success" });
+  const forged = {
+    ...structuredClone(f.record),
+    revision: 2,
+    owner: { ...f.owner, runId: 101, controllerSha: attackerSha },
+    state: {
+      queue: [],
+      active: null,
+      finished: [{ request: f.record.request, reason: "forged_terminal" }],
+    },
+  };
+  delete forged.intent;
+  const file = join(f.directory, "forged.json");
+  writeFileSync(file, JSON.stringify(forged));
+  await f.artifact.uploadArtifact("gea-serial-100-2-101-1-terminal", [file], f.directory, {});
+  f.comparisons.set(attackerSha + "..." + f.owner.controllerSha, {
+    status: "diverged",
+    base_commit: { sha: attackerSha },
+    merge_base_commit: { sha: "e".repeat(40) },
+  });
+  f.addRun(102);
+  const later = createSerialMergeArtifacts({
+    ...f,
+    owner: { ...f.owner, runId: 102 },
+    githubToken: "fixture-read-token",
+  });
+  await assert.rejects(later.restore(), /untrusted_controller_source/);
+  assert.equal(JSON.parse(f.bytes.get(7)).state.active.phase, "updating");
+  assert.equal(
+    f.calls.some(([method, id]) => method === "download" && id === 8),
+    false,
+  );
+});
+
+test("protected branch ancestry is required, cached per snapshot and unavailable proof stays closed", async (t) => {
+  const f = fixture(t);
+  const tip = "f".repeat(40);
+  f.branchRef.object.sha = tip;
+  const key = f.owner.controllerSha + "..." + tip;
+  f.comparisons.set(key, {
+    status: "ahead",
+    base_commit: { sha: f.owner.controllerSha },
+    merge_base_commit: { sha: f.owner.controllerSha },
+  });
+  const store = createSerialMergeArtifacts({ ...f, githubToken: "fixture-read-token" });
+  await store.checkpoint(f.record, "intent");
+  assert.deepEqual((await store.restore()).records, [f.record]);
+  assert.equal(
+    f.calls.filter(([method, path]) => method === "GET" && path.endsWith("/git/ref/heads/main"))
+      .length,
+    1,
+  );
+  assert.equal(
+    f.calls.filter(([method, path]) => method === "GET" && path.includes("/compare/")).length,
+    1,
+  );
+  for (const result of [
+    {
+      status: "behind",
+      base_commit: { sha: f.owner.controllerSha },
+      merge_base_commit: { sha: f.owner.controllerSha },
+    },
+    {
+      status: "ahead",
+      base_commit: { sha: f.owner.controllerSha },
+      merge_base_commit: { sha: "e".repeat(40) },
+    },
+    new Error("API unavailable"),
+  ]) {
+    f.comparisons.set(key, result);
+    const failed = createSerialMergeArtifacts({ ...f, githubToken: "fixture-read-token" });
+    const before = f.calls.filter(
+      ([method, path]) => method === "GET" && path.includes("/compare/"),
+    ).length;
+    await assert.rejects(failed.restore());
+    await assert.rejects(failed.restore());
+    assert.equal(
+      f.calls.filter(([method, path]) => method === "GET" && path.includes("/compare/")).length,
+      before + 1,
+    );
+  }
+  f.branchRef.ref = "refs/tags/main";
+  await assert.rejects(
+    createSerialMergeArtifacts({ ...f, githubToken: "fixture-read-token" }).restore(),
+    /untrusted_controller_source/,
+  );
+});
+
+test("the isolated probe verifies its exact heads branch and can consume an older producer snapshot", async (t) => {
+  const f = fixture(t);
+  const branch = "codex/gea-ci-s1-artifact-probe-20261024";
+  f.branchRef.ref = "refs/heads/" + branch;
+  Object.assign(f.runs.get(100), { head_branch: branch, event: "push" });
+  const config = {
+    ...f,
+    githubToken: "fixture-read-token",
+    controllerBranch: branch,
+    controllerEvent: "push",
+  };
+  await createSerialMergeArtifacts(config).checkpoint(f.record, "intent");
+  const tip = "f".repeat(40);
+  f.branchRef.object.sha = tip;
+  f.comparisons.set(f.owner.controllerSha + "..." + tip, {
+    status: "ahead",
+    base_commit: { sha: f.owner.controllerSha },
+    merge_base_commit: { sha: f.owner.controllerSha },
+  });
+  f.addRun(101, { head_branch: branch, event: "push", head_sha: tip });
+  const consumer = { ...config, owner: { ...f.owner, runId: 101, controllerSha: tip } };
+  assert.deepEqual((await createSerialMergeArtifacts(consumer).restore()).records, [f.record]);
+  assert.ok(
+    f.calls.some(([method, path]) => method === "GET" && path.endsWith("/git/ref/heads/" + branch)),
+  );
+  f.branchRef.ref = "refs/tags/" + branch;
+  await assert.rejects(
+    createSerialMergeArtifacts(consumer).restore(),
+    /untrusted_controller_source/,
+  );
 });

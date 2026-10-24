@@ -122,9 +122,68 @@
     },
     "scripts/quality-worker-inputs.test.mjs": {
       "dependencies": true
+    },
+    "scripts/serial-merge-runner.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/serial-merge-runtime.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/serial-merge-artifacts.test.mjs": {
+      "dependencies": false
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-artifacts\\.mjs$",
+      "tests": ["scripts/serial-merge-runner.test.mjs"],
+      "sourceTests": ["scripts/serial-merge-runner.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-controller\\.mjs$",
+      "tests": ["scripts/serial-merge-runner.test.mjs"],
+      "sourceTests": ["scripts/serial-merge-runner.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-(?:runner|runtime)(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/serial-merge-runner.test.mjs", "scripts/serial-merge-runtime.test.mjs"],
+      "sourceTests": [
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-policy\\.json$",
+      "tests": [
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs",
+        "scripts/serial-merge-artifacts.test.mjs"
+      ],
+      "sourceTests": [
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs",
+        "scripts/serial-merge-artifacts.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:scripts/serial-merge-artifacts(?:\\.test)?\\.mjs|\\.github/actions/serial-merge/(?:package\\.json|pnpm-lock\\.yaml)|\\.github/actions/serial-merge-artifact-probe/(?:action\\.yml|index\\.mjs)|\\.github/workflows/serial-merge-artifact-probe\\.yml)$",
+      "tests": ["scripts/serial-merge-artifacts.test.mjs"],
+      "sourceTests": ["scripts/serial-merge-artifacts.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:\\.github/actions/serial-merge/(?:action\\.yml|index\\.mjs)|\\.github/workflows/serial-merge\\.yml)$",
+      "tests": ["scripts/serial-merge-runner.test.mjs", "scripts/serial-merge-runtime.test.mjs"],
+      "sourceTests": [
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs"
+      ]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-test-node-runner\\.mjs$",

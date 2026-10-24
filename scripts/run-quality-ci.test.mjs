@@ -683,12 +683,19 @@ test("dependency review applies only to consumed GEA dependency inputs on PRs an
     "desktop/diagnostic-package.json",
     "desktop/tools/package.json",
     "desktop/tools/package-lock.json",
+    ".github/actions/serial-merge/package.json",
+    ".github/actions/serial-merge/pnpm-lock.yaml",
   ]) {
     const changes = [{ repo: "dsh-gea-plugin", file }];
     assert.equal(requiresDependencyReview(changes, "pull_request"), true, file);
     assert.equal(requiresDependencyReview(changes, "push"), false, file);
   }
-  for (const file of ["docs/README.md", "src/style.css", "tests/fixtures/package.json"])
+  for (const file of [
+    "docs/README.md",
+    "src/style.css",
+    "tests/fixtures/package.json",
+    ".github/actions/unregistered/package.json",
+  ])
     assert.equal(
       requiresDependencyReview([{ repo: "dsh-gea-plugin", file }], "pull_request"),
       false,

@@ -47,7 +47,36 @@ export function createSerialMergeArtifacts({
   )
     throw Error("invalid_artifact_policy");
   mkdirSync(root, { recursive: true });
-  const trustedRun = (run) => {
+  let branchTip;
+  const sourceCommits = new Map();
+  const verifySource = async (sha) => {
+    if (!sourceCommits.has(sha))
+      sourceCommits.set(
+        sha,
+        (async () => {
+          branchTip ??= readJson(`repos/${repository}/git/ref/heads/${controllerBranch}`);
+          const ref = await branchTip;
+          if (
+            ref?.ref !== `refs/heads/${controllerBranch}` ||
+            ref.object?.type !== "commit" ||
+            !fullSha(ref.object.sha)
+          )
+            throw Error("untrusted_controller_source");
+          if (sha === ref.object.sha) return;
+          const comparison = await readJson(
+            `repos/${repository}/compare/${sha}...${ref.object.sha}?per_page=1`,
+          );
+          if (
+            comparison?.status !== "ahead" ||
+            comparison.base_commit?.sha !== sha ||
+            comparison.merge_base_commit?.sha !== sha
+          )
+            throw Error("untrusted_controller_source");
+        })(),
+      );
+    await sourceCommits.get(sha);
+  };
+  const trustedRun = async (run) => {
     if (
       !validId(run?.id) ||
       !validId(run.run_attempt) ||
@@ -61,13 +90,14 @@ export function createSerialMergeArtifacts({
       !/^[a-f0-9]{40}$/.test(run.head_sha ?? "")
     )
       throw Error("untrusted_controller_run");
+    await verifySource(run.head_sha);
     return run;
   };
   const attempts = new Map();
   const attempt = async (id, number) => {
     const key = id + "/" + number;
     if (!attempts.has(key)) attempts.set(key, readJson(`${base}/runs/${id}/attempts/${number}`));
-    const run = trustedRun(await attempts.get(key));
+    const run = await trustedRun(await attempts.get(key));
     if (run.id !== id || run.run_attempt !== number) throw Error("controller_attempt_mismatch");
     return run;
   };
@@ -339,7 +369,7 @@ export function createSerialMergeArtifacts({
           throw Error("history_incomplete");
         if (candidate.head_branch !== controllerBranch || candidate.event !== controllerEvent)
           continue;
-        const run = trustedRun(candidate.id === owner.runId ? self : candidate);
+        const run = await trustedRun(candidate.id === owner.runId ? self : candidate);
         if (run.run_attempt > policy.maxHistoryRuns) throw Error("history_incomplete");
         const uploaded = (await list(`${base}/runs/${run.id}/artifacts`, "artifacts")).filter(
           (item) => item.name.startsWith("gea-serial-"),

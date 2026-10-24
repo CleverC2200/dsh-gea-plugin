@@ -93,7 +93,7 @@ test("a docs-only change declares no source, browser or runtime obligation", (t)
   assert.equal(plan.runtime, false);
 });
 
-test("serial merge controller and its fixture select one dependency-free source regression", (t) => {
+test("serial merge controller and its fixture select their dependency-free source regressions", (t) => {
   const regression = "scripts/serial-merge-controller.test.mjs";
   const fixture = resourceImpactFixture(t, [regression]);
   for (const file of [
@@ -107,8 +107,12 @@ test("serial merge controller and its fixture select one dependency-free source 
       readFileSync(new URL("../" + file, import.meta.url), "utf8") + "\n",
     );
     const source = fixture.plan({ sourceOnly: true });
-    assert.deepEqual(source.files, [regression]);
-    assert.deepEqual(source.reasons[fixture.own.repo + "/" + file], [regression]);
+    const expected =
+      file === "scripts/serial-merge-controller.mjs"
+        ? [regression, "scripts/serial-merge-runner.test.mjs"]
+        : [regression];
+    assert.deepEqual(source.files, [regression, "scripts/serial-merge-runner.test.mjs"]);
+    assert.deepEqual(source.reasons[fixture.own.repo + "/" + file], expected);
     assert.equal(source.dependencies, false);
     assert.equal(source.browser, false);
     assert.equal(source.runtime, false);
@@ -118,6 +122,57 @@ test("serial merge controller and its fixture select one dependency-free source 
     assert.ok(fixture.plan().files.includes(regression));
   }
   fixture.change(fixture.own, "scripts/fixtures/serial-merge-controller-unregistered.json", "{}\n");
+  assert.throws(() => fixture.plan({ sourceOnly: true }), /CI_TEST_IMPACT_UNMAPPED/);
+});
+
+test("trusted serial merge files select public regressions and unknown adjacent action inputs fail closed", (t) => {
+  const fixture = resourceImpactFixture(t);
+  const cases = [
+    [
+      "scripts/serial-merge-runner.mjs",
+      ["scripts/serial-merge-runner.test.mjs", "scripts/serial-merge-runtime.test.mjs"],
+    ],
+    ["scripts/serial-merge-runtime.test.mjs", ["scripts/serial-merge-runtime.test.mjs"]],
+    [
+      "scripts/serial-merge-policy.json",
+      [
+        "scripts/serial-merge-artifacts.test.mjs",
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs",
+      ],
+    ],
+    [
+      "scripts/serial-merge-artifacts.mjs",
+      ["scripts/serial-merge-artifacts.test.mjs", "scripts/serial-merge-runner.test.mjs"],
+    ],
+    [".github/actions/serial-merge/package.json", ["scripts/serial-merge-artifacts.test.mjs"]],
+    [".github/actions/serial-merge/pnpm-lock.yaml", ["scripts/serial-merge-artifacts.test.mjs"]],
+    [
+      ".github/actions/serial-merge/index.mjs",
+      ["scripts/serial-merge-runner.test.mjs", "scripts/serial-merge-runtime.test.mjs"],
+    ],
+    [
+      ".github/actions/serial-merge/action.yml",
+      ["scripts/serial-merge-runner.test.mjs", "scripts/serial-merge-runtime.test.mjs"],
+    ],
+    [
+      ".github/actions/serial-merge-artifact-probe/index.mjs",
+      ["scripts/serial-merge-artifacts.test.mjs"],
+    ],
+    [
+      ".github/actions/serial-merge-artifact-probe/action.yml",
+      ["scripts/serial-merge-artifacts.test.mjs"],
+    ],
+  ];
+  for (const [file, expected] of cases) {
+    fixture.change(fixture.own, file, "Changed trusted input\n");
+    const source = fixture.plan({ sourceOnly: true });
+    assert.deepEqual(source.reasons[fixture.own.repo + "/" + file], expected);
+    assert.equal(source.dependencies, false);
+    assert.equal(source.browser, false);
+    assert.equal(source.runtime, false);
+  }
+  fixture.change(fixture.own, ".github/actions/serial-merge/unregistered.mjs", "export {};\n");
   assert.throws(() => fixture.plan({ sourceOnly: true }), /CI_TEST_IMPACT_UNMAPPED/);
 });
 
@@ -234,7 +289,11 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ["scripts/quality-workbench.test.mjs", "tests/window-launch-admission.test.mjs"],
     ],
     [2, "scripts/fixtures/quality-ci-commands.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
-    [2, "scripts/serial-merge-controller.mjs", ["scripts/serial-merge-controller.test.mjs"]],
+    [
+      2,
+      "scripts/serial-merge-controller.mjs",
+      ["scripts/serial-merge-controller.test.mjs", "scripts/serial-merge-runner.test.mjs"],
+    ],
     [2, "scripts/serial-merge-controller.test.mjs", ["scripts/serial-merge-controller.test.mjs"]],
     [
       2,
