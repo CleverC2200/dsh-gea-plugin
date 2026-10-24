@@ -5,11 +5,13 @@ export const currentBusinessIds = [
   ...businessIds,
   "gea-html-inventory-customer",
   "gea-html-inventory-orderfulfillment",
+  "gea-html-inventory-orderworkbench",
 ];
 export const currentDocumentIds = [
   ...documentIds,
   "gea-html-inventory-customer",
   "gea-html-inventory-orderfulfillment",
+  "gea-html-inventory-orderworkbench",
 ];
 export function validateInitialPresets(presets) {
   for (const id of currentBusinessIds) {
@@ -19,6 +21,4 @@ export function validateInitialPresets(presets) {
       `BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:${id}`,
     );
   }
-  const preview = "gea-html-inventory-orderworkbench";
-  assert(!presets.some((row) => row.id === preview), `PREVIEW_PRESET_VISIBLE:${preview}`);
 }

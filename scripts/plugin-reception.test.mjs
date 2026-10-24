@@ -18,10 +18,14 @@ import {
   validateInitialPresets,
 } from "./plugin-reception/preset-discovery.mjs";
 
-test("governed customer inventory and fulfillment are discoverable while order preview stays hidden", () => {
+test("governed customer inventory, fulfillment and order workbench are discoverable before selection", () => {
   const presets = currentBusinessIds.map((id) => ({ id, broken: false }));
   validateInitialPresets(presets);
-  for (const id of ["gea-html-inventory-customer", "gea-html-inventory-orderfulfillment"])
+  for (const id of [
+    "gea-html-inventory-customer",
+    "gea-html-inventory-orderfulfillment",
+    "gea-html-inventory-orderworkbench",
+  ])
     for (const invalid of [
       presets.filter((row) => row.id !== id),
       presets.map((row) => (row.id === id ? { ...row, broken: true } : row)),
@@ -31,11 +35,6 @@ test("governed customer inventory and fulfillment are discoverable while order p
         () => validateInitialPresets(invalid),
         new RegExp(`BUSINESS_PRESET_NOT_DISCOVERABLE_BEFORE_SELECTION:${id}`),
       );
-  const id = "gea-html-inventory-orderworkbench";
-  assert.throws(
-    () => validateInitialPresets([...presets, { id, broken: false }]),
-    /PREVIEW_PRESET_VISIBLE/,
-  );
 });
 
 const fixture = async (name) =>
