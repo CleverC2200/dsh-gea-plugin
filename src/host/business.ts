@@ -1,4 +1,4 @@
-import { orderReportStore } from './order-report-store.ts';
+import { orderReportStore } from "./order-report-store.ts";
 import {
   decodeSalesPlanResult,
   salesPlanCustomer,
@@ -2370,22 +2370,45 @@ export class Business {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const run = async () => {
       signal.throwIfAborted();
-      this.assertExecutionAllowed('order', payload.operation === 'save' ? 'submit' : 'view');
+      this.assertExecutionAllowed("order", payload.operation === "save" ? "submit" : "view");
       const period = object(payload.period);
-      const load = async () => object(await this.pluginSql({consumerCode:'order',sql:'SELECT report_data FROM agents_order_workbench_report LIMIT 2'},
-        signal, true, {period}));
+      const load = async () =>
+        object(
+          await this.pluginSql(
+            {
+              consumerCode: "order",
+              sql: "SELECT report_data FROM agents_order_workbench_report LIMIT 2",
+            },
+            signal,
+            true,
+            { period },
+          ),
+        );
       let snapshot: Record<string, unknown> | undefined = await load();
       const scope = object(snapshot.scope);
-      if (typeof scope.key !== 'string' || !scope.key.startsWith('order:base:') || scope.base !== scope.key.slice('order:base:'.length))
-        throw Error('ORDER_REPORT_SCOPE_UNSUPPORTED');
-      const reportScope = {key:scope.key,base:String(scope.base)};
-      return orderReportStore(payload, {...auth,reportScope}, async (sql, parameters, requestId) => {
-        signal.throwIfAborted();
-        if (requestId) return this.pluginSql({consumerCode:'order',sql,parameters}, signal, true, {idempotencyKey:requestId});
-        const result = snapshot ?? await load(); snapshot = undefined;
-        if (object(result.scope).key !== reportScope.key) throw Error('ORDER_REPORT_SCOPE_CHANGED');
-        return {rows:result.rows,rejectedColumns:[]};
-      });
+      if (
+        typeof scope.key !== "string" ||
+        !scope.key.startsWith("order:base:") ||
+        scope.base !== scope.key.slice("order:base:".length)
+      )
+        throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+      const reportScope = { key: scope.key, base: String(scope.base) };
+      return orderReportStore(
+        payload,
+        { ...auth, reportScope },
+        async (sql, parameters, requestId) => {
+          signal.throwIfAborted();
+          if (requestId)
+            return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true, {
+              idempotencyKey: requestId,
+            });
+          const result = snapshot ?? (await load());
+          snapshot = undefined;
+          if (object(result.scope).key !== reportScope.key)
+            throw Error("ORDER_REPORT_SCOPE_CHANGED");
+          return { rows: result.rows, rejectedColumns: [] };
+        },
+      );
     };
     const task = this.orderReportQueue.then(run, run);
     this.orderReportQueue = task.catch(() => {});
@@ -2397,7 +2420,7 @@ export class Business {
     payload: Record<string, unknown>,
     caller: AbortSignal,
     configured = false,
-    reportWrite?: { idempotencyKey: string } | {period: Record<string, unknown>},
+    reportWrite?: { idempotencyKey: string } | { period: Record<string, unknown> },
   ): Promise<unknown> {
     const query =
       payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
@@ -2507,27 +2530,62 @@ export class Business {
             limit: this.sqlReadLimit,
           };
           if (reportWrite) {
-            const loading = 'period' in reportWrite;
-            this.assertExecutionAllowed('order', loading ? 'view' : 'submit');
-            if (consumerCode !== 'order' || (!loading && !/^\s*(INSERT INTO|UPDATE) agents_order_workbench_report\b/.test(String(query.sql))))
-              throw Error('ORDER_REPORT_WRITE_INVALID');
+            const loading = "period" in reportWrite;
+            this.assertExecutionAllowed("order", loading ? "view" : "submit");
+            if (
+              consumerCode !== "order" ||
+              (!loading &&
+                !/^\s*(INSERT INTO|UPDATE) agents_order_workbench_report\b/.test(String(query.sql)))
+            )
+              throw Error("ORDER_REPORT_WRITE_INVALID");
             const values = loading ? {} : object(query.parameters);
             const requestId = loading ? randomUUID() : reportWrite.idempotencyKey;
-            const request = loading ? {periodType:reportWrite.period.type,periodStart:reportWrite.period.start,periodEndExclusive:reportWrite.period.end}
-              : {scopeKey:values.scope,periodType:values.kind,periodStart:values.start,periodEndExclusive:values.end,
-                expectedVersion:values.expected,requestId,reportData:values.report};
-            const response = await this.apiLog.fetch(this.base.replace(/\/$/, '') + '/ai/gateway/order-report/' + (loading ? 'load' : 'save'), {
-              method: 'POST', redirect: 'error', signal,
-              headers: { 'Content-Type': 'application/json', 'X-Delegation-Token': delegation.delegationToken, 'X-Request-Id': requestId },
-              body: JSON.stringify(request),
-            });
+            const request = loading
+              ? {
+                  periodType: reportWrite.period.type,
+                  periodStart: reportWrite.period.start,
+                  periodEndExclusive: reportWrite.period.end,
+                }
+              : {
+                  scopeKey: values.scope,
+                  periodType: values.kind,
+                  periodStart: values.start,
+                  periodEndExclusive: values.end,
+                  expectedVersion: values.expected,
+                  requestId,
+                  reportData: values.report,
+                };
+            const response = await this.apiLog.fetch(
+              this.base.replace(/\/$/, "") +
+                "/ai/gateway/order-report/" +
+                (loading ? "load" : "save"),
+              {
+                method: "POST",
+                redirect: "error",
+                signal,
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Delegation-Token": delegation.delegationToken,
+                  "X-Request-Id": requestId,
+                },
+                body: JSON.stringify(request),
+              },
+            );
             const body = object(await response.json().catch(() => ({})));
             signal.throwIfAborted();
             if (!response.ok || body.success !== true || object(body.result).failure) {
-              const failure = new GeaResponseError(response.status, body, [auth.token, delegation.delegationToken]);
-              if (response.status === 401 || /^(AI_GATEWAY_SESSION_(MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED|NOT_FOUND)|GEA_GATEWAY_SESSION_REJECTED)$/.test(String(body.errorCode)))
-                throw Object.assign(failure, {code:'GEA_GATEWAY_SESSION_REJECTED'});
-              throw Object.assign(failure, {code:body.errorCode || 'ORDER_REPORT_WRITE_FAILED'});
+              const failure = new GeaResponseError(response.status, body, [
+                auth.token,
+                delegation.delegationToken,
+              ]);
+              if (
+                response.status === 401 ||
+                /^(AI_GATEWAY_SESSION_(MAX_LIFETIME_EXCEEDED|EXPIRED|REVOKED|NOT_FOUND)|GEA_GATEWAY_SESSION_REJECTED)$/.test(
+                  String(body.errorCode),
+                )
+              )
+                throw Object.assign(failure, { code: "GEA_GATEWAY_SESSION_REJECTED" });
+              throw Object.assign(failure, { code: body.errorCode || "ORDER_REPORT_WRITE_FAILED" });
             }
             return body.result;
           }

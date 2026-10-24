@@ -74,7 +74,11 @@ export async function registerHtmlPlugins(
   for (const resource of packages) {
     const { directory, htmlPath: path, manifest } = resource;
     const mock = manifest.mode === "mock";
-    const reportStore = manifest.id === 'inventory-orderworkbench' && manifest.gea?.consumerCode === 'order' && manifest.reportStore === 'order' && !mock;
+    const reportStore =
+      manifest.id === "inventory-orderworkbench" &&
+      manifest.gea?.consumerCode === "order" &&
+      manifest.reportStore === "order" &&
+      !mock;
     const pages = manifest.pages ?? [{ id: manifest.id, name: manifest.name, view: "" }];
     if (
       manifest.schemaVersion !== 1 ||
@@ -441,8 +445,17 @@ export async function registerHtmlPlugins(
                   activeSignal,
                 );
               },
-              ...(item.id === 'inventory-orderworkbench' && item.gea.consumerCode === 'order' && item.reportStore === 'order' && !item.mock
-                ? { workspace: (parameters: any, requestSignal: AbortSignal) => business.orderReport(parameters, AbortSignal.any([requestSignal, grantSignal])) }
+              ...(item.id === "inventory-orderworkbench" &&
+              item.gea.consumerCode === "order" &&
+              item.reportStore === "order" &&
+              !item.mock
+                ? {
+                    workspace: (parameters: any, requestSignal: AbortSignal) =>
+                      business.orderReport(
+                        parameters,
+                        AbortSignal.any([requestSignal, grantSignal]),
+                      ),
+                  }
                 : {}),
               ...(local?.pluginId === item.id && local.workspace
                 ? {
