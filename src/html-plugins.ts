@@ -74,13 +74,14 @@ export async function registerHtmlPlugins(
   for (const resource of packages) {
     const { directory, htmlPath: path, manifest } = resource;
     const mock = manifest.mode === "mock";
+    const reportStore = manifest.id === 'inventory-orderworkbench' && manifest.gea?.consumerCode === 'order' && manifest.reportStore === 'order' && !mock;
     const pages = manifest.pages ?? [{ id: manifest.id, name: manifest.name, view: "" }];
     if (
       manifest.schemaVersion !== 1 ||
       !/^[a-z][a-z0-9-]{0,119}$/.test(manifest.id) ||
       (manifest.mode !== undefined && !mock) ||
       manifest.gea?.contract !== "gea-html-v2" ||
-      manifest.gea?.readonly !== true ||
+      manifest.gea?.readonly !== !reportStore ||
       typeof manifest.gea.consumerCode !== "string" ||
       !/^[a-z0-9][a-z0-9_-]{0,127}$/.test(manifest.gea.consumerCode) ||
       manifest.html !== "index.html"
@@ -147,7 +148,7 @@ export async function registerHtmlPlugins(
         pageIds: pages.map((page: { id: string }) => page.id),
         description: manifest.name,
         mock,
-        maxEffect: "view",
+        maxEffect: reportStore ? "submit" : "view",
         sources: [],
       }),
       skills: [...profile.skills],
@@ -440,6 +441,9 @@ export async function registerHtmlPlugins(
                   activeSignal,
                 );
               },
+              ...(item.id === 'inventory-orderworkbench' && item.gea.consumerCode === 'order' && item.reportStore === 'order' && !item.mock
+                ? { workspace: (parameters: any, requestSignal: AbortSignal) => business.orderReport(parameters, AbortSignal.any([requestSignal, grantSignal])) }
+                : {}),
               ...(local?.pluginId === item.id && local.workspace
                 ? {
                     workspace: (parameters: any, requestSignal: AbortSignal) =>
