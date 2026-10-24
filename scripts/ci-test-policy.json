@@ -136,6 +136,11 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/returned-compile-cache(?:-probe)?\\.mjs$",
+      "tests": ["tests/profile-lifecycle.test.mjs", "tests/returned-resubmit-web.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/serial-merge-artifacts\\.mjs$",
       "tests": ["scripts/serial-merge-runner.test.mjs"],
       "sourceTests": ["scripts/serial-merge-runner.test.mjs"]
