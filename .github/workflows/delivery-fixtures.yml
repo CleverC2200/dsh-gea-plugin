@@ -24,8 +24,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           repository: CleverC2200/dsh-gea-plugin
-          run-id: 40054859443
-          artifact-ids: 12544804169
+          run-id: 40080180812
+          artifact-ids: 12555370451
           github-token: ${{ github.token }}
           path: artifact
           merge-multiple: true
