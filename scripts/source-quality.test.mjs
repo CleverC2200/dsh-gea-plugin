@@ -60,6 +60,81 @@ test("a README-only pull request needs no engineering checks, including Markdown
   assert.equal(JSON.parse(result.stdout).mode, "docs");
 });
 
+test("title and body edits admit only lightweight handling without requiring source preparation", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  const path = join(repo.root, ".git/event.json");
+  const event = JSON.parse(readFileSync(path, "utf8"));
+  event.action = "edited";
+  event.changes = { title: { from: "Old title" }, body: { from: null } };
+  event.pull_request.base.sha = "f".repeat(40);
+  writeFileSync(path, JSON.stringify(event));
+  const output = join(repo.root, ".git/event-output");
+  const result = repo.run("event", { GITHUB_OUTPUT: output });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), { validate: false, reason: "metadata-only" });
+  assert.match(readFileSync(output, "utf8"), /^validate=false\n/m);
+});
+
+test("source workflow keeps metadata edits outside active formal checks and the required check context", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /group: source-quality-.*github\.event\.action == 'edited'.*github\.run_id/,
+  );
+  assert.match(workflow, /validate: \$\{\{ steps\.event\.outputs\.validate \}\}/);
+  assert.match(workflow, /id: event\n\s+run: node scripts\/source-quality\.mjs --phase event/);
+  assert.match(workflow, /id: plan\n\s+if: steps\.event\.outputs\.validate == 'true'/);
+  assert.match(
+    workflow,
+    /if: needs\.source-plan\.outputs\.validate == 'true' && needs\.source-plan\.outputs\.mode != 'docs'/,
+  );
+  assert.match(
+    workflow,
+    /candidate-quality:\n\s+name: \$\{\{ needs\.source-plan\.outputs\.validate == 'false' && 'source-metadata' \|\| 'candidate-quality' \}\}/,
+  );
+  assert.match(workflow, /if: always\(\) && needs\.source-plan\.outputs\.validate != 'false'/);
+});
+
+test("source admission keeps base, head, target and unknown event changes on the formal validation path", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  const path = join(repo.root, ".git/event.json");
+  const pullRequest = JSON.parse(readFileSync(path, "utf8")).pull_request;
+  const run = (patch = {}, env = {}) => {
+    writeFileSync(path, JSON.stringify({ action: "edited", pull_request: pullRequest, ...patch }));
+    const result = repo.run("event", env);
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout).validate;
+  };
+  for (const changes of [
+    undefined,
+    {},
+    { base: { ref: { from: "main" } } },
+    { head: { from: repo.base } },
+    { title: { from: "Old" }, unknown: { from: "Old" } },
+    { body: {} },
+    { body: { from: "Old", unknown: true } },
+    { title: { from: null } },
+  ])
+    assert.equal(run({ changes }), true, JSON.stringify(changes));
+  const changes = { title: { from: "Old" } };
+  assert.equal(run({ changes }), false);
+  assert.equal(run({ changes: { body: { from: "Old" } } }), false);
+  assert.equal(run({ changes, action: "synchronize" }), true);
+  assert.equal(run({ changes }, { GITHUB_EVENT_NAME: "push" }), true);
+  assert.equal(run({ changes }, { SOURCE_HEAD_SHA: repo.base }), true);
+  assert.equal(run({ changes }, { SOURCE_BASE_SHA: repo.head }), true);
+  for (const pull_request of [
+    { ...pullRequest, head: { sha: "unknown" } },
+    { ...pullRequest, base: { ref: "main", sha: "unknown" } },
+    { ...pullRequest, base: { ...pullRequest.base, ref: "release" } },
+    undefined,
+  ])
+    assert.equal(run({ changes, pull_request }), true);
+});
+
 test("PR 152's frozen release target is rejected and retargeting to main is admitted", (t) => {
   const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
   const path = join(repo.root, ".git/event.json");

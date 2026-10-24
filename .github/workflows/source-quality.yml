@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: source-quality-${{ github.event.pull_request.number || github.ref }}
+  group: source-quality-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'edited' && github.run_id || 'source' }}
   cancel-in-progress: true
 
 jobs:
@@ -22,6 +22,7 @@ jobs:
       run:
         working-directory: candidate/dsh-gea-plugin
     outputs:
+      validate: ${{ steps.event.outputs.validate }}
       workbench-sha: ${{ steps.plan.outputs.workbench-sha }}
       manage-sha: ${{ steps.plan.outputs.manage-sha }}
       gea-sha: ${{ steps.plan.outputs.gea-sha }}
@@ -42,8 +43,12 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24.22.0
+      - name: Admit source input changes
+        id: event
+        run: node scripts/source-quality.mjs --phase event
       - name: Classify actual Git changes
         id: plan
+        if: steps.event.outputs.validate == 'true'
         run: node scripts/source-quality.mjs --phase plan
       - name: Check changed workflow semantics
         if: steps.plan.outputs.workflows == 'true'
@@ -95,7 +100,7 @@ jobs:
   source-checks:
     name: ${{ matrix.shard == 'single' && 'source-checks' || format('source-checks ({0})', matrix.shard) }}
     needs: source-plan
-    if: needs.source-plan.outputs.mode != 'docs'
+    if: needs.source-plan.outputs.validate == 'true' && needs.source-plan.outputs.mode != 'docs'
     strategy:
       fail-fast: false
       matrix:
@@ -312,10 +317,11 @@ jobs:
           fail-on-severity: high
 
   candidate-quality:
+    name: ${{ needs.source-plan.outputs.validate == 'false' && 'source-metadata' || 'candidate-quality' }}
     permissions:
       contents: read
       actions: read
-    if: always()
+    if: always() && needs.source-plan.outputs.validate != 'false'
     needs: [source-plan, source-checks, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 5
