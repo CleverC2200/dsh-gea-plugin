@@ -18,10 +18,27 @@ const success = { status: 0, stdout: "", stderr: "" };
 const log = (command, args, cwd) =>
   appendFileSync(resolve(job, "commands.jsonl"), JSON.stringify({ command, args, cwd }) + "\n");
 commands.execFileSync = (command, args, options = {}) => {
+  if (command === "corepack" && args.includes("--dry-run"))
+    return ["chromium", "headless", "ffmpeg"]
+      .map((name) => "Install location: " + resolve(job, ".quality-browser", name))
+      .join("\n");
   if (command === "corepack" || command === "npm") return command === "npm" ? "11.11.0" : "11.27.0";
   return originalExec(command, args, options);
 };
+const originalAsyncSpawn = commands.spawn;
+const browserCommand = (command, args) =>
+  command === "corepack" && args.includes("playwright") && args.includes("install");
+const browserFixture = resolve(
+  job,
+  "candidate/dsh-gea-plugin/scripts/fixtures/quality-browser-install.cjs",
+);
+commands.spawn = (command, args, options = {}) =>
+  browserCommand(command, args)
+    ? originalAsyncSpawn(process.execPath, [browserFixture], options)
+    : originalAsyncSpawn(command, args, options);
 commands.spawnSync = (command, args, options = {}) => {
+  if (browserCommand(command, args))
+    return originalSpawn(process.execPath, [browserFixture], options);
   const cwd = options.cwd ?? process.cwd();
   if (command === process.execPath && args[0] === "node_modules/typescript/bin/tsc") {
     log("workbench-declarations", args, cwd);

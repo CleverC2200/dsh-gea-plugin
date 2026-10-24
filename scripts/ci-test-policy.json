@@ -251,7 +251,11 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-worker-inputs\\.mjs$",
-      "tests": ["scripts/quality-worker-inputs.test.mjs"]
+      "tests": [
+        "scripts/quality-worker-inputs.test.mjs",
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -319,6 +323,11 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/fixtures/quality-ci-commands\\.mjs$",
       "tests": ["scripts/run-quality-ci-stages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/fixtures/quality-browser-install\\.cjs$",
+      "tests": ["scripts/quality-worker-inputs.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
