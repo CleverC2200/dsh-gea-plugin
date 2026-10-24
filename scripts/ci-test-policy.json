@@ -136,6 +136,12 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-artifacts\\.mjs$",
+      "tests": ["scripts/serial-merge-runner.test.mjs"],
+      "sourceTests": ["scripts/serial-merge-runner.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/serial-merge-controller\\.mjs$",
       "tests": ["scripts/serial-merge-runner.test.mjs"],
       "sourceTests": ["scripts/serial-merge-runner.test.mjs"]

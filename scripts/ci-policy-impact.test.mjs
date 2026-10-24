@@ -141,7 +141,10 @@ test("trusted serial merge files select public regressions and unknown adjacent 
         "scripts/serial-merge-runtime.test.mjs",
       ],
     ],
-    ["scripts/serial-merge-artifacts.mjs", ["scripts/serial-merge-artifacts.test.mjs"]],
+    [
+      "scripts/serial-merge-artifacts.mjs",
+      ["scripts/serial-merge-artifacts.test.mjs", "scripts/serial-merge-runner.test.mjs"],
+    ],
     [".github/actions/serial-merge/package.json", ["scripts/serial-merge-artifacts.test.mjs"]],
     [".github/actions/serial-merge/pnpm-lock.yaml", ["scripts/serial-merge-artifacts.test.mjs"]],
     [

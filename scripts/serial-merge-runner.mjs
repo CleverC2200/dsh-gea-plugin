@@ -124,10 +124,26 @@ export async function executeSerialMerge(input, runtime) {
     return { status: "paused", reason: "persistence_unavailable" };
   }
   const ownPrior = history.records.find((record) => record.request.id === String(self.id));
+  const persistExisting = async (record, status, reason) => {
+    const checkpoint = structuredClone(record);
+    checkpoint.revision++;
+    checkpoint.owner = {
+      runId: self.id,
+      attempt: self.run_attempt,
+      controllerSha: identity.checkoutSha,
+    };
+    const receipt = await runtime.checkpoint(
+      checkpoint,
+      checkpoint.state.active ? "state" : "terminal",
+    );
+    if (!Number.isSafeInteger(receipt?.id) || receipt.id < 1)
+      return { status: "paused", reason: "persistence_unavailable", requestId: record.request.id };
+    return { status, reason, requestId: record.request.id };
+  };
   const reject = async (reason, status = "rejected") => {
-    if (ownPrior?.state.active) return { status: "paused", reason: "prior_write_unresolved" };
-    if (ownPrior)
-      return { status: "finished", reason: "already_finished", requestId: ownPrior.request.id };
+    if (ownPrior?.state.active)
+      return persistExisting(ownPrior, "paused", "prior_write_unresolved");
+    if (ownPrior) return persistExisting(ownPrior, "finished", "already_finished");
     const request = {
       id: String(self.id),
       repository: policy.repository,
@@ -177,8 +193,7 @@ export async function executeSerialMerge(input, runtime) {
   if (envelope) {
     envelope = structuredClone(envelope);
     request = envelope.request;
-    if (!envelope.state.active)
-      return { status: "finished", reason: "already_finished", requestId: request.id };
+    if (!envelope.state.active) return persistExisting(envelope, "finished", "already_finished");
     envelope.owner = {
       runId: self.id,
       attempt: self.run_attempt,

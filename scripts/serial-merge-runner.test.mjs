@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createSerialMergeArtifacts } from "./serial-merge-artifacts.mjs";
 import { executeSerialMerge } from "./serial-merge-runner.mjs";
 
 const head = "a".repeat(40);
@@ -325,10 +329,11 @@ test("a rerun losing repository permission cannot publish a no-write terminal ov
   f.runtime.readJson = async () => ({ permission: "read", user: { id: 42 } });
   const result = await executeSerialMerge(input, f.runtime);
   assert.equal(result.status, "paused");
-  assert.equal(
-    f.calls.some(([call]) => call === "upload"),
-    false,
-  );
+  const persisted = f.calls.find(([call]) => call === "upload");
+  assert.equal(persisted[1], "state");
+  assert.equal(persisted[2].intent.operation, "merge");
+  assert.equal(persisted[2].noWrite, undefined);
+  assert.equal(persisted[2].state.active.phase, "reconciling");
 });
 
 test("a confirmed rejected update releases without waiting for another read or retrying the write", async () => {
@@ -596,4 +601,100 @@ test("cancellation after the App update is confirmed releases without merging or
     f.calls.some(([call]) => call === "merge"),
     false,
   );
+});
+
+test("a rerun of a finished request checkpoints its own attempt without repeating a write", async () => {
+  const f = fixture();
+  const request = { id: "100", repository, actor: "maintainer", actorId: 42 };
+  const previous = {
+    schemaVersion: 1,
+    request,
+    revision: 1,
+    noWrite: true,
+    owner: { runId: 100, attempt: 1, controllerSha: f.self.head_sha },
+    state: { queue: [], active: null, finished: [{ request, reason: "request_not_admitted" }] },
+  };
+  f.self.run_attempt = 2;
+  f.runtime.restore = async () => ({ records: [previous] });
+  const result = await executeSerialMerge(input, f.runtime);
+  assert.equal(result.reason, "already_finished");
+  assert.equal(f.calls.at(-1)[0], "upload");
+  assert.equal(f.calls.at(-1)[1], "terminal");
+  assert.equal(f.calls.at(-1)[2].owner.attempt, 2);
+  assert.equal(f.calls.at(-1)[2].revision, 2);
+  assert.equal(
+    f.calls.some(([call]) => ["update", "merge"].includes(call)),
+    false,
+  );
+});
+
+test("the public runner persists real artifact-adapter envelopes before each simulated App write", async (t) => {
+  const f = fixture();
+  const directory = mkdtempSync(join(tmpdir(), "serial-merge-runner-artifact-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const records = [];
+  const metadata = [];
+  Object.assign(f.self, { workflow_id: 55, head_repository: { id: 1365221347 } });
+  const policy = JSON.parse(readFileSync(new URL("./serial-merge-policy.json", import.meta.url)));
+  const journal = createSerialMergeArtifacts({
+    directory,
+    owner: { runId: 100, attempt: 1, workflowId: 55, controllerSha: f.self.head_sha },
+    policy: { ...policy, controllerWorkflowId: 55 },
+    githubToken: "fixture-actions-token",
+    now: f.runtime.clock.now,
+    readJson: async (path) => {
+      if (path.endsWith("/runs/100/attempts/1")) return structuredClone(f.self);
+      if (path.includes("/workflows/55/runs?"))
+        return { total_count: 1, workflow_runs: [structuredClone(f.self)] };
+      if (path.includes("/runs/100/artifacts?"))
+        return { total_count: metadata.length, artifacts: structuredClone(metadata) };
+      const id = Number(path.split("/").at(-1));
+      return structuredClone(metadata.find((item) => item.id === id));
+    },
+    artifact: {
+      async uploadArtifact(name, files) {
+        const record = JSON.parse(readFileSync(files[0], "utf8"));
+        records.push(record);
+        const item = {
+          id: records.length,
+          name,
+          size_in_bytes: 256,
+          expired: false,
+          digest: "sha256:" + "f".repeat(64),
+          created_at: new Date(f.runtime.clock.now()).toISOString(),
+          expires_at: new Date(f.runtime.clock.now() + 86400000).toISOString(),
+          workflow_run: {
+            id: 100,
+            repository_id: 1365221347,
+            head_repository_id: 1365221347,
+            head_branch: "main",
+            head_sha: f.self.head_sha,
+          },
+        };
+        metadata.push(item);
+        return { id: item.id, digest: "f".repeat(64), size: 256 };
+      },
+    },
+  });
+  f.runtime.restore = journal.restore;
+  f.runtime.checkpoint = journal.checkpoint;
+  const result = await executeSerialMerge(input, f.runtime);
+  assert.equal(result.reason, "merged");
+  assert.deepEqual(
+    records
+      .filter(
+        (record) =>
+          record.intent &&
+          !record.state.active?.outcome &&
+          ["updating", "reconciling"].includes(record.state.active?.phase),
+      )
+      .map((record) => record.intent.operation),
+    ["update", "merge"],
+  );
+  assert.equal(records.at(-1).state.active, null);
+  assert.equal(
+    records.every((record) => record.owner.workflowId === 55),
+    true,
+  );
+  assert.equal(f.calls.filter(([call]) => call === "merge").length, 1);
 });
