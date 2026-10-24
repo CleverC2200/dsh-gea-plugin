@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   probe:
-    if: github.event.head_commit.message != '验证有界宿主浏览器准备'
+    if: github.event.head_commit.message != '验证有界宿主浏览器准备' && github.event.head_commit.message != '验证特权浏览器安装超时清理'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -90,3 +90,25 @@ jobs:
         with:
           name: s1-host-environment-probe
           path: ${{ runner.temp }}/s1-host-evidence
+
+  root-timeout:
+    if: github.event.head_commit.message == '验证特权浏览器安装超时清理'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - name: Verify real root descendant timeout cleanup
+        run: |
+          mkdir -p "$RUNNER_TEMP/s1-root-evidence"
+          node scripts/ci-root-timeout-probe-20261024.mjs
+      - name: Preserve root cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: s1-root-timeout-probe
+          path: ${{ runner.temp }}/s1-root-evidence
