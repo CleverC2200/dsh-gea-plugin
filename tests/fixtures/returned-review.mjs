@@ -22,6 +22,7 @@ export const fixture = async (
     normalBatch = false,
     sameIdPeriod = false,
     originalSubmitter = "9007199254740993",
+    compileCache,
   } = {},
 ) => {
   const app = await profile(t, {
@@ -39,6 +40,7 @@ export const fixture = async (
         }
       : {},
     env: { GEA_SUBMIT_CLIENT: "fixture", GEA_SUBMIT_SECRET: "fixture-secret" },
+    compileCache,
   });
   const state = new Map([
     [

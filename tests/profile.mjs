@@ -15,6 +15,7 @@ import { freezeProfileWindow } from "./fixtures/profile-window.mjs";
 import { withSourceSetup } from "./fixtures/source-test.mjs";
 import { waitProfileReady, probeProfileBusiness } from "./fixtures/profile-ready.mjs";
 import { fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
+import { compileCacheEnvironment, compileCacheFiles } from "./fixtures/returned-compile-cache.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
 /** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
@@ -309,6 +310,7 @@ async function createProfile(t, options) {
     }),
   );
   let preparation;
+  let cacheBefore;
   let child,
     childClosed,
     childIsClosed = true,
@@ -347,6 +349,26 @@ async function createProfile(t, options) {
       clearTimeout(timer);
       clearTimeout(deadline);
       recordLifecycle({ event: "host-stop-finished", exited: childIsClosed });
+      if (options.compileCache) {
+        const files = await compileCacheFiles(options.compileCache);
+        recordLifecycle({
+          event: "returned-compile-cache-files",
+          phase: "after-stop",
+          mode: options.compileCache.mode,
+          cacheDirectory: options.compileCache.directory,
+          exited: childIsClosed,
+          files,
+          delta: Object.fromEntries(
+            Object.entries(files).map(([role, value]) => [
+              role,
+              {
+                files: value.files - cacheBefore[role].files,
+                bytes: value.bytes - cacheBefore[role].bytes,
+              },
+            ]),
+          ),
+        });
+      }
     }
   }
   t.after(async () => {
@@ -436,6 +458,22 @@ async function createProfile(t, options) {
       if (error.code !== "ENOENT") throw error;
     }
     t.signal?.throwIfAborted();
+    const cacheEnv = compileCacheEnvironment(options.compileCache, {
+      runtime,
+      testName: t.name,
+      env: { ...process.env, ...options.env },
+    });
+    if (options.compileCache) {
+      cacheBefore = await compileCacheFiles(options.compileCache);
+      recordLifecycle({
+        event: "returned-compile-cache-files",
+        phase: "before-start",
+        mode: options.compileCache.mode,
+        cacheDirectory: options.compileCache.directory,
+        files: cacheBefore,
+      });
+    }
+    t.signal?.throwIfAborted();
     child = spawn(
       options.executablePath ?? process.execPath,
       [
@@ -490,6 +528,7 @@ async function createProfile(t, options) {
               }
             : {}),
           ...options.env,
+          ...cacheEnv,
           ...(sourcesFile ? { GEA_TEST_SOURCE_INPUTS: sourcesFile } : {}),
         },
         stdio:

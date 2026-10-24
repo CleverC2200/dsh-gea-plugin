@@ -3,7 +3,20 @@ import { resolve } from "node:path";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
-import { fixture, PLAN_A, PLAN_B, PLAN_C } from "./fixtures/returned-review.mjs";
+import { fixture as returnedFixture, PLAN_A, PLAN_B, PLAN_C } from "./fixtures/returned-review.mjs";
+
+const fixture = (t, options) =>
+  returnedFixture(t, {
+    ...options,
+    ...(process.env.GEA_RETURNED_COMPILE_CACHE_MODE
+      ? {
+          compileCache: {
+            mode: process.env.GEA_RETURNED_COMPILE_CACHE_MODE,
+            directory: process.env.GEA_RETURNED_COMPILE_CACHE_DIR,
+          },
+        }
+      : {}),
+  });
 
 const captureEvidence = async (page, app, name) => {
   const directory = process.env.S1_EVIDENCE_DIR;
