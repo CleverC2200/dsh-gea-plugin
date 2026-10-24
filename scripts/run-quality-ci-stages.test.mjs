@@ -87,6 +87,7 @@ function fixture(
     docsWhitespace = false,
     macos = false,
     browser = false,
+    platform,
   } = {},
 ) {
   const job = realpathSync(mkdtempSync(join(tmpdir(), "gea-ci-stages-")));
@@ -332,6 +333,7 @@ function fixture(
       GEA_TEST_CANDIDATE_INPUTS: "/stale/candidate",
       GEA_TEST_SOURCE_INPUTS: "/stale/sources",
       ...(macos ? { QUALITY_STAGE_FIXTURE_MACOS: "1" } : {}),
+      ...(platform ? { FIXTURE_PLATFORM: platform } : {}),
       ...extra,
     };
     for (const key of ["CI", "QUALITY_EXPECTED_SHA", "NODE_TEST_CONTEXT"])
@@ -385,18 +387,29 @@ function cleanupBrowserFixture(job, child) {
     }
 }
 
-for (const signal of [null, "SIGTERM", "SIGINT"]) {
+for (const [signal, sudoFailure] of [
+  [null, false],
+  ["SIGTERM", false],
+  ["SIGINT", false],
+  [null, true],
+]) {
   test(
     "public browser preparation " +
       (signal ?? "timeout") +
-      " stops before tests and reaps inherited descendants",
+      (sudoFailure
+        ? " stops before tests and reports refused cleanup"
+        : " stops before tests and reaps inherited descendants"),
     async (t) => {
-      const f = fixture(t, { browser: true });
+      const f = fixture(t, { browser: true, platform: "linux" });
       const prepared = f.run("prepare");
       assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
       const child = f.run(
         "build",
-        { BROWSER_SCENARIO: "hang" },
+        {
+          BROWSER_SCENARIO: "hang",
+          FIXTURE_REQUIRE_SUDO: "1",
+          FIXTURE_SUDO_FAIL: sudoFailure ? "1" : "0",
+        },
         ["--browser-preparation-timeout-ms", signal ? "5000" : "500"],
         { async: true, detached: true },
       );
@@ -438,7 +451,7 @@ for (const signal of [null, "SIGTERM", "SIGINT"]) {
           new Promise((_, reject) => {
             deadlineTimer = setTimeout(
               () => reject(Error("browser preparation did not stop at its budget")),
-              5000,
+              sudoFailure ? 10000 : 5000,
             );
           }),
         ]);
@@ -456,7 +469,24 @@ for (const signal of [null, "SIGTERM", "SIGINT"]) {
         assert.equal(record.stages.tests, undefined);
         assert.equal(existsSync(join(f.job, "tests-executed")), false);
         assert.equal(existsSync(join(f.job, "browser-preparation.json")), false);
-        for (const name of ["browser-leader-ready", "browser-grandchild-ready"])
+        const rootCleanup = readFileSync(join(f.job, "commands.jsonl"), "utf8")
+          .trim()
+          .split("\n")
+          .map(JSON.parse)
+          .filter((entry) => entry.command === "sudo");
+        assert.ok(
+          rootCleanup.some((entry) => entry.args.includes("SIGKILL")),
+          "Linux browser descendants did not receive privileged cleanup",
+        );
+        for (const command of rootCleanup)
+          assert.equal(
+            command.args.at(-1),
+            "-" + readFileSync(join(f.job, "browser-leader-ready"), "utf8"),
+          );
+        if (sudoFailure) assert.match(stderr, /privileged install group cleanup failed/);
+        for (const name of sudoFailure
+          ? ["browser-leader-ready"]
+          : ["browser-leader-ready", "browser-grandchild-ready"])
           assert.throws(() => process.kill(Number(readFileSync(join(f.job, name), "utf8")), 0), {
             code: "ESRCH",
           });
@@ -499,6 +529,22 @@ test("public browser preparation keeps normal and nonzero command results in its
       assert.equal(observation.stageStatus, "passed");
     }
   }
+});
+
+test("public Windows browser preparation retains the corepack command shim and shell", (t) => {
+  const f = fixture(t, { browser: true });
+  const prepared = f.run("prepare", { FIXTURE_PLATFORM: "win32" });
+  assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+  const built = f.run("build", { FIXTURE_PLATFORM: "win32" });
+  assert.equal(built.status, 0, built.stdout + built.stderr);
+  const command = readFileSync(join(f.job, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse)
+    .find((entry) => entry.command === "corepack.cmd" && entry.args.includes("playwright"));
+  assert.ok(command, "browser install did not use the Windows corepack shim");
+  assert.equal(command.shell, true);
+  assert.equal(existsSync(join(f.job, "browser-preparation.json")), true);
 });
 
 test("browser preparation budgets can be shortened but cannot exceed the fixed upper bound", (t) => {
