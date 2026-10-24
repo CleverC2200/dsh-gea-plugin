@@ -106,7 +106,10 @@ test("base and target edits supersede obsolete formal checks while metadata edit
   const group = workflow.match(/^  group: (.+)$/m)[1];
   const concurrency = (action, changes, ref = "main", run_id = 100) =>
     group.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) =>
-      Function("github", `return (${expression})`)({
+      Function(
+        "github",
+        `return (${expression})`,
+      )({
         event: { action, changes, pull_request: { number: 42, base: { ref } } },
         run_id,
       }),
