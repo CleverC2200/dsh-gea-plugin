@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 env:
-  SOURCE_HEAD_SHA: b00b45ec950ef30b4abfb63defe871aace1374fc
+  SOURCE_HEAD_SHA: 08a5f1beee539a268663929f9c31882407393635
   SOURCE_BASE_SHA: 3dbb0adad3806b780011e4788019110121983c6b
 concurrency:
   group: returned-source-read-pipeline-pair
