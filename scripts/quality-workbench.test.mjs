@@ -315,6 +315,8 @@ test("registered business Skill copies require identical caller-frozen Manage bl
     "inventory-apsplan/skills/plan-operations-weekly-report/assets/weekly-report-html-template.html",
     "inventory-apsplan/skills/order-satisfaction-analysis/scripts/package.json",
     "inventory-apsplan/skills/order-satisfaction-analysis/runtime-package.json",
+    "inventory-fc/skills/branch-shortage-monitoring/SKILL.md",
+    "inventory-fc/skills/branch-policy/data-boundary.md",
     "inventory-orderworkbench/skills/fulfillment-query-orchestrator/SKILL.md",
     "inventory-orderworkbench/skills/fulfillment-query-orchestrator/references/订单工作台及订单履约语义.md",
     "inventory-customer/skills/customer-inventory-age-risk/SKILL.md",
