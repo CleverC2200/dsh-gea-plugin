@@ -10,6 +10,26 @@ import * as candidate from "../scripts/source-combination-integrity.mjs";
 import { createReadScope } from "../scripts/delivery-input-scope.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 const abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+test("a timing receipt failure preserves the original filesystem rejection", async (t) => {
+  const root = await fixture(t),
+    missing = join(root, "missing");
+  const source = new URL("../scripts/source-combination-integrity.mjs", import.meta.url).href;
+  const output = execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+    import { dependencyDigests } from ${JSON.stringify(source)};
+    try { await dependencyDigests([process.argv[1]]); }
+    catch (error) { console.log(JSON.stringify({code:error.code,path:error.path})); }
+  `,
+      missing,
+    ],
+    { encoding: "utf8", env: { ...process.env, GEA_SOURCE_COST_RECEIPT: root } },
+  );
+  assert.deepEqual(JSON.parse(output), { code: "ENOENT", path: missing });
+});
 test("opt-in source timing accounts for real dependency bytes without changing the complete map", async (t) => {
   const root = await fixture(t),
     deps = join(root, "deps"),

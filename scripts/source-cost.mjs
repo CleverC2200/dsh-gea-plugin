@@ -143,21 +143,25 @@ export async function sourceCostScope(operation, directory, run) {
       if (!parent) {
         tick(root, end);
         const scopes = root.scopes.map(({ root: _root, ...value }) => value);
-        appendFileSync(
-          receipt,
-          JSON.stringify({
-            event: "source-cost",
-            pid: process.pid,
-            operation,
-            directory,
-            startedAt: root.startedAt,
-            status,
-            durationMs: end - start,
-            metrics: root.metrics,
-            coverageMs: root.coverageMs,
-            scopes,
-          }) + "\n",
-        );
+        try {
+          appendFileSync(
+            receipt,
+            JSON.stringify({
+              event: "source-cost",
+              pid: process.pid,
+              operation,
+              directory,
+              startedAt: root.startedAt,
+              status,
+              durationMs: end - start,
+              metrics: root.metrics,
+              coverageMs: root.coverageMs,
+              scopes,
+            }) + "\n",
+          );
+        } catch (error) {
+          if (status === "passed") throw error;
+        }
       }
     }
   });
