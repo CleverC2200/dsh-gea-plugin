@@ -9,7 +9,7 @@ import { verifyExecutionResults, executionDigest } from "./quality-test-executio
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const relativeFile = (file) =>
   typeof file === "string" &&
-  /^(?:(?:tests|scripts|src)\/|package\.json$|pnpm-lock\.yaml$)/.test(file) &&
+  /^(?:(?:tests|scripts|src|desktop)\/|package\.json$|pnpm-lock\.yaml$)/.test(file) &&
   !file.split("/").some((part) => !part || part === "." || part === "..") &&
   !/[\\\0\r\n]/.test(file);
 
@@ -156,6 +156,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         "src",
         "scripts",
         "tests",
+        "desktop",
         "package.json",
         "pnpm-lock.yaml",
       ],
@@ -171,6 +172,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       "--",
       "src",
       "scripts",
+      "desktop",
       "tests/fixtures",
       "tests/profile.mjs",
       "package.json",
