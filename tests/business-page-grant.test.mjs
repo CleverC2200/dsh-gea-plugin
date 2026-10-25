@@ -457,22 +457,23 @@ test("received MPS package registers the live mps Consumer and permits only name
   grant.release();
 });
 
-test("received order workbench keeps its current Consumer identity while mock reads stay disabled", async (t) => {
+test("received order workbench keeps its current Consumer and permits reports without arbitrary SQL", async (t) => {
   const h = await fixture(t, {
     id: "inventory-orderworkbench",
     pageId: "inventory-orderworkbench",
     consumer: "order",
-    mock: true,
     resourceRoot: "../dsh-agent-workbench/lib/business/inventory-orderworkbench",
   });
   const grant = await h.authorize();
   assert.equal(grant.allowsEffect("view"), true);
+  assert.equal(grant.allowsEffect("draft"), true);
+  assert.equal(grant.allowsEffect("submit"), true);
   assert.equal(grant.allowsEffect("approve"), false);
-  await assert.rejects(
-    grant.readSql({ sql: "SELECT 1" }, new AbortController().signal),
-    /MOCK_DATA_ONLY/,
+  assert.equal(
+    (await grant.readSql({ sql: "SELECT 1" }, new AbortController().signal)).success,
+    false,
   );
-  assert.deepEqual(h.launches, []);
+  assert.deepEqual(h.launches, ["order"]);
   assert.deepEqual(h.queries, []);
   grant.release();
 });

@@ -25,6 +25,7 @@ import {
 } from "../src/host/prompt-result.ts";
 import { projectEvidence } from "../src/host/prompt-evidence.ts";
 import { sessionConsumer, toolConsumer } from "../src/host/business-identity.ts";
+import { profileFor } from "../src/host/prompt-policy.ts";
 
 test("timeout keeps its category while arbitrary caller reasons stay private", () => {
   const c = new AbortController(),
@@ -129,13 +130,19 @@ test(
     for (const [suffix, consumerCode] of configs) {
       const id = "inventory-" + suffix,
         path = join(dir, id);
+      const businessProfile = profileFor("gea-html-" + id);
+      assert.ok(businessProfile);
+      const skills = businessProfile.skills;
       roots[id] = path;
       await mkdir(path);
       await writeFile(join(path, "index.html"), "<html>fixture</html>");
-      await writeFile(
-        join(path, "SKILL.md"),
-        "---\nname: " + id + "\ndescription: fixture\n---\nfixture",
-      );
+      for (const name of skills) {
+        await mkdir(join(path, "skills", name), { recursive: true });
+        await writeFile(
+          join(path, "skills", name, "SKILL.md"),
+          "---\nname: " + name + "\ndescription: fixture\n---\nfixture",
+        );
+      }
       await writeFile(
         join(path, "plugin.json"),
         JSON.stringify({
@@ -144,7 +151,7 @@ test(
           name: id,
           version: "0.0.0",
           html: "index.html",
-          skills: ["SKILL.md"],
+          skills: skills.map((name) => `skills/${name}/SKILL.md`),
           mcp: "mcp.json",
           declarations: { page: "page.json", capability: "capability.json" },
           agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
@@ -175,14 +182,17 @@ test(
           data: { consumerCode: consumerCode, tables: [], rules: [] },
           maxEffect: "view",
           layers: ["read"],
-          skills: [id],
+          skills,
           routing: { keywords: [id], summary: id },
         },
         prompt: {
           label: id,
           consumerCode: consumerCode,
           persona: "只读测试页面，保留用户会话与权限边界。",
-          skills: [id],
+          skills,
+          ...(businessProfile.crossConsumers
+            ? { crossConsumers: businessProfile.crossConsumers }
+            : {}),
         },
       });
     }

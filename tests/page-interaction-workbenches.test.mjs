@@ -37,8 +37,11 @@ test(
     );
     for (const [id, name] of htmlPages) {
       const root = join(directory, id);
+      const businessProfile = profileFor(`gea-html-${id}`);
+      assert.ok(businessProfile);
+      const skills = businessProfile.skills;
       roots.push(root);
-      await mkdir(join(root, "skills/page"), { recursive: true });
+      await mkdir(root, { recursive: true });
       await writeFile(
         join(root, "plugin.json"),
         JSON.stringify({
@@ -47,7 +50,7 @@ test(
           name,
           version: "0.0.0",
           html: "index.html",
-          skills: ["skills/page/SKILL.md"],
+          skills: skills.map((skill) => `skills/${skill}/SKILL.md`),
           mcp: "mcp.json",
           declarations: { page: "page.json", capability: "capability.json" },
           agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
@@ -71,10 +74,13 @@ test(
           capabilities: ["governed-sql-read"],
         }),
       );
-      await writeFile(
-        join(root, "skills/page/SKILL.md"),
-        `---\nname: ${id}\ndescription: 工作台验证\n---\n只读查看页面。`,
-      );
+      for (const skill of skills) {
+        await mkdir(join(root, "skills", skill), { recursive: true });
+        await writeFile(
+          join(root, "skills", skill, "SKILL.md"),
+          `---\nname: ${skill}\ndescription: 工作台验证\n---\n只读查看页面。`,
+        );
+      }
       await writeFile(
         join(root, "index.html"),
         `<!doctype html><html><body><section style="padding:24px"><h1>${name}</h1><table><thead><tr><th>客户</th><th>计划</th></tr></thead><tbody><tr><td>客户甲</td><td>120</td></tr></tbody></table></section><script>addEventListener('message',event=>{if(event.data.protocol!=='gea-html-v2'||event.data.type!=='connect')return;const port=event.ports[0];port.start();port.postMessage({type:'catalog',session:event.data.context.session,elements:[{id:'readout:customer',role:'field',label:'客户',value:'客户甲'},{id:'readout:plan',role:'field',label:'计划',value:'120'}]});});parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*')</script></body></html>`,
@@ -93,14 +99,17 @@ test(
           data: { consumerCode: profileFor(`gea-html-${id}`).consumerCode, tables: [], rules: [] },
           maxEffect: "view",
           layers: ["read"],
-          skills: [id],
+          skills,
           routing: { keywords: [id], summary: name },
         },
         prompt: {
           label: name,
           consumerCode: profileFor(`gea-html-${id}`).consumerCode,
           persona: "只读测试页面，保留用户会话与权限边界。",
-          skills: [id],
+          skills,
+          ...(businessProfile.crossConsumers
+            ? { crossConsumers: businessProfile.crossConsumers }
+            : {}),
         },
       });
     }
