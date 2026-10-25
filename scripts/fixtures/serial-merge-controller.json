@@ -1,0 +1,51 @@
+{
+  "now": 200,
+  "state": {
+    "queue": [
+      {
+        "id": "dry-run-1",
+        "repository": "example/repository",
+        "pr": 1,
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "base": "main",
+        "actor": "maintainer",
+        "enqueuedAt": 100
+      }
+    ]
+  },
+  "policy": {
+    "approvals": [
+      {
+        "id": "dry-run-1",
+        "repository": "example/repository",
+        "pr": 1,
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "base": "main",
+        "actor": "maintainer"
+      }
+    ],
+    "capacity": 20,
+    "budgetMs": 2700000
+  },
+  "responses": {
+    "repos/example/repository/pulls/1": {
+      "number": 1,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "head": {
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "repo": { "full_name": "example/repository" }
+      },
+      "base": {
+        "ref": "main",
+        "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "repo": { "full_name": "example/repository" }
+      },
+      "mergeable_state": "behind"
+    },
+    "repos/example/repository/branches/main": {
+      "commit": { "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+    }
+  }
+}
