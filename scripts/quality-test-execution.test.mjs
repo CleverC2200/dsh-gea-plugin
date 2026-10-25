@@ -99,7 +99,7 @@ test("rehashing an unsupported concurrency cannot authorize another actual Node 
   );
 });
 
-test("plans reduce the worked Node filename-order makespan without dropping any required file", () => {
+test("plans balance measured dispatch order without dropping any required file", () => {
   const files = ["a", "b", "c", "d", "e", "f", "g"].map((name) => name + ".test.mjs");
   const durations = [9, 8, 7, 5, 4, 3, 6];
   const selection = { files, required: [...files], runtimeFiles: [] };
@@ -113,8 +113,6 @@ test("plans reduce the worked Node filename-order makespan without dropping any 
       files: files.map((file, i) => ({ file, durationMs: durations[i] })),
     },
   });
-  // Node order: a9,d5,g6 finishes11; b8,c7,e4,f3 finishes11.
-  // The old empty-slot choice put b8,d5,f3,g6 together, finishing14.
   assert.deepEqual(
     plan.shards.map((s) => s.files),
     [
@@ -131,7 +129,7 @@ test("plans reduce the worked Node filename-order makespan without dropping any 
   assert.equal(plan.estimates.estimatedMs, 11);
 });
 
-test("three-slot filename-order routing preserves the complete set and deterministic plan hash", () => {
+test("three-slot measured dispatch routing preserves the complete set and deterministic plan hash", () => {
   const files = ["a", "b", "c", "d", "e", "f", "g"].map((name) => name + ".test.mjs");
   const selection = { files, required: files };
   const args = {
@@ -146,7 +144,6 @@ test("three-slot filename-order routing preserves the complete set and determini
     },
   };
   const plan = createExecutionPlan(args);
-  // Node name order: a9,d5,e4,f3 finishes9; b8,c7,g6 finishes8.
   assert.deepEqual(
     plan.shards.map((s) => s.files),
     [
@@ -521,6 +518,39 @@ function observedRun(t) {
   return { root, plan, buildSha256, resultFile, receipt: JSON.parse(readFileSync(resultFile)) };
 }
 
+test("actual Node execution starts the measured long file before alphabetically earlier files", (t) => {
+  const f = observedRun(t);
+  const files = ["z-long.test.mjs", "a-short.test.mjs", "b-short.test.mjs"];
+  for (const file of files)
+    writeFileSync(
+      join(f.root, file),
+      `import test from 'node:test';test(${JSON.stringify(file)},()=>{});`,
+    );
+  const selection = { files, required: files, runtimeFiles: [] };
+  const plan = createExecutionPlan({
+    selection,
+    platformPlan: selection,
+    binding: f.plan.binding,
+    concurrency: 2,
+    timings: {
+      source: { kind: "worked-example" },
+      files: files.map((file, index) => ({ file, durationMs: index === 0 ? 1000 : 1 })),
+    },
+  });
+  runExecutionPlan({
+    ...f,
+    plan,
+    reporter: resolve("scripts/quality-test-reporter.mjs"),
+    environment: { NODE_TEST_CONTEXT: undefined },
+  });
+  const receipt = JSON.parse(readFileSync(f.resultFile));
+  assert.equal(receipt.results[0].report.files[0].file, files[0]);
+  assert.deepEqual(
+    receipt.results[0].report.files.map((file) => file.file).sort(),
+    [...files].sort(),
+  );
+});
+
 test("public execution verification rejects incomplete, duplicate, failed and stale actual Node receipts", (t) => {
   const f = observedRun(t);
   assert.equal(verifyExecutionResults(f).status, "passed");
@@ -784,6 +814,10 @@ test("actual failing, skipped, todo, cancelled and signalled Node children retai
       "signal",
       `setTimeout(() => process.kill(process.ppid, 'SIGKILL'), 30); setTimeout(() => process.exit(0), 100);`,
     ],
+    [
+      "terminated",
+      `setTimeout(() => process.kill(process.ppid, 'SIGTERM'), 30); setTimeout(() => process.exit(0), 500);`,
+    ],
   ])
     await t.test(name, (t) => {
       const f = observedRun(t);
@@ -800,6 +834,7 @@ test("actual failing, skipped, todo, cancelled and signalled Node children retai
       const receipt = JSON.parse(readFileSync(f.resultFile));
       assert.equal(receipt.status, "failed");
       if (name === "signal") assert.equal(receipt.results[0].signal, "SIGKILL");
+      if (name === "terminated") assert.equal(receipt.results[0].exitCode, 143);
       if (name === "todo") assert.equal(receipt.results[0].report.files[0].counts.todo, 1);
       if (name === "skipped") assert.equal(receipt.results[0].report.files[0].counts.skipped, 1);
     });

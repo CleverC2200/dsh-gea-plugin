@@ -549,6 +549,11 @@
       "repo": "dsh-agent-workbench",
       "pattern": "^\\.gitignore$",
       "tests": ["scripts/quality-workbench.test.mjs", "scripts/quality-prepared-inputs.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-test-node-runner\\.mjs$",
+      "tests": ["scripts/quality-test-execution.test.mjs"]
     }
   ],
   "testOwners": {

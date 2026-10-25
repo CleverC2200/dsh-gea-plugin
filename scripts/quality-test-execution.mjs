@@ -81,9 +81,9 @@ export function createExecutionPlan({
   }
   const known = files.filter((file) => measured.has(file));
   const maximum = Math.max(0, ...known.map((file) => measured.get(file)));
-  const filenameCost = (assigned) => {
+  const dispatchCost = (assigned) => {
     const slots = Array(concurrency).fill(0);
-    for (const file of [...assigned].sort()) {
+    for (const file of assigned) {
       const slot = slots.indexOf(Math.min(...slots));
       // Unknowns have only a conservative sorting weight; estimates remain null.
       slots[slot] += measured.get(file) ?? (maximum || 1);
@@ -104,7 +104,7 @@ export function createExecutionPlan({
       groups.find((entry) => !entry.files.length) ??
       [...groups].sort(
         (left, right) =>
-          filenameCost([...left.files, file]) - filenameCost([...right.files, file]) ||
+          dispatchCost([...left.files, file]) - dispatchCost([...right.files, file]) ||
           Number(left.id) - Number(right.id),
       )[0];
     group.files.push(file);
@@ -112,7 +112,7 @@ export function createExecutionPlan({
   const shards = groups.map((group) => ({
     ...group,
     runtimeFiles: group.files.filter((file) => selection.runtimeFiles?.includes(file)),
-    estimatedMs: group.files.every((file) => measured.has(file)) ? filenameCost(group.files) : null,
+    estimatedMs: group.files.every((file) => measured.has(file)) ? dispatchCost(group.files) : null,
   }));
   const plan = {
     schemaVersion: 1,
@@ -361,9 +361,10 @@ export function runExecutionPlan({
         process.execPath,
         [
           ...nodeArgs,
-          "--test",
-          `--test-concurrency=${plan.concurrency}`,
-          `--test-reporter=${reporter}`,
+          resolve(import.meta.dirname, "quality-test-node-runner.mjs"),
+          reporter,
+          String(plan.concurrency),
+          JSON.stringify(nodeArgs),
           ...shard.files,
         ],
         {
