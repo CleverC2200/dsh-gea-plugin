@@ -53,6 +53,7 @@ async function digestResources(...args) {
 async function hashResourceTree(directory, prefix, readScope, excludeDependencies) {
   const files = {},
     pending = [];
+  const reader = sourceReadPipeline(readScope);
   async function visit(directory, prefix) {
     sourceCostCount("directories", 1);
     if (readScope) await readScope.resolve(directory, { traverse: true });
@@ -68,10 +69,13 @@ async function hashResourceTree(directory, prefix, readScope, excludeDependencie
       } else if (entry.isFile() && (excludeDependencies || relative !== "combination.json")) {
         files[relative] = null;
         pending.push([relative, file]);
+        if (reader) await reader.read(pending.length - 1, file);
       }
     }
   }
-  await sourceCostAsync("scan.envelope", () => visit(directory, prefix));
+  const scan = () => sourceCostAsync("scan.envelope", () => visit(directory, prefix));
+  if (reader) return reader.run(scan, files, () => pending);
+  await scan();
   return hashFiles(files, pending, readScope);
 }
 
@@ -160,6 +164,7 @@ async function hashDependencyTree(directories, readScope) {
   const files = {},
     visited = new Set(),
     pending = [];
+  const reader = sourceReadPipeline(readScope);
   function enqueue(file) {
     files[file] = null;
     pending.push(file);
@@ -174,8 +179,10 @@ async function hashDependencyTree(directories, readScope) {
     for (const entry of await readdir(physical, { withFileTypes: true })) {
       if (entry.name.startsWith(".")) continue;
       const file = join(physical, entry.name);
-      if (entry.isFile()) enqueue(file);
-      else if (entry.isDirectory()) await visit(file);
+      if (entry.isFile()) {
+        enqueue(file);
+        if (reader) await reader.read(pending.length - 1, file);
+      } else if (entry.isDirectory()) await visit(file);
       else if (entry.isSymbolicLink()) {
         sourceCostCount("links", 1);
         const resolved = readScope
@@ -183,18 +190,67 @@ async function hashDependencyTree(directories, readScope) {
           : await realpath(file);
         files[file] = "link:" + resolved;
         if ((await lstat(resolved)).isDirectory()) await visit(resolved);
-        else enqueue(resolved);
+        else {
+          enqueue(resolved);
+          if (reader) await reader.read(pending.length - 1, resolved);
+        }
       }
     }
   }
-  await sourceCostAsync("scan.envelope", async () => {
-    for (const directory of directories) await visit(directory);
-  });
+  const scan = () =>
+    sourceCostAsync("scan.envelope", async () => {
+      for (const directory of directories) await visit(directory);
+    });
+  if (reader) return reader.run(scan, files, () => pending.map((file) => [file, file]));
+  await scan();
   return hashFiles(
     files,
     pending.map((file) => [file, file]),
     readScope,
   );
+}
+
+function sourceReadPipeline(readScope) {
+  if (readScope) return;
+  const mode = process.env.GEA_SOURCE_READ_PIPELINE;
+  if (mode === undefined || mode === "off") return;
+  if (mode !== "on") throw Error("INVALID_SOURCE_READ_PIPELINE");
+  sourceCostCount("pipelineEnabled", 1);
+  const active = new Set(),
+    digests = [];
+  let failure;
+  return {
+    async read(index, file) {
+      if (failure) throw failure;
+      if (active.size >= 16) await sourceCostAsync("backpressure", () => Promise.race(active));
+      if (failure) throw failure;
+      const task = fileDigest(file).then(
+        (value) => {
+          digests[index] = value;
+        },
+        (error) => {
+          failure ??= error;
+        },
+      );
+      active.add(task);
+      void task.then(() => active.delete(task));
+    },
+    async run(scan, files, entries) {
+      let scanFailure;
+      try {
+        await scan();
+      } catch (error) {
+        scanFailure = error;
+      }
+      await Promise.all(active);
+      if (scanFailure) throw scanFailure;
+      if (failure) throw failure;
+      const pending = entries();
+      sourceCostQueue(pending);
+      for (const [index, [key]] of pending.entries()) files[key] = digests[index];
+      return files;
+    },
+  };
 }
 
 async function hashFiles(files, pending, readScope) {

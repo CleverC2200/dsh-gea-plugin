@@ -10,6 +10,127 @@ import * as candidate from "../scripts/source-combination-integrity.mjs";
 import { createReadScope } from "../scripts/delivery-input-scope.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 const abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+test("ordinary dependency reads can overlap scanning while retaining all files and the 16-read bound", async (t) => {
+  const root = await fixture(t),
+    later = join(root, "z-later");
+  await fs.mkdir(later);
+  const expected = {};
+  for (let index = 0; index < 40; index++) {
+    const file = join(root, "a-" + String(index).padStart(2, "0"));
+    await fs.writeFile(file, "abc");
+    expected[file] = abc;
+  }
+  await fs.writeFile(join(later, "tail"), "abc");
+  expected[join(later, "tail")] = abc;
+  const source = new URL("../scripts/source-combination-integrity.mjs", import.meta.url).href;
+  for (const reader of ["resourceDigests", "dependencyDigests"])
+    for (const mode of ["off", "on"])
+      await t.test(reader + ":" + mode, () => {
+        const output = execFileSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `
+      import fs from "node:fs";
+      import { syncBuiltinESMExports } from "node:module";
+      import { join } from "node:path";
+      const root = process.argv[1], later = join(root, "z-later");
+      const originalRead = fs.readFile, originalScan = fs.promises.readdir;
+      let reachedLater = false, earlyReads = 0, active = 0, peak = 0;
+      fs.readFile = (file, ...args) => {
+        const callback = args.pop();
+        if (!reachedLater) earlyReads++;
+        peak = Math.max(peak, ++active);
+        return originalRead(file, ...args, (...result) => {
+          active--;
+          callback(...result);
+        });
+      };
+      fs.promises.readdir = async (directory, ...args) => {
+        if (directory === later) reachedLater = true;
+        return (await originalScan(directory, ...args)).sort((a,b) => a.name.localeCompare(b.name));
+      };
+      syncBuiltinESMExports();
+      const module = await import(${JSON.stringify(source)});
+      const reader = ${JSON.stringify(reader)};
+      const raw = await module[reader](reader === "dependencyDigests" ? [root] : root);
+      const files = Object.fromEntries(Object.entries(raw).map(([key,value]) =>
+        [reader === "resourceDigests" ? join(root,key) : key,value]));
+      console.log(JSON.stringify({files, earlyReads, active, peak}));
+    `,
+            root,
+          ],
+          { encoding: "utf8", env: { ...process.env, GEA_SOURCE_READ_PIPELINE: mode } },
+        );
+        const result = JSON.parse(output);
+        assert.deepEqual(result.files, expected);
+        assert.equal(result.active, 0);
+        assert.ok(result.peak > 1 && result.peak <= 16);
+        assert.equal(result.earlyReads > 0, mode === "on");
+      });
+});
+test("pipelined scan and read failures preserve the original error and drain started reads", async (t) => {
+  for (const kind of ["scan", "read"])
+    await t.test(kind, async (t) => {
+      const root = await fixture(t);
+      for (let index = 0; index < 32; index++)
+        await fs.writeFile(join(root, "a-" + String(index).padStart(2, "0")), "abc");
+      const broken = join(root, "z-broken"),
+        denied = join(root, "a-00");
+      if (kind === "scan") await fs.symlink(join(root, "absent"), broken);
+      else await fs.chmod(denied, 0);
+      const native = await (kind === "scan" ? fs.realpath(broken) : fs.readFile(denied)).then(
+        () => assert.fail("real filesystem rejection required"),
+        (error) => ({ code: error.code, syscall: error.syscall, path: error.path }),
+      );
+      const source = new URL("../scripts/source-combination-integrity.mjs", import.meta.url).href;
+      const output = execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+      import fs from "node:fs";
+      import { syncBuiltinESMExports } from "node:module";
+      const originalRead = fs.readFile, originalScan = fs.promises.readdir, originalRealpath = fs.promises.realpath;
+      let active = 0, started = 0, peak = 0, activeAtFailure = 0;
+      fs.readFile = (file, ...args) => {
+        const callback = args.pop();
+        started++; peak = Math.max(peak, ++active);
+        return originalRead(file, ...args, (...result) => setTimeout(() => {
+          if (result[0]) activeAtFailure = active;
+          active--; callback(...result);
+        }, result[0] ? 10 : 40));
+      };
+      fs.promises.readdir = async (...args) =>
+        (await originalScan(...args)).sort((a,b) => a.name.localeCompare(b.name));
+      fs.promises.realpath = async (...args) => {
+        try { return await originalRealpath(...args); }
+        catch (error) { activeAtFailure = active; throw error; }
+      };
+      syncBuiltinESMExports();
+      const { dependencyDigests } = await import(${JSON.stringify(source)});
+      try {
+        await dependencyDigests([process.argv[1]]);
+        console.log(JSON.stringify({accepted:true, active, started, peak, activeAtFailure}));
+      } catch (error) {
+        console.log(JSON.stringify({error:{code:error.code,syscall:error.syscall,path:error.path}, active,started,peak,activeAtFailure}));
+      }
+    `,
+          root,
+        ],
+        { encoding: "utf8", env: { ...process.env, GEA_SOURCE_READ_PIPELINE: "on" } },
+      );
+      const result = JSON.parse(output);
+      assert.deepEqual(result.error, native);
+      assert.ok(result.activeAtFailure > 0);
+      assert.equal(result.active, 0);
+      assert.ok(result.peak <= 16);
+      if (kind === "read") assert.ok(result.started <= 16);
+      if (kind === "read") await fs.chmod(denied, 0o600);
+    });
+});
 test("a timing receipt failure preserves the original filesystem rejection", async (t) => {
   const root = await fixture(t),
     missing = join(root, "missing");
