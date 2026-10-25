@@ -5,10 +5,51 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import * as candidate from "../scripts/source-combination-integrity.mjs";
 import { createReadScope } from "../scripts/delivery-input-scope.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 const abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+test("opt-in source timing accounts for real dependency bytes without changing the complete map", async (t) => {
+  const root = await fixture(t),
+    deps = join(root, "deps"),
+    receipt = join(root, "cost.jsonl");
+  await fs.mkdir(deps);
+  await fs.writeFile(join(deps, "a"), "abc");
+  await fs.symlink(join(deps, "a"), join(deps, "link"));
+  const source = new URL("../scripts/source-combination-integrity.mjs", import.meta.url).href;
+  const output = execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+    import { dependencyDigests } from ${JSON.stringify(source)};
+    console.log(JSON.stringify(await dependencyDigests([process.argv[1]])));
+  `,
+      deps,
+    ],
+    { encoding: "utf8", env: { ...process.env, GEA_SOURCE_COST_RECEIPT: receipt } },
+  );
+  assert.deepEqual(JSON.parse(output), {
+    [join(deps, "a")]: abc,
+    [join(deps, "link")]: "link:" + join(deps, "a"),
+  });
+  const records = (await fs.readFile(receipt, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(records.length, 1);
+  const record = records[0];
+  assert.equal(record.status, "passed");
+  assert.equal(record.metrics.read.bytes, 6);
+  assert.ok(record.metrics["metadata.readdir"].calls >= 1);
+  assert.ok(record.metrics["sha256.update-digest"].calls >= 1);
+  assert.ok(
+    Math.abs(Object.values(record.coverageMs).reduce((a, b) => a + b, 0) - record.durationMs) <
+      0.001,
+  );
+  assert.ok(record.metrics.read.unionMs <= record.durationMs);
+  assert.equal(record.scopes[0].counts.queuedFiles, 2);
+  assert.equal(record.scopes[0].counts.uniqueTargets, 1);
+});
 async function fixture(t) {
   const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "callback-reader-")));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

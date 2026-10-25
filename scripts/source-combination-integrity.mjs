@@ -1,22 +1,41 @@
 /** Official read-only source-combination validation, shared with preparation. */
-import { readFile, readdir, realpath, lstat } from "node:fs/promises";
+import {
+  readFile,
+  readdir as rawReaddir,
+  realpath as rawRealpath,
+  lstat as rawLstat,
+} from "node:fs/promises";
 import { readFile as readFileCallback } from "node:fs";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync as rawExecFileSync } from "node:child_process";
 
+import {
+  sourceCostScope,
+  sourceCostAsync,
+  sourceCostSync,
+  sourceCostCount,
+  sourceCostQueue,
+} from "./source-cost.mjs";
+const execFileSync = (...args) => sourceCostSync("git", () => rawExecFileSync(...args));
+const readdir = (...args) => sourceCostAsync("metadata.readdir", () => rawReaddir(...args));
+const realpath = (...args) => sourceCostAsync("metadata.realpath", () => rawRealpath(...args));
+const lstat = (...args) => sourceCostAsync("metadata.lstat", () => rawLstat(...args));
 const callbackReadFile = promisify(readFileCallback);
 const readBytes = (file, readScope) =>
-  readScope
-    ? readScope.read(file, 64 * 1024 * 1024)
-    : typeof file === "string" || Buffer.isBuffer(file) || file instanceof URL
-      ? callbackReadFile(file)
-      : readFile(file);
-export const fileDigest = async (file, readScope) =>
-  createHash("sha256")
-    .update(await readBytes(file, readScope))
-    .digest("hex");
+  sourceCostAsync("read", () =>
+    readScope
+      ? readScope.read(file, 64 * 1024 * 1024)
+      : typeof file === "string" || Buffer.isBuffer(file) || file instanceof URL
+        ? callbackReadFile(file)
+        : readFile(file),
+  );
+export const fileDigest = async (file, readScope) => {
+  const hash = sourceCostSync("sha256.create", () => createHash("sha256"));
+  const bytes = await readBytes(file, readScope);
+  return sourceCostSync("sha256.update-digest", () => hash.update(bytes).digest("hex"));
+};
 
 /** Hash shipped resources, excluding dependency links and their writable stores. */
 export async function resourceDigests(directory, prefix = "", readScope) {
@@ -27,10 +46,15 @@ export async function publishedResourceDigests(directory, prefix = "") {
   return digestResources(directory, prefix, undefined, true);
 }
 
-async function digestResources(directory, prefix, readScope, excludeDependencies) {
+async function digestResources(...args) {
+  return sourceCostScope("resources", args[0], () => hashResourceTree(...args));
+}
+
+async function hashResourceTree(directory, prefix, readScope, excludeDependencies) {
   const files = {},
     pending = [];
   async function visit(directory, prefix) {
+    sourceCostCount("directories", 1);
     if (readScope) await readScope.resolve(directory, { traverse: true });
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       if (excludeDependencies && ["node_modules", ".git"].includes(entry.name)) continue;
@@ -38,6 +62,7 @@ async function digestResources(directory, prefix, readScope, excludeDependencies
       const file = join(directory, entry.name);
       if (entry.isDirectory()) await visit(file, relative);
       else if (entry.isSymbolicLink()) {
+        sourceCostCount("links", 1);
         if (readScope) await readScope.resolve(file, { traverse: true });
         files[relative] = "link:" + (await realpath(file));
       } else if (entry.isFile() && (excludeDependencies || relative !== "combination.json")) {
@@ -46,7 +71,7 @@ async function digestResources(directory, prefix, readScope, excludeDependencies
       }
     }
   }
-  await visit(directory, prefix);
+  await sourceCostAsync("scan.envelope", () => visit(directory, prefix));
   return hashFiles(files, pending, readScope);
 }
 
@@ -59,7 +84,11 @@ function sameDigests(actual, expected) {
 }
 
 /** Reject incomplete snapshots before changing the selected combination. */
-export async function readSourceCombination(runtime, id, core, { readScope } = {}) {
+export async function readSourceCombination(...args) {
+  return sourceCostScope("verify", args[0], () => verifySourceCombination(...args));
+}
+
+async function verifySourceCombination(runtime, id, core, { readScope } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const directory = join(runtime, "source-combinations", id);
   const record = JSON.parse(
@@ -123,7 +152,11 @@ export async function readSourceCombination(runtime, id, core, { readScope } = {
 }
 
 /** Fix the resolved dependency graph, including built core files and transitive links. */
-export async function dependencyDigests(directories, readScope) {
+export async function dependencyDigests(...args) {
+  return sourceCostScope("dependencies", "external", () => hashDependencyTree(...args));
+}
+
+async function hashDependencyTree(directories, readScope) {
   const files = {},
     visited = new Set(),
     pending = [];
@@ -137,12 +170,14 @@ export async function dependencyDigests(directories, readScope) {
       : await realpath(directory);
     if (visited.has(physical)) return;
     visited.add(physical);
+    sourceCostCount("directories", 1);
     for (const entry of await readdir(physical, { withFileTypes: true })) {
       if (entry.name.startsWith(".")) continue;
       const file = join(physical, entry.name);
       if (entry.isFile()) enqueue(file);
       else if (entry.isDirectory()) await visit(file);
       else if (entry.isSymbolicLink()) {
+        sourceCostCount("links", 1);
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
@@ -152,7 +187,9 @@ export async function dependencyDigests(directories, readScope) {
       }
     }
   }
-  for (const directory of directories) await visit(directory);
+  await sourceCostAsync("scan.envelope", async () => {
+    for (const directory of directories) await visit(directory);
+  });
   return hashFiles(
     files,
     pending.map((file) => [file, file]),
@@ -161,6 +198,7 @@ export async function dependencyDigests(directories, readScope) {
 }
 
 async function hashFiles(files, pending, readScope) {
+  sourceCostQueue(pending);
   const digests = [];
   let next = 0,
     failure;

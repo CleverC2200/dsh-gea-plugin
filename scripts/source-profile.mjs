@@ -2,20 +2,26 @@
 import {
   cp,
   mkdir,
-  readFile,
-  readdir,
-  realpath,
+  readFile as rawReadFile,
+  readdir as rawReaddir,
+  realpath as rawRealpath,
   symlink,
   writeFile,
   rename,
   open,
   unlink,
-  lstat,
+  lstat as rawLstat,
 } from "node:fs/promises";
 import { join, resolve, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync as rawExecFileSync } from "node:child_process";
+import { sourceCostScope, sourceCostAsync, sourceCostSync } from "./source-cost.mjs";
+const readFile = (...args) => sourceCostAsync("read", () => rawReadFile(...args));
+const readdir = (...args) => sourceCostAsync("metadata.readdir", () => rawReaddir(...args));
+const realpath = (...args) => sourceCostAsync("metadata.realpath", () => rawRealpath(...args));
+const lstat = (...args) => sourceCostAsync("metadata.lstat", () => rawLstat(...args));
+const execFileSync = (...args) => sourceCostSync("git", () => rawExecFileSync(...args));
 
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
 import { readSupportedCore } from "./supported-cores.mjs";
@@ -63,7 +69,11 @@ export async function readSourceSelection(runtime) {
 }
 
 /** Resolve clean declared sources and verify frozen assets in one place for all callers. */
-export async function resolveSourceInputs(sources, { requireEntries = false } = {}) {
+export async function resolveSourceInputs(...args) {
+  return sourceCostScope("inputs", "five-sources", () => resolveDeclaredSources(...args));
+}
+
+async function resolveDeclaredSources(sources, { requireEntries = false } = {}) {
   const entries = requireSourceInputs(sources);
   const resolved = [];
   for (const plugin of sourcePlugins) {
@@ -146,7 +156,11 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
   return resolved;
 }
 
-export async function prepareSourcePlugins(
+export async function prepareSourcePlugins(...args) {
+  return sourceCostScope("prepare", args[1], () => assembleSourcePlugins(...args));
+}
+
+async function assembleSourcePlugins(
   core,
   runtime,
   deployment,
@@ -156,12 +170,15 @@ export async function prepareSourcePlugins(
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const snapshot = join(runtime, "source-combinations", id);
   const modules = join(snapshot, "node_modules");
-  const supportedCore = await readSupportedCore(core);
+  const supportedCore = await sourceCostAsync("core", () => readSupportedCore(core));
   await mkdir(join(runtime, "source-combinations"), { recursive: true });
   await mkdir(snapshot, { recursive: false });
   await mkdir(modules, { recursive: true });
   const packages = new Map(
-    (await corePackages(core)).map(({ manifest, directory }) => [manifest.name, directory]),
+    (await sourceCostAsync("core", () => corePackages(core))).map(({ manifest, directory }) => [
+      manifest.name,
+      directory,
+    ]),
   );
   const copies = await Promise.allSettled(
     sourcePlugins.map(async (plugin) => {
@@ -172,10 +189,12 @@ export async function prepareSourcePlugins(
       await mkdir(target, { recursive: true });
       for (const file of plugin.resources) {
         try {
-          await cp(join(assetRoot, file), join(target, file), {
-            recursive: true,
-            filter: (path) => !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
-          });
+          await sourceCostAsync("copy." + repo + "/" + file, () =>
+            cp(join(assetRoot, file), join(target, file), {
+              recursive: true,
+              filter: (path) => !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
+            }),
+          );
         } catch (error) {
           if (error.code !== "ENOENT") throw error;
         }
@@ -398,7 +417,11 @@ export async function resourceDigests(directory, prefix = "", excludeDependencie
 }
 
 /** Select a verified local combination only while its Host is stopped. */
-export async function selectSourceCombination(runtime, id, core, { expected } = {}) {
+export async function selectSourceCombination(...args) {
+  return sourceCostScope("select", args[0], () => selectVerifiedCombination(...args));
+}
+
+async function selectVerifiedCombination(runtime, id, core, { expected } = {}) {
   expected = expected && structuredClone(expected);
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
   try {

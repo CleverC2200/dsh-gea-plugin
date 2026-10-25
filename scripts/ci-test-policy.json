@@ -136,6 +136,11 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/source-cost\\.mjs$",
+      "tests": ["tests/source-combination-reader.test.mjs", "tests/source-integrity.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^tests/fixtures/returned-compile-cache(?:-probe)?\\.mjs$",
       "tests": ["tests/profile-lifecycle.test.mjs", "tests/returned-resubmit-web.test.mjs"]
     },

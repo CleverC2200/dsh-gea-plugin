@@ -895,6 +895,21 @@ test("returned compile-cache fixtures select their lifecycle and resubmission co
   }
 });
 
+test("source timing selects its real integrity consumers while unknown source helpers still reject", (t) => {
+  const file = "scripts/source-cost.mjs";
+  const consumers = ["tests/source-combination-reader.test.mjs", "tests/source-integrity.test.mjs"];
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.own, file, readFileSync(new URL("../" + file, import.meta.url), "utf8"));
+  for (const sourceOnly of [false, true]) {
+    const plan = fixture.plan({ sourceOnly });
+    assert.deepEqual(plan.reasons[fixture.own.repo + "/" + file], consumers);
+    assert.ok(consumers.every((consumer) => plan.files.includes(consumer)));
+  }
+  fixture.change(fixture.own, "scripts/source-cost-unowned.mjs", "export const unknown = true;\n");
+  assert.throws(() => fixture.plan(), /CI_TEST_IMPACT_UNMAPPED/);
+  assert.throws(() => fixture.plan({ sourceOnly: true }), /CI_TEST_IMPACT_UNMAPPED/);
+});
+
 test("the shared returned-review fixture selects every isolated browser scenario", (t) => {
   const consumers = [
     "tests/returned-resubmit-web.test.mjs",
