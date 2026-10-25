@@ -74,6 +74,65 @@ function success(url, init) {
       : { success: true, result: { rows: [{ sku: "A" }], total: 1 } },
   );
 }
+test("an explicit expired SQL session renews despite a generic authentication reason", async (t) => {
+  const business = fixture(t);
+  let sessions = 0;
+  const tokens = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    init.signal.throwIfAborted();
+    if (url.endsWith("/session")) {
+      sessions++;
+      return Response.json({
+        success: true,
+        result: { accessDecision: { allowed: true }, delegationToken: `delegation-${sessions}` },
+      });
+    }
+    tokens.push(init.headers["X-Delegation-Token"]);
+    if (tokens.length === 1)
+      return Response.json({
+        success: false,
+        errorCode: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
+        failure: { reasonCode: "AUTHENTICATION_FAILED" },
+      });
+    return success(url, init);
+  });
+  assert.deepEqual((await business.pluginSql(query, new AbortController().signal)).rows, [
+    { sku: "A" },
+  ]);
+  assert.deepEqual(tokens, ["delegation-1", "delegation-2"]);
+  assert.equal(sessions, 2);
+  assert.equal(business.status().authenticated, true);
+});
+for (const errorCode of ["ROW_SCOPE_DENIED", "AI_GATEWAY_SESSION_EXPIRED"])
+  test(`SQL 403 ${errorCode} preserves denial without renewing a delegation`, async (t) => {
+    const business = fixture(t);
+    let sessions = 0;
+    let reads = 0;
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      if (url.endsWith("/session")) {
+        sessions++;
+        return success(url, init);
+      }
+      reads++;
+      return Response.json(
+        {
+          success: false,
+          errorCode,
+          result: { failure: { reasonCode: "AUTHENTICATION_FAILED" } },
+        },
+        { status: 403 },
+      );
+    });
+    await assert.rejects(business.pluginSql(query, new AbortController().signal), {
+      code: errorCode,
+      status: 403,
+      retryable: false,
+    });
+    assert.equal(sessions, 1);
+    assert.equal(reads, 1);
+    assert.equal(business.status().authenticated, true);
+  });
+
 test("three cancelled reads do not trip the consumer failure circuit; a new range can read", async (t) => {
   const business = fixture(t);
   t.mock.method(globalThis, "fetch", async (url, init) => success(url, init));
