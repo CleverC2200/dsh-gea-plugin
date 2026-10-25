@@ -67,7 +67,21 @@
       "presetName": "分仓库存Agent",
       "description": "分仓库存、订单缺口与补货建议的只读查询和解释，支持上下文压缩、文件操作、规划、任务和协作；业务执行遵循当前身份与资源授权。",
       "consumerCode": "branch-inventory",
-      "skills": ["inventory-fc"]
+      "skills": [
+        "inventory-fc",
+        "branch-aging-stagnation-monitoring",
+        "branch-customer-inventory-signal",
+        "branch-future-aging-projection",
+        "branch-inventory-water-level-deviation",
+        "branch-metric-explanation",
+        "branch-plan-version-explain",
+        "branch-policy",
+        "branch-replenishment-confirmation-dms",
+        "branch-replenishment-demand",
+        "branch-report-templates",
+        "branch-shortage-monitoring",
+        "branch-upstream-base-availability"
+      ]
     },
     "gea-html-inventory-dealer": {
       "label": "经销商库存",
