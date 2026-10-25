@@ -218,11 +218,18 @@ function sourceReadPipeline(readScope) {
   sourceCostCount("pipelineEnabled", 1);
   const active = new Set(),
     digests = [];
-  let failure;
+  let failure, releaseSlot;
   return {
     async read(index, file) {
       if (failure) throw failure;
-      if (active.size >= 16) await sourceCostAsync("backpressure", () => Promise.race(active));
+      if (active.size >= 16)
+        await sourceCostAsync(
+          "backpressure",
+          () =>
+            new Promise((resolve) => {
+              releaseSlot = resolve;
+            }),
+        );
       if (failure) throw failure;
       const task = fileDigest(file).then(
         (value) => {
@@ -233,7 +240,11 @@ function sourceReadPipeline(readScope) {
         },
       );
       active.add(task);
-      void task.then(() => active.delete(task));
+      void task.then(() => {
+        active.delete(task);
+        releaseSlot?.();
+        releaseSlot = undefined;
+      });
     },
     async run(scan, files, entries) {
       let scanFailure;
