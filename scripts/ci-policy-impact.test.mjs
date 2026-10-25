@@ -208,6 +208,11 @@ test("engineering source, dynamic commands and configuration reselect the origin
     [2, "scripts/fixtures/quality-ci-commands.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [
       2,
+      "scripts/fixtures/quality-browser-install.cjs",
+      ["scripts/quality-worker-inputs.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
+    ],
+    [
+      2,
       "package.json",
       [
         "scripts/quality-policy.test.mjs",
