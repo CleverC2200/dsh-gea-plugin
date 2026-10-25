@@ -103,6 +103,108 @@ function copiedSqlFixture(t, resource = "business/inventory-apsplan/sql.config.j
   return { ...fixture, resource, output };
 }
 
+function derivedSqlFixture(t) {
+  const fixture = preparedFixture(t);
+  const producer = "business/inventory-orderworkbench/source-config.mjs";
+  const queries = "business/inventory-orderworkbench/queries.mjs";
+  mkdirSync(join(fixture.source, producer, ".."), { recursive: true });
+  writeFileSync(
+    join(fixture.source, producer),
+    "import { query } from './queries.mjs'; export function orderWorkbenchSourceConfig(source) { return { agentId: 'inventory-orderworkbench', sourceAgent: source.agentId, query }; }\n",
+  );
+  writeFileSync(join(fixture.source, queries), "export const query = 'SELECT fixture';\n");
+  fixture.git("-C", fixture.source, "add", producer, queries);
+  fixture.git(
+    "-C",
+    fixture.source,
+    "-c",
+    "user.name=fixture",
+    "-c",
+    "user.email=fixture@invalid",
+    "commit",
+    "-qm",
+    "fixed generated SQL producer",
+  );
+  fixture.head = fixture.git("-C", fixture.source, "rev-parse", "HEAD");
+  fixture.git("-C", fixture.prepared, "fetch", "-q", "origin");
+  fixture.git("-C", fixture.prepared, "checkout", "--detach", fixture.head);
+  const output = "lib/business/inventory-orderworkbench/sql.config.json";
+  const bytes = (query = "SELECT fixture") =>
+    JSON.stringify(
+      { agentId: "inventory-orderworkbench", sourceAgent: "inventory-apsplan", query },
+      null,
+      2,
+    ) + "\n";
+  mkdirSync(join(fixture.prepared, output, ".."), { recursive: true });
+  writeFileSync(join(fixture.prepared, output), bytes());
+  return { ...fixture, producer, queries, output, bytes };
+}
+
+test("derived order SQL uses its frozen producer and remains frozen in the receipt", async (t) => {
+  const fixture = derivedSqlFixture(t);
+  const record = await readPreparedWorkbench(fixture);
+  assert.ok(record.files[fixture.output]);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, fixture.output), fixture.bytes("DELETE FROM fixture"));
+  await assert.rejects(
+    verifyPreparedWorkbench(fixture),
+    /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+  );
+});
+
+test("derived SQL rejects changed inputs, links and unknown generated configs", async (t) => {
+  for (const input of ["business/inventory-apsplan/sql.config.json", "producer", "queries"]) {
+    const fixture = derivedSqlFixture(t);
+    const file = fixture[input] ?? input;
+    fixture.git("-C", fixture.source, "update-index", "--assume-unchanged", file);
+    writeFileSync(join(fixture.source, file), "changed frozen input\n");
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+    );
+  }
+  const redirected = derivedSqlFixture(t);
+  const external = join(redirected.source, "..", "external-sql.json");
+  writeFileSync(external, redirected.bytes());
+  rmSync(join(redirected.prepared, redirected.output));
+  symlinkSync(external, join(redirected.prepared, redirected.output));
+  await assert.rejects(
+    readPreparedWorkbench(redirected),
+    /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+  );
+  const unknown = derivedSqlFixture(t);
+  writeFileSync(
+    join(unknown.prepared, "lib/business/inventory-orderworkbench/unknown.json"),
+    unknown.bytes(),
+  );
+  await assert.rejects(readPreparedWorkbench(unknown), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("derived SQL recomputes after its frozen source head changes", async (t) => {
+  const fixture = derivedSqlFixture(t);
+  await readPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.source, fixture.queries), "export const query = 'SELECT updated';\n");
+  fixture.git("-C", fixture.source, "add", fixture.queries);
+  fixture.git(
+    "-C",
+    fixture.source,
+    "-c",
+    "user.name=fixture",
+    "-c",
+    "user.email=fixture@invalid",
+    "commit",
+    "-qm",
+    "updated frozen producer input",
+  );
+  fixture.head = fixture.git("-C", fixture.source, "rev-parse", "HEAD");
+  fixture.git("-C", fixture.prepared, "fetch", "-q", "origin");
+  fixture.git("-C", fixture.prepared, "checkout", "--detach", fixture.head);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  writeFileSync(join(fixture.prepared, fixture.output), fixture.bytes("SELECT updated"));
+  await readPreparedWorkbench(fixture);
+});
+
 test("MPS named query copies require the frozen Workbench bytes", async (t) => {
   const fixture = copiedSqlFixture(t, "static/mps/sql.config.json");
   const record = await readPreparedWorkbench(fixture);

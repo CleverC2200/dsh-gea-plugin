@@ -32,6 +32,43 @@ const generatedHtml = new Set([
 export const isPreparedWorkbenchOutput = (file) =>
   file.startsWith("lib/") || generatedHtml.has(file);
 
+async function frozenFileBytes(root, head, file) {
+  const entry = git(root, "ls-tree", head, "--", file);
+  if (!/^100644 blob [a-f0-9]{40}\t/.test(entry)) return;
+  const original = join(root, file);
+  if (!(await lstat(original)).isFile() || (await realpath(original)) !== original) return;
+  const bytes = await readFile(original);
+  const blob = createHash("sha1")
+    .update("blob " + bytes.length + "\0")
+    .update(bytes)
+    .digest("hex");
+  if (entry.split("\t")[0].endsWith(" " + blob)) return bytes;
+}
+
+async function orderSqlBytes(source, head) {
+  const producer = "business/inventory-orderworkbench/source-config.mjs";
+  const files = [
+    "business/inventory-apsplan/sql.config.json",
+    producer,
+    "business/inventory-orderworkbench/queries.mjs",
+  ];
+  const inputs = await Promise.all(files.map((file) => frozenFileBytes(source, head, file)));
+  if (inputs.some((bytes) => !bytes)) return;
+  return execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const { orderWorkbenchSourceConfig } = await import(pathToFileURL(process.argv[1]).href);
+process.stdout.write(JSON.stringify(orderWorkbenchSourceConfig(JSON.parse(readFileSync(0, 'utf8'))), null, 2) + '\\n');`,
+      join(source, producer),
+    ],
+    { input: inputs[0], timeout: 10000, maxBuffer: 5 * 1024 * 1024 },
+  );
+}
+
 /** Bind the fixed Workbench reader to the already admitted GEA authority without copying it. */
 export async function prepareWorkbenchGeaAuthority({ workbench, gea }) {
   const target = await realpath(gea),
@@ -108,6 +145,16 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
           .digest("hex");
         if (entry.split("\t")[0].endsWith(" " + blob) && bytes.equals(await readFile(output)))
           continue;
+      }
+    }
+    if (
+      line.startsWith("?? ") &&
+      file === "lib/business/inventory-orderworkbench/sql.config.json"
+    ) {
+      const output = join(prepared, file);
+      if ((await lstat(output)).isFile() && (await realpath(output)) === output) {
+        const expected = await orderSqlBytes(source, head);
+        if (expected?.equals(await readFile(output))) continue;
       }
     }
     if (
