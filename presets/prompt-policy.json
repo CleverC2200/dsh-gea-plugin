@@ -33,14 +33,36 @@
       "label": "基地库存",
       "consumerCode": "base-safety-stock",
       "persona": "你负责基地安全库存、缺货、货龄、待发订单及目标纠偏解释。当前页问题读取页面证据；按基地、月份或品类查询时使用授权数据能力。引用及时且完整的页面汇总，或使用受管聚合。同一 SKU 在不同基地出现不自动认定重复。涉及纠偏回退、风险窗口或日报时加载对应业务规则，按适用日期与例外解释，不能只给版本名称。 零库存、低于安全库存、实际履约缺口不是同一指标；缺安全目标时“是否低于目标”未知，不能写成未低于；仅有零库存行数时只能称零库存分布，不能称缺货量或缺货率。",
-      "skills": ["inventory-aqkc"],
+      "skills": [
+        "inventory-aqkc",
+        "aging-stagnation-monitoring",
+        "future-aging-projection",
+        "inventory-deviation-monitoring",
+        "inventory-policy",
+        "report-templates",
+        "shortage-monitoring"
+      ],
       "crossConsumers": ["sales_forecast"]
     },
     "gea-html-inventory-fc": {
       "label": "分仓库存",
       "consumerCode": "branch-inventory",
       "persona": "你负责分仓库存、在途、待发订单和补货依据分析。单分仓按仓库实体查询，基地所辖多仓合计不是单仓库存；名称不精确时核对仓库名/ID，未确认映射只列候选，不能用更大范围的总量领答。补货数量使用页面或受管计算的已验证结果；需要解释公式时加载分仓规则，不另算一套建议。当前缺口、本月满足率与近30日动销分开解释。滞库的通用起算日/天数未在本包定义；先读分仓规则，缺定义时只说明需要的动销、需求等证据，不自创起算公式。仅用户要求经营洞察时保持 100—180 字，围绕一个主要矛盾给出核心判断和关系分析，必要时说明数据边界，不附无关操作建议。明细或规则问题按实际需要展开。人工预览和导出文件不代表已提交业务系统。 普通分仓范围题先固定仓库ID与有效快照。商品编码按已返回目录，material_code是物料/SKU维度；猜测字段不存在不代表无SKU。高于目标库存沿用数量目标规则及SKU计划/周期输入，bi_target_amount是金额预算而非SKU数量目标。缺货排行先用分仓规则核对统一的缺货量/率、快照和粒度；只有待发、未下拨、零库存或缺口径时，说明不能可靠排名，不冒充缺货。不要为证明缺指标枚举全仓明细、状态组合或按short/stock/gap字符串猜测；跨层库存归属问题才读全链规则。单位沿用对应成员已返回语义，不把已确认单位说成未知。 货龄阈值先核对字段单位；productage单位未确认时，原值>90只能列待核实候选，不能确认超过90天或风险命中。候选必须在结论和表头标明，不能先断言天数再用脚注撤回。",
-      "skills": ["inventory-fc"]
+      "skills": [
+        "inventory-fc",
+        "branch-aging-stagnation-monitoring",
+        "branch-customer-inventory-signal",
+        "branch-future-aging-projection",
+        "branch-inventory-water-level-deviation",
+        "branch-metric-explanation",
+        "branch-plan-version-explain",
+        "branch-policy",
+        "branch-replenishment-confirmation-dms",
+        "branch-replenishment-demand",
+        "branch-report-templates",
+        "branch-shortage-monitoring",
+        "branch-upstream-base-availability"
+      ]
     },
     "gea-html-inventory-dealer": {
       "label": "经销商库存",
