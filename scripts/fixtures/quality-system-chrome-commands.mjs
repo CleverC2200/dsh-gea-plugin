@@ -109,6 +109,7 @@ export function installChromeCommands({ root }) {
           : real(p);
   const spawn = cp.spawnSync;
   cp.spawnSync = (command, args, options = {}) => {
+    if (command === "sudo" && args.includes("kill")) return spawn(command, args, options);
     if (["/opt/google/chrome/chrome", "dpkg-query", "findmnt", "sudo"].includes(command))
       fs.appendFileSync(
         join(root, "chrome-commands.jsonl"),

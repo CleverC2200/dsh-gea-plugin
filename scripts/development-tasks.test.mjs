@@ -9,6 +9,16 @@ import { developmentTask } from "./development-tasks.mjs";
 import { packRaw } from "./pack-raw.mjs";
 
 function fixture(t, { dotfile = false, suiteManifests = false, repo = "dsh-agent-manage" } = {}) {
+  const sourceOverrides = Object.fromEntries(
+    ["SOURCE_HEAD_SHA", "SOURCE_BASE_SHA"].map((key) => [key, process.env[key]]),
+  );
+  for (const key of Object.keys(sourceOverrides)) delete process.env[key];
+  t.after(() => {
+    for (const [key, value] of Object.entries(sourceOverrides)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
   const root = fs.mkdtempSync(join(os.tmpdir(), "development-task-"));
   t.after(() => {
     delete process.env.DSH_BUILD_ADMISSION;
