@@ -128,8 +128,7 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^presets/(?:execution|prompt)-policy\\.json$",
-      "tests": ["tests/aps-default-policy.test.mjs"],
-      "sourceTests": ["tests/aps-default-policy.test.mjs"]
+      "tests": ["tests/aps-default-policy.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
