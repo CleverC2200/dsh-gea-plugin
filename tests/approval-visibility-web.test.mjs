@@ -145,7 +145,9 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
-    await frame.getByRole("combobox", { name: "销售计划周期", exact: true }).click();
+    const period = frame.getByRole("combobox", { name: "销售计划周期", exact: true });
+    await expect(period).toContainText("2026年9月");
+    await period.click();
     await expect(frame.getByRole("option", { name: "2026年9月", exact: true })).toHaveCount(1);
     await expect(frame.getByRole("option")).toHaveCount(1);
     await page.keyboard.press("Escape");
