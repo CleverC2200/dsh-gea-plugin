@@ -116,7 +116,7 @@ export async function apply(ctx, { output }) {
       );
     }, ms).unref(),
   );
-  ctx.effect(async () => {
+  ctx.effect(() => async () => {
     timers.forEach(clearTimeout);
     await record("dispose");
   });

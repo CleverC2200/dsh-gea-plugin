@@ -67,7 +67,7 @@ function context() {
         },
       ],
     },
-    effect: (fn) => effects.push(fn),
+    effect: (fn) => effects.push(fn()),
     effects,
     logger: { warn() {} },
     secret,
@@ -142,4 +142,30 @@ test("Actions profile diagnostics survive temporary profile cleanup in the exist
     if (previous === undefined) delete process.env.GITHUB_WORKSPACE;
     else process.env.GITHUB_WORKSPACE = previous;
   }
+});
+
+test("profile observer samples after mounting and cancels later samples when disposed", async (t) => {
+  const runtime = await mkdtemp(join(tmpdir(), "profile-readiness-lifecycle-"));
+  t.after(() => rm(runtime, { recursive: true, force: true }));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ctx = context();
+  const output = join(runtime, "profile-readiness.ndjson");
+  const phases = async () =>
+    (await readFile(output, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line).phase);
+  await apply(ctx, { output });
+  assert.equal(typeof ctx.effects[0], "function");
+  assert.deepEqual(await phases(), ["mounted"]);
+  t.mock.timers.tick(1000);
+  for (let attempts = 0; attempts < 100; attempts++) {
+    if ((await phases()).includes("after-1000")) break;
+    await new Promise(setImmediate);
+  }
+  assert.deepEqual(await phases(), ["mounted", "after-1000"]);
+  await ctx.effects[0]();
+  t.mock.timers.tick(20000);
+  await new Promise(setImmediate);
+  assert.deepEqual(await phases(), ["mounted", "after-1000", "dispose"]);
 });
