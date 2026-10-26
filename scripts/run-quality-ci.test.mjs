@@ -771,19 +771,27 @@ test("merged PR result reuse skips only the validated body and preserves every f
   assert.ok(affected < lookup && lookup < check);
   assert.equal(job.permissions.actions, "read");
   const final = workflow.jobs["candidate-quality"];
-  assert.match(final.if, /^always\(\) &&/);
+  assert.equal(final.if, "always()");
   assert.ok(final.needs.includes("source-checks"));
-  const evaluate = (condition, hit, validate = "true", succeeded = true) =>
+  const evaluate = (
+    condition,
+    hit,
+    validate = "true",
+    succeeded = true,
+    planResult = succeeded ? "success" : "failure",
+  ) =>
     Function(
       "steps",
       "needs",
       "success",
       "always",
       "return (" +
-        condition.replace(
-          /(steps|needs)\.([\w-]+)\.outputs\.([\w-]+)/g,
-          (_, kind, id, output) => `${kind}["${id}"].outputs["${output}"]`,
-        ) +
+        condition
+          .replace(
+            /(steps|needs)\.([\w-]+)\.outputs\.([\w-]+)/g,
+            (_, kind, id, output) => `${kind}["${id}"].outputs["${output}"]`,
+          )
+          .replace(/needs\.([\w-]+)\.result/g, (_, id) => `needs["${id}"].result`) +
         ")",
     )(
       {
@@ -792,8 +800,8 @@ test("merged PR result reuse skips only the validated body and preserves every f
       },
       {
         "source-plan": {
-          result: succeeded ? "success" : "failure",
-          outputs: { engineering: "true", validate },
+          result: planResult,
+          outputs: { engineering: "true", parallel: "true", validate },
         },
         "source-checks": { result: succeeded ? "success" : "failure" },
       },
@@ -806,8 +814,35 @@ test("merged PR result reuse skips only the validated body and preserves every f
     assert.equal(evaluate(name, "false", validate, false), "candidate-quality", validate);
   }
   for (const succeeded of [true, false]) {
-    assert.equal(evaluate(final.if, "false", "false", succeeded), false);
-    assert.notEqual(evaluate(name, "false", "false", succeeded), "candidate-quality");
+    assert.equal(evaluate(final.if, "false", "false", succeeded, "success"), true);
+    assert.equal(evaluate(name, "false", "false", succeeded, "success"), "source-metadata");
+    const enabled = final.steps.filter((step) =>
+      evaluate(step.if ?? "success()", "false", "false", succeeded, "success"),
+    );
+    assert.deepEqual(
+      enabled.map((step) => step.name),
+      ["Retain existing source validation"],
+    );
+    assert.equal(enabled[0].uses, undefined);
+    assert.match(enabled[0].run, /^echo /);
+  }
+  for (const [validate, planResult] of [
+    ["true", "success"],
+    ["", "success"],
+    ["unknown", "success"],
+    ...["failure", "cancelled", "skipped", "", "unknown"].map((result) => ["false", result]),
+  ]) {
+    assert.equal(evaluate(name, "false", validate, true, planResult), "candidate-quality");
+    const enabled = final.steps.filter((step) =>
+      evaluate(step.if ?? "success()", "false", validate, true, planResult),
+    );
+    assert.ok(enabled.some((step) => step.uses === "actions/checkout@v7"));
+    assert.ok(enabled.some((step) => step.id === "admission"));
+    assert.ok(
+      enabled.some((step) => step.name === "Report functional and performance results separately"),
+    );
+    assert.ok(enabled.some((step) => step.name === "Keep source workflow performance"));
+    assert.ok(enabled.every((step) => step.name !== "Retain existing source validation"));
   }
   for (const name of [
     "Check applicable repository source",
