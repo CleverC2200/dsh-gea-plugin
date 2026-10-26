@@ -11,9 +11,14 @@ import {
   copyFile,
   access,
   stat,
+  rename,
+  symlink,
+  realpath,
+  cp,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { builtArchive } from "./package-source-integrity.mjs";
 
@@ -249,6 +254,238 @@ async function requestFixture(
     env: { ...process.env, TMPDIR: work, TEMP: work, TMP: work, DSH_BUILD_ADMISSION: undefined },
   };
 }
+
+async function developmentDeliveryFixture(t, options) {
+  const fixture = await requestFixture(t, options);
+  const tools = join(fixture.work, "versioned-tools");
+  await mkdir(tools);
+  const scripts = join(tools, "scripts");
+  await rename(join(fixture.work, "cli"), scripts);
+  await copyFile(new URL("../package.json", import.meta.url), join(tools, "package.json"));
+  for (const file of ["plugin-split-development.mjs", "development-outputs.mjs"])
+    await copyFile(join(import.meta.dirname, file), join(scripts, file));
+  await copyFile(
+    join(import.meta.dirname, "delivery-package-runtime.mjs"),
+    join(scripts, "delivery-package-runtime.mjs"),
+  );
+  await cp(join(import.meta.dirname, "delivery-runtime"), join(scripts, "delivery-runtime"), {
+    recursive: true,
+  });
+  for (const file of ["shared/plugin-release.mjs", "capability/html-mcp.mjs"]) {
+    await mkdir(join(tools, "src", file.split("/")[0]), { recursive: true });
+    await writeFile(
+      join(tools, "src", file),
+      await readFile(new URL("../src/" + file, import.meta.url), "utf8"),
+    );
+  }
+  for (const [file, local] of [
+    ["deliver-packages.mjs", "shared/plugin-release.mjs"],
+    ["package-source-integrity.mjs", "capability/html-mcp.mjs"],
+  ])
+    await writeFile(
+      join(scripts, file),
+      (await readFile(join(scripts, file), "utf8"))
+        .replace(new URL("../src/" + local, import.meta.url).href, "../src/" + local)
+        .replace(`from ${JSON.stringify(import.meta.resolve("tar"))}`, 'from "tar"'),
+    );
+  const runtime = options?.runtime ?? join(fixture.work, "runtime");
+  if (!options?.runtime) {
+    await cp(join(import.meta.dirname, "delivery-runtime"), runtime, { recursive: true });
+    const pending = ["tar", "semver"].map((name) => [
+      name,
+      createRequire(import.meta.resolve(name)),
+    ]);
+    const copied = new Set();
+    while (pending.length) {
+      const [name, require] = pending.pop();
+      if (copied.has(name)) continue;
+      const source = require.resolve(name + "/package.json");
+      const manifest = JSON.parse(await readFile(source, "utf8"));
+      await cp(dirname(source), join(runtime, "node_modules", name), { recursive: true });
+      copied.add(name);
+      for (const dependency of Object.keys(manifest.dependencies ?? {}))
+        pending.push([dependency, createRequire(source)]);
+    }
+  }
+  execFileSync("git", ["init", "-q", tools]);
+  execFileSync("git", ["-C", tools, "add", "."]);
+  execFileSync("git", [
+    "-C",
+    tools,
+    "-c",
+    "user.name=Delivery fixture",
+    "-c",
+    "user.email=delivery@example.invalid",
+    "commit",
+    "-qm",
+    "fixture tools",
+  ]);
+  const toolHead = execFileSync("git", ["-C", tools, "rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  const launcher = join(fixture.work, "development.mjs");
+  await symlink(join(scripts, "plugin-split-development.mjs"), launcher);
+  const invoke = (args = []) =>
+    spawnSync(
+      process.execPath,
+      [
+        launcher,
+        "deliver",
+        "--input",
+        fixture.input,
+        "--destination",
+        fixture.destination,
+        "--tool-head",
+        toolHead,
+        "--runtime",
+        runtime,
+        ...args,
+      ],
+      { cwd: fixture.work, env: { ...fixture.env, NODE_OPTIONS: undefined }, encoding: "utf8" },
+    );
+  return { ...fixture, tools, toolHead, runtime, invoke };
+}
+
+test("the project delivery launcher uses committed tools once while preserving package bodies and bounded logs", async (t) => {
+  const marker = "PROJECT_DELIVERY_BODY_";
+  const fixture = await developmentDeliveryFixture(t, {
+    runtime: process.env.DSH_DELIVERY_TEST_RUNTIME,
+    successfulPackageManager: true,
+    hostSource: `module.exports = ${JSON.stringify(marker.repeat(4096))};\n`,
+  });
+  const input = await readFile(fixture.input, "utf8");
+  const result = fixture.invoke();
+  assert.equal(result.status, 0, result.stderr);
+  const records = result.stdout
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(records.filter((row) => row.status === "packaged").length, 1);
+  assert.deepEqual(records.find((row) => row.toolSource).toolSource, {
+    path: await realpath(fixture.tools),
+    head: fixture.toolHead,
+  });
+  assert.ok(!result.stdout.includes(marker));
+  assert.equal(await readFile(fixture.input, "utf8"), input);
+  const manifest = JSON.parse(await readFile(join(fixture.destination, "manifest.json"), "utf8"));
+  const gea = manifest.packages.find((row) => row.repo === "dsh-gea-plugin");
+  assert.match(
+    execFileSync(
+      "tar",
+      ["-xOf", join(fixture.destination, "packages", gea.filename), "package/lib/host.js"],
+      { encoding: "utf8" },
+    ),
+    /PROJECT_DELIVERY_BODY_/,
+  );
+  const evidence = join(fixture.destination, "evidence");
+  assert.deepEqual(
+    (await readdir(evidence)).filter((name) => /^commands?(?:-\d+)?\.log$/.test(name)),
+    ["commands.log"],
+  );
+  const logs = await readFile(join(evidence, "commands.log"), "utf8");
+  assert.ok(!logs.includes(marker));
+  assert.ok(Buffer.byteLength(logs) < 16384);
+});
+
+test("the project delivery launcher rejects an unpinned or different tool commit before writing delivery output", async (t) => {
+  const fixture = await developmentDeliveryFixture(t, { successfulPackageManager: true });
+  for (const head of ["", "0".repeat(40)]) {
+    const result = fixture.invoke(["--tool-head", head]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DEVELOPMENT_TOOL_HEAD_MISMATCH/);
+    await assert.rejects(access(fixture.destination));
+  }
+});
+
+test("the project delivery launcher rejects changes to its delivery runner and local execution contracts", async (t) => {
+  const fixture = await developmentDeliveryFixture(t, { successfulPackageManager: true });
+  for (const file of [
+    "package.json",
+    "scripts/deliver-packages.mjs",
+    "scripts/delivery-package-runtime.mjs",
+    "scripts/delivery-runtime/package.json",
+    "scripts/delivery-runtime/pnpm-lock.yaml",
+    "scripts/build-admission.mjs",
+    "scripts/development-repositories.mjs",
+    "scripts/supported-cores.mjs",
+    "scripts/supported-cores.json",
+    "scripts/package-source-integrity.mjs",
+    "src/shared/plugin-release.mjs",
+    "src/capability/html-mcp.mjs",
+  ]) {
+    const path = join(fixture.tools, file);
+    const original = await readFile(path);
+    await writeFile(path, Buffer.concat([original, Buffer.from("\n")]));
+    const result = fixture.invoke();
+    assert.notEqual(result.status, 0, file);
+    assert.match(result.stderr, /DEVELOPMENT_TOOL_SOURCE_MISMATCH/, file);
+    await assert.rejects(access(fixture.destination));
+    await writeFile(path, original);
+  }
+});
+
+test("the project delivery launcher preserves request Core, source and build-receipt rejection", async (t) => {
+  const fixture = await developmentDeliveryFixture(t, { successfulPackageManager: true });
+  const input = JSON.parse(await readFile(fixture.input, "utf8"));
+  const originalBuild = JSON.parse(await readFile(input.repositories[0].buildReceipt, "utf8"));
+  const invalidBuild = join(fixture.work, "invalid-build.json");
+  await writeFile(invalidBuild, JSON.stringify({ ...originalBuild, sourceHead: "0".repeat(40) }));
+  for (const [code, change] of [
+    [
+      "DELIVERY_CORE_INCOMPATIBLE",
+      (request) => {
+        request.core.head = "0".repeat(40);
+      },
+    ],
+    [
+      "DELIVERY_SOURCE_HEAD_MISMATCH",
+      (request) => {
+        request.repositories[0].head = "0".repeat(40);
+      },
+    ],
+    [
+      "DELIVERY_BUILD_RECEIPT_INVALID",
+      (request) => {
+        request.repositories[0].buildReceipt = invalidBuild;
+      },
+    ],
+  ]) {
+    const request = structuredClone(input);
+    change(request);
+    await writeFile(fixture.input, JSON.stringify(request));
+    const result = fixture.invoke();
+    assert.notEqual(result.status, 0, code);
+    assert.match(result.stderr, new RegExp(code));
+    assert.ok(!result.stdout.includes('"status":"packaged"'));
+    await assert.rejects(access(fixture.destination));
+  }
+});
+
+test("the project delivery launcher requires its fixed independent runtime before creating delivery output", async (t) => {
+  const fixture = await developmentDeliveryFixture(t, { successfulPackageManager: true });
+  const result = fixture.invoke(["--runtime", fixture.work]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DEVELOPMENT_DELIVERY_RUNTIME_INVALID/);
+  await assert.rejects(access(fixture.destination));
+  for (const file of ["package.json", "pnpm-lock.yaml"]) {
+    const path = join(fixture.runtime, file);
+    const original = await readFile(path);
+    await writeFile(path, Buffer.concat([original, Buffer.from("\n")]));
+    const changed = fixture.invoke();
+    assert.notEqual(changed.status, 0);
+    assert.match(changed.stderr, /DEVELOPMENT_DELIVERY_RUNTIME_INVALID/);
+    await assert.rejects(access(fixture.destination));
+    await writeFile(path, original);
+  }
+  const installed = join(fixture.runtime, "node_modules/tar");
+  const outside = join(fixture.work, "external-tar");
+  await rename(installed, outside);
+  await symlink(outside, installed);
+  const linked = fixture.invoke();
+  assert.notEqual(linked.status, 0);
+  assert.match(linked.stderr, /DEVELOPMENT_DELIVERY_RUNTIME_INVALID/);
+  await assert.rejects(access(fixture.destination));
+});
 
 test("delivery rejects a cwd-relative request before creating output", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "delivery-preflight-"));

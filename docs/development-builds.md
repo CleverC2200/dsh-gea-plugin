@@ -40,7 +40,24 @@ node ../dsh-gea-plugin/scripts/development-tasks.mjs finish
 
 `verify --input <absolute candidate.json> --sha256 <original bytes SHA256>` 调用既有完整 quality 门禁；本机默认做定向验证，常规完整验证放到登记 GitHub Actions。源码检查、CI、真实安装与业务验收分别留证。
 
-Workbench/Manage 原始 TGZ 使用 `scripts/pack-raw.mjs --input <absolute input.json> --repo <repo> --destination <absolute new output directory>`。输入中对应仓需提供现有交付合同的 path/head/buildReceipt；构建动作生成的回执可直接使用。目标父目录须存在。工具核明确 cwd、包身份、干净源、锁与构建产物，再预览允许文件、禁敏感隐藏文件并忽略打包脚本，写包后核归档。GEA 普通包、桌面包和交付继续沿原入口。
+Workbench/Manage 原始 TGZ 使用 `scripts/pack-raw.mjs --input <absolute input.json> --repo <repo> --destination <absolute new output directory>`。输入中对应仓需提供现有交付合同的 path/head/buildReceipt；构建动作生成的回执可直接使用。目标父目录须存在。工具核明确 cwd、包身份、干净源、锁与构建产物，再预览允许文件、禁敏感隐藏文件并忽略打包脚本，写包后核归档。GEA 单包与桌面包继续沿原入口。
+
+项目根的普通三包交付使用已采用的版本化 launcher：
+
+```sh
+node tools/development.mjs deliver --input "$DSH_DELIVERY_INPUT" --destination "$DSH_DELIVERY_DESTINATION" --tool-head "$DSH_DELIVERY_TOOL_HEAD" --runtime "$DSH_DELIVERY_RUNTIME"
+```
+
+`DSH_DELIVERY_INPUT` 为[三包交付合同](package-delivery.md)的绝对 request 路径，`DSH_DELIVERY_DESTINATION` 为绝对新目录，`DSH_DELIVERY_TOOL_HEAD` 为已采用工具 checkout 的完整提交 SHA，`DSH_DELIVERY_RUNTIME` 为本票独立运行依赖目录。交付动作要求显式提供这些值，不使用稳定开发输入的默认值。launcher 核实际工具 HEAD 及 runner、受控 loader、本地模块和合同的已提交字节，只运行同一 `deliver-packages.mjs` 一次，标准输出直接沿用原受控回执并补工具与 runtime 来源。它仍按原 request 核三仓/Core、源码锁、构建回执及包内容；owner 打包子程序取自 request 的 GEA checkout。采用新工具不改绑历史源码、SDK、主环境或在用客户端，`packaged` 的安装与业务验收边界仍见原合同。
+
+runtime 只需[固定 manifest](../scripts/delivery-runtime/package.json)与[固定小锁](../scripts/delivery-runtime/pnpm-lock.yaml)登记的 `tar`、`semver` 及其依赖，不需要 GEA 的完整依赖或 SDK。首次准备时，将这两份已提交文件复制到本票独有的绝对目录，沿仓库固定管理器执行：
+
+```sh
+cd "$DSH_DELIVERY_RUNTIME"
+corepack pnpm install --frozen-lockfile --ignore-scripts --prefer-offline
+```
+
+只复用公共内容 store，runtime 保持独立安装图。入口核 manifest/lock 与工具合同字节一致、直接包名称/版本匹配源码声明且位于 runtime 内。受控 loader 只重定向工具对 `tar`、`semver` 的导入，依赖解析也须留在该 runtime。它不审计安装包的每个文件，也不把保留在历史环境的依赖当作运行来源。
 
 ## 任务输出收尾
 
@@ -66,10 +83,7 @@ node scripts/development-tasks.mjs finish --outputs /absolute/task/outputs.json
       "kind": "generated",
       "disposition": "retain",
       "reason": "当前验收窗口仍使用，窗口验收结束后退场",
-      "restoreFrom": [
-        "/absolute/retained/input.json",
-        "/absolute/retained/build-receipt.json"
-      ]
+      "restoreFrom": ["/absolute/retained/input.json", "/absolute/retained/build-receipt.json"]
     },
     {
       "path": "/absolute/task/original-failure.json",
@@ -98,4 +112,4 @@ node tools/development.mjs report --input /absolute/frozen-input.json
 node tools/development.mjs finish --input /absolute/frozen-input.json --outputs /absolute/task/outputs.json
 ```
 
-根入口输出为逐行 JSON，最后一行为本票处置和实际 `toolSource.path/head`。只有实现合并或测试通过，不能声称根入口已采用；应从根原路径实际运行并保存工具来源、未改的冻结输入和最终处置回执。该链接仍是 reader，回收 implementer 时保留被链接的 integration。
+根收尾入口输出为逐行 JSON，最后一行为本票处置和实际 `toolSource.path/head`。只有实现合并或测试通过，不能声称根入口已采用；应从根原路径实际运行并保存工具来源、未改的冻结输入和最终处置回执。该链接仍是 reader，回收 implementer 时保留被链接的 integration。
