@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
 const session = "session-11111111-1111-4111-8111-111111111111";
-test("the received packages preserve governed customer login and mock view-only grants", async (t) => {
+test("the received packages preserve governed login and their declared report or view-only grants", async (t) => {
   const definitions = new Map(),
     pages = new Map(),
     cleanups = [];
@@ -80,6 +80,8 @@ test("the received packages preserve governed customer login and mock view-only 
       const reportStore = item.manifest.id === "inventory-orderworkbench";
       assert.equal(item.manifest.reportStore, reportStore ? "order" : undefined);
       assert.equal(item.manifest.gea.readonly, !reportStore);
+      const mcp = JSON.parse(await readFile(resolve(item.directory, "mcp.json"), "utf8"));
+      assert.deepEqual(mcp.capabilities, ["governed-sql-read"]);
       assert.equal(definition.cube, true);
       assert.equal(capability.maxEffect, reportStore ? "submit" : "view");
       assert.deepEqual(capability.layers, reportStore ? ["read", "draft", "submit"] : ["read"]);

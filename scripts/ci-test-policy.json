@@ -125,9 +125,17 @@
     },
     "scripts/quality-worker-inputs.test.mjs": {
       "dependencies": true
+    },
+    "tests/aps-default-policy.test.mjs": {
+      "dependencies": false
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^presets/(?:execution|prompt)-policy\\.json$",
+      "tests": ["tests/aps-default-policy.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:scripts/source-formal-receipt(?:\\.test)?\\.mjs|scripts/serial-merge-policy\\.json|\\.github/workflows/source-quality\\.yml)$",

@@ -326,9 +326,14 @@ test("多选批量退回：共用一个退回原因，逐笔带上", { timeout: 
   const confirm = frame.getByRole("button", { name: "确认批量退回", exact: true });
   // 退回原因必填。
   await expect(confirm).toBeDisabled();
-  await dialog.getByLabel("批量审批备注").fill("促销依据待补充");
+  await expect(frame.getByTestId("regional-approval-batch-summary")).toContainText(
+    "其中 2 笔可提交",
+  );
+  const remark = dialog.getByLabel("批量审批备注");
+  await remark.fill("促销依据待补充");
+  await expect(remark).toHaveValue("促销依据待补充");
   await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
-  await expect(confirm).toBeEnabled();
+  await expect(confirm).toBeEnabled({ timeout: 15000 });
   await confirm.click();
 
   await expect(frame.getByTestId("regional-approval-batch-result")).toContainText("成功 2 笔");

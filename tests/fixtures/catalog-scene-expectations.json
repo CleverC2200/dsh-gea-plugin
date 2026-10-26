@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual; inventory-aqkc and inventory-fc use the independently committed Manage 617b393 author resources",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual; inventory-fc fixed-tool and calculation rules use merged Manage #81 author source; inventory AQKC and FC full source bytes follow merged Manage #91 at 662413674cfac1fd2942f1a8e4d03b3fd3847f2c",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -46,7 +46,7 @@
         "sha256": "d60e791fc1b90eb789539a5637b6d6d9135c0b5ad191aab5c599d2644c08337f",
         "name": "inventory-aqkc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "617b393de23d880c7e4ff6ffea16d90a17a460c3",
+        "sourceHead": "662413674cfac1fd2942f1a8e4d03b3fd3847f2c",
         "sourceFile": "business-resources/inventory-aqkc/skills/aqkc/SKILL.md"
       },
       {
@@ -73,7 +73,7 @@
         "sha256": "a3226e0f3e5b7729e8adf6c47b843806a513e266de4bfe3aae8381fedbaf4377",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "617b393de23d880c7e4ff6ffea16d90a17a460c3",
+        "sourceHead": "662413674cfac1fd2942f1a8e4d03b3fd3847f2c",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {

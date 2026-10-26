@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { profile } from "./profile.mjs";
 
 test(
@@ -37,20 +37,11 @@ test(
     );
     for (const [id, name] of htmlPages) {
       const root = join(directory, id);
+      const businessProfile = profileFor(`gea-html-${id}`);
+      assert.ok(businessProfile);
+      const skills = businessProfile.skills;
       roots.push(root);
-      const skills =
-        id === "inventory-apsplan"
-          ? ["plan-operations-weekly-report", "answer-visualization", "order-satisfaction-analysis"]
-          : [id];
-      const skillFiles =
-        id === "inventory-apsplan"
-          ? skills.map((skill) => `skills/${skill}/SKILL.md`)
-          : ["skills/page/SKILL.md"];
-      for (const [index, skill] of skills.entries()) {
-        const file = join(root, skillFiles[index]);
-        await mkdir(dirname(file), { recursive: true });
-        await writeFile(file, `---\nname: ${skill}\ndescription: 工作台验证\n---\n只读查看页面。`);
-      }
+      await mkdir(root, { recursive: true });
       await writeFile(
         join(root, "plugin.json"),
         JSON.stringify({
@@ -59,7 +50,7 @@ test(
           name,
           version: "0.0.0",
           html: "index.html",
-          skills: skillFiles,
+          skills: skills.map((skill) => `skills/${skill}/SKILL.md`),
           mcp: "mcp.json",
           declarations: { page: "page.json", capability: "capability.json" },
           agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
@@ -83,6 +74,13 @@ test(
           capabilities: ["governed-sql-read"],
         }),
       );
+      for (const skill of skills) {
+        await mkdir(join(root, "skills", skill), { recursive: true });
+        await writeFile(
+          join(root, "skills", skill, "SKILL.md"),
+          `---\nname: ${skill}\ndescription: 工作台验证\n---\n只读查看页面。`,
+        );
+      }
       await writeFile(
         join(root, "index.html"),
         `<!doctype html><html><body><section style="padding:24px"><h1>${name}</h1><table><thead><tr><th>客户</th><th>计划</th></tr></thead><tbody><tr><td>客户甲</td><td>120</td></tr></tbody></table></section><script>addEventListener('message',event=>{if(event.data.protocol!=='gea-html-v2'||event.data.type!=='connect')return;const port=event.ports[0];port.start();port.postMessage({type:'catalog',session:event.data.context.session,elements:[{id:'readout:customer',role:'field',label:'客户',value:'客户甲'},{id:'readout:plan',role:'field',label:'计划',value:'120'}]});});parent.postMessage({protocol:'gea-html-v2',type:'ready'},'*')</script></body></html>`,
@@ -109,6 +107,9 @@ test(
           consumerCode: profileFor(`gea-html-${id}`).consumerCode,
           persona: "只读测试页面，保留用户会话与权限边界。",
           skills,
+          ...(businessProfile.crossConsumers
+            ? { crossConsumers: businessProfile.crossConsumers }
+            : {}),
         },
       });
     }
