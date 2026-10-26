@@ -50,9 +50,12 @@ function within(root, path) {
   return name === "" || (!isAbsolute(name) && name !== ".." && !name.startsWith("../"));
 }
 function command(file, args, cwd) {
-  const result = spawnSync(file, args, { cwd, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const result = spawnSync(file, args, {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
   if (diagnosticDirectory) {
-    // Keep diagnostics without letting a matching URL or credential line reach a transcript.
     const redact = (text) =>
       String(text ?? "")
         .split("\n")
@@ -62,9 +65,18 @@ function command(file, args, cwd) {
             : line,
         )
         .join("\n");
+    const diagnostic = (text) => {
+      const bytes = Buffer.from(redact(text));
+      return bytes.length > 4096
+        ? bytes.subarray(0, 4096).toString("utf8") + "\n[truncated]"
+        : bytes.toString("utf8");
+    };
+    const summary = `exit=${result.status}\nstdout_bytes=${Buffer.byteLength(result.stdout ?? "")}\nstdout_sha256=${digest(result.stdout ?? "")}\nstderr_bytes=${Buffer.byteLength(result.stderr ?? "")}\nstderr_sha256=${digest(result.stderr ?? "")}\n`;
     writeFileSync(
       join(diagnosticDirectory, `command-${++commandNumber}.log`),
-      `exit=${result.status}\n${redact(result.stdout)}\n${redact(result.stderr)}\n`,
+      result.error || result.status !== 0
+        ? `${summary}stdout:\n${diagnostic(result.stdout)}\nstderr:\n${diagnostic(result.stderr)}\n`
+        : summary,
       { mode: 0o600 },
     );
   }
