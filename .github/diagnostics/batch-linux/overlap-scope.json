@@ -1,0 +1,135 @@
+{
+  "originalRun": 40206693766,
+  "targetFile": "tests/group-selection-web.test.mjs",
+  "targetFirstCase": "多选批量通过：勾选 3 笔一次性逐笔提交",
+  "files": [
+    "tests/group-selection-web.test.mjs",
+    "tests/model.test.mjs",
+    "tests/month-aggregation-context-web.test.mjs",
+    "tests/mps-plan-page.test.mjs",
+    "tests/navigation-catalog-rpc.test.mjs",
+    "tests/notifications.test.mjs"
+  ],
+  "expectedTests": 19,
+  "maxRounds": 3,
+  "concurrency": 3,
+  "resourceIntervalMs": 1000,
+  "delayFromFirstTargetPreparationMs": {
+    "tests/model.test.mjs": 41181,
+    "tests/month-aggregation-context-web.test.mjs": 54963
+  },
+  "originalThirdCaseApproximateInterval": {
+    "startedAt": "2026-10-25T15:35:27.27Z",
+    "finishedAt": "2026-10-25T15:36:05.71Z",
+    "basis": "second case completed 15:35:27.267; failed third case duration38433.462346ms; exact input timing unavailable"
+  },
+  "originalOverlappingFiles": [
+    {
+      "file": "tests/model.test.mjs",
+      "startCount": 1,
+      "completeCount": 1,
+      "summaryCount": 1,
+      "startedAt": "2026-10-25T15:34:58.866Z",
+      "finishedAt": "2026-10-25T15:36:01.789Z",
+      "durationMs": 62923.973931,
+      "passed": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "success": true
+    },
+    {
+      "file": "tests/month-aggregation-context-web.test.mjs",
+      "startCount": 1,
+      "completeCount": 1,
+      "summaryCount": 1,
+      "startedAt": "2026-10-25T15:35:12.648Z",
+      "finishedAt": "2026-10-25T15:35:47.051Z",
+      "durationMs": 34403.516618,
+      "passed": true,
+      "counts": {
+        "tests": 1,
+        "failed": 0,
+        "passed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 0
+      },
+      "success": true
+    },
+    {
+      "file": "tests/mps-plan-page.test.mjs",
+      "startCount": 1,
+      "completeCount": 1,
+      "summaryCount": 1,
+      "startedAt": "2026-10-25T15:35:47.053Z",
+      "counts": {
+        "tests": 1,
+        "failed": 0,
+        "passed": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 0
+      },
+      "success": true,
+      "finishedAt": "2026-10-25T15:36:20.399Z",
+      "durationMs": 33347.568506,
+      "passed": true
+    },
+    {
+      "file": "tests/navigation-catalog-rpc.test.mjs",
+      "startCount": 1,
+      "completeCount": 1,
+      "summaryCount": 1,
+      "startedAt": "2026-10-25T15:36:01.793Z",
+      "finishedAt": "2026-10-25T15:36:02.168Z",
+      "durationMs": 381.626691,
+      "passed": true,
+      "counts": {
+        "tests": 2,
+        "failed": 0,
+        "passed": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 2,
+        "suites": 0
+      },
+      "success": true
+    },
+    {
+      "file": "tests/notifications.test.mjs",
+      "startCount": 1,
+      "completeCount": 1,
+      "summaryCount": 1,
+      "startedAt": "2026-10-25T15:36:02.169Z",
+      "counts": {
+        "tests": 10,
+        "failed": 0,
+        "passed": 10,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "topLevel": 1,
+        "suites": 0
+      },
+      "success": true,
+      "finishedAt": "2026-10-25T15:36:52.260Z",
+      "durationMs": 50091.142431,
+      "passed": true
+    }
+  ],
+  "stop": "stop after first non-passing round, incomplete collection, input drift, or maximum three rounds",
+  "limits": "Only the five files overlapping the original third case plus its original full three-case file. Initial other-file load omitted; two initial background files delayed before test module evaluation. No delays or changes inside original cases."
+}

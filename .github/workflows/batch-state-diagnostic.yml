@@ -1,5 +1,5 @@
 name: batch-state-linux-diagnostic
-run-name: "Frozen original three cases, Linux public dialog state"
+run-name: "Frozen six-file overlap, Linux dialog and resource state"
 on:
   push:
     branches: [codex/gea-batch-linux-diagnostic-20261026]
@@ -59,7 +59,7 @@ jobs:
           path: source/official-core
           fetch-depth: 0
           persist-credentials: false
-      - name: Require original runner image and Node before preparation
+      - name: Require accepted runner image, Node, Chrome and kernel before preparation
         run: node "$GITHUB_WORKSPACE/experiment/.github/diagnostics/batch-linux/sample.mjs" --environment-only
       - name: Select preparation requirements, without executing selected tests
         run: node scripts/source-quality.mjs --phase affected-plan
@@ -94,7 +94,7 @@ jobs:
         run: node scripts/source-quality.mjs --phase affected-prepare
       - name: Prepare, build and enforce original static/type gates without running the full test plan
         run: node "$GITHUB_WORKSPACE/experiment/.github/diagnostics/batch-linux/prepare.mjs"
-      - name: Run at most three rounds of the unchanged original three cases
+      - name: Run at most three rounds of the fixed six-file overlap
         timeout-minutes: 15
         run: node "$GITHUB_WORKSPACE/experiment/.github/diagnostics/batch-linux/sample.mjs"
       - name: Preserve raw public state, original reports and frozen inputs
