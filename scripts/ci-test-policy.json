@@ -63,6 +63,9 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/source-formal-receipt.test.mjs": {
+      "dependencies": false
+    },
     "scripts/workflow-preflight.test.mjs": {
       "dependencies": false
     },
@@ -122,6 +125,11 @@
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^(?:scripts/source-formal-receipt(?:\\.test)?\\.mjs|scripts/serial-merge-policy\\.json|\\.github/workflows/source-quality\\.yml)$",
+      "tests": ["scripts/source-formal-receipt.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:ci-core-policy\\.(?:json|mjs)|supported-cores\\.json)$",
@@ -549,6 +557,21 @@
       "repo": "dsh-agent-workbench",
       "pattern": "^\\.gitignore$",
       "tests": ["scripts/quality-workbench.test.mjs", "scripts/quality-prepared-inputs.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-test-node-runner\\.mjs$",
+      "tests": ["scripts/quality-test-execution.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-(?:controller|runner|artifacts|runtime|policy)\\.(?:mjs|json)$|^scripts/fixtures/serial-merge-controller\\.json$|^\\.github/(?:actions/serial-merge/|workflows/serial-merge\\.yml$)",
+      "tests": [
+        "scripts/serial-merge-controller.test.mjs",
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-artifacts.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs"
+      ]
     }
   ],
   "testOwners": {

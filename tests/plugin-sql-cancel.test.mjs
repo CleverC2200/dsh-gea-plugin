@@ -343,3 +343,52 @@ test("four inventory Consumers reuse completed SQL snapshots and explicit refres
   );
   assert.equal(physicalReads, 5, "current capability must still gate cache hits");
 });
+
+test("all four inventory Consumers recover the first empty snapshot and cache the recovered data", async (t) => {
+  const business = fixture(t);
+  const consumers = ["base-safety-stock", "branch-inventory", "full-chain-inventory", "aps"];
+  business.setCapabilities(
+    module.exports.createCapabilityRegistry(
+      consumers.map((consumerCode) => ({
+        id: consumerCode,
+        label: consumerCode,
+        maxEffect: "view",
+        skills: [],
+        routing: { keywords: [], summary: consumerCode },
+        data: { consumerCode, tables: [], rules: [] },
+      })),
+    ),
+  );
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    if (url.endsWith("/session")) return success(url, init);
+    requests.push(JSON.parse(init.body));
+    return Response.json({
+      success: true,
+      result: { rows: [{ day: requests.length % 2 ? null : "2026-10-25" }] },
+    });
+  });
+  for (const consumerCode of consumers) {
+    const input = {
+      consumerCode,
+      sql: "SELECT MAX(t.stat_date) AS day FROM inventory AS t",
+      parameters: {},
+    };
+    for (let i = 0; i < 2; i++) {
+      const result = await business.pluginSql(
+        input,
+        new AbortController().signal,
+        true,
+        undefined,
+        true,
+      );
+      assert.equal(result.rows[0].day, "2026-10-25");
+    }
+  }
+  assert.equal(
+    requests.length,
+    8,
+    "one empty read plus one recovery per Consumer; subsequent reads use cache",
+  );
+  for (let i = 0; i < requests.length; i += 2) assert.deepEqual(requests[i], requests[i + 1]);
+});

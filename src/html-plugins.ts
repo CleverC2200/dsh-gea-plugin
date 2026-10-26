@@ -415,6 +415,18 @@ export async function registerHtmlPlugins(
                   ? E
                   : never,
               ) => capability.allows("gea-html-" + item.id, effect),
+              ...(item.id === "inventory-fc" && !item.mock
+                ? {
+                    branchDms: (parameters: any, requestSignal: AbortSignal) => {
+                      if (business.surfaceFor(session) !== surface)
+                        throw Error("PAGE_OWNER_RELEASED");
+                      return business.branchDms(
+                        parameters,
+                        AbortSignal.any([requestSignal, grantSignal]),
+                      );
+                    },
+                  }
+                : {}),
               readSql: async (parameters: any, requestSignal: AbortSignal) => {
                 if (item.mock) throw Error("MOCK_DATA_ONLY");
                 const activeSignal = AbortSignal.any([requestSignal, grantSignal]);

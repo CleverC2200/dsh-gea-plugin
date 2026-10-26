@@ -136,6 +136,10 @@ export async function readConfiguredHtmlQuery(
       },
       signal,
       true,
+      undefined,
+      queryId.startsWith("source.") ||
+        queryId === config.overviewQuickStock ||
+        queryId === "current-shortage.summary",
     );
     signal.throwIfAborted();
     return {
