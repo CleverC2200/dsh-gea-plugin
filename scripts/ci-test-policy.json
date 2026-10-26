@@ -554,6 +554,16 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-test-node-runner\\.mjs$",
       "tests": ["scripts/quality-test-execution.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-(?:controller|runner|artifacts|runtime|policy)\\.(?:mjs|json)$|^scripts/fixtures/serial-merge-controller\\.json$|^\\.github/(?:actions/serial-merge/|workflows/serial-merge\\.yml$)",
+      "tests": [
+        "scripts/serial-merge-controller.test.mjs",
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-artifacts.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs"
+      ]
     }
   ],
   "testOwners": {

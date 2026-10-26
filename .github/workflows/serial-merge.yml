@@ -1,0 +1,55 @@
+name: GEA serial merge
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        description: Enqueue an approved head or reconcile a prior request
+        options: [enqueue, recover]
+        default: enqueue
+        required: true
+      pr:
+        type: string
+        description: Same-repository PR number for enqueue
+      head:
+        type: string
+        description: Full approved source head SHA with successful initial quality check
+      recovery_request_id:
+        type: string
+        description: Original request run ID for maintainers to reconcile
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: gea-serial-merge
+  queue: max
+  cancel-in-progress: false
+jobs:
+  controller:
+    if: github.repository == 'CleverC2200/dsh-gea-plugin' && github.ref == 'refs/heads/main' && vars.GEA_MERGE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    environment: gea-serial-merge
+    env:
+      GEA_MERGE_WORKFLOW_ID: ${{ vars.GEA_MERGE_WORKFLOW_ID }}
+      GEA_MERGE_ENABLED: ${{ vars.GEA_MERGE_ENABLED }}
+      GEA_MERGE_APP_ID: ${{ vars.GEA_MERGE_APP_ID }}
+      GEA_MERGE_INSTALLATION_ID: ${{ vars.GEA_MERGE_INSTALLATION_ID }}
+      GEA_MERGE_RULESET_ID: ${{ vars.GEA_MERGE_RULESET_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - name: Install the isolated Action tool
+        working-directory: .github/actions/serial-merge
+        run: corepack pnpm --ignore-workspace install --frozen-lockfile --ignore-scripts
+      - name: Run trusted serial merge
+        id: serial-merge
+        uses: ./.github/actions/serial-merge
+        with:
+          github-token: ${{ github.token }}
+          app-private-key: ${{ secrets.GEA_MERGE_APP_PRIVATE_KEY }}
