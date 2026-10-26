@@ -62,8 +62,10 @@ test("order and customer pages register their complete Agent profiles without wi
       assert.equal(text.match(/^name: (.+)$/m)?.[1].trim(), name);
     }
     assert.equal(pages.has(item.manifest.id), true);
-    assert.equal(capability.maxEffect, "view");
+    const report = item.manifest.id === "inventory-orderworkbench";
+    assert.equal(capability.maxEffect, report ? "submit" : "view");
+    assert.deepEqual(capability.layers, report ? ["read", "draft", "submit"] : ["read"]);
     assert.equal(definition.profile.consumerCode, item.manifest.gea.consumerCode);
-    assert.equal(definition.cube, item.manifest.id !== "inventory-orderworkbench");
+    assert.equal(definition.cube, true);
   }
 });

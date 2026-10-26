@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
 const session = "session-11111111-1111-4111-8111-111111111111";
-test("the received packages preserve governed customer login and mock view-only grants", async (t) => {
+test("the received packages preserve governed login and their declared report or view-only grants", async (t) => {
   const definitions = new Map(),
     pages = new Map(),
     cleanups = [];
@@ -77,11 +77,20 @@ test("the received packages preserve governed customer login and mock view-only 
     const persona = JSON.parse(await readFile(resolve(definition.root, definition.prompt), "utf8"));
     assert.equal(persona.consumerCode, definition.profile.consumerCode);
     if (item.manifest.mode !== "mock") {
-      assert.equal(item.manifest.gea.readonly, true);
+      const report = item.manifest.id === "inventory-orderworkbench";
+      assert.equal(item.manifest.gea.readonly, !report);
+      assert.equal(capability.maxEffect, report ? "submit" : "view");
+      assert.deepEqual(capability.layers, report ? ["read", "draft", "submit"] : ["read"]);
+      const mcp = JSON.parse(await readFile(resolve(item.directory, "mcp.json"), "utf8"));
+      assert.deepEqual(mcp.capabilities, ["governed-sql-read"]);
       assert.equal(definition.cube, true);
       assert.match(
         persona.persona,
-        item.manifest.id === "inventory-customer" ? /客户库存\s*Agent/ : /订单履约/,
+        item.manifest.id === "inventory-customer"
+          ? /客户库存\s*Agent/
+          : report
+            ? /订单工作台/
+            : /订单履约/,
       );
       await assert.rejects(
         pages.get(item.manifest.id)(session, id, new AbortController().signal),

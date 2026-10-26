@@ -145,9 +145,13 @@ test(
     await page.goto(app.origin);
     const frame = await openSalesPlan(page);
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
-    await frame.getByRole("combobox", { name: "销售计划周期", exact: true }).click();
-    await expect(frame.getByRole("option", { name: "2026-09", exact: true })).toHaveCount(1);
-    await expect(frame.getByRole("option")).toHaveCount(1);
+    const period = frame.getByRole("combobox", { name: "销售计划周期", exact: true });
+    await period.click();
+    await expect(period).toHaveAttribute("aria-expanded", "true");
+    const options = frame.getByRole("option");
+    await expect(options).toHaveCount(1);
+    await expect(options).toHaveText(["2026年9月"]);
+    await expect(options).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Escape");
     // 节点条默认收起（V1.8 #05），先展开才能看到各节点。
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
