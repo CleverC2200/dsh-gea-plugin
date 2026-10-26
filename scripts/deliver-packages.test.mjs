@@ -10,6 +10,7 @@ import {
   readFile,
   copyFile,
   access,
+  stat,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -372,18 +373,38 @@ test("successful delivery keeps package bodies out of bounded command diagnostic
       hostSource,
     );
   }
-  const logs = (await readdir(join(fixture.destination, "evidence"))).filter((name) =>
-    /^command-\d+\.log$/.test(name),
-  );
-  assert.ok(logs.length > 0);
-  for (const name of logs) {
-    const bytes = await readFile(join(fixture.destination, "evidence", name));
-    assert.ok(bytes.length <= 512, `${name} has ${bytes.length} bytes`);
-    assert.ok(!bytes.includes(marker), name);
-    assert.match(bytes.toString(), /^exit=0\n/);
-    assert.match(bytes.toString(), /stdout_bytes=\d+\n/);
-    assert.match(bytes.toString(), /stdout_sha256=[a-f0-9]{64}\n/);
+  const evidence = join(fixture.destination, "evidence");
+  const logs = (await readdir(evidence)).filter((name) => /^commands?(?:-\d+)?\.log$/.test(name));
+  assert.deepEqual(logs, ["commands.log"]);
+  const bytes = await readFile(join(evidence, logs[0]));
+  assert.ok(!bytes.includes(marker));
+  const summaries = bytes
+    .toString()
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.ok(summaries.length > 1);
+  for (const [index, summary] of summaries.entries()) {
+    assert.equal(summary.command, index + 1);
+    assert.equal(summary.exit, 0);
+    assert.equal(typeof summary.stdoutBytes, "number");
+    assert.match(summary.stdoutSha256, /^[a-f0-9]{64}$/);
   }
+  const info = await stat(join(evidence, logs[0]));
+  const files = await Promise.all(
+    (await readdir(evidence)).map((name) => stat(join(evidence, name))),
+  );
+  t.diagnostic(
+    JSON.stringify({
+      commandLogFiles: logs.length,
+      commands: summaries.length,
+      bytes: info.size,
+      allocatedBytes: info.blocks * 512,
+      evidenceFiles: files.filter((file) => file.isFile()).length,
+      evidenceBytes: files.reduce((sum, file) => sum + file.size, 0),
+      evidenceAllocatedBytes: files.reduce((sum, file) => sum + file.blocks * 512, 0),
+    }),
+  );
 });
 
 test("git and workspace runtime dependency inputs cannot publish a delivery manifest", async (t) => {
@@ -473,6 +494,12 @@ process.exit(7);\n`,
   assert.ok(!result.stderr.includes("private-command-token"));
   assert.ok(!result.stderr.includes("private-bearer-token"));
   const diagnostic = await readFile(join(fixture.destination, "evidence/command-1.log"), "utf8");
+  assert.deepEqual(
+    (await readdir(join(fixture.destination, "evidence"))).filter((name) =>
+      /^commands?(?:-\d+)?\.log$/.test(name),
+    ),
+    ["command-1.log"],
+  );
   assert.match(diagnostic, /^exit=[1-9]\d*\n/);
   assert.match(diagnostic, /redacted sensitive command output/);
   assert.ok(!diagnostic.includes("private-command-token"));

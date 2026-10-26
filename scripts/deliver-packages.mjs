@@ -14,7 +14,7 @@ import {
   rm,
   copyFile,
 } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -71,14 +71,24 @@ function command(file, args, cwd) {
         ? bytes.subarray(0, 4096).toString("utf8") + "\n[truncated]"
         : bytes.toString("utf8");
     };
-    const summary = `exit=${result.status}\nstdout_bytes=${Buffer.byteLength(result.stdout ?? "")}\nstdout_sha256=${digest(result.stdout ?? "")}\nstderr_bytes=${Buffer.byteLength(result.stderr ?? "")}\nstderr_sha256=${digest(result.stderr ?? "")}\n`;
-    writeFileSync(
-      join(diagnosticDirectory, `command-${++commandNumber}.log`),
-      result.error || result.status !== 0
-        ? `${summary}stdout:\n${diagnostic(result.stdout)}\nstderr:\n${diagnostic(result.stderr)}\n`
-        : summary,
-      { mode: 0o600 },
-    );
+    const summary = {
+      command: ++commandNumber,
+      exit: result.status,
+      stdoutBytes: Buffer.byteLength(result.stdout ?? ""),
+      stdoutSha256: digest(result.stdout ?? ""),
+      stderrBytes: Buffer.byteLength(result.stderr ?? ""),
+      stderrSha256: digest(result.stderr ?? ""),
+    };
+    if (result.error || result.status !== 0)
+      writeFileSync(
+        join(diagnosticDirectory, `command-${summary.command}.log`),
+        `exit=${result.status}\n${JSON.stringify(summary)}\nstdout:\n${diagnostic(result.stdout)}\nstderr:\n${diagnostic(result.stderr)}\n`,
+        { mode: 0o600 },
+      );
+    else
+      appendFileSync(join(diagnosticDirectory, "commands.log"), JSON.stringify(summary) + "\n", {
+        mode: 0o600,
+      });
   }
   if (result.error || result.status !== 0) fail("DELIVERY_COMMAND_FAILED");
   return result.stdout;
