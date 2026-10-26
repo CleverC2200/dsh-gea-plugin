@@ -1,5 +1,7 @@
 # 三包本地交付入口
 
+从插件拆分项目根交付时，使用[统一开发入口](development-builds.md)的 `deliver` 动作，显式绑定已采用工具提交和本次 request。以下仓内入口继续调用同一交付实现；历史冻结 checkout 保持原工具版本。
+
 `delivery:packages` 为 [支持的官方 Core](../scripts/supported-cores.json) 生成同一组三个普通插件包、SHA256SUMS、manifest.json 和面向用户的 INSTALL.md。两版固定 Core 与各自 exact SDK peers 由该声明统一登记，不能据旧单版说明排除其中一版。用户安装与升级步骤见 [安装说明](install.md)；同次生成的 INSTALL.md 绑定具体包集合。
 
 此入口只做当前明确的三包交付。它不构建 owner 源码，不安装 profile、不启动客户端、不登录、不访问模型或业务，也不发布到远端。GenUI/Sidebar 是可选增强，三核心正常安装不得强制要求它们。未安装或未启用辅助插件时不具备其专用工具。三个 tgz 仍需要联网获取普通 npm 运行依赖，不能称为离线自包含。
@@ -89,7 +91,7 @@ corepack pnpm run test:delivery:packages
 
 入口首先核全部输入、固定 Core、源码 HEAD/锁、构建产物、W/M raw 包公共 exports 和 exact SDK peers。全部通过后，按 GEA source 的明确 cwd 串行复用 prepare-package、package-companion 和 package。三包全部检查通过才移动最终包目录并写成功 manifest。失败返回非零，不输出成功回执，不执行后续打包步骤；已创建的本次失败目录保留，不覆盖或自动重试。
 
-终端只输出固定诊断码或成功文件清单。子命令的诊断落在本次 evidence/command-N.log，权限 0600；含 token、Authorization、Bearer、password、secret、credential 的行整体遮蔽，避免 URL 搜索把 token 带进会话。日志用于排查，不是启动或业务证据。前置失败发生在写输出前时只返回固定错误码。
+终端只输出固定诊断码或成功文件清单。成功子命令在本次 `evidence/commands.log` 追加退出状态、输出字节数和摘要，保留完整扫描但不保存包正文。失败子命令在 `evidence/command-N.log` 保存有限诊断，每个输出流最多保留 4096 字节脱敏上下文及截断标记。日志权限为 0600；含 token、Authorization、Bearer、password、secret、credential 的行整体遮蔽，避免 URL 搜索把 token 带进会话。日志用于排查，不是启动或业务证据。前置失败发生在写输出前时只返回固定错误码。
 
 成功目录含 packages 下的三个 tgz、SHA256SUMS、INSTALL.md、manifest.json 和 evidence 元数据/锁/安全诊断。成功后移除本次新建生产 stage 及其 node_modules，保留生成图的锁。manifest 的 source/build 绝对路径只用于私有来源核对，不是用户安装前提；包内不能含开发 link、机器路径、强制辅助插件或另一份 SDK。
 
