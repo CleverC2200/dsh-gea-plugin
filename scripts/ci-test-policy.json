@@ -90,6 +90,9 @@
     "scripts/development-tasks.test.mjs": {
       "dependencies": false
     },
+    "scripts/development-finish.test.mjs": {
+      "dependencies": false
+    },
     "scripts/quality-prepared-inputs.test.mjs": {
       "dependencies": false
     },
@@ -161,6 +164,17 @@
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/build\\.mjs$",
       "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/development-tasks.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:development-(?:outputs|tasks|finish\\.test)|plugin-split-development)\\.mjs$",
+      "tests": ["scripts/development-finish.test.mjs"],
+      "sourceTests": ["scripts/development-finish.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:plugin-split-development\\.mjs|delivery-package-runtime\\.mjs|delivery-runtime/(?:package\\.json|pnpm-lock\\.yaml))$",
+      "tests": ["scripts/deliver-packages.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",

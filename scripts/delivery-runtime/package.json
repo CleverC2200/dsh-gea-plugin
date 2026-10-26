@@ -1,0 +1,10 @@
+{
+  "name": "dsh-delivery-runtime",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.27.0",
+  "dependencies": {
+    "semver": "7.7.4",
+    "tar": "7.5.22"
+  }
+}
