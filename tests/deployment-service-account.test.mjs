@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { readDeployment } from "../scripts/deployment.mjs";
+import { businessDeploymentPatch, readDeployment } from "../scripts/deployment.mjs";
 
 const account = {
   clientIdEnv: "GEA_RESUBMIT_TEST_CLIENT",
@@ -147,6 +147,28 @@ async function configFile(t, value = deployment) {
   await writeFile(path, JSON.stringify(value));
   return path;
 }
+
+test("DMS environment bindings reach Host in source and bundle deployments", async (t) => {
+  const dms = {
+    test: {
+      gatewayUrl: "http://gateway.test/synear_test/DMS",
+      manageUrl: "https://manage.example.test",
+      secretEnv: "GEA_DMS_TEST_SECRET",
+      users: [{ tenantId: "tenant-1", userId: "user-1", workcode: "employee-1" }],
+    },
+  };
+  const config = await readDeployment(
+    await configFile(t, { ...deployment, serviceAccounts: undefined, dms }),
+    { credentialEnv: {} },
+  );
+  for (const bundle of [false, true]) {
+    const rows = businessDeploymentPatch(config, "/fixture/plugin", "/fixture/runtime", {
+      bundle,
+    });
+    const host = rows.flatMap((row) => row.insert ?? [row]).find((row) => row.id === "gea-proof");
+    assert.deepEqual(host.config.dms, dms);
+  }
+});
 
 test("the plugin deployment loader supplies desktop Host credentials from Keychain without serializing them", async (t) => {
   const path = await configFile(t);
