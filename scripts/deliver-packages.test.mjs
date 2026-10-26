@@ -29,6 +29,7 @@ async function requestFixture(
     coreVersion = "0.2.1-alpha.1",
     geaCompanionRange,
     invalidHtmlCapability = false,
+    hostSource = "module.exports = {};\n",
   } = {},
 ) {
   const work = await mkdtemp(join(tmpdir(), "delivery-owner-inputs-"));
@@ -121,7 +122,7 @@ async function requestFixture(
     await writeFile(join(path, "package.json"), JSON.stringify(manifest));
     await writeFile(join(path, "LICENSE"), "Fixture license\n");
     await writeFile(join(path, "cordis.patch.yml"), "[]\n");
-    await writeFile(join(path, "lib/host.js"), "module.exports = {};\n");
+    await writeFile(join(path, "lib/host.js"), hostSource);
     if (!(missingClient && repo === "dsh-agent-workbench"))
       await writeFile(join(path, "lib/client.js"), "module.exports = {};\n");
     const lock = repo === "dsh-agent-workbench" ? "package-lock.json" : "pnpm-lock.yaml";
@@ -346,6 +347,45 @@ test("the real Manage git repository metadata survives ordinary three-package de
   await assert.rejects(access(join(fixture.destination, "evidence/gea-production")));
 });
 
+test("successful delivery keeps package bodies out of bounded command diagnostics", async (t) => {
+  const marker = "DELIVERY_PACKAGE_BODY_";
+  const hostSource = `module.exports = ${JSON.stringify(marker.repeat(4096))};\n`;
+  const fixture = await requestFixture(t, {
+    successfulPackageManager: true,
+    hostSource,
+  });
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { cwd: "/", encoding: "utf8", env: fixture.env },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(await readFile(join(fixture.destination, "manifest.json"), "utf8"));
+  assert.equal(receipt.status, "packaged");
+  for (const row of receipt.packages) {
+    assert.equal(
+      execFileSync(
+        "tar",
+        ["-xOf", join(fixture.destination, "packages", row.filename), "package/lib/host.js"],
+        { encoding: "utf8" },
+      ),
+      hostSource,
+    );
+  }
+  const logs = (await readdir(join(fixture.destination, "evidence"))).filter((name) =>
+    /^command-\d+\.log$/.test(name),
+  );
+  assert.ok(logs.length > 0);
+  for (const name of logs) {
+    const bytes = await readFile(join(fixture.destination, "evidence", name));
+    assert.ok(bytes.length <= 512, `${name} has ${bytes.length} bytes`);
+    assert.ok(!bytes.includes(marker), name);
+    assert.match(bytes.toString(), /^exit=0\n/);
+    assert.match(bytes.toString(), /stdout_bytes=\d+\n/);
+    assert.match(bytes.toString(), /stdout_sha256=[a-f0-9]{64}\n/);
+  }
+});
+
 test("git and workspace runtime dependency inputs cannot publish a delivery manifest", async (t) => {
   for (const runtimeDependency of [
     "git+https://github.com/example/runtime-helper.git",
@@ -366,6 +406,23 @@ test("git and workspace runtime dependency inputs cannot publish a delivery mani
     await assert.rejects(access(join(fixture.destination, "manifest.json")));
     await assert.rejects(access(join(fixture.destination, "packages")));
   }
+});
+
+test("delivery still rejects sensitive package content beyond the diagnostic limit", async (t) => {
+  const fixture = await requestFixture(t, {
+    successfulPackageManager: true,
+    hostSource: `module.exports = ${JSON.stringify("retained-content".repeat(4096) + "?token=private-package-token")};\n`,
+  });
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { cwd: "/", encoding: "utf8", env: fixture.env },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DELIVERY_LOCAL_STATE_IN_PACKAGE/);
+  assert.ok(!result.stderr.includes("private-package-token"));
+  await assert.rejects(access(join(fixture.destination, "manifest.json")));
+  await assert.rejects(access(join(fixture.destination, "packages")));
 });
 
 test("the real production formatter rejects missing optional version metadata before creating delivery output", async (t) => {
@@ -399,6 +456,13 @@ test("a missing public client export stops before any production dependency comm
 
 test("a failing production dependency command cannot publish success or expose its secrets", async (t) => {
   const fixture = await requestFixture(t);
+  const input = JSON.parse(await readFile(fixture.input, "utf8"));
+  await writeFile(
+    input.pnpm,
+    `process.stdout.write('fixture stdout context\\npassword=private-stdout-token\\n' + 'OUT'.repeat(16384) + '\\nsecret=private-trailing-token\\n');
+process.stderr.write('fixture stderr context\\nhttp://localhost:1234/?token=private-command-token Authorization: Bearer private-bearer-token\\n' + 'ERR'.repeat(16384));
+process.exit(7);\n`,
+  );
   const result = spawnSync(
     process.execPath,
     [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
@@ -409,9 +473,16 @@ test("a failing production dependency command cannot publish success or expose i
   assert.ok(!result.stderr.includes("private-command-token"));
   assert.ok(!result.stderr.includes("private-bearer-token"));
   const diagnostic = await readFile(join(fixture.destination, "evidence/command-1.log"), "utf8");
+  assert.match(diagnostic, /^exit=[1-9]\d*\n/);
   assert.match(diagnostic, /redacted sensitive command output/);
   assert.ok(!diagnostic.includes("private-command-token"));
   assert.ok(!diagnostic.includes("private-bearer-token"));
+  assert.ok(!diagnostic.includes("private-stdout-token"));
+  assert.ok(!diagnostic.includes("private-trailing-token"));
+  assert.ok(Buffer.byteLength(diagnostic) <= 8704);
+  assert.match(diagnostic, /fixture stdout context/);
+  assert.match(diagnostic, /fixture stderr context/);
+  assert.match(diagnostic, /\[truncated\]/);
   await assert.rejects(access(join(fixture.destination, "manifest.json")));
   await assert.rejects(access(join(fixture.destination, "SHA256SUMS")));
   await assert.rejects(access(join(fixture.destination, "packages")));
