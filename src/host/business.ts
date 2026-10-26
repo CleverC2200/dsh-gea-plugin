@@ -6,7 +6,8 @@ import {
   salesPlanQueryValue,
   salesPlanWireKey,
 } from "./sales-plan-wire.ts";
-import { InventoryReadCache } from "./inventory-read-cache.ts";
+import { InventoryReadCache, recoverInventorySnapshot } from "./inventory-read-cache.ts";
+import { DmsClient, parseDmsOrder, submitDmsOrder, type DmsEnvironments } from "./dms-orders.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
@@ -102,6 +103,7 @@ export interface Deployment {
     };
   };
   serviceAccounts?: ServiceAccounts;
+  dms?: DmsEnvironments;
   geaBaseUrl: string;
   environment?: "production" | "test";
   geaEnvironments?: { production: string; test: string };
@@ -1478,6 +1480,52 @@ export class Business {
     return readSalesPlanWorkflowConfig(this.base, auth.token, this.apiLog.fetch, signal);
   }
 
+  /** Dedicated, deployment-authorized DMS action; not a general HTML write capability. */
+  async branchDms(payload: Record<string, unknown>, caller: AbortSignal) {
+    this.assertExecutionAllowed("branch-inventory");
+    const auth = this.authenticated();
+    const config = this.config.dms?.[this.environment];
+    const bindings = config?.users?.filter(
+      (user) => user.tenantId === auth.tenantId && user.userId === auth.id,
+    );
+    if (!config || bindings?.length !== 1)
+      throw Error("DMS 当前环境或用户映射未配置，请联系管理员");
+    keys(payload, ["operation", "order"]);
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
+    const client = new DmsClient(config, bindings[0]);
+    let result: unknown;
+    if (payload.operation === "login") {
+      if (payload.order !== undefined) throw Error("DMS 登录参数无效");
+      const login = await client.login(signal);
+      result = { redirect: login.redirect };
+    } else if (payload.operation === "submit") {
+      const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
+      const order = parseDmsOrder(payload.order);
+      // Upstream preorder identifiers are global, while page intent identifiers are owner-local.
+      order.aiPreOrderCode =
+        "AI" +
+        createHash("sha256")
+          .update(JSON.stringify([owner, order.aiPreOrderCode]))
+          .digest("hex")
+          .slice(0, 30);
+      result = await submitDmsOrder(
+        resolve(this.config.runtimeDir, "dms-orders"),
+        owner,
+        order,
+        client,
+        signal,
+      );
+    } else throw Error("DMS 操作不支持");
+    signal.throwIfAborted();
+    if (this.auth !== auth) throw Error("STALE_LOGIN");
+    this.assertExecutionAllowed("branch-inventory");
+    return result;
+  }
+
   salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     return this.salesTransactions.submit(payload, caller);
   }
@@ -2421,6 +2469,7 @@ export class Business {
     caller: AbortSignal,
     configured = false,
     reportWrite?: { idempotencyKey: string } | { period: Record<string, unknown> },
+    recoverEmptySnapshot = false,
   ): Promise<unknown> {
     const query =
       payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
@@ -2589,16 +2638,21 @@ export class Business {
             }
             return body.result;
           }
-          const result = configured
-            ? await createGeaSqlDatabase(() => delegation.delegationToken, transport)
-                .queryConfigured!({
-                sql: query.sql,
-                parameters: query.parameters,
-                includeTotal: false,
-              } as ConfiguredSqlRequest)
-            : await readHtmlQuery(withDefaultPaging(query), transport);
+          const read = async () =>
+            configured
+              ? await createGeaSqlDatabase(() => delegation.delegationToken, transport)
+                  .queryConfigured!({
+                  sql: query.sql,
+                  parameters: query.parameters,
+                  includeTotal: false,
+                } as ConfiguredSqlRequest)
+              : await readHtmlQuery(withDefaultPaging(query), transport);
+          const result =
+            cacheable && recoverEmptySnapshot
+              ? await recoverInventorySnapshot(read, signal)
+              : await read();
           signal.throwIfAborted();
-          if (cacheable) this.inventoryReads.set(identity, cacheKey, result);
+          if (cacheable) this.inventoryReads.set(identity, cacheKey, result, recoverEmptySnapshot);
           return result;
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {

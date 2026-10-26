@@ -41,3 +41,31 @@ test("denials and clipped fields are never cached; successful zero is retained",
   c.set(s, "x", { rows: [{ qty: 0 }] });
   assert.equal(c.get(s, "x", 0).rows[0].qty, 0);
 });
+
+test("empty rows and missing snapshots do not stick for twenty minutes", () => {
+  const c = new InventoryReadCache(),
+    s = new AbortController().signal;
+  for (const value of [
+    { rows: [] },
+    { rows: [{ day: null }] },
+    { rows: [{ snapshot_date: null, demand: 0 }] },
+    { rows: [{ qty: null }] },
+  ]) {
+    c.set(s, "x", value, true);
+    assert.equal(c.get(s, "x", 0), undefined);
+  }
+  c.set(s, "x", { rows: [{ snapshot_date: "2026-10-25", demand: 0 }] });
+  assert.equal(c.get(s, "x", 0).rows[0].demand, 0);
+});
+
+test("nullable plan metadata does not discard an otherwise valid cached detail", () => {
+  let now = 1000;
+  const cache = new InventoryReadCache(() => now);
+  const scope = new AbortController().signal;
+  const result = { rows: [{ sku: "A", available_qty: 42, snapshot_date: null, plan_month: null }] };
+  cache.set(scope, "replenishment.detail", result);
+  now += 19 * 60 * 1000;
+  assert.deepEqual(cache.get(scope, "replenishment.detail", 0), result);
+  now += 60 * 1000;
+  assert.equal(cache.get(scope, "replenishment.detail", 0), undefined);
+});
