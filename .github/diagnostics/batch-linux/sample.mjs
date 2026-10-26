@@ -18,13 +18,16 @@ const environment = {
   availableParallelism: os.availableParallelism(), bootId: fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(),
   chrome: execFileSync('google-chrome', ['--version'], { encoding: 'utf8' }).trim(),
   wrapperHead: git(join(job, 'experiment'), 'rev-parse', 'HEAD'), sourceHead: git(root, 'rev-parse', 'HEAD'),
-  originalFailure: 40206693766, expectedImage: '20261012.334.1', expectedNode: 'v24.22.0',
+  originalFailure: 40206693766, originalImage: '20261012.334.1', expectedImage: '20261023.334.3', expectedNode: 'v24.22.0',
+  imageDifferenceAcceptedByUser: true, imageSoftwareDifference: 'Bazel 9.3.0 -> 9.3.1; original and current official software inventories retained separately',
   vmAndOtherFileLoadRecreated: false, maxRounds: 3, onlyFile: 'tests/group-selection-web.test.mjs',
 };
 save(join(output, 'environment.json'), environment);
 assert.equal(environment.node, environment.expectedNode);
 assert.equal(environment.imageOS, 'ubuntu24');
 assert.equal(environment.imageVersion, environment.expectedImage);
+assert.equal(environment.chrome, 'Google Chrome 155.0.8059.39');
+assert.equal(environment.kernel, '6.17.0-1022-azure');
 assert.equal(environment.sourceHead, '9c9f4e15b5756f167cc9148bc3673782408adcfc');
 assert.ok(environment.availableParallelism >= 4 && environment.totalMemory >= 12 * 1024 ** 3);
 if (process.argv.includes('--environment-only')) process.exit(0);

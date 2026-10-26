@@ -41,7 +41,7 @@ export function installBatchObserver() {
     const signature = JSON.stringify(state);
     if (signature === previous && !event) return;
     previous = signature;
-    send({ kind: 'dialog', reason, pageTime: performance.now(), state, ...(event ? { event: { type: event.type, trusted: event.isTrusted, inputType: event.inputType ?? null, composing: event.isComposing ?? null } } : {}) });
+    send({ kind: 'dialog', reason, pageTime: performance.now(), documentOrigin: performance.timeOrigin, state, ...(event ? { event: { type: event.type, trusted: event.isTrusted, inputType: event.inputType ?? null, composing: event.isComposing ?? null } } : {}) });
   };
   function watch(root) {
     if (roots.has(root)) return;
@@ -73,7 +73,12 @@ if (process.env.GEA_BATCH_DIAGNOSTICS === '1' && process.argv.some((arg) => arg.
     browser.newContext = async function (...args) {
       const context = await newContext.apply(this, args);
       const contextId = ++contextIndex;
-      await context.exposeBinding('__batchPublicDiagnostic', (_source, state) => write({ contextId, ...state }));
+      const frames = new WeakMap();
+      let frameIndex = 0;
+      await context.exposeBinding('__batchPublicDiagnostic', ({ frame }, state) => {
+        if (!frames.has(frame)) frames.set(frame, ++frameIndex);
+        write({ contextId, frameId: frames.get(frame), ...state });
+      });
       await context.addInitScript(installBatchObserver);
       context.on('page', (page) => page.on('response', async (response) => {
         if (new URL(response.url()).pathname !== '/api/agent-workbench/page') return;
