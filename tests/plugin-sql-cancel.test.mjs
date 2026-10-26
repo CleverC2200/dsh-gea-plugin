@@ -20,7 +20,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module,
   module.exports,
 );
-function fixture(t) {
+function fixture(t, consumerCode = "base-safety-stock") {
   const business = new module.exports.Business({
     geaBaseUrl: "https://gea.example.test",
     geaEnvironments: {
@@ -50,7 +50,7 @@ function fixture(t) {
         maxEffect: "view",
         skills: [],
         routing: { keywords: [], summary: "Stock" },
-        data: { consumerCode: "base-safety-stock", tables: [], rules: [] },
+        data: { consumerCode, tables: [], rules: [] },
       },
     ]),
   );
@@ -74,35 +74,43 @@ function success(url, init) {
       : { success: true, result: { rows: [{ sku: "A" }], total: 1 } },
   );
 }
-test("an explicit expired SQL session renews despite a generic authentication reason", async (t) => {
-  const business = fixture(t);
-  let sessions = 0;
-  const tokens = [];
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    init.signal.throwIfAborted();
-    if (url.endsWith("/session")) {
-      sessions++;
-      return Response.json({
-        success: true,
-        result: { accessDecision: { allowed: true }, delegationToken: `delegation-${sessions}` },
-      });
-    }
-    tokens.push(init.headers["X-Delegation-Token"]);
-    if (tokens.length === 1)
-      return Response.json({
-        success: false,
-        errorCode: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
-        failure: { reasonCode: "AUTHENTICATION_FAILED" },
-      });
-    return success(url, init);
+for (const consumerCode of ["customer_inventory", "order", "order01"])
+  test(`expired SQL session renews despite a generic authentication reason for ${consumerCode}`, async (t) => {
+    const business = fixture(t, consumerCode);
+    let sessions = 0;
+    const tokens = [];
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      init.signal.throwIfAborted();
+      if (url.endsWith("/session")) {
+        sessions++;
+        return Response.json({
+          success: true,
+          result: { accessDecision: { allowed: true }, delegationToken: `delegation-${sessions}` },
+        });
+      }
+      tokens.push(init.headers["X-Delegation-Token"]);
+      if (tokens.length === 1)
+        return Response.json({
+          success: false,
+          code: 500,
+          errorCode: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
+          result: {
+            failure: {
+              errorCode: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
+              reasonCode: "AUTHENTICATION_FAILED",
+            },
+          },
+        });
+      return success(url, init);
+    });
+    assert.deepEqual(
+      (await business.pluginSql({ ...query, consumerCode }, new AbortController().signal)).rows,
+      [{ sku: "A" }],
+    );
+    assert.deepEqual(tokens, ["delegation-1", "delegation-2"]);
+    assert.equal(sessions, 2);
+    assert.equal(business.status().authenticated, true);
   });
-  assert.deepEqual((await business.pluginSql(query, new AbortController().signal)).rows, [
-    { sku: "A" },
-  ]);
-  assert.deepEqual(tokens, ["delegation-1", "delegation-2"]);
-  assert.equal(sessions, 2);
-  assert.equal(business.status().authenticated, true);
-});
 for (const errorCode of ["ROW_SCOPE_DENIED", "AI_GATEWAY_SESSION_EXPIRED"])
   test(`SQL 403 ${errorCode} preserves denial without renewing a delegation`, async (t) => {
     const business = fixture(t);
