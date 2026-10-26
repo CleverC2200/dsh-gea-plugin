@@ -292,3 +292,44 @@ test("configured result preserves envelope-level column permissions", async () =
   assert.deepEqual(result.returnedColumns, ["qty"]);
   assert.deepEqual(result.rejectedColumns, ["cost"]);
 });
+
+for (const id of ["fc", "aqkc", "qll", "apsplan"])
+  test(id + ": snapshot recovery is enabled only for initialization queries", async (t) => {
+    const r = await resource(t, id);
+    const source = Object.keys(r.config.queries).find((key) => key.startsWith("source."));
+    assert.ok(source);
+    const detail = Object.keys(r.config.queries).find(
+      (key) => r.config.queries[key].pagination?.countQuery,
+    );
+    const cases = [
+      ...new Set(
+        [source, r.config.overviewQuickStock, "current-shortage.summary", detail].filter(
+          (key) => r.config.queries[key],
+        ),
+      ),
+    ];
+    for (const queryId of cases) {
+      const q = r.config.queries[queryId];
+      const parameters = Object.fromEntries(
+        Object.entries(q.parameterSpec).map(([key, s]) => [s.name, q.request.parameters?.[key]]),
+      );
+      let called = false;
+      const result = await readConfiguredHtmlQuery(
+        r,
+        { queryId, parameters },
+        {
+          pluginSql: async (request, signal, configured, reportWrite, recovery) => {
+            assert.equal(reportWrite, undefined);
+            called = true;
+            assert.equal(configured, true);
+            assert.equal(recovery, queryId !== detail);
+            assert.equal(request.consumerCode, r.manifest.gea.consumerCode);
+            return { rows: [] };
+          },
+        },
+        signal(),
+      );
+      assert.equal(result.success, undefined, JSON.stringify(result));
+      assert.ok(called);
+    }
+  });

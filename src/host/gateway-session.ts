@@ -21,10 +21,11 @@ export async function prepareGatewaySession(
   if (!["AGENT", "CLIENT_APP"].includes(consumer.consumerType) || !consumer.consumerCode.trim())
     throw new Error("GEA_MCP_CONSUMER_REQUIRED");
   throwIfAborted(identity);
-  const response = await fetchImpl(base + "/ai/gateway/session", {
+  const signal = AbortSignal.any([identity, AbortSignal.timeout(timeoutMs)]);
+  const request: RequestInit = {
     method: "POST",
     redirect: "error",
-    signal: AbortSignal.any([identity, AbortSignal.timeout(timeoutMs)]),
+    signal,
     headers: {
       "Content-Type": "application/json",
       "X-Access-Token": auth.token,
@@ -36,7 +37,24 @@ export async function prepareGatewaySession(
       requestId: randomUUID(),
       channel: "MCP_CLIENT",
     }),
-  });
+  };
+  const send = () => fetchImpl(base + "/ai/gateway/session", request);
+  let response: Response;
+  try {
+    response = await send();
+  } catch (error) {
+    throwIfAborted(signal);
+    let cause: unknown = error,
+      reset = false;
+    for (let depth = 0; depth < 5 && cause; depth++) {
+      const item = record(cause);
+      if (item?.code === "ECONNRESET" || item?.code === "UND_ERR_SOCKET") reset = true;
+      cause = item?.cause;
+    }
+    if (consumer.consumerType !== "AGENT" || consumer.consumerCode !== "order" || !reset)
+      throw error;
+    response = await send();
+  }
   if (!response.ok) throw new Error("GEA_MCP_SESSION_HTTP_" + response.status);
   const payload = record(await response.json());
   throwIfAborted(identity);

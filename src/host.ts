@@ -74,6 +74,7 @@ const environmentSchema = z.union(["production", "test"]);
 export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
   serviceAccounts: z.any<ServiceAccounts>(),
+  dms: z.any<Deployment["dms"]>(),
   environment: environmentSchema.default(
     z.resolve(companyDefaults.environment, environmentSchema, {})[0],
   ),
