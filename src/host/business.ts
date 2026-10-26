@@ -6,7 +6,7 @@ import {
   salesPlanQueryValue,
   salesPlanWireKey,
 } from "./sales-plan-wire.ts";
-import { InventoryReadCache } from "./inventory-read-cache.ts";
+import { InventoryReadCache, recoverInventorySnapshot } from "./inventory-read-cache.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
@@ -2421,6 +2421,7 @@ export class Business {
     caller: AbortSignal,
     configured = false,
     reportWrite?: { idempotencyKey: string } | { period: Record<string, unknown> },
+    recoverEmptySnapshot = false,
   ): Promise<unknown> {
     const query =
       payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
@@ -2589,16 +2590,21 @@ export class Business {
             }
             return body.result;
           }
-          const result = configured
-            ? await createGeaSqlDatabase(() => delegation.delegationToken, transport)
-                .queryConfigured!({
-                sql: query.sql,
-                parameters: query.parameters,
-                includeTotal: false,
-              } as ConfiguredSqlRequest)
-            : await readHtmlQuery(withDefaultPaging(query), transport);
+          const read = async () =>
+            configured
+              ? await createGeaSqlDatabase(() => delegation.delegationToken, transport)
+                  .queryConfigured!({
+                  sql: query.sql,
+                  parameters: query.parameters,
+                  includeTotal: false,
+                } as ConfiguredSqlRequest)
+              : await readHtmlQuery(withDefaultPaging(query), transport);
+          const result =
+            cacheable && recoverEmptySnapshot
+              ? await recoverInventorySnapshot(read, signal)
+              : await read();
           signal.throwIfAborted();
-          if (cacheable) this.inventoryReads.set(identity, cacheKey, result);
+          if (cacheable) this.inventoryReads.set(identity, cacheKey, result, recoverEmptySnapshot);
           return result;
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {
