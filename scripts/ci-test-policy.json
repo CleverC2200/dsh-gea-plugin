@@ -512,7 +512,11 @@
     },
     {
       "pattern": "^scripts/quality-peer-baseline\\.json$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs",
+        "tests/client-shell-feedback.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -549,7 +553,11 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-peer-baseline\\.json$",
       "tests": [],
-      "sourceTests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "sourceTests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs",
+        "tests/client-shell-feedback.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-manage",

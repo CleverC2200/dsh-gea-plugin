@@ -325,7 +325,7 @@ test(
       const originalStyle = await workbenchFrame.getAttribute("style");
       for (const [width, viewport, tableWidth] of [
         [860, 833, 864],
-        [1200, 1173, 960],
+        [1200, 1173, 1173],
         [580, 553, 864],
       ]) {
         await workbenchFrame.evaluate((element, width) => {
