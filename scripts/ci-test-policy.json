@@ -63,6 +63,9 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/source-formal-receipt.test.mjs": {
+      "dependencies": false
+    },
     "scripts/workflow-preflight.test.mjs": {
       "dependencies": false
     },
@@ -85,6 +88,9 @@
       "dependencies": true
     },
     "scripts/development-tasks.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/development-finish.test.mjs": {
       "dependencies": false
     },
     "scripts/quality-prepared-inputs.test.mjs": {
@@ -124,6 +130,11 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^(?:scripts/source-formal-receipt(?:\\.test)?\\.mjs|scripts/serial-merge-policy\\.json|\\.github/workflows/source-quality\\.yml)$",
+      "tests": ["scripts/source-formal-receipt.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:ci-core-policy\\.(?:json|mjs)|supported-cores\\.json)$",
       "tests": ["scripts/windows-complete-local/input.test.mjs", "scripts/delivery-events.test.mjs"]
     },
@@ -153,6 +164,17 @@
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/build\\.mjs$",
       "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/development-tasks.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:development-(?:outputs|tasks|finish\\.test)|plugin-split-development)\\.mjs$",
+      "tests": ["scripts/development-finish.test.mjs"],
+      "sourceTests": ["scripts/development-finish.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:plugin-split-development\\.mjs|delivery-package-runtime\\.mjs|delivery-runtime/(?:package\\.json|pnpm-lock\\.yaml))$",
+      "tests": ["scripts/deliver-packages.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -549,6 +571,21 @@
       "repo": "dsh-agent-workbench",
       "pattern": "^\\.gitignore$",
       "tests": ["scripts/quality-workbench.test.mjs", "scripts/quality-prepared-inputs.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/quality-test-node-runner\\.mjs$",
+      "tests": ["scripts/quality-test-execution.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/serial-merge-(?:controller|runner|artifacts|runtime|policy)\\.(?:mjs|json)$|^scripts/fixtures/serial-merge-controller\\.json$|^\\.github/(?:actions/serial-merge/|workflows/serial-merge\\.yml$)",
+      "tests": [
+        "scripts/serial-merge-controller.test.mjs",
+        "scripts/serial-merge-runner.test.mjs",
+        "scripts/serial-merge-artifacts.test.mjs",
+        "scripts/serial-merge-runtime.test.mjs"
+      ]
     }
   ],
   "testOwners": {

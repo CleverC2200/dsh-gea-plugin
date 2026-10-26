@@ -1,0 +1,19 @@
+{
+  "repository": "CleverC2200/dsh-gea-plugin",
+  "repositoryId": 1365221347,
+  "appId": 5451618,
+  "installationId": 174718575,
+  "appSlug": "cleverc2200-gea-serial-merge",
+  "botId": 347241815,
+  "sourceWorkflowId": 391523453,
+  "sourceWorkflowPath": ".github/workflows/source-quality.yml",
+  "controllerWorkflowPath": ".github/workflows/serial-merge.yml",
+  "environment": "gea-serial-merge",
+  "requiredCheck": "candidate-quality",
+  "requiredCheckAppId": 15368,
+  "blockedPullRequests": [197, 202],
+  "budgetMs": 2700000,
+  "pollMs": 10000,
+  "retentionDays": 30,
+  "maxHistoryRuns": 1000
+}
