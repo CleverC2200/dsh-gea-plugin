@@ -1,4 +1,4 @@
-import { mkdir, writeFile, appendFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 export const name = "profile-readiness-probe";
@@ -61,7 +61,7 @@ export function readProfileReadinessSnapshot(ctx) {
       .map((entry) => ({ disabled: Boolean(entry.disabled), fiber: fiberSnapshot(entry.fiber) })),
   };
 }
-export async function installProfileReadinessProbe(runtime) {
+export async function installProfileReadinessProbe(runtime, profileDefaults) {
   const patch = join(runtime, "home/profiles/plugin-split-validation/cordis.patch.yml");
   await mkdir(dirname(patch), { recursive: true });
   const output = process.env.GITHUB_WORKSPACE
@@ -72,10 +72,12 @@ export async function installProfileReadinessProbe(runtime) {
       )
     : join(runtime, "profile-readiness.ndjson");
   await mkdir(dirname(output), { recursive: true });
+  const defaults = profileDefaults ? JSON.parse(await readFile(profileDefaults, "utf8")) : [];
   try {
     await writeFile(
       patch,
       JSON.stringify([
+        ...defaults,
         {
           insert: [
             {

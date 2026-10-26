@@ -169,3 +169,34 @@ test("profile observer samples after mounting and cancels later samples when dis
   await new Promise(setImmediate);
   assert.deepEqual(await phases(), ["mounted", "after-1000", "dispose"]);
 });
+
+test("profile observer preserves the prepared model default seed before and after disposal", async (t) => {
+  const runtime = await mkdtemp(join(tmpdir(), "profile-readiness-seed-"));
+  t.after(() => rm(runtime, { recursive: true, force: true }));
+  const seed = [
+    {
+      id: "agent-default-model",
+      config: {
+        provider: "fixture",
+        model: "exact-model",
+        endpoint: "https://127.0.0.1:9443/model",
+        headers: { "x-fixture": "preserved" },
+      },
+    },
+  ];
+  const defaults = join(runtime, "profile-defaults.json");
+  await writeFile(defaults, JSON.stringify(seed, null, 2));
+  assert.equal(await installProfileReadinessProbe(runtime, defaults), true);
+  const patch = join(runtime, "home/profiles/plugin-split-validation/cordis.patch.yml");
+  const bytes = await readFile(patch, "utf8");
+  const rows = JSON.parse(bytes);
+  assert.deepEqual(rows.slice(0, -1), seed);
+  assert.equal(rows.at(-1).insert[0].id, "profile-readiness-probe");
+  const ctx = context();
+  await apply(ctx, rows.at(-1).insert[0].config);
+  await ctx.effects[0]();
+  assert.equal(await readFile(patch, "utf8"), bytes);
+  await writeFile(patch, "original user model selection\n");
+  assert.equal(await installProfileReadinessProbe(runtime, defaults), false);
+  assert.equal(await readFile(patch, "utf8"), "original user model selection\n");
+});

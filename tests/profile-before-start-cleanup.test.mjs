@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { profile } from "./profile.mjs";
+import { fixtureEnvironment } from "./fixtures/business-session.mjs";
+import { supportedCores } from "../scripts/supported-cores.mjs";
 
 test("cancelled profile cleanup joins beforeStart before disposing its runtime", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "gea-before-start-cleanup-"));
@@ -132,4 +134,48 @@ test("profile cancellation before source preparation preserves the case cancella
   } finally {
     await cleanup?.();
   }
+});
+
+test("profile afterPrepare observes the frozen input before any launcher starts", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-after-prepare-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const candidate = join(directory, "candidate.json");
+  await writeFile(candidate, JSON.stringify({ core: supportedCores[0].head }));
+  fixtureEnvironment(t, { GEA_TEST_CANDIDATE: candidate });
+  const reason = Error("afterPrepare observed");
+  let cleanup;
+  t.after(() => cleanup?.());
+  let beforeStarted = false;
+  let prepared = false;
+  await assert.rejects(
+    profile(
+      {
+        name: t.name,
+        after: (fn) => {
+          cleanup = fn;
+        },
+      },
+      {
+        coreOnly: true,
+        runtimeParent: directory,
+        executablePath: join(directory, "must-not-start"),
+        beforeStart() {
+          beforeStarted = true;
+        },
+        async afterPrepare({ runtime, combination, request }) {
+          assert.equal(beforeStarted, true);
+          assert.equal(combination, null);
+          assert.equal(typeof runtime, "string");
+          const declared = JSON.parse(await readFile(request, "utf8"));
+          const window = JSON.parse(await readFile(declared.file, "utf8"));
+          assert.equal(window.status, "open");
+          prepared = true;
+          throw reason;
+        },
+      },
+    ),
+    (error) => error === reason,
+  );
+  assert.equal(prepared, true);
+  await cleanup();
 });

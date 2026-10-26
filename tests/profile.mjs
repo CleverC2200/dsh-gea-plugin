@@ -417,6 +417,14 @@ async function createProfile(t, options) {
         }));
     t.signal?.throwIfAborted();
     recordLifecycle({ event: "preparation-frozen" });
+    await (preparation = Promise.resolve(
+      options.afterPrepare?.({
+        runtime,
+        combination: admitted?.combination,
+        request: admitted?.request,
+      }),
+    ));
+    t.signal?.throwIfAborted();
     output = "";
     let logOffset = 0;
     await mkdir(runtime, { recursive: true, mode: 0o700 });
