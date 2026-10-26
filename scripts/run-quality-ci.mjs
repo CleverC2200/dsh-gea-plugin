@@ -996,6 +996,10 @@ try {
       dirname(dirname(process.cwd())),
       ".quality-browser",
     );
+    const browserCli =
+      plan.browser && process.platform !== "win32"
+        ? createRequire(import.meta.url).resolve("@playwright/test/cli")
+        : undefined;
     if (building && plan.browser && values["prepare-inputs"]) {
       const budgetMs = browserPreparationBudget(values["browser-preparation-timeout-ms"]);
       const args = [
@@ -1013,6 +1017,7 @@ try {
         else execute();
       } else {
         const browserInstall = installCommands({ errorCode: "QUALITY_BROWSER_PREPARATION_FAILED" });
+        const command = [process.execPath, browserCli, ...args.slice(3)];
         const release = createRequire(import.meta.url)("./build-admission.mjs").acquireBuild({
           operation: "prepare",
           cwd: process.cwd(),
@@ -1020,17 +1025,12 @@ try {
         try {
           finalGroup?.verifyUnchanged();
           const execute = () =>
-            browserInstall.run("corepack", args, process.cwd(), {
+            browserInstall.run(command[0], command.slice(1), process.cwd(), {
               timeoutMs: budgetMs,
               forwardOutput: true,
               rootGroupCleanup: process.platform === "linux",
             });
-          if (stages)
-            await stages.step(
-              "browser-install",
-              { command: ["corepack", ...args], budgetMs },
-              execute,
-            );
+          if (stages) await stages.step("browser-install", { command, budgetMs }, execute);
           else await execute();
           finalGroup?.verifyUnchanged();
         } finally {
@@ -1045,8 +1045,10 @@ try {
       const executable = chromium.executablePath();
       if (!existsSync(executable)) refuse("QUALITY_BROWSER_REQUIRED", executable);
       const dryRun = execFileSync(
-        "corepack",
-        ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
+        browserCli ? process.execPath : "corepack",
+        browserCli
+          ? [browserCli, "install", "--dry-run", "chromium"]
+          : ["pnpm", "exec", "playwright", "install", "--dry-run", "chromium"],
         {
           encoding: "utf8",
         },
