@@ -132,10 +132,16 @@ test(
       roots[id] = path;
       await mkdir(path);
       await writeFile(join(path, "index.html"), "<html>fixture</html>");
-      await writeFile(
-        join(path, "SKILL.md"),
-        "---\nname: " + id + "\ndescription: fixture\n---\nfixture",
-      );
+      const skills =
+        suffix === "apsplan"
+          ? ["plan-operations-weekly-report", "answer-visualization", "order-satisfaction-analysis"]
+          : [id];
+      const skillFiles = suffix === "apsplan" ? skills.map((name) => name + ".md") : ["SKILL.md"];
+      for (const [index, name] of skills.entries())
+        await writeFile(
+          join(path, skillFiles[index]),
+          "---\nname: " + name + "\ndescription: fixture\n---\nfixture",
+        );
       await writeFile(
         join(path, "plugin.json"),
         JSON.stringify({
@@ -144,7 +150,7 @@ test(
           name: id,
           version: "0.0.0",
           html: "index.html",
-          skills: ["SKILL.md"],
+          skills: skillFiles,
           mcp: "mcp.json",
           declarations: { page: "page.json", capability: "capability.json" },
           agentResources: { provider: "dsh-agent-manage", prompt: "prompt.json" },
@@ -175,14 +181,14 @@ test(
           data: { consumerCode: consumerCode, tables: [], rules: [] },
           maxEffect: "view",
           layers: ["read"],
-          skills: [id],
+          skills,
           routing: { keywords: [id], summary: id },
         },
         prompt: {
           label: id,
           consumerCode: consumerCode,
           persona: "只读测试页面，保留用户会话与权限边界。",
-          skills: [id],
+          skills,
         },
       });
     }

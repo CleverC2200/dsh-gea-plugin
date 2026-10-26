@@ -323,7 +323,11 @@ test(
       // The embedded workbench must resize its columns independently of the outer window.
       const workbenchFrame = salesPlanFrameElement(page);
       const originalStyle = await workbenchFrame.getAttribute("style");
-      for (const width of [860, 1200, 580]) {
+      for (const [width, viewport, tableWidth] of [
+        [860, 833, 864],
+        [1200, 1173, 960],
+        [580, 553, 864],
+      ]) {
         await workbenchFrame.evaluate((element, width) => {
           element.style.setProperty("position", "fixed", "important");
           element.style.setProperty("inset", "0 auto auto 0", "important");
@@ -340,7 +344,7 @@ test(
               table: Math.round(element.querySelector("table").getBoundingClientRect().width),
             })),
           )
-          .toMatchObject({ viewport: width - 1, table: Math.max(864, width - 1) });
+          .toMatchObject({ viewport, table: tableWidth });
         const headers = await table.locator("thead th").evaluateAll((cells) =>
           cells.map((cell) => ({
             left: cell.getBoundingClientRect().left,

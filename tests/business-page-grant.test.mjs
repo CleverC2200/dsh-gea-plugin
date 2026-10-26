@@ -198,7 +198,7 @@ async function fixture(t, options = {}) {
   let identity = new AbortController(),
     scope = "original-principal",
     selected = preset,
-    authenticated = !options.mock;
+    authenticated = options.authenticated ?? !options.mock;
   const ctx = {
     agents: { get: (id) => (id === session ? { session: {} } : undefined) },
     sessionProjections: { stateOf: () => selected },
@@ -457,22 +457,28 @@ test("received MPS package registers the live mps Consumer and permits only name
   grant.release();
 });
 
-test("received order workbench keeps its current Consumer identity while mock reads stay disabled", async (t) => {
-  const h = await fixture(t, {
+test("received order workbench requires login, keeps its Consumer and rejects arbitrary SQL", async (t) => {
+  const options = {
     id: "inventory-orderworkbench",
     pageId: "inventory-orderworkbench",
     consumer: "order",
-    mock: true,
     resourceRoot: "../dsh-agent-workbench/lib/business/inventory-orderworkbench",
-  });
+  };
+  const guest = await fixture(t, { ...options, authenticated: false });
+  await assert.rejects(guest.authorize(), /PAGE_REFERENCE_LOGIN_REQUIRED/);
+  assert.deepEqual(guest.launches, []);
+  assert.deepEqual(guest.queries, []);
+  guest.dispose();
+  const h = await fixture(t, options);
   const grant = await h.authorize();
   assert.equal(grant.allowsEffect("view"), true);
+  assert.equal(grant.allowsEffect("draft"), true);
+  assert.equal(grant.allowsEffect("submit"), true);
   assert.equal(grant.allowsEffect("approve"), false);
-  await assert.rejects(
-    grant.readSql({ sql: "SELECT 1" }, new AbortController().signal),
-    /MOCK_DATA_ONLY/,
-  );
-  assert.deepEqual(h.launches, []);
+  assert.equal(typeof grant.workspace, "function");
+  const denied = await grant.readSql({ sql: "SELECT 1" }, new AbortController().signal);
+  assert.equal(denied.success, false);
+  assert.deepEqual(h.launches, ["order"]);
   assert.deepEqual(h.queries, []);
   grant.release();
 });

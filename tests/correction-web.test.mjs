@@ -65,7 +65,7 @@ test(
       await expect(frame.getByRole("button", { name, exact: true })).toBeDisabled();
     assert.ok(app.requests.some((request) => request.url.searchParams.get("orderType") === "Z"));
     await expect(frame.getByRole("combobox", { name: "销售计划周期", exact: true })).toContainText(
-      "2026-09",
+      "2026年9月",
     );
 
     service.setResponseMode("monthly");
