@@ -15,6 +15,7 @@ import {
   verifyDevelopmentSDK,
 } from "./development-dependencies.mjs";
 import { readBuildAdmissions, withBuildAdmission } from "./build-admission.mjs";
+import { checkDevelopmentOutputs } from "./development-outputs.mjs";
 
 function walk(root, prefix = "") {
   if (!fs.existsSync(root)) return [];
@@ -355,6 +356,7 @@ export async function developmentTask(action, values = {}, cwd = process.cwd()) 
       : [];
     return {
       status: "report-only",
+      ...(values.outputs ? { outputDisposition: checkDevelopmentOutputs(values.outputs) } : {}),
       receipts,
       validations,
       admissions: readBuildAdmissions(owner.path),
@@ -372,11 +374,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       input: { type: "string" },
       sha256: { type: "string" },
       base: { type: "string" },
+      outputs: { type: "string" },
     },
     allowPositionals: true,
   });
   try {
-    console.log(JSON.stringify(await developmentTask(positionals[0], values)));
+    const result = await developmentTask(positionals[0], values);
+    console.log(JSON.stringify(result));
+    if (positionals[0] === "finish" && result.outputDisposition?.status === "needs-disposition")
+      process.exitCode = 1;
   } catch (error) {
     console.error(
       JSON.stringify({

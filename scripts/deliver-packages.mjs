@@ -14,7 +14,7 @@ import {
   rm,
   copyFile,
 } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -50,9 +50,12 @@ function within(root, path) {
   return name === "" || (!isAbsolute(name) && name !== ".." && !name.startsWith("../"));
 }
 function command(file, args, cwd) {
-  const result = spawnSync(file, args, { cwd, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const result = spawnSync(file, args, {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
   if (diagnosticDirectory) {
-    // Keep diagnostics without letting a matching URL or credential line reach a transcript.
     const redact = (text) =>
       String(text ?? "")
         .split("\n")
@@ -62,11 +65,30 @@ function command(file, args, cwd) {
             : line,
         )
         .join("\n");
-    writeFileSync(
-      join(diagnosticDirectory, `command-${++commandNumber}.log`),
-      `exit=${result.status}\n${redact(result.stdout)}\n${redact(result.stderr)}\n`,
-      { mode: 0o600 },
-    );
+    const diagnostic = (text) => {
+      const bytes = Buffer.from(redact(text));
+      return bytes.length > 4096
+        ? bytes.subarray(0, 4096).toString("utf8") + "\n[truncated]"
+        : bytes.toString("utf8");
+    };
+    const summary = {
+      command: ++commandNumber,
+      exit: result.status,
+      stdoutBytes: Buffer.byteLength(result.stdout ?? ""),
+      stdoutSha256: digest(result.stdout ?? ""),
+      stderrBytes: Buffer.byteLength(result.stderr ?? ""),
+      stderrSha256: digest(result.stderr ?? ""),
+    };
+    if (result.error || result.status !== 0)
+      writeFileSync(
+        join(diagnosticDirectory, `command-${summary.command}.log`),
+        `exit=${result.status}\n${JSON.stringify(summary)}\nstdout:\n${diagnostic(result.stdout)}\nstderr:\n${diagnostic(result.stderr)}\n`,
+        { mode: 0o600 },
+      );
+    else
+      appendFileSync(join(diagnosticDirectory, "commands.log"), JSON.stringify(summary) + "\n", {
+        mode: 0o600,
+      });
   }
   if (result.error || result.status !== 0) fail("DELIVERY_COMMAND_FAILED");
   return result.stdout;
