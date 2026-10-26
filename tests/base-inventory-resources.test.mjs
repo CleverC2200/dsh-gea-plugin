@@ -7,6 +7,16 @@ import { registerHtmlPlugins } from "../src/html-plugins.ts";
 
 for (const { id, source, expected, persona } of [
   {
+    id: "inventory-apsplan",
+    source: "business/inventory-apsplan",
+    expected: [
+      "plan-operations-weekly-report",
+      "answer-visualization",
+      "order-satisfaction-analysis",
+    ],
+    persona: /产销协同数字人系统提示词/,
+  },
+  {
     id: "inventory-aqkc",
     source: "business/inventory-aqkc",
     expected: [
@@ -75,11 +85,20 @@ for (const { id, source, expected, persona } of [
     }
     assert.deepEqual(Object.keys(definition.skillFiles), expected);
     assert.deepEqual(Object.values(definition.skillFiles), manifest.skills);
-    for (const [name, file] of Object.entries(definition.skillFiles))
+    for (const [name, file] of Object.entries(definition.skillFiles)) {
       assert.match(
         await readFile(resolve(directory, file), "utf8"),
         new RegExp("name: " + name + "\\s"),
       );
+      assert.deepEqual(
+        await readFile(resolve(directory, file)),
+        await readFile(resolve("../dsh-agent-manage/business-resources", id, file)),
+      );
+    }
+    assert.deepEqual(
+      await readFile(resolve(directory, definition.prompt)),
+      await readFile(resolve("../dsh-agent-manage/business-resources", id, definition.prompt)),
+    );
     const prompt = JSON.parse(await readFile(resolve(directory, definition.prompt), "utf8"));
     assert.deepEqual(prompt.skills, expected);
     assert.match(prompt.persona, persona);

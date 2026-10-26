@@ -17,9 +17,9 @@
       "label": "产销协同",
       "consumerCode": "aps",
       "skills": [
-        "inventory-apsplan",
-        "sales-forecast-result-analysis",
-        "sales-ops-problem-analysis"
+        "plan-operations-weekly-report",
+        "answer-visualization",
+        "order-satisfaction-analysis"
       ],
       "crossConsumers": ["sales_forecast"],
       "presetName": "产销协同Agent",

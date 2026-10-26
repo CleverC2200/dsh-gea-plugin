@@ -1,7 +1,5 @@
 import { profile } from "../profile.mjs";
 import { fixtureEnvironment } from "./business-session.mjs";
-import { readSourceCombination } from "../../scripts/source-combination-integrity.mjs";
-import { installProfileReadinessProbe } from "./profile-readiness-probe.mjs";
 
 /** Explicit caller-owned fake keys must reach the public parent preflight as well as its child. */
 export async function modelProfile(t, options = {}) {
@@ -21,13 +19,5 @@ export async function modelProfile(t, options = {}) {
     ),
   );
   fixtureEnvironment(t, keys);
-  return profile(t, {
-    ...options,
-    async afterPrepare(input) {
-      await options.afterPrepare?.(input);
-      if (!input.combination) return;
-      const composition = await readSourceCombination(input.runtime, input.combination);
-      await installProfileReadinessProbe(input.runtime, composition.profileDefaults);
-    },
-  });
+  return profile(t, options);
 }
