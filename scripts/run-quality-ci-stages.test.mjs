@@ -278,8 +278,12 @@ function fixture(
     json(join(gea, "node_modules/@playwright/test/package.json"), {
       type: "module",
       version: "1.58.2",
-      exports: "./index.mjs",
+      exports: { ".": "./index.mjs", "./cli": "./cli.js" },
     });
+    write(
+      join(gea, "node_modules/@playwright/test/cli.js"),
+      `import { appendFileSync } from 'node:fs'; appendFileSync(${JSON.stringify(join(job, "playwright-cli.jsonl"))}, JSON.stringify(process.argv.slice(1))+'\\n'); if(process.argv.includes('--dry-run')) console.log(${JSON.stringify(directories.map((directory) => "Install location: " + directory).join("\n"))}); else await import('../../../scripts/fixtures/quality-browser-install.cjs');`,
+    );
     write(
       join(gea, "node_modules/@playwright/test/index.mjs"),
       `export const chromium={executablePath:()=>${JSON.stringify(join(directories[0], "executable"))}};`,
@@ -513,12 +517,32 @@ test("public browser preparation keeps normal and nonzero command results in its
     if (scenario === "fail") assert.match(result.stderr, /exit 19/);
     const build = f.read().stages.build;
     assert.equal(build.status, scenario === "fail" ? "failed" : "passed");
+    const cli = join(f.gea, "node_modules/@playwright/test/cli.js");
+    assert.deepEqual(build.steps[0].command, [
+      process.execPath,
+      cli,
+      "install",
+      ...(process.platform === "linux" ? ["--with-deps"] : []),
+      "chromium",
+    ]);
     assert.equal(build.steps[0].budgetMs, 300000);
     assert.equal(build.steps[0].status, build.status);
     assert.ok(build.steps[0].finishedAt);
     assert.equal(existsSync(join(f.job, "browser-preparation.json")), scenario !== "fail");
     assert.equal(existsSync(join(f.job, "tests-executed")), false);
     if (scenario === "normal") {
+      const calls = readFileSync(join(f.job, "playwright-cli.jsonl"), "utf8")
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      assert.deepEqual(calls, [
+        [cli, "install", ...(process.platform === "linux" ? ["--with-deps"] : []), "chromium"],
+        [cli, "install", "--dry-run", "chromium"],
+      ]);
+      assert.equal(
+        JSON.parse(readFileSync(join(f.job, "browser-preparation.json"), "utf8")).playwright,
+        "1.58.2",
+      );
       for (const stage of ["checks", "tests"]) {
         const ran = f.run(stage);
         assert.equal(ran.status, 0, ran.stdout + ran.stderr);

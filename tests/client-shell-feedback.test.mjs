@@ -478,7 +478,7 @@ test(
       );
       assert.equal(
         railAfterPageResize.borderLeftColor,
-        "rgb(173, 185, 200)",
+        "rgb(227, 230, 234)",
         JSON.stringify(railAfterPageResize),
       );
       assert.ok(

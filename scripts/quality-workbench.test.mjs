@@ -181,6 +181,29 @@ test("derived SQL rejects changed inputs, links and unknown generated configs", 
   await assert.rejects(readPreparedWorkbench(unknown), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 
+test("derived SQL rejects staged output and redirected source or output parents", async (t) => {
+  for (const change of [
+    (f) => f.git("-C", f.prepared, "add", f.output),
+    (f) => {
+      const parent = join(f.prepared, f.output, "..");
+      rmSync(parent, { recursive: true });
+      symlinkSync(join(f.source, "business/inventory-apsplan"), parent, "dir");
+    },
+    (f) => {
+      f.git("-C", f.source, "update-index", "--skip-worktree", f.producer);
+      rmSync(join(f.source, f.producer));
+      symlinkSync(join(f.source, f.queries), join(f.source, f.producer));
+    },
+  ]) {
+    const fixture = derivedSqlFixture(t);
+    change(fixture);
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_(?:SOURCE_DIRTY|PREPARED_SOURCE_CHANGED)/,
+    );
+  }
+});
+
 test("derived SQL recomputes after its frozen source head changes", async (t) => {
   const fixture = derivedSqlFixture(t);
   await readPreparedWorkbench(fixture);
@@ -312,6 +335,9 @@ test("new AQKC Skill copies from the frozen Manage source are admitted and froze
 test("registered business Skill copies require identical caller-frozen Manage blobs", async (t) => {
   for (const suffix of [
     "inventory-apsplan/skills/answer-visualization/SKILL.md",
+    "inventory-apsplan/skills/answer-visualization/agents/openai.yaml",
+    "inventory-apsplan/skills/answer-visualization/scripts/render_answer.py",
+    "inventory-apsplan/skills/order-satisfaction-analysis/assets/订单满足率分析模板.html",
     "inventory-apsplan/skills/plan-operations-weekly-report/assets/weekly-report-html-template.html",
     "inventory-apsplan/skills/order-satisfaction-analysis/scripts/package.json",
     "inventory-apsplan/skills/order-satisfaction-analysis/runtime-package.json",
@@ -370,52 +396,75 @@ test("the public verifier uses caller-frozen Manage input for copied Skills", as
   assert.match(missing.stderr, /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 
-test("AQKC copied Skills reject changed frozen sources, unknown outputs, staging and redirects", async (t) => {
-  const fixture = copiedSkillFixture(t);
-  const output = join(fixture.prepared, fixture.output),
-    original = join(fixture.manage.path, fixture.resource);
-  const bytes = readFileSync(original);
-  for (const file of [output, original]) {
-    writeFileSync(file, "changed resource\n");
+test("AQKC, APS and branch copied Skills reject changed frozen sources, unknown outputs, staging and redirects", async (t) => {
+  for (const resource of [
+    "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md",
+    "business-resources/inventory-apsplan/skills/answer-visualization/scripts/render_answer.py",
+    "business-resources/inventory-fc/skills/branch-policy/data-boundary.md",
+  ]) {
+    const fixture = copiedSkillFixture(t, resource);
+    const output = join(fixture.prepared, fixture.output),
+      original = join(fixture.manage.path, fixture.resource);
+    const bytes = readFileSync(original);
+    for (const file of [output, original]) {
+      writeFileSync(file, "changed resource\n");
+      await assert.rejects(
+        readPreparedWorkbench(fixture),
+        /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+      );
+      writeFileSync(file, bytes);
+    }
+    writeFileSync(original, "changed source and copy\n");
+    writeFileSync(output, "changed source and copy\n");
     await assert.rejects(
       readPreparedWorkbench(fixture),
       /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
     );
-    writeFileSync(file, bytes);
-  }
-  writeFileSync(original, "changed source and copy\n");
-  writeFileSync(output, "changed source and copy\n");
-  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
-  writeFileSync(original, bytes);
-  writeFileSync(output, bytes);
-  for (const file of ["lib/unexpected.js", "lib/business/inventory-aqkc/skills/unknown.md"]) {
-    writeFileSync(join(fixture.prepared, file), bytes);
+    writeFileSync(original, bytes);
+    writeFileSync(output, bytes);
+    for (const file of ["lib/unexpected.js", fixture.output.replace(/[^/]+$/, "unknown.md")]) {
+      writeFileSync(join(fixture.prepared, file), bytes);
+      await assert.rejects(
+        readPreparedWorkbench(fixture),
+        /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+      );
+      rmSync(join(fixture.prepared, file));
+    }
+    const external = join(fixture.source, "..", "external-skill.md");
+    writeFileSync(external, bytes);
+    for (const file of [output, original]) {
+      rmSync(file);
+      symlinkSync(external, file);
+      await assert.rejects(
+        readPreparedWorkbench(fixture),
+        /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+      );
+      rmSync(file);
+      writeFileSync(file, bytes);
+    }
+    const parent = join(fixture.prepared, fixture.output, "..");
+    rmSync(parent, { recursive: true });
+    symlinkSync(join(fixture.manage.path, fixture.resource, ".."), parent, "dir");
     await assert.rejects(
       readPreparedWorkbench(fixture),
       /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
     );
-    rmSync(join(fixture.prepared, file));
-  }
-  const external = join(fixture.source, "..", "external-skill.md");
-  writeFileSync(external, bytes);
-  for (const file of [output, original]) {
-    rmSync(file);
-    symlinkSync(external, file);
+    rmSync(parent);
+    mkdirSync(parent);
+    writeFileSync(output, bytes);
+    fixture.git("-C", fixture.prepared, "add", fixture.output);
     await assert.rejects(
       readPreparedWorkbench(fixture),
       /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
     );
-    rmSync(file);
-    writeFileSync(file, bytes);
   }
-  const parent = join(fixture.prepared, fixture.output, "..");
-  rmSync(parent, { recursive: true });
-  symlinkSync(join(fixture.manage.path, fixture.resource, ".."), parent, "dir");
-  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
-  rmSync(parent);
-  mkdirSync(parent);
-  writeFileSync(output, bytes);
-  fixture.git("-C", fixture.prepared, "add", fixture.output);
+});
+
+test("committed Manage Skills outside declared build namespaces remain rejected", async (t) => {
+  const fixture = copiedSkillFixture(
+    t,
+    "business-resources/inventory-unknown/skills/unexpected/SKILL.md",
+  );
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 

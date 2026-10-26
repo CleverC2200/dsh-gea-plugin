@@ -185,7 +185,7 @@ test("branch summary and follow-up suggestions use installed page calculations a
   const last = f.calls.at(-1).request.parameters;
   assert.equal(last.gea_p2, "W1");
   assert.equal(last.gea_p2200, "2026-10-22");
-  assert.equal(last.gea_p2302, "2026-10-23");
+  assert.equal(last.gea_p2801, "2026-10-23");
   assert.equal(last.gea_p2303, 10);
   assert.ok(
     f.calls.every((call) => call.configured && call.request.consumerCode === "branch-inventory"),

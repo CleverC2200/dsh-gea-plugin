@@ -77,19 +77,20 @@ test("the received packages preserve governed login and their declared report or
     const persona = JSON.parse(await readFile(resolve(definition.root, definition.prompt), "utf8"));
     assert.equal(persona.consumerCode, definition.profile.consumerCode);
     if (item.manifest.mode !== "mock") {
-      const report = item.manifest.id === "inventory-orderworkbench";
-      assert.equal(item.manifest.gea.readonly, !report);
-      assert.equal(capability.maxEffect, report ? "submit" : "view");
-      assert.deepEqual(capability.layers, report ? ["read", "draft", "submit"] : ["read"]);
+      const reportStore = item.manifest.id === "inventory-orderworkbench";
+      assert.equal(item.manifest.reportStore, reportStore ? "order" : undefined);
+      assert.equal(item.manifest.gea.readonly, !reportStore);
       const mcp = JSON.parse(await readFile(resolve(item.directory, "mcp.json"), "utf8"));
       assert.deepEqual(mcp.capabilities, ["governed-sql-read"]);
       assert.equal(definition.cube, true);
+      assert.equal(capability.maxEffect, reportStore ? "submit" : "view");
+      assert.deepEqual(capability.layers, reportStore ? ["read", "draft", "submit"] : ["read"]);
       assert.match(
         persona.persona,
         item.manifest.id === "inventory-customer"
           ? /客户库存\s*Agent/
-          : report
-            ? /订单工作台/
+          : reportStore
+            ? /订单工作台\s*Agent/
             : /订单履约/,
       );
       await assert.rejects(
@@ -98,6 +99,7 @@ test("the received packages preserve governed login and their declared report or
       );
       continue;
     }
+    assert.equal(definition.cube, false);
     assert.match(persona.persona, /模拟/);
     const grant = await pages.get(item.manifest.id)(session, id, new AbortController().signal);
     assert.equal(grant.access.mode, "mock");
