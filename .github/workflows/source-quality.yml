@@ -317,47 +317,53 @@ jobs:
           fail-on-severity: high
 
   candidate-quality:
-    name: ${{ needs.source-plan.outputs.validate == 'false' && 'source-metadata' || 'candidate-quality' }}
+    name: ${{ needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false' && 'source-metadata' || 'candidate-quality' }}
     permissions:
       contents: read
       actions: read
-    if: always() && needs.source-plan.outputs.validate != 'false'
+    if: always()
     needs: [source-plan, source-checks, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Retain existing source validation
+        if: always() && needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false'
+        run: echo "Source inputs unchanged; existing formal quality results remain required."
       - uses: actions/checkout@v7
+        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
+        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
         with:
           node-version: 24.22.0
       - name: Download source-check shard receipts
-        if: needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
+        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false') && needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
         uses: actions/download-artifact@v8
         with:
           pattern: source-checks-*
           path: source-check-shards
       - name: Require complete source-check execution
-        if: needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
+        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false') && needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
         run: node scripts/source-check-shards.mjs --aggregate source-check-shards
       - name: Require successful applicable checks
         id: admission
+        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
         env:
           PLAN_RESULT: ${{ needs.source-plan.result }}
           CHECK_RESULT: ${{ needs.source-checks.result }}
           DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
         run: node scripts/source-quality.mjs --phase final
       - name: Report functional and performance results separately
-        if: always()
+        if: always() && (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_ADMISSION_RESULT: ${{ steps.admission.outcome }}
         run: node scripts/quality-hosted-budget.mjs --source-report source-budget.json --mode in-gate
       - name: Keep source workflow performance
-        if: always()
+        if: always() && (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
         uses: actions/upload-artifact@v7
         with:
           name: source-budget-${{ github.run_attempt }}

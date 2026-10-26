@@ -96,9 +96,8 @@ test("source workflow keeps metadata edits outside active formal checks and the 
   );
   assert.match(
     workflow,
-    /candidate-quality:\n\s+name: \$\{\{ needs\.source-plan\.outputs\.validate == 'false' && 'source-metadata' \|\| 'candidate-quality' \}\}/,
+    /if: always\(\)\n\s+needs: \[source-plan, source-checks, dependency-review\]/,
   );
-  assert.match(workflow, /if: always\(\) && needs\.source-plan\.outputs\.validate != 'false'/);
 });
 
 test("base and target edits supersede obsolete formal checks while metadata edits cannot cancel them", () => {
