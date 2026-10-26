@@ -1,5 +1,6 @@
 import { profile } from "../profile.mjs";
 import { fixtureEnvironment } from "./business-session.mjs";
+import { installProfileReadinessProbe } from "./profile-readiness-probe.mjs";
 
 /** Explicit caller-owned fake keys must reach the public parent preflight as well as its child. */
 export async function modelProfile(t, options = {}) {
@@ -19,5 +20,11 @@ export async function modelProfile(t, options = {}) {
     ),
   );
   fixtureEnvironment(t, keys);
-  return profile(t, options);
+  return profile(t, {
+    ...options,
+    async beforeStart(input) {
+      await options.beforeStart?.(input);
+      await installProfileReadinessProbe(input.runtime);
+    },
+  });
 }
