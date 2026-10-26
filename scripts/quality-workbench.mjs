@@ -86,6 +86,51 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
+      file === "lib/business/inventory-orderworkbench/sql.config.json"
+    ) {
+      const output = join(prepared, file);
+      const inputs = new Map();
+      if ((await lstat(output)).isFile() && (await realpath(output)) === output) {
+        for (const resource of [
+          "business/inventory-apsplan/sql.config.json",
+          "business/inventory-orderworkbench/queries.mjs",
+          "business/inventory-orderworkbench/source-config.mjs",
+        ]) {
+          const original = join(source, resource);
+          const entry = git(source, "ls-tree", head, "--", resource);
+          if (
+            !/^100644 blob [a-f0-9]{40}\t/.test(entry) ||
+            !(await lstat(original)).isFile() ||
+            (await realpath(original)) !== original
+          )
+            break;
+          const bytes = await readFile(original);
+          const blob = createHash("sha1")
+            .update("blob " + bytes.length + "\0")
+            .update(bytes)
+            .digest("hex");
+          if (!entry.split("\t")[0].endsWith(" " + blob)) break;
+          inputs.set(resource, bytes);
+        }
+        if (inputs.size === 3) {
+          const { orderWorkbenchSourceConfig } = await import(
+            pathToFileURL(join(source, "business/inventory-orderworkbench/source-config.mjs")).href
+          );
+          const expected = Buffer.from(
+            JSON.stringify(
+              orderWorkbenchSourceConfig(
+                JSON.parse(inputs.get("business/inventory-apsplan/sql.config.json")),
+              ),
+              null,
+              2,
+            ) + "\n",
+          );
+          if (expected.equals(await readFile(output))) continue;
+        }
+      }
+    }
+    if (
+      line.startsWith("?? ") &&
       /^lib\/(?:business\/inventory-(?:aqkc|fc|qll|apsplan|dealer|orderfulfillment)|static\/mps)\/sql\.config\.json$/.test(
         file,
       )

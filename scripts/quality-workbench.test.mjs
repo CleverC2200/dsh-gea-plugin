@@ -25,7 +25,7 @@ import {
   prepareWorkbenchAssets,
 } from "./quality-workbench.mjs";
 
-function preparedFixture(t, worktree = false, ignoredOutputs = []) {
+function preparedFixture(t, worktree = false, ignoredOutputs = [], authoredSources = {}) {
   const root = mkdtempSync(join(tmpdir(), "gea-prepared-metadata-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, "source"),
@@ -65,6 +65,10 @@ function preparedFixture(t, worktree = false, ignoredOutputs = []) {
     "types/retired.d.ts",
   ])
     writeFileSync(join(source, "lib", file), "original output\n");
+  for (const [file, contents] of Object.entries(authoredSources)) {
+    mkdirSync(join(source, file, ".."), { recursive: true });
+    writeFileSync(join(source, file), contents);
+  }
   const git = (...args) =>
     execFileSync("git", args, {
       encoding: "utf8",
@@ -94,6 +98,92 @@ function preparedFixture(t, worktree = false, ignoredOutputs = []) {
   writeFileSync(join(prepared, "lib/host.js"), "built output\n");
   return { source, prepared, head, receipt, git };
 }
+
+function derivedOrderConfigFixture(t) {
+  const files = {
+    "business/inventory-apsplan/sql.config.json": '{"source":"frozen-aps"}\n',
+    "business/inventory-orderworkbench/queries.mjs": 'export const label = "固定订单查询";\n',
+    "business/inventory-orderworkbench/source-config.mjs":
+      'import { label } from "./queries.mjs"; export function orderWorkbenchSourceConfig(source) { return { agentId: "inventory-orderworkbench", source: source.source, label }; }\n',
+  };
+  const fixture = preparedFixture(t, false, [], files);
+  const output = "lib/business/inventory-orderworkbench/sql.config.json";
+  mkdirSync(join(fixture.prepared, output, ".."), { recursive: true });
+  writeFileSync(
+    join(fixture.prepared, output),
+    JSON.stringify(
+      { agentId: "inventory-orderworkbench", source: "frozen-aps", label: "固定订单查询" },
+      null,
+      2,
+    ) + "\n",
+  );
+  return { ...fixture, output };
+}
+
+test("order SQL derivation uses the frozen Workbench public source function and freezes exact bytes", async (t) => {
+  const fixture = derivedOrderConfigFixture(t);
+  const record = await readPreparedWorkbench(fixture);
+  assert.ok(record.files[fixture.output]);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, fixture.output), '{"agentId":"forged"}\n');
+  await assert.rejects(
+    verifyPreparedWorkbench(fixture),
+    /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/,
+  );
+});
+
+test("derived order SQL rejects staged output, redirects, extra paths and hidden source changes", async (t) => {
+  for (const change of [
+    (f) => f.git("-C", f.prepared, "add", f.output),
+    (f) => {
+      rmSync(join(f.prepared, f.output));
+      symlinkSync(
+        join(f.source, "business/inventory-apsplan/sql.config.json"),
+        join(f.prepared, f.output),
+      );
+    },
+    (f) => {
+      const parent = join(f.prepared, f.output, "..");
+      rmSync(parent, { recursive: true });
+      symlinkSync(join(f.source, "business/inventory-apsplan"), parent, "dir");
+    },
+    (f) =>
+      copyFileSync(
+        join(f.prepared, f.output),
+        join(f.prepared, f.output.replace("sql.config.json", "unknown.config.json")),
+      ),
+    ...[
+      "business/inventory-apsplan/sql.config.json",
+      "business/inventory-orderworkbench/queries.mjs",
+      "business/inventory-orderworkbench/source-config.mjs",
+    ].map((file) => (f) => {
+      f.git("-C", f.source, "update-index", "--skip-worktree", file);
+      writeFileSync(
+        join(f.source, file),
+        file.endsWith(".json")
+          ? '{"source":"forged"}\n'
+          : 'throw Error("UNTRUSTED_MODULE_EXECUTED");\n',
+      );
+    }),
+    (f) => {
+      const file = "business/inventory-orderworkbench/source-config.mjs";
+      f.git("-C", f.source, "update-index", "--skip-worktree", file);
+      rmSync(join(f.source, file));
+      symlinkSync(
+        join(f.source, "business/inventory-orderworkbench/queries.mjs"),
+        join(f.source, file),
+      );
+    },
+  ]) {
+    const fixture = derivedOrderConfigFixture(t);
+    change(fixture);
+    await assert.rejects(
+      readPreparedWorkbench(fixture),
+      /QUALITY_WORKBENCH_(?:SOURCE_DIRTY|PREPARED_SOURCE_CHANGED)/,
+    );
+  }
+});
 
 function copiedSqlFixture(t, resource = "business/inventory-apsplan/sql.config.json") {
   const fixture = preparedFixture(t);
