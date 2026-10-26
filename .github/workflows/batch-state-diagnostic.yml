@@ -1,0 +1,111 @@
+name: batch-state-linux-diagnostic
+run-name: "Frozen original three cases, Linux public dialog state"
+on:
+  push:
+    branches: [codex/gea-batch-linux-diagnostic-20261026]
+permissions:
+  contents: read
+  actions: read
+env:
+  SOURCE_HEAD_SHA: 9c9f4e15b5756f167cc9148bc3673782408adcfc
+  SOURCE_BASE_SHA: ce5c15ed3408cfc72a3568e071885a1cfc4debf5
+  QUALITY_BASE_SHA: ce5c15ed3408cfc72a3568e071885a1cfc4debf5
+  QUALITY_EXPECTED_SHA: 9c9f4e15b5756f167cc9148bc3673782408adcfc
+concurrency:
+  group: batch-state-linux-diagnostic
+  cancel-in-progress: false
+jobs:
+  sample:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: candidate/dsh-gea-plugin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: experiment
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_HEAD_SHA }}
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        id: node
+        with:
+          node-version: 24.22.0
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: 061bd20550bffc9a07a7fb5a2ef71f6e9621200f
+          path: source/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: 662413674cfac1fd2942f1a8e4d03b3fd3847f2c
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: a0c0d2ff884b1808eccb9bb254a1659281364d7d
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require original runner image and Node before preparation
+        run: node "$GITHUB_WORKSPACE/experiment/.github/diagnostics/batch-linux/sample.mjs" --environment-only
+      - name: Select preparation requirements, without executing selected tests
+        run: node scripts/source-quality.mjs --phase affected-plan
+      - name: Enable declared package managers
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+      - name: Locate package download cache
+        id: cache-path
+        working-directory: candidate/dsh-agent-manage
+        run: echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ${{ steps.cache-path.outputs.store }}
+          key: downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml') }}
+          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+      - name: Prepare owned Core SDK source
+        run: node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head a0c0d2ff884b1808eccb9bb254a1659281364d7d --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Locate SDK artifact paths
+        id: sdk-paths
+        run: node ../dsh-agent-manage/scripts/sdk-artifact-cache.mjs --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-a0c0d2ff884b1808eccb9bb254a1659281364d7d-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - name: Verify or prepare SDK
+        run: node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head a0c0d2ff884b1808eccb9bb254a1659281364d7d --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Prepare existing immutable upstream inputs
+        run: node scripts/source-quality.mjs --phase affected-prepare
+      - name: Prepare, build and enforce original static/type gates without running the full test plan
+        run: node "$GITHUB_WORKSPACE/experiment/.github/diagnostics/batch-linux/prepare.mjs"
+      - name: Run at most three rounds of the unchanged original three cases
+        timeout-minutes: 15
+        run: node "$GITHUB_WORKSPACE/experiment/.github/diagnostics/batch-linux/sample.mjs"
+      - name: Preserve raw public state, original reports and frozen inputs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: batch-linux-state-${{ github.run_id }}
+          include-hidden-files: true
+          if-no-files-found: error
+          path: |
+            batch-linux-results/
+            quality-stages.json
+            browser-preparation.json
+            candidate-input.json
