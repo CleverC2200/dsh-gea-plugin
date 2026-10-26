@@ -657,3 +657,7 @@ test("workflow source plans retain behavior contracts alongside semantic preflig
     assert.deepEqual(plan.files, [expected]);
   }
 });
+
+test("controlled native gate probe must reject a genuine formal failure", () => {
+  assert.fail("CONTROLLED_FORMAL_FAILURE_PROBE_215_ONLY");
+});
