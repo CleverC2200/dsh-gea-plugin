@@ -3,8 +3,15 @@ import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 export function installBatchObserver() {
-  if (window.__geaBatchObserverInstalled) return;
-  window.__geaBatchObserverInstalled = true;
+  const previousObserver = window.__geaBatchObserver;
+  if (previousObserver?.body === document.body) {
+    previousObserver.capture('action-check');
+    return;
+  }
+  previousObserver?.controller.abort();
+  previousObserver?.observers.forEach((observer) => observer.disconnect());
+  const controller = new AbortController();
+  const observers = [];
   let previous;
   let counter = 0;
   const nodes = new WeakMap();
@@ -46,17 +53,20 @@ export function installBatchObserver() {
   function watch(root) {
     if (roots.has(root)) return;
     roots.add(root);
-    new MutationObserver(() => capture('mutation')).observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'aria-busy', 'data-testid', 'value'] });
+    const observer = new MutationObserver(() => capture('mutation'));
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'aria-busy', 'data-testid', 'value'] });
+    observers.push(observer);
     for (const name of ['input', 'change', 'focusin', 'focusout']) root.addEventListener(name, (event) => {
       if (event.target instanceof HTMLTextAreaElement) {
         capture('event', event);
         queueMicrotask(() => capture('after-event'));
       }
-    }, true);
+    }, { capture: true, signal: controller.signal });
   }
+  window.__geaBatchObserver = { body: document.body, controller, observers, capture };
   watch(document);
-  document.addEventListener('DOMContentLoaded', () => { capture('dom-ready'); send({ kind: 'observer-ready' }); }, { once: true });
-  send({ kind: 'observer-installed' });
+  capture('observer-installed');
+  send({ kind: 'observer-installed', documentReadyState: document.readyState });
 }
 
 if (process.env.GEA_BATCH_DIAGNOSTICS === '1' && process.argv.some((arg) => arg.endsWith('tests/group-selection-web.test.mjs') || arg.endsWith('observer-selfcheck.mjs'))) {
@@ -64,6 +74,7 @@ if (process.env.GEA_BATCH_DIAGNOSTICS === '1' && process.argv.some((arg) => arg.
   const { chromium } = require('@playwright/test');
   const output = process.env.GEA_BATCH_DIAGNOSTIC_OUTPUT;
   let contextIndex = 0;
+  const locatorPrototypes = new WeakSet();
   const write = (value) => appendFileSync(output, JSON.stringify({ tag: 'DEBUG-batch-linux-20261026', at: new Date().toISOString(), pid: process.pid, ...value }) + '\n', { mode: 0o600 });
   const hash = (value) => typeof value === 'string' ? createHash('sha256').update(value).digest('hex').slice(0, 12) : null;
   const launch = chromium.launch;
@@ -79,8 +90,23 @@ if (process.env.GEA_BATCH_DIAGNOSTICS === '1' && process.argv.some((arg) => arg.
         if (!frames.has(frame)) frames.set(frame, ++frameIndex);
         write({ contextId, frameId: frames.get(frame), ...state });
       });
-      await context.addInitScript(installBatchObserver);
-      context.on('page', (page) => page.on('response', async (response) => {
+      const observe = (page) => {
+        for (const frame of page.frames()) void frame.evaluate(installBatchObserver).catch((error) => write({ kind: 'observer-unavailable', error: error.name }));
+      };
+      context.on('page', (page) => {
+        const prototype = Object.getPrototypeOf(page.locator('body'));
+        if (!locatorPrototypes.has(prototype)) {
+          locatorPrototypes.add(prototype);
+          for (const method of ['click', 'fill']) {
+            const original = prototype[method];
+            prototype[method] = function (...args) {
+              const result = original.apply(this, args);
+              void result.then(() => observe(this.page())).catch(() => {});
+              return result;
+            };
+          }
+        }
+        page.on('response', async (response) => {
         if (new URL(response.url()).pathname !== '/api/agent-workbench/page') return;
         try {
           const input = response.request().postDataJSON();
@@ -92,7 +118,8 @@ if (process.env.GEA_BATCH_DIAGNOSTICS === '1' && process.argv.some((arg) => arg.
           });
           write({ kind: 'owner', contextId, status: response.status(), sessionHash: hash(input.sessionId), ownerHash: hash(receipt.owner), associationMatchesRequest: association?.sessionId === input.sessionId, presetMatchesRequest: association?.preset === input.resourceId, surface: receipt.binding?.surface ?? null, tool: receipt.binding?.tool ?? null });
         } catch (error) { write({ kind: 'owner-unavailable', contextId, error: error.name }); }
-      }));
+        });
+      });
       return context;
     };
     return browser;
