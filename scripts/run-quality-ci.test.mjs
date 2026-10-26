@@ -761,7 +761,7 @@ test("tool knowledge uses the immutable Core command manifest and refuses unavai
   }
 });
 
-test("merged PR result reuse skips only the validated body and preserves every fallback check", () => {
+test("merged PR reuse preserves formal checks and metadata requires a formal receipt", () => {
   const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
   const job = workflow.jobs["source-checks"],
     steps = job.steps;
@@ -805,26 +805,37 @@ test("merged PR result reuse skips only the validated body and preserves every f
         },
         "source-checks": { result: succeeded ? "success" : "failure" },
       },
-      () => succeeded,
+      () => true,
       () => true,
     );
-  const name = final.name.replace(/^\$\{\{|\}\}$/g, "").trim();
+  assert.equal(final.name, "candidate-quality");
   for (const validate of ["true", "", "unknown"]) {
     assert.equal(evaluate(final.if, "false", validate, false), true, validate);
-    assert.equal(evaluate(name, "false", validate, false), "candidate-quality", validate);
   }
   for (const succeeded of [true, false]) {
     assert.equal(evaluate(final.if, "false", "false", succeeded, "success"), true);
-    assert.equal(evaluate(name, "false", "false", succeeded, "success"), "source-metadata");
+
     const enabled = final.steps.filter((step) =>
       evaluate(step.if ?? "success()", "false", "false", succeeded, "success"),
     );
     assert.deepEqual(
       enabled.map((step) => step.name),
-      ["Retain existing source validation"],
+      [
+        "Check out source inputs",
+        "Prepare source receipt verification",
+        "Find latest complete formal source",
+        "Download exact formal source input receipt",
+        "Verify latest formal source receipt",
+      ],
     );
-    assert.equal(enabled[0].uses, undefined);
-    assert.match(enabled[0].run, /^echo /);
+    const download = enabled.find((step) => step.uses === "actions/download-artifact@v8");
+    assert.equal(download.with["run-id"], "${{ steps.formal.outputs.run-id }}");
+    assert.equal(download.with["artifact-ids"], "${{ steps.formal.outputs.artifact-id }}");
+    assert.equal(download.with["github-token"], "${{ github.token }}");
+    assert.equal(
+      enabled.some((step) => step.id === "admission"),
+      false,
+    );
   }
   for (const [validate, planResult] of [
     ["true", "success"],
@@ -832,7 +843,6 @@ test("merged PR result reuse skips only the validated body and preserves every f
     ["unknown", "success"],
     ...["failure", "cancelled", "skipped", "", "unknown"].map((result) => ["false", result]),
   ]) {
-    assert.equal(evaluate(name, "false", validate, true, planResult), "candidate-quality");
     const enabled = final.steps.filter((step) =>
       evaluate(step.if ?? "success()", "false", validate, true, planResult),
     );
@@ -842,8 +852,26 @@ test("merged PR result reuse skips only the validated body and preserves every f
       enabled.some((step) => step.name === "Report functional and performance results separately"),
     );
     assert.ok(enabled.some((step) => step.name === "Keep source workflow performance"));
-    assert.ok(enabled.every((step) => step.name !== "Retain existing source validation"));
+    assert.ok(
+      enabled.every(
+        (step) => step.id !== "formal" && step.name !== "Verify latest formal source receipt",
+      ),
+    );
   }
+  assert.equal(
+    evaluate(final["timeout-minutes"].replace(/^\$\{\{|\}\}$/g, ""), "false", "false"),
+    75,
+  );
+  assert.equal(evaluate(final["timeout-minutes"].replace(/^\$\{\{|\}\}$/g, ""), "false"), 5);
+  const planner = workflow.jobs["source-plan"].steps;
+  const inputRecord = planner.find((step) => step.name === "Record formal source inputs");
+  assert.match(inputRecord.run, /source-formal-receipt\.mjs --phase record/);
+  assert.match(inputRecord.if, /github.event_name == 'pull_request'/);
+  const inputUpload = planner.find((step) => step.name === "Keep formal source input receipt");
+  assert.equal(inputUpload.uses, "actions/upload-artifact@v7");
+  assert.equal(inputUpload.with.name, "source-inputs-${{ github.run_attempt }}");
+  assert.equal(planner.find((step) => step.id === "plan").shell, "bash");
+  assert.match(planner.find((step) => step.id === "plan").run, /tee source-plan\.json/);
   for (const name of [
     "Check applicable repository source",
     "Check committed package version",

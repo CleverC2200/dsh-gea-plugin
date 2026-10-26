@@ -49,7 +49,8 @@ jobs:
       - name: Classify actual Git changes
         id: plan
         if: steps.event.outputs.validate == 'true'
-        run: node scripts/source-quality.mjs --phase plan
+        shell: bash
+        run: node scripts/source-quality.mjs --phase plan | tee source-plan.json
       - name: Check changed workflow semantics
         if: steps.plan.outputs.workflows == 'true'
         shell: bash
@@ -86,6 +87,20 @@ jobs:
         run: |
           node scripts/source-quality.mjs --phase affected-plan
           node scripts/source-check-shards.mjs --matrix .runtime/source-checks-plan.json
+      - name: Record formal source inputs
+        if: github.event_name == 'pull_request' && steps.event.outputs.validate == 'true'
+        env:
+          SOURCE_EVENT_VALIDATE: ${{ steps.event.outputs.validate }}
+          SOURCE_MATRIX_PARALLEL: ${{ steps.source-matrix.outputs.parallel || 'false' }}
+          SOURCE_MATRIX_SHARDS: ${{ steps.source-matrix.outputs.shards || '["single"]' }}
+        run: node scripts/source-formal-receipt.mjs --phase record --plan source-plan.json --output source-input.json
+      - name: Keep formal source input receipt
+        if: github.event_name == 'pull_request' && steps.event.outputs.validate == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-inputs-${{ github.run_attempt }}
+          path: candidate/dsh-gea-plugin/source-input.json
+          if-no-files-found: error
       - name: Keep preparation-free selection and cost
         if: always() && steps.plan.outputs.engineering == 'true'
         uses: actions/upload-artifact@v7
@@ -317,28 +332,44 @@ jobs:
           fail-on-severity: high
 
   candidate-quality:
-    name: ${{ needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false' && 'source-metadata' || 'candidate-quality' }}
+    name: candidate-quality
     permissions:
       contents: read
       actions: read
     if: always()
     needs: [source-plan, source-checks, dependency-review]
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: ${{ needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false' && 75 || 5 }}
     steps:
-      - name: Retain existing source validation
-        if: always() && needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false'
-        run: echo "Source inputs unchanged; existing formal quality results remain required."
-      - uses: actions/checkout@v7
-        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
+      - name: Check out source inputs
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v7
-        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
+      - name: Prepare source receipt verification
+        uses: actions/setup-node@v7
         with:
           node-version: 24.22.0
+      - name: Find latest complete formal source
+        id: formal
+        if: needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/source-formal-receipt.mjs --phase lookup --output source-formal-selection.json
+      - name: Download exact formal source input receipt
+        if: needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false'
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.formal.outputs.artifact-id }}
+          run-id: ${{ steps.formal.outputs.run-id }}
+          github-token: ${{ github.token }}
+          path: source-formal-input
+      - name: Verify latest formal source receipt
+        if: needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'false'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/source-formal-receipt.mjs --phase verify --selection source-formal-selection.json --receipt source-formal-input/source-input.json
       - name: Download source-check shard receipts
         if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false') && needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
         uses: actions/download-artifact@v8
