@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { build } from "esbuild";
 test("compiled GEA package stamp stays immutable until the next owner build", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "gea-compiled-version-"));
@@ -51,7 +52,21 @@ test("compiled GEA package stamp stays immutable until the next owner build", as
 
 test("the actual declared client builder exposes the compiled stamp in its materialized namespace", async () => {
   const { runInNewContext } = await import("node:vm");
-  execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], { stdio: "pipe" });
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    try {
+      execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], {
+        stdio: "pipe",
+      });
+      break;
+    } catch (error) {
+      const busy = /Error: BUILD_(?:VOLUME|OUTPUT|ADMISSION)_BUSY\b/.test(
+        String(error.stderr ?? ""),
+      );
+      if (!busy || Date.now() >= deadline) throw error;
+      await delay(250);
+    }
+  }
   let loaded;
   runInNewContext(await readFile("lib/client.js", "utf8"), {
     window: {

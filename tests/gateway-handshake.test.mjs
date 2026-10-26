@@ -146,3 +146,54 @@ test("both entries preserve HTTP and invalid JSON failure facts", async () => {
     );
   }
 });
+
+test("order handshake retries a reset once with the original request identity", async () => {
+  const { prepareGatewaySession } = await import("../src/host/gateway-session.ts");
+  const calls = [];
+  const response = payload();
+  response.result.gatewayContext.consumerCode = "order";
+  await prepareGatewaySession(
+    "https://gateway.invalid",
+    auth,
+    { consumerType: "AGENT", consumerCode: "order" },
+    new AbortController().signal,
+    1000,
+    async (url, init) => {
+      calls.push(init.body);
+      if (calls.length === 1)
+        throw new Error("captured", {
+          cause: new TypeError("fetch failed", {
+            cause: Object.assign(new Error("reset"), { code: "ECONNRESET" }),
+          }),
+        });
+      return Response.json(response);
+    },
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], calls[1]);
+});
+test("order handshake never retries cancellation, other Consumers or a second reset", async () => {
+  const { prepareGatewaySession } = await import("../src/host/gateway-session.ts");
+  for (const mode of ["cancel", "other", "twice"]) {
+    const controller = new AbortController();
+    let calls = 0;
+    const reset = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("reset"), { code: "ECONNRESET" }),
+    });
+    await assert.rejects(
+      prepareGatewaySession(
+        "https://gateway.invalid",
+        auth,
+        { consumerType: "AGENT", consumerCode: mode === "other" ? "test-agent" : "order" },
+        controller.signal,
+        1000,
+        async () => {
+          calls++;
+          if (mode === "cancel") controller.abort();
+          throw reset;
+        },
+      ),
+    );
+    assert.equal(calls, mode === "twice" ? 2 : 1);
+  }
+});

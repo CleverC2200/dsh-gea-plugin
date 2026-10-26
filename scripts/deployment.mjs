@@ -196,6 +196,7 @@ export function businessDeploymentPatch(
           config: {
             geaBaseUrl: config.geaBaseUrl,
             serviceAccounts: config.serviceAccounts,
+            dms: config.dms,
             environment: config.environment,
             geaEnvironments: config.geaEnvironments,
             pageSize: config.pageSize,
