@@ -10,6 +10,16 @@ const built = await build({
   },
   bundle: true,
   packages: "external",
+  plugins: [
+    {
+      name: "bundle-workbench-for-sql-test",
+      setup(builder) {
+        builder.onResolve({ filter: /^@cleverc2200\/dsh-agent-workbench(?:\/|$)/ }, (args) => ({
+          path: createRequire(import.meta.url).resolve(args.path),
+        }));
+      },
+    },
+  ],
   write: false,
   platform: "node",
   format: "cjs",
