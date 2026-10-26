@@ -1,22 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
-import {
-  dirname,
-  isAbsolute,
-  join,
-  normalize,
-  parse,
-  relative,
-  sep,
-} from "node:path";
+import { dirname, isAbsolute, join, normalize, parse, relative, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const inside = (root, path) => {
   const name = relative(root, path);
-  return (
-    name === "" ||
-    (!isAbsolute(name) && name !== ".." && !name.startsWith(".." + sep))
-  );
+  return name === "" || (!isAbsolute(name) && name !== ".." && !name.startsWith(".." + sep));
 };
 const text = (value) => typeof value === "string" && value.trim().length > 0;
 function exists(path) {
@@ -38,8 +27,7 @@ function physical(path, missing = false) {
     throw Error("OUTPUT_ABSOLUTE_PHYSICAL_PATH_REQUIRED");
   let parent = path;
   while (!exists(parent)) parent = dirname(parent);
-  if (fs.realpathSync(parent) !== parent)
-    throw Error("OUTPUT_PATH_LINK_FORBIDDEN");
+  if (fs.realpathSync(parent) !== parent) throw Error("OUTPUT_PATH_LINK_FORBIDDEN");
   if (!missing && parent !== path) throw Error("OUTPUT_PATH_MISSING");
   return path;
 }
@@ -71,11 +59,7 @@ export function checkDevelopmentOutputs(file) {
       throw Error("OUTPUT_MANIFEST_REQUIRED");
     if (!Array.isArray(manifest.roots) || !manifest.roots.length)
       throw Error("OUTPUT_TASK_ROOT_REQUIRED");
-    if (
-      !manifest.roots.some(
-        (root) => typeof root === "string" && inside(root, file),
-      )
-    )
+    if (!manifest.roots.some((root) => typeof root === "string" && inside(root, file)))
       throw Error("OUTPUT_MANIFEST_TASK_ROOT_REQUIRED");
     for (const [index, root] of manifest.roots.entries()) {
       physical(root, true);
@@ -100,21 +84,9 @@ export function checkDevelopmentOutputs(file) {
       )
         throw Error("OUTPUT_PATH_OUTSIDE_OR_OVERLAPPING");
       paths.push(item.path);
-      if (
-        ![
-          "generated",
-          "artifact",
-          "source",
-          "failure-evidence",
-          "user-data",
-        ].includes(item.kind)
-      )
+      if (!["generated", "artifact", "source", "failure-evidence", "user-data"].includes(item.kind))
         throw Error("OUTPUT_KIND_REQUIRED");
-      if (
-        item.disposition === "retain"
-          ? !text(item.reason)
-          : item.disposition !== "remove"
-      )
+      if (item.disposition === "retain" ? !text(item.reason) : item.disposition !== "remove")
         issues.push({ path: item.path, reason: "OUTPUT_DISPOSITION_REQUIRED" });
       if (item.disposition === "retain" && !exists(item.path))
         issues.push({
@@ -127,8 +99,7 @@ export function checkDevelopmentOutputs(file) {
             throw Error("OUTPUT_RECOVERY_SOURCE_REQUIRED");
           for (const source of item.restoreFrom) {
             readable(source);
-            if (inside(item.path, source))
-              throw Error("OUTPUT_RECOVERY_INSIDE_GENERATED_PATH");
+            if (inside(item.path, source)) throw Error("OUTPUT_RECOVERY_INSIDE_GENERATED_PATH");
           }
         } catch (error) {
           issues.push({ path: item.path, reason: error.message });
@@ -140,34 +111,26 @@ export function checkDevelopmentOutputs(file) {
           if (inside(item.path, item.cleanupReceipt ?? ""))
             throw Error("OUTPUT_RECEIPT_INSIDE_REMOVED_PATH");
           const receipt = read(item.cleanupReceipt);
-          const records = receipt.items?.filter(
-            (entry) => entry.path === item.path,
-          );
+          const records = receipt.items?.filter((entry) => entry.path === item.path);
           if (
             records?.length !== 1 ||
             records[0].removed !== true ||
             !Number.isFinite(Date.parse(records[0].startedAt)) ||
             !Number.isFinite(Date.parse(records[0].completedAt)) ||
-            Date.parse(records[0].completedAt) <
-              Date.parse(records[0].startedAt)
+            Date.parse(records[0].completedAt) < Date.parse(records[0].startedAt)
           )
             throw Error("OUTPUT_CLEANUP_RECEIPT_REQUIRED");
         } catch (error) {
           issues.push({ path: item.path, reason: error.message });
         }
-        if (exists(item.path))
-          issues.push({ path: item.path, reason: "OUTPUT_STILL_PRESENT" });
+        if (exists(item.path)) issues.push({ path: item.path, reason: "OUTPUT_STILL_PRESENT" });
       }
     }
     const inspect = (directory) => {
       for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
         if (path === file) continue;
-        if (
-          !paths.some(
-            (declared) => inside(declared, path) || inside(path, declared),
-          )
-        ) {
+        if (!paths.some((declared) => inside(declared, path) || inside(path, declared))) {
           issues.push({ path, reason: "OUTPUT_UNDECLARED" });
           continue;
         }
@@ -186,12 +149,9 @@ export function checkDevelopmentOutputs(file) {
     for (const root of manifest.roots) {
       if (exists(root)) {
         if (fs.statSync(root).isDirectory()) inspect(root);
-        else if (!paths.includes(root))
-          issues.push({ path: root, reason: "OUTPUT_UNDECLARED" });
+        else if (!paths.includes(root)) issues.push({ path: root, reason: "OUTPUT_UNDECLARED" });
       } else if (
-        !manifest.items.some(
-          (item) => item.path === root && item.disposition === "remove",
-        )
+        !manifest.items.some((item) => item.path === root && item.disposition === "remove")
       ) {
         issues.push({ path: root, reason: "OUTPUT_ROOT_MISSING" });
       }
@@ -206,24 +166,17 @@ export function checkDevelopmentOutputs(file) {
           .trimEnd()
           .split("\n")
       : [];
-    if (measured.length !== retained.length)
-      throw Error("OUTPUT_MEASUREMENT_FAILED");
+    if (measured.length !== retained.length) throw Error("OUTPUT_MEASUREMENT_FAILED");
     const sizes = new Map(
       measured.map((row, index) => {
         const separator = row.indexOf("\t");
         const amount = row.slice(0, separator);
-        if (
-          !/^\d+$/.test(amount) ||
-          row.slice(separator + 1) !== retained[index].path
-        )
+        if (!/^\d+$/.test(amount) || row.slice(separator + 1) !== retained[index].path)
           throw Error("OUTPUT_MEASUREMENT_FAILED");
         return [retained[index].path, Number(amount) * 1024];
       }),
     );
-    retainedAllocatedBytes = [...sizes.values()].reduce(
-      (sum, value) => sum + value,
-      0,
-    );
+    retainedAllocatedBytes = [...sizes.values()].reduce((sum, value) => sum + value, 0);
     items = manifest.items.map((item) => ({
       ...item,
       allocatedBytes: sizes.get(item.path) ?? null,
