@@ -190,7 +190,10 @@ test("workflow preserves the reusable single job and requires independent receip
     step.run?.includes("--source-report source-budget.json --mode in-gate"),
   );
   assert.ok(performance > final);
-  assert.equal(gate[performance].if, "always()");
+  assert.equal(
+    gate[performance].if,
+    "always() && (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')",
+  );
   assert.equal(jobs["candidate-quality"].permissions.actions, "read");
   assert.ok(
     jobs["source-plan"].steps.some(
@@ -201,7 +204,7 @@ test("workflow preserves the reusable single job and requires independent receip
   );
   assert.equal(
     gate[aggregate].if,
-    "needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'",
+    "(needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false') && needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'",
   );
   assert.equal(gate[aggregate - 1].with.pattern, "source-checks-*");
 });
