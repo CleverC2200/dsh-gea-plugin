@@ -46,8 +46,11 @@ test("order report-store admission keeps its empty external capability declarati
   };
   assert.doesNotThrow(() => assertHtmlMcp(mcp, "order", false, true));
   assert.throws(() => assertHtmlMcp(mcp, "order", false), /INVALID_GEA_CAPABILITY/);
+  assert.doesNotThrow(() =>
+    assertHtmlMcp({ ...mcp, capabilities: ["governed-sql-read"] }, "order", false, true),
+  );
   assert.throws(
-    () => assertHtmlMcp({ ...mcp, capabilities: ["governed-sql-read"] }, "order", false, true),
+    () => assertHtmlMcp({ ...mcp, capabilities: ["sql-write"] }, "order", false, true),
     /INVALID_GEA_CAPABILITY/,
   );
   assert.throws(

@@ -6,9 +6,10 @@ export function assertHtmlMcp(mcp, consumerCode, mock, reportStore = false) {
     mcp.consumer?.consumerCode !== consumerCode ||
     mcp.consumer?.consumerType !== "AGENT" ||
     (reportStore && consumerCode !== "order") ||
-    !(mock || reportStore
+    !(mock
       ? JSON.stringify(mcp.capabilities) === "[]"
-      : ['["governed-sql-read"]', '["governed-sql-read","governed-cube-read"]'].includes(
+      : (reportStore && JSON.stringify(mcp.capabilities) === "[]") ||
+        ['["governed-sql-read"]', '["governed-sql-read","governed-cube-read"]'].includes(
           JSON.stringify(mcp.capabilities),
         ))
   )
