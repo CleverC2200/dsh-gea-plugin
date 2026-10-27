@@ -525,7 +525,7 @@ test("public browser preparation keeps normal and nonzero command results in its
       ...(process.platform === "linux" ? ["--with-deps"] : []),
       "chromium",
     ]);
-    assert.equal(build.steps[0].budgetMs, 300000);
+    assert.equal(build.steps[0].budgetMs, 600000);
     assert.equal(build.steps[0].status, build.status);
     assert.ok(build.steps[0].finishedAt);
     assert.equal(existsSync(join(f.job, "browser-preparation.json")), scenario !== "fail");
@@ -575,7 +575,7 @@ test("browser preparation budgets can be shortened but cannot exceed the fixed u
   const f = fixture(t, { browser: true });
   const prepared = f.run("prepare");
   assert.equal(prepared.status, 0, prepared.stderr);
-  const result = f.run("build", {}, ["--browser-preparation-timeout-ms", "300001"]);
+  const result = f.run("build", {}, ["--browser-preparation-timeout-ms", "600001"]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /QUALITY_BROWSER_BUDGET_REQUIRED/);
   assert.equal(existsSync(join(f.job, "browser-preparation.json")), false);

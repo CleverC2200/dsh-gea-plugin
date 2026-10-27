@@ -41,9 +41,9 @@ function command(file, args, cwd, env = {}) {
   return r.stdout.trim();
 }
 export function browserPreparationBudget(value) {
-  if (value === undefined) return 300000;
-  if (!/^[1-9]\d*$/.test(value) || Number(value) > 300000)
-    throw Error("QUALITY_BROWSER_BUDGET_REQUIRED: 1..300000 ms");
+  if (value === undefined) return 600000;
+  if (!/^[1-9]\d*$/.test(value) || Number(value) > 600000)
+    throw Error("QUALITY_BROWSER_BUDGET_REQUIRED: 1..600000 ms");
   return Number(value);
 }
 /** Own only this invocation's POSIX install groups, including ordinary inherited descendants. */

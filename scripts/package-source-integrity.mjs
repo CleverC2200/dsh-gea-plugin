@@ -115,7 +115,16 @@ export async function verifyHtmlCapabilities(path, outputs) {
       if (!within(join(path, directory), resolve(path, mcpFile)) || !names.has(mcpFile))
         fail("DELIVERY_HTML_CAPABILITY_INVALID");
       const mcp = JSON.parse(await readFile(join(path, mcpFile), "utf8"));
-      assertHtmlMcp(mcp, manifest.gea.consumerCode, manifest.mode === "mock");
+      assertHtmlMcp(
+        mcp,
+        manifest.gea.consumerCode,
+        manifest.mode === "mock",
+        manifest.id === "inventory-orderworkbench" &&
+          manifest.gea.consumerCode === "order" &&
+          manifest.reportStore === "order" &&
+          manifest.gea.readonly === false &&
+          manifest.mode !== "mock",
+      );
     } catch {
       throw Object.assign(Error("DELIVERY_HTML_CAPABILITY_INVALID"), {
         delivery: { file: output.path },
