@@ -772,7 +772,7 @@ test("current owner build output cannot legitimize a stale raw archive", async (
 });
 
 test("companion curation excludes machine-bound build provenance while retaining public code and page assets", async (t) => {
-  const fixture = await requestFixture(t);
+  const fixture = await requestFixture(t, { successfulPackageManager: true });
   const input = JSON.parse(await readFile(fixture.input, "utf8"));
   const owner = input.repositories.find((row) => row.repo === "dsh-agent-workbench");
   const business = join(owner.path, "lib/business/inventory-customer");
@@ -820,6 +820,32 @@ test("companion curation excludes machine-bound build provenance while retaining
     await readFile(join(business, "build-inputs.json"), "utf8"),
     JSON.stringify({ "/Users/fixture/source": "original-source-hash" }),
   );
+  const build = JSON.parse(await readFile(owner.buildReceipt, "utf8"));
+  for (const file of ["build-inputs.json", "index.html"])
+    build.outputs.push({
+      path: "lib/business/inventory-customer/" + file,
+      sha256: hash(await readFile(join(business, file))),
+    });
+  await writeFile(owner.buildReceipt, JSON.stringify(build));
+  const destination = join(fixture.work, "full-delivery");
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", destination],
+    { cwd: "/", encoding: "utf8", env: fixture.env },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const delivered = JSON.parse(await readFile(join(destination, "manifest.json"), "utf8"));
+  const published = delivered.packages.find((row) => row.repo === owner.repo);
+  assert.deepEqual(published.excludedProvenanceFiles, receipt.excludedProvenanceFiles);
+  const publishedFiles = execFileSync(
+    "tar",
+    ["-tzf", join(destination, "packages", published.filename)],
+    {
+      encoding: "utf8",
+    },
+  );
+  assert.ok(!publishedFiles.includes("build-inputs.json"));
+  assert.ok(publishedFiles.includes("package/lib/business/inventory-customer/index.html"));
 });
 
 test("an incompatible Core stops delivery without echoing request secrets", async (t) => {
