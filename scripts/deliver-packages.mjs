@@ -320,7 +320,16 @@ async function deliver(input, destination) {
     let manifest;
     try {
       manifest = archive(receipt.artifact, owner.manifest.name);
-      builtArchive(receipt.artifact, manifest, owner.outputs);
+      const publishedOutputs = owner.outputs.filter(
+        (output) =>
+          !receipt.excludedProvenanceFiles?.some(
+            (excluded) =>
+              /^lib\/business\/.+\/build-inputs\.json$/.test(excluded.path) &&
+              excluded.path === output.path &&
+              excluded.sha256 === output.sha256,
+          ),
+      );
+      builtArchive(receipt.artifact, manifest, publishedOutputs);
     } catch (error) {
       error.delivery = { repo: owner.repo, stage: "published-archive" };
       throw error;
