@@ -437,6 +437,8 @@ export async function registerHtmlPlugins(
                     parameters,
                     business,
                     activeSignal,
+                    item.gea.consumerCode,
+                    true,
                   );
                 if (parameters?.queries !== undefined)
                   return readHtmlBatch(
@@ -447,6 +449,10 @@ export async function registerHtmlPlugins(
                         : business.pluginSql(
                             { ...query, consumerCode: item.gea.consumerCode },
                             activeSignal,
+                            false,
+                            undefined,
+                            false,
+                            true,
                           ),
                     { compactRows: parameters.responseFormat === "rows" },
                   );
@@ -455,6 +461,10 @@ export async function registerHtmlPlugins(
                 return business.pluginSql(
                   { ...parameters, consumerCode: item.gea.consumerCode },
                   activeSignal,
+                  false,
+                  undefined,
+                  false,
+                  true,
                 );
               },
               ...(item.id === "inventory-orderworkbench" &&
