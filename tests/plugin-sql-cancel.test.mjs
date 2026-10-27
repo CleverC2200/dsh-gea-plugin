@@ -392,3 +392,37 @@ test("all four inventory Consumers recover the first empty snapshot and cache th
   );
   for (let i = 0; i < requests.length; i += 2) assert.deepEqual(requests[i], requests[i + 1]);
 });
+
+for (const consumerCode of ["customer_inventory", "order", "order01"])
+  test(`${consumerCode} page switches reuse Host snapshots without caching independent queries`, async (t) => {
+    const business = fixture(t, consumerCode);
+    let reads = 0;
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      if (url.endsWith("/execute")) reads++;
+      return success(url, init);
+    });
+    const input = { ...query, consumerCode };
+    const read = (payload = input, configured = false) =>
+      business.pluginSql(payload, new AbortController().signal, configured, undefined, false, true);
+    await read();
+    await read();
+    assert.equal(reads, 1, "a new page owner reuses the current identity snapshot");
+    await read({ ...input, pageNo: 2 });
+    assert.equal(reads, 2, "legacy page numbers must not collide");
+    await read({
+      ...input,
+      parameters: { gea_p1: "B" },
+      sql: "SELECT sku FROM inventory WHERE sku = :gea_p1",
+    });
+    assert.equal(reads, 3, "different filters read their own result");
+    await business.pluginSql(input, new AbortController().signal);
+    assert.equal(reads, 4, "independent Agent queries never consume page snapshots");
+    await read({ ...input, cacheFreshAfter: Date.now() + 1 });
+    assert.equal(reads, 5, "explicit refresh bypasses the snapshot");
+    await read(input, true);
+    await read(input, true);
+    assert.equal(reads, 6, "configured reads also reuse snapshots, separately from legacy reads");
+    business.logout({});
+    await assert.rejects(read());
+    assert.equal(reads, 6);
+  });

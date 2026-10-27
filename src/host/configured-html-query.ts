@@ -17,6 +17,7 @@ export async function readConfiguredHtmlQuery(
   business: Pick<Business, "pluginSql" | "moduleMcp">,
   signal: AbortSignal,
   consumerCode: string = resource.manifest.gea.consumerCode,
+  pageRead = false,
 ) {
   signal.throwIfAborted();
   let raw: string;
@@ -140,6 +141,7 @@ export async function readConfiguredHtmlQuery(
       queryId.startsWith("source.") ||
         queryId === config.overviewQuickStock ||
         queryId === "current-shortage.summary",
+      pageRead,
     );
     signal.throwIfAborted();
     return {
