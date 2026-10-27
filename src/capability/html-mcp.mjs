@@ -1,11 +1,12 @@
-export function assertHtmlMcp(mcp, consumerCode, mock) {
+export function assertHtmlMcp(mcp, consumerCode, mock, reportStore = false) {
   if (
     mcp?.provider !== "gea" ||
     mcp.transport !== "host-provided" ||
     mcp.contract !== "gea-html-v2" ||
     mcp.consumer?.consumerCode !== consumerCode ||
     mcp.consumer?.consumerType !== "AGENT" ||
-    !(mock
+    (reportStore && consumerCode !== "order") ||
+    !(mock || reportStore
       ? JSON.stringify(mcp.capabilities) === "[]"
       : ['["governed-sql-read"]', '["governed-sql-read","governed-cube-read"]'].includes(
           JSON.stringify(mcp.capabilities),

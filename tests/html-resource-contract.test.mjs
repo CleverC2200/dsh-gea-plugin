@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
 import { contractFromPlugin } from "../src/capability/contract.ts";
 import { readPluginContract } from "../src/capability/declarations.ts";
 import { assertHtmlMcp } from "../src/capability/html-mcp.mjs";
+import { verifyHtmlCapabilities } from "../scripts/package-source-integrity.mjs";
 
 test("packaging and Host share the exact governed HTML MCP admission", () => {
   const mcp = {
@@ -33,6 +34,60 @@ test("packaging and Host share the exact governed HTML MCP admission", () => {
     { ...mcp, consumer: { consumerCode: "other", consumerType: "AGENT" } },
   ])
     assert.throws(() => assertHtmlMcp(invalid, "mps", false), /INVALID_GEA_CAPABILITY/);
+});
+
+test("order report-store admission keeps its empty external capability declaration", () => {
+  const mcp = {
+    provider: "gea",
+    transport: "host-provided",
+    contract: "gea-html-v2",
+    consumer: { consumerCode: "order", consumerType: "AGENT" },
+    capabilities: [],
+  };
+  assert.doesNotThrow(() => assertHtmlMcp(mcp, "order", false, true));
+  assert.throws(() => assertHtmlMcp(mcp, "order", false), /INVALID_GEA_CAPABILITY/);
+  assert.throws(
+    () => assertHtmlMcp({ ...mcp, capabilities: ["governed-sql-read"] }, "order", false, true),
+    /INVALID_GEA_CAPABILITY/,
+  );
+  assert.throws(
+    () =>
+      assertHtmlMcp(
+        { ...mcp, consumer: { ...mcp.consumer, consumerCode: "mps" } },
+        "mps",
+        false,
+        true,
+      ),
+    /INVALID_GEA_CAPABILITY/,
+  );
+});
+
+test("packaging accepts only the explicit order report-store without external read capabilities", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "gea-report-store-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "html"));
+  const manifest = {
+    id: "inventory-orderworkbench",
+    reportStore: "order",
+    mcp: "mcp.json",
+    gea: { consumerCode: "order", readonly: false },
+  };
+  const mcp = {
+    provider: "gea",
+    transport: "host-provided",
+    contract: "gea-html-v2",
+    consumer: { consumerCode: "order", consumerType: "AGENT" },
+    capabilities: [],
+  };
+  await writeFile(join(root, "html/plugin.json"), JSON.stringify(manifest));
+  await writeFile(join(root, "html/mcp.json"), JSON.stringify(mcp));
+  const outputs = [{ path: "html/plugin.json" }, { path: "html/mcp.json" }];
+  await verifyHtmlCapabilities(root, outputs);
+  await writeFile(
+    join(root, "html/plugin.json"),
+    JSON.stringify({ ...manifest, reportStore: undefined }),
+  );
+  await assert.rejects(verifyHtmlCapabilities(root, outputs), /DELIVERY_HTML_CAPABILITY_INVALID/);
 });
 
 test("explicit HTML fixture retains invalid input for the current declaration reader to reject", async (t) => {

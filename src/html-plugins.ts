@@ -111,7 +111,7 @@ export async function registerHtmlPlugins(
     if (!mcpPath.startsWith(directory + sep)) throw Error("INVALID_MCP_PATH");
     const mcp = JSON.parse(await readFile(mcpPath, "utf8"));
     try {
-      assertHtmlMcp(mcp, manifest.gea.consumerCode, mock);
+      assertHtmlMcp(mcp, manifest.gea.consumerCode, mock, reportStore);
     } catch {
       throw Error(`INVALID_GEA_CAPABILITY [source: ${mcpPath}]`);
     }
