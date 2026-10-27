@@ -18,7 +18,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module.exports,
 );
 
-function fixture(t, sqlResult, planRows) {
+function fixture(t, sqlResult, planRows, groupMetrics) {
   const business = new module.exports.Business({
     geaBaseUrl: "https://gea.test",
     analysisAgentCode: "sales_forecast",
@@ -29,7 +29,13 @@ function fixture(t, sqlResult, planRows) {
     schema: 1,
     environment: "production",
     base: "https://gea.test",
-    auth: { token: "fixture", tenantId: "1", id: "u", name: "Test", username: "test" },
+    auth: {
+      token: "fixture",
+      tenantId: "1",
+      id: "u",
+      name: "Test",
+      username: "test",
+    },
   });
   t.after(() => business.dispose());
   const sqlRequests = [];
@@ -63,7 +69,7 @@ function fixture(t, sqlResult, planRows) {
             currentAmount: "400",
           },
         ],
-        groupMetrics: [
+        groupMetrics: groupMetrics ?? [
           {
             dimension: "region",
             key: "org1",
@@ -77,14 +83,22 @@ function fixture(t, sqlResult, planRows) {
             shipmentError: "old source",
           },
         ],
-        summary: { targetAmount: "3000", planAmount: "1100", planQty: "220", diffAmount: "-1900" },
+        summary: {
+          targetAmount: "3000",
+          planAmount: "1100",
+          planQty: "220",
+          diffAmount: "-1900",
+        },
         total: planRows?.length ?? 3,
         size: 20,
         current: 1,
         pages: 1,
       };
     else if (path.endsWith("/agent/session"))
-      result = { accessDecision: { allowed: true }, delegationToken: "fixture-delegation" };
+      result = {
+        accessDecision: { allowed: true },
+        delegationToken: "fixture-delegation",
+      };
     else if (path.endsWith("/sql/execute")) {
       sqlRequests.push(JSON.parse(init.body));
       if (sqlResult instanceof Error) throw sqlResult;
@@ -177,17 +191,107 @@ test("a rejected shipment source leaves original plans visible and shipment valu
     assert.equal(Object.hasOwn(page.groupMetrics[0], key), false);
 });
 
-test("monthly queries keep the existing endpoint and do not read the correction shipment source", async (t) => {
-  const { business, sqlRequests } = fixture(t, Error("must-not-read"));
+test("monthly queries preserve reported shipment facts without reading them again", async (t) => {
+  const { business, sqlRequests } = fixture(t, Error("must-not-read"), [
+    {
+      planId: "p-jxs-2026-10-00001",
+      periodId: "17",
+      cust_code: 1001,
+      currentQty: "100",
+      currentAmount: "500",
+      targetAmount: "1000",
+      shipQty: "0",
+      shipAmount: "0",
+      amountProgress: "0",
+    },
+  ]);
   const page = await business.workbenchQuery(
     { kind: "list", query: { orderType: "M" } },
     new AbortController().signal,
   );
   assert.equal(page.records[0].currentQty, "100");
+  assert.equal(page.records[0].shipQty, "0");
+  assert.equal(page.records[0].shipAmount, "0");
+  assert.equal(page.records[0].amountProgress, "0");
   assert.equal(sqlRequests.length, 0);
   assert.equal(page.groupMetrics[0].shipQty, "9999");
   assert.equal(page.groupMetrics[0].shipAmount, "8888");
   assert.equal(page.groupMetrics[0].amountProgress, "777");
+});
+
+test("monthly plans with missing progress read shipment facts for their plan month", async (t) => {
+  const { business, sqlRequests } = fixture(t, (request) => ({
+    rows: request.sql.includes("agents_order_execute_isontime_mi")
+      ? [{ cust_code: "1001", ship_qty: "12.5" }]
+      : [{ cust_code: "1001", ship_amount: "125" }],
+    total: 1,
+    rejectedColumns: [],
+  }));
+  const page = await business.workbenchQuery(
+    { kind: "list", query: { orderType: "M", periodId: "17" } },
+    new AbortController().signal,
+  );
+  assert.equal(page.records[0].shipQty, "12.5");
+  assert.equal(page.records[0].shipAmount, "125");
+  assert.equal(page.records[0].amountProgress, "12.5");
+  assert.equal(page.records[0].currentAmount, "500");
+  assert.equal(sqlRequests.length, 2);
+});
+
+test("monthly shipment failures stay unknown", async (t) => {
+  const { business } = fixture(t, Error("fixture-source-unavailable"));
+  const page = await business.workbenchQuery(
+    { kind: "list", query: { orderType: "M", periodId: "17" } },
+    new AbortController().signal,
+  );
+  assert.equal(page.records[0].shipQty, null);
+  assert.equal(page.records[0].shipAmount, null);
+  assert.equal(page.records[0].amountProgress, null);
+  assert.match(page.records[0].shipmentError, /发货.*读取失败/);
+});
+
+test("monthly missing group metrics allow completed row facts to be aggregated", async (t) => {
+  const { business, sqlRequests } = fixture(
+    t,
+    Error("must-not-read"),
+    [
+      {
+        planId: "p-jxs-2026-10-00001",
+        periodId: "17",
+        cust_code: 1001,
+        targetAmount: "1000",
+        shipQty: "0",
+        shipAmount: "0",
+      },
+    ],
+    [
+      {
+        dimension: "region",
+        key: "org1",
+        shipQty: null,
+        shipAmount: null,
+        amountProgress: null,
+      },
+    ],
+  );
+  const page = await business.workbenchQuery(
+    { kind: "list", query: { orderType: "M", periodId: "17" } },
+    new AbortController().signal,
+  );
+  assert.equal(page.records[0].amountProgress, "0");
+  assert.equal(sqlRequests.length, 0);
+  assert.deepEqual(page.groupMetrics, [{ dimension: "region", key: "org1" }]);
+});
+
+test("monthly empty shipment results stay missing with the plan month", async (t) => {
+  const { business } = fixture(t, { rows: [], total: 0, rejectedColumns: [] });
+  const page = await business.workbenchQuery(
+    { kind: "list", query: { orderType: "M", periodId: "17" } },
+    new AbortController().signal,
+  );
+  assert.equal(page.records[0].shipAmount, null);
+  assert.equal(page.records[0].amountProgress, null);
+  assert.match(page.records[0].shipmentError, /2026-10/);
 });
 
 test("an unavailable amount source preserves shipment quantities and original plans", async (t) => {
@@ -289,7 +393,10 @@ test("unfiltered period discovery and an empty filtered summary keep their exist
   );
   rows.length = 0;
   const summary = await business.workbenchQuery(
-    { kind: "list", query: { orderType: "Z", periodId: "17", summaryOnly: true } },
+    {
+      kind: "list",
+      query: { orderType: "Z", periodId: "17", summaryOnly: true },
+    },
     new AbortController().signal,
   );
   assert.deepEqual(summary.records, []);

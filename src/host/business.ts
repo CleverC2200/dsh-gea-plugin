@@ -3268,6 +3268,7 @@ export class Business {
   private async salesPlanShipments(
     rows: Record<string, unknown>[],
     caller: AbortSignal,
+    orderType: "M" | "Z",
   ): Promise<Record<string, unknown>[]> {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const quantities = new Map<string, string>();
@@ -3275,6 +3276,7 @@ export class Business {
     const failures = new Map<string, string>();
     const byMonth = new Map<string, Set<string>>();
     for (const row of rows) {
+      if (orderType === "M" && row.shipQty != null && row.shipAmount != null) continue;
       const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
       if (!month || typeof row.dealerCode !== "string" || !row.dealerCode) continue;
       const customers = byMonth.get(month) ?? new Set<string>();
@@ -3360,18 +3362,24 @@ export class Business {
     return rows.map((row) => {
       const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
       const key = `${month}\u0000${row.dealerCode}`;
-      const progress = decimalSources([amounts.get(key), row.targetAmount]);
+      const shipQty = (orderType === "M" ? row.shipQty : null) ?? quantities.get(key) ?? null;
+      const shipAmount = (orderType === "M" ? row.shipAmount : null) ?? amounts.get(key) ?? null;
+      const progress = decimalSources([shipAmount, row.targetAmount]);
       return {
         ...row,
-        shipQty: quantities.get(key) ?? null,
-        shipAmount: amounts.get(key) ?? null,
+        shipQty,
+        shipAmount,
         amountProgress:
-          "values" in progress && progress.values[1].gt(0)
-            ? progress.values[0].div(progress.values[1]).times(100).toFixed()
-            : null,
+          orderType === "M" && row.amountProgress != null
+            ? row.amountProgress
+            : "values" in progress && progress.values[1].gt(0)
+              ? progress.values[0].div(progress.values[1]).times(100).toFixed()
+              : null,
         shipmentError:
           failures.get(key) ??
-          (!quantities.has(key) || !amounts.has(key) ? "未取得该客户期间的发货数据" : null),
+          (shipQty == null || shipAmount == null
+            ? `未取得该客户 ${month ?? "当前期间"} 的发货数据`
+            : null),
       };
     });
   }
@@ -3650,21 +3658,21 @@ export class Business {
         throw new Error("GEA_PLAN_PERIOD_MISMATCH");
       return {
         ...page,
-        ...(kind === "list" && query.orderType === "Z" && Array.isArray(page.groupMetrics)
+        ...(kind === "list" &&
+        (query.orderType === "M" || query.orderType === "Z") &&
+        Array.isArray(page.groupMetrics)
           ? {
               groupMetrics: page.groupMetrics.map((value) => {
                 const metric = { ...object(value) };
-                delete metric.shipQty;
-                delete metric.shipAmount;
-                delete metric.amountProgress;
-                delete metric.shipmentError;
+                for (const field of ["shipQty", "shipAmount", "amountProgress", "shipmentError"])
+                  if (query.orderType === "Z" || metric[field] == null) delete metric[field];
                 return metric;
               }),
             }
           : {}),
         records:
-          kind === "list" && query.orderType === "Z"
-            ? await this.salesPlanShipments(planRows, signal)
+          kind === "list" && (query.orderType === "M" || query.orderType === "Z")
+            ? await this.salesPlanShipments(planRows, signal, query.orderType)
             : planRows,
         total,
         size: pageSize,
