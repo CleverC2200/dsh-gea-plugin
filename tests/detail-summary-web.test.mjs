@@ -7,7 +7,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 
 test(
-  "Dashboard shows current SKU totals while monthly baseline and categories retain their own basis",
+  "Sales plan waits for its real Session owner and keeps detail interaction read-only across resize",
   { timeout: 90000 },
   async (t) => {
     const artifactDirectory = `.runtime/detail-summary/${process.pid}`;
@@ -239,41 +239,18 @@ test(
     mark("sales-plan-owner-ready");
     mark("workbench-ready");
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
-    await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
-    await expect(frame.getByRole("button", { name: "重提", exact: true })).toHaveCount(0);
-    // 月初/纠偏入口保留；当前明细汇总仍使用选中的月初范围。
-    const header = frame.locator("header").first();
-    await expect(header.getByRole("tab", { name: "月初", exact: true })).toBeVisible();
     assert.equal(modelCalls, 0, "opening the workbench must not trigger analysis");
 
     mark("summary-assertions");
     const totals = frame.getByRole("region", { name: "当前页明细汇总", exact: true });
     await expect(totals).toContainText("¥500");
-    await expect(totals).toContainText("50 件");
-    await expect(totals).not.toContainText("¥200");
-    const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
-    await expect(monthPlan.locator("span").first()).toHaveText("¥150");
-    // V1.8 #09：达成率改为「细进度条 + 百分比」，百分比前不再带「金额」。
-    await expect(frame.locator("tbody").first()).toContainText("37.5%");
-    await expect(frame.getByText(/数量 .*%/)).toHaveCount(0);
-    await expect(frame.locator("thead")).not.toContainText("AI 核对意见");
     mark("category-expand");
     await frame.getByRole("switch").first().click();
     const category = frame.getByTestId("regional-approval-category-row-p-jxs-2026-09-00001-汤圆");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveText("汤圆 · 1 SKU");
-    await expect(frame.locator("tbody")).toContainText(["黑芝麻汤圆 500g"]);
-    await expect(frame.getByText("面点测试 SKU", { exact: true })).toHaveCount(0);
-    await expect(category.locator("xpath=ancestor::tr[1]")).toContainText("¥266.67");
-    await expect(category.locator("xpath=ancestor::tr[1]")).toContainText("75.0%");
-    await expect(frame.getByRole("textbox", { name: "确认计划量 1001", exact: true })).toHaveCount(
-      0,
-    );
-    mark("screenshots");
-    await page.screenshot({ path: artifactDirectory + "/desktop.png", fullPage: true });
-    mark("narrow-screenshot");
+    mark("narrow-resize");
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.screenshot({ path: artifactDirectory + "/narrow.png", fullPage: true });
     mark("category-collapse");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveCount(0);

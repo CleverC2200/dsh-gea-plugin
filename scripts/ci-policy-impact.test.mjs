@@ -846,6 +846,7 @@ test("the presentation fixture selects every isolated page consumer", (t) => {
     "tests/progress-column-web.test.mjs",
     "tests/variance-color-web.test.mjs",
     "tests/approval-queue-layout-web.test.mjs",
+    "tests/detail-summary-presentation.test.mjs",
     "tests/presentation-isolation.test.mjs",
   ];
   const shared = "tests/fixtures/sales-plan-presentation.mjs";
@@ -865,6 +866,30 @@ test("the presentation fixture selects every isolated page consumer", (t) => {
     consumers.every((file) => !plan.runtimeFiles.includes(file)),
     JSON.stringify(plan),
   );
+});
+
+test("sales-plan page and style changes retain detail presentation and real owner wiring", (t) => {
+  const presentation = "tests/detail-summary-presentation.test.mjs";
+  const integration = "tests/detail-summary-web.test.mjs";
+  for (const source of [
+    "src/workbench/original/workbenches/regionalApproval/RegionalApprovalWorkbench.tsx",
+    "src/workbench/workbench.css",
+  ]) {
+    const fixture = resourceImpactFixture(t, [
+      presentation,
+      integration,
+      "tests/fixtures/sales-plan-presentation.mjs",
+      "tests/fixtures/model-profile.mjs",
+      "tests/profile.mjs",
+    ]);
+    fixture.change(fixture.peer, source, "export const changed = true;\n");
+    const plan = fixture.plan();
+    assert.ok(plan.files.includes(presentation), JSON.stringify(plan));
+    assert.ok(plan.files.includes(integration), JSON.stringify(plan));
+    assert.ok(!plan.runtimeFiles.includes(presentation), JSON.stringify(plan));
+    assert.ok(plan.runtimeFiles.includes(integration), JSON.stringify(plan));
+    assert.equal(plan.browser, true);
+  }
 });
 
 test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {
