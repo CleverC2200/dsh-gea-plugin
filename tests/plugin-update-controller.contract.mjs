@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm, realpath } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { createHash, sign } from "node:crypto";
+import { createHash } from "node:crypto";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
 // Verify the unchanged public installation and locking source used by this SDK lane.
@@ -81,7 +81,10 @@ test("user-data verification permits formatting and additions but rejects change
     data = join(f.profile.home, "agent-plugins/data");
   await mkdir(data, { recursive: true });
   const file = join(data, "user-agents.json"),
-    value = { version: 1, agents: [{ id: "personal", prompt: "My instructions" }] };
+    value = {
+      version: 1,
+      agents: [{ id: "personal", prompt: "My instructions" }],
+    };
   await writeFile(file, JSON.stringify(value));
   const recovery = join(f.root, "data-recovery");
   await mkdir(recovery);
@@ -91,7 +94,10 @@ test("user-data verification permits formatting and additions but rejects change
   await verifyPluginUserData(f.profile.home, recovery, sha);
   await writeFile(
     file,
-    JSON.stringify({ ...value, agents: [{ id: "personal", prompt: "Changed instructions" }] }),
+    JSON.stringify({
+      ...value,
+      agents: [{ id: "personal", prompt: "Changed instructions" }],
+    }),
   );
   await assert.rejects(
     verifyPluginUserData(f.profile.home, recovery, sha),
@@ -121,7 +127,11 @@ for (const mode of ["success", "remove-user-skill"])
       "user-agents.json": JSON.stringify({
         version: 1,
         agents: [
-          { id: "personal", prompt: "keep my prompt", skills: [{ directory: { root: skill } }] },
+          {
+            id: "personal",
+            prompt: "keep my prompt",
+            skills: [{ directory: { root: skill } }],
+          },
         ],
       }),
       "selected-resources.json": JSON.stringify({
@@ -141,7 +151,10 @@ for (const mode of ["success", "remove-user-skill"])
     await controller.initialize();
     await controller.check();
     const row = controller.snapshot().items.find((item) => item.planId);
-    await controller.submit({ packageName: row.packageName, planId: row.planId });
+    await controller.submit({
+      packageName: row.packageName,
+      planId: row.planId,
+    });
     const operation = await waitForStage(controller, ["pending-restart", "unknown", "restored"]);
     assert.equal(
       operation.stage,
@@ -663,7 +676,7 @@ for (const workbenchFirst of [false, true])
     assert.ok(controller.snapshot().items.every((row) => row.state === "available" && row.planId));
   });
 
-test("signed legacy bridge companions form one suite and a legacy single request installs every changed package", async (t) => {
+test("legacy bridge companions form one suite and a legacy single request installs every changed package", async (t) => {
   const { waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await bridgeControllerFixture(t);
   const G = "@cleverc2200/gea-dsh-prototype";
@@ -679,7 +692,6 @@ test("signed legacy bridge companions form one suite and a legacy single request
       JSON.stringify({
         ...envelope,
         payloadBase64: bytes.toString("base64"),
-        signatureBase64: sign(null, bytes, f.privateKey).toString("base64"),
       }),
     ),
   );
@@ -688,7 +700,10 @@ test("signed legacy bridge companions form one suite and a legacy single request
   await controller.initialize();
   await controller.check();
   const row = controller.snapshot().items.find((row) => row.packageName === G);
-  const accepted = await controller.submit({ packageName: G, planId: row.planId });
+  const accepted = await controller.submit({
+    packageName: G,
+    planId: row.planId,
+  });
   assert.equal(accepted.targets.length, 3);
   assert.equal(
     (await waitForStage(controller, ["pending-restart", "restored", "unknown"])).stage,
@@ -746,7 +761,10 @@ test("an unrelated installed consumer blocks the entire suite and preserves lega
     delete requirement.candidate;
   }
   assert.equal(parseUpdateClientStatus(value).items[0].problem.requirements[0].current, null);
-  blocked.problem.nextStep = { packageName: "/private/credential", version: "3.1.0" };
+  blocked.problem.nextStep = {
+    packageName: "/private/credential",
+    version: "3.1.0",
+  };
   assert.throws(() => parseUpdateClientStatus(value), /UPDATE_STATUS_INVALID/);
 });
 
@@ -766,7 +784,11 @@ test("a legacy updater can install the compatible GEA bridge before the suite up
   const bridge = releases.find((row) => row.name === "@cleverc2200/gea-dsh-prototype");
   const before = await readPluginProfile(f.dir);
   assert.equal(
-    planPluginUpdate({ release: bridge, core: f.options.core, installed: before.packages }).kind,
+    planPluginUpdate({
+      release: bridge,
+      core: f.options.core,
+      installed: before.packages,
+    }).kind,
     "ready",
   );
   const archivePath = await f.source.download(bridge, join(f.root, "bridge-cache"));
@@ -817,15 +839,20 @@ test("a missing suite download or a stale whole-suite plan never starts a packag
   f.files.delete(releases[1].artifact.url);
   const selected = controller.snapshot().items[0];
   await assert.rejects(
-    controller.submit({ packageName: selected.packageName, planId: selected.planId }),
+    controller.submit({
+      packageName: selected.packageName,
+      planId: selected.planId,
+    }),
     /SOURCE_/,
   );
   assert.equal((await readPluginProfile(f.dir)).ownedSha256, before.ownedSha256);
   assert.equal(controller.snapshot().operation, null);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+    code: "ENOENT",
+  });
 });
 
-test("signed same-version replacement reports a content conflict without disclosing source details", async (t) => {
+test("same-version replacement reports a content conflict without disclosing source details", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t);
   const controller = createPluginUpdateController(f.options);
@@ -852,7 +879,6 @@ test("signed same-version replacement reports a content conflict without disclos
       JSON.stringify({
         ...channel,
         payloadBase64: signed.toString("base64"),
-        signatureBase64: sign(null, signed, f.privateKey).toString("base64"),
       }),
     ),
   );
@@ -1050,7 +1076,7 @@ test("Windows checks the signed channel even before package installation capabil
 test("signed/HTTP check failures retain safe distinct status errors while Core and graph failures retain required versions", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   for (const [sourceFailure, expected] of [
-    ["signature", "signature"],
+    ["schema", "unavailable"],
     ["http", "http"],
     ["network", "unavailable"],
   ]) {
@@ -1246,12 +1272,17 @@ test("an inactive companion blocks all plans and disabling a companion after che
   const before = (await readPluginProfile(f.dir)).sha256;
   f.proofs[1].host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
   await assert.rejects(
-    controller.submit({ packageName: selected[0].packageName, planId: selected[0].planId }),
+    controller.submit({
+      packageName: selected[0].packageName,
+      planId: selected[0].planId,
+    }),
     /UPDATE_PACKAGE_INACTIVE/,
   );
   assert.equal((await readPluginProfile(f.dir)).sha256, before);
   assert.equal(controller.snapshot().operation, null);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+    code: "ENOENT",
+  });
 });
 
 test("same-version inactive package reports its load diagnosis before current status", async (t) => {
