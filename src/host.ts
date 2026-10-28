@@ -76,6 +76,7 @@ export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
   serviceAccounts: z.any<ServiceAccounts>(),
   dms: z.any<Deployment["dms"]>(),
+  fcStorage: z.any<Deployment["fcStorage"]>(),
   environment: environmentSchema.default(
     z.resolve(companyDefaults.environment, environmentSchema, {})[0],
   ),

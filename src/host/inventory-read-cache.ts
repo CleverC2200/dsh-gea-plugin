@@ -53,8 +53,20 @@ export async function recoverInventorySnapshot<T>(read: () => Promise<T>, signal
 
 /** Memory-only snapshots belong to one verified identity epoch. */
 export class InventoryReadCache {
+  private readonly pending = new WeakMap<
+    AbortSignal,
+    Map<
+      string,
+      {
+        controller: AbortController;
+        waiters: number;
+        settled: boolean;
+        promise: Promise<unknown>;
+      }
+    >
+  >();
   private scope?: AbortSignal;
-  private readonly entries = new Map<string, { at: number; value: unknown }>();
+  private readonly entries = new Map<string, { at: number; startedAt: number; value: unknown }>();
   private readonly now: () => number;
   constructor(now = Date.now) {
     this.now = now;
@@ -77,23 +89,94 @@ export class InventoryReadCache {
     );
   }
 
+  /** Share only simultaneous reads in the same identity, query and refresh generation. */
+  share(
+    scope: AbortSignal,
+    key: string,
+    caller: AbortSignal,
+    read: (signal: AbortSignal) => Promise<unknown>,
+  ): Promise<unknown> {
+    scope.throwIfAborted();
+    caller.throwIfAborted();
+    let jobs = this.pending.get(scope);
+    if (!jobs) this.pending.set(scope, (jobs = new Map()));
+    let job = jobs.get(key);
+    if (!job) {
+      const controller = new AbortController();
+      const signal = AbortSignal.any([scope, controller.signal]);
+      const entry = {
+        controller,
+        waiters: 0,
+        settled: false,
+        promise: Promise.resolve<unknown>(undefined),
+      };
+      entry.promise = Promise.resolve()
+        .then(() => {
+          signal.throwIfAborted();
+          return read(signal);
+        })
+        .finally(() => {
+          entry.settled = true;
+          if (jobs.get(key) === entry) jobs.delete(key);
+        });
+      jobs.set(key, entry);
+      job = entry;
+    }
+    const entry = job;
+    entry.waiters++;
+    const subscription = AbortSignal.any([scope, caller]);
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      const detach = () => {
+        if (finished) return false;
+        finished = true;
+        subscription.removeEventListener("abort", abort);
+        entry.waiters--;
+        if (!entry.waiters && !entry.settled) {
+          if (jobs.get(key) === entry) jobs.delete(key);
+          entry.controller.abort();
+        }
+        return true;
+      };
+      const abort = () => {
+        if (detach()) reject(subscription.reason);
+      };
+      subscription.addEventListener("abort", abort, { once: true });
+      entry.promise.then(
+        (value) => {
+          if (detach()) resolve(structuredClone(value));
+        },
+        (error) => {
+          if (detach()) reject(error);
+        },
+      );
+    });
+  }
+
   get(scope: AbortSignal, key: string, freshAfter: number) {
     this.activate(scope);
     const entry = this.entries.get(key);
     if (!entry) return undefined;
-    if (entry.at < freshAfter || this.now() - entry.at >= 20 * 60 * 1000) {
+    if (entry.startedAt < freshAfter || this.now() - entry.at >= 20 * 60 * 1000) {
       this.entries.delete(key);
       return undefined;
     }
     return structuredClone(entry.value);
   }
 
-  set(scope: AbortSignal, key: string, value: unknown, requireSnapshotDate = false) {
+  set(
+    scope: AbortSignal,
+    key: string,
+    value: unknown,
+    requireSnapshotDate = false,
+    startedAt = this.now(),
+  ) {
     this.activate(scope);
     // Failed/cropped responses never become a reusable business snapshot.
     if (!successfulRows(value) || unavailableInventorySnapshot(value, requireSnapshotDate)) return;
+    if ((this.entries.get(key)?.startedAt ?? -Infinity) > startedAt) return;
     this.entries.delete(key);
     while (this.entries.size >= 256) this.entries.delete(this.entries.keys().next().value!);
-    this.entries.set(key, { at: this.now(), value: structuredClone(value) });
+    this.entries.set(key, { at: this.now(), startedAt, value: structuredClone(value) });
   }
 }

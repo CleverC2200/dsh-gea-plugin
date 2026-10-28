@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 /** Deployment-only identity bindings; secrets are resolved from Host environment variables. */
 export interface DmsConfig {
   gatewayUrl: string;
-  manageUrl: string;
+  manageUrl?: string;
   secretEnv: string;
   users: {
     tenantId: string;
@@ -31,6 +31,8 @@ export function parseDmsOrder(input: unknown): Order {
   const order = {} as Order;
   const fields = ["aiPreOrderCode", "customerCode", "addressCode", "pupCode"];
   const optional = [
+    "customerName",
+    "orderModel",
     "shpart",
     "carpoolingCode",
     "expectedArrivalDate",
@@ -54,6 +56,8 @@ export function parseDmsOrder(input: unknown): Order {
   for (const field of optional)
     if (source[field] !== undefined && source[field] !== "")
       order[field] = required(source[field], field);
+  if (order.orderModel !== undefined && order.orderModel !== "cg")
+    throw Error("DMS 参数无效：orderModel");
   for (const [field, values] of Object.entries(enums)) {
     const value = source[field] ?? values[0];
     if (!values.includes(value as string)) throw Error(`DMS 参数无效：${field}`);
@@ -122,13 +126,19 @@ export class DmsClient {
       throw Error("DMS 拒绝请求，请在DMS核查账号、订单字段及业务配置");
     return body.result;
   }
+  assertConfigured() {
+    baseUrl(this.config.gatewayUrl);
+    if (this.config.manageUrl) baseUrl(this.config.manageUrl);
+    required(this.identity.username?.trim() || this.identity.workcode?.trim(), "登录账号");
+    if (!/^[A-Z_][A-Z0-9_]*$/i.test(this.config.secretEnv)) throw Error("DMS 密钥环境变量配置无效");
+    if (!process.env[this.config.secretEnv]) throw Error("DMS 签名密钥未配置");
+  }
   async login(signal: AbortSignal) {
+    this.assertConfigured();
     const username = this.identity.username?.trim(),
       workcode = this.identity.workcode?.trim();
     const key = required(username || workcode, "登录账号");
-    if (!/^[A-Z_][A-Z0-9_]*$/i.test(this.config.secretEnv)) throw Error("DMS 密钥环境变量配置无效");
-    const secret = process.env[this.config.secretEnv];
-    if (!secret) throw Error("DMS 签名密钥未配置");
+    const secret = process.env[this.config.secretEnv]!;
     const time = String(Date.now());
     const sign = createHash("md5")
       .update(key + time + secret)
@@ -144,6 +154,7 @@ export class DmsClient {
             time,
             sign,
             source: "ai",
+            menu: "/corder/ordermgt",
           }),
         }).toString(),
       },
@@ -156,9 +167,10 @@ export class DmsClient {
     )
       throw Error("DMS 登录回执不完整");
     const redirect = new URL(result.redirect);
-    const manage = baseUrl(this.config.manageUrl);
+    const manage = this.config.manageUrl ? baseUrl(this.config.manageUrl) : undefined;
     if (
-      redirect.origin !== manage.origin ||
+      !["http:", "https:"].includes(redirect.protocol) ||
+      (manage !== undefined && redirect.origin !== manage.origin) ||
       redirect.username ||
       redirect.password ||
       !redirect.searchParams.get("token") ||
@@ -210,6 +222,107 @@ export class DmsClient {
   }
 }
 
+/** Preserve the page intent alongside the globally scoped DMS preorder identifier. */
+export async function submitOwnedDmsOrder(
+  directory: string,
+  owner: string,
+  input: unknown,
+  client: DmsClient,
+  signal: AbortSignal,
+  warehouseCode?: string,
+) {
+  const order = parseDmsOrder(input);
+  const requestAiPreOrderCode = order.aiPreOrderCode;
+  order.aiPreOrderCode =
+    "AI" +
+    createHash("sha256")
+      .update(JSON.stringify([owner, requestAiPreOrderCode]))
+      .digest("hex")
+      .slice(0, 30);
+  const saved = await readDmsIntent(directory, owner, order.aiPreOrderCode);
+  if (saved) {
+    // The existing intent remains authoritative, including an unresolved write.
+    const receipt = await submitDmsOrder(directory, owner, order, client, signal);
+    return { ...receipt, requestAiPreOrderCode };
+  }
+  await claimDmsBatch(directory, owner, warehouseCode ?? String(order.customerCode), order, signal);
+  const receipt = await submitDmsOrder(directory, owner, order, client, signal);
+  return { ...receipt, requestAiPreOrderCode };
+}
+
+const intentPath = (directory: string, owner: string, id: string) =>
+  join(
+    directory,
+    createHash("sha256")
+      .update(JSON.stringify([owner, id]))
+      .digest("hex") + ".json",
+  );
+
+async function readDmsIntent(directory: string, owner: string, id: string) {
+  try {
+    return JSON.parse(await readFile(intentPath(directory, owner, id), "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** Append-only slots serialize new batches across processes; only a durable receipt releases the next slot. */
+async function claimDmsBatch(
+  directory: string,
+  owner: string,
+  warehouse: string,
+  order: Order,
+  signal: AbortSignal,
+) {
+  const lane = join(
+    directory,
+    "batches",
+    createHash("sha256")
+      .update(JSON.stringify([owner, warehouse]))
+      .digest("hex"),
+  );
+  await mkdir(lane, { recursive: true, mode: 0o700 });
+  const fingerprint = createHash("sha256").update(JSON.stringify(order)).digest("hex");
+  for (let attempt = 0; attempt < 8; attempt++) {
+    signal.throwIfAborted();
+    const slots = (await readdir(lane)).filter((name) => /^\d{12}\.json$/.test(name)).sort();
+    const last = slots.at(-1);
+    if (last) {
+      const previous = JSON.parse(await readFile(join(lane, last), "utf8"));
+      if (previous.aiPreOrderCode === order.aiPreOrderCode) {
+        if (previous.fingerprint !== fingerprint)
+          throw Error("同一补货批次内容已变化，请核对原订单");
+        return;
+      }
+      const saved = await readDmsIntent(directory, owner, previous.aiPreOrderCode);
+      if (
+        !saved?.receipt ||
+        typeof saved.receipt.orderCode !== "string" ||
+        !saved.receipt.orderCode.trim() ||
+        saved.receipt.aiPreOrderCode !== previous.aiPreOrderCode ||
+        saved.fingerprint !== previous.fingerprint
+      )
+        throw Error(
+          `DMS订单 ${previous.aiPreOrderCode} 处理中或结果未知，请先核对原批次；禁止新批次下单`,
+        );
+    }
+    const next = String(last ? Number(last.slice(0, 12)) + 1 : 1).padStart(12, "0") + ".json";
+    try {
+      await writeFile(
+        join(lane, next),
+        JSON.stringify({ aiPreOrderCode: order.aiPreOrderCode, fingerprint }),
+        { flag: "wx", mode: 0o600 },
+      );
+      signal.throwIfAborted();
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+  throw Error("补货批次正在并发确认，请稍后核对原批次");
+}
+
 /** Persist intent before sending: absent upstream idempotency, unknown writes must never be replayed. */
 export async function submitDmsOrder(
   directory: string,
@@ -219,7 +332,7 @@ export async function submitDmsOrder(
   signal: AbortSignal,
 ) {
   const hash = (value: string) => createHash("sha256").update(value).digest("hex");
-  const file = join(directory, hash(JSON.stringify([owner, order.aiPreOrderCode])) + ".json");
+  const file = intentPath(directory, owner, order.aiPreOrderCode);
   const fingerprint = hash(JSON.stringify(order));
   const existing = async () => {
     const saved = JSON.parse(await readFile(file, "utf8"));

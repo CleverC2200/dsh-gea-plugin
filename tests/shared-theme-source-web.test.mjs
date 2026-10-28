@@ -150,7 +150,7 @@ test(
       const value = await sample();
       samples.push({ label, ...value });
       if (!baseline) {
-        assert.equal(value.version, '"1.1.1"');
+        assert.match(value.version, /^(["'])1\.1\.1\1$/);
         assert.equal(value.composer.fontSize, `${size}px`);
         assert.equal(value.shell.fontSize, value.body.fontSize, "Core owns the shell base font");
         assert.equal(value.shell.background, value.body.background);
