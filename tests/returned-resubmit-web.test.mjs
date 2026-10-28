@@ -447,7 +447,13 @@ test(
 );
 
 test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t) => {
-  const { app, frame, submitted } = await fixture(t, { unknownOnce: true });
+  const { app, frame, page, submitted } = await fixture(t, { unknownOnce: true });
+  let allowLogin = false;
+  await page.route("**/api/gea-proof/login/poll", (route) =>
+    allowLogin
+      ? route.continue()
+      : route.fulfill({ json: { ok: true, value: { status: "pending" } } }),
+  );
   await selectPlan(frame);
   await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
   const dialog = frame.getByRole("dialog", {
@@ -466,7 +472,9 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await expect(resume).toBeVisible();
   await app.rpc("logout");
   await expect(resume).not.toBeVisible();
-  await app.login();
+  await expect(frame.getByRole("button", { name: "刷新二维码", exact: true })).toBeVisible();
+  allowLogin = true;
+  await expect.poll(async () => (await app.rpc("status")).value.authenticated).toBe(true);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   await expect(resume).toHaveCount(0);
   assert.equal(submitted.length, 1);
