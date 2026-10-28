@@ -609,6 +609,11 @@
         "tests/fc-legacy-planning.test.mjs",
         "tests/fc-submission-flow.integration.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/plugin-update-windows\\.native\\.mjs$",
+      "tests": ["scripts/ci-windows-update.test.mjs"]
     }
   ],
   "testOwners": {
