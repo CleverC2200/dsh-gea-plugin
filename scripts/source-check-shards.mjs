@@ -11,7 +11,9 @@ import {
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { currentTestTimings } from "./quality-test-timings.mjs";
 
-export const sourceCheckShardIds = ["1", "2"];
+export const sourceCheckWorkerLimit = 20;
+export const sourceCheckWorkerTarget = 20;
+const shardIds = (count) => Array.from({ length: count }, (_, index) => String(index + 1));
 const requireValue = (condition, detail) => {
   if (!condition) throw Error("SOURCE_CHECK_SHARDS_REJECTED: " + detail);
 };
@@ -21,14 +23,27 @@ const same = (left, right) => executionDigest(left) === executionDigest(right);
 export function sourceCheckShard(environment = process.env) {
   const id = environment.GEA_SOURCE_CHECK_SHARD;
   if (id === undefined || id === "") return undefined;
-  requireValue(sourceCheckShardIds.includes(id), "shard id");
-  return { id, count: sourceCheckShardIds.length };
+  const count = Number(environment.GEA_SOURCE_CHECK_SHARD_COUNT);
+  requireValue(
+    Number.isSafeInteger(count) && count >= 2 && count <= sourceCheckWorkerLimit,
+    "shard count",
+  );
+  requireValue(shardIds(count).includes(id), "shard id");
+  return { id, count };
 }
 
 export function sourceCheckMatrix(plan) {
   requireValue(typeof plan?.joint === "boolean" && Array.isArray(plan.files), "source plan");
-  const parallel = plan.joint && selectPlatformTests(plan, "linux").files.length > 1;
-  return { parallel, shards: parallel ? sourceCheckShardIds : ["single"] };
+  const files = selectPlatformTests(plan, "linux").files;
+  const parallel = plan.joint && files.length > 1;
+  const runtime = files.filter((file) => plan.runtimeFiles?.includes(file)).length;
+  const count = Math.min(
+    sourceCheckWorkerLimit,
+    sourceCheckWorkerTarget,
+    files.length,
+    Math.max(2, Math.ceil(runtime / 6) + Math.ceil((files.length - runtime) / 40)),
+  );
+  return { parallel, shards: parallel ? shardIds(count) : ["single"] };
 }
 
 export function sourceCheckCost({ selection, root, environment, timings }) {
@@ -44,8 +59,10 @@ export function sourceCheckCost({ selection, root, environment, timings }) {
 
 export function aggregateSourceCheckShards(directory, { head, runId, runAttempt }) {
   requireValue(/^[a-f0-9]{40}$/.test(head ?? "") && runId && runAttempt, "expected source run");
-  const names = sourceCheckShardIds.map((id) => "source-checks-" + id);
-  requireValue(same(readdirSync(directory).sort(), names), "worker inventory");
+  const firstScope = json(join(directory, "source-checks-1", "source-checks-scope.json"));
+  const expectedIds = sourceCheckMatrix(firstScope.plan).shards;
+  const names = expectedIds.map((id) => "source-checks-" + id);
+  requireValue(same(readdirSync(directory).sort(), [...names].sort()), "worker inventory");
   const workers = names.map((name, index) => {
     const root = join(directory, name);
     const scope = json(join(root, "source-checks-scope.json"));
@@ -56,8 +73,8 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt 
         String(scope.runAttempt) === String(runAttempt) &&
         typeof scope.plan?.joint === "boolean" &&
         Array.isArray(scope.plan.files) &&
-        scope.shard.id === sourceCheckShardIds[index] &&
-        scope.shard.count === sourceCheckShardIds.length,
+        scope.shard.id === expectedIds[index] &&
+        scope.shard.count === expectedIds.length,
       "worker source or assignment",
     );
     return { root, scope };
@@ -84,7 +101,7 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt 
       same([...plan.selected].sort(), [...scope.plan.files].sort()) &&
       same(
         plan.shards.map((shard) => shard.id),
-        sourceCheckShardIds,
+        expectedIds,
       ),
     "execution input",
   );
@@ -170,7 +187,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const { appendFileSync } = await import("node:fs");
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `parallel=${parallel}\nshards=${JSON.stringify(shards)}\n`,
+      `parallel=${parallel}\nshards=${JSON.stringify(shards)}\ncore-sha=${ciCores("required")[0].head}\n`,
     );
   } else if (values.scope && values.output && !values.aggregate && !values.matrix) {
     const shard = sourceCheckShard();

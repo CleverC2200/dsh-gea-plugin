@@ -25,6 +25,11 @@ for (const change of ["hidden", "reordered", "quantity", "reason"])
       if (edited) {
         await edited.fill(beforeValue);
         await expect(edited).toHaveValue(beforeValue);
+        await expect(frame.locator("main.agent-root")).toHaveAttribute(
+          "data-page-reference-ready",
+          "true",
+        );
+        await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
       }
       const release = Promise.withResolvers(),
         completed = Promise.withResolvers();
@@ -96,6 +101,7 @@ for (const change of ["hidden", "reordered", "quantity", "reason"])
             "this edit must exercise the unchanged-scope path before blur",
           );
         }
+        if (edited) await page.clock.resume();
         release.resolve();
         await completed.promise;
         await expect(page.locator('[contenteditable="true"]').first()).toContainText("FC001");
@@ -138,6 +144,7 @@ for (const change of ["hidden", "reordered", "quantity", "reason"])
           );
         }
       } finally {
+        if (edited) await page.clock.resume();
         release.resolve();
         await page.keyboard.up("Alt");
       }

@@ -117,6 +117,28 @@ test("source budget accepts the workflow's skipped dependency-review job", () =>
   assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "passed");
 });
 
+test("source budgets accept skipped policy preparation and workers through twenty", () => {
+  const value = snapshot();
+  value.jobs[0].name = "source-plan";
+  value.jobs[1].name = "source-checks";
+  for (const name of ["dependency-policy", "source-checks (17)", "source-checks (20)"]) {
+    value.jobs.push({ ...value.jobs[1], id: value.jobs.length + 1, name, conclusion: "skipped" });
+  }
+  value.pagination.totalCount = value.jobs.length;
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "passed");
+  for (const name of ["source-checks (21)", "unexpected-preparation"]) {
+    const invalid = structuredClone(value);
+    invalid.jobs.at(-1).name = name;
+    assert.throws(
+      () => assessSourceBudget(invalid, { now: invalid.observedAt }),
+      /HOSTED_BUDGET_INPUT_REQUIRED/,
+    );
+  }
+  value.jobs.find((job) => job.name === "dependency-policy").conclusion = "failure";
+  value.run.conclusion = "failure";
+  assert.equal(assessSourceBudget(value, { now: value.observedAt }).functional.status, "failed");
+});
+
 async function restFixture(t, change = (response) => response) {
   const data = snapshot();
   const requests = [];
