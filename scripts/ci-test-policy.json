@@ -361,7 +361,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "pattern": "^(?:src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)|tests/plugin-update-archive\\.test\\.mjs$)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-integration.contract.mjs",
