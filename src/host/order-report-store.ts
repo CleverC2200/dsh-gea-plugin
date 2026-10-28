@@ -133,7 +133,7 @@ export async function orderReportStore(
     ? `UPDATE ${table} SET report_data = :report, version = :next, last_request_id = :request, update_by = :actor, update_time = :now WHERE ${identityWhere} AND version = :expected`
     : `INSERT INTO ${table} (tenant_id, scope_key, period_type, period_start, period_end_exclusive, scope_name, scope_refs, consumer_code, report_data, schema_version, calculation_version, version, last_request_id, create_by, create_time, update_by, update_time) VALUES (:tenant, :scope, :kind, :start, :end, :scopeName, :scopeRefs, :consumer, :report, 1, 'order-report-v1', :next, :request, :actor, :now, :actor, :now)`;
   if (Buffer.byteLength(JSON.stringify(params)) > 65_536) {
-    const available = 65_536 - Buffer.byteLength(JSON.stringify({...params, report:""})) - 16;
+    const available = 65_536 - Buffer.byteLength(JSON.stringify({ ...params, report: "" })) - 16;
     if (available <= 0) throw fail("ORDER_REPORT_PARAMETERS_TOO_LARGE");
     const prefix = String(storedReport).slice(0, -available);
     // Only our ASCII compression envelope may enter a SQL literal, never report text.

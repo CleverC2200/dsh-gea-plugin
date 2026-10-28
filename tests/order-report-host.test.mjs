@@ -81,7 +81,14 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
     assert.equal(headers.get("X-Delegation-Token"), "synthetic-order");
     if (path.endsWith("/ai/gateway/sql/execute")) {
       if (body.sql.startsWith("SELECT DISTINCT belong_base"))
-        return Response.json({success:true,result:{rows:[{belong_base:scopeChanged && writes.length ? "上海" : "郑州"}],returnedColumns:["belong_base"],rejectedColumns:[]}});
+        return Response.json({
+          success: true,
+          result: {
+            rows: [{ belong_base: scopeChanged && writes.length ? "上海" : "郑州" }],
+            returnedColumns: ["belong_base"],
+            rejectedColumns: [],
+          },
+        });
       loads++;
       assert.match(body.sql, /period_start = CAST\(:start AS DATE\)/);
       assert.equal(body.parameters.tenant, 0);
@@ -91,8 +98,8 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
         success: true,
         result: {
           rows: row ? [row] : [],
-          returnedColumns:["report_data","version","last_request_id","schema_version"],
-          rejectedColumns:[],
+          returnedColumns: ["report_data", "version", "last_request_id", "schema_version"],
+          rejectedColumns: [],
         },
       });
     }

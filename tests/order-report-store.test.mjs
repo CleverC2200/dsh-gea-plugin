@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {createHash} from "node:crypto";
+import { createHash } from "node:crypto";
 import { orderReportStore } from "../src/host/order-report-store.ts";
 
 const period = { type: "WEEK", start: "2026-10-12", end: "2026-10-19" };
@@ -18,26 +18,72 @@ const report = {
   },
 };
 
-test("large complete reports stay within both SQL and parameter limits in one atomic write",async()=>{
-  const large={...report,facts:{complete:true,rows:Array.from({length:1000},(_,i)=>({sku:String(i),value:createHash('sha256').update('value'+i).digest('hex'),reference:createHash('sha256').update('reference'+i).digest('hex')}))}};
-  let row, writes=0;
-  const execute=async(sql,parameters)=>{
-    if(sql.startsWith('SELECT'))return{rows:row?[row]:[],rejectedColumns:[]};
-    assert.ok(sql.length<=65536);
-    assert.ok(Buffer.byteLength(JSON.stringify(parameters))<=65536);
-    const prefix=sql.match(/CONCAT\('([^']*)', :report\)/)?.[1];
-    assert.ok(prefix);
-    assert.match(prefix,/^[A-Za-z0-9+/=,:{}"-]+$/);
-    writes++;
-    row={report_data:prefix+parameters.report,schema_version:1,version:parameters.next,last_request_id:parameters.request};
-    return{affectedRows:1};
+test("large complete reports stay within both SQL and parameter limits in one atomic write", async () => {
+  const large = {
+    ...report,
+    facts: {
+      complete: true,
+      rows: Array.from({ length: 1000 }, (_, i) => ({
+        sku: String(i),
+        value: createHash("sha256")
+          .update("value" + i)
+          .digest("hex"),
+        reference: createHash("sha256")
+          .update("reference" + i)
+          .digest("hex"),
+      })),
+    },
   };
-  await orderReportStore({operation:'save',period,expectedVersion:0,requestId:'large-report-save-0001',report:large},identity,execute);
-  assert.deepEqual((await orderReportStore({operation:'load',period},identity,execute)).report,large);
-  large.edits={...large.edits,summary:{positive:'修改后完整回读'}};
-  await orderReportStore({operation:'save',period,expectedVersion:1,requestId:'large-report-save-0002',report:large},identity,execute);
-  assert.deepEqual((await orderReportStore({operation:'load',period},identity,execute)).report,large);
-  assert.equal(writes,2);
+  let row,
+    writes = 0;
+  const execute = async (sql, parameters) => {
+    if (sql.startsWith("SELECT")) return { rows: row ? [row] : [], rejectedColumns: [] };
+    assert.ok(sql.length <= 65536);
+    assert.ok(Buffer.byteLength(JSON.stringify(parameters)) <= 65536);
+    const prefix = sql.match(/CONCAT\('([^']*)', :report\)/)?.[1];
+    assert.ok(prefix);
+    assert.match(prefix, /^[A-Za-z0-9+/=,:{}"-]+$/);
+    writes++;
+    row = {
+      report_data: prefix + parameters.report,
+      schema_version: 1,
+      version: parameters.next,
+      last_request_id: parameters.request,
+    };
+    return { affectedRows: 1 };
+  };
+  await orderReportStore(
+    {
+      operation: "save",
+      period,
+      expectedVersion: 0,
+      requestId: "large-report-save-0001",
+      report: large,
+    },
+    identity,
+    execute,
+  );
+  assert.deepEqual(
+    (await orderReportStore({ operation: "load", period }, identity, execute)).report,
+    large,
+  );
+  large.edits = { ...large.edits, summary: { positive: "修改后完整回读" } };
+  await orderReportStore(
+    {
+      operation: "save",
+      period,
+      expectedVersion: 1,
+      requestId: "large-report-save-0002",
+      report: large,
+    },
+    identity,
+    execute,
+  );
+  assert.deepEqual(
+    (await orderReportStore({ operation: "load", period }, identity, execute)).report,
+    large,
+  );
+  assert.equal(writes, 2);
 });
 test("report round trip preserves zero, edits, idempotency and rejects stale revision", async () => {
   let row;

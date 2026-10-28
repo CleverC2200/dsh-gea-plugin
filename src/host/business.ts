@@ -2693,22 +2693,25 @@ export class Business {
               !/^\s*(INSERT INTO|UPDATE) agents_order_workbench_report\b/.test(String(query.sql))
             )
               throw Error("ORDER_REPORT_WRITE_INVALID");
-            const response = await this.apiLog.fetch(this.base.replace(/\/$/, "") + "/ai/sql/execute", {
-              method: "POST",
-              redirect: "error",
-              signal,
-              headers: {
-                "Content-Type": "application/json",
-                "X-Delegation-Token": delegation.delegationToken,
-                "X-Request-Id": reportWrite.idempotencyKey,
+            const response = await this.apiLog.fetch(
+              this.base.replace(/\/$/, "") + "/ai/sql/execute",
+              {
+                method: "POST",
+                redirect: "error",
+                signal,
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Delegation-Token": delegation.delegationToken,
+                  "X-Request-Id": reportWrite.idempotencyKey,
+                },
+                body: JSON.stringify({
+                  dataSourceCode: "Doris-OA",
+                  sql: query.sql,
+                  parameters: query.parameters,
+                  idempotencyKey: reportWrite.idempotencyKey,
+                }),
               },
-              body: JSON.stringify({
-                dataSourceCode: "Doris-OA",
-                sql: query.sql,
-                parameters: query.parameters,
-                idempotencyKey: reportWrite.idempotencyKey,
-              }),
-            });
+            );
             const body = object(await response.json().catch(() => ({})));
             signal.throwIfAborted();
             if (!response.ok || body.success !== true || object(body.result).failure) {
