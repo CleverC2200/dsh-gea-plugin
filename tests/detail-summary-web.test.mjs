@@ -38,6 +38,11 @@ test(
         .stop({ path: artifactDirectory + (completed ? "/trace.zip" : "/failure-trace.zip") })
         .catch((error) => t.diagnostic("DETAIL_SUMMARY_TRACE_FAILED: " + String(error)));
     });
+    mark("browser-launch-start");
+    const browserReady = testBrowser(t, () =>
+      chromium.launch({ channel: "chrome", headless: true }),
+    );
+    browserReady.catch(() => {});
     mark("profile");
     const app = await profile(t, {
       config: (base) => ({
@@ -211,10 +216,9 @@ test(
     });
     mark("login");
     await app.login();
-    mark("browser-launch");
-    const browser = await testBrowser(t, () =>
-      chromium.launch({ channel: "chrome", headless: true }),
-    );
+    mark("browser-wait");
+    const browser = await browserReady;
+    mark("browser-ready");
     mark("browser-context");
     context = await browser.newContext({
       locale: "zh-CN",
