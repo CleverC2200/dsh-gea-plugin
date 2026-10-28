@@ -185,6 +185,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
+      QUALITY_GROUP_GEA: ${{ needs.source-plan.outputs.gea-sha }}
+      QUALITY_GROUP_MANAGE: ${{ needs.source-plan.outputs.manage-sha }}
+      QUALITY_GROUP_WORKBENCH: ${{ needs.source-plan.outputs.workbench-sha }}
       GEA_SOURCE_CHECK_SHARD: ${{ matrix.shard != 'single' && matrix.shard || '' }}
       GEA_SOURCE_CHECK_SHARD_COUNT: ${{ strategy.job-total }}
       GEA_TEST_LIFECYCLE_RECEIPT: ${{ github.workspace }}/profile-lifecycle.ndjson

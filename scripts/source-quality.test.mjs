@@ -114,6 +114,86 @@ test("manual source acceptance uses its ancestor comparison and retains strict f
     assert.notEqual(repo.run("final", { ...results, CHECK_RESULT }).status, 0);
 });
 
+test("manual source acceptance binds the public hosted reader to its planned source tuple", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  const base = execFileSync("git", ["rev-parse", "HEAD^"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  const env = {
+    ...process.env,
+    GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+    GITHUB_EVENT_NAME: "workflow_dispatch",
+    GITHUB_EVENT_PATH: "",
+    GITHUB_OUTPUT: "",
+    SOURCE_HEAD_SHA: head,
+    SOURCE_BASE_SHA: base,
+    QUALITY_SCOPE_ALLOWED: "true",
+    QUALITY_EXPECTED_SHA: head,
+    QUALITY_GROUP_GEA: "",
+    QUALITY_GROUP_MANAGE: "",
+    QUALITY_GROUP_WORKBENCH: "",
+  };
+  const planResult = spawnSync(process.execPath, [cli, "--phase", "plan"], {
+    cwd: root,
+    encoding: "utf8",
+    env,
+  });
+  assert.equal(planResult.status, 0, planResult.stderr);
+  const plan = JSON.parse(planResult.stdout);
+  const baseline = JSON.parse(
+    readFileSync(new URL("./quality-peer-baseline.json", import.meta.url)),
+  );
+  const reader = join(
+    process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? join(root, "../dsh-agent-workbench"),
+    "scripts/read-hosted-peer-input.mjs",
+  );
+  const read = (extra) =>
+    spawnSync(process.execPath, [reader, "--repo", "dsh-gea-plugin"], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...env, ...extra },
+    });
+  const missing = read({});
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /CANDIDATE_EVENT_MISMATCH: complete immutable joint tuple/);
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  const workers = workflow.split("\n  source-checks:\n")[1].split("\n  dependency-review:\n")[0];
+  const tuple = Object.fromEntries(
+    [
+      ...workers.matchAll(
+        /^      (QUALITY_GROUP_\w+): \$\{\{ needs\.source-plan\.outputs\.([a-z-]+) \}\}$/gm,
+      ),
+    ].map(([, key, output]) => [key, plan[output]]),
+  );
+  const accepted = read(tuple);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const result = JSON.parse(accepted.stdout);
+  assert.equal(result["gea-sha"], head);
+  for (const [key, repo] of [
+    ["workbench-sha", "dsh-agent-workbench"],
+    ["manage-sha", "dsh-agent-manage"],
+  ])
+    assert.equal(result[key], baseline.repositories.find((entry) => entry.repo === repo).head);
+  assert.equal(result["source-kind"], "joint-group");
+  for (const [key, value] of Object.entries({
+    QUALITY_GROUP_GEA: base,
+    QUALITY_GROUP_MANAGE: "",
+    QUALITY_GROUP_WORKBENCH: "main",
+  })) {
+    const rejected = read({ ...tuple, [key]: value });
+    assert.equal(rejected.status, 1, key);
+    assert.match(rejected.stderr, /CANDIDATE_EVENT_MISMATCH: complete immutable joint tuple/);
+  }
+});
+
 test("source workflow keeps one manual comparison base for planning, workers and aggregation", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/source-quality.yml", import.meta.url),
