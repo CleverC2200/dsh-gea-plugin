@@ -24,7 +24,7 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 完整 build 也仅构建 GEA host/client；页面在同组 Workbench 按自己的工具链构建。watch 只编译，不启动应用，勿并发写同一输出。官方类型检查需要明确准备的只读 SDK 与 peer 声明，不能以旧 SDK 或历史产物代替当前输入。
 
-插件更新使用官方 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，等待公开 slots、locale 与 modules 服务就绪后向三个公司 bundle 贡献内容。定向类型检查只需将 `GEA_PLUGIN_UPDATE_SDK` 指向未修改、已准备的官方 SDK 绝对路径，再运行 `typecheck:plugin-updates`。该检查包含实际详情 TSX、公共组件与本地样式声明；部署配置和分层验证见 [签名插件来源](plugin-release-source.md)。
+插件更新使用官方 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，等待公开 slots、locale 与 modules 服务就绪后向三个公司 bundle 贡献内容。定向类型检查只需将 `GEA_PLUGIN_UPDATE_SDK` 指向未修改、已准备的官方 SDK 绝对路径，再运行 `typecheck:plugin-updates`。该检查包含实际详情 TSX、公共组件与本地样式声明；部署配置和分层验证见 [插件来源](plugin-release-source.md)。
 
 只读交付一致性检查使用 `pnpm run delivery:check --input request.json`，failed/unknown 返回非零；人工浏览报告使用 `pnpm run delivery:report --input request.json`，短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。报告命令退出0只表示生成成功，检查命令退出0只证明一致性；两者都不授予业务验收、不启动应用或恢复自动化。
 
@@ -79,7 +79,7 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 未设置 `runtimeDir` 时，Host 从官方 `profileContext.dir` 派生 `gea/` 专用持久目录。显式目录必须是可创建的绝对目录。普通插件登录由 GEA Host 在此目录写入权限为 0600 的 `web-login.json`，默认不依赖旧启动器变量；`GEA_WEB_LOGIN_PERSIST=0` 仍可明确关闭，旧公司桌面的私有凭据通道保留其原归属。
 
-发行 manifest 保留 Workbench/Manage 已有 peer 约束；未声明的源码 companion link 才从明确输入投影 exact peer。完整组合与独立 release 见 [签名插件来源](plugin-release-source.md)。GenUI/Sidebar 维持 exact optional peers，不随三主插件自动启用。未安装或停用辅助插件时，只报告其真实缺席状态；官方 standard 和已配置业务授权保护保持原接口。
+发行 manifest 保留 Workbench/Manage 已有 peer 约束；未声明的源码 companion link 才从明确输入投影 exact peer。完整组合与独立 release 见 [插件来源](plugin-release-source.md)。GenUI/Sidebar 维持 exact optional peers，不随三主插件自动启用。未安装或停用辅助插件时，只报告其真实缺席状态；官方 standard 和已配置业务授权保护保持原接口。
 
 `node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
 
