@@ -63,6 +63,82 @@ test("a README-only pull request needs no engineering checks, including Markdown
   assert.equal(JSON.parse(result.stdout).mode, "docs");
 });
 
+test("manual source acceptance rejects missing, invalid and non-ancestor comparison bases", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  writeFileSync(join(repo.root, ".git/event.json"), JSON.stringify({}));
+  repo.git("checkout", "--orphan", "unrelated");
+  repo.git("commit", "--allow-empty", "-qm", "unrelated root");
+  const unrelated = repo.git("rev-parse", "HEAD");
+  repo.git("checkout", "--detach", repo.head);
+  for (const base of ["", "HEAD~1", repo.base.slice(0, 12), "f".repeat(40), unrelated]) {
+    for (const phase of ["event", "plan", "final"]) {
+      const result = repo.run(phase, {
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        SOURCE_BASE_SHA: base,
+      });
+      assert.notEqual(result.status, 0, `${phase}: ${base || "missing"}`);
+      assert.match(result.stderr, /SOURCE_MANUAL_BASE_(?:SHA_REQUIRED|ANCESTOR_REQUIRED)/);
+    }
+  }
+});
+
+test("manual source acceptance uses its ancestor comparison and retains strict final admission", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  mkdirSync(join(repo.root, "scripts"));
+  writeFileSync(join(repo.root, "scripts/acceptance.mjs"), "export const accepted = true;\n");
+  repo.git("add", ".");
+  repo.git("commit", "-qm", "latest change");
+  writeFileSync(join(repo.root, ".git/event.json"), JSON.stringify({}));
+  const env = { GITHUB_EVENT_NAME: "workflow_dispatch", SOURCE_BASE_SHA: repo.base };
+  const admitted = repo.run("event", env);
+  assert.equal(admitted.status, 0, admitted.stderr);
+  assert.deepEqual(JSON.parse(admitted.stdout), {
+    validate: true,
+    reason: "source-validation-required",
+  });
+  const planned = repo.run("plan", env);
+  assert.equal(planned.status, 0, planned.stderr);
+  const plan = JSON.parse(planned.stdout);
+  assert.equal(plan.base, repo.base);
+  assert.equal(plan.head, repo.git("rev-parse", "HEAD"));
+  assert.deepEqual(plan.files, ["README.md", "scripts/acceptance.mjs"]);
+  assert.equal(plan["dependency-review"], false);
+  const results = {
+    ...env,
+    PLAN_RESULT: "success",
+    CHECK_RESULT: "success",
+    DEPENDENCY_RESULT: "skipped",
+  };
+  assert.equal(repo.run("final", results).status, 0);
+  for (const CHECK_RESULT of ["failure", "cancelled", "skipped", ""])
+    assert.notEqual(repo.run("final", { ...results, CHECK_RESULT }).status, 0);
+});
+
+test("source workflow keeps one manual comparison base for planning, workers and aggregation", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /workflow_dispatch:\n    inputs:\n      comparison_base:\n        description: .+\n        required: true\n        type: string/,
+  );
+  const global = workflow.split("\njobs:\n")[0];
+  const expression = global.match(/\n  SOURCE_BASE_SHA: \$\{\{ (.+) \}\}/)?.[1];
+  assert.ok(expression, "all jobs inherit the explicit comparison");
+  const baseFor = (event_name, comparison_base) =>
+    Function("github", "inputs", `return (${expression})`)({ event_name }, { comparison_base });
+  assert.equal(baseFor("workflow_dispatch", "a".repeat(40)), "a".repeat(40));
+  assert.equal(baseFor("pull_request", "a".repeat(40)), "");
+  assert.equal(baseFor("push", "a".repeat(40)), "");
+  assert.doesNotMatch(workflow.split("\njobs:\n")[1], /SOURCE_BASE_SHA:/);
+  assert.match(workflow, /max-parallel: 20/);
+  assert.match(
+    workflow,
+    /name: Record formal source inputs\n        if: github.event_name == 'pull_request'/,
+  );
+});
+
 test("title and body edits admit only lightweight handling without requiring source preparation", (t) => {
   const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
   const path = join(repo.root, ".git/event.json");
