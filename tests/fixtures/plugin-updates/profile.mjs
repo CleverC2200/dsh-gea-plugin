@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, rename, realpath } from "node:
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
-import { generateKeyPairSync, sign, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createPluginReleaseSource } from "../../../src/host/plugin-release-source.ts";
 import { companyPackageNames, projectPluginRelease } from "../../../src/shared/plugin-release.mjs";
@@ -115,25 +115,22 @@ export async function controllerFixture(
   await writeFile(join(dir, "package.json"), JSON.stringify(profileManifest));
   await writeFile(join(dir, "pnpm-lock.yaml"), "lockfileVersion: 9\nold: true\n");
   await writeFile(join(dir, "cordis.patch.yml"), "retained patch\n");
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519"),
-    payload = Buffer.from(
-      JSON.stringify({
-        schema: 1,
-        channel: "test",
-        revision: 1,
-        issuedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 3600000).toISOString(),
-        releases: references,
-      }),
-    );
+  const payload = Buffer.from(
+    JSON.stringify({
+      schema: 1,
+      channel: "test",
+      revision: 1,
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      releases: references,
+    }),
+  );
   const channel = "https://fixture.invalid/channels/test.json";
   files.set(
     channel,
     Buffer.from(
       JSON.stringify({
-        keyId: "fixture",
         payloadBase64: payload.toString("base64"),
-        signatureBase64: sign(null, payload, privateKey).toString("base64"),
       }),
     ),
   );
@@ -143,12 +140,6 @@ export async function controllerFixture(
       channelUrl: channel,
       authenticationRef: "fixture-read",
       allowed: [{ origin: "https://fixture.invalid", pathPrefix: "/" }],
-      trustedKeys: [
-        {
-          keyId: "fixture",
-          publicKeyPem: publicKey.export({ type: "spki", format: "pem" }),
-        },
-      ],
     },
     {
       trustDirectory: join(root, "source-trust"),
@@ -161,12 +152,10 @@ export async function controllerFixture(
           });
         if (sourceFailure === "network")
           throw Error("secret-credential /private/path Authorization");
-        if (sourceFailure === "signature" && url === channel) {
-          const signed = JSON.parse(files.get(url).toString("utf8"));
+        if (sourceFailure === "schema" && url === channel) {
           return new Response(
             JSON.stringify({
-              ...signed,
-              signatureBase64: Buffer.alloc(64).toString("base64"),
+              payloadBase64: Buffer.from("{}").toString("base64"),
             }),
           );
         }
@@ -212,7 +201,6 @@ export async function controllerFixture(
   return {
     root,
     files,
-    privateKey,
     dir,
     profile,
     source,
