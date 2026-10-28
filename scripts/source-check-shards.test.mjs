@@ -401,5 +401,5 @@ test("the source workflow admits workers only after successful or inapplicable p
     (step) => step.name === "Prepare or verify SDK through existing cache contract",
   );
   assert.ok(restore >= 0 && restore < install);
-  assert.match(worker.env.PNPM_CONFIG_CACHE_DIR, /runner.temp/);
+  assert.match(worker.env.PNPM_CONFIG_CACHE_DIR, /github.workspace/);
 });

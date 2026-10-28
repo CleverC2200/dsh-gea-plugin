@@ -165,7 +165,7 @@ jobs:
       GEA_SOURCE_CHECK_SHARD: ${{ matrix.shard != 'single' && matrix.shard || '' }}
       GEA_SOURCE_CHECK_SHARD_COUNT: ${{ strategy.job-total }}
       GEA_TEST_LIFECYCLE_RECEIPT: ${{ github.workspace }}/profile-lifecycle.ndjson
-      PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-policy-cache
+      PNPM_CONFIG_CACHE_DIR: ${{ github.workspace }}/.pnpm-policy-cache
     permissions:
       contents: read
       actions: read

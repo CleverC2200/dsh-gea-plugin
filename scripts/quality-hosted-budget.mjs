@@ -325,7 +325,7 @@ export function assessHostedBudget({
     new Set(notApplicableJobs).size !== notApplicableJobs.length ||
     notApplicableJobs.some(
       (name) =>
-        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|dependency-review|source-checks(?: \((?:[1-9]|1[0-6])\))?|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
+        (!/^(?:test-shards|plan-test-shards|gates|macos-isolation|Dependency review|dependency-review|dependency-policy|source-checks(?: \((?:[1-9]|1[0-9]|20)\))?|(?:prepare|macos)-(?:[a-f0-9]{40})?)$/.test(
           name,
         ) &&
           !unexpandedSkippedJobNames.includes(name)) ||
