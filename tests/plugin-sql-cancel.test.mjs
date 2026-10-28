@@ -426,3 +426,40 @@ for (const consumerCode of ["customer_inventory", "order", "order01"])
     await assert.rejects(read());
     assert.equal(reads, 6);
   });
+
+for (const consumerCode of ["base-safety-stock", "branch-inventory", "full-chain-inventory"])
+  test(`${consumerCode}: concurrent cards and lists share one SQL read without sharing cancellation`, async (t) => {
+    const business = fixture(t, consumerCode);
+    let reads = 0,
+      release,
+      transportSignal;
+    const blocked = new Promise((resolve) => {
+      release = resolve;
+    });
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      if (url.endsWith("/execute")) {
+        reads++;
+        transportSignal = init.signal;
+        await blocked;
+      }
+      return success(url, init);
+    });
+    const input = { consumerCode, sql: "SELECT t.sku AS sku FROM inventory AS t", parameters: {} };
+    const first = new AbortController(),
+      second = new AbortController();
+    const a = business.pluginSql(input, first.signal, true);
+    const rejected = assert.rejects(a, { name: "AbortError" });
+    const b = business.pluginSql(input, second.signal, true);
+    await new Promise(setImmediate);
+    const initialReads = reads;
+    first.abort();
+    release();
+    await rejected;
+    assert.deepEqual((await b).rows, [{ sku: "A" }]);
+    assert.equal(transportSignal.aborted, false);
+    assert.equal(initialReads, 1, "the same first-load query was sent twice");
+    assert.deepEqual((await business.pluginSql(input, new AbortController().signal, true)).rows, [
+      { sku: "A" },
+    ]);
+    assert.equal(reads, 1, "completed data must still use the twenty-minute cache");
+  });
