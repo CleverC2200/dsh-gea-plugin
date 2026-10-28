@@ -432,6 +432,78 @@ test("Host unload cancels an accepted operation and reports failure after quiesc
   assert.equal(controller.snapshot().operation.stage, "failed");
   assert.equal(await readFile(join(f.dir, "package.json"), "utf8"), before);
 });
+test("a new Host can retry an accepted operation whose process exited before installation", async (t) => {
+  const { execFileSync } = await import("node:child_process");
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const releases = await f.source.check();
+  const archives = {};
+  for (const release of releases)
+    archives[release.name] = await f.source.download(
+      release,
+      join(f.options.runtimeDirectory, "cache"),
+    );
+  const input = join(f.root, "accepted-options.json");
+  await writeFile(
+    input,
+    JSON.stringify({
+      ...f.options,
+      proofs: f.proofs,
+      releases,
+      archives,
+      source: undefined,
+      readRuntimeProofs: undefined,
+    }),
+  );
+  const script = join(f.root, "accept-and-exit.mjs");
+  await writeFile(
+    script,
+    `import {createPluginUpdateController} from ${JSON.stringify(pathToFileURL(modulePath).href)};import{readFile}from'node:fs/promises';const input=JSON.parse(await readFile(process.argv[2],'utf8'));const controller=createPluginUpdateController({...input,source:{check:async()=>input.releases,download:async release=>input.archives[release.name],assertCurrentRelease(){}},readRuntimeProofs:async()=>input.proofs});await controller.initialize();await controller.check();const row=controller.snapshot().items.find(row=>row.planId);const accepted=await controller.submit({packageName:row.packageName,planId:row.planId});console.log(JSON.stringify(accepted));process.exit(0);`,
+  );
+  const accepted = JSON.parse(
+    execFileSync(process.execPath, [script, input], { encoding: "utf8" }),
+  );
+  const receipt = JSON.parse(await readFile(join(accepted.directory, "receipt.json"), "utf8"));
+  assert.equal(receipt.stage, "accepted");
+  assert.deepEqual(receipt.processes, []);
+  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  assert.equal(controller.snapshot().operation.stage, "failed");
+  assert.equal(controller.snapshot().operation.diagnostic, "PREVIOUS_OPERATION_INTERRUPTED");
+  await controller.check();
+  assert.equal(controller.snapshot().items[2].state, "available");
+});
+test("submission rejects live and malformed run records but lets the official runner clear an exited writer", async (t) => {
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  await mkdir(join(f.dir, ".plugin-manager"), { recursive: true });
+  const run = join(f.dir, ".plugin-manager/run.json");
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  for (const record of [JSON.stringify({ pid: process.pid, grouped: false }), "invalid"]) {
+    await writeFile(run, record);
+    await controller.check();
+    const row = controller.snapshot().items.find((row) => row.planId);
+    await assert.rejects(
+      controller.submit({ packageName: row.packageName, planId: row.planId }),
+      /PROFILE_WRITER_UNCONFIRMED/,
+    );
+    assert.equal(controller.snapshot().operation, null);
+    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  }
+  await writeFile(run, JSON.stringify({ pid: 2147483647, grouped: true }));
+  await controller.check();
+  const row = controller.snapshot().items.find((row) => row.planId);
+  await controller.submit({ packageName: row.packageName, planId: row.planId });
+  assert.equal(
+    (await waitForStage(controller, ["pending-restart", "failed", "unknown"])).stage,
+    "pending-restart",
+  );
+  await assert.rejects(readFile(run), { code: "ENOENT" });
+});
 test("pending receipt survives recreation in the same Node process and needs a genuinely new process plus client observation", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t),

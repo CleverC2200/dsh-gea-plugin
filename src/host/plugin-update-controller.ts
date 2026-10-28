@@ -35,6 +35,7 @@ import {
   type ProfileSnapshot,
 } from "./plugin-update-profile.ts";
 import {
+  profilePackageRunStopped,
   previousPackageProcessesStopped,
   observeProfilePackageProcesses,
 } from "./plugin-update-processes.ts";
@@ -489,19 +490,28 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           const initialProofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
           reflectProfile(await readPluginProfile(options.profile.dir), initialProofs);
           state = { ...state, operation: await readLatest() };
+          if (state.operation) {
+            for (const target of operationTargets(state.operation))
+              row(target.packageName, {
+                state: state.operation.stage,
+                diagnostic: state.operation.diagnostic,
+                candidateVersion: target.targetVersion,
+              });
+            if (
+              state.operation.stage === "accepted" &&
+              state.operation.processIdentity !== pluginUpdateProcessIdentity &&
+              state.operation.processes.length === 0 &&
+              profilePackageRunStopped(options.profile.dir)
+            )
+              await stage("failed", "PREVIOUS_OPERATION_INTERRUPTED");
+            else if (
+              ["accepted", "installing", "verifying", "restoring"].includes(state.operation.stage)
+            )
+              await stage("unknown", "PREVIOUS_OPERATION_INTERRUPTED");
+          }
         },
         { waitMs: options.lockWaitMs ?? 30_000 },
       );
-      if (state.operation) {
-        for (const target of operationTargets(state.operation))
-          row(target.packageName, {
-            state: state.operation.stage,
-            diagnostic: state.operation.diagnostic,
-            candidateVersion: target.targetVersion,
-          });
-        if (["accepted", "installing", "verifying", "restoring"].includes(state.operation.stage))
-          await stage("unknown", "PREVIOUS_OPERATION_INTERRUPTED");
-      }
     } catch {
       journalBroken = true;
       state = {
@@ -754,8 +764,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               )
             )
               fail("UPDATE_COMBINATION_CHANGED");
-            if (await optionalFile(join(options.profile.dir, ".plugin-manager/run.json")))
-              fail("PROFILE_WRITER_UNCONFIRMED");
+            if (!profilePackageRunStopped(options.profile.dir)) fail("PROFILE_WRITER_UNCONFIRMED");
             const store = await pluginProfileStoreDirectory(options.profile.dir);
             const id = randomUUID(),
               operationDirectory = join(operations, id);

@@ -26,7 +26,7 @@ function birth(pid: number): string | null {
     return null;
   }
 }
-export function previousPackageProcessesStopped(profile: string, operation: PluginUpdateOperation) {
+export function profilePackageRunStopped(profile: string) {
   try {
     const record: unknown = JSON.parse(
       readFileSync(join(profile, ".plugin-manager/run.json"), "utf8"),
@@ -47,6 +47,10 @@ export function previousPackageProcessesStopped(profile: string, operation: Plug
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
   }
+  return true;
+}
+export function previousPackageProcessesStopped(profile: string, operation: PluginUpdateOperation) {
+  if (!profilePackageRunStopped(profile)) return false;
   if (operation.stage === "pending-restart") return true;
   return (
     operation.processes.length > 0 &&
