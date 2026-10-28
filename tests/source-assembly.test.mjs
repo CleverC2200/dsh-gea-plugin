@@ -1,4 +1,5 @@
 import test from "node:test";
+import { measureSourceUpdate } from "./fixtures/source-update-timing.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile, readFile, access } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -17,9 +18,16 @@ test(
     const core = resolve("../../official-latest-standard"),
       runtime = join(root, "own-runtime");
     await mkdir(runtime);
-    const composition = await prepareSourcePlugins(core, runtime, undefined, {
-      sources,
-    });
+    const records = [];
+    const context = { name: t.name, diagnostic: (text) => records.push(JSON.parse(text)) };
+    const composition = await measureSourceUpdate(context, "baseline", "profile-start", () =>
+      prepareSourcePlugins(core, runtime, undefined, { sources }),
+    );
+    const preparation = records.find((row) => row.step === "prepare");
+    assert.equal(preparation.status, "passed");
+    const copy = records.find((row) => row.step === "resource-assembly");
+    assert.equal(copy.parentId, preparation.id);
+    assert.equal(copy.componentCount, 5);
     assert.deepEqual(Object.keys(composition.dependencies), names);
     assert.deepEqual(new Set(composition.bundles), new Set(names));
     assert.equal(composition.patches.length, 1);

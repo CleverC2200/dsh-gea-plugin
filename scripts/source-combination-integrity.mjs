@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
+import { measureSourcePhase, sourcePhase } from "./source-phase-observer.mjs";
+
 const callbackReadFile = promisify(readFileCallback);
 const readBytes = (file, readScope) =>
   readScope
@@ -30,7 +32,10 @@ export async function publishedResourceDigests(directory, prefix = "") {
 async function digestResources(directory, prefix, readScope, excludeDependencies) {
   const files = {},
     pending = [];
+  let directoryCount = 0,
+    linkCount = 0;
   async function visit(directory, prefix) {
+    directoryCount++;
     if (readScope) await readScope.resolve(directory, { traverse: true });
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       if (excludeDependencies && ["node_modules", ".git"].includes(entry.name)) continue;
@@ -38,6 +43,7 @@ async function digestResources(directory, prefix, readScope, excludeDependencies
       const file = join(directory, entry.name);
       if (entry.isDirectory()) await visit(file, relative);
       else if (entry.isSymbolicLink()) {
+        linkCount++;
         if (readScope) await readScope.resolve(file, { traverse: true });
         files[relative] = "link:" + (await realpath(file));
       } else if (entry.isFile() && (excludeDependencies || relative !== "combination.json")) {
@@ -46,8 +52,22 @@ async function digestResources(directory, prefix, readScope, excludeDependencies
       }
     }
   }
-  await visit(directory, prefix);
-  return hashFiles(files, pending, readScope);
+  await measureSourcePhase(
+    "resource-traversal",
+    () => visit(directory, prefix),
+    () => ({
+      directoryCount,
+      fileCount: pending.length,
+      linkCount,
+    }),
+  );
+  return measureSourcePhase(
+    "resource-read-hash",
+    () => hashFiles(files, pending, readScope),
+    () => ({
+      fileCount: pending.length,
+    }),
+  );
 }
 
 function sameDigests(actual, expected) {
@@ -59,7 +79,9 @@ function sameDigests(actual, expected) {
 }
 
 /** Reject incomplete snapshots before changing the selected combination. */
-export async function readSourceCombination(runtime, id, core, { readScope } = {}) {
+export const readSourceCombination = sourcePhase("read-combination", readCombination);
+
+async function readCombination(runtime, id, core, { readScope } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const directory = join(runtime, "source-combinations", id);
   const record = JSON.parse(
@@ -127,6 +149,7 @@ export async function dependencyDigests(directories, readScope) {
   const files = {},
     visited = new Set(),
     pending = [];
+  let linkCount = 0;
   function enqueue(file) {
     files[file] = null;
     pending.push(file);
@@ -143,6 +166,7 @@ export async function dependencyDigests(directories, readScope) {
       if (entry.isFile()) enqueue(file);
       else if (entry.isDirectory()) await visit(file);
       else if (entry.isSymbolicLink()) {
+        linkCount++;
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
@@ -152,11 +176,26 @@ export async function dependencyDigests(directories, readScope) {
       }
     }
   }
-  for (const directory of directories) await visit(directory);
-  return hashFiles(
-    files,
-    pending.map((file) => [file, file]),
-    readScope,
+  await measureSourcePhase(
+    "dependency-traversal",
+    async () => {
+      for (const directory of directories) await visit(directory);
+    },
+    () => ({
+      directoryCount: visited.size,
+      fileCount: pending.length,
+      linkCount,
+    }),
+  );
+  return measureSourcePhase(
+    "dependency-read-hash",
+    () =>
+      hashFiles(
+        files,
+        pending.map((file) => [file, file]),
+        readScope,
+      ),
+    () => ({ fileCount: pending.length }),
   );
 }
 

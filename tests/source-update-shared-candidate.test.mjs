@@ -1,4 +1,5 @@
 import test from "node:test";
+import { measureSourceUpdate } from "./fixtures/source-update-timing.mjs";
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import { join } from "node:path";
@@ -17,7 +18,21 @@ test("one prepared candidate serves separate updates and rejects corruption with
   const manifest = await fs.readFile(join(directory, "combination.json"));
   const resource = join(directory, "node_modules", gea, "lib/host.js");
   const bytes = await fs.readFile(resource);
-  assert.equal((await applySourceUpdate(f.runtime, first, { core })).phase, "succeeded");
+  const records = [];
+  const context = { name: t.name, diagnostic: (text) => records.push(JSON.parse(text)) };
+  assert.equal(
+    (
+      await measureSourceUpdate(context, "gea-updated", "apply-update", () =>
+        applySourceUpdate(f.runtime, first, { core }),
+      )
+    ).phase,
+    "succeeded",
+  );
+  const merge = records.find((row) => row.step === "merge");
+  assert.equal(merge?.status, "passed");
+  const assembly = records.find((row) => row.step === "resource-assembly");
+  assert.equal(assembly?.parentId, merge.id);
+  assert.equal(assembly.componentCount, 5);
   const partial = await readSourceUpdateBaseline(f.runtime, core);
   assert.equal(partial.components[gea].version, "1.1.0");
   assert.equal(partial.components[workbench].version, "1.0.0");
