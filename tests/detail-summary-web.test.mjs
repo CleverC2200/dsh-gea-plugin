@@ -248,7 +248,6 @@ test(
     mark("category-expand");
     await frame.getByRole("switch").first().click();
     const category = frame.getByTestId("regional-approval-category-row-p-jxs-2026-09-00001-汤圆");
-    mark("category-collapse");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveText("汤圆 · 1 SKU");
     await expect(frame.locator("tbody")).toContainText(["黑芝麻汤圆 500g"]);
@@ -260,11 +259,12 @@ test(
     );
     mark("screenshots");
     await page.screenshot({ path: ".runtime/detail-summary/desktop.png", fullPage: true });
-    await page.setViewportSize({ width: 1024, height: 768 });
-    await page.screenshot({ path: ".runtime/detail-summary/narrow.png", fullPage: true });
     mark("category-collapse");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveCount(0);
+    mark("narrow-screenshot");
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.screenshot({ path: ".runtime/detail-summary/narrow.png", fullPage: true });
     assert.deepEqual(errors, []);
     assert.equal(writes, 0);
     completed = true;
