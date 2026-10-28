@@ -118,12 +118,15 @@ jobs:
     if: needs.source-plan.outputs.validate == 'true' && needs.source-plan.outputs.mode != 'docs'
     strategy:
       fail-fast: false
+      max-parallel: 16
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       GEA_SOURCE_CHECK_SHARD: ${{ matrix.shard != 'single' && matrix.shard || '' }}
+      GEA_SOURCE_CHECK_SHARD_COUNT: ${{ strategy.job-total }}
+      GEA_TEST_LIFECYCLE_RECEIPT: ${{ github.workspace }}/profile-lifecycle.ndjson
     permissions:
       contents: read
       actions: read
@@ -313,6 +316,7 @@ jobs:
             quality-stages.json
             quality-test-execution.json
             quality-test-results/
+            profile-lifecycle.ndjson
           if-no-files-found: ignore
 
   dependency-review:
