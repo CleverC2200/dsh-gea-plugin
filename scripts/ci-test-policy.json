@@ -361,9 +361,8 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "pattern": "^(?:src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)|tests/plugin-update-archive\\.test\\.mjs$)",
       "tests": [
-        "tests/plugin-update-archive.test.mjs",
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
@@ -417,7 +416,6 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
       "tests": [
-        "tests/plugin-update-archive.test.mjs",
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
@@ -611,6 +609,11 @@
         "tests/fc-legacy-planning.test.mjs",
         "tests/fc-submission-flow.integration.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/plugin-update-windows\\.native\\.mjs$",
+      "tests": ["scripts/ci-windows-update.test.mjs"]
     }
   ],
   "testOwners": {

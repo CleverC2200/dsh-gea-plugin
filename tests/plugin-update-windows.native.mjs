@@ -45,7 +45,6 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
     f.options.fileCommit = fileCommit;
     f.options.idleTimeoutMs = mode === "orphan" ? 1500 : 10000;
     f.options.quiescenceWaitMs = 1500;
-    const before = await readFile(join(f.dir, "package.json"));
     controller = createPluginUpdateController(f.options);
     controller.subscribe((snapshot) => {
       if (mode === "pnpm" && snapshot.operation?.stage === "verifying")
@@ -66,13 +65,13 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
     await controller.submit({ packageName: item.packageName, planId: item.planId });
     const result = await waitForStage(
       controller,
-      ["pending-restart", "restored", "unknown", "failed"],
+      ["pending-restart", "failed", "unknown", "failed"],
       30000,
     );
     const expected = ["success", "pnpm"].includes(mode)
       ? "pending-restart"
       : mode === "fail-after-write"
-        ? "restored"
+        ? "failed"
         : "unknown";
     if (result.stage !== expected) {
       for (const log of result.logs)
@@ -83,13 +82,12 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
       ["success", "pnpm"].includes(mode)
         ? "pending-restart"
         : mode === "fail-after-write"
-          ? "restored"
+          ? "failed"
           : "unknown",
       JSON.stringify(result),
     );
     assert(result.processes.some((x) => x.grouped === false && x.sawAlive && x.startIdentity));
-    if (mode === "fail-after-write")
-      assert.deepEqual(await readFile(join(f.dir, "package.json")), before);
+    if (mode === "fail-after-write") assert.equal(result.diagnostic, "PACKAGE_INSTALL_FAILED");
     if (mode === "orphan") {
       const pid = Number(await readFile(join(f.dir, "orphan-pid"), "utf8"));
       assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });

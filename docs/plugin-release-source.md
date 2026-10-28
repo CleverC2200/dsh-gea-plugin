@@ -100,7 +100,7 @@ GEA client 使用官方既有的 `plugins.detail.actions`、`plugins.detail.badg
 
 Host 证明来自公开 Loader 的唯一启用 entry、ACTIVE Fiber、实际 import namespace 与 callback 一致，以及该 namespace 的 `pluginPackageVersion` 编译常量。client 读取公开 `ctx.modules.loadCache` 的 materialized exports，核 ACTIVE Fiber/callback，再读取相同编译常量。`desiredArtifactRevision` 只绑定当前公开 graph；它不证明 cache 实际加载了该修订。报告是已认证受控 client 的观察，不是远端密码学证明。Host 严格解析报告，绑定 process/page/nonce 和过期时间，再核自身 ACTIVE 版本及当前目标 graph；任意 `{kind:"active"}`、旧 process、错误 nonce、版本或目标修订均拒绝。03 的持久回执只在真实新 Host 进程与匹配 client 观察成立后完成；缺证明保持 pending/unknown。详情分别呈现 Host 与 client 实际观察版本，缺失观察显示未确认。
 
-`waiting-lock` 与 `snapshotting` 分别显示等待其它插件操作与备份中；安装、验证、恢复、待重启和 unknown 使用 Host 的实际状态。
+`waiting-lock` 显示等待其它插件操作；安装、验证、待重启、失败和 unknown 使用 Host 的实际状态。安装与旧回执处理见 [公司三包更新](plugin-update-controller.md)。
 
 ## 分层验证
 
