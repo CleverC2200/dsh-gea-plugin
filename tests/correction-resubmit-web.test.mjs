@@ -220,8 +220,8 @@ test(
     await resubmit.click();
     const d = f.getByRole("dialog", { name: "确认修改并重提", exact: true });
     await expect(d.getByRole("spinbutton")).toHaveCount(0);
-    await expect(d).toContainText("38.000");
-    await expect(d).toContainText("35.000");
+    await expect(d).toContainText("修改前: 32.000 件 · ¥64.00");
+    await expect(d).toContainText("修改后: 35.000 件 · ¥70.00");
     await expect(d.locator("label.arco-checkbox")).toHaveCount(0);
     await d.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(d).toContainText("提交成功，已核验最新状态。");

@@ -383,7 +383,15 @@ test(
     await expect(
       htmlFrameElement(page, "inventory-qll").contentFrame().getByText("固定样本辅助 Agent"),
     ).toBeVisible();
-    await promptPage(qllSession, "evidenceId");
+    await promptPage(qllSession, '"context":null', "解释当前全链库存页面");
+    const qllContext = readToolResults(await readSession(app.runtime, qllSession));
+    assert.deepEqual(JSON.parse(qllContext.at(-1).text), {
+      context: null,
+      actions: [],
+      source: "page-observation",
+      authority: "GEA owns data permissions; drafts are not submitted",
+    });
+    assert.doesNotMatch(JSON.stringify(qllContext), /FC001|branchDraft/);
     await promptPage(
       qllSession,
       "REFERENCE_UNAVAILABLE",
