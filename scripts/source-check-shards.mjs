@@ -60,7 +60,7 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt 
   const firstScope = json(join(directory, "source-checks-1", "source-checks-scope.json"));
   const expectedIds = sourceCheckMatrix(firstScope.plan).shards;
   const names = expectedIds.map((id) => "source-checks-" + id);
-  requireValue(same(readdirSync(directory).sort(), names), "worker inventory");
+  requireValue(same(readdirSync(directory).sort(), [...names].sort()), "worker inventory");
   const workers = names.map((name, index) => {
     const root = join(directory, name);
     const scope = json(join(root, "source-checks-scope.json"));

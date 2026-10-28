@@ -72,7 +72,7 @@ function fixture(t, count = 2) {
   const files =
     count === 2
       ? ["a.test.mjs", "b.test.mjs", "c.test.mjs", "d.test.mjs"]
-      : Array.from({ length: 17 }, (_, i) => `case-${i}.test.mjs`);
+      : Array.from({ length: count === 3 ? 17 : 80 }, (_, i) => `case-${i}.test.mjs`);
   for (const file of files)
     writeFileSync(
       join(source, file),
@@ -173,6 +173,13 @@ test("three actual workers prove the expanded assignment without missing or dupl
   const f = fixture(t, 3);
   assert.equal(aggregateSourceCheckShards(f.root, expected).files, 17);
   rmSync(join(f.root, "source-checks-3"), { recursive: true });
+  assert.throws(() => aggregateSourceCheckShards(f.root, expected), /worker inventory/);
+});
+
+test("ten actual workers aggregate numeric shard names and still reject missing workers", (t) => {
+  const f = fixture(t, 10);
+  assert.equal(aggregateSourceCheckShards(f.root, expected).files, 80);
+  rmSync(join(f.root, "source-checks-10"), { recursive: true });
   assert.throws(() => aggregateSourceCheckShards(f.root, expected), /worker inventory/);
 });
 
