@@ -313,6 +313,10 @@ export async function verifyFormalSource({ context, selection, receipt, read }) 
     ["source-plan", "success"],
     ["candidate-quality", "success"],
     ["dependency-review", receipt.plan["dependency-review"] ? "success" : "skipped"],
+    [
+      "dependency-policy",
+      receipt.plan.engineering && receipt.matrix.parallel ? "success" : "skipped",
+    ],
     ...(receipt.plan.mode === "docs"
       ? [[skippedWorker, "skipped"]]
       : receipt.matrix.shards.map((id) => [
