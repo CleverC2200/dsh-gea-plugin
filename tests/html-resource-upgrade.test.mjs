@@ -4,6 +4,7 @@ import { cp, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
+import { mountBusinessIdentity } from "../src/host/business-identity.ts";
 import { profileFor } from "../src/host/prompt-policy.ts";
 
 test("a stale identity blocks its page while identity transport and current resources stay mounted", async (t) => {
@@ -32,6 +33,7 @@ test("a stale identity blocks its page while identity transport and current reso
   const { ctx, definitions, pages, routes, warnings } = registrationContext(t);
   const policy = profileFor("gea-html-inventory-orderfulfillment");
   const business = { status: () => ({ authenticated: false }), pageSessionScope: () => undefined };
+  mountBusinessIdentity(ctx, business);
   const registered = await registerHtmlPlugins(ctx, business, packages);
   assert.equal(profileFor("gea-html-inventory-orderfulfillment"), policy);
   assert.equal(policy.consumerCode, "order01");

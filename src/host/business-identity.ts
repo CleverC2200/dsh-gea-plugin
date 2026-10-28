@@ -88,3 +88,31 @@ export function toolConsumer(
     );
   return target;
 }
+
+export function mountBusinessIdentity(
+  ctx: Pick<Context, "effect" | "connection">,
+  business: Business,
+): void {
+  ctx.effect(() =>
+    ctx.connection.fetch.register({
+      path: "/api/gea-html/identity",
+      methods: ["GET"],
+      requestBody: "buffered",
+      fetch: async () => {
+        const { environment, environments, authenticated, loginState, user } = business.status();
+        return Response.json(
+          {
+            scope: business.pageSessionScope() ?? null,
+            subject: businessIdentityKey(business) ?? null,
+            status: { environment, environments, authenticated, loginState, user },
+            // A projection of the gateway-verified receipt. It is intentionally
+            // absent until the customer-inventory page has requested its own
+            // delegated session; page labels never manufacture an access range.
+            customerInventory: business.customerInventoryIdentity?.() ?? null,
+          },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      },
+    }),
+  );
+}

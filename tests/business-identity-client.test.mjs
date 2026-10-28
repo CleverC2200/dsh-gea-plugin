@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createBusinessIdentityReader } from "../src/business-identity-client.ts";
-import { registerHtmlPlugins } from "../src/html-plugins.ts";
+import { mountBusinessIdentity } from "../src/host/business-identity.ts";
 
 test("Host user identifiers remain exact strings and notify changes without accepting numeric IDs", async (t) => {
   const originalFetch = globalThis.fetch,
@@ -67,7 +67,7 @@ test("the read-only identity route exposes configured environment choices withou
     source: "must-not-be-exposed",
     token: "must-not-be-exposed",
   };
-  await registerHtmlPlugins(ctx, { status: () => status, pageSessionScope: () => undefined }, []);
+  mountBusinessIdentity(ctx, { status: () => status, pageSessionScope: () => undefined });
   const route = routes.get("/api/gea-html/identity");
   assert.deepEqual(route.methods, ["GET"]);
   const response = await route.fetch(new Request("https://fixture.invalid/api/gea-html/identity"));
