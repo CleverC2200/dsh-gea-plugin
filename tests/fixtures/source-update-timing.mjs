@@ -1,5 +1,5 @@
 import { appendFileSync } from "node:fs";
-import { withSourcePhaseObserver } from "../../scripts/source-phase-observer.mjs";
+import { withSourcePhaseObserver } from "../../scripts/source-combination-integrity.mjs";
 
 export async function measureSourceUpdate(t, phase, step, run) {
   const started = performance.now();

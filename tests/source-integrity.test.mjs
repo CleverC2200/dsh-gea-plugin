@@ -385,7 +385,7 @@ test("preparation observers retain failed phases and cannot mask public entry fa
     assert.equal(row.status, "failed");
     assert.ok(Number.isFinite(row.durationMs) && row.durationMs >= 0);
   }
-  const { withSourcePhaseObserver } = await import("../scripts/source-phase-observer.mjs");
+  const { withSourcePhaseObserver } = await import("../scripts/source-combination-integrity.mjs");
   const observer = () => {
     throw Error("observer unavailable");
   };
@@ -398,7 +398,7 @@ test("preparation observers retain failed phases and cannot mask public entry fa
 
 test("an asynchronously failing observer leaves complete public verification successful", async (t) => {
   const f = await fixture(t);
-  const { withSourcePhaseObserver } = await import("../scripts/source-phase-observer.mjs");
+  const { withSourcePhaseObserver } = await import("../scripts/source-combination-integrity.mjs");
   assert.deepEqual(
     await withSourcePhaseObserver(
       async () => {
