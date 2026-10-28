@@ -27,6 +27,7 @@ import { WorkbenchHostProvider } from '../../../dsh-agent-workbench/src/workbenc
 const i18n = i18next.createInstance();
 await i18n.init({lng:'zh-CN',resources:{'zh-CN':{translation:{common:zh}}},interpolation:{escapeValue:false}});
 const plans = window.fixturePlans;
+const versionSkus = versionId => window.fixtureVersionSkus[versionId] ?? [sku(versionId)];
 const sku = versionId => ({id:'s'+versionId,skuCode:'9001',versionId,productCategName:'汤圆',materialDescription:'黑芝麻汤圆 500g',qty:'10',baseQty:'10',amt:plans.find(p=>p.versionId===versionId).currentAmount,amtBase:'10',price:'1'});
 const forbidden = async () => { throw Error('PRESENTATION_WRITE_FORBIDDEN'); };
 const client = {
@@ -34,7 +35,7 @@ const client = {
   list:{invoke:async(q)=>{const records=q?.status===undefined||q.status===1?plans:[];return {records,total:records.length,size:200,current:1,pages:1}}},
   detail:{invoke:async({planId})=>{const plan=plans.find(p=>p.planId===planId);return {currentVersion:{...plan,id:plan.versionId,effective:true},skus:[sku(plan.versionId)],versions:[],logs:[]}}},
   versions:{invoke:async({planId})=>plans.filter(p=>p.planId===planId).map(p=>({...p,id:p.versionId,effective:true}))},
-  versionSkus:{invoke:async({versionId})=>[sku(versionId)]},
+  versionSkus:{invoke:async({versionId})=>versionSkus(versionId)},
   draft:{invoke:async()=>({draft:null})},logs:{invoke:async()=>[]},
   action:{invoke:forbidden},submit:{invoke:forbidden}
 };
@@ -55,7 +56,7 @@ after(async () => {
   await browser?.close();
 });
 
-export async function openSalesPlanPresentation(t, rows) {
+export async function openSalesPlanPresentation(t, rows, { versionSkus = {} } = {}) {
   t.signal.throwIfAborted();
   let context;
   const assets = new Map(
@@ -88,6 +89,9 @@ export async function openSalesPlanPresentation(t, rows) {
       headless: true,
     });
   context = await browser.newContext({ locale: "zh-CN", viewport: { width: 1536, height: 920 } });
+  await context.addInitScript((skus) => {
+    window.fixtureVersionSkus = skus;
+  }, versionSkus);
   const abort = () => {
     void context.close().catch(() => {});
   };

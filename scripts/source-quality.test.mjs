@@ -7,9 +7,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const cli = fileURLToPath(new URL("./source-quality.mjs", import.meta.url));
-function fixture(t, files, changed) {
-  const root = mkdtempSync(join(tmpdir(), "source-quality-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+function fixture(t, files, changed, { repoName } = {}) {
+  const directory = mkdtempSync(join(tmpdir(), "source-quality-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const root = repoName ? join(directory, repoName) : directory;
+  mkdirSync(root, { recursive: true });
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
   git("init", "-q");
   git("config", "user.name", "Source quality test");
@@ -61,6 +63,175 @@ test("a README-only pull request needs no engineering checks, including Markdown
   const result = repo.run("plan");
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).mode, "docs");
+});
+
+test("manual source acceptance rejects missing, invalid and non-ancestor comparison bases", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  writeFileSync(join(repo.root, ".git/event.json"), JSON.stringify({}));
+  repo.git("checkout", "--orphan", "unrelated");
+  repo.git("commit", "--allow-empty", "-qm", "unrelated root");
+  const unrelated = repo.git("rev-parse", "HEAD");
+  repo.git("checkout", "--detach", repo.head);
+  for (const base of ["", "HEAD~1", repo.base.slice(0, 12), "f".repeat(40), unrelated]) {
+    for (const phase of ["event", "plan", "final"]) {
+      const result = repo.run(phase, {
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        SOURCE_BASE_SHA: base,
+      });
+      assert.notEqual(result.status, 0, `${phase}: ${base || "missing"}`);
+      assert.match(result.stderr, /SOURCE_MANUAL_BASE_(?:SHA_REQUIRED|ANCESTOR_REQUIRED)/);
+    }
+  }
+});
+
+test("manual source acceptance uses its ancestor comparison and retains strict final admission", (t) => {
+  const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
+  mkdirSync(join(repo.root, "scripts"));
+  writeFileSync(join(repo.root, "scripts/acceptance.mjs"), "export const accepted = true;\n");
+  repo.git("add", ".");
+  repo.git("commit", "-qm", "latest change");
+  writeFileSync(join(repo.root, ".git/event.json"), JSON.stringify({}));
+  const env = { GITHUB_EVENT_NAME: "workflow_dispatch", SOURCE_BASE_SHA: repo.base };
+  const admitted = repo.run("event", env);
+  assert.equal(admitted.status, 0, admitted.stderr);
+  assert.deepEqual(JSON.parse(admitted.stdout), {
+    validate: true,
+    reason: "source-validation-required",
+  });
+  const planned = repo.run("plan", env);
+  assert.equal(planned.status, 0, planned.stderr);
+  const plan = JSON.parse(planned.stdout);
+  assert.equal(plan.base, repo.base);
+  assert.equal(plan.head, repo.git("rev-parse", "HEAD"));
+  assert.deepEqual(plan.files, ["README.md", "scripts/acceptance.mjs"]);
+  assert.equal(plan["dependency-review"], false);
+  const results = {
+    ...env,
+    PLAN_RESULT: "success",
+    CHECK_RESULT: "success",
+    DEPENDENCY_RESULT: "skipped",
+  };
+  assert.equal(repo.run("final", results).status, 0);
+  for (const CHECK_RESULT of ["failure", "cancelled", "skipped", ""])
+    assert.notEqual(repo.run("final", { ...results, CHECK_RESULT }).status, 0);
+});
+
+test("manual source acceptance binds the public hosted reader after a documentation follow-up", (t) => {
+  const baseline = {
+    repositories: [
+      { repo: "dsh-gea-plugin", head: "a".repeat(40) },
+      { repo: "dsh-agent-workbench", head: "b".repeat(40) },
+      { repo: "dsh-agent-manage", head: "c".repeat(40) },
+    ],
+  };
+  const repo = fixture(
+    t,
+    {
+      "scripts/quality-peer-baseline.json": JSON.stringify(baseline),
+      "scripts/input.mjs": "export const value = 1;\n",
+    },
+    { "scripts/input.mjs": "export const value = 2;\n" },
+    { repoName: "dsh-gea-plugin" },
+  );
+  writeFileSync(join(repo.root, "README.md"), "Documentation follow-up\n");
+  repo.git("add", ".");
+  repo.git("commit", "-qm", "documentation follow-up");
+  const root = repo.root;
+  const head = repo.git("rev-parse", "HEAD");
+  const base = repo.base;
+  const env = {
+    ...process.env,
+    GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+    GITHUB_EVENT_NAME: "workflow_dispatch",
+    GITHUB_EVENT_PATH: "",
+    GITHUB_OUTPUT: "",
+    SOURCE_HEAD_SHA: head,
+    SOURCE_BASE_SHA: base,
+    QUALITY_SCOPE_ALLOWED: "true",
+    QUALITY_EXPECTED_SHA: head,
+    QUALITY_GROUP_GEA: "",
+    QUALITY_GROUP_MANAGE: "",
+    QUALITY_GROUP_WORKBENCH: "",
+  };
+  const planResult = spawnSync(process.execPath, [cli, "--phase", "plan"], {
+    cwd: root,
+    encoding: "utf8",
+    env,
+  });
+  assert.equal(planResult.status, 0, planResult.stderr);
+  const plan = JSON.parse(planResult.stdout);
+  assert.equal(plan.mode, "code");
+  assert.deepEqual(plan.files, ["README.md", "scripts/input.mjs"]);
+  const reader = join(
+    process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ??
+      fileURLToPath(new URL("../../dsh-agent-workbench", import.meta.url)),
+    "scripts/read-hosted-peer-input.mjs",
+  );
+  const read = (extra) =>
+    spawnSync(process.execPath, [reader, "--repo", "dsh-gea-plugin"], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...env, ...extra },
+    });
+  const missing = read({});
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /CANDIDATE_EVENT_MISMATCH: complete immutable joint tuple/);
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  const workers = workflow.split("\n  source-checks:\n")[1].split("\n  dependency-review:\n")[0];
+  const tuple = Object.fromEntries(
+    [
+      ...workers.matchAll(
+        /^      (QUALITY_GROUP_\w+): \$\{\{ needs\.source-plan\.outputs\.([a-z-]+) \}\}$/gm,
+      ),
+    ].map(([, key, output]) => [key, plan[output]]),
+  );
+  const accepted = read(tuple);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const result = JSON.parse(accepted.stdout);
+  assert.equal(result["gea-sha"], head);
+  for (const [key, repo] of [
+    ["workbench-sha", "dsh-agent-workbench"],
+    ["manage-sha", "dsh-agent-manage"],
+  ])
+    assert.equal(result[key], baseline.repositories.find((entry) => entry.repo === repo).head);
+  assert.equal(result["source-kind"], "joint-group");
+  for (const [key, value] of Object.entries({
+    QUALITY_GROUP_GEA: base,
+    QUALITY_GROUP_MANAGE: "",
+    QUALITY_GROUP_WORKBENCH: "main",
+  })) {
+    const rejected = read({ ...tuple, [key]: value });
+    assert.equal(rejected.status, 1, key);
+    assert.match(rejected.stderr, /CANDIDATE_EVENT_MISMATCH: complete immutable joint tuple/);
+  }
+});
+
+test("source workflow keeps one manual comparison base for planning, workers and aggregation", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /workflow_dispatch:\n    inputs:\n      comparison_base:\n        description: .+\n        required: true\n        type: string/,
+  );
+  const global = workflow.split("\njobs:\n")[0];
+  const expression = global.match(/\n  SOURCE_BASE_SHA: \$\{\{ (.+) \}\}/)?.[1];
+  assert.ok(expression, "all jobs inherit the explicit comparison");
+  const baseFor = (event_name, comparison_base) =>
+    Function("github", "inputs", `return (${expression})`)({ event_name }, { comparison_base });
+  assert.equal(baseFor("workflow_dispatch", "a".repeat(40)), "a".repeat(40));
+  assert.equal(baseFor("pull_request", "a".repeat(40)), "");
+  assert.equal(baseFor("push", "a".repeat(40)), "");
+  assert.doesNotMatch(workflow.split("\njobs:\n")[1], /SOURCE_BASE_SHA:/);
+  assert.match(workflow, /max-parallel: 20/);
+  assert.match(
+    workflow,
+    /name: Record formal source inputs\n        if: github.event_name == 'pull_request'/,
+  );
 });
 
 test("title and body edits admit only lightweight handling without requiring source preparation", (t) => {

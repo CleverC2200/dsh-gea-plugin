@@ -282,6 +282,15 @@ function check(result) {
 const phase = process.argv[process.argv.indexOf("--phase") + 1];
 if (workingTree && !["plan", "check", "affected-plan"].includes(phase))
   throw Error("SOURCE_WORKING_TREE_PLAN_ONLY");
+if (!workingTree && process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+  const base = process.env.SOURCE_BASE_SHA;
+  if (!/^[a-f0-9]{40}$/.test(base || "")) throw Error("SOURCE_MANUAL_BASE_SHA_REQUIRED");
+  try {
+    git("merge-base", "--is-ancestor", base, "HEAD");
+  } catch {
+    throw Error("SOURCE_MANUAL_BASE_ANCESTOR_REQUIRED");
+  }
+}
 const result = phase === "event" ? eventAdmission() : plan();
 if (phase === "plan" || phase === "event") {
   if (

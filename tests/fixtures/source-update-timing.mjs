@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import { withSourcePhaseObserver } from "../../scripts/source-combination-integrity.mjs";
 
 export async function measureSourceUpdate(t, phase, step, run) {
   const started = performance.now();
@@ -23,7 +24,7 @@ export async function measureSourceUpdate(t, phase, step, run) {
   record({ event: "source-update-step-started" });
   let status = "failed";
   try {
-    const result = await run();
+    const result = await withSourcePhaseObserver((row) => record({ scopeStep: step, ...row }), run);
     status = "passed";
     return result;
   } finally {

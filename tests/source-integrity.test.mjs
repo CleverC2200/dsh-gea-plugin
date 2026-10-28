@@ -308,3 +308,105 @@ test("read-scope byte denial propagates unchanged instead of accepting a partial
   };
   await assert.rejects(f.run({ readScope }), (error) => error === denied);
 });
+
+test("public combination verification reports nested preparation costs without changing its result", async (t) => {
+  const f = await fixture(t);
+  const { measureSourceUpdate } = await import("./fixtures/source-update-timing.mjs");
+  const records = [];
+  const context = { name: t.name, diagnostic: (text) => records.push(JSON.parse(text)) };
+  assert.deepEqual(
+    await measureSourceUpdate(context, "baseline", "profile-start", () => f.run()),
+    f.composition,
+  );
+  const phases = records.filter((row) => row.event === "source-preparation-phase-completed");
+  const verification = phases.find((row) => row.step === "read-combination");
+  assert.ok(verification);
+  for (const step of [
+    "resource-traversal",
+    "resource-read-hash",
+    "dependency-traversal",
+    "dependency-read-hash",
+  ]) {
+    const row = phases.find((row) => row.step === step);
+    assert.ok(row, step);
+    assert.equal(row.parentId, verification.id);
+    assert.equal(row.observationId, verification.observationId);
+    assert.equal(row.scopeStep, "profile-start");
+    assert.equal(row.phase, "baseline");
+    assert.equal(row.status, "passed");
+    assert.ok(Number.isFinite(row.durationMs) && row.durationMs >= 0);
+    assert.equal(row.fileCount, 75);
+  }
+  assert.equal(phases.find((row) => row.step === "resource-traversal").linkCount, 1);
+  assert.equal(phases.find((row) => row.step === "dependency-traversal").linkCount, 3);
+});
+
+test("preparation observers retain failed phases and cannot mask public entry failures", async (t) => {
+  const f = await fixture(t);
+  const { measureSourceUpdate } = await import("./fixtures/source-update-timing.mjs");
+  const { prepareSourcePlugins, mergeSourceComponents } =
+    await import("../scripts/source-profile.mjs");
+  const records = [];
+  const context = {
+    name: t.name,
+    diagnostic(text) {
+      records.push(JSON.parse(text));
+      throw Error("diagnostic unavailable");
+    },
+  };
+  await assert.rejects(
+    measureSourceUpdate(context, "baseline", "profile-start", () => prepareSourcePlugins()),
+    /EXPLICIT_SOURCE_INPUTS_REQUIRED/,
+  );
+  await assert.rejects(
+    measureSourceUpdate(context, "gea-updated", "channel-prepare", () =>
+      mergeSourceComponents(f.root, randomUUID(), {}, undefined),
+    ),
+    { code: "ENOENT" },
+  );
+  const original = Error("read denied");
+  const safe = await createReadScope(f.root);
+  const readScope = {
+    ...safe,
+    async read(path, limit) {
+      if (path === f.dependencies[69]) throw original;
+      return safe.read(path, limit);
+    },
+  };
+  await assert.rejects(
+    measureSourceUpdate(context, "gea-updated", "apply-update", () => f.run({ readScope })),
+    (error) => error === original,
+  );
+  for (const step of ["prepare", "merge", "read-combination", "dependency-read-hash"]) {
+    const row = records.find(
+      (row) => row.event === "source-preparation-phase-completed" && row.step === step,
+    );
+    assert.ok(row, step);
+    assert.equal(row.status, "failed");
+    assert.ok(Number.isFinite(row.durationMs) && row.durationMs >= 0);
+  }
+  const { withSourcePhaseObserver } = await import("../scripts/source-combination-integrity.mjs");
+  const observer = () => {
+    throw Error("observer unavailable");
+  };
+  assert.deepEqual(await withSourcePhaseObserver(observer, () => f.run()), f.composition);
+  await assert.rejects(
+    withSourcePhaseObserver(observer, () => f.run({ readScope })),
+    (error) => error === original,
+  );
+});
+
+test("an asynchronously failing observer leaves complete public verification successful", async (t) => {
+  const f = await fixture(t);
+  const { withSourcePhaseObserver } = await import("../scripts/source-combination-integrity.mjs");
+  assert.deepEqual(
+    await withSourcePhaseObserver(
+      async () => {
+        throw Error("async observer unavailable");
+      },
+      () => f.run(),
+    ),
+    f.composition,
+  );
+  await new Promise((done) => setImmediate(done));
+});

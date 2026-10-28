@@ -129,6 +129,54 @@ test("plans balance measured dispatch order without dropping any required file",
   assert.equal(plan.estimates.estimatedMs, 11);
 });
 
+test("advisory historical weights route files without becoming known duration estimates", () => {
+  const files = ["tests/a-short.test.mjs", "tests/z-long.test.mjs", "tests/split-new.test.mjs"];
+  const selection = { files, required: files };
+  const timings = {
+    source: { kind: "historical-reference-only", acceptance: "not-acceptance" },
+    files: [{ file: files[0], durationMs: 10 }],
+    orderingFiles: [
+      { file: files[0], durationMs: 10 },
+      { file: files[1], durationMs: 1000 },
+    ],
+  };
+  const plan = createExecutionPlan({
+    selection,
+    platformPlan: selection,
+    binding: {},
+    timings,
+    concurrency: 3,
+  });
+  assert.deepEqual(plan.shards[0].files, [files[2], files[1], files[0]]);
+  assert.deepEqual([...plan.shards[0].files].sort(), [...files].sort());
+  assert.deepEqual(plan.required, files);
+  assert.equal(plan.estimates.knownFiles, 1);
+  assert.equal(plan.estimates.advisoryFiles, 1);
+  assert.equal(plan.estimates.unknownFiles, 2);
+  assert.equal(plan.estimates.knownSumMs, 10);
+  assert.equal(plan.estimates.estimatedMs, null);
+  assert.equal(plan.shards[0].estimatedMs, null);
+  assert.equal(plan.timingSource.acceptance, "not-acceptance");
+  for (const orderingFiles of [
+    null,
+    [{ file: files[0], durationMs: -1 }],
+    [
+      { file: files[0], durationMs: 1 },
+      { file: files[0], durationMs: 1 },
+    ],
+  ])
+    assert.throws(
+      () =>
+        createExecutionPlan({
+          selection,
+          platformPlan: selection,
+          binding: {},
+          timings: { ...timings, orderingFiles },
+        }),
+      /QUALITY_TEST_TIMING_INVALID/,
+    );
+});
+
 test("three-slot measured dispatch routing preserves the complete set and deterministic plan hash", () => {
   const files = ["a", "b", "c", "d", "e", "f", "g"].map((name) => name + ".test.mjs");
   const selection = { files, required: files };
@@ -159,6 +207,42 @@ test("three-slot measured dispatch routing preserves the complete set and determ
   assert.deepEqual(plan.required, files);
   assert.deepEqual(createExecutionPlan(args), plan);
   assert.notEqual(createExecutionPlan({ ...args, concurrency: 4 }).planSha256, plan.planSha256);
+});
+
+test("three-slot cost follows the file order observed through actual execution", (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "gea-dispatch-order-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const files = ["a.test.mjs", "b.test.mjs", "c.test.mjs", "z.test.mjs"];
+  for (const file of files)
+    writeFileSync(
+      join(root, file),
+      `import test from 'node:test';test(${JSON.stringify(file)},()=>{});`,
+    );
+  const selection = { files, required: files };
+  const plan = createExecutionPlan({
+    selection,
+    platformPlan: selection,
+    binding: {},
+    concurrency: 3,
+    timings: {
+      source: { kind: "worked-example" },
+      files: files.map((file, i) => ({ file, durationMs: [1, 1, 1, 9][i] })),
+    },
+  });
+  const result = runExecutionPlan({
+    plan,
+    root,
+    resultFile: join(root, "result.json"),
+    reporter: resolve("scripts/quality-test-reporter.mjs"),
+    buildSha256: "a".repeat(64),
+    environment: { NODE_TEST_CONTEXT: undefined },
+  });
+  assert.deepEqual(
+    result.receipt.results[0].report.files.map((file) => file.file),
+    ["z.test.mjs", "a.test.mjs", "b.test.mjs", "c.test.mjs"],
+  );
+  assert.equal(plan.shards[0].estimatedMs, 9);
+  assert.equal(plan.estimates.estimatedMs, 9);
 });
 
 for (const concurrency of [3, 4])
