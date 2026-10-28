@@ -34,6 +34,10 @@ const plan = {
   files: ["README.md"],
 };
 const matrix = { parallel: false, shards: ["single"] };
+const sourceWorkflow = readFileSync(
+  new URL("../.github/workflows/source-quality.yml", import.meta.url),
+  "utf8",
+);
 
 test("formal input records the event base separately from its merge base and rejects metadata sources", () => {
   const receipt = recordSourceInput({ context, plan, matrix, validate: "true" });
@@ -48,7 +52,15 @@ test("formal input records the event base separately from its merge base and rej
   );
 });
 
-function hosted() {
+function hosted(workflow = sourceWorkflow) {
+  const jobsSource = workflow.split("\njobs:\n")[1];
+  assert.ok(jobsSource, "source workflow declares jobs");
+  const declaredJobs = [...jobsSource.matchAll(/^  ([^\s:#][^:\n]*):[^\n]*$/gm)];
+  const names = declaredJobs.map((match, index) => {
+    const block = jobsSource.slice(match.index, declaredJobs[index + 1]?.index);
+    const name = block.match(/^    name: (.+)$/m)?.[1] ?? match[1];
+    return name.startsWith("${{ ") && name.endsWith(" }}") ? name.slice(4, -3) : name;
+  });
   const step = (name, conclusion = "success") => ({ name, status: "completed", conclusion });
   const run = (id, metadata = false) => ({
     id,
@@ -72,8 +84,8 @@ function hosted() {
     conclusion: metadata ? null : "success",
   });
   const runs = [run(200, true), run(100)];
-  const makeJobs = (id, metadata = false) =>
-    [
+  const makeJobs = (id, metadata = false) => {
+    const defined = [
       {
         name: "source-plan",
         conclusion: "success",
@@ -99,14 +111,25 @@ function hosted() {
         ],
       },
       { name: "dependency-policy", conclusion: "skipped", steps: [] },
-    ].map((job, index) => ({
-      ...job,
-      id: id * 10 + index,
-      run_id: id,
-      run_attempt: 1,
-      head_sha: context.head,
-      status: "completed",
-    }));
+    ];
+    return names
+      .map(
+        (name) =>
+          defined.find((job) => job.name === name) ?? {
+            name,
+            conclusion: "success",
+            steps: [],
+          },
+      )
+      .map((job, index) => ({
+        ...job,
+        id: id * 10 + index,
+        run_id: id,
+        run_attempt: 1,
+        head_sha: context.head,
+        status: "completed",
+      }));
+  };
   const jobs = { 100: makeJobs(100), 200: makeJobs(200, true) };
   const artifact = {
     id: 1000,
@@ -166,6 +189,20 @@ test("metadata verifies complete formal docs evidence and the exact native artif
   );
 });
 
+test("metadata rejects a workflow job that has no formal receipt coverage", async () => {
+  for (const job of ["newly-required-policy", "New_Policy"]) {
+    const f = hosted(
+      sourceWorkflow +
+        `\n  ${job}:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo checked\n`,
+    );
+    const selection = await lookupFormalSource({ context, read: f.read });
+    await assert.rejects(
+      verifyFormalSource({ context, selection, receipt: f.receipt(), read: f.read }),
+      /formal job coverage/,
+    );
+  }
+});
+
 test("the current caller and previous metadata runs cannot become formal evidence", async () => {
   const f = hosted();
   f.jobs[200] = f.makeJobs(200);
@@ -222,10 +259,10 @@ test("missing artifacts, admission, complete jobs and successful worker aggregat
       f.artifact.expired = true;
     },
     (f) => {
-      f.jobs[100][3].steps[0].conclusion = "skipped";
+      f.jobs[100].find((job) => job.name === "candidate-quality").steps[0].conclusion = "skipped";
     },
     (f) => {
-      f.jobs[100][1].conclusion = "success";
+      f.jobs[100].find((job) => job.name.startsWith("matrix.shard")).conclusion = "success";
     },
     (f) => {
       f.jobs[100].push({ ...f.jobs[100][0], id: 9999, name: "unexpected-job" });
@@ -249,10 +286,10 @@ test("missing artifacts, admission, complete jobs and successful worker aggregat
   }
   const f = hosted();
   f.jobs[100].splice(
-    1,
+    f.jobs[100].findIndex((job) => job.name.startsWith("matrix.shard")),
     1,
     ...[1, 2].map((shard) => ({
-      ...f.makeJobs(100)[1],
+      ...f.makeJobs(100).find((job) => job.name.startsWith("matrix.shard")),
       id: 1100 + shard,
       name: `source-checks (${shard})`,
       conclusion: "success",
