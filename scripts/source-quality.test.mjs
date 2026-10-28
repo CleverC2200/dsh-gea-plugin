@@ -7,9 +7,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const cli = fileURLToPath(new URL("./source-quality.mjs", import.meta.url));
-function fixture(t, files, changed) {
-  const root = mkdtempSync(join(tmpdir(), "source-quality-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+function fixture(t, files, changed, { repoName } = {}) {
+  const directory = mkdtempSync(join(tmpdir(), "source-quality-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const root = repoName ? join(directory, repoName) : directory;
+  mkdirSync(root, { recursive: true });
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
   git("init", "-q");
   git("config", "user.name", "Source quality test");
@@ -114,16 +116,29 @@ test("manual source acceptance uses its ancestor comparison and retains strict f
     assert.notEqual(repo.run("final", { ...results, CHECK_RESULT }).status, 0);
 });
 
-test("manual source acceptance binds the public hosted reader to its planned source tuple", () => {
-  const root = fileURLToPath(new URL("../", import.meta.url));
-  const head = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: root,
-    encoding: "utf8",
-  }).trim();
-  const base = execFileSync("git", ["rev-parse", "HEAD^"], {
-    cwd: root,
-    encoding: "utf8",
-  }).trim();
+test("manual source acceptance binds the public hosted reader after a documentation follow-up", (t) => {
+  const baseline = {
+    repositories: [
+      { repo: "dsh-gea-plugin", head: "a".repeat(40) },
+      { repo: "dsh-agent-workbench", head: "b".repeat(40) },
+      { repo: "dsh-agent-manage", head: "c".repeat(40) },
+    ],
+  };
+  const repo = fixture(
+    t,
+    {
+      "scripts/quality-peer-baseline.json": JSON.stringify(baseline),
+      "scripts/input.mjs": "export const value = 1;\n",
+    },
+    { "scripts/input.mjs": "export const value = 2;\n" },
+    { repoName: "dsh-gea-plugin" },
+  );
+  writeFileSync(join(repo.root, "README.md"), "Documentation follow-up\n");
+  repo.git("add", ".");
+  repo.git("commit", "-qm", "documentation follow-up");
+  const root = repo.root;
+  const head = repo.git("rev-parse", "HEAD");
+  const base = repo.base;
   const env = {
     ...process.env,
     GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
@@ -145,11 +160,11 @@ test("manual source acceptance binds the public hosted reader to its planned sou
   });
   assert.equal(planResult.status, 0, planResult.stderr);
   const plan = JSON.parse(planResult.stdout);
-  const baseline = JSON.parse(
-    readFileSync(new URL("./quality-peer-baseline.json", import.meta.url)),
-  );
+  assert.equal(plan.mode, "code");
+  assert.deepEqual(plan.files, ["README.md", "scripts/input.mjs"]);
   const reader = join(
-    process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ?? join(root, "../dsh-agent-workbench"),
+    process.env.GEA_FINAL_GROUP_WORKBENCH_SOURCE ??
+      fileURLToPath(new URL("../../dsh-agent-workbench", import.meta.url)),
     "scripts/read-hosted-peer-input.mjs",
   );
   const read = (extra) =>
