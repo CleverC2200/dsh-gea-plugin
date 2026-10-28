@@ -29,10 +29,9 @@ test("old updaters bootstrap GEA then atomically install mutually dependent comp
   assert.match((await f.run(missingBootstrap)).stderr, /RELEASE_LEGACY_BRIDGE_REQUIRED/);
 });
 test("suite channel replaces all references only after validating the bound archives and the current environment", async (t) => {
-  const { createPluginSuiteChannel, signPluginChannel, mergePluginChannelRelease } =
+  const { createPluginSuiteChannel, encodePluginChannel, mergePluginChannelRelease } =
     await import("../scripts/plugin-channel.mjs");
   const { parsePluginChannel } = await import("../src/shared/plugin-release.mjs");
-  const { generateKeyPairSync } = await import("node:crypto");
   const f = await fixture(t);
   const result = await f.run();
   assert.equal(result.status, 0, result.stderr);
@@ -41,7 +40,11 @@ test("suite channel replaces all references only after validating the bound arch
     const sha256 = createHash("sha256")
       .update(JSON.stringify(release, null, 2) + "\n")
       .digest("hex");
-    return { name: release.name, sha256, url: `https://fixture.invalid/${sha256}/release.json` };
+    return {
+      name: release.name,
+      sha256,
+      url: `https://fixture.invalid/${sha256}/release.json`,
+    };
   });
   const previous = {
     schema: 1,
@@ -66,18 +69,20 @@ test("suite channel replaces all references only after validating the bound arch
     [G],
   );
   assert.equal(channel.companionReleases.length, 2);
-  const { privateKey } = generateKeyPairSync("ed25519");
-  const envelope = signPluginChannel({
+  const envelope = encodePluginChannel({
     payload: channel,
-    keyId: "fixture",
-    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }),
   });
   assert.deepEqual(
     parsePluginChannel(JSON.parse(Buffer.from(envelope.payloadBase64, "base64"))),
     channel,
   );
   assert.throws(
-    () => mergePluginChannelRelease({ previous: channel, release: references[0], revision: 3 }),
+    () =>
+      mergePluginChannelRelease({
+        previous: channel,
+        release: references[0],
+        revision: 3,
+      }),
     /CHANNEL_SUITE_REPLACEMENT_REQUIRED/,
   );
   await assert.rejects(
@@ -114,7 +119,9 @@ test("public preflight requires clean fixed sources containing every required co
   assert.match((await f.run(missing)).stderr, /RELEASE_SOURCE_COVERAGE_REQUIRED/);
   const source = f.input.sources[0];
   const git = (...args) =>
-    execFileSync("git", ["-C", source.path, ...args], { encoding: "utf8" }).trim();
+    execFileSync("git", ["-C", source.path, ...args], {
+      encoding: "utf8",
+    }).trim();
   git(
     "-c",
     "user.name=fixture",
@@ -223,9 +230,14 @@ test("same-version three-package promotion accepts identical deployed bytes", as
     installed = [];
   for (const [index, target] of f.input.targets.entries()) {
     const manifest = JSON.parse(
-      execFileSync("tar", ["-xOf", target.archive, "package/package.json"], { encoding: "utf8" }),
+      execFileSync("tar", ["-xOf", target.archive, "package/package.json"], {
+        encoding: "utf8",
+      }),
     );
-    installed.push({ ...manifest, artifactSha256: f.delivery.packages[index].sha256 });
+    installed.push({
+      ...manifest,
+      artifactSha256: f.delivery.packages[index].sha256,
+    });
   }
   f.input.deployed = [{ id: "test-channel", installed }];
   f.input.environment = { ...f.input.environment, installed };

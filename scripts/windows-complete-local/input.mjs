@@ -88,11 +88,7 @@ export async function readDesktopInput(file, sourceSha) {
     source.channelUrl !== `${oss}/plugin-release/channels/plugin-detail-stable.json` ||
     source.authenticationRef !== "anonymous" ||
     JSON.stringify(source.allowed) !==
-      JSON.stringify([{ origin: oss, pathPrefix: "/plugin-release/" }]) ||
-    source.trustedKeys?.length !== 1 ||
-    source.trustedKeys[0].keyId !== "plugin-detail-test-20261015" ||
-    source.trustedKeys[0].publicKeyPem !==
-      "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA4yJrjMTO0WzaKJzheHiMpGj5BamQ7eE1Xy3JQp7zIP0=\n-----END PUBLIC KEY-----\n"
+      JSON.stringify([{ origin: oss, pathPrefix: "/plugin-release/" }])
   )
     throw Error("DESKTOP_SOURCE_CONFIG_CHANGED");
   return {
@@ -101,7 +97,12 @@ export async function readDesktopInput(file, sourceSha) {
     ...(input.pluginSourceSha === undefined ? {} : { pluginSourceSha: input.pluginSourceSha }),
     desktopVersion: input.desktopVersion,
     seed: {
-      packages: packages.map(({ name, version, url, sha256 }) => ({ name, version, url, sha256 })),
+      packages: packages.map(({ name, version, url, sha256 }) => ({
+        name,
+        version,
+        url,
+        sha256,
+      })),
       core: {
         head: core.head,
         version: core.version,
@@ -112,7 +113,6 @@ export async function readDesktopInput(file, sourceSha) {
         channelUrl: source.channelUrl,
         authenticationRef: source.authenticationRef,
         allowed: source.allowed,
-        trustedKeys: source.trustedKeys,
       },
     },
   };
@@ -126,7 +126,10 @@ export function readDesktopPluginSource(input, checkout) {
       stdio: "pipe",
     });
     const manifest = JSON.parse(
-      execFileSync("git", ["show", head + ":package.json"], { cwd: checkout, encoding: "utf8" }),
+      execFileSync("git", ["show", head + ":package.json"], {
+        cwd: checkout,
+        encoding: "utf8",
+      }),
     );
     if (
       manifest.name !== "@cleverc2200/gea-dsh-prototype" ||
