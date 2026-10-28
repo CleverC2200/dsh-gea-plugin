@@ -16,6 +16,7 @@ import {
   sourceCheckShard,
   sourceCheckMatrix,
   sourceCheckCost,
+  sourceCheckWorkerTarget,
 } from "./source-check-shards.mjs";
 
 const head = "a".repeat(40);
@@ -100,7 +101,11 @@ function fixture(t, count = 2) {
       runId: expected.runId,
       runAttempt: expected.runAttempt,
       shard: { id, count },
-      plan: { joint: true, files, runtimeFiles: count > 2 ? files : [] },
+      plan: {
+        joint: true,
+        files,
+        runtimeFiles: count === 3 ? files.slice(0, 12) : count === 10 ? files.slice(0, 54) : [],
+      },
     });
     write(join(worker, "quality-test-execution-plan.json"), plan);
     write(join(worker, "quality-stages.json"), {
@@ -135,7 +140,7 @@ function fixture(t, count = 2) {
 
 test("source workers bind a bounded shard count and reject malformed assignment", () => {
   assert.equal(sourceCheckShard({}), undefined);
-  for (const count of [2, 8, 16])
+  for (const count of [2, 8, 16, 20])
     for (let id = 1; id <= count; id++)
       assert.deepEqual(
         sourceCheckShard({
@@ -149,7 +154,7 @@ test("source workers bind a bounded shard count and reject malformed assignment"
     { GEA_SOURCE_CHECK_SHARD: "0", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
     { GEA_SOURCE_CHECK_SHARD: "3", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
     { GEA_SOURCE_CHECK_SHARD: "01", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
-    { GEA_SOURCE_CHECK_SHARD: "1", GEA_SOURCE_CHECK_SHARD_COUNT: "17" },
+    { GEA_SOURCE_CHECK_SHARD: "1", GEA_SOURCE_CHECK_SHARD_COUNT: "21" },
   ])
     assert.throws(() => sourceCheckShard(env), /shard/);
 });
@@ -157,10 +162,10 @@ test("source workers bind a bounded shard count and reject malformed assignment"
 test("large runtime selections expand within the shared account concurrency allowance", () => {
   const files = Array.from({ length: 209 }, (_, i) => `tests/fixture-${i}.test.mjs`);
   const matrix = sourceCheckMatrix({ joint: true, files, runtimeFiles: files.slice(0, 109) });
-  assert.equal(matrix.shards.length, 16);
+  assert.equal(matrix.shards.length, sourceCheckWorkerTarget);
   assert.deepEqual(
     matrix.shards,
-    Array.from({ length: 16 }, (_, i) => String(i + 1)),
+    Array.from({ length: sourceCheckWorkerTarget }, (_, i) => String(i + 1)),
   );
 });
 
@@ -352,4 +357,49 @@ test("the public CLI rejects a source shard on other stages before preparation",
   );
   assert.notEqual(child.status, 0);
   assert.match(child.stderr, /SOURCE_CHECK_SHARDS_REJECTED/);
+});
+
+test("the source workflow admits workers only after successful or inapplicable policy preparation", () => {
+  const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
+  const producer = workflow.jobs["dependency-policy"];
+  const worker = workflow.jobs["source-checks"];
+  assert.deepEqual(worker.needs, ["source-plan", "dependency-policy"]);
+  assert.equal(worker.strategy["max-parallel"], 20);
+  const expression = worker.if
+    .replaceAll("needs.source-plan", 'needs["source-plan"]')
+    .replaceAll("needs.dependency-policy", 'needs["dependency-policy"]');
+  const admit = new Function("needs", "always", "return " + expression);
+  for (const [source, policy, validate, mode, expected] of [
+    ["success", "success", "true", "code", true],
+    ["success", "skipped", "true", "code", true],
+    ["success", "failure", "true", "code", false],
+    ["success", "cancelled", "true", "code", false],
+    ["failure", "success", "true", "code", false],
+    ["success", "success", "false", "code", false],
+    ["success", "success", "true", "docs", false],
+  ])
+    assert.equal(
+      Boolean(
+        admit(
+          {
+            "source-plan": { result: source, outputs: { validate, mode } },
+            "dependency-policy": { result: policy },
+          },
+          () => true,
+        ),
+      ),
+      expected,
+    );
+  assert.match(producer.if, /outputs.parallel == 'true'/);
+  const upload = producer.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
+  assert.equal(upload.with["if-no-files-found"], "error");
+  assert.ok(!upload.with.path.includes("node_modules"));
+  const restore = worker.steps.findIndex(
+    (step) => step.name === "Restore policies into this worker's private cache",
+  );
+  const install = worker.steps.findIndex(
+    (step) => step.name === "Prepare or verify SDK through existing cache contract",
+  );
+  assert.ok(restore >= 0 && restore < install);
+  assert.match(worker.env.PNPM_CONFIG_CACHE_DIR, /runner.temp/);
 });

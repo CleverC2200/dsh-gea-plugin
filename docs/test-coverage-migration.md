@@ -25,19 +25,25 @@
 
 `returned-review-reject-web.test.mjs` 的表头滚动测试迁到 `approval-queue-layout-web.test.mjs`，运行真实审批页面组件与生产 CSS，滚动操作和位置断言保留。其余三项拒绝流程继续使用完整端到端。新文件耗时由实际运行记录，不按原文件耗时均摊。
 
+## 第四批长文件拆分
+
+库存生命周期的 6 项分到 `branch-stock-lifecycle-web`、`branch-stock-logout-web`、`branch-stock-revocation-web`，各 2 项。原生页身份的 6 项分到 `native-page-identity-web`、`native-page-logout-web`、`native-page-identity-recovery-web`，分别 3 / 2 / 1 项。文件后缀均为 `.test.mjs`。原测试体、参数、断言与每例独立 Profile 保留，共享帮助函数迁到 `tests/fixtures/branch-stock-lifecycle.mjs`。
+
 ## 并行执行
 
-source-quality 的联合检查按 Profile 与其他文件数量动态分片，最多 16 个 job，单 job 资源和文件并发不变。适用集合少于两文件保持单 job；分片编号、总数、冻结输入、完整执行回执及汇总必须一致。40 个并发额度为账号共享额度，不保证本次同时获得全部位置。
+source-quality 的联合检查按 Profile 与其他文件数量动态分片，最多 20 个 job，单 job 资源和文件并发不变。适用集合少于两文件保持单 job；分片编号、总数、冻结输入、完整执行回执及汇总必须一致。40 个并发额度为账号共享额度，不保证本次同时获得全部位置。
+
+同一轮的 Core 与 GEA 原生依赖策略校验先执行一次，只传递 pnpm 校验缓存和绑定回执。消费者使用不同 checkout 路径与私有缓存，由 pnpm 按锁内容和当前策略判断复用；每个 job 继续独立安装。准备失败阻止分片执行，回执必须匹配 run、attempt、源码、锁文件及运行平台。
 
 ## 原 109 文件对应
 
 | 原文件                                              | 原 CI 测试项 | 当前去向                                                                                                      |
 | --------------------------------------------------- | -----------: | ------------------------------------------------------------------------------------------------------------- |
 | `tests/returned-resubmit-web.test.mjs`              |           17 | 原 17 项完整端到端保留，按上表拆成 5 / 5 / 3 / 4 项四个文件                                                   |
-| `tests/source-update-web.test.mjs`                  |            1 | 保留原场景及断言；尚未迁移                                                                                    |
-| `tests/native-page-identity-web.test.mjs`           |            6 | 保留原场景及断言；尚未迁移                                                                                    |
+| `tests/source-update-web.test.mjs`                  |            1 | 保留四阶段及原断言；同文件只准备一个封存候选，每个包仍独立提案 |
+| `tests/native-page-identity-web.test.mjs`           |            6 | 原 6 项完整端到端保留，拆成身份切换 3 / 退出 2 / 初始恢复 1 项 |
 | `tests/branch-stock-web.test.mjs`                   |            6 | 保留原场景及断言；尚未迁移                                                                                    |
-| `tests/branch-stock-lifecycle-web.test.mjs`         |            6 | 保留原场景及断言；尚未迁移                                                                                    |
+| `tests/branch-stock-lifecycle-web.test.mjs`         |            6 | 原 6 项完整端到端保留，拆成生命周期 2 / 退出 2 / 撤销 2 项 |
 | `tests/returned-review-reject-web.test.mjs`         |            4 | 三项拒绝流程保留原端到端；表头滚动迁至 `approval-queue-layout-web.test.mjs`，保留原断言                       |
 | `tests/returned-review-roles-web.test.mjs`          |            4 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/prompt-qa-regression.test.mjs`               |           17 | 保留原场景及断言；尚未迁移                                                                                    |

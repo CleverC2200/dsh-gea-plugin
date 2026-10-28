@@ -799,6 +799,48 @@ test("the shared returned-review fixture selects every isolated browser scenario
   );
 });
 
+test("stock lifecycle and native identity fixtures keep every split scenario selected", (t) => {
+  const branch = [
+    "tests/branch-stock-lifecycle-web.test.mjs",
+    "tests/branch-stock-logout-web.test.mjs",
+    "tests/branch-stock-revocation-web.test.mjs",
+  ];
+  const native = [
+    "tests/native-page-identity-web.test.mjs",
+    "tests/native-page-logout-web.test.mjs",
+    "tests/native-page-identity-recovery-web.test.mjs",
+  ];
+  const shared = "tests/fixtures/stock-reference-page.mjs";
+  const helper = "tests/fixtures/branch-stock-lifecycle.mjs";
+  for (const [changed, expected] of [
+    [shared, [...branch, ...native]],
+    [helper, branch],
+  ]) {
+    const fixture = resourceImpactFixture(t, [
+      ...branch,
+      ...native,
+      shared,
+      helper,
+      "tests/profile.mjs",
+    ]);
+    fixture.change(
+      fixture.own,
+      changed,
+      readFileSync(new URL("../" + changed, import.meta.url), "utf8") + "\n",
+    );
+    const plan = fixture.plan();
+    assert.ok(
+      expected.every((file) => plan.files.includes(file)),
+      JSON.stringify(plan),
+    );
+    assert.ok(
+      expected.every((file) => plan.runtimeFiles.includes(file)),
+      JSON.stringify(plan),
+    );
+    assert.equal(plan.browser, true);
+  }
+});
+
 test("the presentation fixture selects every isolated page consumer", (t) => {
   const consumers = [
     "tests/progress-column-web.test.mjs",

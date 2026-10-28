@@ -11,7 +11,8 @@ import {
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { currentTestTimings } from "./quality-test-timings.mjs";
 
-export const sourceCheckWorkerLimit = 16;
+export const sourceCheckWorkerLimit = 20;
+export const sourceCheckWorkerTarget = 15;
 const shardIds = (count) => Array.from({ length: count }, (_, index) => String(index + 1));
 const requireValue = (condition, detail) => {
   if (!condition) throw Error("SOURCE_CHECK_SHARDS_REJECTED: " + detail);
@@ -38,8 +39,9 @@ export function sourceCheckMatrix(plan) {
   const runtime = files.filter((file) => plan.runtimeFiles?.includes(file)).length;
   const count = Math.min(
     sourceCheckWorkerLimit,
+    sourceCheckWorkerTarget,
     files.length,
-    Math.max(2, Math.ceil(runtime / 8) + Math.ceil((files.length - runtime) / 40)),
+    Math.max(2, Math.ceil(runtime / 6) + Math.ceil((files.length - runtime) / 40)),
   );
   return { parallel, shards: parallel ? shardIds(count) : ["single"] };
 }
@@ -185,7 +187,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const { appendFileSync } = await import("node:fs");
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `parallel=${parallel}\nshards=${JSON.stringify(shards)}\n`,
+      `parallel=${parallel}\nshards=${JSON.stringify(shards)}\ncore-sha=${ciCores("required")[0].head}\n`,
     );
   } else if (values.scope && values.output && !values.aggregate && !values.matrix) {
     const shard = sourceCheckShard();
