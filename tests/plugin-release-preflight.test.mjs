@@ -1,13 +1,55 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { writeFile, readFile, rm } from "node:fs/promises";
+import { writeFile, readFile, rm, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { companyPackageNames } from "../src/shared/plugin-release.mjs";
 
 const [, M, G] = companyPackageNames;
 import { createReleasePreflightFixture as fixture } from "./fixtures/plugin-release-preflight.mjs";
+
+test("release preflight respects hash-bound provenance curation but never skips runtime outputs", async (t) => {
+  const f = await fixture(t);
+  const row = f.delivery.packages[0];
+  const receipt = JSON.parse(await readFile(row.source.buildReceipt, "utf8"));
+  const provenance = "lib/business/inventory-fixture/build-inputs.json";
+  const body = '{"fixture":true}\n';
+  await mkdir(join(row.source.path, "lib/business/inventory-fixture"), { recursive: true });
+  await writeFile(join(row.source.path, provenance), body);
+  const output = {
+    path: provenance,
+    sha256: createHash("sha256").update(body).digest("hex"),
+  };
+  receipt.outputs.push(output);
+  const saveReceipt = async () => {
+    await writeFile(row.source.buildReceipt, JSON.stringify(receipt));
+    row.source.buildReceiptSha256 = createHash("sha256")
+      .update(await readFile(row.source.buildReceipt))
+      .digest("hex");
+  };
+  const saveDelivery = () => writeFile(f.input.deliveryManifest, JSON.stringify(f.delivery));
+  await saveReceipt();
+  row.excludedProvenanceFiles = [{ ...output }];
+  await saveDelivery();
+  const accepted = await f.run();
+  assert.equal(accepted.status, 0, accepted.stderr);
+
+  row.excludedProvenanceFiles[0].sha256 = "f".repeat(64);
+  await saveDelivery();
+  assert.match((await f.run()).stderr, /DELIVERY_BUILD_OUTPUT_MISSING_IN_ARCHIVE/);
+  delete row.excludedProvenanceFiles;
+  await saveDelivery();
+  assert.match((await f.run()).stderr, /DELIVERY_BUILD_OUTPUT_MISSING_IN_ARCHIVE/);
+
+  const missingRuntime = { path: "lib/missing-runtime.js", sha256: output.sha256 };
+  await writeFile(join(row.source.path, missingRuntime.path), body);
+  receipt.outputs.push(missingRuntime);
+  await saveReceipt();
+  row.excludedProvenanceFiles = [{ ...output }, missingRuntime];
+  await saveDelivery();
+  assert.match((await f.run()).stderr, /DELIVERY_BUILD_OUTPUT_MISSING_IN_ARCHIVE/);
+});
 test("old updaters bootstrap GEA then atomically install mutually dependent companions; suite-capable starts update directly", async (t) => {
   const f = await fixture(t, { mutualPeers: true });
   const result = await f.run();

@@ -172,6 +172,15 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
       build.buildReceiptSha256 !== delivered.source.buildReceiptSha256
     )
       fail("RELEASE_DELIVERY_SOURCE_MISMATCH", release.name);
+    const publishedOutputs = build.outputs.filter(
+      (output) =>
+        !delivered.excludedProvenanceFiles?.some(
+          (excluded) =>
+            /^lib\/business\/.+\/build-inputs\.json$/.test(excluded.path) &&
+            excluded.path === output.path &&
+            excluded.sha256 === output.sha256,
+        ),
+    );
     builtArchive(
       target.archive,
       JSON.parse(
@@ -180,7 +189,7 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
           maxBuffer: 32 * 1024 * 1024,
         }),
       ),
-      build.outputs,
+      publishedOutputs,
     );
     targets.push({ ...target, metadataSha256: digest(await readFile(target.metadata)), release });
   }

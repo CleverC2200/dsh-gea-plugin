@@ -60,10 +60,15 @@ async function include(path) {
 for (const file of manifest.files) await include(file);
 holdBuildAdmission({ operation: "package", output: destination });
 const [preview] = JSON.parse(
-  execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-    cwd: root,
-    encoding: "utf8",
-  }),
+  execFileSync(
+    process.platform === "win32" ? "npm.cmd" : "npm",
+    ["pack", "--dry-run", "--json", "--ignore-scripts"],
+    {
+      cwd: root,
+      encoding: "utf8",
+      shell: process.platform === "win32",
+    },
+  ),
 );
 for (const file of preview.files) {
   if (!allowed.has(file.path)) throw Error("UNEXPECTED_PACKAGE_FILE: " + file.path);
@@ -75,10 +80,15 @@ for (const file of allowed)
   if (!preview.files.some((x) => x.path === file)) throw Error("MISSING_PACKAGE_FILE: " + file);
 await mkdir(destination, { recursive: true, mode: 0o700 });
 const [packed] = JSON.parse(
-  execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", destination], {
-    cwd: root,
-    encoding: "utf8",
-  }),
+  execFileSync(
+    process.platform === "win32" ? "npm.cmd" : "npm",
+    ["pack", "--json", "--ignore-scripts", "--pack-destination", destination],
+    {
+      cwd: root,
+      encoding: "utf8",
+      shell: process.platform === "win32",
+    },
+  ),
 );
 const artifact = resolve(destination, packed.filename);
 const sha256 = createHash("sha256")
