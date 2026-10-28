@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "source": {
-    "kind": "measured-reference-only",
+    "kind": "historical-reference-only",
     "acceptance": "not-acceptance",
     "runId": 40640495754,
     "runAttempt": 1,
