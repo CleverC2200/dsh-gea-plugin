@@ -209,6 +209,42 @@ test("three-slot measured dispatch routing preserves the complete set and determ
   assert.notEqual(createExecutionPlan({ ...args, concurrency: 4 }).planSha256, plan.planSha256);
 });
 
+test("three-slot cost follows the file order observed through actual execution", (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "gea-dispatch-order-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const files = ["a.test.mjs", "b.test.mjs", "c.test.mjs", "z.test.mjs"];
+  for (const file of files)
+    writeFileSync(
+      join(root, file),
+      `import test from 'node:test';test(${JSON.stringify(file)},()=>{});`,
+    );
+  const selection = { files, required: files };
+  const plan = createExecutionPlan({
+    selection,
+    platformPlan: selection,
+    binding: {},
+    concurrency: 3,
+    timings: {
+      source: { kind: "worked-example" },
+      files: files.map((file, i) => ({ file, durationMs: [1, 1, 1, 9][i] })),
+    },
+  });
+  const result = runExecutionPlan({
+    plan,
+    root,
+    resultFile: join(root, "result.json"),
+    reporter: resolve("scripts/quality-test-reporter.mjs"),
+    buildSha256: "a".repeat(64),
+    environment: { NODE_TEST_CONTEXT: undefined },
+  });
+  assert.deepEqual(
+    result.receipt.results[0].report.files.map((file) => file.file),
+    ["z.test.mjs", "a.test.mjs", "b.test.mjs", "c.test.mjs"],
+  );
+  assert.equal(plan.shards[0].estimatedMs, 9);
+  assert.equal(plan.estimates.estimatedMs, 9);
+});
+
 for (const concurrency of [3, 4])
   test(`${concurrency}-file capacity requires measured four CPUs and twelve GiB, while two adds no floor`, () => {
     const minimum = { availableParallelism: 4, totalMemoryBytes: 12884901888 };
