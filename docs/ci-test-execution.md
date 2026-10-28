@@ -2,9 +2,11 @@
 
 自动 `source-quality` 联合检查的当前分片与覆盖迁移见[测试覆盖对应](test-coverage-migration.md)。以下 `plannedShardCount` 描述手动 quality 入口；本票不以固定完成时长作为验收门槛。
 
+手动运行 `source-quality` workflow 时，`comparison_base` 必须填写本票已登记且当前 ref 可达的完整祖先 SHA。它按该基线到当前候选的差异选择受影响检查，具体基线沿用本票输入；不能将手动运行等同于自动全覆盖。
+
 `quality-test-execution.mjs` 为 required/affected 完整集合生成计划并核验逐文件执行回执。分片数沿用 `plannedShardCount`：无 Profile 使用一片，其余按历史成本和未知文件保守权重计算，上限十四片，实际非空片数来自冻结计划。文件并发数不改变这个公式，也不减少选择集合。 Node 参考墙钟按220秒规划，两槽保守计费不随实际文件并发数变化。该参考来自旧完整 hosted 样本的350秒启动及准备预留、30秒收尾预留，从600秒目标中扣除；主线的单分片 producer 路径继续按原规则执行。固定预留不是本轮观测，也不保证额外分片必然更快，最终仍须核完整 hosted 实测。
 
-分配保持原先未知优先、已知耗时降序及空片先填。此后对每个候选片，将待加入文件按 Node 实际文件名顺序排入固定数量的槽，选择预计最早完成的片，平局按片 ID。未知文件只使用保守排序权重；包含未知文件的预计耗时仍为 `null`。
+分配保持原先未知优先、已知耗时降序及空片先填。此后对每个候选片，将待加入文件按片内传入顺序排入固定数量的槽，选择预计最早完成的片，平局按片 ID。执行入口通过 `node:test` 的 `run({ files })` 按冻结片内顺序派发，使用独立进程隔离。直接调用 Node CLI 的 `--test` 会先按文件名排序，不能用该入口的顺序解释当前执行回执。未知文件只使用保守排序权重；包含未知文件的预计耗时仍为 `null`。
 
 公共 CLI 接受 `--test-file-concurrency 2|3|4`，默认二；Mac 和普通调用保持默认。显式三或四并发的调用在 plan、prepare、build、checks、tests、summary 及回执校验阶段传相同参数。后续阶段重算的计划必须与 `--execution-plan FILE` 完全一致；省略显式并发参数或改为其他并发数会拒绝。Node 实际使用冻结计划中的 `--test-concurrency`。
 
@@ -14,7 +16,9 @@
 
 当前 `quality-test-timings.json` 的来源、提交、环境和文件集合以表内 `source`、`inputs` 和 `files` 为准。更新来自同一完整通过运行的回执；原始 CLI 导出保留，提交的长期参考表沿用 `historical-reference-only`、`not-acceptance` 约定。来源标签不改变测量值或使参考成为验收证据，不混轮回填。此前 [run 39095827120](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/39095827120) 的 176 文件样本及未达旧性能目标的结果仍保留在历史提交和原 artifact，不再指代当前表。
 
-[`quality-test-timings.mjs`](../scripts/quality-test-timings.mjs) 在准备前按实际 checkout 过滤样本。每条记录绑定测量时的测试文件 SHA256 和关键 fixture SHA256，Profile 文件另绑定准备、选择、admission 及浏览器公共入口。文件或关键 fixture 改变、删除，或者 Node、平台、Core、文件并发变化，旧估计都会失效；没有字节绑定的旧格式也视为未知。失效原因进入计划来源，未知耗时继续为 `null`，仅使用原保守分片权重。新的测试文件不借用旧同名或其他文件的时长。刷新时须从同一冻结 run 的完整回执取样，并从该 run 的源码 HEAD 取摘要。
+[`quality-test-timings.mjs`](../scripts/quality-test-timings.mjs) 在准备前按实际 checkout 过滤样本。schema 2 将测试文件摘要与全局 `inputs` 摘要共同用于可信预测；全局输入任一改变或缺失，全部可信预测失效。Node、平台、Core、文件并发变化也会撤销预测和历史排序提示。没有字节绑定的旧格式视为未知。失效原因进入计划来源，可信预计耗时继续为 `null`。
+
+每条记录可显式声明 `fixtures` 依赖。当前历史表和回执导出的逐文件 `fixtures` 均为空数组，不能据此声称测试没有共享依赖，或已经具备细粒度依赖保证。全局输入漂移后，测试正文和已声明 fixture 未变的记录仍可作为 `orderingFiles`，仅提示跨 job 分片安排，不成为当前耗时预测。测试正文、显式 fixture 改变或删除时撤销该提示；新文件不继承旧文件时长。刷新时须从同一冻结 run 的完整回执取样，并从该 run 的源码 HEAD 取摘要。
 
 此前一次历史拆分将当时 `returned-resubmit-web.test.mjs` 的 11 个用例分成三个测试文件。当前 17 项场景的四文件对应见[测试覆盖对应](test-coverage-migration.md)。它们共用 [`returned-review.mjs`](../tests/fixtures/returned-review.mjs) 的纯 fixture，每个 case 仍有独立状态、私有 runtime、完整源码组合校验与 window admission；测试函数体和业务断言保留。不能把原单文件 330486.690586ms 当成新文件已测耗时，新文件先记未知。Source 90000ms、Host 45000ms、容量下限与业务动作预算保持。
 

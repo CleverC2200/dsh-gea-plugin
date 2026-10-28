@@ -1,6 +1,6 @@
 # 端到端测试首批分层与覆盖对应
 
-原清单来自 GEA PR #225 的 109 个 Profile 依赖文件、290 项测试。此表登记首批去向；参数化场景和公共夹具断言的完整本地索引由本票保留。未列为迁移的场景全部继续原链路。
+原清单来自 GEA PR #225 的 109 个 Profile 依赖文件、290 项业务测试义务，当前映射为 291 项实际测试。详情展示拆出一个测试，但复用已有进度列文件；该文件实际两项测试，原进度列与原详情场景各分配其中一项。此表登记去向；参数化场景和公共夹具断言的完整本地索引由本票保留。未列为迁移的场景全部继续原链路。
 
 ## 首批变化
 
@@ -29,6 +29,10 @@
 
 库存生命周期的 6 项分到 `branch-stock-lifecycle-web`、`branch-stock-logout-web`、`branch-stock-revocation-web`，各 2 项。原生页身份的 6 项分到 `native-page-identity-web`、`native-page-logout-web`、`native-page-identity-recovery-web`，分别 3 / 2 / 1 项。文件后缀均为 `.test.mjs`。原测试体、参数、断言与每例独立 Profile 保留，共享帮助函数迁到 `tests/fixtures/branch-stock-lifecycle.mjs`。
 
+## 详情汇总分层
+
+`detail-summary-web.test.mjs` 原有 24 条断言全部映射。14 条展示断言迁到 `progress-column-web.test.mjs` 新增的详情展示测试，继续运行真实页面组件和生产样式。其余 10 条留在原真实端到端测试，包含原有 3 条路由写入 guard，核真实 Session owner、收起展开、调整窗口及只读交互。进度列文件的两个测试各用独立 Context；真实端到端仍独立准备 Profile 与 Host。分层后的本机通过记录不证明整轮 hosted 提速。
+
 ## 并行执行
 
 source-quality 的联合检查按 Profile 与其他文件数量动态分片，最多 20 个 job，单 job 资源和文件并发不变。适用集合少于两文件保持单 job；分片编号、总数、冻结输入、完整执行回执及汇总必须一致。40 个并发额度为账号共享额度，不保证本次同时获得全部位置。
@@ -40,10 +44,10 @@ source-quality 的联合检查按 Profile 与其他文件数量动态分片，�
 | 原文件                                              | 原 CI 测试项 | 当前去向                                                                                                      |
 | --------------------------------------------------- | -----------: | ------------------------------------------------------------------------------------------------------------- |
 | `tests/returned-resubmit-web.test.mjs`              |           17 | 原 17 项完整端到端保留，按上表拆成 5 / 5 / 3 / 4 项四个文件                                                   |
-| `tests/source-update-web.test.mjs`                  |            1 | 保留四阶段及原断言；同文件只准备一个封存候选，每个包仍独立提案 |
-| `tests/native-page-identity-web.test.mjs`           |            6 | 原 6 项完整端到端保留，拆成身份切换 3 / 退出 2 / 初始恢复 1 项 |
+| `tests/source-update-web.test.mjs`                  |            1 | 保留四阶段及原断言；同文件只准备一个封存候选，每个包仍独立提案                                                |
+| `tests/native-page-identity-web.test.mjs`           |            6 | 原 6 项完整端到端保留，拆成身份切换 3 / 退出 2 / 初始恢复 1 项                                                |
 | `tests/branch-stock-web.test.mjs`                   |            6 | 保留原场景及断言；尚未迁移                                                                                    |
-| `tests/branch-stock-lifecycle-web.test.mjs`         |            6 | 原 6 项完整端到端保留，拆成生命周期 2 / 退出 2 / 撤销 2 项 |
+| `tests/branch-stock-lifecycle-web.test.mjs`         |            6 | 原 6 项完整端到端保留，拆成生命周期 2 / 退出 2 / 撤销 2 项                                                    |
 | `tests/returned-review-reject-web.test.mjs`         |            4 | 三项拒绝流程保留原端到端；表头滚动迁至 `approval-queue-layout-web.test.mjs`，保留原断言                       |
 | `tests/returned-review-roles-web.test.mjs`          |            4 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/prompt-qa-regression.test.mjs`               |           17 | 保留原场景及断言；尚未迁移                                                                                    |
@@ -101,7 +105,7 @@ source-quality 的联合检查按 Profile 与其他文件数量动态分片，�
 | `tests/stage-lane-web.test.mjs`                     |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/approval-roles-refresh-web.test.mjs`         |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/workbench-status-identity-race-web.test.mjs` |            1 | 保留原场景及断言；尚未迁移                                                                                    |
-| `tests/progress-column-web.test.mjs`                |            1 | 真实浏览器：生产进度列、百分比与红橙绿阈值；保留所有原展示断言                                                |
+| `tests/progress-column-web.test.mjs`                |            1 | 原进度列展示断言保留；当前文件共 2 项，此原场景占 1 项，另一项承接详情展示                                    |
 | `tests/current-startup-web.test.mjs`                |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/sales-result-runtime.test.mjs`               |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/action-error-copy-web.test.mjs`              |            1 | 保留原场景及断言；尚未迁移                                                                                    |
@@ -113,7 +117,7 @@ source-quality 的联合检查按 Profile 与其他文件数量动态分片，�
 | `tests/stage-progress-detail-web.test.mjs`          |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/global-identity-error-web.test.mjs`          |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/partial-evidence.test.mjs`                   |            1 | 保留原场景及断言；尚未迁移                                                                                    |
-| `tests/detail-summary-web.test.mjs`                 |            1 | 保留原场景及断言；尚未迁移                                                                                    |
+| `tests/detail-summary-web.test.mjs`                 |            1 | 原 24 条断言全映射：14 条迁到进度列文件的详情展示测试，10 条保留真实端到端，含原 3 条写入 guard               |
 | `tests/gea-model.test.mjs`                          |           10 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/html-identity-discovery-web.test.mjs`        |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/branch-stock-context-text.test.mjs`          |            1 | 保留原场景及断言；尚未迁移                                                                                    |
