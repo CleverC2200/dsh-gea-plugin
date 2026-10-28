@@ -846,7 +846,6 @@ test("the presentation fixture selects every isolated page consumer", (t) => {
     "tests/progress-column-web.test.mjs",
     "tests/variance-color-web.test.mjs",
     "tests/approval-queue-layout-web.test.mjs",
-    "tests/detail-summary-presentation.test.mjs",
     "tests/presentation-isolation.test.mjs",
   ];
   const shared = "tests/fixtures/sales-plan-presentation.mjs";
@@ -869,7 +868,7 @@ test("the presentation fixture selects every isolated page consumer", (t) => {
 });
 
 test("sales-plan page and style changes retain detail presentation and real owner wiring", (t) => {
-  const presentation = "tests/detail-summary-presentation.test.mjs";
+  const presentation = "tests/progress-column-web.test.mjs";
   const integration = "tests/detail-summary-web.test.mjs";
   for (const source of [
     "src/workbench/original/workbenches/regionalApproval/RegionalApprovalWorkbench.tsx",
