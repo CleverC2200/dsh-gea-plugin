@@ -47,7 +47,10 @@ function absolute(path) {
 }
 function within(root, path) {
   const name = relative(root, path);
-  return name === "" || (!isAbsolute(name) && name !== ".." && !name.startsWith("../"));
+  return (
+    name === "" ||
+    (!isAbsolute(name) && name !== ".." && !name.startsWith("../") && !name.startsWith("..\\"))
+  );
 }
 function command(file, args, cwd) {
   const result = spawnSync(file, args, {
@@ -128,7 +131,7 @@ function publicFiles(manifest, files) {
   }
 }
 function archive(path, expectedName, raw = false) {
-  const entries = command("tar", ["-tzf", path], "/").trim().split("\n");
+  const entries = command("tar", ["-tzf", path], "/").trim().split(/\r?\n/);
   if (
     entries.some(
       (file) =>
@@ -138,7 +141,7 @@ function archive(path, expectedName, raw = false) {
     )
   )
     fail("DELIVERY_ARCHIVE_INVALID");
-  const listing = command("tar", ["-tvzf", path], "/").trim().split("\n");
+  const listing = command("tar", ["-tvzf", path], "/").trim().split(/\r?\n/);
   if (listing.some((line) => !["-", "d"].includes(line[0])))
     fail("DELIVERY_ARCHIVE_LINK_FORBIDDEN");
   const manifest = JSON.parse(command("tar", ["-xOf", path, "package/package.json"], "/"));
