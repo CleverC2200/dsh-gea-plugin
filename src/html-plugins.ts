@@ -18,6 +18,7 @@ import { createCapabilityRegistry } from "./capability/registry.ts";
 import { PAGE_TOOL } from "./host/page-identity.ts";
 import { bindModulePage } from "./host/module-page-scope.ts";
 import { assertHtmlMcp } from "./capability/html-mcp.mjs";
+import { createDashboardInsightGenerator } from "./host/dashboard-insight.ts";
 
 export async function registerHtmlPlugins(
   ctx: any,
@@ -44,6 +45,30 @@ export async function registerHtmlPlugins(
     : null;
   if (local) ctx.effect(() => () => local.close());
   const lifetime = new AbortController();
+  const generateInsight = createDashboardInsightGenerator({
+    authorize: async (owner, signal) => {
+      signal.throwIfAborted();
+      if (business.config.analysisMode !== "model" || business.config.analysisSource !== "gea")
+        throw Error("GEA_ADVICE_MODEL_REQUIRED");
+      await assertSessionResourceAvailable(ctx, owner.session, signal);
+      if (sessionConsumer(ctx, business, owner.session) !== owner.consumer)
+        throw Error("PAGE_AGENT_SESSION_MISMATCH");
+      business.assertExecutionAllowed(owner.consumer, "view", owner.session);
+      if (`${businessIdentityKey(business)}:${business.pageSessionScope()}` !== owner.principal)
+        throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+    },
+    prompt: async (path) => {
+      if ((await realpath(path)) !== path) throw Error("INVALID_INSIGHT_PROMPT_PATH");
+      return readFile(path, "utf8");
+    },
+    model: async (owner, signal) => {
+      const route = await business.modelRoute(signal, owner.consumer, owner.session);
+      return route.models.includes(business.config.analysisModel)
+        ? business.config.analysisModel
+        : route.models[0]!;
+    },
+    stream: (options) => ctx.llm.stream(options),
+  });
   const items: any[] = [];
   const incompatible: { id: string; code: "INVALID_AGENT_RESOURCE_IDENTITY" }[] = [];
   /** A page Session cannot be reopened under a different GEA principal in this host lifetime. */
@@ -467,6 +492,24 @@ export async function registerHtmlPlugins(
                   true,
                 );
               },
+              ...(item.id === "inventory-aqkc" && !item.mock
+                ? {
+                    insight: (parameters: unknown, requestSignal: AbortSignal) => {
+                      if (business.surfaceFor(session) !== surface)
+                        throw Error("PAGE_OWNER_RELEASED");
+                      return generateInsight(
+                        {
+                          session,
+                          principal: principalKey!,
+                          consumer: item.gea.consumerCode,
+                          promptPath: resolve(item.htmlDirectory, "insight-prompt.md"),
+                        },
+                        parameters,
+                        AbortSignal.any([requestSignal, grantSignal]),
+                      );
+                    },
+                  }
+                : {}),
               ...(item.id === "inventory-orderworkbench" &&
               item.gea.consumerCode === "order" &&
               item.reportStore === "order" &&
