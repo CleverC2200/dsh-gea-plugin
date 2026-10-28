@@ -1,15 +1,44 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
-import { mkdir } from "node:fs/promises";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
 
 test(
   "Dashboard shows current SKU totals while monthly baseline and categories retain their own basis",
   { timeout: 90000 },
   async (t) => {
+    const artifactDirectory = `.runtime/detail-summary/${process.pid}`;
+    mkdirSync(artifactDirectory, { recursive: true });
+    const started = performance.now();
+    let phase = "profile",
+      context,
+      page,
+      completed = false;
+    const mark = (next) => {
+      phase = next;
+      const row = { testName: t.name, phase, elapsedMs: performance.now() - started };
+      try {
+        appendFileSync(artifactDirectory + "/phases.jsonl", JSON.stringify(row) + "\n");
+      } catch (error) {
+        t.diagnostic("DETAIL_SUMMARY_PHASE_WRITE_FAILED: " + String(error));
+      }
+      t.diagnostic(JSON.stringify(row));
+    };
+    t.after(async () => {
+      mark(completed ? "completed" : "failed:" + phase);
+      if (!context) return;
+      if (!completed && page && !page.isClosed())
+        await page
+          .screenshot({ path: artifactDirectory + "/failure.png", timeout: 2000 })
+          .catch((error) => t.diagnostic("DETAIL_SUMMARY_SCREENSHOT_FAILED: " + String(error)));
+      await context.tracing
+        .stop({ path: artifactDirectory + (completed ? "/trace.zip" : "/failure-trace.zip") })
+        .catch((error) => t.diagnostic("DETAIL_SUMMARY_TRACE_FAILED: " + String(error)));
+    });
+    mark("profile");
     const app = await profile(t, {
       config: (base) => ({
         analysis: {
@@ -180,14 +209,18 @@ test(
         return true;
       }
     });
+    mark("login");
     await app.login();
+    mark("browser-launch");
     const browser = await testBrowser(t, () =>
       chromium.launch({ channel: "chrome", headless: true }),
     );
-    const context = await browser.newContext({
+    mark("browser-context");
+    context = await browser.newContext({
       locale: "zh-CN",
       viewport: { width: 1536, height: 920 },
     });
+    await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     await context.addCookies(
       app.cookie.split("; ").map((pair) => ({
         name: pair.slice(0, pair.indexOf("=")),
@@ -195,12 +228,16 @@ test(
         url: app.origin,
       })),
     );
-    const page = await context.newPage();
+    page = await context.newPage();
     page.setDefaultTimeout(10000);
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    mark("page-navigation");
     await page.goto(app.origin);
-    const frame = await openSalesPlan(page);
+    mark("sales-plan-open");
+    const frame = await openReadySalesPlan(page);
+    mark("sales-plan-owner-ready");
+    mark("workbench-ready");
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
     await expect(frame.getByRole("button", { name: "重提", exact: true })).toHaveCount(0);
@@ -209,6 +246,7 @@ test(
     await expect(header.getByRole("tab", { name: "月初", exact: true })).toBeVisible();
     assert.equal(modelCalls, 0, "opening the workbench must not trigger analysis");
 
+    mark("summary-assertions");
     const totals = frame.getByRole("region", { name: "当前页明细汇总", exact: true });
     await expect(totals).toContainText("¥500");
     await expect(totals).toContainText("50 件");
@@ -219,6 +257,7 @@ test(
     await expect(frame.locator("tbody").first()).toContainText("37.5%");
     await expect(frame.getByText(/数量 .*%/)).toHaveCount(0);
     await expect(frame.locator("thead")).not.toContainText("AI 核对意见");
+    mark("category-expand");
     await frame.getByRole("switch").first().click();
     const category = frame.getByTestId("regional-approval-category-row-p-jxs-2026-09-00001-汤圆");
     await category.getByRole("button").click();
@@ -230,13 +269,16 @@ test(
     await expect(frame.getByRole("textbox", { name: "确认计划量 1001", exact: true })).toHaveCount(
       0,
     );
-    await mkdir(".runtime/detail-summary", { recursive: true });
-    await page.screenshot({ path: ".runtime/detail-summary/desktop.png", fullPage: true });
+    mark("screenshots");
+    await page.screenshot({ path: artifactDirectory + "/desktop.png", fullPage: true });
+    mark("narrow-screenshot");
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.screenshot({ path: ".runtime/detail-summary/narrow.png", fullPage: true });
+    await page.screenshot({ path: artifactDirectory + "/narrow.png", fullPage: true });
+    mark("category-collapse");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveCount(0);
     assert.deepEqual(errors, []);
     assert.equal(writes, 0);
+    completed = true;
   },
 );
