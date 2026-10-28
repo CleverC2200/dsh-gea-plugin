@@ -16,7 +16,7 @@ if (!values.input || !values.versions || !values.destination)
   throw Error("COMPANION_PACKAGE_INPUTS_REQUIRED");
 const input = resolve(values.input),
   destination = resolve(values.destination);
-const files = execFileSync("tar", ["-tzf", input], { encoding: "utf8" }).trim().split("\n");
+const files = execFileSync("tar", ["-tzf", input], { encoding: "utf8" }).trim().split(/\r?\n/);
 if (
   files.some(
     (file) =>
@@ -28,7 +28,7 @@ if (
   throw Error("INVALID_COMPANION_ARCHIVE");
 const work = await mkdtemp(join(tmpdir(), "dsh-companion-publication-"));
 try {
-  execFileSync("tar", ["-xzf", input, "-C", work]);
+  execFileSync("tar", ["-xzf", input.replaceAll("\\", "/"), "-C", work.replaceAll("\\", "/")]);
   const root = join(work, "package"),
     path = join(root, "package.json");
   const excludedProvenanceFiles = [];
@@ -58,10 +58,15 @@ try {
   await writeFile(path, JSON.stringify(manifest, null, 2) + "\n");
   await mkdir(destination, { recursive: true });
   const [packed] = JSON.parse(
-    execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", destination], {
-      cwd: root,
-      encoding: "utf8",
-    }),
+    execFileSync(
+      process.platform === "win32" ? "npm.cmd" : "npm",
+      ["pack", "--json", "--ignore-scripts", "--pack-destination", destination],
+      {
+        cwd: root,
+        encoding: "utf8",
+        shell: process.platform === "win32",
+      },
+    ),
   );
   const artifact = join(destination, packed.filename);
   const receipt = {
