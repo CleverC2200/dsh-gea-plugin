@@ -282,6 +282,10 @@ const materialNameLimit = 5000;
 class MaterialNameIndex {
   private readonly names = new Map<string, string>();
 
+  clear(): void {
+    this.names.clear();
+  }
+
   /** 先取本记录自带的权威字段，缺失时再回落到同编码已见过的名称。 */
   apply(records: Array<Record<string, unknown>>): void {
     for (const record of records) {
@@ -957,6 +961,7 @@ export class Business {
     this.epoch = new AbortController();
     this.pageIdentityGeneration = randomUUID();
     this.auth = undefined;
+    this.materialNames.clear();
     this.customerInventoryAccess = undefined;
     this.modelRoutes.clear();
     this.pluginDelegations.clear();
@@ -3274,9 +3279,75 @@ export class Business {
     return this.readWorkbenchQuery(payload, signal);
   }
 
+  private async fillMaterialNames(
+    rows: Record<string, unknown>[],
+    caller: AbortSignal,
+  ): Promise<void> {
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    this.materialNames.apply(rows);
+    const missing = [
+      ...new Set(
+        rows
+          .filter((row) => !row.materialDescription && row.skuCode != null)
+          .map((row) => String(row.skuCode)),
+      ),
+    ];
+    for (let offset = 0; offset < missing.length; offset += 100) {
+      const batch = missing.slice(offset, offset + 100);
+      const parameters = Object.fromEntries(batch.map((code, index) => [`code${index}`, code]));
+      const placeholders = Object.keys(parameters)
+        .map((key) => `:${key}`)
+        .join(", ");
+      try {
+        const result = object(
+          await this.pluginSql(
+            {
+              consumerCode: this.config.analysisAgentCode,
+              sql: `SELECT material_code, material_name FROM agents_dim_product_list_mi WHERE material_code IN (${placeholders}) GROUP BY material_code, material_name`,
+              parameters,
+              pageNo: 1,
+              pageSize: 200,
+            },
+            signal,
+          ),
+        );
+        signal.throwIfAborted();
+        if (
+          !Array.isArray(result.rows) ||
+          result.total !== result.rows.length ||
+          (Array.isArray(result.rejectedColumns) && result.rejectedColumns.length)
+        )
+          continue;
+        const names = new Map<string, Set<string>>();
+        for (const value of result.rows) {
+          const row = object(value);
+          if (
+            typeof row.material_code !== "string" ||
+            !batch.includes(row.material_code) ||
+            typeof row.material_name !== "string" ||
+            !row.material_name.trim()
+          )
+            continue;
+          const values = names.get(row.material_code) ?? new Set<string>();
+          values.add(row.material_name.trim());
+          names.set(row.material_code, values);
+        }
+        const resolved = [...names].flatMap(([skuCode, values]) =>
+          values.size === 1 ? [{ skuCode, materialDescription: [...values][0] }] : [],
+        );
+        this.materialNames.apply(resolved);
+      } catch {
+        signal.throwIfAborted();
+      }
+    }
+    signal.throwIfAborted();
+    this.materialNames.apply(rows);
+  }
+
   private async salesPlanShipments(
     rows: Record<string, unknown>[],
     caller: AbortSignal,
+    orderType: "M" | "Z",
   ): Promise<Record<string, unknown>[]> {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const quantities = new Map<string, string>();
@@ -3284,6 +3355,7 @@ export class Business {
     const failures = new Map<string, string>();
     const byMonth = new Map<string, Set<string>>();
     for (const row of rows) {
+      if (orderType === "M" && row.shipQty != null && row.shipAmount != null) continue;
       const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
       if (!month || typeof row.dealerCode !== "string" || !row.dealerCode) continue;
       const customers = byMonth.get(month) ?? new Set<string>();
@@ -3369,18 +3441,24 @@ export class Business {
     return rows.map((row) => {
       const month = salesPlan.salesPlanPeriodMonthForPlanId(text(row.planId));
       const key = `${month}\u0000${row.dealerCode}`;
-      const progress = decimalSources([amounts.get(key), row.targetAmount]);
+      const shipQty = (orderType === "M" ? row.shipQty : null) ?? quantities.get(key) ?? null;
+      const shipAmount = (orderType === "M" ? row.shipAmount : null) ?? amounts.get(key) ?? null;
+      const progress = decimalSources([shipAmount, row.targetAmount]);
       return {
         ...row,
-        shipQty: quantities.get(key) ?? null,
-        shipAmount: amounts.get(key) ?? null,
+        shipQty,
+        shipAmount,
         amountProgress:
-          "values" in progress && progress.values[1].gt(0)
-            ? progress.values[0].div(progress.values[1]).times(100).toFixed()
-            : null,
+          orderType === "M" && row.amountProgress != null
+            ? row.amountProgress
+            : "values" in progress && progress.values[1].gt(0)
+              ? progress.values[0].div(progress.values[1]).times(100).toFixed()
+              : null,
         shipmentError:
           failures.get(key) ??
-          (!quantities.has(key) || !amounts.has(key) ? "未取得该客户期间的发货数据" : null),
+          (shipQty == null || shipAmount == null
+            ? `未取得该客户 ${month ?? "当前期间"} 的发货数据`
+            : null),
       };
     });
   }
@@ -3659,21 +3737,21 @@ export class Business {
         throw new Error("GEA_PLAN_PERIOD_MISMATCH");
       return {
         ...page,
-        ...(kind === "list" && query.orderType === "Z" && Array.isArray(page.groupMetrics)
+        ...(kind === "list" &&
+        (query.orderType === "M" || query.orderType === "Z") &&
+        Array.isArray(page.groupMetrics)
           ? {
               groupMetrics: page.groupMetrics.map((value) => {
                 const metric = { ...object(value) };
-                delete metric.shipQty;
-                delete metric.shipAmount;
-                delete metric.amountProgress;
-                delete metric.shipmentError;
+                for (const field of ["shipQty", "shipAmount", "amountProgress", "shipmentError"])
+                  if (query.orderType === "Z" || metric[field] == null) delete metric[field];
                 return metric;
               }),
             }
           : {}),
         records:
-          kind === "list" && query.orderType === "Z"
-            ? await this.salesPlanShipments(planRows, signal)
+          kind === "list" && (query.orderType === "M" || query.orderType === "Z")
+            ? await this.salesPlanShipments(planRows, signal, query.orderType)
             : planRows,
         total,
         size: pageSize,
@@ -3687,7 +3765,6 @@ export class Business {
       const skus = records(detail.skus),
         versions = records(detail.versions),
         logs = records(detail.logs);
-      this.materialNames.apply(skus);
       const versionId = text(currentVersion.id);
       const versionIds = new Set([versionId, ...versions.map((version) => text(version.id))]);
       if (
@@ -3697,6 +3774,7 @@ export class Business {
         logs.some((log) => log.planId !== query.planId || !versionIds.has(text(log.versionId)))
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
+      await this.fillMaterialNames(skus, signal);
       if (options.forModel) {
         // 模型侧只回投影后的字段：上游整包带着该计划的全部 SKU 与内部字段，
         // 直接展开必然超过输入预算，detail 会永远 SNAPSHOT_TOO_LARGE。
@@ -3736,7 +3814,6 @@ export class Business {
       return { ...rest, currentVersion, skus, versions, logs };
     }
     const values = records(result);
-    if (kind === "versionSkus") this.materialNames.apply(values);
     if (
       (kind === "versions" || kind === "logs") &&
       values.some((row) => row.planId !== query.planId)
@@ -3744,6 +3821,7 @@ export class Business {
       throw new Error("GEA_IDENTITY_MISMATCH");
     if (kind === "versionSkus" && values.some((row) => row.versionId !== query.versionId))
       throw new Error("GEA_IDENTITY_MISMATCH");
+    if (kind === "versionSkus") await this.fillMaterialNames(values, signal);
     if (
       kind === "compare" &&
       values.some((row) => {
