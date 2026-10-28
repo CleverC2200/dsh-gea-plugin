@@ -36,6 +36,8 @@
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
+绑定客户库存页面时，新计划表 Cube 模型 `agents_scm_cust_plan_order_analysis_d` 及其 View `cust_plan_order_analysis_qa` 沿用旧库存模型的页面交集：以 `stat_date` 的同日起止 `inDateRange` 限定页面 `inventorySnapshot`，以 `cust_code` 的 `equals` 多值集合限定完整 `filteredCustomerCodes`；超过100个客户时拆为每组最多100个的等价 OR，整体追加为 AND 条件并保留调用者原筛选。缺少快照、客户集合为空或页面 owner 失效继续拒绝；不修改 Consumer、服务端授权、字段权限或其他模块的范围规则。
+
 Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，HTML lease 使用 `gea_page` 读取，以及目录声明的 `gea_plugin_page_apply` 视图动作。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。 页面读取保留 focus 摘要、来源及实际覆盖范围；同页同焦点再次调用仍返回当前内容。页面身份 TTL 和 owner 撤销继续生效，工具不再以问题词表或重复窗口决定是否读取。
 
 知识目录、问答及 LightRAG 退场合同见 [知识 MCP](knowledge-mcp.md)。知识工具不要求配置 Cube 来源；未配置 Cube 来源时不注册或调用 Cube 工具。
