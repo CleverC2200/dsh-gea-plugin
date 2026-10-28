@@ -12,7 +12,7 @@ import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { currentTestTimings } from "./quality-test-timings.mjs";
 
 export const sourceCheckWorkerLimit = 20;
-export const sourceCheckWorkerTarget = 15;
+export const sourceCheckWorkerTarget = 20;
 const shardIds = (count) => Array.from({ length: count }, (_, index) => String(index + 1));
 const requireValue = (condition, detail) => {
   if (!condition) throw Error("SOURCE_CHECK_SHARDS_REJECTED: " + detail);
