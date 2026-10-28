@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, sign } from "node:crypto";
+import { createHash } from "node:crypto";
 import { parsePluginChannel, mergePluginChannelRelease } from "../src/shared/plugin-release.mjs";
 import { runPluginReleasePreflight } from "./plugin-release-preflight.mjs";
 export { mergePluginChannelRelease };
@@ -11,7 +11,9 @@ export async function createPluginSuiteChannel({
   expiresAt,
   desktopCore,
 }) {
-  const checked = await runPluginReleasePreflight(preflightInput, { desktopCore });
+  const checked = await runPluginReleasePreflight(preflightInput, {
+    desktopCore,
+  });
   const channel = parsePluginChannel(previous);
   if (
     !checked.targets.some(
@@ -42,16 +44,9 @@ export async function createPluginSuiteChannel({
     companionReleases: references.filter((row) => row.name !== "@cleverc2200/gea-dsh-prototype"),
   });
 }
-/** Explicit private key input only; this helper performs no storage or network writes. */
-export function signPluginChannel({ payload, keyId, privateKeyPem }) {
-  const channel = parsePluginChannel(payload),
-    key = createPrivateKey(privateKeyPem);
-  if (typeof keyId !== "string" || !keyId || key.asymmetricKeyType !== "ed25519")
-    throw Error("CHANNEL_SIGNING_KEY_INVALID");
-  const bytes = Buffer.from(JSON.stringify(channel));
+export function encodePluginChannel({ payload }) {
+  const channel = parsePluginChannel(payload);
   return {
-    keyId,
-    payloadBase64: bytes.toString("base64"),
-    signatureBase64: sign(null, bytes, key).toString("base64"),
+    payloadBase64: Buffer.from(JSON.stringify(channel)).toString("base64"),
   };
 }

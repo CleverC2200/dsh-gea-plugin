@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, verify, randomUUID, type KeyObject } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
@@ -41,7 +41,6 @@ export type PluginReleaseSourceConfig = {
   channelUrl: string;
   authenticationRef: string;
   allowed: { origin: string; pathPrefix: string }[];
-  trustedKeys: { keyId: string; publicKeyPem: string }[];
 };
 export type PluginReleaseSourceDependencies = {
   resolveAuthentication: (
@@ -58,13 +57,7 @@ export type PluginReleaseSourceDependencies = {
 /** Configuration and credentials stay in Host; only verified release projections cross to the client. */
 export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
   const value = object(raw);
-  if (
-    !Array.isArray(value.allowed) ||
-    !value.allowed.length ||
-    !Array.isArray(value.trustedKeys) ||
-    !value.trustedKeys.length
-  )
-    return fail("SOURCE_CONFIG_INVALID");
+  if (!Array.isArray(value.allowed) || !value.allowed.length) return fail("SOURCE_CONFIG_INVALID");
   const allowed = value.allowed.map((row: unknown) => {
     const rule = object(row),
       origin = text(rule.origin),
@@ -80,22 +73,11 @@ export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourc
       return fail("SOURCE_CONFIG_INVALID");
     return { origin, pathPrefix };
   });
-  const trustedKeys = value.trustedKeys.map((row: unknown) => {
-    const key = object(row),
-      keyId = text(key.keyId),
-      publicKeyPem = text(key.publicKeyPem);
-    if (createPublicKey(publicKeyPem).asymmetricKeyType !== "ed25519")
-      return fail("SOURCE_KEY_INVALID");
-    return { keyId, publicKeyPem };
-  });
-  if (new Set(trustedKeys.map((key) => key.keyId)).size !== trustedKeys.length)
-    return fail("SOURCE_CONFIG_INVALID");
   const config = {
     channel: text(value.channel),
     channelUrl: text(value.channelUrl),
     authenticationRef: text(value.authenticationRef),
     allowed,
-    trustedKeys,
   };
   allowedUrl(config.channelUrl, config);
   return config;
@@ -253,9 +235,6 @@ export function createPluginReleaseSource(
   dependencies: PluginReleaseSourceDependencies,
 ) {
   const config = parsePluginReleaseSourceConfig(rawConfig);
-  const keys = new Map<string, KeyObject>(
-    config.trustedKeys.map((key) => [key.keyId, createPublicKey(key.publicKeyPem)]),
-  );
   if (!isAbsolute(dependencies.trustDirectory)) return fail("SOURCE_TRUST_ABSOLUTE_REQUIRED");
   let verified = new Map<string, string>(),
     generation = 0,
@@ -351,11 +330,7 @@ export function createPluginReleaseSource(
       const envelope = object(
         json(await boundedBytes(await request(config.channelUrl, signal), 1024 * 1024, signal)),
       );
-      const key = keys.get(text(envelope.keyId));
-      if (!key) return fail("SOURCE_KEY_UNTRUSTED");
-      const payload = base64(envelope.payloadBase64),
-        signature = base64(envelope.signatureBase64);
-      if (!verify(null, payload, key, signature)) return fail("SOURCE_SIGNATURE_INVALID");
+      const payload = base64(envelope.payloadBase64);
       const channel = parsePluginChannel(json(payload));
       if (channel.channel !== config.channel) return fail("SOURCE_CHANNEL_INVALID");
       const now = (dependencies.now ?? Date.now)();
