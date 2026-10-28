@@ -159,7 +159,7 @@ test("complete Windows input refuses mutable archives, wrong Core and version ro
     [
       "DESKTOP_SOURCE_CONFIG_CHANGED",
       (input) => {
-        input.seed.source.trustedKeys = [];
+        input.seed.source.channelUrl = "https://other.invalid/channels/stable.json";
       },
     ],
   ];
@@ -208,7 +208,11 @@ test("a wrapper-only build binds the fixed plugin commit and rejects unrelated o
   };
   const plugin = await commit("0.0.177"),
     wrapper = await commit("0.0.178");
-  const input = { ...structuredClone(baseline), geaSourceSha: wrapper, pluginSourceSha: plugin };
+  const input = {
+    ...structuredClone(baseline),
+    geaSourceSha: wrapper,
+    pluginSourceSha: plugin,
+  };
   input.seed.packages.find((row) => row.name === name).version = "0.0.177";
   assert.deepEqual(readDesktopPluginSource(input, directory), {
     head: plugin,
@@ -230,7 +234,10 @@ test("a wrapper-only build binds the fixed plugin commit and rejects unrelated o
 });
 
 test("explicit immutable plugin source survives normalization while mutable input is refused", async (t) => {
-  const input = { ...structuredClone(baseline), pluginSourceSha: "1".repeat(40) };
+  const input = {
+    ...structuredClone(baseline),
+    pluginSourceSha: "1".repeat(40),
+  };
   const directory = await mkdtemp(join(tmpdir(), "gea-desktop-plugin-input-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, "input.json");
@@ -244,4 +251,18 @@ test("explicit immutable plugin source survives normalization while mutable inpu
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DESKTOP_PLUGIN_SOURCE_INVALID/);
   }
+});
+
+test("desktop source input needs no signing key and drops old signing settings", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-unsigned-desktop-input-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "input.json");
+  const input = structuredClone(baseline);
+  delete input.seed.source.trustedKeys;
+  await writeFile(path, JSON.stringify(input));
+  const result = await readDesktopInput(path, baseline.geaSourceSha);
+  assert.equal(result.seed.source.trustedKeys, undefined);
+  await writeFile(path, JSON.stringify(baseline));
+  const previous = await readDesktopInput(path, baseline.geaSourceSha);
+  assert.deepEqual(previous.seed.source, result.seed.source);
 });

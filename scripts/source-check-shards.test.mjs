@@ -16,6 +16,7 @@ import {
   sourceCheckShard,
   sourceCheckMatrix,
   sourceCheckCost,
+  sourceCheckWorkerTarget,
 } from "./source-check-shards.mjs";
 
 const head = "a".repeat(40);
@@ -62,14 +63,17 @@ test("source planning shows unknown costs and uses valid timings without changin
   assert.equal(changed.estimates.unknownFiles, 1);
   assert.equal(changed.estimates.estimatedMs, null);
 });
-function fixture(t) {
+function fixture(t, count = 2) {
   const parent = mkdtempSync(join(tmpdir(), "gea-source-shards-"));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, "results"),
     source = join(parent, "cases");
   mkdirSync(root);
   mkdirSync(source);
-  const files = ["a.test.mjs", "b.test.mjs", "c.test.mjs", "d.test.mjs"];
+  const files =
+    count === 2
+      ? ["a.test.mjs", "b.test.mjs", "c.test.mjs", "d.test.mjs"]
+      : Array.from({ length: count === 3 ? 17 : 80 }, (_, i) => `case-${i}.test.mjs`);
   for (const file of files)
     writeFileSync(
       join(source, file),
@@ -85,10 +89,10 @@ function fixture(t) {
       inputSha256: "b".repeat(64),
       manifest: { repositories: [{ repo: "dsh-gea-plugin", head }] },
     },
-    shardCount: 2,
+    shardCount: count,
   });
   const artifacts = { output: { "lib/host.js": "c".repeat(64) } };
-  for (const id of ["1", "2"]) {
+  for (const id of Array.from({ length: count }, (_, i) => String(i + 1))) {
     const worker = join(root, "source-checks-" + id);
     mkdirSync(worker);
     write(join(worker, "source-checks-scope.json"), {
@@ -96,8 +100,12 @@ function fixture(t) {
       head,
       runId: expected.runId,
       runAttempt: expected.runAttempt,
-      shard: { id, count: 2 },
-      plan: { joint: true, files },
+      shard: { id, count },
+      plan: {
+        joint: true,
+        files,
+        runtimeFiles: count === 3 ? files.slice(0, 12) : count === 10 ? files.slice(0, 54) : [],
+      },
     });
     write(join(worker, "quality-test-execution-plan.json"), plan);
     write(join(worker, "quality-stages.json"), {
@@ -130,18 +138,54 @@ function fixture(t) {
   return { root, plan, change };
 }
 
-test("source workers explicitly select two shards and reject malformed assignment", () => {
+test("source workers bind a bounded shard count and reject malformed assignment", () => {
   assert.equal(sourceCheckShard({}), undefined);
-  assert.equal(sourceCheckShard({ GEA_SOURCE_CHECK_SHARD: "" }), undefined);
-  for (const id of ["1", "2"])
-    assert.deepEqual(sourceCheckShard({ GEA_SOURCE_CHECK_SHARD: id }), { id, count: 2 });
-  for (const id of ["0", "3", "1\n", "01"])
-    assert.throws(() => sourceCheckShard({ GEA_SOURCE_CHECK_SHARD: id }), /shard id/);
+  for (const count of [2, 8, 16, 20])
+    for (let id = 1; id <= count; id++)
+      assert.deepEqual(
+        sourceCheckShard({
+          GEA_SOURCE_CHECK_SHARD: String(id),
+          GEA_SOURCE_CHECK_SHARD_COUNT: String(count),
+        }),
+        { id: String(id), count },
+      );
+  for (const env of [
+    { GEA_SOURCE_CHECK_SHARD: "1" },
+    { GEA_SOURCE_CHECK_SHARD: "0", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
+    { GEA_SOURCE_CHECK_SHARD: "3", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
+    { GEA_SOURCE_CHECK_SHARD: "01", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
+    { GEA_SOURCE_CHECK_SHARD: "1", GEA_SOURCE_CHECK_SHARD_COUNT: "21" },
+  ])
+    assert.throws(() => sourceCheckShard(env), /shard/);
+});
+
+test("large runtime selections expand within the shared account concurrency allowance", () => {
+  const files = Array.from({ length: 209 }, (_, i) => `tests/fixture-${i}.test.mjs`);
+  const matrix = sourceCheckMatrix({ joint: true, files, runtimeFiles: files.slice(0, 109) });
+  assert.equal(matrix.shards.length, sourceCheckWorkerTarget);
+  assert.deepEqual(
+    matrix.shards,
+    Array.from({ length: sourceCheckWorkerTarget }, (_, i) => String(i + 1)),
+  );
 });
 
 test("independent actual Node workers prove complete exact-once file and case coverage", (t) => {
   const f = fixture(t);
   assert.equal(aggregateSourceCheckShards(f.root, expected).files, 4);
+});
+
+test("three actual workers prove the expanded assignment without missing or duplicate cases", (t) => {
+  const f = fixture(t, 3);
+  assert.equal(aggregateSourceCheckShards(f.root, expected).files, 17);
+  rmSync(join(f.root, "source-checks-3"), { recursive: true });
+  assert.throws(() => aggregateSourceCheckShards(f.root, expected), /worker inventory/);
+});
+
+test("ten actual workers aggregate numeric shard names and still reject missing workers", (t) => {
+  const f = fixture(t, 10);
+  assert.equal(aggregateSourceCheckShards(f.root, expected).files, 80);
+  rmSync(join(f.root, "source-checks-10"), { recursive: true });
+  assert.throws(() => aggregateSourceCheckShards(f.root, expected), /worker inventory/);
 });
 
 test("tools and single-file joint selections retain one complete worker", () => {
@@ -308,9 +352,54 @@ test("the public CLI rejects a source shard on other stages before preparation",
     ["scripts/run-quality-ci.mjs", "--source-only", "--stage", "plan"],
     {
       encoding: "utf8",
-      env: { ...process.env, GEA_SOURCE_CHECK_SHARD: "1" },
+      env: { ...process.env, GEA_SOURCE_CHECK_SHARD: "1", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
     },
   );
   assert.notEqual(child.status, 0);
   assert.match(child.stderr, /SOURCE_CHECK_SHARDS_REJECTED/);
+});
+
+test("the source workflow admits workers only after successful or inapplicable policy preparation", () => {
+  const workflow = parse(readFileSync(".github/workflows/source-quality.yml", "utf8"));
+  const producer = workflow.jobs["dependency-policy"];
+  const worker = workflow.jobs["source-checks"];
+  assert.deepEqual(worker.needs, ["source-plan", "dependency-policy"]);
+  assert.equal(worker.strategy["max-parallel"], 20);
+  const expression = worker.if
+    .replaceAll("needs.source-plan", 'needs["source-plan"]')
+    .replaceAll("needs.dependency-policy", 'needs["dependency-policy"]');
+  const admit = new Function("needs", "always", "return " + expression);
+  for (const [source, policy, validate, mode, expected] of [
+    ["success", "success", "true", "code", true],
+    ["success", "skipped", "true", "code", true],
+    ["success", "failure", "true", "code", false],
+    ["success", "cancelled", "true", "code", false],
+    ["failure", "success", "true", "code", false],
+    ["success", "success", "false", "code", false],
+    ["success", "success", "true", "docs", false],
+  ])
+    assert.equal(
+      Boolean(
+        admit(
+          {
+            "source-plan": { result: source, outputs: { validate, mode } },
+            "dependency-policy": { result: policy },
+          },
+          () => true,
+        ),
+      ),
+      expected,
+    );
+  assert.match(producer.if, /outputs.parallel == 'true'/);
+  const upload = producer.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
+  assert.equal(upload.with["if-no-files-found"], "error");
+  assert.ok(!upload.with.path.includes("node_modules"));
+  const restore = worker.steps.findIndex(
+    (step) => step.name === "Restore policies into this worker's private cache",
+  );
+  const install = worker.steps.findIndex(
+    (step) => step.name === "Prepare or verify SDK through existing cache contract",
+  );
+  assert.ok(restore >= 0 && restore < install);
+  assert.match(worker.env.PNPM_CONFIG_CACHE_DIR, /github.workspace/);
 });

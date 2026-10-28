@@ -111,7 +111,11 @@ export function inheritModuleCubeScope(host: Host, session: string, args: Record
     const model = typeof member === "string" ? member.split(".")[0] : "";
     const filters = [] as any[];
     if (menu === "inventory-customer") {
-      if (!["agents_scm_cust_jxc_ai_daliy_d", "cust_jxc_ai_daily_qa"].includes(model))
+      const planModel = [
+        "agents_scm_cust_plan_order_analysis_d",
+        "cust_plan_order_analysis_qa",
+      ].includes(model);
+      if (!planModel && !["agents_scm_cust_jxc_ai_daliy_d", "cust_jxc_ai_daily_qa"].includes(model))
         throw Error(
           "GEA_PAGE_SCOPE_UNMAPPED: 此Cube模型未建立客户页面范围映射，不能扩大范围查询。",
         );
@@ -119,14 +123,31 @@ export function inheritModuleCubeScope(host: Host, session: string, args: Record
         throw Error("GEA_PAGE_SCOPE_NOT_READY");
       filters.push({
         member: model + ".stat_date",
-        operator: "in",
-        values: [payload.inventorySnapshot],
+        operator: planModel ? "inDateRange" : "in",
+        values: planModel
+          ? [payload.inventorySnapshot, payload.inventorySnapshot]
+          : [payload.inventorySnapshot],
       });
       const codes = payload.filteredCustomerCodes;
       if (!Array.isArray(codes)) throw Error("GEA_PAGE_SCOPE_NOT_READY: 缺少完整筛选客户集合。");
       if (!codes.length)
         throw Error("GEA_PAGE_SCOPE_EMPTY: 当前筛选没有客户，不发起其他范围查询。");
-      filters.push({ member: model + ".cust_code", operator: "in", values: codes });
+      if (planModel && codes.length > 100) {
+        const groups = [];
+        for (let index = 0; index < codes.length; index += 100)
+          groups.push({
+            member: model + ".cust_code",
+            operator: "equals",
+            values: codes.slice(index, index + 100),
+          });
+        filters.push({ or: groups });
+      } else {
+        filters.push({
+          member: model + ".cust_code",
+          operator: planModel ? "equals" : "in",
+          values: codes,
+        });
+      }
     } else {
       const f = payload.filters;
       if (!f?.start || !f.end_exclusive) throw Error("GEA_PAGE_SCOPE_NOT_READY");

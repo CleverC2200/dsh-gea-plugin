@@ -92,7 +92,7 @@ test("source workflow keeps metadata edits outside active formal execution", () 
   assert.match(workflow, /id: plan\n\s+if: steps\.event\.outputs\.validate == 'true'/);
   assert.match(
     workflow,
-    /if: needs\.source-plan\.outputs\.validate == 'true' && needs\.source-plan\.outputs\.mode != 'docs'/,
+    /if: always\(\) && needs\.source-plan\.result == 'success' && needs\.source-plan\.outputs\.validate == 'true' && needs\.source-plan\.outputs\.mode != 'docs'/,
   );
   assert.match(
     workflow,

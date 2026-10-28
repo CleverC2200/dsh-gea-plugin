@@ -150,16 +150,27 @@ test(
     await frame.getByRole("tab", { name: "按省区", exact: true }).click();
     await expect(frame.locator("tbody tr")).toHaveCount(4);
 
-    const rows = await frame.locator("tbody tr").evaluateAll((nodes) =>
-      nodes.map((node) => ({
-        text: (node.textContent ?? "").replace(/\s+/g, " "),
-        selectable: !(node.querySelector("label.arco-checkbox")?.className ?? "").includes(
-          "disabled",
-        ),
-      })),
-    );
+    const readRows = () =>
+      frame.locator("tbody tr").evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          text: (node.textContent ?? "").replace(/\s+/g, " "),
+          selectable: !(node.querySelector("label.arco-checkbox")?.className ?? "").includes(
+            "disabled",
+          ),
+        })),
+      );
+    let rows = await readRows();
     const rowOf = (province) =>
       rows.find((row) => row.text.includes(province) && row.text.includes("份计划"));
+    await expect
+      .poll(
+        async () => {
+          rows = await readRows();
+          return rowOf("P1")?.selectable;
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
     assert.equal(rows.length, 4, JSON.stringify(rows));
     // P1 的代表行不可操作，但组里还有待审计划：仍然可以勾选。
     assert.equal(rowOf("P1")?.selectable, true, JSON.stringify(rows));

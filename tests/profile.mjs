@@ -71,6 +71,23 @@ async function createProfile(t, options) {
     options.runtimeParent ?? (options.coreOnly ? resolve(root, ".runtime/core-tests") : tmpdir());
   await mkdir(runtimeParent, { recursive: true });
   const dir = await mkdtemp(resolve(runtimeParent, "gea-profile-"));
+  const lifecycleStarted = performance.now();
+  const recordLifecycle = (value) => {
+    if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
+      appendFileSync(
+        process.env.GEA_TEST_LIFECYCLE_RECEIPT,
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          elapsedMs: performance.now() - lifecycleStarted,
+          testName: t.name,
+          directory: dir,
+          ...value,
+        }) + "\n",
+        { mode: 0o600 },
+      );
+  };
+  recordLifecycle({ event: "temporary-directory-created" });
+  recordLifecycle({ event: "certificate-started" });
   const key = resolve(dir, "key.pem"),
     cert = resolve(dir, "cert.pem");
   execFileSync(
@@ -94,22 +111,7 @@ async function createProfile(t, options) {
     ],
     { stdio: "ignore" },
   );
-  const lifecycleStarted = performance.now();
-  const recordLifecycle = (value) => {
-    if (process.env.GEA_TEST_LIFECYCLE_RECEIPT)
-      appendFileSync(
-        process.env.GEA_TEST_LIFECYCLE_RECEIPT,
-        JSON.stringify({
-          timestamp: new Date().toISOString(),
-          elapsedMs: performance.now() - lifecycleStarted,
-          testName: t.name,
-          directory: dir,
-          ...value,
-        }) + "\n",
-        { mode: 0o600 },
-      );
-  };
-  recordLifecycle({ event: "temporary-directory-created" });
+  recordLifecycle({ event: "certificate-created" });
   const recordAbort = () => recordLifecycle({ event: "fixture-aborted" });
   t.signal?.addEventListener("abort", recordAbort, { once: true });
   const requests = [];

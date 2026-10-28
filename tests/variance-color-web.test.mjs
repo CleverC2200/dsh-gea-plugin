@@ -1,105 +1,23 @@
-import test from "./fixtures/source-test.mjs";
+import test from "node:test";
 import assert from "node:assert/strict";
-import { chromium, expect } from "@playwright/test";
-import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
-import { testBrowser } from "./fixtures/test-browser.mjs";
+import { expect } from "@playwright/test";
+import { openSalesPlanPresentation } from "./fixtures/sales-plan-presentation.mjs";
 
 /**
  * V1.8 #14：顶部指标卡「差额（计划 − 目标）」正数红、负数绿；
  * 颜色只作用于差额数值本身，其他指标卡保持原字色。
  */
 const both = async (t, planAmount, targetAmount) => {
-  const app = await profile(t);
-  const plan = {
-    planId: "p-jxs-2026-09-00001",
-    versionId: "v1",
-    seq: 1,
-    periodId: "period-1",
-    planTypeCode: "Y",
-    orderType: "M",
-    cust_code: 10070027,
-    dealerName: "客户一",
-    sales_group_code: "org1",
-    orgName: "销售组一",
-    province_region_code: "province1",
-    provinceName: "华东省区",
-    region_code: "area1",
-    areaName: "华东大区",
-    regionCode: "region1",
-    regionName: "华东",
-    belong_base: "基地一",
-    status: 1,
-    skuCount: 1,
-    currentQty: "10",
-    currentAmount: planAmount,
-    targetQty: "10",
-    targetAmount,
-  };
-  const sku = {
-    id: "s1",
-    skuCode: "9001",
-    versionId: "v1",
-    productCategName: "汤圆",
-    materialDescription: "黑芝麻汤圆 500g",
-    qty: "10",
-    baseQty: "10",
-    amt: planAmount,
-    amtBase: planAmount,
-    price: "1",
-  };
-  app.route((req, _res, reply) => {
-    const path = req.url.pathname;
-    const send = (result) => {
-      reply({ success: true, result });
-      return true;
-    };
-    if (path.endsWith("/getPermCode"))
-      return send({ codeList: ["sales-plan:plan:region-approve"] });
-    if (path.endsWith("/plans")) {
-      const status = req.url.searchParams.get("status");
-      const records = status === null || status === "1" ? [plan] : [];
-      return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
-    }
-    if (path.endsWith("/plans/" + plan.planId))
-      return send({
-        currentVersion: { ...plan, id: plan.versionId, effective: true },
-        skus: [sku],
-        versions: [],
-        logs: [],
-      });
-    if (path.endsWith("/versions")) return send([{ ...plan, id: plan.versionId, effective: true }]);
-    if (path.endsWith("/versions/" + plan.versionId + "/skus")) return send([sku]);
-    return false;
-  });
-  await app.login();
-  const browser = await testBrowser(t, () =>
-    chromium.launch({ channel: "chrome", headless: true }),
-  );
-  const context = await browser.newContext({
-    locale: "zh-CN",
-    viewport: { width: 1536, height: 920 },
-  });
-  await context.addCookies(
-    app.cookie.split("; ").map((pair) => ({
-      name: pair.slice(0, pair.indexOf("=")),
-      value: pair.slice(pair.indexOf("=") + 1),
-      url: app.origin,
-    })),
-  );
-  const page = await context.newPage();
-  page.setDefaultTimeout(15000);
-  await page.goto(app.origin);
-  const frame = await openSalesPlan(page);
-  await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
-  const metrics = frame.getByRole("region", { name: "当前页明细汇总" });
+  const page = await openSalesPlanPresentation(t, [
+    { currentQty: "10", currentAmount: planAmount, targetQty: "10", targetAmount },
+  ]);
+  const metrics = page.getByRole("region", { name: "当前页明细汇总" });
   await expect
     .poll(
       async () =>
         (await metrics.locator("strong").allTextContents()).filter(
           (text) => text.includes("¥") && text !== "—",
         ).length,
-      { timeout: 30000 },
     )
     .toBeGreaterThan(1);
   return metrics;

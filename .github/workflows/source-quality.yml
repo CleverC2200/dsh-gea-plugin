@@ -26,6 +26,7 @@ jobs:
       workbench-sha: ${{ steps.plan.outputs.workbench-sha }}
       manage-sha: ${{ steps.plan.outputs.manage-sha }}
       gea-sha: ${{ steps.plan.outputs.gea-sha }}
+      core-sha: ${{ steps.source-matrix.outputs.core-sha }}
       mode: ${{ steps.plan.outputs.mode }}
       engineering: ${{ steps.plan.outputs.engineering }}
       workflows: ${{ steps.plan.outputs.workflows }}
@@ -112,18 +113,59 @@ jobs:
             candidate/dsh-gea-plugin/.runtime/source-check-cost.json
           if-no-files-found: ignore
 
+  dependency-policy:
+    needs: source-plan
+    if: needs.source-plan.outputs.validate == 'true' && needs.source-plan.outputs.engineering == 'true' && needs.source-plan.outputs.parallel == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: preparation/dsh-gea-plugin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.source-plan.outputs.gea-sha }}
+          path: preparation/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ needs.source-plan.outputs.core-sha }}
+          path: preparation/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify fresh dependency policies once for this run
+        run: |
+          corepack enable
+          node scripts/dependency-policy.mjs --prepare --gea "$PWD" --core "$GITHUB_WORKSPACE/preparation/official-core" --directory "$RUNNER_TEMP/dependency-policy"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dependency-policy-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dependency-policy/receipt.json
+            ${{ runner.temp }}/dependency-policy/policy-cache.jsonl
+          if-no-files-found: error
+
   source-checks:
     name: ${{ matrix.shard == 'single' && 'source-checks' || format('source-checks ({0})', matrix.shard) }}
-    needs: source-plan
-    if: needs.source-plan.outputs.validate == 'true' && needs.source-plan.outputs.mode != 'docs'
+    needs: [source-plan, dependency-policy]
+    if: always() && needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'true' && needs.source-plan.outputs.mode != 'docs' && (needs.dependency-policy.result == 'success' || needs.dependency-policy.result == 'skipped')
     strategy:
       fail-fast: false
+      max-parallel: 20
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       GEA_SOURCE_CHECK_SHARD: ${{ matrix.shard != 'single' && matrix.shard || '' }}
+      GEA_SOURCE_CHECK_SHARD_COUNT: ${{ strategy.job-total }}
+      GEA_TEST_LIFECYCLE_RECEIPT: ${{ github.workspace }}/profile-lifecycle.ndjson
+      PNPM_CONFIG_CACHE_DIR: ${{ github.workspace }}/.pnpm-policy-cache
     permissions:
       contents: read
       actions: read
@@ -197,6 +239,15 @@ jobs:
           QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
         run: |
           node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
+      - name: Download this run's native policy cache
+        if: needs.dependency-policy.result == 'success' && steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: dependency-policy-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dependency-policy-input
+      - name: Restore policies into this worker's private cache
+        if: needs.dependency-policy.result == 'success' && steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        run: node scripts/dependency-policy.mjs --restore --gea "$PWD" --core "$GITHUB_WORKSPACE/source/official-core" --directory "$RUNNER_TEMP/dependency-policy-input" --cache "$PNPM_CONFIG_CACHE_DIR" > ../../dependency-policy-receipt.json
       - name: Read fixed Core command metadata for knowledge checks
         if: steps.affected.outputs.tooling == 'true' && steps.reuse.outputs.hit != 'true'
         run: |
@@ -313,6 +364,8 @@ jobs:
             quality-stages.json
             quality-test-execution.json
             quality-test-results/
+            profile-lifecycle.ndjson
+            dependency-policy-receipt.json
           if-no-files-found: ignore
 
   dependency-review:

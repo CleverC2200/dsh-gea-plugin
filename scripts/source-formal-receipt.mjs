@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { sourceCheckWorkerLimit } from "./source-check-shards.mjs";
 import policy from "./serial-merge-policy.json" with { type: "json" };
 
 const requireValue = (value, reason) => {
@@ -39,7 +40,12 @@ function validatePlan(context, plan, matrix) {
       Array.isArray(plan.files) &&
       plan.files.every((file) => typeof file === "string" && file.length > 0) &&
       typeof matrix?.parallel === "boolean" &&
-      same(matrix.shards, matrix.parallel ? ["1", "2"] : ["single"]) &&
+      (matrix.parallel
+        ? Array.isArray(matrix.shards) &&
+          matrix.shards.length >= 2 &&
+          matrix.shards.length <= sourceCheckWorkerLimit &&
+          matrix.shards.every((id, index) => id === String(index + 1))
+        : same(matrix.shards, ["single"])) &&
       (!matrix.parallel || plan.engineering),
     "formal plan and worker assignment",
   );
@@ -307,6 +313,10 @@ export async function verifyFormalSource({ context, selection, receipt, read }) 
     ["source-plan", "success"],
     ["candidate-quality", "success"],
     ["dependency-review", receipt.plan["dependency-review"] ? "success" : "skipped"],
+    [
+      "dependency-policy",
+      receipt.plan.engineering && receipt.matrix.parallel ? "success" : "skipped",
+    ],
     ...(receipt.plan.mode === "docs"
       ? [[skippedWorker, "skipped"]]
       : receipt.matrix.shards.map((id) => [

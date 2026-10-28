@@ -77,10 +77,17 @@ test("suite planning upgrades mutually dependent old versions without intermedia
   const plan = planPluginSuiteUpdate({ releases, core, installed: graph });
   assert.equal(plan.kind, "ready");
   assert.deepEqual(plan.releases, releases);
-  const installed = releases.map((r) => ({ ...r, artifactSha256: r.artifact.sha256 }));
+  const installed = releases.map((r) => ({
+    ...r,
+    artifactSha256: r.artifact.sha256,
+  }));
   assert.equal(planPluginSuiteUpdate({ releases, core, installed }).kind, "current");
   assert.equal(
-    planPluginSuiteUpdate({ releases: releases.slice(1), core, installed: graph }).code,
+    planPluginSuiteUpdate({
+      releases: releases.slice(1),
+      core,
+      installed: graph,
+    }).code,
     "RELEASE_NOT_PUBLISHED",
   );
   assert.equal(
@@ -97,7 +104,11 @@ test("suite planning upgrades mutually dependent old versions without intermedia
       core,
       installed: [
         ...graph,
-        { name: "consumer", version: "1.0.0", peerDependencies: { [W]: "1.0.0" } },
+        {
+          name: "consumer",
+          version: "1.0.0",
+          peerDependencies: { [W]: "1.0.0" },
+        },
       ],
     }).code,
     "COMBINATION_INCOMPATIBLE",
@@ -106,7 +117,12 @@ test("suite planning upgrades mutually dependent old versions without intermedia
     [{ version: "2.9.0" }, "DOWNGRADE_FORBIDDEN"],
     [{ supportedCores: [] }, "CORE_UNSUPPORTED"],
     [
-      { dataCompatibility: { kind: "migration-required", note: "manual migration" } },
+      {
+        dataCompatibility: {
+          kind: "migration-required",
+          note: "manual migration",
+        },
+      },
       "DATA_MIGRATION_REQUIRED",
     ],
   ]) {
@@ -393,11 +409,10 @@ test("a partial channel adds an independently published package without replacin
   assert.deepEqual(next.releases, [reference(G), reference(W)]);
 });
 
-test("signed schema1 bridge keeps GEA visible to legacy readers and companion references through merge and signing", async () => {
+test("schema1 bridge keeps GEA visible to legacy readers and companion references through merge and encoding", async () => {
   const { parsePluginChannel, mergePluginChannelRelease } =
     await import("../src/shared/plugin-release.mjs");
-  const { signPluginChannel } = await import("../scripts/plugin-channel.mjs");
-  const { generateKeyPairSync, verify } = await import("node:crypto");
+  const { encodePluginChannel } = await import("../scripts/plugin-channel.mjs");
   const reference = (name, sha256) => ({
     name,
     sha256,
@@ -423,14 +438,11 @@ test("signed schema1 bridge keeps GEA visible to legacy readers and companion re
   });
   assert.deepEqual(next.releases, previous.releases);
   assert.deepEqual(next.companionReleases, [selected, previous.companionReleases[1]]);
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-  const envelope = signPluginChannel({
+  const envelope = encodePluginChannel({
     payload: next,
-    keyId: "bridge",
-    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }),
   });
   const raw = Buffer.from(envelope.payloadBase64, "base64");
-  assert(verify(null, raw, publicKey, Buffer.from(envelope.signatureBase64, "base64")));
+  assert.deepEqual(Object.keys(envelope), ["payloadBase64"]);
   assert.deepEqual(JSON.parse(raw), next);
   for (const change of [
     (p) => {
