@@ -215,12 +215,13 @@ test(
     await expect(resubmit).toBeEnabled();
     await f.getByRole("button", { name: `打开 ${old.dealerName} 调整明细`, exact: true }).click();
     const input = f.getByRole("spinbutton", { name: "追加/追减 789", exact: true });
-    await expect(input).toHaveValue("2");
-    await input.fill("5");
+    await expect(input).toHaveValue("0");
+    await input.fill("-3");
     await resubmit.click();
     const d = f.getByRole("dialog", { name: "确认修改并重提", exact: true });
     await expect(d.getByRole("spinbutton")).toHaveCount(0);
-    await expect(d).toContainText("5.000");
+    await expect(d).toContainText("38.000");
+    await expect(d).toContainText("35.000");
     await expect(d.locator("label.arco-checkbox")).toHaveCount(0);
     await d.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(d).toContainText("提交成功，已核验最新状态。");

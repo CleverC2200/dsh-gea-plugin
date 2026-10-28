@@ -24,6 +24,7 @@ export const fixture = async (
     normalBatch = false,
     sameIdPeriod = false,
     originalSubmitter = "9007199254740993",
+    customerCanEdit = false,
   } = {},
 ) => {
   const app = await profile(t, {
@@ -250,7 +251,7 @@ export const fixture = async (
           versionId: current.id,
           status: current.status,
           policy: "role-visible-v1",
-          allowedActions: [],
+          allowedActions: role === "customer" && customerCanEdit ? ["SAVE"] : [],
           roleActions: [{ role, allowedActions: [] }],
           snapshotHash: "a".repeat(64),
         },

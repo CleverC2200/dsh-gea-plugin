@@ -367,7 +367,7 @@ test(
       "USER_PAGE_REFERENCE",
       `请解释 @[FC001](dsh-page:${referenceId})`,
     );
-    await openWorkbenchPage(page, "全链库存");
+    await openWorkbenchPage(page, "全链库存工作台");
     await expect.poll(() => opens.at(-1)?.sessionId).not.toBe(branchSession);
     const qllSession = opens.at(-1).sessionId;
     assert.equal(opens.at(-1).resourceId, "gea-html-inventory-qll");

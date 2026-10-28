@@ -22,6 +22,7 @@ for (const [role, returnedStatus] of [
       const { frame, page, app, submitted, approved, state } = await fixture(t, {
         role,
         returnedStatus,
+        customerCanEdit: role === "customer",
         shortened: returnedStatus === 7,
         sameIdPeriod: returnedStatus === 7,
       });
