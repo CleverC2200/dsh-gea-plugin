@@ -48,7 +48,11 @@ execFileSync(
   [resolve(values.pnpm), "install", "--ignore-scripts", "--registry=https://registry.npmjs.org"],
   { cwd: target, stdio: "inherit" },
 );
-execFileSync("npm", ["shrinkwrap", "--ignore-scripts"], { cwd: target, stdio: "inherit" });
+execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["shrinkwrap", "--ignore-scripts"], {
+  cwd: target,
+  stdio: "inherit",
+  shell: process.platform === "win32",
+});
 console.log(
   JSON.stringify({
     input: target,

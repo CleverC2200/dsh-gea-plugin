@@ -23,7 +23,10 @@ import {
 
 const within = (root, path) => {
   const rel = relative(root, path);
-  return rel === "" || (!rel.startsWith("../") && rel !== ".." && !isAbsolute(rel));
+  return (
+    rel === "" ||
+    (!rel.startsWith("../") && !rel.startsWith("..\\") && rel !== ".." && !isAbsolute(rel))
+  );
 };
 const absent = async (path) => {
   try {

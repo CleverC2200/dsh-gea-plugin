@@ -2,7 +2,10 @@ import test from "node:test";
 import "./plugin-reception/readiness.test.mjs";
 import "./plugin-reception/download-store.test.mjs";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { receiveDelivery } from "./plugin-reception.mjs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { supportedCores, coreIdentity, sdkPeerRange, sdkVersion } from "./supported-cores.mjs";
@@ -17,6 +20,38 @@ import {
   currentBusinessIds,
   validateInitialPresets,
 } from "./plugin-reception/preset-discovery.mjs";
+
+test("reception allows sibling outputs and rejects protected or overlapping paths", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "reception-boundary-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const core = join(root, "core");
+  const delivery = join(root, "delivery");
+  await mkdir(core);
+  await mkdir(delivery);
+  const manifest = join(delivery, "manifest.json");
+  const pnpm = join(root, "pnpm.mjs");
+  await writeFile(manifest, "{}");
+  await writeFile(pnpm, "process.stdout.write('');\n");
+  const input = {
+    manifest,
+    core,
+    pnpm,
+    home: join(root, "home"),
+    evidence: join(root, "evidence"),
+  };
+  await assert.rejects(receiveDelivery(input), /RECEPTION_STORE_ABSOLUTE_REQUIRED/);
+  await assert.rejects(access(input.home), { code: "ENOENT" });
+  await assert.rejects(access(input.evidence), { code: "ENOENT" });
+  await assert.rejects(
+    receiveDelivery({ ...input, home: join(core, "home") }),
+    /RECEPTION_OUTPUT_IN_PROTECTED_INPUT/,
+  );
+  await mkdir(input.home);
+  await assert.rejects(
+    receiveDelivery({ ...input, evidence: join(input.home, "evidence") }),
+    /RECEPTION_HOME_EVIDENCE_OVERLAP/,
+  );
+});
 
 test("governed customer inventory, fulfillment and order workbench are discoverable before selection", () => {
   const presets = currentBusinessIds.map((id) => ({ id, broken: false }));

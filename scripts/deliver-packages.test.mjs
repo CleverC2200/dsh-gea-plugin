@@ -36,6 +36,7 @@ async function requestFixture(
     geaCompanionRange,
     invalidHtmlCapability = false,
     hostSource = "module.exports = {};\n",
+    tarOutputCRLF = false,
   } = {},
 ) {
   const work = await mkdtemp(join(tmpdir(), "delivery-owner-inputs-"));
@@ -66,7 +67,12 @@ async function requestFixture(
   for (const file of ["build-admission.mjs", "development-repositories.mjs"])
     await copyFile(join(import.meta.dirname, file), join(copiedScripts, file));
   const fixtureEntry = join(copiedScripts, "deliver-packages.mjs");
-  const cliSource = await readFile(entry, "utf8");
+  let cliSource = await readFile(entry, "utf8");
+  if (tarOutputCRLF)
+    cliSource = cliSource.replace(
+      "return result.stdout;",
+      'return file === "tar" && ["-tzf", "-tvzf"].includes(args[0]) ? result.stdout.replace(/\\r?\\n/g, "\\r\\n") : result.stdout;',
+    );
   await writeFile(
     join(copiedScripts, "package-source-integrity.mjs"),
     (await readFile(join(import.meta.dirname, "package-source-integrity.mjs"), "utf8"))
@@ -214,11 +220,16 @@ async function requestFixture(
     const row = { repo, path, head, buildReceipt };
     if (repo !== "dsh-gea-plugin") {
       const packed = JSON.parse(
-        execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", work], {
-          cwd: path,
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "pipe"],
-        }),
+        execFileSync(
+          process.platform === "win32" ? "npm.cmd" : "npm",
+          ["pack", "--json", "--ignore-scripts", "--pack-destination", work],
+          {
+            cwd: path,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+            shell: process.platform === "win32",
+          },
+        ),
       );
       row.archive = join(work, packed[0].filename);
     }
@@ -583,6 +594,32 @@ test("the real Manage git repository metadata survives ordinary three-package de
   );
   assert.equal(manifest.repository.url, "git+https://github.com/CleverC2200/dsh-agent-manage.git");
   await assert.rejects(access(join(fixture.destination, "evidence/gea-production")));
+});
+
+test("delivery accepts CRLF archive listings and still rejects missing public exports", async (t) => {
+  const fixture = await requestFixture(t, {
+    tarOutputCRLF: true,
+    successfulPackageManager: true,
+  });
+  const result = spawnSync(
+    process.execPath,
+    [fixture.entry, "--input", fixture.input, "--destination", fixture.destination],
+    { cwd: "/", encoding: "utf8", env: fixture.env },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const manifest = JSON.parse(await readFile(join(fixture.destination, "manifest.json"), "utf8"));
+  assert.equal(manifest.status, "packaged");
+  assert.equal(manifest.packages.length, 3);
+
+  const missing = await requestFixture(t, { tarOutputCRLF: true, missingClient: true });
+  const rejected = spawnSync(
+    process.execPath,
+    [missing.entry, "--input", missing.input, "--destination", missing.destination],
+    { cwd: "/", encoding: "utf8", env: missing.env },
+  );
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /DELIVERY_PUBLIC_EXPORT_MISSING/);
+  await assert.rejects(access(missing.destination));
 });
 
 test("successful delivery keeps package bodies out of bounded command diagnostics", async (t) => {

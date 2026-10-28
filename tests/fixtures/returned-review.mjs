@@ -24,6 +24,7 @@ export const fixture = async (
     normalBatch = false,
     sameIdPeriod = false,
     originalSubmitter = "9007199254740993",
+    customerCanEdit = false,
   } = {},
 ) => {
   const app = await profile(t, {
@@ -250,7 +251,7 @@ export const fixture = async (
           versionId: current.id,
           status: current.status,
           policy: "role-visible-v1",
-          allowedActions: [],
+          allowedActions: role === "customer" && customerCanEdit ? ["SAVE"] : [],
           roleActions: [{ role, allowedActions: [] }],
           snapshotHash: "a".repeat(64),
         },
@@ -468,3 +469,17 @@ export const selectPlan = (frame, name = "乌鲁木齐退回区域") =>
     .first()
     .locator("label.arco-checkbox")
     .click();
+
+/** Quantities are edited in the row; submission dialogs only review the resulting draft. */
+export async function editReturnedQuantity(
+  frame,
+  quantity,
+  name = "乌鲁木齐退回区域",
+  label = "确认计划量 789",
+) {
+  await frame.getByRole("button", { name: `打开 ${name} 调整明细`, exact: true }).click();
+  const input = frame.getByRole("spinbutton", { name: label, exact: true });
+  await expect(input).toBeVisible();
+  await input.fill(quantity);
+  await expect(input).toHaveValue(quantity);
+}

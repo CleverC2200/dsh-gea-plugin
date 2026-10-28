@@ -607,6 +607,15 @@
         "scripts/serial-merge-artifacts.test.mjs",
         "scripts/serial-merge-runtime.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^docs/fc-storage/proposed-postgresql\\.sql$",
+      "tests": [
+        "tests/fc-storage.test.mjs",
+        "tests/fc-legacy-planning.test.mjs",
+        "tests/fc-submission-flow.integration.test.mjs"
+      ]
     }
   ],
   "testOwners": {
