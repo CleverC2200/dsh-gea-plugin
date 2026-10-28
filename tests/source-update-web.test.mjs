@@ -86,11 +86,11 @@ test(
       const channel = join(runtime, "simulated-channel");
       await fs.mkdir(channel);
       const proposals = [];
+      const candidate = await mergeSourceComponents(runtime, base.id, {}, core);
+      const directory = join(runtime, "source-combinations", candidate.id),
+        record = await json(join(directory, "combination.json")),
+        plugins = await json(join(directory, "company-plugins.json"));
       for (const name of [gea, workbench]) {
-        const candidate = await mergeSourceComponents(runtime, base.id, {}, core);
-        const directory = join(runtime, "source-combinations", candidate.id),
-          record = await json(join(directory, "combination.json")),
-          plugins = await json(join(directory, "company-plugins.json"));
         const pkgFile = join(directory, "node_modules", name, "package.json"),
           pkg = await json(pkgFile),
           version = pkg.version.split("-")[0].split(".").map(Number);
@@ -98,13 +98,15 @@ test(
         pkg.version = version.join(".") + (name === workbench ? "" : "-local.10");
         record.composition.dependencies[name] = pkg.version;
         plugins[name].version = pkg.version;
-        const pkgBytes = JSON.stringify(pkg, null, 2) + "\n",
-          metadataBytes = JSON.stringify(plugins, null, 2);
+        const pkgBytes = JSON.stringify(pkg, null, 2) + "\n";
         await fs.writeFile(pkgFile, pkgBytes);
-        await fs.writeFile(join(directory, "company-plugins.json"), metadataBytes);
         record.files[`node_modules/${name}/package.json`] = digest(pkgBytes);
-        record.files["company-plugins.json"] = digest(metadataBytes);
-        await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record, null, 2));
+      }
+      const metadataBytes = JSON.stringify(plugins, null, 2);
+      await fs.writeFile(join(directory, "company-plugins.json"), metadataBytes);
+      record.files["company-plugins.json"] = digest(metadataBytes);
+      await fs.writeFile(join(directory, "combination.json"), JSON.stringify(record, null, 2));
+      for (const name of [gea, workbench]) {
         const actual = sourceComponent(record, plugins, name),
           artifact = join(channel, name === gea ? "gea.json" : "workbench.json"),
           bytes = JSON.stringify({
@@ -214,12 +216,11 @@ test(
               t.signal.throwIfAborted();
             }
             const proposal = phase === "gea-updated" ? proposalA : proposalB;
-            const result = await measureSourceUpdate(t, phase, "apply-update", () =>
-              applySourceUpdate(app.runtime, proposal, {
-                core,
-              }),
-            );
-            assert.equal(result.phase, "succeeded", JSON.stringify(result.failed));
+            const result = await measureSourceUpdate(t, phase, "apply-update", async () => {
+              const result = await applySourceUpdate(app.runtime, proposal, { core });
+              assert.equal(result.phase, "succeeded", JSON.stringify(result.failed));
+              return result;
+            });
             updates.push(result);
             if (phase === "gea-updated") {
               const late = await applySourceUpdate(app.runtime, proposalA, {
