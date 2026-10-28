@@ -17,11 +17,11 @@ import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
-import { measureSourcePhase, sourcePhase } from "./source-phase-observer.mjs";
-
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
 import { readSupportedCore } from "./supported-cores.mjs";
 import {
+  measureSourcePhase,
+  sourcePhase,
   fileDigest,
   clientEntry,
   componentArtifactEntries,
