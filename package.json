@@ -82,7 +82,7 @@
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",
-    "@cleverc2200/dsh-agent-workbench": "link:../dsh-agent-workbench || 0.1.35",
+    "@cleverc2200/dsh-agent-workbench": "link:../dsh-agent-workbench",
     "decimal.js": "10.6.0",
     "dsh-better-sidebar": "link:../../upstream-inputs/sidebar",
     "esbuild": "0.25.9",
