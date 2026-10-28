@@ -129,6 +129,54 @@ test("plans balance measured dispatch order without dropping any required file",
   assert.equal(plan.estimates.estimatedMs, 11);
 });
 
+test("advisory historical weights route files without becoming known duration estimates", () => {
+  const files = ["tests/a-short.test.mjs", "tests/z-long.test.mjs", "tests/split-new.test.mjs"];
+  const selection = { files, required: files };
+  const timings = {
+    source: { kind: "historical-reference-only", acceptance: "not-acceptance" },
+    files: [{ file: files[0], durationMs: 10 }],
+    orderingFiles: [
+      { file: files[0], durationMs: 10 },
+      { file: files[1], durationMs: 1000 },
+    ],
+  };
+  const plan = createExecutionPlan({
+    selection,
+    platformPlan: selection,
+    binding: {},
+    timings,
+    concurrency: 3,
+  });
+  assert.deepEqual(plan.shards[0].files, [files[2], files[1], files[0]]);
+  assert.deepEqual([...plan.shards[0].files].sort(), [...files].sort());
+  assert.deepEqual(plan.required, files);
+  assert.equal(plan.estimates.knownFiles, 1);
+  assert.equal(plan.estimates.advisoryFiles, 1);
+  assert.equal(plan.estimates.unknownFiles, 2);
+  assert.equal(plan.estimates.knownSumMs, 10);
+  assert.equal(plan.estimates.estimatedMs, null);
+  assert.equal(plan.shards[0].estimatedMs, null);
+  assert.equal(plan.timingSource.acceptance, "not-acceptance");
+  for (const orderingFiles of [
+    null,
+    [{ file: files[0], durationMs: -1 }],
+    [
+      { file: files[0], durationMs: 1 },
+      { file: files[0], durationMs: 1 },
+    ],
+  ])
+    assert.throws(
+      () =>
+        createExecutionPlan({
+          selection,
+          platformPlan: selection,
+          binding: {},
+          timings: { ...timings, orderingFiles },
+        }),
+      /QUALITY_TEST_TIMING_INVALID/,
+    );
+});
+
 test("three-slot measured dispatch routing preserves the complete set and deterministic plan hash", () => {
   const files = ["a", "b", "c", "d", "e", "f", "g"].map((name) => name + ".test.mjs");
   const selection = { files, required: files };
