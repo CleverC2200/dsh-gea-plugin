@@ -313,6 +313,11 @@
     },
     {
       "repo": "dsh-agent-workbench",
+      "pattern": "^src/workbench/(?:original/workbenches/regionalApproval/|workbench\\.css$)",
+      "tests": ["tests/progress-column-web.test.mjs", "tests/detail-summary-web.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
       "pattern": "^src/plugin-package-version\\.ts$",
       "tests": ["tests/plugin-update-integration.contract.mjs"]
     },

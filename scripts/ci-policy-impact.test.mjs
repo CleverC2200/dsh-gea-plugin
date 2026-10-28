@@ -867,6 +867,30 @@ test("the presentation fixture selects every isolated page consumer", (t) => {
   );
 });
 
+test("sales-plan page and style changes retain detail presentation and real owner wiring", (t) => {
+  const presentation = "tests/progress-column-web.test.mjs";
+  const integration = "tests/detail-summary-web.test.mjs";
+  for (const source of [
+    "src/workbench/original/workbenches/regionalApproval/RegionalApprovalWorkbench.tsx",
+    "src/workbench/workbench.css",
+  ]) {
+    const fixture = resourceImpactFixture(t, [
+      presentation,
+      integration,
+      "tests/fixtures/sales-plan-presentation.mjs",
+      "tests/fixtures/model-profile.mjs",
+      "tests/profile.mjs",
+    ]);
+    fixture.change(fixture.peer, source, "export const changed = true;\n");
+    const plan = fixture.plan();
+    assert.ok(plan.files.includes(presentation), JSON.stringify(plan));
+    assert.ok(plan.files.includes(integration), JSON.stringify(plan));
+    assert.ok(!plan.runtimeFiles.includes(presentation), JSON.stringify(plan));
+    assert.ok(plan.runtimeFiles.includes(integration), JSON.stringify(plan));
+    assert.equal(plan.browser, true);
+  }
+});
+
 test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {
   const { repositories, put, commit } = temporaryGitRepositories(t);
   for (const entry of repositories) {
