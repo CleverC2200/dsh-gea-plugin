@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "../profile.mjs";
@@ -403,3 +405,66 @@ export const fixture = async (
     },
   };
 };
+
+export const captureEvidence = async (page, app, name) => {
+  const directory = process.env.S1_EVIDENCE_DIR;
+  if (!directory) return;
+  await mkdir(directory, { recursive: true });
+  await page.screenshot({
+    path: resolve(directory, name + ".png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await writeFile(
+    resolve(directory, name + ".layout.json"),
+    JSON.stringify(
+      await page
+        .frameLocator('iframe[src^="/api/agent-workbench/native?"]')
+        .locator("body")
+        .evaluate((body) => {
+          const node = body.querySelector('[role="dialog"]');
+          if (!node) return { viewport: window.innerWidth };
+          const rect = node.getBoundingClientRect();
+          return {
+            viewport: window.innerWidth,
+            x: rect.x,
+            width: rect.width,
+            right: rect.right,
+          };
+        }),
+    ),
+  );
+  await writeFile(
+    resolve(directory, name + ".aria.txt"),
+    await page
+      .frameLocator('iframe[src^="/api/agent-workbench/native?"]')
+      .locator("body")
+      .ariaSnapshot(),
+  );
+  await writeFile(
+    resolve(directory, name + ".host.json"),
+    await readFile(resolve(app.runtime, "source-host.json")),
+  );
+  const host = JSON.parse(await readFile(resolve(app.runtime, "source-host.json"), "utf8"));
+  await writeFile(
+    resolve(directory, name + ".plugins.json"),
+    await readFile(
+      resolve(app.runtime, "source-combinations", host.combination, "company-plugins.json"),
+    ),
+  );
+  await writeFile(
+    resolve(directory, name + ".warnings.txt"),
+    app.output
+      .split("\n")
+      .filter((line) => /warning|failed to import/.test(line))
+      .join("\n"),
+  );
+};
+
+export const selectPlan = (frame, name = "乌鲁木齐退回区域") =>
+  frame
+    .locator("tbody tr")
+    .filter({ hasText: name })
+    .first()
+    .locator("label.arco-checkbox")
+    .click();

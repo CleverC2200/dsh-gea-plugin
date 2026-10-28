@@ -98,6 +98,7 @@ function hosted() {
           step("Require complete source-check execution", "skipped"),
         ],
       },
+      { name: "dependency-policy", conclusion: "skipped", steps: [] },
     ].map((job, index) => ({
       ...job,
       id: id * 10 + index,
@@ -229,6 +230,15 @@ test("missing artifacts, admission, complete jobs and successful worker aggregat
     (f) => {
       f.jobs[100].push({ ...f.jobs[100][0], id: 9999, name: "unexpected-job" });
     },
+    (f) => {
+      f.jobs[100].splice(
+        f.jobs[100].findIndex((job) => job.name === "dependency-policy"),
+        1,
+      );
+    },
+    (f) => {
+      f.jobs[100].find((job) => job.name === "dependency-policy").conclusion = "success";
+    },
   ]) {
     const f = hosted();
     const selection = await lookupFormalSource({ context, read: f.read });
@@ -249,6 +259,7 @@ test("missing artifacts, admission, complete jobs and successful worker aggregat
     })),
   );
   f.jobs[100].find((job) => job.name === "dependency-review").conclusion = "success";
+  f.jobs[100].find((job) => job.name === "dependency-policy").conclusion = "success";
   const receipt = recordSourceInput({
     context: { ...context, runId: 100 },
     plan: { ...plan, mode: "code", engineering: true, "dependency-review": true },
@@ -262,6 +273,13 @@ test("missing artifacts, admission, complete jobs and successful worker aggregat
     (await verifyFormalSource({ context, selection, receipt, read: f.read })).verified,
     true,
   );
+  for (const conclusion of ["skipped", "failure", "cancelled"]) {
+    f.jobs[100].find((job) => job.name === "dependency-policy").conclusion = conclusion;
+    await assert.rejects(
+      verifyFormalSource({ context, selection, receipt, read: f.read }),
+      /formal job coverage/,
+    );
+  }
 });
 
 test("receipt and fresh API identities bind head, both bases, target, source, workflow, PR and attempt", async () => {
