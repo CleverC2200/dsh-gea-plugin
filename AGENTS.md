@@ -1,5 +1,7 @@
 # GEA 工程入口
 
+在插件拆分项目内修改功能、调试界面或本地启动时，先读取项目根 `docs/agents/dependency-preparation.md` 的“源码调试与安装验收”，按当前任务选择源码反馈或安装验收，再执行构建。
+
 在插件拆分项目中执行时，先读该项目根的 `docs/agents/current-development.md`，按本票 `integration-set.json` 核同组三仓 checkout、提交与未提交改动。独立仓库或 CI checkout 按本票候选输入核同组源码。随后读本仓 [README](README.md)。根同名仓、原公司壳与旧发行记录按 [文档索引](docs/index.md) 追溯。
 
 修改身份、Consumer、额度、取消或业务执行时，读 [执行链](docs/execution-logic.md) 与 [能力声明](docs/capability-contract.md)。GEA Host 为唯一身份与凭据权威；页面和页面/Session 关联归 Workbench，资源及纯计算归 Manage，持久 Session 与草稿归 Core。凭据、失败、取消、部分和 unknown 按原执行合同保留，原业务规则和用户数据不因工程整理改变。
