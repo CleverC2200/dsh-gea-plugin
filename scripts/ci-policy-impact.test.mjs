@@ -774,6 +774,9 @@ test("browser-only changes and their dedicated fixtures select their browser con
 test("the shared returned-review fixture selects every isolated browser scenario", (t) => {
   const consumers = [
     "tests/returned-resubmit-web.test.mjs",
+    "tests/returned-resubmit-batch-web.test.mjs",
+    "tests/returned-resubmit-recovery-web.test.mjs",
+    "tests/returned-resubmit-access-web.test.mjs",
     "tests/returned-review-roles-web.test.mjs",
     "tests/returned-review-reject-web.test.mjs",
   ];
@@ -792,6 +795,32 @@ test("the shared returned-review fixture selects every isolated browser scenario
   assert.equal(plan.browser, true);
   assert.ok(
     consumers.every((file) => plan.runtimeFiles.includes(file)),
+    JSON.stringify(plan),
+  );
+});
+
+test("the presentation fixture selects every isolated page consumer", (t) => {
+  const consumers = [
+    "tests/progress-column-web.test.mjs",
+    "tests/variance-color-web.test.mjs",
+    "tests/approval-queue-layout-web.test.mjs",
+    "tests/presentation-isolation.test.mjs",
+  ];
+  const shared = "tests/fixtures/sales-plan-presentation.mjs";
+  const fixture = resourceImpactFixture(t, [...consumers, shared]);
+  fixture.change(
+    fixture.own,
+    shared,
+    readFileSync(new URL("../" + shared, import.meta.url), "utf8") + "\n",
+  );
+  const plan = fixture.plan();
+  assert.ok(
+    consumers.every((file) => plan.files.includes(file)),
+    JSON.stringify(plan),
+  );
+  assert.equal(plan.browser, true);
+  assert.ok(
+    consumers.every((file) => !plan.runtimeFiles.includes(file)),
     JSON.stringify(plan),
   );
 });

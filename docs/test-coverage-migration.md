@@ -12,6 +12,19 @@
 
 原身份、Session、页面动作、保存/重提回读、装载/更新/恢复测试保留。页面测试采用真实 React 页面、生产样式和现有 WorkbenchHostProvider；每例新 Context 与本地 HTTP 服务，同文件只共享不可变 bundle 和 Browser。外部响应是固定样本，不作为权限验证结果。
 
+## 第二批拆分与迁移
+
+`returned-resubmit-web.test.mjs` 的 17 项测试保留原测试体、断言和独立 Profile，分为四个文件；共享的取行与诊断输出函数移到原 `returned-review.mjs` 夹具。
+
+| 文件                                            | 原场景数 | 范围                                   |
+| ----------------------------------------------- | -------: | -------------------------------------- |
+| `tests/returned-resubmit-web.test.mjs`          |        5 | 四种角色重提与普通待审批记录           |
+| `tests/returned-resubmit-batch-web.test.mjs`    |        5 | 混合批量、部分失败、回读与未知项重试   |
+| `tests/returned-resubmit-recovery-web.test.mjs` |        3 | 关闭恢复、成功回读与重新选择保全       |
+| `tests/returned-resubmit-access-web.test.mjs`   |        4 | 服务配置、拒绝原因、责任身份与退出撤销 |
+
+`returned-review-reject-web.test.mjs` 的表头滚动测试迁到 `approval-queue-layout-web.test.mjs`，运行真实审批页面组件与生产 CSS，滚动操作和位置断言保留。其余三项拒绝流程继续使用完整端到端。新文件耗时由实际运行记录，不按原文件耗时均摊。
+
 ## 并行执行
 
 source-quality 的联合检查按 Profile 与其他文件数量动态分片，最多 16 个 job，单 job 资源和文件并发不变。适用集合少于两文件保持单 job；分片编号、总数、冻结输入、完整执行回执及汇总必须一致。40 个并发额度为账号共享额度，不保证本次同时获得全部位置。
@@ -20,12 +33,12 @@ source-quality 的联合检查按 Profile 与其他文件数量动态分片，�
 
 | 原文件                                              | 原 CI 测试项 | 当前去向                                                                                                      |
 | --------------------------------------------------- | -----------: | ------------------------------------------------------------------------------------------------------------- |
-| `tests/returned-resubmit-web.test.mjs`              |           17 | 保留原场景及断言；尚未迁移                                                                                    |
+| `tests/returned-resubmit-web.test.mjs`              |           17 | 原 17 项完整端到端保留，按上表拆成 5 / 5 / 3 / 4 项四个文件                                                   |
 | `tests/source-update-web.test.mjs`                  |            1 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/native-page-identity-web.test.mjs`           |            6 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/branch-stock-web.test.mjs`                   |            6 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/branch-stock-lifecycle-web.test.mjs`         |            6 | 保留原场景及断言；尚未迁移                                                                                    |
-| `tests/returned-review-reject-web.test.mjs`         |            4 | 保留原场景及断言；尚未迁移                                                                                    |
+| `tests/returned-review-reject-web.test.mjs`         |            4 | 三项拒绝流程保留原端到端；表头滚动迁至 `approval-queue-layout-web.test.mjs`，保留原断言                       |
 | `tests/returned-review-roles-web.test.mjs`          |            4 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/prompt-qa-regression.test.mjs`               |           17 | 保留原场景及断言；尚未迁移                                                                                    |
 | `tests/page-reference-columns-web.test.mjs`         |            4 | 保留原场景及断言；尚未迁移                                                                                    |
