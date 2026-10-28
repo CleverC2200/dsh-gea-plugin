@@ -79,26 +79,39 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
       });
     }
     assert.equal(headers.get("X-Delegation-Token"), "synthetic-order");
-    assert.equal("sql" in body, false);
-    assert.equal("tenant" in body, false);
-    assert.equal("actor" in body, false);
-    if (path.endsWith("/ai/gateway/order-report/load")) {
+    if (path.endsWith("/ai/gateway/sql/execute")) {
+      if (body.sql.startsWith("SELECT DISTINCT belong_base"))
+        return Response.json({
+          success: true,
+          result: {
+            rows: [{ belong_base: scopeChanged && writes.length ? "上海" : "郑州" }],
+            returnedColumns: ["belong_base"],
+            rejectedColumns: [],
+          },
+        });
       loads++;
-      assert.deepEqual(body, {
-        periodType: period.type,
-        periodStart: period.start,
-        periodEndExclusive: period.end,
-      });
+      assert.match(body.sql, /period_start = CAST\(:start AS DATE\)/);
+      assert.equal(body.parameters.tenant, 0);
+      assert.equal(body.parameters.scope, scope.key);
+      assert.equal(body.parameters.consumer, "order");
       return Response.json({
         success: true,
         result: {
-          scope: scopeChanged && writes.length ? { key: "order:base:上海", base: "上海" } : scope,
           rows: row ? [row] : [],
+          returnedColumns: ["report_data", "version", "last_request_id", "schema_version"],
+          rejectedColumns: [],
         },
       });
     }
-    if (path.endsWith("/ai/gateway/order-report/save")) {
-      saveAttempts.push(body.requestId);
+    if (path.endsWith("/ai/sql/execute")) {
+      assert.equal(body.dataSourceCode, "Doris-OA");
+      assert.match(body.sql, /^(INSERT INTO|UPDATE) agents_order_workbench_report\b/);
+      assert.equal(body.parameters.actor, "editor");
+      assert.equal(body.parameters.tenant, 0);
+      assert.equal(body.parameters.scope, scope.key);
+      assert.equal(body.parameters.consumer, "order");
+      assert.equal(body.idempotencyKey, body.parameters.request);
+      saveAttempts.push(body.idempotencyKey);
       if (expireFirstSave && saveAttempts.length === 1)
         return Response.json({
           success: false,
@@ -106,21 +119,20 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
           message: "session expired",
         });
       if (deny) return Response.json({ success: false, message: "ORDER_REPORT_PERMISSION_DENIED" });
-      assert.equal(body.scopeKey, scope.key);
-      assert.equal(body.expectedVersion, 0);
-      const envelope = JSON.parse(body.reportData);
+      assert.equal(body.parameters.expected, 0);
+      const envelope = JSON.parse(body.parameters.report);
       assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(envelope.data, "base64"))), report);
       writes.push(body);
       row = {
-        report_data: body.reportData,
+        report_data: body.parameters.report,
         version: 1,
-        last_request_id: body.requestId,
+        last_request_id: body.idempotencyKey,
         schema_version: 1,
         period_end_exclusive: period.end,
       };
       return Response.json({
         success: true,
-        result: { saved: true, version: 1, requestId: body.requestId },
+        result: { affectedRows: 1 },
       });
     }
     throw Error("Unexpected endpoint: " + path);
@@ -136,7 +148,7 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
     },
   };
 }
-test("ordinary editor saves and reopens through order endpoints without management APIs or raw SQL", async (t) => {
+test("ordinary editor saves and reopens fixed report SQL with the existing order identity and governed base", async (t) => {
   const remote = gateway(t),
     editor = business(t),
     signal = new AbortController().signal;
