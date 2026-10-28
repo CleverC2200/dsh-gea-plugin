@@ -191,9 +191,9 @@ test(
         .boundingBox();
       assert.equal(documentChrome.height, 58);
       assert.equal(
-        loginBounds.height + documentChrome.height,
-        920,
-        "login content and the requested Document title row fill the available main height",
+        loginBounds.height,
+        page.viewportSize().height,
+        "the native login Document fills the main viewport; window chrome is an overlay",
       );
 
       await mkdir(".runtime/web-evidence", { recursive: true });

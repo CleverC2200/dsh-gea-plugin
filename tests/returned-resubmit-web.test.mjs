@@ -1,7 +1,13 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
-import { fixture, PLAN_A, captureEvidence, selectPlan } from "./fixtures/returned-review.mjs";
+import {
+  fixture,
+  PLAN_A,
+  captureEvidence,
+  selectPlan,
+  editReturnedQuantity,
+} from "./fixtures/returned-review.mjs";
 
 for (const [role, returnedStatus] of [
   ["region", 7],
@@ -36,12 +42,13 @@ for (const [role, returnedStatus] of [
       });
       await expect(edit).toBeEnabled();
       if (returnedStatus === 7) await captureEvidence(page, app, "returned-entry");
+      await editReturnedQuantity(frame, "3.000");
       await edit.click();
       const dialog = frame.getByRole("dialog", {
-        name: "真实销售计划退回重提",
+        name: "确认修改并重提",
         exact: true,
       });
-      await dialog.getByRole("textbox", { name: "提报数量 789" }).fill("3.000");
+      await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
       await expect(dialog).toContainText("37.02");
       if (returnedStatus === 7) await captureEvidence(page, app, "inheritance-confirmation");
       await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);

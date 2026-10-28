@@ -468,3 +468,17 @@ export const selectPlan = (frame, name = "乌鲁木齐退回区域") =>
     .first()
     .locator("label.arco-checkbox")
     .click();
+
+/** Quantities are edited in the row; submission dialogs only review the resulting draft. */
+export async function editReturnedQuantity(
+  frame,
+  quantity,
+  name = "乌鲁木齐退回区域",
+  label = "确认计划量 789",
+) {
+  await frame.getByRole("button", { name: `打开 ${name} 调整明细`, exact: true }).click();
+  const input = frame.getByRole("spinbutton", { name: label, exact: true });
+  await expect(input).toBeVisible();
+  await input.fill(quantity);
+  await expect(input).toHaveValue(quantity);
+}

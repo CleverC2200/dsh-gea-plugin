@@ -153,9 +153,10 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
   const resubmit = frame.getByRole("button", { name: "修改后提交", exact: true });
   await expect(resubmit).toBeEnabled();
   await resubmit.click();
-  const dialog = frame.getByRole("dialog", { name: "真实销售计划退回重提", exact: true });
+  const dialog = frame.getByRole("dialog", { name: "确认修改并重提", exact: true });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("textbox", { name: "纠偏调整量 789" })).toHaveValue("0");
+  await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
+  await expect(dialog).toContainText("没有数量修改");
   await expect(dialog).toContainText("修改重提入口尚未就绪或权限不足，暂不发送重提");
   await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();

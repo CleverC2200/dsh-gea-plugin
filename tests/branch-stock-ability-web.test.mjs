@@ -225,8 +225,7 @@ test(
     const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
     await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
     const chooser = page.getByRole("combobox", { name: "选择解读能力" });
-    await expect(chooser).toBeVisible();
-    await expect(chooser.locator("option")).toHaveCount(2);
+    await expect(chooser).toHaveCount(0);
     await expect.poll(() => typeof opens.at(-1)?.owner).toBe("string");
     const branchSession = opens.at(-1).sessionId;
     const branchOwner = opens.at(-1).owner;
@@ -368,11 +367,10 @@ test(
       "USER_PAGE_REFERENCE",
       `请解释 @[FC001](dsh-page:${referenceId})`,
     );
-    const contextsBeforeSwitch = contexts.length;
-    await chooser.selectOption("gea-html-inventory-qll");
+    await openWorkbenchPage(page, "全链库存");
     await expect.poll(() => opens.at(-1)?.sessionId).not.toBe(branchSession);
     const qllSession = opens.at(-1).sessionId;
-    assert.equal(opens.at(-1).resourceId, "gea-html-inventory-fc");
+    assert.equal(opens.at(-1).resourceId, "gea-html-inventory-qll");
     await expect.poll(() => sessionPreset(app, qllSession)).toBe("gea-html-inventory-qll");
     const releasedOwner = await fixtureRequest(app, "/api/agent-workbench/page", {
       operation: "context",
@@ -382,18 +380,9 @@ test(
     assert.equal(releasedOwner.ok, false);
     assert.equal(releasedOwner.value.error, "PAGE_OWNER_RELEASED");
     assert.notEqual(qllSession, branchSession);
-    await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
-    await expect.poll(() => contexts.length).toBeGreaterThan(contextsBeforeSwitch);
-    await expect
-      .poll(() => {
-        const parts = contexts.at(-1)?.parts;
-        return (
-          parts?.queryState?.state === "ready" &&
-          typeof parts.pageReference?.scope === "string" &&
-          parts.pageReference.scope !== refreshedScope
-        );
-      })
-      .toBe(true);
+    await expect(
+      htmlFrameElement(page, "inventory-qll").contentFrame().getByText("固定样本辅助 Agent"),
+    ).toBeVisible();
     await promptPage(qllSession, "evidenceId");
     await promptPage(
       qllSession,

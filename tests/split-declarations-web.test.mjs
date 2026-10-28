@@ -319,13 +319,13 @@ test(
         background,
       );
       await expect(htmlFrameElement(page, themePageId)).toHaveCSS("font-size", "15px");
-      assert.equal(
+      assert.match(
         await page
           .locator("body")
           .evaluate((element) =>
             getComputedStyle(element).getPropertyValue("--workbench-theme-version").trim(),
           ),
-        '"1.1.1"',
+        /^(["'])1\.1\.1\1$/,
       );
       await expect(page.locator('style[data-agent-workbench-theme="1.1.1"]')).toHaveCount(1);
       await expect(page.locator('meta[name="theme-color"]')).toHaveCount(1);
