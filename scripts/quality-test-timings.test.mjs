@@ -135,6 +135,101 @@ for (const file of ["tests/a.test.mjs", "desktop/timing.test.mjs"])
       );
     },
   );
+test("scheduler-only drift keeps historical long-file ordering without trusting stale predictions", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "gea-timing-order-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "tests"));
+  mkdirSync(join(root, "scripts"));
+  writeFileSync(join(root, "tests/a-short.test.mjs"), "short");
+  writeFileSync(join(root, "tests/z-long.test.mjs"), "long");
+  writeFileSync(join(root, "scripts/source-check-shards.mjs"), "new scheduler");
+  const environment = {
+    platform: "linux",
+    node: "24.22.0",
+    core: "a".repeat(40),
+    fileConcurrency: 3,
+  };
+  const timings = {
+    schemaVersion: 2,
+    source: {
+      ...environment,
+      kind: "measured-reference-only",
+      acceptance: "not-acceptance",
+      runId: 123,
+      runAttempt: 1,
+    },
+    inputs: { "scripts/source-check-shards.mjs": hash("old scheduler") },
+    fixtures: {},
+    files: [
+      {
+        file: "tests/a-short.test.mjs",
+        durationMs: 10,
+        sha256: hash("short"),
+        fixtures: [],
+      },
+      {
+        file: "tests/z-long.test.mjs",
+        durationMs: 1000,
+        sha256: hash("long"),
+        fixtures: [],
+      },
+    ],
+  };
+  const current = currentTestTimings({ root, timings, environment });
+  const selection = {
+    files: timings.files.map((entry) => entry.file),
+    required: timings.files.map((entry) => entry.file),
+  };
+  const plan = createExecutionPlan({
+    selection,
+    platformPlan: selection,
+    binding: {},
+    concurrency: 3,
+    timings: current,
+  });
+  assert.deepEqual(plan.shards[0].files, ["tests/z-long.test.mjs", "tests/a-short.test.mjs"]);
+  assert.equal(plan.estimates.knownFiles, 0);
+  assert.equal(plan.estimates.advisoryFiles, 2);
+  assert.equal(plan.estimates.unknownFiles, 2);
+  assert.equal(plan.estimates.knownSumMs, 0);
+  assert.equal(plan.estimates.estimatedMs, null);
+  assert.equal(plan.shards[0].estimatedMs, null);
+  assert.equal(plan.timingSource.acceptance, "not-acceptance");
+  assert.equal(plan.timingSource.runId, 123);
+  assert.equal(plan.timingSource.runAttempt, 1);
+  assert.deepEqual(current.files, []);
+  assert.ok(
+    current.source.invalidated.every((entry) => entry.reason === "shared-input-changed-or-missing"),
+  );
+  writeFileSync(join(root, "tests/z-long.test.mjs"), "changed long test");
+  writeFileSync(join(root, "tests/split-new.test.mjs"), "new split test");
+  const changed = currentTestTimings({ root, timings, environment });
+  const splitSelection = {
+    files: [...selection.files, "tests/split-new.test.mjs"],
+  };
+  const splitPlan = createExecutionPlan({
+    selection: splitSelection,
+    platformPlan: splitSelection,
+    binding: {},
+    concurrency: 3,
+    timings: changed,
+  });
+  assert.deepEqual(
+    changed.orderingFiles.map((entry) => entry.file),
+    ["tests/a-short.test.mjs"],
+  );
+  assert.equal(splitPlan.estimates.advisoryFiles, 1);
+  assert.equal(splitPlan.estimates.unknownFiles, 3);
+  assert.equal(splitPlan.estimates.estimatedMs, null);
+  assert.deepEqual([...splitPlan.shards[0].files].sort(), [...splitSelection.files].sort());
+  assert.ok(
+    changed.source.invalidated.some(
+      (entry) =>
+        entry.file === "tests/z-long.test.mjs" && entry.reason === "file-changed-or-missing",
+    ),
+  );
+});
+
 test("costs invalidate changed tests, changed or deleted fixtures, and incompatible environments", (t) => {
   const root = mkdtempSync(join(tmpdir(), "gea-timing-inputs-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -166,15 +261,24 @@ test("costs invalidate changed tests, changed or deleted fixtures, and incompati
   const read = (value = timings, env = environment) =>
     currentTestTimings({ timings: value, root, environment: env });
   assert.equal(read().files.length, 2);
+  assert.equal(read().orderingFiles.length, 2);
   write("tests/two.browser.mjs", "changed");
   assert.deepEqual(read().source.invalidated, [
     { file: "tests/two.browser.mjs", reason: "file-changed-or-missing" },
   ]);
+  assert.deepEqual(
+    read().orderingFiles.map((entry) => entry.file),
+    ["tests/one.test.mjs"],
+  );
   write("tests/two.browser.mjs", "two");
   write("tests/fixtures/profile.mjs", "changed");
   assert.deepEqual(read().source.invalidated, [
     { file: "tests/two.browser.mjs", reason: "fixture-changed-or-missing" },
   ]);
+  assert.deepEqual(
+    read().orderingFiles.map((entry) => entry.file),
+    ["tests/one.test.mjs"],
+  );
   rmSync(join(root, "tests/fixtures/profile.mjs"));
   assert.equal(read().files.length, 1);
   rmSync(join(root, "tests/one.test.mjs"));
@@ -182,6 +286,7 @@ test("costs invalidate changed tests, changed or deleted fixtures, and incompati
   for (const key of Object.keys(environment)) {
     const result = read(timings, { ...environment, [key]: "changed" });
     assert.ok(result.source.invalidated.every((entry) => entry.reason === "environment-changed"));
+    assert.deepEqual(result.orderingFiles, []);
   }
   assert.ok(
     read({ ...timings, schemaVersion: undefined }).source.invalidated.every(
