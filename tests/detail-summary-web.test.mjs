@@ -10,22 +10,33 @@ test(
   "Dashboard shows current SKU totals while monthly baseline and categories retain their own basis",
   { timeout: 90000 },
   async (t) => {
-    const artifactDirectory = ".runtime/detail-summary";
+    const artifactDirectory = `.runtime/detail-summary/${process.pid}`;
     mkdirSync(artifactDirectory, { recursive: true });
     const started = performance.now();
-    let phase = "profile", context, page, completed = false;
+    let phase = "profile",
+      context,
+      page,
+      completed = false;
     const mark = (next) => {
       phase = next;
       const row = { testName: t.name, phase, elapsedMs: performance.now() - started };
-      appendFileSync(artifactDirectory + "/phases.jsonl", JSON.stringify(row) + "\n");
+      try {
+        appendFileSync(artifactDirectory + "/phases.jsonl", JSON.stringify(row) + "\n");
+      } catch (error) {
+        t.diagnostic("DETAIL_SUMMARY_PHASE_WRITE_FAILED: " + String(error));
+      }
       t.diagnostic(JSON.stringify(row));
     };
     t.after(async () => {
       mark(completed ? "completed" : "failed:" + phase);
       if (!context) return;
       if (!completed && page && !page.isClosed())
-        await page.screenshot({ path: artifactDirectory + "/failure.png", timeout: 2000 }).catch(() => {});
-      await context.tracing.stop(completed ? {} : { path: artifactDirectory + "/failure-trace.zip" }).catch(() => {});
+        await page
+          .screenshot({ path: artifactDirectory + "/failure.png", timeout: 2000 })
+          .catch((error) => t.diagnostic("DETAIL_SUMMARY_SCREENSHOT_FAILED: " + String(error)));
+      await context.tracing
+        .stop({ path: artifactDirectory + (completed ? "/trace.zip" : "/failure-trace.zip") })
+        .catch((error) => t.diagnostic("DETAIL_SUMMARY_TRACE_FAILED: " + String(error)));
     });
     mark("profile");
     const app = await profile(t, {
@@ -225,6 +236,7 @@ test(
     await page.goto(app.origin);
     mark("sales-plan-open");
     const frame = await openReadySalesPlan(page);
+    mark("sales-plan-owner-ready");
     mark("workbench-ready");
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
@@ -258,10 +270,10 @@ test(
       0,
     );
     mark("screenshots");
-    await page.screenshot({ path: ".runtime/detail-summary/desktop.png", fullPage: true });
+    await page.screenshot({ path: artifactDirectory + "/desktop.png", fullPage: true });
     mark("narrow-screenshot");
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.screenshot({ path: ".runtime/detail-summary/narrow.png", fullPage: true });
+    await page.screenshot({ path: artifactDirectory + "/narrow.png", fullPage: true });
     mark("category-collapse");
     await category.getByRole("button").click();
     await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveCount(0);
