@@ -1,3 +1,4 @@
+import { measureSourceUpdate } from "./fixtures/source-update-timing.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 /** Real current profile activation uses local metadata-only candidate versions and loopback services. */
 import test from "./fixtures/source-test.mjs";
@@ -34,51 +35,53 @@ test(
   async (t) => {
     await fs.mkdir(parent, { recursive: true });
     let base, baseline, proposalA, proposalB;
-    const app = await profile(t, {
-      normalStartup: true,
-      runtimeParent: parent,
-      preserveRuntime: true,
-      config: (endpoint) => ({
-        cubeMcpCodes: { production: "cube" },
-        analysis: {
-          mode: "model",
-          baseUrl: endpoint + "/v1",
-          model: "fixture",
-          apiKeyEnv: "GEA_TEST_MODEL_KEY",
-          agentCode: "branch-inventory",
-          contextWindow: 32768,
-          maxTokens: 2048,
+    const app = await measureSourceUpdate(t, "baseline", "profile-start", () =>
+      profile(t, {
+        normalStartup: true,
+        runtimeParent: parent,
+        preserveRuntime: true,
+        config: (endpoint) => ({
+          cubeMcpCodes: { production: "cube" },
+          analysis: {
+            mode: "model",
+            baseUrl: endpoint + "/v1",
+            model: "fixture",
+            apiKeyEnv: "GEA_TEST_MODEL_KEY",
+            agentCode: "branch-inventory",
+            contextWindow: 32768,
+            maxTokens: 2048,
+          },
+        }),
+        env: { GEA_TEST_MODEL_KEY: "fixture-key" },
+        beforeStart: async ({ runtime, config, credentialEnv }) => {
+          await fs.mkdir(join(runtime, "home/profiles/plugin-split-validation"), {
+            recursive: true,
+          });
+          base = await prepareSourcePlugins(
+            core,
+            runtime,
+            await readDeployment(config, { credentialEnv }),
+            {
+              sources: JSON.parse(await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
+            },
+          );
+          const baseRecordFile = join(runtime, "source-combinations", base.id, "combination.json"),
+            baseRecord = await json(baseRecordFile);
+          const workbenchVersion = baseRecord.composition.dependencies[workbench]
+            .split("-")[0]
+            .split(".")
+            .map(Number);
+          workbenchVersion[2]++;
+          const plannedWorkbench = workbenchVersion.join(".");
+          // This loopback fixture explicitly declares its unchanged code compatible with the test manifest version.
+          for (const accepted of Object.values(baseRecord.compatibility))
+            accepted.workbench.push(plannedWorkbench);
+          await fs.writeFile(baseRecordFile, JSON.stringify(baseRecord, null, 2));
+          await selectSourceCombination(runtime, base.id, core);
+          baseline = await readSourceUpdateBaseline(runtime, core);
         },
       }),
-      env: { GEA_TEST_MODEL_KEY: "fixture-key" },
-      beforeStart: async ({ runtime, config, credentialEnv }) => {
-        await fs.mkdir(join(runtime, "home/profiles/plugin-split-validation"), {
-          recursive: true,
-        });
-        base = await prepareSourcePlugins(
-          core,
-          runtime,
-          await readDeployment(config, { credentialEnv }),
-          {
-            sources: JSON.parse(await fs.readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
-          },
-        );
-        const baseRecordFile = join(runtime, "source-combinations", base.id, "combination.json"),
-          baseRecord = await json(baseRecordFile);
-        const workbenchVersion = baseRecord.composition.dependencies[workbench]
-          .split("-")[0]
-          .split(".")
-          .map(Number);
-        workbenchVersion[2]++;
-        const plannedWorkbench = workbenchVersion.join(".");
-        // This loopback fixture explicitly declares its unchanged code compatible with the test manifest version.
-        for (const accepted of Object.values(baseRecord.compatibility))
-          accepted.workbench.push(plannedWorkbench);
-        await fs.writeFile(baseRecordFile, JSON.stringify(baseRecord, null, 2));
-        await selectSourceCombination(runtime, base.id, core);
-        baseline = await readSourceUpdateBaseline(runtime, core);
-      },
-    });
+    );
     async function prepareChannel(runtime) {
       const channel = join(runtime, "simulated-channel");
       await fs.mkdir(channel);
@@ -185,11 +188,13 @@ test(
       assert.match(tools.map((value) => value.content).join("\n"), /100/);
       return { content: "本地分仓样本100件和30件，合计130件。" };
     });
-    const browser = await testBrowser(t, () =>
-      chromium.launch({
-        channel: "chrome",
-        headless: true,
-      }),
+    const browser = await measureSourceUpdate(t, "baseline", "browser-start", () =>
+      testBrowser(t, () =>
+        chromium.launch({
+          channel: "chrome",
+          headless: true,
+        }),
+      ),
     );
 
     const userFile = join(app.runtime, "workspace/user.txt");
@@ -198,161 +203,167 @@ test(
       updates = [];
     let session, priorRows, history;
     for (const phase of ["baseline", "gea-updated", "both-updated", "restored"]) {
-      if (phase !== "baseline") {
-        await app.stop();
-        if (phase === "gea-updated" || phase === "both-updated") {
-          if (phase === "gea-updated") {
-            await prepareChannel(app.runtime);
-            t.signal.throwIfAborted();
-          }
-          const proposal = phase === "gea-updated" ? proposalA : proposalB;
-          const result = await applySourceUpdate(app.runtime, proposal, {
-            core,
-          });
-          assert.equal(result.phase, "succeeded", JSON.stringify(result.failed));
-          updates.push(result);
-          if (phase === "gea-updated") {
-            const late = await applySourceUpdate(app.runtime, proposalA, {
-              core,
+      await measureSourceUpdate(t, phase, "phase-total", async () => {
+        if (phase !== "baseline") {
+          await measureSourceUpdate(t, phase, "previous-host-stop", () => app.stop());
+          if (phase === "gea-updated" || phase === "both-updated") {
+            if (phase === "gea-updated") {
+              await measureSourceUpdate(t, phase, "channel-prepare", () =>
+                prepareChannel(app.runtime),
+              );
+              t.signal.throwIfAborted();
+            }
+            const proposal = phase === "gea-updated" ? proposalA : proposalB;
+            const result = await measureSourceUpdate(t, phase, "apply-update", () =>
+              applySourceUpdate(app.runtime, proposal, {
+                core,
+              }),
+            );
+            assert.equal(result.phase, "succeeded", JSON.stringify(result.failed));
+            updates.push(result);
+            if (phase === "gea-updated") {
+              const late = await applySourceUpdate(app.runtime, proposalA, {
+                core,
+              });
+              assert.equal(late.failed[0].error, "STALE_SOURCE_UPDATE");
+              updates.push(late);
+            }
+            history = result.after.history;
+          } else {
+            await assert.rejects(
+              selectSourceCombination(app.runtime, base.id, core, {
+                expected: baseline,
+              }),
+              /STALE_SOURCE_RECOVERY/,
+            );
+            await selectSourceCombination(app.runtime, base.id, core, {
+              expected: await readSourceUpdateBaseline(app.runtime, core),
             });
-            assert.equal(late.failed[0].error, "STALE_SOURCE_UPDATE");
-            updates.push(late);
           }
-          history = result.after.history;
-        } else {
-          await assert.rejects(
-            selectSourceCombination(app.runtime, base.id, core, {
-              expected: baseline,
-            }),
-            /STALE_SOURCE_RECOVERY/,
+          await measureSourceUpdate(t, phase, "profile-restart", () => app.start());
+          assert.deepEqual(
+            await readSession(app.runtime, session),
+            priorRows,
+            "restart preserves existing Session rows",
           );
-          await selectSourceCombination(app.runtime, base.id, core, {
-            expected: await readSourceUpdateBaseline(app.runtime, core),
-          });
+          assert.deepEqual(
+            (await readSourceUpdateBaseline(app.runtime, core)).history,
+            history,
+            "startup keeps immutable release history",
+          );
         }
-        await app.start();
-        assert.deepEqual(
-          await readSession(app.runtime, session),
-          priorRows,
-          "restart preserves existing Session rows",
-        );
-        assert.deepEqual(
-          (await readSourceUpdateBaseline(app.runtime, core)).history,
-          history,
-          "startup keeps immutable release history",
-        );
-      }
-      await app.login();
-      const context = await browser.newContext({
-        locale: "zh-CN",
-        viewport: { width: 1440, height: 1000 },
-      });
-      await context.addCookies(
-        app.cookie.split("; ").map((pair) => ({
-          name: pair.slice(0, pair.indexOf("=")),
-          value: pair.slice(pair.indexOf("=") + 1),
-          url: app.origin,
-        })),
-      );
-      const page = await context.newPage();
-      await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
-      page.setDefaultTimeout(20000);
-      await page.goto(app.origin);
-      await openWorkbenchPage(page, "分仓库存");
-      const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
-      await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
-      if (!session) {
-        const created = await app.remote("session/create", {
-          cwd: join(app.runtime, "workspace"),
-          agentPreset: "gea-html-inventory-fc",
+        await measureSourceUpdate(t, phase, "login", () => app.login());
+        const context = await browser.newContext({
+          locale: "zh-CN",
+          viewport: { width: 1440, height: 1000 },
         });
-        assert.equal(created.ok, true);
-        session = created.value.sessionId;
-      }
-      assert.equal(
-        (
-          await app.remote("session/selectModel", {
-            sessionId: session,
-            provider: "gea-analysis",
-            model: "fixture",
-          })
-        ).ok,
-        true,
-      );
-      const count = (await readSession(app.runtime, session)).filter(
-        (row) => row.type === "turn/end",
-      ).length;
-      assert.equal(
-        (
-          await app.remote("session/prompt", {
-            sessionId: session,
-            requestId: randomUUID(),
-            mode: "queue",
-            content: [{ type: "text", text: "读取分仓库存 " + phase }],
-          })
-        ).ok,
-        true,
-      );
-      priorRows = await until(
-        () => readSession(app.runtime, session),
-        (rows) => rows.filter((row) => row.type === "turn/end").length > count,
-        60000,
-      );
-      const receipt = readToolResults(priorRows).at(-1);
-      assert.equal(receipt.isError, false);
-      assert.match(receipt.text, /100/);
-      assert.match(JSON.stringify(priorRows), /合计130件/);
-      const actual = await readSourceUpdateBaseline(app.runtime, core);
-      assert.equal(
-        actual.components[gea].version,
-        ["gea-updated", "both-updated"].includes(phase)
-          ? proposalA.releases[0].version
-          : baseline.components[gea].version,
-      );
-      assert.equal(
-        actual.components[workbench].version,
-        phase === "both-updated"
-          ? proposalB.releases[0].version
-          : baseline.components[workbench].version,
-      );
-      assert.equal(await fs.readFile(userFile, "utf8"), "ticket10 retained data");
-      const modules = await fs.realpath(
-        join(app.runtime, "home/profiles/plugin-split-validation/node_modules"),
-      );
-      assert.equal(modules, join(app.runtime, "source-combinations", actual.id, "node_modules"));
-      const pageSource = await fs.readFile(
-          join(modules, workbench, "lib/business/inventory-fc/index.html"),
-          "utf8",
-        ),
-        script = pageSource.match(/<script>([\s\S]*)<\/script>/)[1];
-      assert.ok(
-        (
-          await frame
-            .locator("script")
-            .evaluateAll((scripts) => scripts.map((value) => value.textContent))
-        ).includes(script),
-      );
-      await page.screenshot({
-        path: join(parent, phase + ".png"),
-        fullPage: true,
+        await context.addCookies(
+          app.cookie.split("; ").map((pair) => ({
+            name: pair.slice(0, pair.indexOf("=")),
+            value: pair.slice(pair.indexOf("=") + 1),
+            url: app.origin,
+          })),
+        );
+        const page = await context.newPage();
+        await page.clock.setFixedTime(new Date(branchStockAcceptance.fixedTime));
+        page.setDefaultTimeout(20000);
+        await measureSourceUpdate(t, phase, "page-navigation", () => page.goto(app.origin));
+        await measureSourceUpdate(t, phase, "page-open", () => openWorkbenchPage(page, "分仓库存"));
+        const frame = htmlFrameElement(page, "inventory-fc").contentFrame();
+        await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
+        if (!session) {
+          const created = await app.remote("session/create", {
+            cwd: join(app.runtime, "workspace"),
+            agentPreset: "gea-html-inventory-fc",
+          });
+          assert.equal(created.ok, true);
+          session = created.value.sessionId;
+        }
+        assert.equal(
+          (
+            await app.remote("session/selectModel", {
+              sessionId: session,
+              provider: "gea-analysis",
+              model: "fixture",
+            })
+          ).ok,
+          true,
+        );
+        const count = (await readSession(app.runtime, session)).filter(
+          (row) => row.type === "turn/end",
+        ).length;
+        assert.equal(
+          (
+            await app.remote("session/prompt", {
+              sessionId: session,
+              requestId: randomUUID(),
+              mode: "queue",
+              content: [{ type: "text", text: "读取分仓库存 " + phase }],
+            })
+          ).ok,
+          true,
+        );
+        priorRows = await until(
+          () => readSession(app.runtime, session),
+          (rows) => rows.filter((row) => row.type === "turn/end").length > count,
+          60000,
+        );
+        const receipt = readToolResults(priorRows).at(-1);
+        assert.equal(receipt.isError, false);
+        assert.match(receipt.text, /100/);
+        assert.match(JSON.stringify(priorRows), /合计130件/);
+        const actual = await readSourceUpdateBaseline(app.runtime, core);
+        assert.equal(
+          actual.components[gea].version,
+          ["gea-updated", "both-updated"].includes(phase)
+            ? proposalA.releases[0].version
+            : baseline.components[gea].version,
+        );
+        assert.equal(
+          actual.components[workbench].version,
+          phase === "both-updated"
+            ? proposalB.releases[0].version
+            : baseline.components[workbench].version,
+        );
+        assert.equal(await fs.readFile(userFile, "utf8"), "ticket10 retained data");
+        const modules = await fs.realpath(
+          join(app.runtime, "home/profiles/plugin-split-validation/node_modules"),
+        );
+        assert.equal(modules, join(app.runtime, "source-combinations", actual.id, "node_modules"));
+        const pageSource = await fs.readFile(
+            join(modules, workbench, "lib/business/inventory-fc/index.html"),
+            "utf8",
+          ),
+          script = pageSource.match(/<script>([\s\S]*)<\/script>/)[1];
+        assert.ok(
+          (
+            await frame
+              .locator("script")
+              .evaluateAll((scripts) => scripts.map((value) => value.textContent))
+          ).includes(script),
+        );
+        await page.screenshot({
+          path: join(parent, phase + ".png"),
+          fullPage: true,
+        });
+        rows.push({
+          phase,
+          actual,
+          session,
+          rowCount: priorRows.length,
+          receipt,
+          modules,
+          pageScriptSha256: digest(script),
+          userDataSha256: digest(await fs.readFile(userFile)),
+        });
+        await fs.writeFile(
+          join(parent, "acceptance-progress.json"),
+          JSON.stringify({ runtime: app.runtime, rows, updates }, null, 2),
+        );
+        await measureSourceUpdate(t, phase, "context-close", () => context.close());
       });
-      rows.push({
-        phase,
-        actual,
-        session,
-        rowCount: priorRows.length,
-        receipt,
-        modules,
-        pageScriptSha256: digest(script),
-        userDataSha256: digest(await fs.readFile(userFile)),
-      });
-      await fs.writeFile(
-        join(parent, "acceptance-progress.json"),
-        JSON.stringify({ runtime: app.runtime, rows, updates }, null, 2),
-      );
-      await context.close();
     }
-    await app.stop();
+    await measureSourceUpdate(t, "restored", "final-host-stop", () => app.stop());
     await fs.writeFile(
       join(parent, "acceptance.json"),
       JSON.stringify({ runtime: app.runtime, rows, updates }, null, 2),
