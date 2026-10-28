@@ -127,7 +127,7 @@ function fixture(
       );
     put(
       "candidate/dsh-gea-plugin/scripts/fixture.test.mjs",
-      `import '../tests/profile.mjs';import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync,writeFileSync} from 'node:fs';test('original CLI admitted all five public entries',()=>{const records=JSON.parse(readFileSync(process.env.GEA_TEST_SOURCE_INPUTS));assert.equal(records.length,5);const manage=records.find(x=>x.repo==='dsh-agent-manage');assert.equal(readFileSync(manage.source+'/client/client.js','utf8'),'fixed public client');writeFileSync(${JSON.stringify(join(root, "tests-executed"))},'actual Node test');});`,
+      `${runtime ? "import '../tests/profile.mjs';" : ""}import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync,writeFileSync} from 'node:fs';test('original CLI admitted all five public entries',()=>{const records=JSON.parse(readFileSync(process.env.GEA_TEST_SOURCE_INPUTS));assert.equal(records.length,5);const manage=records.find(x=>x.repo==='dsh-agent-manage');assert.equal(readFileSync(manage.source+'/client/client.js','utf8'),'fixed public client');writeFileSync(${JSON.stringify(join(root, "tests-executed"))},'actual Node test');});`,
     );
     json("candidate/dsh-gea-plugin/scripts/ci-test-policy.json", {
       schemaVersion: 1,
@@ -874,13 +874,19 @@ test("the early control freezes original public source-plan bytes without claimi
 
 async function earlyWorkerFixture(
   t,
-  { producerState = "completed", earlyManagePlaywright, concurrency = 2 } = {},
+  {
+    producerState = "completed",
+    earlyManagePlaywright,
+    concurrency = 2,
+    runtime = true,
+    browser = true,
+  } = {},
 ) {
   const f = fixture(t, {
     publicQuality: true,
     withShards: true,
-    runtime: true,
-    browser: true,
+    runtime,
+    browser,
     earlyManagePlaywright,
     concurrency,
   });
@@ -916,6 +922,10 @@ async function earlyWorkerFixture(
   const expectedHead = control.plan.binding.manifest.repositories.find(
     (x) => x.repo === "dsh-gea-plugin",
   ).head;
+  let producerPolled;
+  const waiting = new Promise((resolve) => {
+    producerPolled = resolve;
+  });
   const server = createServer((request, response) => {
     f.put("api-polled", "actual worker HTTP read");
     const body = request.url.endsWith("/attempts/1")
@@ -945,6 +955,7 @@ async function earlyWorkerFixture(
           };
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(body));
+    if (request.url.includes("/jobs?")) producerPolled();
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -962,7 +973,7 @@ writeFileSync(join(root,'download-'+(name.includes('-index-')?'index':'bundle'))
   );
   chmodSync(join(f.root, "bin/gh"), 0o755);
   f.clear();
-  return { f, apiBase: "http://127.0.0.1:" + server.address().port };
+  return { f, apiBase: "http://127.0.0.1:" + server.address().port, waiting };
 }
 
 test("early worker browser installation times out before producer wait and leaves no owned descendants", async (t) => {
@@ -1067,22 +1078,77 @@ test("one live three-file worker prepares five independent locks before receivin
   assert.equal(cleaned.status, 0, cleaned.stderr);
 });
 
-test("early wait cancellation fails within the same invocation without transport or an accepted resume token", async (t) => {
-  const { f, apiBase } = await earlyWorkerFixture(t, { producerState: "in_progress" });
-  const run = f.earlyReceiveAsync(apiBase, { EARLY_BROWSER_CLOSURE: "1" });
+async function producerWaitReady(f, run, waiting) {
+  await deadline(
+    Promise.race([
+      waiting,
+      run.closed.then((result) => {
+        throw Error("worker exited before producer wait", { cause: result });
+      }),
+    ]),
+    "worker did not enter producer wait",
+  );
+  const observation = f.run(join(own, "scripts/run-quality-ci.mjs"), [
+    "--stage",
+    "observe",
+    "--root",
+    f.root,
+  ]);
+  assert.equal(observation.status, 0, observation.stderr);
+  const observed = JSON.parse(observation.stdout);
+  assert.equal(observed.lastConfirmedStage, "prepare");
+  assert.equal(observed.lastConfirmedStep, "producer-wait");
+  assert.equal(observed.stageStatus, "running");
+  assert.equal(observed.stepStatus, "running");
+  assert.equal(observed.testsStarted, false);
+}
+
+test("early producer wait readiness preserves a worker failure before polling", async (t) => {
+  const { f, apiBase, waiting } = await earlyWorkerFixture(t, {
+    producerState: "in_progress",
+    runtime: false,
+    browser: false,
+  });
+  const run = f.earlyReceiveAsync(apiBase, { WRONG_MANAGER: "1" });
   try {
-    await deadline(fileReady(join(f.root, "api-polled")));
+    await assert.rejects(producerWaitReady(f, run, waiting), (error) => {
+      assert.equal(error.message, "worker exited before producer wait");
+      assert.equal(error.cause.code, 1);
+      assert.equal(error.cause.signal, null);
+      assert.match(error.cause.stderr, /actual package manager changed: dsh-agent-manage/);
+      assert.equal(existsSync(join(f.root, "api-polled")), false);
+      return true;
+    });
+  } finally {
+    cleanupInstallFixture(f, run.child);
+    await run.closed;
+  }
+});
+
+test("early wait cancellation fails within the same invocation without transport or an accepted resume token", async (t) => {
+  const { f, apiBase, waiting } = await earlyWorkerFixture(t, {
+    producerState: "in_progress",
+    runtime: false,
+    browser: false,
+  });
+  assert.equal(f.read("early.json").runtime, false);
+  const run = f.earlyReceiveAsync(apiBase);
+  try {
+    await producerWaitReady(f, run, waiting);
     run.child.kill("SIGTERM");
     const result = await deadline(run.closed);
     assert.equal(result.code, 1, result.stderr);
     assert.match(result.stderr, /cancelled by SIGTERM/);
     const receipt = f.read("quality-worker-inputs.json");
     assert.equal(receipt.status, "failed");
+    assert.equal(receipt.steps.find((x) => x.name === "producer-wait").status, "failed");
     assert.equal(
       receipt.steps.some((x) => x.name === "transport"),
       false,
     );
     assert.equal(receipt.tests, "not-run");
+    for (const name of ["download-index", "download-bundle", "tests-executed"])
+      assert.equal(existsSync(join(f.root, name)), false);
   } finally {
     cleanupInstallFixture(f, run.child);
     await run.closed;
@@ -1850,13 +1916,13 @@ test("worker CLI overlaps two real installs while keeping nested Workbench inven
   assert.ok(paths.durationMs >= 0);
 });
 
-async function deadline(promise) {
+async function deadline(promise, message = "worker did not close after install failure") {
   let timer;
   try {
     return await Promise.race([
       promise,
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error("worker did not close after install failure")), 5000);
+        timer = setTimeout(() => reject(Error(message)), 5000);
       }),
     ]);
   } finally {
