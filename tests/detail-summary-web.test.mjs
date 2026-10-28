@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { modelProfile as profile } from "./fixtures/model-profile.mjs";
@@ -224,7 +224,7 @@ test(
     mark("page-navigation");
     await page.goto(app.origin);
     mark("sales-plan-open");
-    const frame = await openSalesPlan(page);
+    const frame = await openReadySalesPlan(page);
     mark("workbench-ready");
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
@@ -259,12 +259,12 @@ test(
     );
     mark("screenshots");
     await page.screenshot({ path: ".runtime/detail-summary/desktop.png", fullPage: true });
-    mark("category-collapse");
-    await category.getByRole("button").click();
-    await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveCount(0);
     mark("narrow-screenshot");
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.screenshot({ path: ".runtime/detail-summary/narrow.png", fullPage: true });
+    mark("category-collapse");
+    await category.getByRole("button").click();
+    await expect(frame.locator('tbody th[scope="rowgroup"]')).toHaveCount(0);
     assert.deepEqual(errors, []);
     assert.equal(writes, 0);
     completed = true;
