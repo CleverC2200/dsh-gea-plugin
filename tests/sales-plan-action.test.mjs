@@ -1037,7 +1037,7 @@ test("Host list preserves plan totals and summary while unavailable shipment sou
       shipQty: null,
       shipAmount: null,
       amountProgress: null,
-      shipmentError: "未取得该客户期间的发货数据",
+      shipmentError: "未取得该客户 当前期间 的发货数据",
     },
   ]);
   assert.deepEqual(result.summary, summary);
@@ -1325,6 +1325,10 @@ test("Business sends the five HTTP dimensions and preserves the internal sales m
     status: 7,
     currentQty: "2.000",
     currentAmount: "4.00",
+    shipQty: null,
+    shipAmount: null,
+    amountProgress: null,
+    shipmentError: "未取得该客户 当前期间 的发货数据",
   });
 });
 

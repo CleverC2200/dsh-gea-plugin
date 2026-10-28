@@ -31,6 +31,7 @@ const plan = (id, extras = {}) => ({
 const sku = (id, amt, qty = "1", extras = {}) => ({
   versionId: id + "-1",
   skuCode: "sku-1",
+  skuName: "测试水饺",
   productCategName: "饺子",
   amt,
   qty,
