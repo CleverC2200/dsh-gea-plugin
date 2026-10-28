@@ -180,7 +180,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const { appendFileSync } = await import("node:fs");
       appendFileSync(
         process.env.GITHUB_STEP_SUMMARY,
-        `## Source check cost before preparation\n\nSelected ${e.selectedFiles} files; Profile ${e.profileFiles}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Estimated tests: ${e.estimatedMs === null ? "unknown" : e.estimatedMs + " ms"}. Preparation, scheduling and finalization are excluded. This is a cost estimate, not execution evidence.\n`,
+        `## Source check cost before preparation\n\nSelected ${e.selectedFiles} files; Profile ${e.profileFiles}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Historical ordering hints ${e.advisoryFiles} (advisory only). Estimated tests: ${e.estimatedMs === null ? "unknown" : e.estimatedMs + " ms"}. Preparation, scheduling and finalization are excluded. This is a cost estimate, not execution evidence.\n`,
       );
     }
     requireValue(process.env.GITHUB_OUTPUT, "matrix output");

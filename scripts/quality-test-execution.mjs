@@ -79,14 +79,24 @@ export function createExecutionPlan({
       measured.set(entry.file, entry.durationMs);
     }
   }
+  const ordering = new Map(measured);
+  if (timings?.orderingFiles !== undefined) {
+    if (!Array.isArray(timings.orderingFiles)) throw Error("QUALITY_TEST_TIMING_INVALID");
+    const seen = new Set();
+    for (const entry of timings.orderingFiles) {
+      if (seen.has(entry.file) || !Number.isFinite(entry.durationMs) || entry.durationMs < 0)
+        throw Error("QUALITY_TEST_TIMING_INVALID");
+      seen.add(entry.file);
+      if (!ordering.has(entry.file)) ordering.set(entry.file, entry.durationMs);
+    }
+  }
   const known = files.filter((file) => measured.has(file));
-  const maximum = Math.max(0, ...known.map((file) => measured.get(file)));
-  const dispatchCost = (assigned) => {
+  const maximum = Math.max(0, ...files.map((file) => ordering.get(file) ?? 0));
+  const dispatchCost = (assigned, weights = ordering) => {
     const slots = Array(concurrency).fill(0);
     for (const file of assigned) {
       const slot = slots.indexOf(Math.min(...slots));
-      // Unknowns have only a conservative sorting weight; estimates remain null.
-      slots[slot] += measured.get(file) ?? (maximum || 1);
+      slots[slot] += weights.get(file) ?? (maximum || 1);
     }
     return Math.max(...slots);
   };
@@ -96,8 +106,8 @@ export function createExecutionPlan({
   }));
   for (const file of [...files].sort(
     (left, right) =>
-      Number(measured.has(left)) - Number(measured.has(right)) ||
-      (measured.get(right) ?? 0) - (measured.get(left) ?? 0) ||
+      Number(ordering.has(left)) - Number(ordering.has(right)) ||
+      (ordering.get(right) ?? 0) - (ordering.get(left) ?? 0) ||
       left.localeCompare(right),
   )) {
     const group =
@@ -112,7 +122,9 @@ export function createExecutionPlan({
   const shards = groups.map((group) => ({
     ...group,
     runtimeFiles: group.files.filter((file) => selection.runtimeFiles?.includes(file)),
-    estimatedMs: group.files.every((file) => measured.has(file)) ? dispatchCost(group.files) : null,
+    estimatedMs: group.files.every((file) => measured.has(file))
+      ? dispatchCost(group.files, measured)
+      : null,
   }));
   const plan = {
     schemaVersion: 1,
@@ -130,6 +142,7 @@ export function createExecutionPlan({
       requiredFiles: selection.applicability === "docs" ? 0 : (selection.required ?? []).length,
       profileFiles: (selection.runtimeFiles ?? []).length,
       knownFiles: known.length,
+      advisoryFiles: files.filter((file) => ordering.has(file) && !measured.has(file)).length,
       unknownFiles: files.length - known.length,
       knownSumMs: known.reduce((sum, file) => sum + measured.get(file), 0),
       estimatedMs:

@@ -8,6 +8,27 @@ import { fileURLToPath } from "node:url";
 import { checkWorkflows } from "./workflow-preflight.mjs";
 
 const cli = fileURLToPath(new URL("./workflow-preflight.mjs", import.meta.url));
+test("source planning checks dependency-free CI contracts before selecting heavyweight workers", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  const preparation = workflow.slice(0, workflow.indexOf("  dependency-policy:"));
+  const fast = preparation.indexOf("      - name: Check fast CI contracts\n");
+  assert.ok(fast > preparation.indexOf("      - name: Admit source input changes\n"));
+  assert.ok(fast < preparation.indexOf("      - name: Classify actual Git changes\n"));
+  const step = preparation.slice(fast).split(/\n      - /)[0];
+  assert.doesNotMatch(step, /\n        if:|continue-on-error:|pnpm|npm install/);
+  assert.match(
+    step,
+    /node --test --test-concurrency=3 scripts\/workflow-preflight\.test\.mjs scripts\/source-formal-receipt\.test\.mjs/,
+  );
+  assert.match(
+    step,
+    /node --test --test-name-pattern=.*a README-only.*title and body edits.*source workflow keeps.*candidate-quality accepts.* scripts\/source-quality\.test\.mjs/,
+  );
+});
+
 const queueWorkflow =
   "name: fixture\non: push\nconcurrency:\n  group: fixture\n  queue: max\n  cancel-in-progress: false\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n";
 const queueFixture = (t) => {
