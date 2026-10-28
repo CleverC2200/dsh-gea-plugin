@@ -83,7 +83,7 @@ export function planPluginUpdate({ release, core, installed }) {
     : { kind: "ready", release };
 }
 
-export function planPluginSuiteUpdate({ releases, core, installed }) {
+export function planPluginSuiteVersions({ releases, core, installed }) {
   if (
     releases.length !== companyPackageNames.length ||
     !companyPackageNames.every(
@@ -97,6 +97,12 @@ export function planPluginSuiteUpdate({ releases, core, installed }) {
     if (plan.kind === "blocked") return { ...plan, packageName: release.name };
     if (plan.kind === "ready") changed.push(release);
   }
+  return changed.length ? { kind: "ready", releases: changed } : { kind: "current" };
+}
+export function planPluginSuiteUpdate({ releases, core, installed }) {
+  const plan = planPluginSuiteVersions({ releases, core, installed });
+  if (plan.kind === "blocked") return plan;
+  const changed = plan.kind === "ready" ? plan.releases : [];
   const failures = validatePluginCombination({
     core,
     manifests: installed.map(

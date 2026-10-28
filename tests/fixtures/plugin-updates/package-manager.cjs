@@ -71,16 +71,12 @@ setTimeout(() => {
     }, 10);
     return;
   }
-  if (mode === "corrupt-installed") {
-    const archive = archives[0];
+  if (mode === "wrong-installed-version") {
     const manifest = JSON.parse(
-      cp.execFileSync("tar", ["-xOf", archive, "package/package.json"], { encoding: "utf8" }),
+      cp.execFileSync("tar", ["-xOf", archives[0], "package/package.json"], { encoding: "utf8" }),
     );
-    fs.appendFileSync(
-      path.join(process.cwd(), "node_modules", manifest.name, "lib/host.js"),
-      "corrupt",
-    );
+    const file = path.join(process.cwd(), "node_modules", manifest.name, "package.json");
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, version: "0.0.1" }));
   }
-  if (mode === "remove-user-skill") fs.unlinkSync(process.env.FIXTURE_USER_DATA_FILE);
   process.exit(mode === "fail-after-write" ? 1 : 0);
 }, 150);

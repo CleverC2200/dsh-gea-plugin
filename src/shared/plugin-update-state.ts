@@ -34,7 +34,7 @@ export type PluginUpdateStage =
   | "failed"
   | "unknown";
 export type PluginUpdateOperation = {
-  schema: 1;
+  schema: 2;
   targets?: {
     packageName: CompanyPackageName;
     targetVersion: string;
@@ -50,12 +50,9 @@ export type PluginUpdateOperation = {
   stage: PluginUpdateStage;
   startedAt: string;
   updatedAt: string;
-  baselineSha256: string;
   archivePath: string;
-  recoveryDirectory: string;
-  userDataSha256?: string;
+  directory: string;
   diagnostic: string | null;
-  installedGraphSha256: string | null;
   completionProof: {
     processIdentity: string;
     host: Extract<CompiledModuleProof, { kind: "active" }>;

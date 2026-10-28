@@ -26,6 +26,39 @@ function birth(pid: number): string | null {
     return null;
   }
 }
+export function previousPackageProcessesStopped(profile: string, operation: PluginUpdateOperation) {
+  try {
+    const record: unknown = JSON.parse(
+      readFileSync(join(profile, ".plugin-manager/run.json"), "utf8"),
+    );
+    if (
+      !record ||
+      typeof record !== "object" ||
+      !("pid" in record) ||
+      typeof record.pid !== "number" ||
+      !Number.isSafeInteger(record.pid) ||
+      record.pid <= 0 ||
+      !("grouped" in record) ||
+      typeof record.grouped !== "boolean" ||
+      alive(record.pid) !== "gone" ||
+      (record.grouped && process.platform !== "win32" && alive(-record.pid) !== "gone")
+    )
+      return false;
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+  }
+  if (operation.stage === "pending-restart") return true;
+  return (
+    operation.processes.length > 0 &&
+    operation.processes.every(
+      (row) =>
+        row.sawAlive &&
+        row.startIdentity !== null &&
+        alive(row.pid) === "gone" &&
+        (process.platform === "win32" ? !row.grouped : row.grouped && alive(-row.pid) === "gone"),
+    )
+  );
+}
 /** Observe the public runner's durable run record. A missing record is not a stopped-tree proof. */
 export async function observeProfilePackageProcesses(profile: string) {
   const directory = join(profile, ".plugin-manager"),
