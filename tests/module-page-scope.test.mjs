@@ -69,7 +69,11 @@ for (const model of ["agents_scm_cust_plan_order_analysis_d", "cust_plan_order_a
     assert.deepEqual(args, original);
     assert.deepEqual(result.queries[0].query.filters, [
       ...original.queries[0].query.filters,
-      { member: model + ".stat_date", operator: "inDateRange", values: ["2026-10-28", "2026-10-28"] },
+      {
+        member: model + ".stat_date",
+        operator: "inDateRange",
+        values: ["2026-10-28", "2026-10-28"],
+      },
       { member: model + ".cust_code", operator: "equals", values: ["10155031"] },
     ]);
     binding.observe({ ...payload, filteredCustomerCodes: ["10060002"] });
@@ -81,8 +85,18 @@ for (const model of ["agents_scm_cust_plan_order_analysis_d", "cust_plan_order_a
     binding.observe({ ...payload, filteredCustomerCodes: codes });
     const groups = inheritModuleCubeScope(host, "s", args).queries[0].query.filters.at(-1).or;
     assert.equal(groups.length, 29);
-    assert(groups.every(group => group.member === model + ".cust_code" && group.operator === "equals" && group.values.length <= 100));
-    assert.deepEqual(groups.flatMap(group => group.values), codes);
+    assert(
+      groups.every(
+        (group) =>
+          group.member === model + ".cust_code" &&
+          group.operator === "equals" &&
+          group.values.length <= 100,
+      ),
+    );
+    assert.deepEqual(
+      groups.flatMap((group) => group.values),
+      codes,
+    );
     assert.deepEqual(args, original);
     binding.observe({ ...payload, filteredCustomerCodes: [] });
     assert.throws(() => inheritModuleCubeScope(host, "s", args), /SCOPE_EMPTY/);
