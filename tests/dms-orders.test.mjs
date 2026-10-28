@@ -4,7 +4,12 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DmsClient, parseDmsOrder, submitDmsOrder } from "../src/host/dms-orders.ts";
+import {
+  DmsClient,
+  parseDmsOrder,
+  submitDmsOrder,
+  submitOwnedDmsOrder,
+} from "../src/host/dms-orders.ts";
 const config = {
   gatewayUrl: "http://gateway.test/synear_test/DMS",
   manageUrl: "https://manage.test",
@@ -23,7 +28,7 @@ const signal = () => new AbortController().signal;
 const ok = (result) => Response.json({ success: true, code: 200, result });
 const login = {
   access_token: "private-access",
-  redirect: "https://manage.test/user/loginSSO?token=short-ticket",
+  redirect: "https://manage.test/user/loginSSO?token=short-ticket&menu=/corder/ordermgt",
 };
 test("login signs form JSON, preserves gateway prefix and never sends bearer to token exchange", async () => {
   const requests = [];
@@ -36,6 +41,7 @@ test("login signs form JSON, preserves gateway prefix and never sends bearer to 
   assert.equal((await client.login(signal())).accessToken, "private-access");
   const signed = JSON.parse(new URLSearchParams(requests[0].init.body).get("ssoToken"));
   assert.equal(signed.source, "ai");
+  assert.equal(signed.menu, "/corder/ordermgt");
   assert.equal(signed.workcode, "W1");
   assert.equal(
     signed.sign,
@@ -160,4 +166,207 @@ test("empty HTTP 200 is not an acknowledged DMS order", async () => {
     async () => new Response(null, { status: 200 }),
   );
   await assert.rejects(client.submit(parseDmsOrder(input), "fixture-token", signal()));
+});
+
+test("revision 32 branch sample accepts customerName/orderModel and documented remarks", () => {
+  const sample = {
+    aiPreOrderCode: "FIXTURE202610270001",
+    customerCode: "49001039",
+    customerName: "南京分仓",
+    addressCode: "49001039",
+    pupCode: "01",
+    logisticsPatternCode: "1",
+    deliveryMethod: "ps",
+    isCarpooling: "N",
+    carpoolingCode: "",
+    zsn05: "Y",
+    expectedArrivalDate: "2026-10-28 15:47:46",
+    expectedSendDate: "2026-10-27 15:47:46",
+    orderRemarks: "AI自动创建订单",
+    orderModel: "cg",
+    itemList: [
+      { productCode: "10000362", quantity: 10 },
+      { productCode: "10000363", quantity: 55 },
+    ],
+  };
+  const parsed = parseDmsOrder(sample);
+  assert.equal(parsed.customerName, "南京分仓");
+  assert.equal(parsed.orderModel, "cg");
+  assert.equal(parsed.orderRemarks, "AI自动创建订单");
+  assert.deepEqual(parsed.itemList, sample.itemList);
+  assert.throws(() => parseDmsOrder({ ...sample, orderModel: "unknown" }), /orderModel/);
+  assert.throws(() => parseDmsOrder({ ...sample, remarks: "wrong field" }), /未支持字段/);
+});
+
+test("login uses the DMS returned redirect without a preconfigured management address", async () => {
+  const { manageUrl: _manageUrl, ...automatic } = config;
+  const client = new DmsClient(automatic, { username: "U1" }, async (_url, init) => {
+    const signed = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
+    assert.equal(signed.username, "U1");
+    assert.equal(signed.menu, "/corder/ordermgt");
+    return ok(login);
+  });
+  assert.deepEqual(await client.login(signal()), {
+    accessToken: login.access_token,
+    redirect: login.redirect,
+  });
+  for (const redirect of [
+    "javascript:alert(1)",
+    "https://user:pass@manage.test/user/loginSSO?token=t",
+    "https://manage.test/other?token=t",
+    "https://manage.test/user/loginSSO",
+  ]) {
+    await assert.rejects(
+      new DmsClient(automatic, { username: "U1" }, async () => ok({ ...login, redirect })).login(
+        signal(),
+      ),
+      /免登地址/,
+    );
+  }
+});
+
+test("same-month distinct batches send once each; old successful batches still replay", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-batches-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let sends = 0;
+  const client = {
+    login: async () => ({ accessToken: "fixture" }),
+    submit: async (order) => ({ orderCode: "D" + ++sends, aiPreOrderCode: order.aiPreOrderCode }),
+  };
+  const first = await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
+  const next = await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    { ...input, aiPreOrderCode: "NEXT" },
+    client,
+    signal(),
+    "001",
+  );
+  assert.notEqual(first.aiPreOrderCode, next.aiPreOrderCode);
+  assert.equal(next.orderCode, "D2");
+  assert.deepEqual(
+    await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001"),
+    first,
+  );
+  assert.equal(sends, 2);
+});
+
+test("unknown prior batch blocks a changed order after restart, including changed customer or month", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-batches-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let sends = 0;
+  const client = {
+    login: async () => ({ accessToken: "fixture" }),
+    submit: async () => {
+      sends++;
+      throw Error("lost response");
+    },
+  };
+  await assert.rejects(
+    submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001"),
+    /未取得/,
+  );
+  const restarted = { ...client };
+  await assert.rejects(
+    submitOwnedDmsOrder(
+      directory,
+      "owner",
+      {
+        ...input,
+        aiPreOrderCode: "NEXT-MONTH",
+        customerCode: "C2",
+        itemList: [{ productCode: "SKU1", quantity: 99 }],
+      },
+      restarted,
+      signal(),
+      "001",
+    ),
+    /禁止新批次/,
+  );
+  await assert.rejects(
+    submitOwnedDmsOrder(directory, "owner", input, restarted, signal(), "001"),
+    /结果未知/,
+  );
+  assert.equal(sends, 1);
+});
+
+test("concurrent distinct batches cannot both pass the unresolved predecessor", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-batches-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let release, entered;
+  const waiting = new Promise((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  let sends = 0;
+  const client = {
+    login: async () => ({ accessToken: "fixture" }),
+    submit: async (order) => {
+      sends++;
+      entered();
+      await waiting;
+      return { orderCode: "D1", aiPreOrderCode: order.aiPreOrderCode };
+    },
+  };
+  const first = submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
+  await started;
+  try {
+    await assert.rejects(
+      submitOwnedDmsOrder(
+        directory,
+        "owner",
+        { ...input, aiPreOrderCode: "NEXT" },
+        client,
+        signal(),
+        "001",
+      ),
+      /禁止新批次/,
+    );
+  } finally {
+    release();
+  }
+  await first;
+  assert.equal(sends, 1);
+});
+
+test("login failure retains the batch slot and permits only that same batch to resume", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-batches-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let fail = true,
+    sends = 0;
+  const client = {
+    login: async () => {
+      if (fail) throw Error("login unavailable");
+      return { accessToken: "fixture" };
+    },
+    submit: async (order) => ({ orderCode: "D" + ++sends, aiPreOrderCode: order.aiPreOrderCode }),
+  };
+  await assert.rejects(
+    submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001"),
+    /login/,
+  );
+  fail = false;
+  await assert.rejects(
+    submitOwnedDmsOrder(
+      directory,
+      "owner",
+      { ...input, aiPreOrderCode: "NEXT" },
+      client,
+      signal(),
+      "001",
+    ),
+    /禁止新批次/,
+  );
+  await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
+  await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    { ...input, aiPreOrderCode: "NEXT" },
+    client,
+    signal(),
+    "001",
+  );
+  assert.equal(sends, 2);
 });

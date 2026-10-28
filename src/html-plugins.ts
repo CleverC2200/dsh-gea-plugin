@@ -442,6 +442,14 @@ export async function registerHtmlPlugins(
               ) => capability.allows("gea-html-" + item.id, effect),
               ...(item.id === "inventory-fc" && !item.mock
                 ? {
+                    branchStorage: (parameters: any, requestSignal: AbortSignal) => {
+                      if (business.surfaceFor(session) !== surface)
+                        throw Error("PAGE_OWNER_RELEASED");
+                      return business.branchStorage(
+                        parameters,
+                        AbortSignal.any([requestSignal, grantSignal]),
+                      );
+                    },
                     branchDms: (parameters: any, requestSignal: AbortSignal) => {
                       if (business.surfaceFor(session) !== surface)
                         throw Error("PAGE_OWNER_RELEASED");

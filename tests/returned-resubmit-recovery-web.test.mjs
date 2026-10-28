@@ -19,10 +19,10 @@ test(
     await selectPlan(frame);
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
     const dialog = frame.getByRole("dialog", {
-      name: "真实销售计划退回重提",
+      name: "确认修改并重提",
       exact: true,
     });
-    await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
     await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(dialog).toContainText("重提已成功");
@@ -61,17 +61,18 @@ test(
     await selectPlan(frame);
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
     const dialog = frame.getByRole("dialog", {
-      name: "真实销售计划退回重提",
+      name: "确认修改并重提",
       exact: true,
     });
-    await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
     await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
     await expect(dialog).toContainText("结果暂时未知");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
     await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
-    await expect(dialog.getByRole("textbox", { name: "提报数量 789" })).toHaveValue("2.000");
+    await expect(dialog).toContainText("2.000 件");
+    await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
     await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
     await expect(dialog).toContainText("提交成功");
     assert.equal(submitted.length, 2);

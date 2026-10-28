@@ -69,3 +69,102 @@ test("nullable plan metadata does not discard an otherwise valid cached detail",
   now += 60 * 1000;
   assert.equal(cache.get(scope, "replenishment.detail", 0), undefined);
 });
+
+test("pending reads keep refresh, query and identity scopes separate", async () => {
+  const cache = new InventoryReadCache(),
+    identity = new AbortController();
+  let calls = 0,
+    finish;
+  const wait = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const read = async () => {
+    calls++;
+    await wait;
+    return { rows: [{ qty: 1 }] };
+  };
+  const jobs = [
+    cache.share(identity.signal, "query/refresh0", new AbortController().signal, read),
+    cache.share(identity.signal, "query/refresh1", new AbortController().signal, read),
+    cache.share(identity.signal, "other/refresh0", new AbortController().signal, read),
+    cache.share(new AbortController().signal, "query/refresh0", new AbortController().signal, read),
+  ];
+  await new Promise(setImmediate);
+  finish();
+  await Promise.all(jobs);
+  assert.equal(calls, 4);
+});
+
+test("the last cancelled waiter cancels the physical read and later callers start fresh", async () => {
+  const cache = new InventoryReadCache(),
+    identity = new AbortController(),
+    a = new AbortController(),
+    b = new AbortController();
+  let transport;
+  const read = (signal) => {
+    transport = signal;
+    return new Promise((_, reject) =>
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+    );
+  };
+  const first = cache.share(identity.signal, "q", a.signal, read),
+    second = cache.share(identity.signal, "q", b.signal, read);
+  const rejected = Promise.all([
+    assert.rejects(first, { name: "AbortError" }),
+    assert.rejects(second, { name: "AbortError" }),
+  ]);
+  await new Promise(setImmediate);
+  a.abort();
+  assert.equal(transport.aborted, false);
+  b.abort();
+  assert.equal(transport.aborted, true);
+  await rejected;
+  assert.deepEqual(
+    await cache.share(identity.signal, "q", new AbortController().signal, async () => ({
+      rows: [{ qty: 2 }],
+    })),
+    { rows: [{ qty: 2 }] },
+  );
+});
+
+test("identity cancellation rejects every subscriber and rejected reads are not retained", async () => {
+  const cache = new InventoryReadCache(),
+    identity = new AbortController();
+  const read = (signal) =>
+    new Promise((_, reject) =>
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+    );
+  const jobs = [1, 2].map(() =>
+    cache.share(identity.signal, "q", new AbortController().signal, read),
+  );
+  const rejected = jobs.map((job) => assert.rejects(job, { name: "AbortError" }));
+  await new Promise(setImmediate);
+  identity.abort();
+  await Promise.all(rejected);
+  const next = new AbortController();
+  let attempts = 0;
+  const denied = async () => {
+    attempts++;
+    throw Object.assign(Error("denied"), { code: "ROW_SCOPE_DENIED" });
+  };
+  await assert.rejects(cache.share(next.signal, "q", next.signal, denied), {
+    code: "ROW_SCOPE_DENIED",
+  });
+  await assert.rejects(cache.share(next.signal, "q", next.signal, denied), {
+    code: "ROW_SCOPE_DENIED",
+  });
+  assert.equal(attempts, 2);
+});
+
+test("late pre-refresh reads cannot overwrite newer data or qualify as fresh", () => {
+  let now = 1000;
+  const cache = new InventoryReadCache(() => now),
+    identity = new AbortController();
+  now = 1300;
+  cache.set(identity.signal, "q", { rows: [{ qty: 2 }] }, false, 1200);
+  now = 1400;
+  cache.set(identity.signal, "q", { rows: [{ qty: 1 }] }, false, 1000);
+  assert.equal(cache.get(identity.signal, "q", 1200).rows[0].qty, 2);
+  cache.set(identity.signal, "other", { rows: [{ qty: 1 }] }, false, 1000);
+  assert.equal(cache.get(identity.signal, "other", 1200), undefined);
+});

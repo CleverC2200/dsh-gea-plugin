@@ -8,6 +8,7 @@ import {
   PLAN_C,
   captureEvidence,
   selectPlan,
+  editReturnedQuantity,
 } from "./fixtures/returned-review.mjs";
 
 for (const mixed of [false, true])
@@ -17,6 +18,7 @@ for (const mixed of [false, true])
     async (t) => {
       const { frame, page, app, submitted, approved, state } = await fixture(t);
       await selectPlan(frame);
+      await editReturnedQuantity(frame, "3.000");
       if (mixed) {
         page.on("console", (message) => {
           if (message.text().startsWith("[gea-draft]")) t.diagnostic(message.text());
@@ -71,8 +73,7 @@ for (const mixed of [false, true])
         name: "乌鲁木齐退回区域",
         exact: true,
       });
-      await returned.locator("summary").press("Enter");
-      await returned.getByRole("textbox", { name: "提报数量 789" }).fill("3.000");
+      await expect(returned.getByRole("spinbutton")).toHaveCount(0);
       await expect(returned).toContainText("24.68");
       await expect(returned).toContainText("37.02");
       await expect(dialog).not.toContainText("9007199254740993");
