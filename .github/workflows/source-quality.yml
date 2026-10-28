@@ -47,6 +47,12 @@ jobs:
       - name: Admit source input changes
         id: event
         run: node scripts/source-quality.mjs --phase event
+      - name: Check fast CI contracts
+        shell: bash
+        run: |
+          mkdir -p .runtime/workflow-preflight
+          node --test --test-concurrency=3 scripts/workflow-preflight.test.mjs scripts/source-formal-receipt.test.mjs 2>&1 | tee .runtime/workflow-preflight/contracts.log
+          node --test --test-name-pattern='^(a README-only|title and body edits|source workflow keeps|candidate-quality accepts)' scripts/source-quality.test.mjs 2>&1 | tee .runtime/workflow-preflight/admission.log
       - name: Classify actual Git changes
         id: plan
         if: steps.event.outputs.validate == 'true'
@@ -63,7 +69,15 @@ jobs:
           curl --fail --location --silent --show-error https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz"
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/workflow-preflight/actionlint.tar.gz" -C "$RUNNER_TEMP/workflow-preflight" actionlint
-          node --input-type=module -e "import { checkWorkflows } from './scripts/workflow-preflight.mjs'; console.log(JSON.stringify(checkWorkflows(JSON.parse(process.env.WORKFLOW_FILES))))"
+          node --input-type=module -e "import { checkWorkflows } from './scripts/workflow-preflight.mjs'; console.log(JSON.stringify(checkWorkflows(JSON.parse(process.env.WORKFLOW_FILES))))" 2>&1 | tee .runtime/workflow-preflight/semantics.log
+      - name: Keep workflow preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: workflow-preflight-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: candidate/dsh-gea-plugin/.runtime/workflow-preflight
+          if-no-files-found: ignore
       - uses: actions/checkout@v7
         if: steps.plan.outputs.engineering == 'true'
         with:
@@ -355,6 +369,7 @@ jobs:
             candidate/dsh-gea-plugin/.runtime/source-tools.json
             candidate/dsh-gea-plugin/.runtime/source-result-reuse.json
             candidate/dsh-gea-plugin/.runtime/quality-fast.json
+            candidate/dsh-gea-plugin/.runtime/detail-summary/
             candidate/dsh-gea-plugin/quality-checks.json
             quality-test-plan.json
             quality-test-execution-plan.json
