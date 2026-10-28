@@ -2468,13 +2468,14 @@ export class Business {
     return task;
   }
 
-  /** 为受信任的 HTML 插件提供带用户权限的只读 SQL 查询。SQL 仍由 GEA 网关按 consumerCode 审核。 */
+  /** 为受信任的 HTML 插件提供受控 SQL；pageRead 仅由 Host 页面 adapter 设置，独立问数不借用页面快照。 */
   async pluginSql(
     payload: Record<string, unknown>,
     caller: AbortSignal,
     configured = false,
     reportWrite?: { idempotencyKey: string } | { period: Record<string, unknown> },
     recoverEmptySnapshot = false,
+    pageRead = false,
   ): Promise<unknown> {
     const query =
       payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)
@@ -2513,11 +2514,19 @@ export class Business {
     )
       throw Error("INVALID_QUERY_CACHE_REFRESH");
     const cacheable =
-      configured &&
-      ["base-safety-stock", "branch-inventory", "full-chain-inventory", "aps"].includes(
-        consumerCode,
-      );
-    const cacheKey = JSON.stringify([consumerCode, query.sql, query.parameters]);
+      !reportWrite &&
+      ((configured &&
+        ["base-safety-stock", "branch-inventory", "full-chain-inventory", "aps"].includes(
+          consumerCode,
+        )) ||
+        (pageRead && ["customer_inventory", "order", "order01"].includes(consumerCode)));
+    const { cacheFreshAfter: _freshAfter, ...readQuery } = query;
+    const pagedQuery = withDefaultPaging(readQuery);
+    const cacheKey = JSON.stringify([
+      consumerCode,
+      configured,
+      configured ? [query.sql, query.parameters] : pagedQuery,
+    ]);
     if (cacheable) {
       const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
       if (cached !== undefined) return cached;
@@ -2651,7 +2660,7 @@ export class Business {
                   parameters: query.parameters,
                   includeTotal: false,
                 } as ConfiguredSqlRequest)
-              : await readHtmlQuery(withDefaultPaging(query), transport);
+              : await readHtmlQuery(pagedQuery, transport);
           const result =
             cacheable && recoverEmptySnapshot
               ? await recoverInventorySnapshot(read, signal)
