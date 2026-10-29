@@ -55,7 +55,7 @@ function fixture(
     },
   });
   t.after(() => business.dispose());
-  t.mock.method(globalThis, "fetch", async (input) => {
+  t.mock.method(globalThis, "fetch", async (input, init) => {
     const url = String(input);
     if (deniedAt && url.includes("/my/" + deniedAt))
       return Response.json({ success: false, message: "Permission denied" }, { status: 403 });
@@ -71,10 +71,12 @@ function fixture(
           secret: "fixture-secret",
         },
       });
-    if (url.endsWith("/models"))
+    if (url.endsWith("/models")) {
+      assert.equal(init.headers["X-GEA-Agent-Code"], "workbench");
       return modelResponse
         ? modelResponse()
         : Response.json({ data: models.map((id) => ({ id, name: id })) });
+    }
     assert.fail("Unexpected request: " + url);
   });
   const saved = [];

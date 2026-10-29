@@ -31,7 +31,7 @@ test("a generic Skill session can use ordinary model routing but cannot claim a 
     config: { analysisAgentCode: "sales" },
     currentPageIdentity: () => ({ consumerCode: "branch-inventory" }),
   };
-  assert.equal(sessionConsumer(ctx, business, "generic"), "sales");
+  assert.equal(sessionConsumer(ctx, business, "generic"), "workbench");
   assert.throws(
     () => toolConsumer(ctx, business, "generic", undefined),
     /GEA_BUSINESS_PROFILE_REQUIRED/,
