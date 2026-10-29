@@ -2562,7 +2562,12 @@ export class Business {
             ),
           );
           const rows = result.rows;
-          if (!Array.isArray(rows) || rows.length > 200 || result.rejectedColumns?.length)
+          if (
+            !Array.isArray(rows) ||
+            rows.length > 200 ||
+            (result.rejectedColumns != null &&
+              (!Array.isArray(result.rejectedColumns) || result.rejectedColumns.length > 0))
+          )
             throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
           for (const row of rows) {
             const base = object(row).belong_base;
