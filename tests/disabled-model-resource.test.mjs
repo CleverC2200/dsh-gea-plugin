@@ -474,7 +474,7 @@ test("hiding an enabled page preserves discovery and the Session Consumer while 
     messages: [],
   })) {
   }
-  assert.deepEqual(app.calls.route.slice(2), ["sales_forecast", "sales_forecast"]);
+  assert.deepEqual(app.calls.route.slice(2), ["sales_forecast", "workbench"]);
 });
 
 test("current disablement or withdrawal refuses persisted presets even after an earlier directory was available", async (t) => {
@@ -579,12 +579,14 @@ test("actual registered Host business routes reject disabled execution with zero
     "detail",
     "versions",
     "skus",
-    "model/advice",
   ]) {
     const result = await app.route(endpoint);
     assert.equal(result.ok, false, endpoint + JSON.stringify(result));
     assert.equal(result.error.code, "GEA_CAPABILITY_DISABLED", endpoint + JSON.stringify(result));
   }
+  const advice = await app.route("model/advice");
+  assert.equal(advice.ok, false);
+  assert.equal(advice.error.code, "LOGIN_REQUIRED");
   const replay = await app.route("api-log/replay");
   assert.equal(replay.ok, true);
   assert.deepEqual(replay.value, {
@@ -640,7 +642,7 @@ test("actual mock Host preserves its view and observation while model execution 
   assert.deepEqual(app.external, []);
 });
 
-test("the official LLM stream seam denies a retained direct GEA provider before its wire runs", async (t) => {
+test("the official LLM stream seam denies unavailable business presets while ordinary workbench routing stays independent", async (t) => {
   const app = await fixture(t, true, {
     mock: true,
     workbenchEnabled: false,
@@ -648,8 +650,8 @@ test("the official LLM stream seam denies a retained direct GEA provider before 
   });
   await assert.rejects(app.streamThroughCore(app.preset), /GEA_CAPABILITY_MOCK_ONLY/);
   await assert.rejects(app.streamThroughCore("gea-readonly"), /GEA_AGENT_RESOURCE_DISABLED/);
-  await assert.rejects(app.streamThroughCore("standard"), /GEA_CAPABILITY_DISABLED/);
-  assert.deepEqual(app.external, []);
+  await app.streamThroughCore("standard");
+  assert.deepEqual(app.external, ["direct-model-wire"]);
 });
 
 test("model/advice shares the adapter idle lifetime without an outer total deadline", async (t) => {
