@@ -11,8 +11,8 @@ import {
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { currentTestTimings } from "./quality-test-timings.mjs";
 
-export const sourceCheckWorkerLimit = 20;
-export const sourceCheckWorkerTarget = 20;
+export const sourceCheckWorkerLimit = 40;
+export const sourceCheckWorkerTarget = 40;
 const shardIds = (count) => Array.from({ length: count }, (_, index) => String(index + 1));
 const requireValue = (condition, detail) => {
   if (!condition) throw Error("SOURCE_CHECK_SHARDS_REJECTED: " + detail);
@@ -41,7 +41,7 @@ export function sourceCheckMatrix(plan) {
     sourceCheckWorkerLimit,
     sourceCheckWorkerTarget,
     files.length,
-    Math.max(2, Math.ceil(runtime / 6) + Math.ceil((files.length - runtime) / 40)),
+    Math.max(2, Math.ceil(runtime / 3) + Math.ceil((files.length - runtime) / 40)),
   );
   return { parallel, shards: parallel ? shardIds(count) : ["single"] };
 }

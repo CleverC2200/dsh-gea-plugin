@@ -20,6 +20,8 @@
 
 每条记录可显式声明 `fixtures` 依赖。当前历史表和回执导出的逐文件 `fixtures` 均为空数组，不能据此声称测试没有共享依赖，或已经具备细粒度依赖保证。全局输入漂移后，测试正文和已声明 fixture 未变的记录仍可作为 `orderingFiles`，仅提示跨 job 分片安排，不成为当前耗时预测。测试正文、显式 fixture 改变或删除时撤销该提示；新文件不继承旧文件时长。刷新时须从同一冻结 run 的完整回执取样，并从该 run 的源码 HEAD 取摘要。
 
+多场景文件当前按[测试覆盖对应](test-coverage-migration.md)拆为独立入口，保持原case的私有Profile和Host。联合检查按每三个Profile文件及每四十个其他文件估算job数，上限与workflow一致为40；小集合继续按实际文件数收缩，不将账号额度视为已保证的runner位置。
+
 此前一次历史拆分将当时 `returned-resubmit-web.test.mjs` 的 11 个用例分成三个测试文件。当前 17 项场景的四文件对应见[测试覆盖对应](test-coverage-migration.md)。它们共用 [`returned-review.mjs`](../tests/fixtures/returned-review.mjs) 的纯 fixture，每个 case 仍有独立状态、私有 runtime、完整源码组合校验与 window admission；测试函数体和业务断言保留。不能把原单文件 330486.690586ms 当成新文件已测耗时，新文件先记未知。Source 90000ms、Host 45000ms、容量下限与业务动作预算保持。
 
 上述历史 11 个 case 的生命周期证据中，准备与到可操作窗口累计占 83.6%，不是固定 25 秒清理等待。跨 case 复用基础层必须先证明它只读、绑定同组源码与完整外部依赖字节，并在每个 case 单独派生配置、budget、selection 与授权。现有组合包含私有路径，不能直接当成可重放授权缓存；本轮保留完整逐 case 检查，实际墙钟收益由新冻结输入同范围 hosted 运行验证。

@@ -778,10 +778,18 @@ test("the shared returned-review fixture selects every isolated browser scenario
     "tests/returned-resubmit-recovery-web.test.mjs",
     "tests/returned-resubmit-access-web.test.mjs",
     "tests/returned-review-roles-web.test.mjs",
+    "tests/returned-review-province-web.test.mjs",
+    "tests/returned-review-area-web.test.mjs",
+    "tests/returned-review-category-web.test.mjs",
     "tests/returned-review-reject-web.test.mjs",
   ];
   const shared = "tests/fixtures/returned-review.mjs";
-  const fixture = resourceImpactFixture(t, [...consumers, shared, "tests/profile.mjs"]);
+  const fixture = resourceImpactFixture(t, [
+    ...consumers,
+    shared,
+    "tests/fixtures/returned-review-role.mjs",
+    "tests/profile.mjs",
+  ]);
   fixture.change(
     fixture.own,
     shared,
@@ -797,6 +805,29 @@ test("the shared returned-review fixture selects every isolated browser scenario
     consumers.every((file) => plan.runtimeFiles.includes(file)),
     JSON.stringify(plan),
   );
+});
+
+test("column snapshot fixture changes select every isolated column scenario", (t) => {
+  const consumers = [
+    "tests/page-reference-columns-web.test.mjs",
+    "tests/page-reference-reordered-web.test.mjs",
+    "tests/page-reference-quantity-web.test.mjs",
+    "tests/page-reference-reason-web.test.mjs",
+  ];
+  const helper = "tests/fixtures/page-reference-column.mjs";
+  const shared = "tests/fixtures/stock-reference-page.mjs";
+  for (const changed of [helper, shared]) {
+    const fixture = resourceImpactFixture(t, [...consumers, helper, shared, "tests/profile.mjs"]);
+    fixture.change(
+      fixture.own,
+      changed,
+      readFileSync(new URL("../" + changed, import.meta.url), "utf8") + "\n",
+    );
+    const plan = fixture.plan();
+    assert.ok(consumers.every((file) => plan.files.includes(file)), JSON.stringify(plan));
+    assert.ok(consumers.every((file) => plan.runtimeFiles.includes(file)), JSON.stringify(plan));
+    assert.equal(plan.browser, true);
+  }
 });
 
 test("stock lifecycle and native identity fixtures keep every split scenario selected", (t) => {

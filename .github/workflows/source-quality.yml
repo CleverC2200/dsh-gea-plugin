@@ -179,7 +179,7 @@ jobs:
     if: always() && needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'true' && needs.source-plan.outputs.mode != 'docs' && (needs.dependency-policy.result == 'success' || needs.dependency-policy.result == 'skipped')
     strategy:
       fail-fast: false
-      max-parallel: 20
+      max-parallel: 40
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
     runs-on: ubuntu-latest
