@@ -635,7 +635,7 @@ export async function apply(
                   };
                   break;
                 case "model/advice": {
-                  business.assertExecutionAllowed(config.analysisAgentCode);
+                  business.assertExecutionAllowed(WORKBENCH_AGENT_CODE);
                   if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
                   if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
                   if (
@@ -647,7 +647,7 @@ export async function apply(
                   const signal = AbortSignal.any([request.signal, business.identitySignal()]);
                   let model = config.analysisModel;
                   if (config.analysisSource === "gea") {
-                    const route = await business.modelRoute(signal, config.analysisAgentCode);
+                    const route = await business.modelRoute(signal, WORKBENCH_AGENT_CODE);
                     model = route.models.includes(model) ? model : route.models[0]!;
                   }
                   let answer = "";
@@ -694,9 +694,11 @@ export async function apply(
                     request.signal,
                   );
                   const discoveryConsumer =
-                    typeof requestedPreset === "string" && requestedPreset !== "gea-readonly"
-                      ? profileFor(requestedPreset)!.consumerCode
-                      : config.analysisAgentCode;
+                    requestedPreset === undefined
+                      ? WORKBENCH_AGENT_CODE
+                      : requestedPreset === "gea-readonly"
+                        ? config.analysisAgentCode
+                        : profileFor(requestedPreset)!.consumerCode;
                   const route =
                     config.analysisSource === "direct"
                       ? {

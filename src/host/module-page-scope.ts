@@ -42,6 +42,8 @@ export function modulePagePrompt(host: Host, session: string): string | undefine
           search: payload.search,
         },
         inventorySnapshot: payload.inventorySnapshot,
+        capturedAt: payload.capturedAt,
+        observationSemantics: payload.observationSemantics,
         metrics: payload.metrics,
         metricSemantics: payload.metricSemantics,
         totalFilteredRows: payload.totalFilteredRows,
@@ -121,18 +123,32 @@ export function inheritModuleCubeScope(host: Host, session: string, args: Record
         );
       if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.inventorySnapshot))
         throw Error("GEA_PAGE_SCOPE_NOT_READY");
+      for (const time of q.timeDimensions ?? []) {
+        const range = time.dateRange;
+        if (time.dimension !== model + ".stat_date" || !Array.isArray(range) || range.length !== 2)
+          continue;
+        const [start, end] = range.map((value: unknown) =>
+          typeof value === "string" ? value.slice(0, 10) : "",
+        );
+        if (
+          /^\d{4}-\d{2}-\d{2}$/.test(start) &&
+          /^\d{4}-\d{2}-\d{2}$/.test(end) &&
+          (payload.inventorySnapshot < start || payload.inventorySnapshot > end)
+        )
+          throw Error(
+            `GEA_PAGE_SCOPE_DATE_CONFLICT: 当前页面锁定${payload.inventorySnapshot}，请求日期与页面范围不相交；本次未查询，不能据此判断历史源表无数据。`,
+          );
+      }
       filters.push({
         member: model + ".stat_date",
-        operator: planModel ? "inDateRange" : "in",
-        values: planModel
-          ? [payload.inventorySnapshot, payload.inventorySnapshot]
-          : [payload.inventorySnapshot],
+        operator: "inDateRange",
+        values: [payload.inventorySnapshot, payload.inventorySnapshot],
       });
       const codes = payload.filteredCustomerCodes;
       if (!Array.isArray(codes)) throw Error("GEA_PAGE_SCOPE_NOT_READY: 缺少完整筛选客户集合。");
       if (!codes.length)
         throw Error("GEA_PAGE_SCOPE_EMPTY: 当前筛选没有客户，不发起其他范围查询。");
-      if (planModel && codes.length > 100) {
+      if (codes.length > 100) {
         const groups = [];
         for (let index = 0; index < codes.length; index += 100)
           groups.push({
@@ -144,7 +160,7 @@ export function inheritModuleCubeScope(host: Host, session: string, args: Record
       } else {
         filters.push({
           member: model + ".cust_code",
-          operator: planModel ? "equals" : "in",
+          operator: "equals",
           values: codes,
         });
       }

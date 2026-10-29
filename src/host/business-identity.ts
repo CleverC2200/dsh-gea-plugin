@@ -55,7 +55,7 @@ export function sessionConsumer(ctx: Context, business: Business, sessionId?: st
   if (agent && ctx.userAgents?.cubeFor(agent)) return WORKBENCH_AGENT_CODE;
   return (
     (preset ? ctx.agentResources?.cubeSource(preset)?.consumerCode : undefined) ??
-    business.config.analysisAgentCode
+    WORKBENCH_AGENT_CODE
   );
 }
 
