@@ -1,6 +1,10 @@
 import { loadServiceAccountCredentials } from "./shared/service-accounts.js";
 import type { ServiceAccounts } from "./host/service-account.ts";
-import { GeaModelAdapter, geaKeptReasoningEffort } from "./host/gea-model.ts";
+import {
+  GeaModelAdapter,
+  geaKeptReasoningEffort,
+  initializeGeaDefaultModel,
+} from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
@@ -376,19 +380,43 @@ export async function apply(
       );
       let identity = business.identitySignal();
       let authenticated = business.status().authenticated;
-      if (!authenticated) registration.replace([]);
+      const lifetime = new AbortController();
+      const updateRegistration = () => {
+        const expectedIdentity = identity;
+        if (!authenticated || process.env.GEA_COMPANY_CLIENT !== "1") {
+          registration.replace(authenticated ? ["gea-analysis"] : []);
+          return;
+        }
+        registration.replace([]);
+        const signal = AbortSignal.any([identity, lifetime.signal]);
+        void initializeGeaDefaultModel(business, ctx.agentDefaultModel, signal)
+          .catch((error: unknown) => {
+            if (!signal.aborted) {
+              const { code, message } = errorEnvelope(error);
+              console.warn(
+                JSON.stringify({ event: "GEA_DEFAULT_MODEL_UNAVAILABLE", code, message }),
+              );
+            }
+          })
+          .finally(() => {
+            if (!signal.aborted && business.identitySignal() === expectedIdentity)
+              registration.replace(["gea-analysis"]);
+          });
+      };
+      updateRegistration();
       // 官方模型菜单通过路由变更刷新目录。只观察 Host 身份代际和有效性，
       // 头像等展示变化不能重新发现模型，也不改 Session 的模型选择。
       const unwatch = business.watchIdentity(() => {
         const nextIdentity = business.identitySignal();
         const nextAuthenticated = business.status().authenticated;
         if (identity === nextIdentity && authenticated === nextAuthenticated) return;
-        registration.replace(nextAuthenticated ? ["gea-analysis"] : []);
         identity = nextIdentity;
         authenticated = nextAuthenticated;
+        updateRegistration();
       });
       return () => {
         unwatch();
+        lifetime.abort();
         registration();
       };
     });
