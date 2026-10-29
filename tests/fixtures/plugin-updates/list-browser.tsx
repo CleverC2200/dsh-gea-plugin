@@ -14,6 +14,7 @@ import workbenchMeta from "../../../../dsh-agent-workbench/locale/zh.json";
 import manageMeta from "../../../../dsh-agent-manage/locale/zh.json";
 import geaMeta from "../../../locale/zh.json";
 
+const sidebar = new URLSearchParams(location.search).has("sidebar");
 const ctx = new Context();
 await ctx.plugin(renderer).await();
 const emptyBinding = { key: undefined, hooks: {}, keyedHooks: {}, props: {} };
@@ -71,14 +72,28 @@ ctx.slots.register(
     children: {
       "settings.section": { kind: "list", scope: "root" },
       "shell.overlay": { kind: "list", scope: "root" },
+      "sidebar.footer.action": { kind: "list", scope: "root" },
     },
   },
   ({ renderSlot }) => {
-    const [visible, setVisible] = useState(true);
+    const [visible, setVisible] = useState(!sidebar);
     openSettings = () => setVisible(true);
     closeSettings = () => setVisible(false);
     return (
       <div style={{ maxWidth: 800, margin: "auto", padding: 24 }}>
+        {sidebar ? (
+          <footer
+            style={{
+              display: "flex",
+              width: 256,
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>陈勇浩</span>
+            {renderSlot("sidebar.footer.action", { wide: true })}
+          </footer>
+        ) : null}
         {visible
           ? renderSlot("settings.section", { close: closeSettings }, { only: "plugin-manager" })
           : null}

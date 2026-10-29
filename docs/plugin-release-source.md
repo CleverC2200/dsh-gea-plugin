@@ -1,5 +1,7 @@
 # 插件来源与整组更新
 
+客户端启动后，GEA Host 检查一次插件频道；之后每两小时检查一次，计时从本次 Host 启动开始。后台检查不安装插件，检查重叠时复用进行中的检查，退出时取消计时。账户右侧的更新提示调用既有整组更新入口；安装后的重启和失败详情沿用插件管理流程。
+
 Host 使用 [createPluginReleaseSource](../src/host/plugin-release-source.ts) 检查频道并下载已验证归档。配置必须显式声明 `channel`、`channelUrl`、`allowed` 的 HTTPS origin/pathPrefix和 `authenticationRef`。pathPrefix 以 `/` 起止；URL 不含凭据、查询、fragment、编码路径或反斜杠。没有默认 OSS 地址或认证引用。
 
 调用者提供 `resolveAuthentication(reference, url, signal)` 与绝对 `trustDirectory`。认证引用由 Host 按已批准读取凭据解析，返回本次请求 headers；业务 token 与 client 登录投影不参与。所有请求拒绝重定向。`check(signal)` 返回频道当前发布的已验证 PluginRelease，`download(release, absoluteCacheDirectory, signal)` 返回持久 tgz 路径。来源失败清除下载资格，原 inventory 由调用者保留。检查串行，迟到检查不能覆盖新检查；没有当前成功检查时不能下载。
