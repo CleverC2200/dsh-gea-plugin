@@ -244,6 +244,30 @@ test("official installed list offers only suite updates, refreshes the channel o
   await page.reload();
   await page.getByText("需要重启", { exact: false }).first().waitFor();
   assert.equal(await page.getByRole("button", { name: "一键重启", exact: true }).count(), 0);
+  const previousChecks = checks,
+    previousBatches = batches;
+  singleTarget = undefined;
+  phase = "available";
+  await page.goto(url + "?sidebar");
+  const footer = page.locator("footer");
+  await footer.getByRole("button", { name: "全部更新", exact: true }).waitFor();
+  assert.equal(checks, previousChecks);
+  assert.equal(batches, previousBatches);
+  assert.equal(await page.locator("[data-plugin-panel]").count(), 0);
+  await footer.screenshot({
+    path: process.env.GEA_SIDEBAR_SCREENSHOT ?? join(root, "sidebar.png"),
+  });
+  await footer.getByRole("button", { name: "全部更新", exact: true }).dblclick();
+  await page.getByRole("alert").filter({ hasText: "插件正在更新，可查看更新状态。" }).waitFor();
+  assert.equal(checks, previousChecks + 1);
+  assert.equal(batches, previousBatches + 1);
+  assert.equal(singles, 0);
+  phase = "pending-restart";
+  await footer.getByRole("button", { name: "需要重启", exact: true }).waitFor();
+  await footer.getByRole("button", { name: "需要重启", exact: true }).click();
+  await page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]').waitFor();
+  await page.evaluate(() => window.fixture.locale("en"));
+  await footer.getByRole("button", { name: "Restart required", exact: true }).waitFor();
   assert.deepEqual(errors, []);
   await page.evaluate(() => window.fixture.dispose());
 });
