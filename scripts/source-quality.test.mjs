@@ -65,6 +65,32 @@ test("a README-only pull request needs no engineering checks, including Markdown
   assert.equal(JSON.parse(result.stdout).mode, "docs");
 });
 
+test("GEA source checks pass the fixed SDK path to browser test consumers", (t) => {
+  const repo = fixture(
+    t,
+    { "src/client.ts": "export const value = 1;\n" },
+    { "src/client.ts": "export const value = 2;\n" },
+    { repoName: "candidate/dsh-gea-plugin" },
+  );
+  const reader = join(repo.root, "../../source/dsh-agent-workbench/scripts/source-checks.mjs");
+  mkdirSync(dirname(reader), { recursive: true });
+  writeFileSync(
+    reader,
+    `import { execFileSync } from 'node:child_process';
+export function sourceChecks(_result, phase) {
+  if (phase === 'affected-check') execFileSync(process.execPath, ['--input-type=module', '-e',
+    'import assert from "node:assert/strict"; import {resolve} from "node:path"; assert.equal(process.env.GEA_PLUGIN_UPDATE_SDK, resolve("../../official-latest-standard"));'
+  ], {stdio: 'inherit'});
+}`,
+  );
+  for (const inherited of ["", "/stale-sdk"])
+    assert.equal(
+      repo.run("affected-check", { GEA_PLUGIN_UPDATE_SDK: inherited }).status,
+      0,
+      `SDK environment: ${inherited || "missing"}`,
+    );
+});
+
 test("manual source acceptance rejects missing, invalid and non-ancestor comparison bases", (t) => {
   const repo = fixture(t, { "README.md": "Before\n" }, { "README.md": "After\n" });
   writeFileSync(join(repo.root, ".git/event.json"), JSON.stringify({}));
