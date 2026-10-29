@@ -38,7 +38,12 @@ test("customer Cube intersects complete filtered customer set and snapshot, with
   c.abort();
   assert.throws(() => inheritModuleCubeScope(host, "s", args), /NOT_READY/);
 });
-for (const model of ["agents_scm_cust_plan_order_analysis_d", "cust_plan_order_analysis_qa"]) {
+for (const model of [
+  "agents_scm_cust_plan_order_analysis_d",
+  "cust_plan_order_analysis_qa",
+  "agents_scm_cust_jxc_ai_daliy_d",
+  "cust_jxc_ai_daily_qa",
+]) {
   test(`${model} retains caller filters and intersects the current customer list and snapshot`, () => {
     const host = { surfaceFor: () => ({ menu: "inventory-customer" }) };
     const controller = new AbortController();
@@ -65,6 +70,14 @@ for (const model of ["agents_scm_cust_plan_order_analysis_d", "cust_plan_order_a
       filteredCustomerCodes: ["10155031"],
     };
     binding.observe(payload);
+    const historical = structuredClone(args);
+    historical.queries[0].query.timeDimensions = [
+      { dimension: model + ".stat_date", dateRange: ["2026-10-26", "2026-10-26"] },
+    ];
+    assert.throws(
+      () => inheritModuleCubeScope(host, "s", historical),
+      /DATE_CONFLICT.*不能据此判断历史源表无数据/,
+    );
     const result = inheritModuleCubeScope(host, "s", args);
     assert.deepEqual(args, original);
     assert.deepEqual(result.queries[0].query.filters, [
