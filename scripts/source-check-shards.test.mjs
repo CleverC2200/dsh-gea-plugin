@@ -104,7 +104,7 @@ function fixture(t, count = 2) {
       plan: {
         joint: true,
         files,
-        runtimeFiles: count === 3 ? files.slice(0, 12) : count === 10 ? files.slice(0, 54) : [],
+        runtimeFiles: count === 3 ? files.slice(0, 6) : count === 10 ? files.slice(0, 24) : [],
       },
     });
     write(join(worker, "quality-test-execution-plan.json"), plan);
@@ -140,7 +140,7 @@ function fixture(t, count = 2) {
 
 test("source workers bind a bounded shard count and reject malformed assignment", () => {
   assert.equal(sourceCheckShard({}), undefined);
-  for (const count of [2, 8, 16, 20])
+  for (const count of [2, 8, 16, 20, 40])
     for (let id = 1; id <= count; id++)
       assert.deepEqual(
         sourceCheckShard({
@@ -154,7 +154,7 @@ test("source workers bind a bounded shard count and reject malformed assignment"
     { GEA_SOURCE_CHECK_SHARD: "0", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
     { GEA_SOURCE_CHECK_SHARD: "3", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
     { GEA_SOURCE_CHECK_SHARD: "01", GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
-    { GEA_SOURCE_CHECK_SHARD: "1", GEA_SOURCE_CHECK_SHARD_COUNT: "21" },
+    { GEA_SOURCE_CHECK_SHARD: "1", GEA_SOURCE_CHECK_SHARD_COUNT: "41" },
   ])
     assert.throws(() => sourceCheckShard(env), /shard/);
 });
@@ -364,7 +364,7 @@ test("the source workflow admits workers only after successful or inapplicable p
   const producer = workflow.jobs["dependency-policy"];
   const worker = workflow.jobs["source-checks"];
   assert.deepEqual(worker.needs, ["source-plan", "dependency-policy"]);
-  assert.equal(worker.strategy["max-parallel"], 20);
+  assert.equal(worker.strategy["max-parallel"], 40);
   const expression = worker.if
     .replaceAll("needs.source-plan", 'needs["source-plan"]')
     .replaceAll("needs.dependency-policy", 'needs["dependency-policy"]');

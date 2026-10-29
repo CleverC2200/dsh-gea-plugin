@@ -334,6 +334,8 @@ else if (["affected-plan", "affected-prepare", "affected-check"].includes(phase)
             ? "scripts/source-checks.mjs"
             : "../dsh-agent-workbench/scripts/source-checks.mjs",
         );
+  if (phase === "affected-check")
+    process.env.GEA_PLUGIN_UPDATE_SDK = resolve("../../official-latest-standard");
   await (await import(pathToFileURL(reader))).sourceChecks(result, phase);
 } else if (phase === "final") {
   const expected = {
