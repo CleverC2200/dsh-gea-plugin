@@ -159,7 +159,7 @@ jobs:
           repository: CleverC2200/deepseek-harness
           ref: ${{ needs.source-plan.outputs.core-sha }}
           path: preparation/official-core
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: Verify fresh dependency policies once for this run
         run: |
@@ -257,7 +257,7 @@ jobs:
           repository: CleverC2200/deepseek-harness
           ref: ${{ steps.core.outputs.head }}
           path: source/official-core
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: Verify selected Core source before dependency preparation
         if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
