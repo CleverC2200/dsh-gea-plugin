@@ -1,12 +1,9 @@
-import {
-  brotliCompressSync,
-  brotliDecompressSync,
-  constants,
-  gzipSync,
-  gunzipSync,
-} from "node:zlib";
+import { brotliCompress, brotliDecompressSync, constants, gzip, gunzipSync } from "node:zlib";
+import { promisify } from "node:util";
 
 const limit = 20_000_000;
+const compressGzip = promisify(gzip);
+const compressBrotli = promisify(brotliCompress);
 function columns(value: any): any {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) {
@@ -61,22 +58,27 @@ function expand(value: any, depth = 0): any {
 }
 
 /** Column grouping is lossless: preserve every field, row, order, null and numeric value. */
-export function encodeOrderReport(json: string) {
+export async function encodeOrderReport(json: string, targetBytes = 60_000) {
   if (Buffer.byteLength(json) > limit) throw Error("ORDER_REPORT_TOO_LARGE");
   const legacy = JSON.stringify({
     encoding: "gzip-base64",
-    data: gzipSync(json).toString("base64"),
+    data: (await compressGzip(json)).toString("base64"),
   });
   if (Buffer.byteLength(legacy) < 60_000) return legacy;
   const input = Buffer.from(JSON.stringify(columns(JSON.parse(json))));
   let best = legacy;
   for (const quality of [9, 11]) {
-    const data = brotliCompressSync(input, {
-      params: { [constants.BROTLI_PARAM_QUALITY]: quality },
-    }).toString("base64");
+    const data = (
+      await compressBrotli(input, {
+        params: {
+          [constants.BROTLI_PARAM_QUALITY]: quality,
+          [constants.BROTLI_PARAM_LGWIN]: 24,
+        },
+      })
+    ).toString("base64");
     const encoded = JSON.stringify({ encoding: "br-columns-v1", data });
     if (encoded.length < best.length) best = encoded;
-    if (Buffer.byteLength(best) < 60_000) break;
+    if (Buffer.byteLength(best) <= targetBytes) break;
   }
   return best;
 }
