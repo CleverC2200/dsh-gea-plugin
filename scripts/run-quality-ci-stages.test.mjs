@@ -912,7 +912,7 @@ for (const concurrency of [3, 4])
     if (concurrency === 3)
       assert.deepEqual(receipt.results[0].libuvPool, {
         status: "declared",
-        size: 4,
+        size: Math.min(4, Math.floor(receipt.capacity.observed.availableParallelism / 3)),
         activeFiles: 1,
         availableParallelism: receipt.capacity.observed.availableParallelism,
         source: "capacity.observed.availableParallelism",

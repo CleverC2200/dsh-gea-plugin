@@ -227,7 +227,7 @@ test("source workflow keeps one manual comparison base for planning, workers and
   assert.equal(baseFor("pull_request", "a".repeat(40)), "");
   assert.equal(baseFor("push", "a".repeat(40)), "");
   assert.doesNotMatch(workflow.split("\njobs:\n")[1], /SOURCE_BASE_SHA:/);
-  assert.match(workflow, /max-parallel: 20/);
+  assert.match(workflow, /max-parallel: 40/);
   assert.match(
     workflow,
     /name: Record formal source inputs\n        if: github.event_name == 'pull_request'/,
