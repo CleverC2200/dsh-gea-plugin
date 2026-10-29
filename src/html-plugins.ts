@@ -483,7 +483,7 @@ export async function registerHtmlPlugins(
                   true,
                 );
               },
-              ...(item.id === "inventory-aqkc" && !item.mock
+              ...(["inventory-aqkc", "inventory-fc"].includes(item.id) && !item.mock
                 ? {
                     insight: (parameters: unknown, requestSignal: AbortSignal) => {
                       if (business.surfaceFor(session) !== surface)
