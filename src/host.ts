@@ -102,7 +102,7 @@ export const Config = z.object({
   cubeMcpCodes: z
     .object({ production: z.string(), test: z.string() })
     .default(companyDefaults.cubeMcpCodes),
-  modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(300000),
+  modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(600000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).default(companyDefaults.maxSnapshotBytes),
   runtimeDir: z.string(),
   // The feature validates this optional deployment input and stays blocked on incomplete configuration.
