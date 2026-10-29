@@ -1,6 +1,7 @@
 <!-- collaboration-record
 {"kind":"change","id":"CHANGE-20261030-model-idle-feedback","date":"2026-10-30","title":"模型空闲等待放宽至600秒","module":"模型请求","status":"待发布"}
 -->
+
 # 模型空闲等待修复
 
 单次模型请求的默认空闲超时从300秒调整为600秒。SSE活动和心跳继续重置计时，显式用户设置保留，MCP超时不变。
