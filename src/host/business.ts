@@ -1362,7 +1362,7 @@ export class Business {
   /** 对外状态永远不包含 GEA 凭证。 */
   status() {
     const readonlyValidation = this.salesReadonly?.snapshot();
-    const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
+    const models = this.modelRoutes.get(WORKBENCH_AGENT_CODE)?.models;
     return {
       environment: this.environment,
       environments: Object.keys(this.environments),
@@ -1898,7 +1898,7 @@ export class Business {
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
   async modelRoute(
     signal: AbortSignal,
-    agentCode = "sales_forecast",
+    agentCode = WORKBENCH_AGENT_CODE,
     pageSessionId?: string,
   ): Promise<GeaModelRoute> {
     this.assertModelAllowed();
@@ -1908,33 +1908,59 @@ export class Business {
     if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
     const cached = this.modelRoutes.get(agentCode);
     if (cached) return cached;
+    const credentialAccessError = (error: unknown): never => {
+      if (
+        error instanceof Error &&
+        ((error instanceof GeaResponseError && error.details.httpStatus === 403) ||
+          error.message === "GEA_MODEL_HTTP_403")
+      )
+        throw Object.assign(
+          Error(`${error.message}。当前账号无权访问 GEA 模型凭据，请联系管理员开通权限。`),
+          {
+            code: error instanceof GeaResponseError ? error.code : "GEA_MODEL_HTTP_403",
+            ...(error instanceof GeaResponseError ? { details: error.details } : {}),
+          },
+        );
+      throw error;
+    };
     const credentialResult = object(
-      await this.gatewayRequests.read(
-        "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
-        auth,
-        AbortSignal.any([signal, epoch]),
-        false,
-      ),
+      await this.gatewayRequests
+        .read(
+          "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
+          auth,
+          AbortSignal.any([signal, epoch]),
+          false,
+        )
+        .catch(credentialAccessError),
     );
     const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
     if (records.length > 1) throw new Error("GEA_MODEL_CREDENTIAL_AMBIGUOUS");
     const credential = records[0] ? object(records[0]) : undefined;
-    if (!credential) throw new Error("GEA_MODEL_CREDENTIAL_MISSING");
+    if (!credential)
+      throw Object.assign(Error("当前账号尚未开通 GEA 模型权限，请联系管理员开通。"), {
+        code: "GEA_MODEL_CREDENTIAL_MISSING",
+      });
     const status = credential.status;
     if (status === "DISABLED" || status === "REVOKED")
-      throw new Error("GEA_MODEL_CREDENTIAL_DISABLED");
+      throw Object.assign(Error("当前账号的 GEA 模型权限已停用，请联系管理员恢复。"), {
+        code: "GEA_MODEL_CREDENTIAL_DISABLED",
+      });
     const credentialId = text(credential.credentialId ?? credential.id);
-    const claim = await this.gatewayRequests.claim(
-      "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
-      auth,
-      AbortSignal.any([signal, epoch]),
-      false,
-    );
+    const claim = await this.gatewayRequests
+      .claim(
+        "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
+        auth,
+        AbortSignal.any([signal, epoch]),
+        false,
+      )
+      .catch(credentialAccessError);
     const claimed = object(claim);
     if (String(claimed.credentialId ?? "") !== credentialId)
       throw new Error("GEA_MODEL_CREDENTIAL_MISMATCH");
     if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
-      throw new Error("GEA_MODEL_CREDENTIAL_UNAVAILABLE");
+      throw Object.assign(Error("当前账号的 GEA 模型凭据不可用，请联系管理员检查权限。"), {
+        code: "GEA_MODEL_CREDENTIAL_UNAVAILABLE",
+      });
     const base = new URL(text(claimed.baseUrl));
     if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash)
       throw new Error("GEA_MODEL_BASE_URL_INVALID");
@@ -1963,7 +1989,10 @@ export class Business {
     const models = modelsPayload.data.map((entry) =>
       typeof entry === "string" ? entry : text(object(entry).id),
     );
-    if (!models.length) throw new Error("GEA_MODEL_EMPTY");
+    if (!models.length)
+      throw Object.assign(Error("当前账号没有可用的 GEA 模型，请联系管理员配置模型权限。"), {
+        code: "GEA_MODEL_EMPTY",
+      });
     const names: Record<string, string> = {};
     const contextWindows: Record<string, number> = {};
     for (const id of new Set(models)) {

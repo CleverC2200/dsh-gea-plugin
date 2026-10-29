@@ -1,10 +1,10 @@
 import test from "node:test";
-import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { build } from "esbuild";
+import { clientBuildOptions } from "../scripts/client-build.mjs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
@@ -25,10 +25,10 @@ async function until(predicate) {
 }
 
 test("official detail slots check, update, close and reenter through controlled HTTP", async (t) => {
-  execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], { stdio: "pipe" });
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/detail-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
+  await build(clientBuildOptions(join(root, "gea-client.js")));
   await build({
     entryPoints: ["tests/fixtures/plugin-updates/detail-browser.tsx"],
     bundle: true,
@@ -135,7 +135,7 @@ test("official detail slots check, update, close and reenter through controlled 
     }
     if (url === "/gea-client.js") {
       res.setHeader("content-type", "text/javascript");
-      res.end(await readFile("lib/client.js"));
+      res.end(await readFile(join(root, "gea-client.js")));
       return;
     }
     if (url === "/app.js" || url === "/app.css") {

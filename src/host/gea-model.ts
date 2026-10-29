@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-agent-default-model";
 import {
   LlmAdapter,
   LlmError,
@@ -16,6 +18,7 @@ import { networkError } from "../shared/net-error.ts";
 import { modelHttpError } from "../shared/model-http-error.ts";
 import { transportSignal } from "../shared/transport-signal.ts";
 import { geaTextStream } from "../shared/gea-stream.ts";
+import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
 /**
  * 可选推理档位。GEA 个人模型网关把 `extra_params` 的顶层键覆盖到模型配置的默认
@@ -71,6 +74,37 @@ export function geaKeptReasoningEffort(current: {
     : undefined;
 }
 
+export async function initializeGeaDefaultModel(
+  business: Business,
+  defaults: Pick<Context["agentDefaultModel"], "currentSelection" | "saveSelection">,
+  signal: AbortSignal,
+): Promise<void> {
+  let route: Awaited<ReturnType<Business["modelRoute"]>>;
+  try {
+    route = await business.modelRoute(signal, WORKBENCH_AGENT_CODE);
+  } catch (error) {
+    signal.throwIfAborted();
+    if (defaults.currentSelection().provider !== "gea-analysis")
+      await defaults.saveSelection({
+        provider: "gea-analysis",
+        model: business.config.analysisModel,
+      });
+    throw error;
+  }
+  signal.throwIfAborted();
+  const current = defaults.currentSelection();
+  if (current.provider === "gea-analysis" && route.models.includes(current.model)) return;
+  const model = route.models.includes(business.config.analysisModel)
+    ? business.config.analysisModel
+    : route.models[0]!;
+  const effort = geaKeptReasoningEffort(current);
+  await defaults.saveSelection({
+    provider: "gea-analysis",
+    model,
+    ...(effort === undefined ? {} : { reasoningEffort: effort }),
+  });
+}
+
 /** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 export class GeaModelAdapter extends LlmAdapter {
   constructor(
@@ -88,14 +122,14 @@ export class GeaModelAdapter extends LlmAdapter {
   async listModels(provider: string) {
     const route = await this.business.modelRoute(
       new AbortController().signal,
-      this.business.config.analysisAgentCode,
+      WORKBENCH_AGENT_CODE,
     );
     return route.models.map((id) => ({ provider, id, name: route.names[id] }));
   }
   async resolveModel(provider: string, model: string, signal?: AbortSignal) {
     const route = await this.business.modelRoute(
       signal ?? new AbortController().signal,
-      this.business.config.analysisAgentCode,
+      WORKBENCH_AGENT_CODE,
     );
     return {
       provider,
@@ -143,14 +177,10 @@ export class GeaModelAdapter extends LlmAdapter {
         access.signal.throwIfAborted();
       }
       const consumer = access?.consumerCode;
-      business.assertExecutionAllowed(
-        consumer ?? business.config.analysisAgentCode,
-        "view",
-        options.sessionId,
-      );
+      business.assertExecutionAllowed(consumer ?? WORKBENCH_AGENT_CODE, "view", options.sessionId);
       const route = await business.modelRoute(
         signal,
-        consumer ?? business.config.analysisAgentCode,
+        consumer ?? WORKBENCH_AGENT_CODE,
         options.sessionId,
       );
       if (!route.models.includes(options.model))

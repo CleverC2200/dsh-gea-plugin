@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p .runtime/workflow-preflight
-          node --test --test-concurrency=3 scripts/workflow-preflight.test.mjs scripts/source-formal-receipt.test.mjs 2>&1 | tee .runtime/workflow-preflight/contracts.log
+          node --test --test-concurrency=3 scripts/workflow-preflight.test.mjs scripts/source-formal-receipt.test.mjs scripts/source-preparation.test.mjs 2>&1 | tee .runtime/workflow-preflight/contracts.log
           node --test --test-name-pattern='^(a README-only|title and body edits|source workflow keeps|candidate-quality accepts)' scripts/source-quality.test.mjs 2>&1 | tee .runtime/workflow-preflight/admission.log
       - name: Classify actual Git changes
         id: plan
@@ -159,7 +159,7 @@ jobs:
           repository: CleverC2200/deepseek-harness
           ref: ${{ needs.source-plan.outputs.core-sha }}
           path: preparation/official-core
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: Verify fresh dependency policies once for this run
         run: |
@@ -179,7 +179,7 @@ jobs:
     if: always() && needs.source-plan.result == 'success' && needs.source-plan.outputs.validate == 'true' && needs.source-plan.outputs.mode != 'docs' && (needs.dependency-policy.result == 'success' || needs.dependency-policy.result == 'skipped')
     strategy:
       fail-fast: false
-      max-parallel: 20
+      max-parallel: 40
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
     runs-on: ubuntu-latest
@@ -265,6 +265,9 @@ jobs:
           QUALITY_CORE_HEAD: ${{ steps.core.outputs.head }}
         run: |
           node --input-type=module -e "import { verifyOfficialSource } from '../dsh-agent-manage/scripts/prepare-official-sdk.mjs'; console.log(JSON.stringify(verifyOfficialSource(process.env.GITHUB_WORKSPACE + '/source/official-core', { coreHead: process.env.QUALITY_CORE_HEAD })))"
+      - name: Check selected historical Core inputs before expensive preparation
+        if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
+        run: node scripts/source-preparation.mjs --plan .runtime/source-checks-plan.json --core "$GITHUB_WORKSPACE/source/official-core" --head "${{ steps.core.outputs.head }}" > ../../source-preparation.json
       - name: Download this run's native policy cache
         if: needs.dependency-policy.result == 'success' && steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
         uses: actions/download-artifact@v8
@@ -388,6 +391,8 @@ jobs:
             quality-stages.json
             quality-checks.json
             source-checks-scope.json
+            source-preparation.json
+            candidate/dsh-gea-plugin/.runtime/source-checks-result.json
             quality-stages.json
             quality-test-execution.json
             quality-test-results/
@@ -451,14 +456,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/source-formal-receipt.mjs --phase verify --selection source-formal-selection.json --receipt source-formal-input/source-input.json
       - name: Download source-check shard receipts
-        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false') && needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
+        if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false') && needs.source-plan.outputs.engineering == 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: source-checks-*
           path: source-check-shards
       - name: Require complete source-check execution
         if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false') && needs.source-plan.outputs.parallel == 'true' && needs.source-checks.result == 'success'
-        run: node scripts/source-check-shards.mjs --aggregate source-check-shards
+        run: node scripts/source-check-shards.mjs --aggregate source-check-shards > source-check-execution.json
       - name: Require successful applicable checks
         id: admission
         if: (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
@@ -472,11 +477,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_ADMISSION_RESULT: ${{ steps.admission.outcome }}
-        run: node scripts/quality-hosted-budget.mjs --source-report source-budget.json --mode in-gate
+        run: node scripts/quality-hosted-budget.mjs --source-report source-budget.json --mode in-gate --source-checks source-check-shards
       - name: Keep source workflow performance
         if: always() && (needs.source-plan.result != 'success' || needs.source-plan.outputs.validate != 'false')
         uses: actions/upload-artifact@v7
         with:
           name: source-budget-${{ github.run_attempt }}
-          path: source-budget.json
+          path: |
+            source-budget.json
+            source-check-execution.json
           if-no-files-found: error

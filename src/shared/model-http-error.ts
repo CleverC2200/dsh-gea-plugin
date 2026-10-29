@@ -39,7 +39,7 @@ export async function modelHttpError(
   const code = contextOverflow ? CONTEXT_WINDOW_EXCEEDED_CODE : `GEA_MODEL_HTTP_${response.status}`;
   const action =
     response.status === 403
-      ? `当前 Agent ${consumer} 的请求被拒绝。请核对该 Agent 的模型访问授权，本轮停止，不自动重试或切换身份。`
+      ? `当前 Agent ${consumer} 的请求被拒绝。请联系管理员开通该 Agent 的模型访问权限，本轮停止，不自动重试或切换身份。`
       : response.status === 401
         ? "模型凭据未通过认证，请重新登录 GEA。"
         : contextOverflow

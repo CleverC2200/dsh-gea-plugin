@@ -62,7 +62,7 @@ test("trusted business identity wins over a mismatched page; generic model routi
   preset = "gea-readonly";
   assert.equal(sessionConsumer(ctx, business, "id"), "sales");
   preset = "auto-negotiation";
-  assert.equal(sessionConsumer(ctx, business, "id"), "sales");
+  assert.equal(sessionConsumer(ctx, business, "id"), "workbench");
 });
 test("artifact presentation decodes rows without modifying JSON business columns or completeness", () => {
   const rows = Array.from({ length: 25 }, (_, i) => ({
