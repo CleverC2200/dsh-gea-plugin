@@ -394,13 +394,13 @@ test("three-file receipts reject missing or changed libuv declarations and capac
   }
 });
 
-test("three-file lane budgets retain singleton capacity and scale from the observed CPU count", (t) => {
+test("three-file lane budgets remain bounded by configured lanes for sparse shards", (t) => {
   for (const [fileCount, cpus, size, activeFiles] of [
-    [1, 4, 4, 1],
-    [2, 4, 2, 2],
+    [1, 4, 1, 1],
+    [2, 4, 1, 2],
     [4, 4, 1, 3],
     [3, 6, 2, 3],
-    [2, 7, 3, 2],
+    [2, 7, 2, 2],
     [3, 16, 4, 3],
   ]) {
     const result = poolBudgetRun(t, { fileCount, cpus, expected: String(size) });
@@ -418,14 +418,14 @@ test("three-file lane budgets retain singleton capacity and scale from the obser
 test("libuv budgets use each actual shard and single-shard receipts cannot prove the full plan", (t) => {
   const args = {
     shardCount: 2,
-    expected: { "0.test.mjs": "2", "1.test.mjs": "4", "2.test.mjs": "2" },
+    expected: { "0.test.mjs": "1", "1.test.mjs": "1", "2.test.mjs": "1" },
   };
   const result = poolBudgetRun(t, args);
   assert.deepEqual(
     result.receipt.results.map(({ shardId, libuvPool }) => [shardId, libuvPool.size]),
     [
-      ["1", 2],
-      ["2", 4],
+      ["1", 1],
+      ["2", 1],
     ],
   );
   assert.equal(verifyExecutionResults(result).files, 3);
@@ -441,7 +441,7 @@ test("libuv budgets use each actual shard and single-shard receipts cannot prove
     results: result.receipt.results,
   };
   assert.equal(verifyExecutionResults({ ...result, receipt: aggregate }).files, 3);
-  const partial = poolBudgetRun(t, { ...args, shardId: "2", cpus: 16 });
+  const partial = poolBudgetRun(t, { ...args, shardId: "2", cpus: 16, expected: "4" });
   assert.equal(partial.receipt.status, "passed");
   assert.equal(partial.receipt.results.length, 1);
   assert.equal(partial.receipt.results[0].libuvPool.size, 4);

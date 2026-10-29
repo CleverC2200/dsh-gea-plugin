@@ -210,7 +210,7 @@ function libuvPoolDeclaration(plan, shard, capacity) {
   const activeFiles = Math.min(plan.concurrency, shard.files.length);
   return {
     status: "declared",
-    size: Math.min(4, Math.max(1, Math.floor(observed.availableParallelism / activeFiles))),
+    size: Math.min(4, Math.max(1, Math.floor(observed.availableParallelism / plan.concurrency))),
     activeFiles,
     availableParallelism: observed.availableParallelism,
     source: "capacity.observed.availableParallelism",

@@ -12,7 +12,7 @@
 
 `verifyExecutionPlan(plan)` 公开原有计划哈希、完整覆盖、片标识和非空检查，并校验并发只能为数值二、三或四。`verifyExecutionCapacity({concurrency})` 在三或四并发时读取当前机器的 `os.availableParallelism()` 和 `os.totalmem()`，要求至少四个可用 CPU、12884901888 字节内存，未知或不足以 `QUALITY_TEST_CAPACITY_REQUIRED` 拒绝；不自动降级。二并发不增加容量下限。可选 `resources` 是小测试的系统边界入口，真实 worker 省略它。执行入口在启动 Node 前重新检查，真实容量观测写入执行回执，动态观测不进入确定性计划。
 
-三并发计划通过本次真实容量校验后，`runExecutionPlan` 在每个非空片的子 Node 启动环境中设置 `UV_THREADPOOL_SIZE`。`active=min(3,片文件数)`，池预算为 `min(4,max(1,floor(可用CPU/active)))`；四CPU时一文件为4、两文件为2、至少三文件为1，覆盖继承环境、调用方 environment 和 env-file 的同名值。二/四并发保留原环境协议。每片 result 同时保留本次 `capacity` 及 `libuvPool` 的 `declared` 大小、activeFiles、CPU及来源，汇总只保留 results 时仍可按各片实际容量独立重算，不能借一片容量解释其他片；这是启动声明，不是 native pool 实际线程观测或进程树CPU硬限制。该值也会被默认继承环境的测试文件及Host/launcher后代继承；启动后不动态改变，片尾只剩一文件时不会扩池。C3am 本机小语料不能证明两文件档、真实Linux/Profile或600秒收益，单片与全轮仍须 fresh hosted 实测。
+三并发计划通过本次真实容量校验后，`runExecutionPlan` 在每个非空片的子 Node 启动环境中设置 `UV_THREADPOOL_SIZE`。`active=min(3,片文件数)` 只记录分片文件数量，池预算按配置的三槽计算为 `min(4,max(1,floor(可用CPU/3)))`；四CPU时各分片均为1，稀疏分片保持相同预算，覆盖继承环境、调用方 environment 和 env-file 的同名值。二/四并发保留原环境协议。每片 result 同时保留本次 `capacity` 及 `libuvPool` 的 `declared` 大小、activeFiles、CPU及来源，汇总只保留 results 时仍可按各片实际容量独立重算，不能借一片容量解释其他片；这是启动声明，不是 native pool 实际线程观测或进程树CPU硬限制。该值也会被默认继承环境的测试文件及Host/launcher后代继承；启动后不动态改变，片尾只剩一文件时不会扩池。C3am 本机小语料不能证明两文件档、真实Linux/Profile或600秒收益，单片与全轮仍须 fresh hosted 实测。
 
 当前 `quality-test-timings.json` 的来源、提交、环境和文件集合以表内 `source`、`inputs` 和 `files` 为准。更新来自同一完整通过运行的回执；原始 CLI 导出保留，提交的长期参考表沿用 `historical-reference-only`、`not-acceptance` 约定。来源标签不改变测量值或使参考成为验收证据，不混轮回填。此前 [run 39095827120](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/39095827120) 的 176 文件样本及未达旧性能目标的结果仍保留在历史提交和原 artifact，不再指代当前表。
 
