@@ -8,7 +8,7 @@
 
 [Business](../src/host/business.ts) 持有唯一 GEA 身份、环境、凭据和登录代际。[client](../src/client.tsx) 发布一个 [只读身份 reader](../src/business-identity-client.ts) 与账户动作；Native、HTML 和账户呈现消费这个投影。读取故障保留最后确认身份，不把未知或读取失败当作主动退出。
 
-[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。选用 GEA 来源的个人模式通过实际 Core 声明使用共用 `workbench` 模型路由；其他无可信 profile 的会话仍使用 `analysisAgentCode` 默认路由。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
+[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。通用模型目录、默认模型信息与无可信 profile 会话使用共用 `workbench` 模型路由；明确指定业务预设的模型发现和推理继续使用该业务 Consumer。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
 
 客户库存页在为 `customer_inventory` 建立 Gateway 委托后，通过当前用户解析工具取得并核对角色/范围回执；回执必须同时匹配用户、会话、对话和 Consumer。`/api/gea-html/identity` 仅投影角色和 `regions`、`provinces`、`customerCodes`、版本/失效时间，绝不投影委托 token 或原始回执。缺少 `customerInventoryScope.status="granted"` 时范围为未配置，不得把页面角色标签解释为全量数据权。受控 SQL 的实际行级授权仍由 GEA Gateway 按当前委托执行，页面展示或筛选不构成授权。
 
@@ -36,7 +36,7 @@
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
 
-绑定客户库存页面时，新计划表 Cube 模型 `agents_scm_cust_plan_order_analysis_d` 及其 View `cust_plan_order_analysis_qa` 沿用旧库存模型的页面交集：以 `stat_date` 的同日起止 `inDateRange` 限定页面 `inventorySnapshot`，以 `cust_code` 的 `equals` 多值集合限定完整 `filteredCustomerCodes`；超过100个客户时拆为每组最多100个的等价 OR，整体追加为 AND 条件并保留调用者原筛选。缺少快照、客户集合为空或页面 owner 失效继续拒绝；不修改 Consumer、服务端授权、字段权限或其他模块的范围规则。
+绑定客户库存页面时，新计划表 Cube 模型 `agents_scm_cust_plan_order_analysis_d` 及其 View `cust_plan_order_analysis_qa`、旧库存模型及其 View 共用页面交集：以 `stat_date` 的同日起止 `inDateRange` 限定页面 `inventorySnapshot`，以 `cust_code` 的 `equals` 多值集合限定完整 `filteredCustomerCodes`；超过100个客户时拆为每组最多100个的等价 OR，整体追加为 AND 条件并保留调用者原筛选。调用者明确请求的日期区间与页面日期不相交时，返回 `GEA_PAGE_SCOPE_DATE_CONFLICT`，不执行查询，也不据此推断历史源表无数据。页面接收时间仅用于区分页面观测，不代表数据库不可变版本或 Cube 查询版本。缺少快照、客户集合为空或页面 owner 失效继续拒绝；不修改 Consumer、服务端授权、字段权限或其他模块的范围规则。
 
 Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，HTML lease 使用 `gea_page` 读取，以及目录声明的 `gea_plugin_page_apply` 视图动作。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。 页面读取保留 focus 摘要、来源及实际覆盖范围；同页同焦点再次调用仍返回当前内容。页面身份 TTL 和 owner 撤销继续生效，工具不再以问题词表或重复窗口决定是否读取。
 

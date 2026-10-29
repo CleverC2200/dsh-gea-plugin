@@ -63,6 +63,12 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/source-preparation.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/source-check-summary.test.mjs": {
+      "dependencies": false
+    },
     "scripts/source-formal-receipt.test.mjs": {
       "dependencies": false
     },
@@ -131,6 +137,26 @@
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/source-preparation(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"],
+      "sourceTests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:source-check-summary|quality-hosted-budget)(?:\\.test)?\\.mjs$",
+      "tests": [
+        "scripts/source-check-summary.test.mjs",
+        "scripts/quality-hosted-budget.test.mjs",
+        "scripts/source-check-shards.test.mjs"
+      ],
+      "sourceTests": [
+        "scripts/source-check-summary.test.mjs",
+        "scripts/quality-hosted-budget.test.mjs",
+        "scripts/source-check-shards.test.mjs"
+      ]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^presets/(?:execution|prompt)-policy\\.json$",

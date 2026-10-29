@@ -520,10 +520,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     options: {
       "source-report": { type: "string" },
       snapshot: { type: "string" },
+      "source-checks": { type: "string" },
       mode: { type: "string", default: "in-gate" },
     },
   });
   if (!values["source-report"]) throw Error("SOURCE_BUDGET_OUTPUT_REQUIRED");
+  const { summarizeSourceChecks, sourceReportMarkdown } =
+    await import("./source-check-summary.mjs");
   let result;
   try {
     const snapshot = values.snapshot
@@ -549,10 +552,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       passed: false,
     };
   }
+  if (values["source-checks"]) {
+    try {
+      result.coverage = summarizeSourceChecks(values["source-checks"], {
+        head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+        runId: result.identity?.runId ?? process.env.GITHUB_RUN_ID,
+        runAttempt: result.identity?.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT,
+      });
+    } catch (error) {
+      result.coverage = { status: "unknown", error: error.message };
+    }
+  }
   writeFileSync(values["source-report"], JSON.stringify(result, null, 2) + "\n");
   if (process.env.GITHUB_STEP_SUMMARY)
-    appendFileSync(
-      process.env.GITHUB_STEP_SUMMARY,
-      `## Source workflow performance\n\nFunctional: ${result.functional.status}. Performance: ${result.performance.status}. Budget: ${budgetMs} ms. Workflow to observation: ${result.performance.workflowToDecisionMs ?? "unknown"} ms. Queue: ${result.performance.triggerQueueMs ?? "unknown"} ms. Measurement: ${values.mode}; completed workflow: ${result.completedMeasurement}.\n\nThis report does not replace functional admission. In-gate observations exclude later cleanup; use completed mode after the run ends before claiming the ten-minute target.\n`,
-    );
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, sourceReportMarkdown(result));
 }

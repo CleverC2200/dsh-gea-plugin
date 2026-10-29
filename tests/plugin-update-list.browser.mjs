@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { build } from "esbuild";
+import { clientBuildOptions } from "../scripts/client-build.mjs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
@@ -17,10 +17,10 @@ const names = [
 ];
 
 test("official installed list offers only suite updates, refreshes the channel on click and offers restart", async (t) => {
-  execFileSync(process.execPath, ["scripts/build.mjs", "--target", "client"], { stdio: "pipe" });
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/list-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
+  await build(clientBuildOptions(join(root, "gea-client.js")));
   const sources = {
     "@fixture/remote": "packages/test-support/client-runtime/src/remote.ts",
     "@deepseek-ai/dsh-client-ui-primitives": "packages/client/ui-primitives/src/index.ts",
@@ -109,7 +109,7 @@ test("official installed list offers only suite updates, refreshes the channel o
     }
     if (req.url === "/gea-client.js") {
       res.setHeader("content-type", "text/javascript");
-      res.end(await readFile("lib/client.js"));
+      res.end(await readFile(join(root, "gea-client.js")));
       return;
     }
     if (req.url === "/app.js" || req.url === "/app.css") {

@@ -1,5 +1,7 @@
 import type { Business } from "./host/business.ts";
 
+const IDENTITY_STARTUP_GRACE_MS = 20_000;
+
 type IdentityStatus = Readonly<
   Pick<
     ReturnType<Business["status"]>,
@@ -212,7 +214,7 @@ export function createBusinessIdentityReader() {
     for (const listener of listeners) listener();
   };
   const beginObservation = () => {
-    startupDeadline ??= Date.now() + 5000;
+    startupDeadline ??= Date.now() + IDENTITY_STARTUP_GRACE_MS;
     if (!observed && snapshot.state === "unknown" && Date.now() >= startupDeadline) {
       publishError("登录状态读取超时，请重试。", "IDENTITY_STARTUP_TIMEOUT");
       return;
