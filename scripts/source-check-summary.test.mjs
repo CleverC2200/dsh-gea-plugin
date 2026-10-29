@@ -207,3 +207,13 @@ test("single lightweight artifacts keep coverage after upload strips the common 
   );
   assert.equal(f.read().scope.platformFiles, 1);
 });
+
+test("download-artifact with one matched artifact can be summarized without a worker subdirectory", (t) => {
+  const f = fixture(t, { joint: false, parallel: false });
+  const result = summarizeSourceChecks(join(f.directory, "source-checks-single"), {
+    ...identity,
+    root: f.root,
+  });
+  assert.equal(result.execution.status, "entry-passed");
+  assert.equal(result.scope.platformFiles, 1);
+});

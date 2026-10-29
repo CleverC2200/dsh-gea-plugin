@@ -1,5 +1,3 @@
-import { summarizeSourceChecks, sourceReportMarkdown } from "./source-check-summary.mjs";
-
 const budgetMs = 600000;
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -527,6 +525,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     },
   });
   if (!values["source-report"]) throw Error("SOURCE_BUDGET_OUTPUT_REQUIRED");
+  const { summarizeSourceChecks, sourceReportMarkdown } =
+    await import("./source-check-summary.mjs");
   let result;
   try {
     const snapshot = values.snapshot

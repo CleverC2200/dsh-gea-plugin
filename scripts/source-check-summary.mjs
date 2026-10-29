@@ -23,12 +23,18 @@ export function summarizeSourceChecks(
   { head, runId, runAttempt, root = process.cwd() },
 ) {
   requireValue(/^[a-f0-9]{40}$/.test(head ?? "") && runId && runAttempt, "expected source run");
-  const names = existsSync(directory) ? readdirSync(directory).sort() : [];
+  const flat = existsSync(runtimeFile(directory, "source-checks-plan.json"));
+  const workerRoot = (name) => (flat ? directory : join(directory, name));
+  const names = flat
+    ? ["source-checks-single"]
+    : existsSync(directory)
+      ? readdirSync(directory).sort()
+      : [];
   requireValue(
     names.length > 0 && names.every((name) => /^source-checks-(?:single|[1-9]\d*)$/.test(name)),
     "worker inventory",
   );
-  const selection = json(runtimeFile(join(directory, names[0]), "source-checks-plan.json"));
+  const selection = json(runtimeFile(workerRoot(names[0]), "source-checks-plan.json"));
   requireValue(selection.head === head && selection.repo === "dsh-gea-plugin", "selection head");
   const matrix = sourceCheckMatrix(selection);
   requireValue(
@@ -42,7 +48,7 @@ export function summarizeSourceChecks(
     ...new Set(policy.tests.flatMap((pattern) => globSync(pattern, { cwd: root }))),
   ].sort();
   const workers = names.map((name) => {
-    const worker = join(directory, name);
+    const worker = workerRoot(name);
     requireValue(
       same(json(runtimeFile(worker, "source-checks-plan.json")), selection),
       "selection drift",
