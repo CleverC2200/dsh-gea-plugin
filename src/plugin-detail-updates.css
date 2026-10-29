@@ -73,3 +73,32 @@
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
+
+.gea-sidebar-update {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: none;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gea-sidebar-update:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.gea-sidebar-update:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.gea-sidebar-update:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
