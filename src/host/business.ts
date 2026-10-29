@@ -1362,7 +1362,7 @@ export class Business {
   /** 对外状态永远不包含 GEA 凭证。 */
   status() {
     const readonlyValidation = this.salesReadonly?.snapshot();
-    const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
+    const models = this.modelRoutes.get(WORKBENCH_AGENT_CODE)?.models;
     return {
       environment: this.environment,
       environments: Object.keys(this.environments),
@@ -1898,7 +1898,7 @@ export class Business {
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
   async modelRoute(
     signal: AbortSignal,
-    agentCode = "sales_forecast",
+    agentCode = WORKBENCH_AGENT_CODE,
     pageSessionId?: string,
   ): Promise<GeaModelRoute> {
     this.assertModelAllowed();

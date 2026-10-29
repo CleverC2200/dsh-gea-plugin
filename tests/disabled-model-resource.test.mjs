@@ -405,6 +405,31 @@ async function fixture(
   };
 }
 
+test("default public model discovery and generic Sessions use workbench while business presets retain their Consumers", async (t) => {
+  const app = await fixture(t, true);
+  assert.equal((await app.route("model/discover")).ok, true);
+  app.agent.session.preset = "standard";
+  for await (const _chunk of app.adapter.stream({
+    sessionId: app.agent.id,
+    provider: "gea-analysis",
+    model: "fixture-model",
+    messages: [],
+  })) {
+  }
+  const sales = await app.discover("gea-readonly");
+  assert.equal(sales.ok, true, JSON.stringify(sales));
+  assert.equal(sales.value.consumerCode, "sales_forecast");
+  const dealer = await app.discover();
+  assert.equal(dealer.ok, true, JSON.stringify(dealer));
+  assert.equal(dealer.value.consumerCode, "dealer-inventory-replenishment");
+  assert.deepEqual(app.calls.route, [
+    "workbench",
+    "workbench",
+    "sales_forecast",
+    "dealer-inventory-replenishment",
+  ]);
+});
+
 test("disabled installed capability refuses the public model directory before credentials or transport", async (t) => {
   const app = await fixture(t, false);
   const result = await app.discover();
