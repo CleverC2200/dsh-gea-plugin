@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-agent-default-model";
 import {
   LlmAdapter,
   LlmError,
@@ -69,6 +71,37 @@ export function geaKeptReasoningEffort(current: {
   return GEA_REASONING_EFFORTS.some((item) => String(item.id) === String(effort))
     ? effort
     : undefined;
+}
+
+export async function initializeGeaDefaultModel(
+  business: Business,
+  defaults: Pick<Context["agentDefaultModel"], "currentSelection" | "saveSelection">,
+  signal: AbortSignal,
+): Promise<void> {
+  let route: Awaited<ReturnType<Business["modelRoute"]>>;
+  try {
+    route = await business.modelRoute(signal, business.config.analysisAgentCode);
+  } catch (error) {
+    signal.throwIfAborted();
+    if (defaults.currentSelection().provider !== "gea-analysis")
+      await defaults.saveSelection({
+        provider: "gea-analysis",
+        model: business.config.analysisModel,
+      });
+    throw error;
+  }
+  signal.throwIfAborted();
+  const current = defaults.currentSelection();
+  if (current.provider === "gea-analysis" && route.models.includes(current.model)) return;
+  const model = route.models.includes(business.config.analysisModel)
+    ? business.config.analysisModel
+    : route.models[0]!;
+  const effort = geaKeptReasoningEffort(current);
+  await defaults.saveSelection({
+    provider: "gea-analysis",
+    model,
+    ...(effort === undefined ? {} : { reasoningEffort: effort }),
+  });
 }
 
 /** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
