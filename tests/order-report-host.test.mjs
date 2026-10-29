@@ -67,8 +67,8 @@ function gateway(
 ) {
   const ordered = [...bases].sort();
   const scopeKey =
-    ordered.length === 1 && Buffer.byteLength('order:base:'+ordered[0])<=64
-      ? 'order:base:'+ordered[0]
+    ordered.length === 1 && Buffer.byteLength("order:base:" + ordered[0]) <= 64
+      ? "order:base:" + ordered[0]
       : "order:bases:" + createHash("sha256").update(JSON.stringify(ordered)).digest("base64url");
   let row,
     loads = 0,
@@ -91,14 +91,16 @@ function gateway(
     if (path.endsWith("/ai/gateway/sql/execute")) {
       if (body.sql.startsWith("SELECT DISTINCT belong_base")) {
         assert.match(body.sql, /LIMIT 200$/);
-        const available=scopeChanged&&writes.length?["上海"]:[...bases].sort();
-        const page=available.filter(base=>body.parameters.scope_after===null||base>body.parameters.scope_after).slice(0,200);
+        const available = scopeChanged && writes.length ? ["上海"] : [...bases].sort();
+        const page = available
+          .filter(
+            (base) => body.parameters.scope_after === null || base > body.parameters.scope_after,
+          )
+          .slice(0, 200);
         return Response.json({
           success: true,
           result: {
-            rows: page.map(
-              (belong_base) => ({ belong_base }),
-            ),
+            rows: page.map((belong_base) => ({ belong_base })),
             returnedColumns: ["belong_base"],
             rejectedColumns: [],
           },
@@ -193,24 +195,38 @@ test("backend write denial never falls back or reports saved", async (t) => {
   assert.equal(remote.loads, 1);
 });
 test("order report scope reads all bases with gateway-sized keyset pages", async (t) => {
-  const bases=Array.from({length:205},(_,index)=>'B'+String(index).padStart(4,'0'));
-  gateway(t,{bases});
-  const result=await business(t).orderReport({operation:'load',period},new AbortController().signal);
-  assert.deepEqual(result.scope.bases,bases);
-  assert.equal(result.scope.key,'order:bases:'+createHash('sha256').update(JSON.stringify(bases)).digest('base64url'));
-  assert.ok(Buffer.byteLength(result.scope.key)<=64);
+  const bases = Array.from({ length: 205 }, (_, index) => "B" + String(index).padStart(4, "0"));
+  gateway(t, { bases });
+  const result = await business(t).orderReport(
+    { operation: "load", period },
+    new AbortController().signal,
+  );
+  assert.deepEqual(result.scope.bases, bases);
+  assert.equal(
+    result.scope.key,
+    "order:bases:" + createHash("sha256").update(JSON.stringify(bases)).digest("base64url"),
+  );
+  assert.ok(Buffer.byteLength(result.scope.key) <= 64);
 });
 test("an oversized scope is rejected instead of silently retaining the first page", async (t) => {
-  gateway(t,{bases:Array.from({length:1001},(_,index)=>'B'+String(index).padStart(4,'0'))});
-  await assert.rejects(business(t).orderReport({operation:'load',period},new AbortController().signal),/ORDER_REPORT_SCOPE_UNSUPPORTED/);
+  gateway(t, {
+    bases: Array.from({ length: 1001 }, (_, index) => "B" + String(index).padStart(4, "0")),
+  });
+  await assert.rejects(
+    business(t).orderReport({ operation: "load", period }, new AbortController().signal),
+    /ORDER_REPORT_SCOPE_UNSUPPORTED/,
+  );
 });
 test("long Unicode base names keep their full scope without exceeding the Doris key width", async (t) => {
-  const base='基地'.repeat(20);
-  gateway(t,{bases:[base]});
-  const result=await business(t).orderReport({operation:'load',period},new AbortController().signal);
-  assert.equal(result.scope.base,base);
-  assert.match(result.scope.key,/^order:bases:[A-Za-z0-9_-]{43}$/);
-  assert.ok(Buffer.byteLength(result.scope.key)<=64);
+  const base = "基地".repeat(20);
+  gateway(t, { bases: [base] });
+  const result = await business(t).orderReport(
+    { operation: "load", period },
+    new AbortController().signal,
+  );
+  assert.equal(result.scope.base, base);
+  assert.match(result.scope.key, /^order:bases:[A-Za-z0-9_-]{43}$/);
+  assert.ok(Buffer.byteLength(result.scope.key) <= 64);
 });
 test("changed backend scope cannot confirm a save under the previous base", async (t) => {
   gateway(t, { scopeChanged: true });
@@ -247,5 +263,5 @@ test("multiple authorized bases save under a stable separate scope and preserve 
   assert.equal(reopened.scope.base, "");
   assert.deepEqual(reopened.scope.bases, ["华东", "郑州"]);
   assert.match(reopened.scope.key, /^order:bases:[A-Za-z0-9_-]{43}$/);
-  assert.ok(Buffer.byteLength(reopened.scope.key)<=64);
+  assert.ok(Buffer.byteLength(reopened.scope.key) <= 64);
 });

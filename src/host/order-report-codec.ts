@@ -1,10 +1,4 @@
-import {
-  brotliCompress,
-  brotliDecompressSync,
-  constants,
-  gzip,
-  gunzipSync,
-} from "node:zlib";
+import { brotliCompress, brotliDecompressSync, constants, gzip, gunzipSync } from "node:zlib";
 import { promisify } from "node:util";
 
 const limit = 20_000_000;
@@ -14,12 +8,7 @@ function columns(value: any): any {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) {
     const first = value[0];
-    if (
-      value.length > 1 &&
-      first &&
-      typeof first === "object" &&
-      !Array.isArray(first)
-    ) {
+    if (value.length > 1 && first && typeof first === "object" && !Array.isArray(first)) {
       const keys = Object.keys(first),
         signature = JSON.stringify(keys);
       if (
@@ -32,11 +21,7 @@ function columns(value: any): any {
             JSON.stringify(Object.keys(row)) === signature,
         )
       )
-        return [
-          "t",
-          keys,
-          keys.map((key) => value.map((row) => columns(row[key]))),
-        ];
+        return ["t", keys, keys.map((key) => value.map((row) => columns(row[key])))];
     }
     return ["a", value.map(columns)];
   }
@@ -46,8 +31,7 @@ function columns(value: any): any {
 function expand(value: any, depth = 0): any {
   if (depth > 128) throw Error("ORDER_REPORT_FORMAT_INVALID");
   if (!Array.isArray(value)) {
-    if (value !== null && typeof value === "object")
-      throw Error("ORDER_REPORT_FORMAT_INVALID");
+    if (value !== null && typeof value === "object") throw Error("ORDER_REPORT_FORMAT_INVALID");
     return value;
   }
   const [tag, keys, values] = value;
@@ -64,18 +48,12 @@ function expand(value: any, depth = 0): any {
   )
     throw Error("ORDER_REPORT_FORMAT_INVALID");
   if (tag === "o")
-    return Object.fromEntries(
-      keys.map((key, index) => [key, expand(values[index], depth + 1)]),
-    );
+    return Object.fromEntries(keys.map((key, index) => [key, expand(values[index], depth + 1)]));
   const length = values[0]?.length ?? 0;
-  if (
-    values.some((column) => !Array.isArray(column) || column.length !== length)
-  )
+  if (values.some((column) => !Array.isArray(column) || column.length !== length))
     throw Error("ORDER_REPORT_FORMAT_INVALID");
   return Array.from({ length }, (_, row) =>
-    Object.fromEntries(
-      keys.map((key, index) => [key, expand(values[index][row], depth + 1)]),
-    ),
+    Object.fromEntries(keys.map((key, index) => [key, expand(values[index][row], depth + 1)])),
   );
 }
 
@@ -106,21 +84,14 @@ export async function encodeOrderReport(json: string, targetBytes = 60_000) {
 }
 export function decodeOrderReport(json: string) {
   const envelope = JSON.parse(json);
-  if (typeof envelope.data !== "string")
-    throw Error("ORDER_REPORT_FORMAT_INVALID");
+  if (typeof envelope.data !== "string") throw Error("ORDER_REPORT_FORMAT_INVALID");
   const bytes = Buffer.from(envelope.data, "base64");
   const report =
     envelope.encoding === "gzip-base64"
-      ? JSON.parse(
-          gunzipSync(bytes, { maxOutputLength: limit }).toString("utf8"),
-        )
+      ? JSON.parse(gunzipSync(bytes, { maxOutputLength: limit }).toString("utf8"))
       : envelope.encoding === "br-columns-v1"
         ? expand(
-            JSON.parse(
-              brotliDecompressSync(bytes, { maxOutputLength: limit }).toString(
-                "utf8",
-              ),
-            ),
+            JSON.parse(brotliDecompressSync(bytes, { maxOutputLength: limit }).toString("utf8")),
           )
         : undefined;
   if (!report || Buffer.byteLength(JSON.stringify(report)) > limit)

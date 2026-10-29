@@ -1,10 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { encodeOrderReport, decodeOrderReport } from "./order-report-codec.ts";
-import {
-  isReportParts,
-  readReportParts,
-  writeReportParts,
-} from "./order-report-parts.ts";
+import { isReportParts, readReportParts, writeReportParts } from "./order-report-parts.ts";
 
 const table = "agents_order_workbench_report";
 const identityWhere =
@@ -31,14 +27,7 @@ export async function orderReportStore(
     !input ||
     !["load", "save"].includes(input.operation) ||
     Object.keys(input).some(
-      (key) =>
-        ![
-          "operation",
-          "period",
-          "expectedVersion",
-          "requestId",
-          "report",
-        ].includes(key),
+      (key) => !["operation", "period", "expectedVersion", "requestId", "report"].includes(key),
     )
   )
     throw fail("ORDER_REPORT_REQUEST_INVALID");
@@ -85,25 +74,20 @@ export async function orderReportStore(
     start: period.start,
     end: period.end,
   };
-  if (!Number.isSafeInteger(params.tenant) || !identity.id)
-    throw fail("GEA_IDENTITY_INCOMPLETE");
+  if (!Number.isSafeInteger(params.tenant) || !identity.id) throw fail("GEA_IDENTITY_INCOMPLETE");
   const readParameters = { ...params };
   const read = async () => {
     const result = await execute(
       `SELECT ${fields} FROM ${table} WHERE ${identityWhere} LIMIT 2`,
       readParameters,
     );
-    if (
-      !Array.isArray(result.rows) ||
-      result.rows.length > 1 ||
-      result.rejectedColumns?.length
-    )
+    if (!Array.isArray(result.rows) || result.rows.length > 1 || result.rejectedColumns?.length)
       throw fail("ORDER_REPORT_READ_INCOMPLETE");
     const row = result.rows[0];
     if (!row) return null;
     if (
-      !["report_data", "version", "last_request_id", "schema_version"].every(
-        (key) => Object.hasOwn(row, key),
+      !["report_data", "version", "last_request_id", "schema_version"].every((key) =>
+        Object.hasOwn(row, key),
       ) ||
       Number(row.schema_version) !== 1 ||
       !Number.isSafeInteger(Number(row.version))
@@ -142,8 +126,7 @@ export async function orderReportStore(
   )
     throw fail("ORDER_REPORT_SAVE_INVALID");
   const reportJson = JSON.stringify(input.report);
-  if (Buffer.byteLength(reportJson) > 20_000_000)
-    throw fail("ORDER_REPORT_TOO_LARGE");
+  if (Buffer.byteLength(reportJson) > 20_000_000) throw fail("ORDER_REPORT_TOO_LARGE");
   if (existing?.last_request_id === input.requestId) {
     if (JSON.stringify((await decode(existing)).report) !== reportJson)
       throw fail("ORDER_REPORT_REQUEST_REUSED");
@@ -159,9 +142,7 @@ export async function orderReportStore(
     scopeName: identity.reportScope.base || "授权基地汇总",
     scopeRefs: JSON.stringify({
       base: identity.reportScope.base,
-      ...(identity.reportScope.bases
-        ? { bases: identity.reportScope.bases }
-        : {}),
+      ...(identity.reportScope.bases ? { bases: identity.reportScope.bases } : {}),
     }),
     next: input.expectedVersion + 1,
     expected: input.expectedVersion,
@@ -172,8 +153,7 @@ export async function orderReportStore(
   let sql = existing
     ? `UPDATE ${table} SET report_data = :report, version = :next, last_request_id = :request, update_by = :actor, update_time = :now WHERE ${identityWhere} AND version = :expected`
     : `INSERT INTO ${table} (tenant_id, scope_key, period_type, period_start, period_end_exclusive, scope_name, scope_refs, consumer_code, report_data, schema_version, calculation_version, version, last_request_id, create_by, create_time, update_by, update_time) VALUES (:tenant, :scope, :kind, :start, :end, :scopeName, :scopeRefs, :consumer, :report, 1, 'order-report-v1', :next, :request, :actor, :now, :actor, :now)`;
-  const available =
-    65_536 - Buffer.byteLength(JSON.stringify({ ...params, report: "" })) - 16;
+  const available = 65_536 - Buffer.byteLength(JSON.stringify({ ...params, report: "" })) - 16;
   if (available <= 0) throw fail("ORDER_REPORT_PARAMETERS_TOO_LARGE");
   // Stop recompressing once the existing atomic SQL/parameter split can hold the full envelope.
   const targetBytes = available + Math.max(0, 65_536 - sql.length - 32);
@@ -196,8 +176,7 @@ export async function orderReportStore(
   if (Buffer.byteLength(JSON.stringify(params)) > 65_536) {
     const prefix = String(storedReport).slice(0, -available);
     // Only our ASCII compression envelope may enter a SQL literal, never report text.
-    if (!prefix || /[^A-Za-z0-9+/=,:{}"-]/.test(prefix))
-      throw fail("ORDER_REPORT_FORMAT_INVALID");
+    if (!prefix || /[^A-Za-z0-9+/=,:{}"-]/.test(prefix)) throw fail("ORDER_REPORT_FORMAT_INVALID");
     sql = sql.replace(":report", `CONCAT('${prefix}', :report)`);
     params.report = String(storedReport).slice(-available);
   }

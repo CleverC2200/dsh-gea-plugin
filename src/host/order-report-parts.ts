@@ -2,14 +2,9 @@ import { createHash } from "node:crypto";
 
 const encoding = "order-report-parts-v1";
 const table = "agents_order_workbench_report";
-const hash = (value: string) =>
-  createHash("sha256").update(value).digest("hex");
+const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const invalid = () => Error("ORDER_REPORT_PARTS_INCOMPLETE");
-type Execute = (
-  sql: string,
-  parameters: Record<string, any>,
-  requestId?: string,
-) => Promise<any>;
+type Execute = (sql: string, parameters: Record<string, any>, requestId?: string) => Promise<any>;
 type Scope = {
   tenant: number;
   scope: string;
@@ -26,17 +21,8 @@ type Manifest = {
   count: number;
 };
 function partIdentity(scope: Scope, requestId: string, index: number) {
-  const identity = [
-    scope.tenant,
-    scope.scope,
-    scope.consumer,
-    scope.kind,
-    scope.start,
-    scope.end,
-  ];
-  const digest = createHash("sha256").update(
-    JSON.stringify([identity, requestId, index]),
-  );
+  const identity = [scope.tenant, scope.scope, scope.consumer, scope.kind, scope.start, scope.end];
+  const digest = createHash("sha256").update(JSON.stringify([identity, requestId, index]));
   return {
     key: "order:part:" + digest.digest("base64url"),
     requestId: hash(JSON.stringify([identity, requestId, index, "write"])),
@@ -45,11 +31,7 @@ function partIdentity(scope: Scope, requestId: string, index: number) {
 export function isReportParts(value: any): value is Manifest {
   return value?.encoding === encoding;
 }
-export async function readReportParts(
-  manifest: Manifest,
-  scope: Scope,
-  execute: Execute,
-) {
+export async function readReportParts(manifest: Manifest, scope: Scope, execute: Execute) {
   if (
     !/^[a-zA-Z0-9-]{16,64}$/.test(manifest.requestId) ||
     !Number.isSafeInteger(manifest.count) ||
@@ -100,8 +82,7 @@ export async function readReportParts(
     }
   }
   const encoded = identities.map((part) => parts.get(part.key)).join("");
-  if (encoded.length !== manifest.size || hash(encoded) !== manifest.sha256)
-    throw invalid();
+  if (encoded.length !== manifest.size || hash(encoded) !== manifest.sha256) throw invalid();
   return encoded;
 }
 
@@ -140,8 +121,7 @@ export async function writeReportParts(
           request: part.requestId,
           report: encoded.slice(index * 60_000, (index + 1) * 60_000),
         };
-        if (Buffer.byteLength(JSON.stringify(parameters)) > 65_536)
-          throw invalid();
+        if (Buffer.byteLength(JSON.stringify(parameters)) > 65_536) throw invalid();
         await execute(
           `INSERT INTO ${table} (tenant_id,scope_key,period_type,period_start,period_end_exclusive,scope_name,scope_refs,consumer_code,report_data,schema_version,calculation_version,version,last_request_id,create_by,update_by) VALUES (:tenant,:scope,:kind,:start,:end,:scopeName,:scopeRefs,:consumer,:report,1,'order-report-part-v1',1,:request,:actor,:actor)`,
           parameters,
@@ -150,7 +130,6 @@ export async function writeReportParts(
       }
     }),
   );
-  if ((await readReportParts(manifest, scope, execute)) !== encoded)
-    throw invalid();
+  if ((await readReportParts(manifest, scope, execute)) !== encoded) throw invalid();
   return JSON.stringify(manifest);
 }

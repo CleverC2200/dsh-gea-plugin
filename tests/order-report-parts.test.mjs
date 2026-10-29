@@ -25,9 +25,7 @@ function database() {
       if (sql.startsWith("SELECT"))
         return {
           rows: p.partScopes
-            ? p.partScopes.flatMap((key) =>
-                rows.has(key) ? [rows.get(key)] : [],
-              )
+            ? p.partScopes.flatMap((key) => (rows.has(key) ? [rows.get(key)] : []))
             : rows.has(p.scope)
               ? [rows.get(p.scope)]
               : [],
@@ -59,8 +57,7 @@ test("oversized report verifies immutable parts before committing, then edits an
   const count = db.writes.length;
   await orderReportStore(save, identity, db.execute);
   assert.equal(db.writes.length, count);
-  const load = () =>
-    orderReportStore({ operation: "load", period }, identity, db.execute);
+  const load = () => orderReportStore({ operation: "load", period }, identity, db.execute);
   assert.deepEqual((await load()).report, report);
   const updated = {
     ...report,
@@ -98,11 +95,7 @@ test("denied or incomplete staging never commits over an existing report", async
     };
     await orderReportStore(save, identity, db.execute);
     const execute = async (sql, p) => {
-      if (
-        failure === "denied" &&
-        sql.startsWith("INSERT") &&
-        p.scope.startsWith("order:part:")
-      )
+      if (failure === "denied" && sql.startsWith("INSERT") && p.scope.startsWith("order:part:"))
         throw Error("WRITE_DENIED");
       if (failure === "missing" && p.partScopes) return { rows: [] };
       return db.execute(sql, p);
@@ -121,13 +114,7 @@ test("denied or incomplete staging never commits over an existing report", async
       /WRITE_DENIED|PARTS_INCOMPLETE/,
     );
     assert.deepEqual(
-      (
-        await orderReportStore(
-          { operation: "load", period },
-          identity,
-          db.execute,
-        )
-      ).report,
+      (await orderReportStore({ operation: "load", period }, identity, db.execute)).report,
       old,
     );
   }
