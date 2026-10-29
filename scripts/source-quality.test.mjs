@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, globSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  globSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,17 +86,36 @@ test("GEA source checks pass the fixed SDK path to browser test consumers", (t) 
     reader,
     `import { execFileSync } from 'node:child_process';
 export function sourceChecks(_result, phase) {
+  if (process.env.SOURCE_TEST_FAILURE === 'true') throw Error('fixture-check-failed');
   if (phase === 'affected-check') execFileSync(process.execPath, ['--input-type=module', '-e',
     'import assert from "node:assert/strict"; import {resolve} from "node:path"; assert.equal(process.env.GEA_PLUGIN_UPDATE_SDK, resolve("../../official-latest-standard"));'
   ], {stdio: 'inherit'});
 }`,
   );
+  mkdirSync(join(repo.root, ".runtime"));
+  const selection = { files: ["tests/example.browser.mjs"], head: repo.head };
+  writeFileSync(join(repo.root, ".runtime/source-checks-plan.json"), JSON.stringify(selection));
+  repo.git("add", ".runtime/source-checks-plan.json");
+  repo.git("commit", "-qm", "record selected source checks");
+  const sourceHead = repo.git("rev-parse", "HEAD");
   for (const inherited of ["", "/stale-sdk"])
     assert.equal(
-      repo.run("affected-check", { GEA_PLUGIN_UPDATE_SDK: inherited }).status,
+      repo.run("affected-check", { GEA_PLUGIN_UPDATE_SDK: inherited, SOURCE_HEAD_SHA: sourceHead })
+        .status,
       0,
       `SDK environment: ${inherited || "missing"}`,
     );
+  const receipt = JSON.parse(readFileSync(join(repo.root, ".runtime/source-checks-result.json")));
+  assert.equal(receipt.status, "passed");
+  assert.equal(receipt.head, sourceHead);
+  assert.deepEqual(receipt.plan, selection);
+  const failed = repo.run("affected-check", {
+    SOURCE_HEAD_SHA: sourceHead,
+    SOURCE_TEST_FAILURE: "true",
+  });
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /fixture-check-failed/);
+  assert.equal(existsSync(join(repo.root, ".runtime/source-checks-result.json")), false);
 });
 
 test("manual source acceptance rejects missing, invalid and non-ancestor comparison bases", (t) => {
