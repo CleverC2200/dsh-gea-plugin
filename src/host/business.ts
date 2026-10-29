@@ -2518,27 +2518,37 @@ export class Business {
       signal.throwIfAborted();
       this.assertExecutionAllowed("order", payload.operation === "save" ? "submit" : "view");
       const resolveScope = async () => {
-        const result = object(
-          await this.pluginSql(
-            {
-              consumerCode: "order",
-              sql: "SELECT DISTINCT belong_base FROM agents_order_cancel_change_di WHERE belong_base IS NOT NULL LIMIT 2",
-            },
-            signal,
-            true,
-          ),
-        );
-        const rows = result.rows;
-        if (
-          !Array.isArray(rows) ||
-          rows.length !== 1 ||
-          (Array.isArray(result.rejectedColumns) && result.rejectedColumns.length)
-        )
-          throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
-        const base = object(rows[0]).belong_base;
-        if (typeof base !== "string" || !base.trim() || base !== base.trim() || base.length > 50)
-          throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
-        return { key: "order:base:" + base, base };
+        const bases: string[] = [];
+        let after: string | null = null;
+        while (true) {
+          const result = object(await this.pluginSql({
+            consumerCode: "order",
+            sql: "SELECT DISTINCT belong_base FROM agents_order_cancel_change_di WHERE belong_base IS NOT NULL AND (:scope_after IS NULL OR belong_base > :scope_after) ORDER BY belong_base LIMIT 200",
+            parameters: { scope_after: after },
+          }, signal, true));
+          const rows = result.rows;
+          if (!Array.isArray(rows) || rows.length > 200 || result.rejectedColumns?.length)
+            throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+          for (const row of rows) {
+            const base = object(row).belong_base;
+            if (typeof base !== "string" || !base.trim() || base !== base.trim() || base.length > 50 || bases.includes(base))
+              throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+            bases.push(base);
+          }
+          if (bases.length > 1000) throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+          if (rows.length < 200) break;
+          after = bases[bases.length - 1];
+        }
+        if (!bases.length) throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+        bases.sort();
+        const legacyKey = "order:base:" + bases[0];
+        if (bases.length === 1 && Buffer.byteLength(legacyKey) <= 64)
+          return { key: legacyKey, base: bases[0] };
+        return {
+          key: "order:bases:" + createHash("sha256").update(JSON.stringify(bases)).digest("base64url"),
+          base: bases.length === 1 ? bases[0] : "",
+          ...(bases.length > 1 ? { bases } : {}),
+        };
       };
       const reportScope = await resolveScope();
       return orderReportStore(
