@@ -824,8 +824,14 @@ test("column snapshot fixture changes select every isolated column scenario", (t
       readFileSync(new URL("../" + changed, import.meta.url), "utf8") + "\n",
     );
     const plan = fixture.plan();
-    assert.ok(consumers.every((file) => plan.files.includes(file)), JSON.stringify(plan));
-    assert.ok(consumers.every((file) => plan.runtimeFiles.includes(file)), JSON.stringify(plan));
+    assert.ok(
+      consumers.every((file) => plan.files.includes(file)),
+      JSON.stringify(plan),
+    );
+    assert.ok(
+      consumers.every((file) => plan.runtimeFiles.includes(file)),
+      JSON.stringify(plan),
+    );
     assert.equal(plan.browser, true);
   }
 });

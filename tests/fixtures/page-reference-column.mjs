@@ -64,9 +64,9 @@ export async function pageReferenceColumn(t, change) {
         );
         for (const row of table.rows) row.cells[index].hidden = true;
       });
-      await expect(
-        frame.getByRole("columnheader", { name: "产品名称", exact: true }),
-      ).toHaveCount(0);
+      await expect(frame.getByRole("columnheader", { name: "产品名称", exact: true })).toHaveCount(
+        0,
+      );
     } else if (change === "reordered") {
       await frame
         .locator('th[data-column="inventoryQty"]')
