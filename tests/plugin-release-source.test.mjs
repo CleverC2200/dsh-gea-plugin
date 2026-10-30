@@ -162,39 +162,37 @@ test("a channel suite capability must match the actual updater archive", async (
     /SOURCE_ARCHIVE_RELEASE_MISMATCH/,
   );
 });
-test(
-  "macOS archive download and cached validation accept Chinese paths regardless of parent locale",
-  { skip: process.platform !== "darwin" },
-  async (t) => {
-    const f = await fixture(t),
-      releases = await f.source.check(),
-      keys = ["LANG", "LC_ALL", "LC_CTYPE"],
-      previous = keys.map((key) => process.env[key]);
-    try {
-      for (const locale of ["C", undefined]) {
-        for (const key of keys) {
-          if (locale === undefined) delete process.env[key];
-          else process.env[key] = locale;
-        }
-        const cache = join(f.dir, locale ?? "unset");
-        for (const release of releases) {
-          const path = await f.source.download(release, cache);
-          assert.equal((await inspectPluginArchive(path)).name, release.name);
-          assert.equal(await f.source.download(release, cache), path);
-        }
-        assert.deepEqual(
-          keys.map((key) => process.env[key]),
-          keys.map(() => locale),
-        );
-      }
-    } finally {
+test("archive download and cached validation accept Chinese paths including macOS parent locales", async (t) => {
+  const f = await fixture(t),
+    releases = await f.source.check(),
+    keys = ["LANG", "LC_ALL", "LC_CTYPE"],
+    previous = keys.map((key) => process.env[key]),
+    environments =
+      process.platform === "darwin" ? [keys.map(() => "C"), keys.map(() => undefined)] : [previous];
+  try {
+    for (const [index, environment] of environments.entries()) {
       keys.forEach((key, index) => {
-        if (previous[index] === undefined) delete process.env[key];
-        else process.env[key] = previous[index];
+        if (environment[index] === undefined) delete process.env[key];
+        else process.env[key] = environment[index];
       });
+      const cache = join(f.dir, String(index));
+      for (const release of releases) {
+        const path = await f.source.download(release, cache);
+        assert.equal((await inspectPluginArchive(path)).name, release.name);
+        assert.equal(await f.source.download(release, cache), path);
+      }
+      assert.deepEqual(
+        keys.map((key) => process.env[key]),
+        environment,
+      );
     }
-  },
-);
+  } finally {
+    keys.forEach((key, index) => {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    });
+  }
+});
 
 test(
   "UTF-8 archive inspection still rejects backslashes, bundled node_modules and duplicate entries",
