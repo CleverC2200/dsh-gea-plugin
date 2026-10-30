@@ -66,7 +66,36 @@ export function planBundledCompanyRefresh(current, installed, bundled) {
   };
 }
 
-async function readProfileUpdateState(profile, { allowExitedPackageRun = false } = {}) {
+function stoppedUpdateProcesses(processes) {
+  return (
+    Array.isArray(processes) &&
+    processes.length > 0 &&
+    processes.every((row) => {
+      if (
+        !Number.isSafeInteger(row?.pid) ||
+        row.pid < 1 ||
+        row.grouped !== (process.platform !== "win32") ||
+        row.sawAlive !== true ||
+        typeof row.startIdentity !== "string" ||
+        !row.startIdentity
+      )
+        return false;
+      return [row.pid, ...(row.grouped ? [-row.pid] : [])].every((pid) => {
+        try {
+          process.kill(pid, 0);
+          return false;
+        } catch (error) {
+          return error.code === "ESRCH";
+        }
+      });
+    })
+  );
+}
+
+async function readProfileUpdateState(
+  profile,
+  { allowExitedPackageRun = false, allowStoppedUnknown = false } = {},
+) {
   const recorded = await optional(join(profile, ".plugin-manager/run.json"));
   if (recorded) {
     if (!allowExitedPackageRun) throw Error("GEA_REFRESH_PROFILE_BUSY");
@@ -89,6 +118,13 @@ async function readProfileUpdateState(profile, { allowExitedPackageRun = false }
     await readFile(join(profile, "gea/plugin-updates/operations", pointer.id, "receipt.json")),
   );
   if (receipt.id !== pointer.id) throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+  if (
+    allowStoppedUnknown &&
+    receipt.stage === "unknown" &&
+    receipt.diagnostic === "PACKAGE_WRITERS_UNCONFIRMED" &&
+    stoppedUpdateProcesses(receipt.processes)
+  )
+    return receipt.stage;
   if (!["pending-restart", "completed", "restored", "failed"].includes(receipt.stage))
     throw Error("GEA_REFRESH_UPDATE_PENDING");
   return receipt.stage;
@@ -184,7 +220,10 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
   const journal = join(directory, "receipt.json");
   const currentBytes = await optional(join(profile, "package.json"));
   if (!currentBytes) return { status: "company-profile-not-installed", changed: false };
-  if ((await readProfileUpdateState(profile)) === "pending-restart")
+  const updateStage = await readProfileUpdateState(profile, { allowStoppedUnknown: true });
+  if (updateStage === "unknown")
+    return { status: "unknown-update-preserved", changed: false };
+  if (updateStage === "pending-restart")
     return { status: "pending-restart-preserved", changed: false };
   const installedFiles = new Map(
     await Promise.all(

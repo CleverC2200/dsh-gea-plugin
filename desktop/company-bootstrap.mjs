@@ -767,7 +767,7 @@ export async function refreshCompanyStartup({ legacyData, ...options }) {
     install: options.install ?? installCompanyPackages,
   });
   const cleanup =
-    legacyData && refresh.status !== "pending-restart-preserved"
+    legacyData && !["pending-restart-preserved", "unknown-update-preserved"].includes(refresh.status)
       ? await cleanupLegacyGea({
           data: legacyData,
           home: options.home,

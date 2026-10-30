@@ -80,6 +80,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { refreshBundledCompanySuite, assertProfileIdle } from "./company-gea-refresh.mjs";
 import { refreshCompanyStartup } from "./company-bootstrap.mjs";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "gea-refresh-"));
@@ -185,6 +187,60 @@ test("a pending restart defers bundled refresh while strict installation stays b
   const next = await refreshCompanyStartup(options);
   assert.equal(next.refresh.status, "current-company-suite-preserved");
   assert.ok(next.cleanup);
+});
+
+test("a stopped unconfirmed update reaches Host reconciliation without refreshing or cleaning", async (t) => {
+  const f = await fixture(t);
+  const child = spawn(process.execPath, ["-e", ""], { detached: process.platform !== "win32" });
+  const pid = child.pid;
+  await once(child, "exit");
+  const id = "00000000-0000-4000-8000-000000000000";
+  const operation = join(f.profile, "gea/plugin-updates/operations", id);
+  await mkdir(operation, { recursive: true });
+  await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+  const receipt = {
+    id,
+    stage: "unknown",
+    diagnostic: "PACKAGE_WRITERS_UNCONFIRMED",
+    processes: [
+      { pid, grouped: process.platform !== "win32", startIdentity: "observed", sawAlive: true },
+    ],
+  };
+  const original = JSON.stringify(receipt);
+  await writeFile(join(operation, "receipt.json"), original);
+  const options = { ...f, legacyData: f.home, install: () => assert.fail("must not install") };
+  const result = await refreshCompanyStartup(options);
+  assert.equal(result.refresh.status, "unknown-update-preserved");
+  assert.equal(result.refresh.changed, false);
+  assert.equal(result.cleanup, null);
+  assert.equal(await readFile(join(operation, "receipt.json"), "utf8"), original);
+  assert.equal(await readFile(join(f.profile, "package.json"), "utf8"), JSON.stringify(current));
+  await assert.rejects(access(join(f.profile, "gea/bootstrap/gea-refresh")), { code: "ENOENT" });
+  await assert.rejects(assertProfileIdle(f.profile), /GEA_REFRESH_UPDATE_PENDING/);
+
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  try {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    await writeFile(
+      join(operation, "receipt.json"),
+      JSON.stringify({ ...receipt, processes: [{ ...receipt.processes[0], grouped: false }] }),
+    );
+    assert.equal((await refreshCompanyStartup(options)).refresh.status, "unknown-update-preserved");
+  } finally {
+    Object.defineProperty(process, "platform", platform);
+  }
+
+  for (const processes of [
+    [],
+    [{ ...receipt.processes[0], pid: process.pid }],
+    [{ ...receipt.processes[0], startIdentity: null }],
+    [{ ...receipt.processes[0], sawAlive: false }],
+    [{ ...receipt.processes[0], pid: -1 }],
+    [{ ...receipt.processes[0], grouped: process.platform === "win32" }],
+  ]) {
+    await writeFile(join(operation, "receipt.json"), JSON.stringify({ ...receipt, processes }));
+    await assert.rejects(refreshCompanyStartup(options), /GEA_REFRESH_UPDATE_PENDING/);
+  }
 });
 
 test("interrupted updates, unknown receipts and active writers still block startup refresh", async (t) => {
