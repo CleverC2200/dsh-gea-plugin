@@ -8,7 +8,7 @@
 
 [Business](../src/host/business.ts) 持有唯一 GEA 身份、环境、凭据和登录代际。[client](../src/client.tsx) 发布一个 [只读身份 reader](../src/business-identity-client.ts) 与账户动作；Native、HTML 和账户呈现消费这个投影。读取故障保留最后确认身份，不把未知或读取失败当作主动退出。
 
-[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。选用 GEA 来源的个人模式通过实际 Core 声明使用共用 `workbench` 模型路由；其他无可信 profile 的会话仍使用 `analysisAgentCode` 默认路由。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
+[业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。通用模型目录、默认模型信息与无可信 profile 会话使用共用 `workbench` 模型路由；明确指定业务预设的模型发现和推理继续使用该业务 Consumer。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
 
 客户库存页在为 `customer_inventory` 建立 Gateway 委托后，通过当前用户解析工具取得并核对角色/范围回执；回执必须同时匹配用户、会话、对话和 Consumer。`/api/gea-html/identity` 仅投影角色和 `regions`、`provinces`、`customerCodes`、版本/失效时间，绝不投影委托 token 或原始回执。缺少 `customerInventoryScope.status="granted"` 时范围为未配置，不得把页面角色标签解释为全量数据权。受控 SQL 的实际行级授权仍由 GEA Gateway 按当前委托执行，页面展示或筛选不构成授权。
 
@@ -35,6 +35,8 @@
 环境自查的 `businessProfileDeclared=false` 不单独表示业务工具不可用：个人 Agent 可通过已选 GEA 工具来源接入。`independentQuery` 只报告当前本地接入条件，并明确独立查询不要求页面；`recovery` 按当前身份与来源提供恢复引导。服务端授权仍以实际调用结果为准，自查的 `businessAuthorization` 保持 `not-checked`。
 
 独立业务查询不要求先打开页面。页面动作仍只消费当前页面声明；Native 审批与 HTML 只读能力分别按原合同执行。页面的 view 或 draft 回执不等于真实业务保存/审批成功。
+
+绑定客户库存页面时，新计划表 Cube 模型 `agents_scm_cust_plan_order_analysis_d` 及其 View `cust_plan_order_analysis_qa`、旧库存模型及其 View 共用页面交集：以 `stat_date` 的同日起止 `inDateRange` 限定页面 `inventorySnapshot`，以 `cust_code` 的 `equals` 多值集合限定完整 `filteredCustomerCodes`；超过100个客户时拆为每组最多100个的等价 OR，整体追加为 AND 条件并保留调用者原筛选。调用者明确请求的日期区间与页面日期不相交时，返回 `GEA_PAGE_SCOPE_DATE_CONFLICT`，不执行查询，也不据此推断历史源表无数据。页面接收时间仅用于区分页面观测，不代表数据库不可变版本或 Cube 查询版本。缺少快照、客户集合为空或页面 owner 失效继续拒绝；不修改 Consumer、服务端授权、字段权限或其他模块的范围规则。
 
 Native 页面授权与当前页面身份投影属于同一个 grant。打开时建立投影，当前 owner 上报可见上下文时刷新，关闭或身份撤销时释放；旧 owner 的刷新和释放不能覆盖新页面。模型只获得该页面声明的动作工具，Native 使用 `gea_workbench_apply`，HTML lease 使用 `gea_page` 读取，以及目录声明的 `gea_plugin_page_apply` 视图动作。没有页面绑定时，`gea_visible_workbench_context` 返回安全的不可用说明，不推断页面或数字。 页面读取保留 focus 摘要、来源及实际覆盖范围；同页同焦点再次调用仍返回当前内容。页面身份 TTL 和 owner 撤销继续生效，工具不再以问题词表或重复窗口决定是否读取。
 
@@ -81,7 +83,7 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 | 路径           | 当前实现与条件                                                                                                                                                                                                                                                         |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                                |
-| 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 校验当前有效退回版本、周期、SKU、价格、身份、流程和原正文。当前环境须有租户/用户白名单与可用服务凭据；[service-account](../src/host/service-account.ts) 交换委托后向 `/api/v1/internal/sales-plans` 发送原幂等请求 |
+| 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 校验当前有效退回版本、周期、SKU、价格、身份、流程和原正文。当前环境须有匹配租户的非密钥配置引用与可用 Host 服务凭据；[service-account](../src/host/service-account.ts) 交换委托后向 `/api/v1/internal/sales-plans` 发送原幂等请求 |
 | 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                       |
 | 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                           |
 
@@ -89,7 +91,7 @@ M/Z 查询和审批复用原接口。`salesPlanAction` 从新鲜明细核对有�
 
 [`SalesPlanTransactions`](../src/host/sales-plan-transactions.ts) 持有本次登录内的重提与审批意图、已验证原正文、在途请求和回执。Business 保留公开写入口与登录权威，只借出当前身份、环境地址、身份取消信号和现有查询能力；退出或切换身份清空事务状态。意图登记时复制调用参数，校验、幂等指纹与发送正文使用同一快照；结果未知时只允许原键原正文重试。审批迟到的401或成功回执不能登出新身份或替换其回执。
 
-服务凭据留在 Host，配置只存引用。未知重提结果保持原键与原正文，退出或重启后重新回读计划。HTTP 成功还须核有效版本、旧版本失效、节点字段和日志，不等于真实业务验收。角色审批不借用客户重提来生成新版本；通知位置不授予审批角色。
+服务凭据留在 Host，配置只存引用。旧 `allowedUserIds` 在配置加载边界丢弃，不参与业务准入。重提通道状态只表达登录、配置、租户及凭据是否就绪，不授予角色或来源数据权限；当前用户的角色、完整来源重读及可操作版本检查继续独立执行。状态 6 只允许原提交人重提，状态 7–9 按现有责任节点角色校验，与 Workbench 的 `salesPlanCanResubmit` 共用规则。页面消费 `resubmitConnected` 与非敏感的 `resubmitUnavailableReason`，服务端认证失败仍单独标记为服务认证，不清除员工登录。未知重提结果保持原键与原正文，退出或重启后重新回读计划。HTTP 成功还须核有效版本、旧版本失效、节点字段和日志，不等于真实业务验收。角色审批不借用客户重提来生成新版本；通知位置不授予审批角色。
 
 ## 通知与日志
 

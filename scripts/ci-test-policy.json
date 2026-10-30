@@ -63,6 +63,12 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/source-preparation.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/source-check-summary.test.mjs": {
+      "dependencies": false
+    },
     "scripts/source-formal-receipt.test.mjs": {
       "dependencies": false
     },
@@ -131,6 +137,26 @@
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/source-preparation(?:\\.test)?\\.mjs$",
+      "tests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"],
+      "sourceTests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:source-check-summary|quality-hosted-budget)(?:\\.test)?\\.mjs$",
+      "tests": [
+        "scripts/source-check-summary.test.mjs",
+        "scripts/quality-hosted-budget.test.mjs",
+        "scripts/source-check-shards.test.mjs"
+      ],
+      "sourceTests": [
+        "scripts/source-check-summary.test.mjs",
+        "scripts/quality-hosted-budget.test.mjs",
+        "scripts/source-check-shards.test.mjs"
+      ]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^presets/(?:execution|prompt)-policy\\.json$",
@@ -313,6 +339,11 @@
     },
     {
       "repo": "dsh-agent-workbench",
+      "pattern": "^src/workbench/(?:original/workbenches/regionalApproval/|workbench\\.css$)",
+      "tests": ["tests/progress-column-web.test.mjs", "tests/detail-summary-web.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
       "pattern": "^src/plugin-package-version\\.ts$",
       "tests": ["tests/plugin-update-integration.contract.mjs"]
     },
@@ -361,9 +392,8 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "pattern": "^(?:src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)|tests/plugin-update-archive\\.test\\.mjs$)",
       "tests": [
-        "tests/plugin-update-archive.test.mjs",
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
@@ -417,7 +447,6 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
       "tests": [
-        "tests/plugin-update-archive.test.mjs",
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
@@ -602,6 +631,20 @@
         "scripts/serial-merge-artifacts.test.mjs",
         "scripts/serial-merge-runtime.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^docs/fc-storage/proposed-postgresql\\.sql$",
+      "tests": [
+        "tests/fc-storage.test.mjs",
+        "tests/fc-legacy-planning.test.mjs",
+        "tests/fc-submission-flow.integration.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/plugin-update-windows\\.native\\.mjs$",
+      "tests": ["scripts/ci-windows-update.test.mjs"]
     }
   ],
   "testOwners": {

@@ -1,6 +1,10 @@
 import { loadServiceAccountCredentials } from "./shared/service-accounts.js";
 import type { ServiceAccounts } from "./host/service-account.ts";
-import { GeaModelAdapter, geaKeptReasoningEffort } from "./host/gea-model.ts";
+import {
+  GeaModelAdapter,
+  geaKeptReasoningEffort,
+  initializeGeaDefaultModel,
+} from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
@@ -32,6 +36,7 @@ import {
   assertBusinessResourceAvailable,
   assertSessionResourceAvailable,
   businessIdentityKey,
+  mountBusinessIdentity,
   sessionConsumer,
 } from "./host/business-identity.ts";
 import { mountBusinessPrompts } from "./host/prompt-runtime.ts";
@@ -76,6 +81,7 @@ export const Config = z.object({
   serviceAccounts: z.any<ServiceAccounts>(),
   dms: z.any<Deployment["dms"]>(),
   orderFulfillmentConfirmation: z.any<Deployment["orderFulfillmentConfirmation"]>(),
+  fcStorage: z.any<Deployment["fcStorage"]>(),
   environment: environmentSchema.default(
     z.resolve(companyDefaults.environment, environmentSchema, {})[0],
   ),
@@ -97,7 +103,7 @@ export const Config = z.object({
   cubeMcpCodes: z
     .object({ production: z.string(), test: z.string() })
     .default(companyDefaults.cubeMcpCodes),
-  modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(300000),
+  modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(600000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).default(companyDefaults.maxSnapshotBytes),
   runtimeDir: z.string(),
   // The feature validates this optional deployment input and stays blocked on incomplete configuration.
@@ -209,6 +215,20 @@ export async function apply(
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
+  ctx.effect(() => async () => {
+    await desktopLogin.dispose();
+    await webLogin.dispose();
+    business.dispose();
+  });
+  mountBusinessIdentity(ctx, business);
+  registerEndpoints([
+    "navigation/catalog",
+    "environment/select",
+    "logout",
+    "login/start",
+    "login/poll",
+  ]);
+
   // 只装载 Workbench 已登记的 v2 HTML 包；缺少分离声明由装载校验拒绝。
   const htmlPackages = ctx.workbenchPages
     .packages()
@@ -349,11 +369,6 @@ export async function apply(
       if (question) resetReadTurn(agent.id);
     }),
   );
-  ctx.effect(() => async () => {
-    await desktopLogin.dispose();
-    await webLogin.dispose();
-    business.dispose();
-  });
   if (config.analysisMode === "receipt")
     ctx.effect(() =>
       ctx.llm.registerAdapter(["gea-proof"], new ReceiptAdapter(config, business.runId, business)),
@@ -366,19 +381,43 @@ export async function apply(
       );
       let identity = business.identitySignal();
       let authenticated = business.status().authenticated;
-      if (!authenticated) registration.replace([]);
+      const lifetime = new AbortController();
+      const updateRegistration = () => {
+        const expectedIdentity = identity;
+        if (!authenticated || process.env.GEA_COMPANY_CLIENT !== "1") {
+          registration.replace(authenticated ? ["gea-analysis"] : []);
+          return;
+        }
+        registration.replace([]);
+        const signal = AbortSignal.any([identity, lifetime.signal]);
+        void initializeGeaDefaultModel(business, ctx.agentDefaultModel, signal)
+          .catch((error: unknown) => {
+            if (!signal.aborted) {
+              const { code, message } = errorEnvelope(error);
+              console.warn(
+                JSON.stringify({ event: "GEA_DEFAULT_MODEL_UNAVAILABLE", code, message }),
+              );
+            }
+          })
+          .finally(() => {
+            if (!signal.aborted && business.identitySignal() === expectedIdentity)
+              registration.replace(["gea-analysis"]);
+          });
+      };
+      updateRegistration();
       // 官方模型菜单通过路由变更刷新目录。只观察 Host 身份代际和有效性，
       // 头像等展示变化不能重新发现模型，也不改 Session 的模型选择。
       const unwatch = business.watchIdentity(() => {
         const nextIdentity = business.identitySignal();
         const nextAuthenticated = business.status().authenticated;
         if (identity === nextIdentity && authenticated === nextAuthenticated) return;
-        registration.replace(nextAuthenticated ? ["gea-analysis"] : []);
         identity = nextIdentity;
         authenticated = nextAuthenticated;
+        updateRegistration();
       });
       return () => {
         unwatch();
+        lifetime.abort();
         registration();
       };
     });
@@ -465,8 +504,7 @@ export async function apply(
     });
     return attempt.result;
   }
-  const endpoints = [
-    "navigation/catalog",
+  registerEndpoints([
     "navigation/poll",
     "navigation/finish",
     "navigation/retry",
@@ -478,12 +516,8 @@ export async function apply(
     "sales-plan/action",
     "sales-plan/draft",
     "sales-plan/submit",
-    "environment/select",
     "model/discover",
     "model/advice",
-    "logout",
-    "login/start",
-    "login/poll",
     "periods",
     "plans",
     "detail",
@@ -503,248 +537,255 @@ export async function apply(
     "api-log/batch/stop",
     // 只在显式打开调试开关时注册：逐个模块真跑一遍 MCP，并把原始报文带回来。
     ...(process.env.GEA_DEBUG_PROBE === "1" ? ["debug/mcp-probe"] : []),
-  ];
-  for (const endpoint of endpoints)
-    ctx.effect(() =>
-      ctx.connection.fetch.register({
-        path: "/api/gea-proof/" + endpoint,
-        methods: ["POST"],
-        requestBody: "buffered",
-        fetch: async (request: Request) => {
-          try {
-            business.assertOperation(endpoint);
-            const payload = object(await request.json());
-            let value: unknown;
-            switch (endpoint) {
-              case "navigation/catalog":
-                value = await business.navigationCatalog(payload, request.signal);
-                break;
-              case "navigation/poll":
-              case "navigation/retry":
-                if (Object.keys(payload).length) throw Error("NAVIGATION_REQUEST_INVALID");
-                value =
-                  endpoint === "navigation/poll"
-                    ? await desktopNavigation.poll()
-                    : await desktopNavigation.retry();
-                break;
-              case "navigation/finish":
-                value = await desktopNavigation.finish(payload);
-                break;
-              case "api-log/snapshot":
-                value = business.apiLogSnapshot(payload);
-                break;
-              case "api-log/replay":
-                value = await business.apiLogReplay(payload, request.signal);
-                break;
-              case "api-log/clear":
-                value = business.apiLogClear(payload);
-                break;
-              case "api-log/batch/start":
-                value = business.apiLogBatchStart(payload, request.signal);
-                break;
-              case "api-log/batch/read":
-                value = business.apiLogBatchRead(payload);
-                break;
-              case "api-log/batch/stop":
-                value = business.apiLogBatchStop(payload);
-                break;
-              case "debug/mcp-probe":
-                value = await business.debugProbeModuleMcp(
-                  String(payload.consumerCode ?? ""),
-                  request.signal,
-                );
-                break;
-              case "workbench/query":
-                value = await business.workbenchQuery(payload, request.signal);
-                break;
-              case "plugin/sql":
-                value = await business.pluginSql(payload, request.signal);
-                break;
-              case "workbench/prepare":
-                value = await business.prepareWorkbench(payload, request.signal);
-                break;
-              case "sales-plan/submit":
-                value = await business.salesPlanSubmit(payload, request.signal);
-                break;
-              case "sales-plan/draft":
-                value = await business.salesPlanDraft(payload, request.signal);
-                break;
-              case "sales-plan/action":
-                value = await business.salesPlanAction(payload, request.signal);
-                break;
-              case "workflow/config":
-                value = await business.workflowConfig(payload, request.signal);
-                break;
-              // 界面上的「刷新」会走这里：重新解析当前账号角色，管理员刚改完权限的人也
-              // 不用重新登录就能看到新的可审批节点。
-              case "approval/roles":
-                business.assertExecutionAllowed(config.analysisAgentCode);
-                await business.refreshApprovalRoles(request.signal, { force: true });
-                value = { roles: business.status().roles ?? [] };
-                break;
-              case "notifications":
-                value = await business.notifications(payload, request.signal);
-                break;
-              case "status":
-                if (!business.status().readonlyValidation) {
-                  await Promise.all([
-                    business.refreshMissingAvatar(request.signal),
-                    business.refreshPermissions(request.signal),
-                    business.refreshApprovalRoles(request.signal),
-                  ]);
-                }
-                // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
-                value = {
-                  ...business.status(),
-                  htmlPlugins: htmlPackages.length > 0,
-                  modules: capability.modules(),
-                };
-                break;
-              case "model/advice": {
-                business.assertExecutionAllowed(config.analysisAgentCode);
-                if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
-                if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
-                if (
-                  typeof payload.question !== "string" ||
-                  !payload.question.trim() ||
-                  Buffer.byteLength(payload.question) > config.inputByteBudget
-                )
-                  throw new Error("INVALID_ADVICE_INPUT");
-                const signal = AbortSignal.any([request.signal, business.identitySignal()]);
-                let model = config.analysisModel;
-                if (config.analysisSource === "gea") {
-                  const route = await business.modelRoute(signal, config.analysisAgentCode);
-                  model = route.models.includes(model) ? model : route.models[0]!;
-                }
-                let answer = "";
-                let finished = false;
-                for await (const chunk of ctx.llm.stream({
-                  provider: "gea-analysis",
-                  model,
-                  messages: [
-                    createUserMessage({
-                      source: { kind: "user" },
-                      content: [{ type: "text", text: payload.question }],
-                    }),
-                  ],
-                  maxTokens: 4096,
-                  signal,
-                })) {
-                  signal.throwIfAborted();
-                  if (chunk.type === "text-delta") answer += chunk.text;
-                  if (Buffer.byteLength(answer) > config.maxSnapshotBytes)
-                    throw new Error("GEA_ADVICE_TOO_LARGE");
-                  if (chunk.type === "finish") finished = chunk.reason.kind === "stop";
-                }
-                signal.throwIfAborted();
-                if (!finished) throw new Error("GEA_ADVICE_INCOMPLETE");
-                value = {
-                  status: answer.trim() ? "ok" : "noAnswer",
-                  provider_id: "gea-analysis",
-                  model,
-                  answer,
-                };
-                break;
-              }
-              case "model/discover": {
-                if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
-                const requestedPreset = payload.agentPreset;
-                if (
-                  requestedPreset !== undefined &&
-                  (typeof requestedPreset !== "string" || !profileFor(requestedPreset))
-                )
-                  throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
-                await assertBusinessResourceAvailable(
-                  ctx,
-                  typeof requestedPreset === "string" ? requestedPreset : undefined,
-                  request.signal,
-                );
-                const discoveryConsumer =
-                  typeof requestedPreset === "string" && requestedPreset !== "gea-readonly"
-                    ? profileFor(requestedPreset)!.consumerCode
-                    : config.analysisAgentCode;
-                const route =
-                  config.analysisSource === "direct"
-                    ? {
-                        models: [config.analysisModel],
-                        names: { [config.analysisModel]: config.analysisModel },
-                      }
-                    : await business.modelRoute(request.signal, discoveryConsumer);
-                const selected = route.models.includes(config.analysisModel)
-                  ? config.analysisModel
-                  : route.models[0]!;
-                request.signal.throwIfAborted();
-                // saveSelection 是整体覆盖：不带上已选档位就会把用户的档位选择清掉。
-                const kept = geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection());
-                if (requestedPreset === undefined)
-                  await ctx.agentDefaultModel.saveSelection({
-                    provider: "gea-analysis",
-                    model: selected,
-                    ...(kept === undefined ? {} : { reasoningEffort: kept }),
-                  });
-                value = {
-                  ...(requestedPreset === undefined ? {} : { consumerCode: discoveryConsumer }),
-                  models: route.models,
-                  selected,
-                  names: route.names,
-                  selectedName: route.names[selected],
-                };
-                break;
-              }
-              case "environment/select":
-                value = business.selectEnvironment(payload);
-                break;
-              case "logout":
-                value = business.logout(payload);
-                break;
-              case "login/start":
-                value = await business.loginStart(request.signal, payload);
-                break;
-              case "login/poll":
-                value = await business.loginPoll(payload, request.signal);
-                break;
-              case "plans":
-                value = await business.plans(payload, request.signal);
-                break;
-              case "periods":
-                value = await business.periods(request.signal);
-                break;
-              case "detail":
-                value = await business.detail(payload, request.signal);
-                break;
-              case "versions":
-                value = await business.versions(payload, request.signal);
-                break;
-              case "skus":
-                value = await business.skus(payload, request.signal);
-                break;
-              case "prepare":
-                value = business.prepare(payload);
-                break;
-              case "submit":
-                value = await submit(payload, request.signal);
-                break;
-              default:
-                throw new Error("UNKNOWN_ENDPOINT");
-            }
-            await desktopLogin.flush();
-            await webLogin.flush();
-            return Response.json({ ok: true, value }, { headers: { "Cache-Control": "no-store" } });
-          } catch (caughtError) {
-            let error = caughtError;
-            // 业务操作失败时也可能同时发现登录过期并清除身份。
+  ]);
+  function registerEndpoints(endpoints: readonly string[]): void {
+    for (const endpoint of endpoints)
+      ctx.effect(() =>
+        ctx.connection.fetch.register({
+          path: "/api/gea-proof/" + endpoint,
+          methods: ["POST"],
+          requestBody: "buffered",
+          fetch: async (request: Request) => {
             try {
+              business.assertOperation(endpoint);
+              const payload = object(await request.json());
+              let value: unknown;
+              switch (endpoint) {
+                case "navigation/catalog":
+                  value = await business.navigationCatalog(payload, request.signal);
+                  break;
+                case "navigation/poll":
+                case "navigation/retry":
+                  if (Object.keys(payload).length) throw Error("NAVIGATION_REQUEST_INVALID");
+                  value =
+                    endpoint === "navigation/poll"
+                      ? await desktopNavigation.poll()
+                      : await desktopNavigation.retry();
+                  break;
+                case "navigation/finish":
+                  value = await desktopNavigation.finish(payload);
+                  break;
+                case "api-log/snapshot":
+                  value = business.apiLogSnapshot(payload);
+                  break;
+                case "api-log/replay":
+                  value = await business.apiLogReplay(payload, request.signal);
+                  break;
+                case "api-log/clear":
+                  value = business.apiLogClear(payload);
+                  break;
+                case "api-log/batch/start":
+                  value = business.apiLogBatchStart(payload, request.signal);
+                  break;
+                case "api-log/batch/read":
+                  value = business.apiLogBatchRead(payload);
+                  break;
+                case "api-log/batch/stop":
+                  value = business.apiLogBatchStop(payload);
+                  break;
+                case "debug/mcp-probe":
+                  value = await business.debugProbeModuleMcp(
+                    String(payload.consumerCode ?? ""),
+                    request.signal,
+                  );
+                  break;
+                case "workbench/query":
+                  value = await business.workbenchQuery(payload, request.signal);
+                  break;
+                case "plugin/sql":
+                  value = await business.pluginSql(payload, request.signal);
+                  break;
+                case "workbench/prepare":
+                  value = await business.prepareWorkbench(payload, request.signal);
+                  break;
+                case "sales-plan/submit":
+                  value = await business.salesPlanSubmit(payload, request.signal);
+                  break;
+                case "sales-plan/draft":
+                  value = await business.salesPlanDraft(payload, request.signal);
+                  break;
+                case "sales-plan/action":
+                  value = await business.salesPlanAction(payload, request.signal);
+                  break;
+                case "workflow/config":
+                  value = await business.workflowConfig(payload, request.signal);
+                  break;
+                // 界面上的「刷新」会走这里：重新解析当前账号角色，管理员刚改完权限的人也
+                // 不用重新登录就能看到新的可审批节点。
+                case "approval/roles":
+                  business.assertExecutionAllowed(config.analysisAgentCode);
+                  await business.refreshApprovalRoles(request.signal, { force: true });
+                  value = { roles: business.status().roles ?? [] };
+                  break;
+                case "notifications":
+                  value = await business.notifications(payload, request.signal);
+                  break;
+                case "status":
+                  if (!business.status().readonlyValidation) {
+                    await Promise.all([
+                      business.refreshMissingAvatar(request.signal),
+                      business.refreshPermissions(request.signal),
+                      business.refreshApprovalRoles(request.signal),
+                    ]);
+                  }
+                  // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
+                  value = {
+                    ...business.status(),
+                    htmlPlugins: htmlPackages.length > 0,
+                    modules: capability.modules(),
+                  };
+                  break;
+                case "model/advice": {
+                  business.assertExecutionAllowed(WORKBENCH_AGENT_CODE);
+                  if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
+                  if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
+                  if (
+                    typeof payload.question !== "string" ||
+                    !payload.question.trim() ||
+                    Buffer.byteLength(payload.question) > config.inputByteBudget
+                  )
+                    throw new Error("INVALID_ADVICE_INPUT");
+                  const signal = AbortSignal.any([request.signal, business.identitySignal()]);
+                  let model = config.analysisModel;
+                  if (config.analysisSource === "gea") {
+                    const route = await business.modelRoute(signal, WORKBENCH_AGENT_CODE);
+                    model = route.models.includes(model) ? model : route.models[0]!;
+                  }
+                  let answer = "";
+                  let finished = false;
+                  for await (const chunk of ctx.llm.stream({
+                    provider: "gea-analysis",
+                    model,
+                    messages: [
+                      createUserMessage({
+                        source: { kind: "user" },
+                        content: [{ type: "text", text: payload.question }],
+                      }),
+                    ],
+                    maxTokens: 4096,
+                    signal,
+                  })) {
+                    signal.throwIfAborted();
+                    if (chunk.type === "text-delta") answer += chunk.text;
+                    if (Buffer.byteLength(answer) > config.maxSnapshotBytes)
+                      throw new Error("GEA_ADVICE_TOO_LARGE");
+                    if (chunk.type === "finish") finished = chunk.reason.kind === "stop";
+                  }
+                  signal.throwIfAborted();
+                  if (!finished) throw new Error("GEA_ADVICE_INCOMPLETE");
+                  value = {
+                    status: answer.trim() ? "ok" : "noAnswer",
+                    provider_id: "gea-analysis",
+                    model,
+                    answer,
+                  };
+                  break;
+                }
+                case "model/discover": {
+                  if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
+                  const requestedPreset = payload.agentPreset;
+                  if (
+                    requestedPreset !== undefined &&
+                    (typeof requestedPreset !== "string" || !profileFor(requestedPreset))
+                  )
+                    throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
+                  await assertBusinessResourceAvailable(
+                    ctx,
+                    typeof requestedPreset === "string" ? requestedPreset : undefined,
+                    request.signal,
+                  );
+                  const discoveryConsumer =
+                    requestedPreset === undefined
+                      ? WORKBENCH_AGENT_CODE
+                      : requestedPreset === "gea-readonly"
+                        ? config.analysisAgentCode
+                        : profileFor(requestedPreset)!.consumerCode;
+                  const route =
+                    config.analysisSource === "direct"
+                      ? {
+                          models: [config.analysisModel],
+                          names: { [config.analysisModel]: config.analysisModel },
+                        }
+                      : await business.modelRoute(request.signal, discoveryConsumer);
+                  const selected = route.models.includes(config.analysisModel)
+                    ? config.analysisModel
+                    : route.models[0]!;
+                  request.signal.throwIfAborted();
+                  // saveSelection 是整体覆盖：不带上已选档位就会把用户的档位选择清掉。
+                  const kept = geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection());
+                  if (requestedPreset === undefined)
+                    await ctx.agentDefaultModel.saveSelection({
+                      provider: "gea-analysis",
+                      model: selected,
+                      ...(kept === undefined ? {} : { reasoningEffort: kept }),
+                    });
+                  value = {
+                    ...(requestedPreset === undefined ? {} : { consumerCode: discoveryConsumer }),
+                    models: route.models,
+                    selected,
+                    names: route.names,
+                    selectedName: route.names[selected],
+                  };
+                  break;
+                }
+                case "environment/select":
+                  value = business.selectEnvironment(payload);
+                  break;
+                case "logout":
+                  value = business.logout(payload);
+                  break;
+                case "login/start":
+                  value = await business.loginStart(request.signal, payload);
+                  break;
+                case "login/poll":
+                  value = await business.loginPoll(payload, request.signal);
+                  break;
+                case "plans":
+                  value = await business.plans(payload, request.signal);
+                  break;
+                case "periods":
+                  value = await business.periods(request.signal);
+                  break;
+                case "detail":
+                  value = await business.detail(payload, request.signal);
+                  break;
+                case "versions":
+                  value = await business.versions(payload, request.signal);
+                  break;
+                case "skus":
+                  value = await business.skus(payload, request.signal);
+                  break;
+                case "prepare":
+                  value = business.prepare(payload);
+                  break;
+                case "submit":
+                  value = await submit(payload, request.signal);
+                  break;
+                default:
+                  throw new Error("UNKNOWN_ENDPOINT");
+              }
               await desktopLogin.flush();
               await webLogin.flush();
-            } catch (storageError) {
-              error = storageError;
+              return Response.json(
+                { ok: true, value },
+                { headers: { "Cache-Control": "no-store" } },
+              );
+            } catch (caughtError) {
+              let error = caughtError;
+              // 业务操作失败时也可能同时发现登录过期并清除身份。
+              try {
+                await desktopLogin.flush();
+                await webLogin.flush();
+              } catch (storageError) {
+                error = storageError;
+              }
+              return Response.json(
+                { ok: false, error: errorEnvelope(error) },
+                { headers: { "Cache-Control": "no-store" } },
+              );
             }
-            return Response.json(
-              { ok: false, error: errorEnvelope(error) },
-              { headers: { "Cache-Control": "no-store" } },
-            );
-          }
-        },
-      }),
-    );
+          },
+        }),
+      );
+  }
 }

@@ -209,6 +209,15 @@ test(
     version.status = 6;
     version.submitter = "original-customer-owner";
     expectedRequest = { ...request, status: 1 };
+    const unrelatedSubmission = await app.rpc("sales-plan/submit", {
+      ...command,
+      request: expectedRequest,
+      idempotencyKey: "unrelated-customer-resubmit",
+      requestId: "unrelated-customer-resubmit",
+    });
+    assert.equal(unrelatedSubmission.ok, false);
+    assert.equal(writes, 1);
+    version.submitter = "9007199254740993";
     const customerSubmission = await app.rpc("sales-plan/submit", {
       ...command,
       request: expectedRequest,

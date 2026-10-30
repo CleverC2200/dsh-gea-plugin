@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generateKeyPairSync, sign, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
 import { join, dirname, delimiter } from "node:path";
 import { tmpdir } from "node:os";
@@ -13,9 +13,8 @@ import {
 import { companyPackageNames, projectPluginRelease } from "../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 async function fixture(t) {
-  const dir = await mkdtemp(join(tmpdir(), "signed-plugin-source-"));
+  const dir = await mkdtemp(join(tmpdir(), "plugin-source-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const objects = new Map();
   const releases = [];
   for (const name of companyPackageNames) {
@@ -45,6 +44,7 @@ async function fixture(t) {
       await writeFile(join(packageRoot, relative), "export default {};");
     }
     await writeFile(join(packageRoot, "cordis.patch.yml"), "[]");
+    await writeFile(join(packageRoot, "订单履约语义.md"), "订单履约");
     const archive = join(dir, `${releases.length}.tgz`);
     execFileSync("tar", ["-czf", archive, "-C", join(packageRoot, ".."), "package"]);
     const archiveBytes = await readFile(archive),
@@ -56,7 +56,7 @@ async function fixture(t) {
       artifact: { url, size: archiveBytes.length, sha256: hash },
       supportedCores: [{ head: "a".repeat(40), version: "0.2.0-rc.2" }],
       dataCompatibility: { kind: "preserve" },
-      notes: "signed local fixture",
+      notes: "local fixture",
     });
     const bytes = Buffer.from(JSON.stringify(release)),
       releaseHash = digest(bytes),
@@ -79,9 +79,7 @@ async function fixture(t) {
     channelUrl,
     Buffer.from(
       JSON.stringify({
-        keyId: "fixture",
         payloadBase64: payload.toString("base64"),
-        signatureBase64: sign(null, payload, privateKey).toString("base64"),
       }),
     ),
   );
@@ -94,12 +92,6 @@ async function fixture(t) {
       { origin: "https://fixture.invalid", pathPrefix: "/releases/" },
     ],
     authenticationRef: "fixture-read",
-    trustedKeys: [
-      {
-        keyId: "fixture",
-        publicKeyPem: publicKey.export({ type: "spki", format: "pem" }),
-      },
-    ],
   };
   const source = createPluginReleaseSource(config, {
     trustDirectory: join(dir, "trust"),
@@ -121,12 +113,11 @@ async function fixture(t) {
     channelUrl,
     source,
     calls,
-    privateKey,
     config,
     releases,
   };
 }
-test("signed channel verifies raw bytes, release hashes and durable tgz manifest before returning file", async (t) => {
+test("channel verifies release bytes, release hashes and durable tgz manifest before returning file", async (t) => {
   const f = await fixture(t),
     releases = await f.source.check();
   assert.equal(releases.length, 3);
@@ -141,7 +132,7 @@ test("signed channel verifies raw bytes, release hashes and durable tgz manifest
   );
 });
 
-test("a signed suite capability must match the actual updater archive", async (t) => {
+test("a channel suite capability must match the actual updater archive", async (t) => {
   const f = await fixture(t);
   const envelope = JSON.parse(f.objects.get(f.channelUrl));
   const payload = JSON.parse(Buffer.from(envelope.payloadBase64, "base64"));
@@ -159,7 +150,6 @@ test("a signed suite capability must match the actual updater archive", async (t
       JSON.stringify({
         ...envelope,
         payloadBase64: signed.toString("base64"),
-        signatureBase64: sign(null, signed, f.privateKey).toString("base64"),
       }),
     ),
   );
@@ -172,6 +162,57 @@ test("a signed suite capability must match the actual updater archive", async (t
     /SOURCE_ARCHIVE_RELEASE_MISMATCH/,
   );
 });
+test("archive download and cached validation accept Chinese paths including macOS parent locales", async (t) => {
+  const f = await fixture(t),
+    releases = await f.source.check(),
+    keys = ["LANG", "LC_ALL", "LC_CTYPE"],
+    previous = keys.map((key) => process.env[key]),
+    environments =
+      process.platform === "darwin" ? [keys.map(() => "C"), keys.map(() => undefined)] : [previous];
+  try {
+    for (const [index, environment] of environments.entries()) {
+      keys.forEach((key, index) => {
+        if (environment[index] === undefined) delete process.env[key];
+        else process.env[key] = environment[index];
+      });
+      const cache = join(f.dir, String(index));
+      for (const release of releases) {
+        const path = await f.source.download(release, cache);
+        assert.equal((await inspectPluginArchive(path)).name, release.name);
+        assert.equal(await f.source.download(release, cache), path);
+      }
+      assert.deepEqual(
+        keys.map((key) => process.env[key]),
+        environment,
+      );
+    }
+  } finally {
+    keys.forEach((key, index) => {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    });
+  }
+});
+
+test(
+  "UTF-8 archive inspection still rejects backslashes, bundled node_modules and duplicate entries",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const f = await fixture(t),
+      root = join(f.dir, companyPackageNames[0].replaceAll("/", "-")),
+      archive = join(f.dir, "invalid.tgz");
+    for (const relative of ["back\\slash.md", "node_modules/dependency/index.js"]) {
+      const file = join(root, "package", relative);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, "invalid");
+      execFileSync("tar", ["-czf", archive, "-C", root, "package"]);
+      await assert.rejects(inspectPluginArchive(archive), /SOURCE_ARCHIVE_INVALID/);
+      await rm(join(root, "package", relative.split("/")[0]), { recursive: true });
+    }
+    execFileSync("tar", ["-czf", archive, "-C", root, "package", "package"]);
+    await assert.rejects(inspectPluginArchive(archive), /SOURCE_ARCHIVE_INVALID/);
+  },
+);
 test(
   "archive listing accepts Windows CRLF while retaining archive inspection",
   { skip: process.platform === "win32" },
@@ -194,13 +235,13 @@ test(
     }
   },
 );
-test("source rejects tampering and clears previous execution authority while original inventory remains outside source", async (t) => {
+test("source rejects malformed channel and clears previous execution authority while original inventory remains outside source", async (t) => {
   const f = await fixture(t),
     releases = await f.source.check();
   const envelope = JSON.parse(f.objects.get(f.channelUrl));
   envelope.payloadBase64 = Buffer.from("tampered").toString("base64");
   f.objects.set(f.channelUrl, Buffer.from(JSON.stringify(envelope)));
-  await assert.rejects(f.source.check(), /SOURCE_SIGNATURE_INVALID/);
+  await assert.rejects(f.source.check(), /Unexpected token/);
   await assert.rejects(
     f.source.download(releases[0], join(f.dir, "cache")),
     /SOURCE_RELEASE_NOT_VERIFIED/,
@@ -218,7 +259,7 @@ test("source rejects mismatched release bytes and tgz hash without durable packa
   f.objects.set(releaseUrl, Buffer.from("{}"));
   await assert.rejects(f.source.check(), /SOURCE_RELEASE_HASH_MISMATCH/);
 });
-function resign(f, change) {
+function updateChannel(f, change) {
   const envelope = JSON.parse(f.objects.get(f.channelUrl)),
     payload = JSON.parse(Buffer.from(envelope.payloadBase64, "base64"));
   change(payload);
@@ -227,34 +268,32 @@ function resign(f, change) {
     f.channelUrl,
     Buffer.from(
       JSON.stringify({
-        keyId: "fixture",
         payloadBase64: bytes.toString("base64"),
-        signatureBase64: sign(null, bytes, f.privateKey).toString("base64"),
       }),
     ),
   );
 }
-test("durable channel approval rejects signed replay, expiry, and corrupted trust after source recreation", async (t) => {
+test("durable channel approval rejects replay, expiry, and corrupted trust after source recreation", async (t) => {
   const f = await fixture(t);
-  resign(f, (p) => (p.revision = 2));
+  updateChannel(f, (p) => (p.revision = 2));
   await f.source.check();
-  resign(f, (p) => (p.revision = 1));
+  updateChannel(f, (p) => (p.revision = 1));
   const reloaded = createPluginReleaseSource(f.config, {
     trustDirectory: join(f.dir, "trust"),
     resolveAuthentication: async () => ({}),
     fetch: async (url) => new Response(f.objects.get(url)),
   });
   await assert.rejects(reloaded.check(), /SOURCE_CHANNEL_REPLAY/);
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.revision = 3;
     p.expiresAt = new Date(Date.now() - 1000).toISOString();
   });
   await assert.rejects(reloaded.check(), /SOURCE_CHANNEL_TIME_INVALID/);
-  resign(f, (p) => (p.expiresAt = new Date(Date.now() + 10000).toISOString()));
+  updateChannel(f, (p) => (p.expiresAt = new Date(Date.now() + 10000).toISOString()));
   await writeFile(join(f.dir, "trust/approved-channel.json"), "broken");
   await assert.rejects(reloaded.check(), /Unexpected token/);
 });
-test("signed same-version new content and signed package rollback are rejected across approved revisions", async (t) => {
+test("same-version new content and package rollback are rejected across approved revisions", async (t) => {
   const f = await fixture(t);
   await f.source.check();
   const ref = f.releases[0],
@@ -271,7 +310,7 @@ test("signed same-version new content and signed package rollback are rejected a
     sha256 = digest(bytes),
     url = `https://fixture.invalid/releases/${sha256}/release.json`;
   f.objects.set(url, bytes);
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.revision = 2;
     p.releases[0] = { ...ref, url, sha256 };
   });
@@ -280,7 +319,7 @@ test("signed same-version new content and signed package rollback are rejected a
     rollbackHash = digest(rollback),
     rollbackUrl = `https://fixture.invalid/releases/${rollbackHash}/release.json`;
   f.objects.set(rollbackUrl, rollback);
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.releases[0] = { ...ref, url: rollbackUrl, sha256: rollbackHash };
   });
   await assert.rejects(f.source.check(), /SOURCE_VERSION_ROLLBACK/);
@@ -321,7 +360,7 @@ test("allowed-source policy rejects credential URLs and escapes before fetching"
   assert.equal(f.calls.length, 0);
 });
 
-test("signed release cannot lie about the final tar peer graph", async (t) => {
+test("release cannot lie about the final tar peer graph", async (t) => {
   const f = await fixture(t),
     ref = f.releases[0],
     release = JSON.parse(f.objects.get(ref.url));
@@ -330,7 +369,7 @@ test("signed release cannot lie about the final tar peer graph", async (t) => {
     sha256 = digest(bytes),
     url = `https://fixture.invalid/releases/${sha256}/release.json`;
   f.objects.set(url, bytes);
-  resign(f, (p) => (p.releases[0] = { ...ref, url, sha256 }));
+  updateChannel(f, (p) => (p.releases[0] = { ...ref, url, sha256 }));
   const releases = await f.source.check();
   await assert.rejects(
     f.source.download(releases[0], join(f.dir, "cache")),
@@ -423,7 +462,7 @@ test("an older delayed check cannot replace the newer verified channel receipt",
   const old = source.check();
   const rejection = assert.rejects(old, /SOURCE_CHECK_SUPERSEDED/);
   await started;
-  resign(f, (p) => (p.revision = 2));
+  updateChannel(f, (p) => (p.revision = 2));
   const fresh = source.check();
   releaseOld();
   await rejection;
@@ -434,7 +473,7 @@ test("an older delayed check cannot replace the newer verified channel receipt",
   );
   assert.equal(releases.length, 3);
 });
-test("signed approval expires between check and download and cannot authorize a stale plan", async (t) => {
+test("channel approval expires between check and download and cannot authorize a stale plan", async (t) => {
   const f = await fixture(t);
   let now = Date.now();
   const source = createPluginReleaseSource(f.config, {
@@ -453,9 +492,9 @@ test("signed approval expires between check and download and cannot authorize a 
   );
 });
 
-test("a signed channel can publish one company package and later add another", async (t) => {
+test("a channel can publish one company package and later add another", async (t) => {
   const f = await fixture(t);
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.releases = [f.releases[2]];
   });
   let releases = await f.source.check();
@@ -465,7 +504,7 @@ test("a signed channel can publish one company package and later add another", a
   );
   const archive = await f.source.download(releases[0], join(f.dir, "single-cache"));
   assert.equal(digest(await readFile(archive)), releases[0].artifact.sha256);
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.revision = 2;
     p.releases.push(f.releases[0]);
   });
@@ -479,7 +518,7 @@ test("a signed channel can publish one company package and later add another", a
 test("omitting a published package does not erase durable rollback or digest protection", async (t) => {
   const f = await fixture(t);
   await f.source.check();
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.revision = 2;
     p.releases = [f.releases[2]];
   });
@@ -508,7 +547,7 @@ test("omitting a published package does not erase durable rollback or digest pro
       sha256 = digest(bytes),
       url = `https://fixture.invalid/releases/${sha256}/release.json`;
     f.objects.set(url, bytes);
-    resign(f, (p) => {
+    updateChannel(f, (p) => {
       p.revision = 3;
       p.releases = [f.releases[2], { ...f.releases[0], url, sha256 }];
     });
@@ -516,24 +555,24 @@ test("omitting a published package does not erase durable rollback or digest pro
   }
 });
 
-test("partial signed channels still reject empty, duplicate and unknown references", async (t) => {
+test("partial channels still reject empty, duplicate and unknown references", async (t) => {
   const f = await fixture(t);
   for (const releases of [
     [],
     [f.releases[2], f.releases[2]],
     [{ ...f.releases[2], name: "other-plugin" }],
   ]) {
-    resign(f, (p) => {
+    updateChannel(f, (p) => {
       p.releases = releases;
     });
     await assert.rejects(f.source.check(), /SOURCE_CHANNEL_INVALID/);
   }
 });
 
-test("signed companion releases share archive verification, allowlist and durable version approvals", async (t) => {
+test("companion releases share archive verification, allowlist and durable version approvals", async (t) => {
   const f = await fixture(t),
     G = "@cleverc2200/gea-dsh-prototype";
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.companionReleases = p.releases.filter((row) => row.name !== G);
     p.releases = p.releases.filter((row) => row.name === G);
   });
@@ -570,13 +609,13 @@ test("signed companion releases share archive verification, allowlist and durabl
       sha256 = digest(bytes),
       url = `https://fixture.invalid/releases/${sha256}/release.json`;
     f.objects.set(url, bytes);
-    resign(f, (p) => {
+    updateChannel(f, (p) => {
       p.revision = 2;
       p.companionReleases[0] = { ...reference, url, sha256 };
     });
     await assert.rejects(f.source.check(), expected);
   }
-  resign(f, (p) => {
+  updateChannel(f, (p) => {
     p.companionReleases[0] = {
       ...reference,
       url: `https://outside.invalid/releases/${reference.sha256}/release.json`,
@@ -584,4 +623,38 @@ test("signed companion releases share archive verification, allowlist and durabl
   });
   await assert.rejects(f.source.check(), /SOURCE_URL_FORBIDDEN/);
   assert(!f.calls.some((row) => new URL(row.url).hostname === "outside.invalid"));
+});
+
+test("channel inspection and download need no signing key or signature", async (t) => {
+  const f = await fixture(t);
+  const config = f.config;
+  assert.equal(config.trustedKeys, undefined);
+  const { payloadBase64 } = JSON.parse(f.objects.get(f.channelUrl));
+  f.objects.set(f.channelUrl, Buffer.from(JSON.stringify({ payloadBase64 })));
+  const source = createPluginReleaseSource(config, {
+    trustDirectory: join(f.dir, "unsigned-trust"),
+    resolveAuthentication: async () => ({}),
+    fetch: async (url) => new Response(f.objects.get(url)),
+  });
+  const releases = await source.check();
+  assert.equal(releases.length, 3);
+  const archive = await source.download(releases[0], join(f.dir, "unsigned-cache"));
+  assert.equal(digest(await readFile(archive)), releases[0].artifact.sha256);
+});
+
+test("existing envelopes and source settings do not require their former signing fields", async (t) => {
+  const f = await fixture(t);
+  const envelope = JSON.parse(f.objects.get(f.channelUrl));
+  envelope.keyId = "former-publisher";
+  envelope.signatureBase64 = "former-signature";
+  f.objects.set(f.channelUrl, Buffer.from(JSON.stringify(envelope)));
+  const source = createPluginReleaseSource(
+    { ...f.config, trustedKeys: [] },
+    {
+      trustDirectory: join(f.dir, "existing-source-trust"),
+      resolveAuthentication: async () => ({}),
+      fetch: async (url) => new Response(f.objects.get(url)),
+    },
+  );
+  assert.equal((await source.check()).length, 3);
 });

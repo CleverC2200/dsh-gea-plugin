@@ -12,7 +12,9 @@ const absolute = (path) =>
   typeof path === "string" && isAbsolute(path) ? path : fail("DELIVERY_ABSOLUTE_PATH_REQUIRED");
 const within = (root, path) => {
   const value = relative(root, path);
-  return value !== ".." && !value.startsWith("../") && !isAbsolute(value);
+  return (
+    value !== ".." && !value.startsWith("../") && !value.startsWith("..\\") && !isAbsolute(value)
+  );
 };
 const runtimeExport = (value) =>
   typeof value === "string" ? value : (value?.default ?? value?.import ?? value?.require);

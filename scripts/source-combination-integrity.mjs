@@ -3,8 +3,61 @@ import { readFile, readdir, realpath, lstat } from "node:fs/promises";
 import { readFile as readFileCallback } from "node:fs";
 import { promisify } from "node:util";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
+
+const observations = new AsyncLocalStorage();
+
+export function withSourcePhaseObserver(observer, run) {
+  const parent = observations.getStore();
+  return observations.run(
+    {
+      ...parent,
+      observer,
+      observationId: parent?.observationId ?? randomUUID(),
+      sequence: parent?.sequence ?? { next: 0 },
+    },
+    run,
+  );
+}
+
+export function sourcePhase(step, run) {
+  return function (...args) {
+    if (!observations.getStore()) return run(...args);
+    return measureSourcePhase(step, () => run(...args));
+  };
+}
+
+export function measureSourcePhase(step, run, counts) {
+  const parent = observations.getStore();
+  if (!parent) return run();
+  const id = ++parent.sequence.next;
+  const started = performance.now();
+  return observations.run({ ...parent, parentId: id }, async () => {
+    let status = "failed";
+    try {
+      const result = await run();
+      status = "passed";
+      return result;
+    } finally {
+      try {
+        const result = parent.observer({
+          event: "source-preparation-phase-completed",
+          observationId: parent.observationId,
+          processId: process.pid,
+          id,
+          parentId: parent.parentId ?? null,
+          step,
+          status,
+          durationMs: performance.now() - started,
+          ...counts?.(),
+        });
+        if (result?.then) Promise.resolve(result).catch(() => {});
+      } catch {}
+    }
+  });
+}
 
 const callbackReadFile = promisify(readFileCallback);
 const readBytes = (file, readScope) =>
@@ -30,7 +83,10 @@ export async function publishedResourceDigests(directory, prefix = "") {
 async function digestResources(directory, prefix, readScope, excludeDependencies) {
   const files = {},
     pending = [];
+  let directoryCount = 0,
+    linkCount = 0;
   async function visit(directory, prefix) {
+    directoryCount++;
     if (readScope) await readScope.resolve(directory, { traverse: true });
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       if (excludeDependencies && ["node_modules", ".git"].includes(entry.name)) continue;
@@ -38,6 +94,7 @@ async function digestResources(directory, prefix, readScope, excludeDependencies
       const file = join(directory, entry.name);
       if (entry.isDirectory()) await visit(file, relative);
       else if (entry.isSymbolicLink()) {
+        linkCount++;
         if (readScope) await readScope.resolve(file, { traverse: true });
         files[relative] = "link:" + (await realpath(file));
       } else if (entry.isFile() && (excludeDependencies || relative !== "combination.json")) {
@@ -46,8 +103,22 @@ async function digestResources(directory, prefix, readScope, excludeDependencies
       }
     }
   }
-  await visit(directory, prefix);
-  return hashFiles(files, pending, readScope);
+  await measureSourcePhase(
+    "resource-traversal",
+    () => visit(directory, prefix),
+    () => ({
+      directoryCount,
+      fileCount: pending.length,
+      linkCount,
+    }),
+  );
+  return measureSourcePhase(
+    "resource-read-hash",
+    () => hashFiles(files, pending, readScope),
+    () => ({
+      fileCount: pending.length,
+    }),
+  );
 }
 
 function sameDigests(actual, expected) {
@@ -59,7 +130,9 @@ function sameDigests(actual, expected) {
 }
 
 /** Reject incomplete snapshots before changing the selected combination. */
-export async function readSourceCombination(runtime, id, core, { readScope } = {}) {
+export const readSourceCombination = sourcePhase("read-combination", readCombination);
+
+async function readCombination(runtime, id, core, { readScope } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const directory = join(runtime, "source-combinations", id);
   const record = JSON.parse(
@@ -127,6 +200,7 @@ export async function dependencyDigests(directories, readScope) {
   const files = {},
     visited = new Set(),
     pending = [];
+  let linkCount = 0;
   function enqueue(file) {
     files[file] = null;
     pending.push(file);
@@ -143,6 +217,7 @@ export async function dependencyDigests(directories, readScope) {
       if (entry.isFile()) enqueue(file);
       else if (entry.isDirectory()) await visit(file);
       else if (entry.isSymbolicLink()) {
+        linkCount++;
         const resolved = readScope
           ? await readScope.resolve(file, { traverse: true })
           : await realpath(file);
@@ -152,11 +227,26 @@ export async function dependencyDigests(directories, readScope) {
       }
     }
   }
-  for (const directory of directories) await visit(directory);
-  return hashFiles(
-    files,
-    pending.map((file) => [file, file]),
-    readScope,
+  await measureSourcePhase(
+    "dependency-traversal",
+    async () => {
+      for (const directory of directories) await visit(directory);
+    },
+    () => ({
+      directoryCount: visited.size,
+      fileCount: pending.length,
+      linkCount,
+    }),
+  );
+  return measureSourcePhase(
+    "dependency-read-hash",
+    () =>
+      hashFiles(
+        files,
+        pending.map((file) => [file, file]),
+        readScope,
+      ),
+    () => ({ fileCount: pending.length }),
   );
 }
 

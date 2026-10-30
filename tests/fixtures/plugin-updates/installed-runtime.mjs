@@ -560,17 +560,10 @@ export async function installedScenario(
   );
   assert.equal(operation.stage, "completed");
   await verifySession();
-  assert.match(operation.userDataSha256, /^[a-f0-9]{64}$/);
-  for (const [name, value] of Object.entries(personalFiles)) {
+  assert.equal(operation.schema, 2);
+  assert.equal(operation.userDataSha256, undefined);
+  for (const [name, value] of Object.entries(personalFiles))
     assert.equal(await readFile(join(personalData, name), "utf8"), value);
-    assert.equal(
-      await readFile(
-        join(operation.recoveryDirectory, "user-data/agent-plugins/data", name),
-        "utf8",
-      ),
-      value,
-    );
-  }
   if (allUpdates) {
     assert.equal(operation.targets.length, 3);
     assert.equal(operation.completionProofs.length, 3);

@@ -55,7 +55,7 @@ export function sessionConsumer(ctx: Context, business: Business, sessionId?: st
   if (agent && ctx.userAgents?.cubeFor(agent)) return WORKBENCH_AGENT_CODE;
   return (
     (preset ? ctx.agentResources?.cubeSource(preset)?.consumerCode : undefined) ??
-    business.config.analysisAgentCode
+    WORKBENCH_AGENT_CODE
   );
 }
 
@@ -87,4 +87,32 @@ export function toolConsumer(
       "GEA_CONSUMER_ROUTE_NOT_REGISTERED: 当前Agent未登记此跨业务路径；不得通过更换consumer试探。请使用当前身份或交付该范围的能力缺口。",
     );
   return target;
+}
+
+export function mountBusinessIdentity(
+  ctx: Pick<Context, "effect" | "connection">,
+  business: Business,
+): void {
+  ctx.effect(() =>
+    ctx.connection.fetch.register({
+      path: "/api/gea-html/identity",
+      methods: ["GET"],
+      requestBody: "buffered",
+      fetch: async () => {
+        const { environment, environments, authenticated, loginState, user } = business.status();
+        return Response.json(
+          {
+            scope: business.pageSessionScope() ?? null,
+            subject: businessIdentityKey(business) ?? null,
+            status: { environment, environments, authenticated, loginState, user },
+            // A projection of the gateway-verified receipt. It is intentionally
+            // absent until the customer-inventory page has requested its own
+            // delegated session; page labels never manufacture an access range.
+            customerInventory: business.customerInventoryIdentity?.() ?? null,
+          },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      },
+    }),
+  );
 }

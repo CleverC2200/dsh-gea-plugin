@@ -1,8 +1,10 @@
-import { gzipSync, gunzipSync } from "node:zlib";
+import { gunzipSync } from "node:zlib";
+import { encodeOrderReport, decodeOrderReport } from "./order-report-codec.ts";
+import { isReportParts, readReportParts, writeReportParts } from "./order-report-parts.ts";
 
 const table = "agents_order_workbench_report";
 const identityWhere =
-  "tenant_id = :tenant AND scope_key = :scope AND consumer_code = :consumer AND period_type = :kind AND period_start = :start AND period_end_exclusive = :end";
+  "tenant_id = :tenant AND scope_key = :scope AND consumer_code = :consumer AND period_type = :kind AND period_start = CAST(:start AS DATE) AND period_end_exclusive = CAST(:end AS DATE)";
 const fields = "report_data, version, last_request_id, schema_version";
 const fail = (code: string) => Object.assign(Error(code), { code });
 type Execute = (
@@ -14,7 +16,11 @@ type Execute = (
 /** Fixed report statements only. Tenant, author and Consumer come from the authenticated Host. */
 export async function orderReportStore(
   input: any,
-  identity: { tenantId: string; id: string; reportScope: { key: string; base: string } },
+  identity: {
+    tenantId: string;
+    id: string;
+    reportScope: { key: string; base: string; bases?: unknown[] };
+  },
   execute: Execute,
 ) {
   if (
@@ -69,10 +75,11 @@ export async function orderReportStore(
     end: period.end,
   };
   if (!Number.isSafeInteger(params.tenant) || !identity.id) throw fail("GEA_IDENTITY_INCOMPLETE");
+  const readParameters = { ...params };
   const read = async () => {
     const result = await execute(
       `SELECT ${fields} FROM ${table} WHERE ${identityWhere} LIMIT 2`,
-      params,
+      readParameters,
     );
     if (!Array.isArray(result.rows) || result.rows.length > 1 || result.rejectedColumns?.length)
       throw fail("ORDER_REPORT_READ_INCOMPLETE");
@@ -88,19 +95,26 @@ export async function orderReportStore(
       throw fail("ORDER_REPORT_FORMAT_INVALID");
     return row;
   };
-  const decode = (row: any) => {
+  const decode = async (row: any) => {
     if (!row) return { version: 0, report: null };
     const envelope = JSON.parse(row.report_data);
-    if (envelope.encoding !== "gzip-base64") throw fail("ORDER_REPORT_FORMAT_INVALID");
-    const report = JSON.parse(
-      gunzipSync(Buffer.from(envelope.data, "base64"), { maxOutputLength: 20_000_000 }).toString(),
-    );
+    if (isReportParts(envelope) && envelope.requestId !== row.last_request_id)
+      throw fail("ORDER_REPORT_FORMAT_INVALID");
+    const encoded = isReportParts(envelope)
+      ? await readReportParts(envelope, readParameters as any, execute)
+      : row.report_data;
+    const report = decodeOrderReport(encoded);
     if (report.schemaVersion !== 1 || !report.facts || !report.edits)
       throw fail("ORDER_REPORT_FORMAT_INVALID");
-    return { version: Number(row.version), requestId: row.last_request_id, report };
+    return {
+      version: Number(row.version),
+      requestId: row.last_request_id,
+      report,
+    };
   };
   const existing = await read();
-  if (input.operation === "load") return { ...decode(existing), scope: identity.reportScope };
+  if (input.operation === "load")
+    return { ...(await decode(existing)), scope: identity.reportScope };
   if (
     !Number.isSafeInteger(input.expectedVersion) ||
     input.expectedVersion < 0 ||
@@ -114,18 +128,21 @@ export async function orderReportStore(
   const reportJson = JSON.stringify(input.report);
   if (Buffer.byteLength(reportJson) > 20_000_000) throw fail("ORDER_REPORT_TOO_LARGE");
   if (existing?.last_request_id === input.requestId) {
-    if (JSON.stringify(decode(existing).report) !== reportJson)
+    if (JSON.stringify((await decode(existing)).report) !== reportJson)
       throw fail("ORDER_REPORT_REQUEST_REUSED");
-    return { version: Number(existing.version), requestId: input.requestId, saved: true };
+    return {
+      version: Number(existing.version),
+      requestId: input.requestId,
+      saved: true,
+    };
   }
   if (Number(existing?.version ?? 0) !== input.expectedVersion)
     throw fail("ORDER_REPORT_VERSION_CONFLICT");
   Object.assign(params, {
-    scopeName: identity.reportScope.base,
-    scopeRefs: JSON.stringify({ base: identity.reportScope.base }),
-    report: JSON.stringify({
-      encoding: "gzip-base64",
-      data: gzipSync(reportJson).toString("base64"),
+    scopeName: identity.reportScope.base || "授权基地汇总",
+    scopeRefs: JSON.stringify({
+      base: identity.reportScope.base,
+      ...(identity.reportScope.bases ? { bases: identity.reportScope.bases } : {}),
     }),
     next: input.expectedVersion + 1,
     expected: input.expectedVersion,
@@ -133,16 +150,49 @@ export async function orderReportStore(
     actor: identity.id,
     now: new Date().toISOString().slice(0, 19).replace("T", " "),
   });
-  const sql = existing
+  let sql = existing
     ? `UPDATE ${table} SET report_data = :report, version = :next, last_request_id = :request, update_by = :actor, update_time = :now WHERE ${identityWhere} AND version = :expected`
     : `INSERT INTO ${table} (tenant_id, scope_key, period_type, period_start, period_end_exclusive, scope_name, scope_refs, consumer_code, report_data, schema_version, calculation_version, version, last_request_id, create_by, create_time, update_by, update_time) VALUES (:tenant, :scope, :kind, :start, :end, :scopeName, :scopeRefs, :consumer, :report, 1, 'order-report-v1', :next, :request, :actor, :now, :actor, :now)`;
+  const available = 65_536 - Buffer.byteLength(JSON.stringify({ ...params, report: "" })) - 16;
+  if (available <= 0) throw fail("ORDER_REPORT_PARAMETERS_TOO_LARGE");
+  // Stop recompressing once the existing atomic SQL/parameter split can hold the full envelope.
+  const targetBytes = available + Math.max(0, 65_536 - sql.length - 32);
+  const encodedReport = await encodeOrderReport(reportJson, targetBytes);
+  const storedReport =
+    Buffer.byteLength(encodedReport) > targetBytes
+      ? await writeReportParts(
+          encodedReport,
+          readParameters as any,
+          {
+            actor: identity.id,
+            scopeName: String(params.scopeName),
+            scopeRefs: String(params.scopeRefs),
+          },
+          input.requestId,
+          execute,
+        )
+      : encodedReport;
+  params.report = storedReport;
+  if (Buffer.byteLength(JSON.stringify(params)) > 65_536) {
+    const prefix = String(storedReport).slice(0, -available);
+    // Only our ASCII compression envelope may enter a SQL literal, never report text.
+    if (!prefix || /[^A-Za-z0-9+/=,:{}"-]/.test(prefix)) throw fail("ORDER_REPORT_FORMAT_INVALID");
+    sql = sql.replace(":report", `CONCAT('${prefix}', :report)`);
+    params.report = String(storedReport).slice(-available);
+  }
+  if (sql.length > 65_536 || Buffer.byteLength(JSON.stringify(params)) > 65_536)
+    throw fail("ORDER_REPORT_PARAMETERS_TOO_LARGE");
   await execute(sql, params, input.requestId);
   const saved = await read();
   if (
     saved?.last_request_id !== input.requestId ||
     Number(saved.version) !== params.next ||
-    saved.report_data !== params.report
+    saved.report_data !== storedReport
   )
     throw fail("ORDER_REPORT_SAVE_NOT_CONFIRMED");
-  return { version: Number(saved.version), requestId: input.requestId, saved: true };
+  return {
+    version: Number(saved.version),
+    requestId: input.requestId,
+    saved: true,
+  };
 }

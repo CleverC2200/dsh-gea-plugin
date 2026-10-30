@@ -1,6 +1,13 @@
 import { workflowFiles, checkWorkflows } from "./workflow-preflight.mjs";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync, existsSync, realpathSync } from "node:fs";
+import {
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  realpathSync,
+} from "node:fs";
 import { dirname, resolve, relative, isAbsolute, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -282,6 +289,15 @@ function check(result) {
 const phase = process.argv[process.argv.indexOf("--phase") + 1];
 if (workingTree && !["plan", "check", "affected-plan"].includes(phase))
   throw Error("SOURCE_WORKING_TREE_PLAN_ONLY");
+if (!workingTree && process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+  const base = process.env.SOURCE_BASE_SHA;
+  if (!/^[a-f0-9]{40}$/.test(base || "")) throw Error("SOURCE_MANUAL_BASE_SHA_REQUIRED");
+  try {
+    git("merge-base", "--is-ancestor", base, "HEAD");
+  } catch {
+    throw Error("SOURCE_MANUAL_BASE_ANCESTOR_REQUIRED");
+  }
+}
 const result = phase === "event" ? eventAdmission() : plan();
 if (phase === "plan" || phase === "event") {
   if (
@@ -325,7 +341,30 @@ else if (["affected-plan", "affected-prepare", "affected-check"].includes(phase)
             ? "scripts/source-checks.mjs"
             : "../dsh-agent-workbench/scripts/source-checks.mjs",
         );
+  if (phase === "affected-check")
+    process.env.GEA_PLUGIN_UPDATE_SDK = resolve("../../official-latest-standard");
+  const startedAt = new Date().toISOString();
+  if (phase === "affected-check") rmSync(".runtime/source-checks-result.json", { force: true });
   await (await import(pathToFileURL(reader))).sourceChecks(result, phase);
+  if (phase === "affected-check")
+    writeFileSync(
+      ".runtime/source-checks-result.json",
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          status: "passed",
+          head: result.head,
+          base: result.base,
+          runId: process.env.GITHUB_RUN_ID,
+          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          plan: JSON.parse(readFileSync(".runtime/source-checks-plan.json", "utf8")),
+          startedAt,
+          finishedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
 } else if (phase === "final") {
   const expected = {
     PLAN_RESULT: "success",

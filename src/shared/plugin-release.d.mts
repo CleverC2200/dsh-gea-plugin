@@ -63,6 +63,7 @@ export function planPluginSuiteUpdate(input: {
   core: FixedCore;
   installed: PluginManifest[];
 }): PluginSuiteUpdatePlan;
+export const planPluginSuiteVersions: typeof planPluginSuiteUpdate;
 export function findPluginUpdatePath(input: {
   core: FixedCore;
   installed: PluginManifest[];

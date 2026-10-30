@@ -3,9 +3,17 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
+import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
-import { Button, Tag, Toast, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
+import {
+  Button,
+  Tag,
+  Toast,
+  Tooltip,
+  IconDownloadOutlineRegular,
+  type TagTone,
+} from "@deepseek-ai/dsh-client-ui-primitives";
 import { companyPackageNames } from "./shared/plugin-release.mjs";
 import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
@@ -394,6 +402,46 @@ function UpdateNotice({
   );
 }
 
+function SidebarUpdate({
+  wide,
+  updates,
+  t,
+  openStatus,
+}: PropsRuntime<"sidebar.footer.action"> &
+  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openStatus: () => void }): ReactNode {
+  const state = useDetail(updates);
+  const available =
+    state.items.some((row) => row.state === "available") && pluginSuiteReady(state.items);
+  const pending = state.items.some((row) => row.state === "pending-restart");
+  const busy = state.checking || state.submitting !== null || pluginUpdateBusy(state.items);
+  const progress =
+    busy && !state.checking && !pending && !state.items.some((row) => row.state === "checking");
+  const failed =
+    state.transportError ||
+    state.items.some((row) => ["failed", "unknown", "check-failed"].includes(row.state));
+  if (!available && !pending && !progress && !failed) return null;
+  const label = t(
+    pending ? "pending-restart" : progress ? "installing" : failed ? "viewStatus" : "updateAll",
+  );
+  return (
+    <Tooltip label={label} side="top">
+      <button
+        type="button"
+        className="gea-sidebar-update"
+        aria-label={label}
+        disabled={progress || state.checking || state.submitting !== null}
+        onClick={() => {
+          if (available && !busy && !state.transportError) void updates.updateAll();
+          else openStatus();
+        }}
+      >
+        <IconDownloadOutlineRegular size={14} />
+        {wide ? <span>{label}</span> : null}
+      </button>
+    </Tooltip>
+  );
+}
+
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
   const fiber = ctx.inject(["slots", "locale", "modules", "pluginNavigation"], (scope) => {
     scope.effect(() => {
@@ -408,6 +456,20 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
       void updates.resume();
       return () => updates.dispose();
     });
+    scope.slots.inject("sidebar.footer.action", () =>
+      scope.slots.register(
+        {
+          name: "sidebar.footer.action",
+          id: "gea.plugin-updates.sidebar",
+          locale: pluginUpdateLocale,
+          inject: () => ({
+            updates,
+            openStatus: () => scope.pluginNavigation.openBundle(companyPackageNames[0]),
+          }),
+        },
+        SidebarUpdate,
+      ),
+    );
     scope.slots.inject("shell.overlay", () =>
       scope.slots.register(
         {

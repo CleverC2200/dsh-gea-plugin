@@ -774,11 +774,22 @@ test("browser-only changes and their dedicated fixtures select their browser con
 test("the shared returned-review fixture selects every isolated browser scenario", (t) => {
   const consumers = [
     "tests/returned-resubmit-web.test.mjs",
+    "tests/returned-resubmit-batch-web.test.mjs",
+    "tests/returned-resubmit-recovery-web.test.mjs",
+    "tests/returned-resubmit-access-web.test.mjs",
     "tests/returned-review-roles-web.test.mjs",
+    "tests/returned-review-province-web.test.mjs",
+    "tests/returned-review-area-web.test.mjs",
+    "tests/returned-review-category-web.test.mjs",
     "tests/returned-review-reject-web.test.mjs",
   ];
   const shared = "tests/fixtures/returned-review.mjs";
-  const fixture = resourceImpactFixture(t, [...consumers, shared, "tests/profile.mjs"]);
+  const fixture = resourceImpactFixture(t, [
+    ...consumers,
+    shared,
+    "tests/fixtures/returned-review-role.mjs",
+    "tests/profile.mjs",
+  ]);
   fixture.change(
     fixture.own,
     shared,
@@ -794,6 +805,127 @@ test("the shared returned-review fixture selects every isolated browser scenario
     consumers.every((file) => plan.runtimeFiles.includes(file)),
     JSON.stringify(plan),
   );
+});
+
+test("column snapshot fixture changes select every isolated column scenario", (t) => {
+  const consumers = [
+    "tests/page-reference-columns-web.test.mjs",
+    "tests/page-reference-reordered-web.test.mjs",
+    "tests/page-reference-quantity-web.test.mjs",
+    "tests/page-reference-reason-web.test.mjs",
+  ];
+  const helper = "tests/fixtures/page-reference-column.mjs";
+  const shared = "tests/fixtures/stock-reference-page.mjs";
+  for (const changed of [helper, shared]) {
+    const fixture = resourceImpactFixture(t, [...consumers, helper, shared, "tests/profile.mjs"]);
+    fixture.change(
+      fixture.own,
+      changed,
+      readFileSync(new URL("../" + changed, import.meta.url), "utf8") + "\n",
+    );
+    const plan = fixture.plan();
+    assert.ok(
+      consumers.every((file) => plan.files.includes(file)),
+      JSON.stringify(plan),
+    );
+    assert.ok(
+      consumers.every((file) => plan.runtimeFiles.includes(file)),
+      JSON.stringify(plan),
+    );
+    assert.equal(plan.browser, true);
+  }
+});
+
+test("stock lifecycle and native identity fixtures keep every split scenario selected", (t) => {
+  const branch = [
+    "tests/branch-stock-lifecycle-web.test.mjs",
+    "tests/branch-stock-logout-web.test.mjs",
+    "tests/branch-stock-revocation-web.test.mjs",
+  ];
+  const native = [
+    "tests/native-page-identity-web.test.mjs",
+    "tests/native-page-logout-web.test.mjs",
+    "tests/native-page-identity-recovery-web.test.mjs",
+  ];
+  const shared = "tests/fixtures/stock-reference-page.mjs";
+  const helper = "tests/fixtures/branch-stock-lifecycle.mjs";
+  for (const [changed, expected] of [
+    [shared, [...branch, ...native]],
+    [helper, branch],
+  ]) {
+    const fixture = resourceImpactFixture(t, [
+      ...branch,
+      ...native,
+      shared,
+      helper,
+      "tests/profile.mjs",
+    ]);
+    fixture.change(
+      fixture.own,
+      changed,
+      readFileSync(new URL("../" + changed, import.meta.url), "utf8") + "\n",
+    );
+    const plan = fixture.plan();
+    assert.ok(
+      expected.every((file) => plan.files.includes(file)),
+      JSON.stringify(plan),
+    );
+    assert.ok(
+      expected.every((file) => plan.runtimeFiles.includes(file)),
+      JSON.stringify(plan),
+    );
+    assert.equal(plan.browser, true);
+  }
+});
+
+test("the presentation fixture selects every isolated page consumer", (t) => {
+  const consumers = [
+    "tests/progress-column-web.test.mjs",
+    "tests/variance-color-web.test.mjs",
+    "tests/approval-queue-layout-web.test.mjs",
+    "tests/presentation-isolation.test.mjs",
+  ];
+  const shared = "tests/fixtures/sales-plan-presentation.mjs";
+  const fixture = resourceImpactFixture(t, [...consumers, shared]);
+  fixture.change(
+    fixture.own,
+    shared,
+    readFileSync(new URL("../" + shared, import.meta.url), "utf8") + "\n",
+  );
+  const plan = fixture.plan();
+  assert.ok(
+    consumers.every((file) => plan.files.includes(file)),
+    JSON.stringify(plan),
+  );
+  assert.equal(plan.browser, true);
+  assert.ok(
+    consumers.every((file) => !plan.runtimeFiles.includes(file)),
+    JSON.stringify(plan),
+  );
+});
+
+test("sales-plan page and style changes retain detail presentation and real owner wiring", (t) => {
+  const presentation = "tests/progress-column-web.test.mjs";
+  const integration = "tests/detail-summary-web.test.mjs";
+  for (const source of [
+    "src/workbench/original/workbenches/regionalApproval/RegionalApprovalWorkbench.tsx",
+    "src/workbench/workbench.css",
+  ]) {
+    const fixture = resourceImpactFixture(t, [
+      presentation,
+      integration,
+      "tests/fixtures/sales-plan-presentation.mjs",
+      "tests/fixtures/model-profile.mjs",
+      "tests/profile.mjs",
+    ]);
+    fixture.change(fixture.peer, source, "export const changed = true;\n");
+    const plan = fixture.plan();
+    assert.ok(plan.files.includes(presentation), JSON.stringify(plan));
+    assert.ok(plan.files.includes(integration), JSON.stringify(plan));
+    assert.ok(!plan.runtimeFiles.includes(presentation), JSON.stringify(plan));
+    assert.ok(plan.runtimeFiles.includes(integration), JSON.stringify(plan));
+    assert.equal(plan.browser, true);
+  }
 });
 
 test("retiring the Cube-only MCP module selects the knowledge and Cube bridge regressions", (t) => {

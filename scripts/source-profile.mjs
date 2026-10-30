@@ -20,6 +20,8 @@ import { execFileSync } from "node:child_process";
 import { corePackages, sourcePlugins } from "./source-composition.mjs";
 import { readSupportedCore } from "./supported-cores.mjs";
 import {
+  measureSourcePhase,
+  sourcePhase,
   fileDigest,
   clientEntry,
   componentArtifactEntries,
@@ -146,12 +148,9 @@ export async function resolveSourceInputs(sources, { requireEntries = false } = 
   return resolved;
 }
 
-export async function prepareSourcePlugins(
-  core,
-  runtime,
-  deployment,
-  { sources, id = randomUUID() } = {},
-) {
+export const prepareSourcePlugins = sourcePhase("prepare", preparePlugins);
+
+async function preparePlugins(core, runtime, deployment, { sources, id = randomUUID() } = {}) {
   const entries = await resolveSourceInputs(sources, { requireEntries: true });
   if (!/^[a-f0-9-]{36}$/.test(id)) throw Error("INVALID_SOURCE_COMBINATION");
   const snapshot = join(runtime, "source-combinations", id);
@@ -163,42 +162,50 @@ export async function prepareSourcePlugins(
   const packages = new Map(
     (await corePackages(core)).map(({ manifest, directory }) => [manifest.name, directory]),
   );
-  const copies = await Promise.allSettled(
-    sourcePlugins.map(async (plugin) => {
-      const repo = plugin.repo;
-      const input = entries.find((entry) => entry.repo === repo);
-      const { source, assetRoot, manifest } = input;
-      const target = join(modules, manifest.name);
-      await mkdir(target, { recursive: true });
-      for (const file of plugin.resources) {
-        try {
-          await cp(join(assetRoot, file), join(target, file), {
-            recursive: true,
-            filter: (path) => !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
-          });
-        } catch (error) {
-          if (error.code !== "ENOENT") throw error;
-        }
-      }
-      await readFile(
-        join(target, manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js"),
+  const copies = await measureSourcePhase(
+    "resource-assembly",
+    async () => {
+      const copies = await Promise.allSettled(
+        sourcePlugins.map(async (plugin) => {
+          const repo = plugin.repo;
+          const input = entries.find((entry) => entry.repo === repo);
+          const { source, assetRoot, manifest } = input;
+          const target = join(modules, manifest.name);
+          await mkdir(target, { recursive: true });
+          for (const file of plugin.resources) {
+            try {
+              await cp(join(assetRoot, file), join(target, file), {
+                recursive: true,
+                filter: (path) =>
+                  !relative(assetRoot, path).split(/[\\/]/).includes("node_modules"),
+              });
+            } catch (error) {
+              if (error.code !== "ENOENT") throw error;
+            }
+          }
+          await readFile(
+            join(target, manifest.main ?? manifest.exports?.["."]?.default ?? "lib/host.js"),
+          );
+          await readFile(join(target, clientEntry(manifest)));
+          return [
+            manifest.name,
+            {
+              source,
+              assetRoot,
+              dependencyRoot: await realpath(input.dependencies ?? join(source, "node_modules")),
+              target,
+              version: manifest.version,
+              plugin,
+            },
+          ];
+        }),
       );
-      await readFile(join(target, clientEntry(manifest)));
-      return [
-        manifest.name,
-        {
-          source,
-          assetRoot,
-          dependencyRoot: await realpath(input.dependencies ?? join(source, "node_modules")),
-          target,
-          version: manifest.version,
-          plugin,
-        },
-      ];
-    }),
+      const failedCopy = copies.find((copy) => copy.status === "rejected");
+      if (failedCopy) throw failedCopy.reason;
+      return copies;
+    },
+    () => ({ componentCount: sourcePlugins.length }),
   );
-  const failedCopy = copies.find((copy) => copy.status === "rejected");
-  if (failedCopy) throw failedCopy.reason;
   const plugins = new Map(copies.map((copy) => copy.value));
   const externalDirectories = new Set();
   for (const { dependencyRoot, target } of plugins.values()) {
@@ -482,13 +489,9 @@ export function sourceComponent(record, plugins, name) {
 }
 
 /** Assemble selected component artifacts without replacing the latest unrelated components. */
-export async function mergeSourceComponents(
-  runtime,
-  latest,
-  updates,
-  core,
-  { expectedManifests } = {},
-) {
+export const mergeSourceComponents = sourcePhase("merge", mergeComponents);
+
+async function mergeComponents(runtime, latest, updates, core, { expectedManifests } = {}) {
   const records = new Map(),
     metadata = new Map();
   for (const id of new Set([latest, ...Object.values(updates)])) {
@@ -529,43 +532,52 @@ export async function mergeSourceComponents(
     externalLockFiles = new Set(),
     locks = { core: original.locks.core };
   const names = Object.keys(original.composition.dependencies);
-  for (const name of names) {
-    const selected = updates[name] ?? latest;
-    const record = records.get(selected);
-    const source = join(runtime, "source-combinations", selected, "node_modules", name),
-      target = join(modules, name);
-    await cp(source, target, {
-      recursive: true,
-      filter: (file) => !file.slice(source.length).split(/[\\/]/).includes("node_modules"),
-    });
-    dependencies[name] = record.composition.dependencies[name];
-    plugins[name] = metadata.get(selected)[name];
-    locks[name] = record.locks[name];
-    for (const file of record.externalLockFiles)
-      if (file.startsWith(plugins[name].source + "/")) externalLockFiles.add(file);
-    const nodeModules = join(source, "node_modules");
-    const packages = [];
-    for (const entry of await readdir(nodeModules)) {
-      if (entry.startsWith(".")) continue;
-      if (entry.startsWith("@"))
-        for (const child of await readdir(join(nodeModules, entry)))
-          packages.push(`${entry}/${child}`);
-      else packages.push(entry);
-    }
-    for (const dependency of packages) {
-      const location = names.includes(dependency)
-        ? join(modules, dependency)
-        : await realpath(join(nodeModules, dependency));
-      if (!names.includes(dependency)) {
-        if (record.files[`node_modules/${name}/node_modules/${dependency}`] !== "link:" + location)
-          throw Error("SOURCE_DEPENDENCY_LINK_CHANGED");
-        externalRoots.add(location);
+  await measureSourcePhase(
+    "resource-assembly",
+    async () => {
+      for (const name of names) {
+        const selected = updates[name] ?? latest;
+        const record = records.get(selected);
+        const source = join(runtime, "source-combinations", selected, "node_modules", name),
+          target = join(modules, name);
+        await cp(source, target, {
+          recursive: true,
+          filter: (file) => !file.slice(source.length).split(/[\\/]/).includes("node_modules"),
+        });
+        dependencies[name] = record.composition.dependencies[name];
+        plugins[name] = metadata.get(selected)[name];
+        locks[name] = record.locks[name];
+        for (const file of record.externalLockFiles)
+          if (file.startsWith(plugins[name].source + "/")) externalLockFiles.add(file);
+        const nodeModules = join(source, "node_modules");
+        const packages = [];
+        for (const entry of await readdir(nodeModules)) {
+          if (entry.startsWith(".")) continue;
+          if (entry.startsWith("@"))
+            for (const child of await readdir(join(nodeModules, entry)))
+              packages.push(`${entry}/${child}`);
+          else packages.push(entry);
+        }
+        for (const dependency of packages) {
+          const location = names.includes(dependency)
+            ? join(modules, dependency)
+            : await realpath(join(nodeModules, dependency));
+          if (!names.includes(dependency)) {
+            if (
+              record.files[`node_modules/${name}/node_modules/${dependency}`] !==
+              "link:" + location
+            )
+              throw Error("SOURCE_DEPENDENCY_LINK_CHANGED");
+            externalRoots.add(location);
+          }
+          const link = join(target, "node_modules", dependency);
+          await mkdir(resolve(link, ".."), { recursive: true });
+          await symlink(location, link);
+        }
       }
-      const link = join(target, "node_modules", dependency);
-      await mkdir(resolve(link, ".."), { recursive: true });
-      await symlink(location, link);
-    }
-  }
+    },
+    () => ({ componentCount: names.length }),
+  );
   externalRoots.add(join(core, "apps/web/dist"));
   externalRoots.add(join(core, "packages/bundle/web-app/presets"));
   for (const file of original.externalLockFiles)

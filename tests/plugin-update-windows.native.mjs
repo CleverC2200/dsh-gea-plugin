@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { controllerFixture, waitForStage } from "./fixtures/plugin-updates/profile.mjs";
 import { prepareWindowsFileCommit } from "../src/host/plugin-update-windows.ts";
+import { configureStalledPnpmRegistry } from "./fixtures/plugin-updates/stalled-registry.mjs";
 if (
   process.platform !== "win32" ||
   !process.env.GEA_WINDOWS_RUNTIME ||
@@ -18,7 +19,7 @@ const { createPluginUpdateController } = await import(
   pathToFileURL(process.env.GEA_WINDOWS_CONTROLLER)
 );
 const anchor = join(process.env.GEA_WINDOWS_RUNTIME, "dsh/package.json");
-for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
+for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-write", "orphan"]) {
   test("Windows official installer with native Job: " + mode, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "GEA native windows "));
     let controller;
@@ -38,14 +39,17 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
       join(f.root, "anchor/node_modules"),
       "junction",
     );
-    if (mode === "pnpm") {
+    let stalledRegistry;
+    if (mode.startsWith("pnpm")) {
       await installPnpmConsumerLayout(f, "^3.0.0");
       f.profile.packageManager.args = [process.env.GEA_PLUGIN_UPDATE_PNPM];
+      if (mode === "pnpm-stalled-registry")
+        stalledRegistry = await configureStalledPnpmRegistry(t, f.profile);
     }
+    f.profile.packageManager.env.FIXTURE_UPDATE_RUNTIME = f.options.runtimeDirectory;
     f.options.fileCommit = fileCommit;
     f.options.idleTimeoutMs = mode === "orphan" ? 1500 : 10000;
     f.options.quiescenceWaitMs = 1500;
-    const before = await readFile(join(f.dir, "package.json"));
     controller = createPluginUpdateController(f.options);
     controller.subscribe((snapshot) => {
       if (mode === "pnpm" && snapshot.operation?.stage === "verifying")
@@ -66,30 +70,35 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
     await controller.submit({ packageName: item.packageName, planId: item.planId });
     const result = await waitForStage(
       controller,
-      ["pending-restart", "restored", "unknown", "failed"],
+      ["pending-restart", "failed", "unknown", "failed"],
       30000,
     );
-    const expected = ["success", "pnpm"].includes(mode)
-      ? "pending-restart"
-      : mode === "fail-after-write"
-        ? "restored"
-        : "unknown";
+    const expected =
+      mode === "success" || mode.startsWith("pnpm")
+        ? "pending-restart"
+        : mode === "fail-after-write"
+          ? "failed"
+          : "unknown";
     if (result.stage !== expected) {
       for (const log of result.logs)
         console.error("WINDOWS_FIXTURE_LOG", mode, await readFile(log, "utf8"));
     }
-    assert.equal(
-      result.stage,
-      ["success", "pnpm"].includes(mode)
-        ? "pending-restart"
-        : mode === "fail-after-write"
-          ? "restored"
-          : "unknown",
-      JSON.stringify(result),
-    );
+    assert.equal(result.stage, expected, JSON.stringify(result));
     assert(result.processes.some((x) => x.grouped === false && x.sawAlive && x.startIdentity));
-    if (mode === "fail-after-write")
-      assert.deepEqual(await readFile(join(f.dir, "package.json")), before);
+    if (stalledRegistry) {
+      assert.deepEqual(stalledRegistry.requests, []);
+      const proof = JSON.parse(await readFile(join(result.directory, "windows-job.json"), "utf8"));
+      assert.equal(proof.stage, "empty");
+      assert.equal(proof.exitCode, 0);
+      assert.equal(proof.nonce, result.processes[0].startIdentity);
+    }
+    if (!mode.startsWith("pnpm")) {
+      const installing = JSON.parse(await readFile(join(f.dir, "installing-receipt.json"), "utf8"));
+      assert.equal(installing.stage, "installing");
+      assert.deepEqual(installing.processes, result.processes);
+      assert.equal(installing.id, result.id);
+    }
+    if (mode === "fail-after-write") assert.equal(result.diagnostic, "PACKAGE_INSTALL_FAILED");
     if (mode === "orphan") {
       const pid = Number(await readFile(join(f.dir, "orphan-pid"), "utf8"));
       assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });

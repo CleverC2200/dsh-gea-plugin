@@ -1,58 +1,27 @@
-# 单包更新 Host 合同
+# 公司三包更新
 
-`src/host/plugin-update-controller.ts` 导出 `createPluginUpdateController` 与 `pluginUpdateProcessIdentity`。状态类型由 `src/shared/plugin-update-state.ts` 统一维护。04 负责 GEA 生命周期、认证路由、真实 Loader 读取与客户端观察的接线。
+Host 使用官方 profile 安装锁、`runProfilePnpm` 和 `resolveBundleDir`。配置与公开入口见 `src/host/plugin-update-controller.ts`，状态见 `src/shared/plugin-update-state.ts`。
 
-## 调用与归属
+## 安装与确认
 
-| 调用                                 | 行为                                                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `initialize()`                       | 读取私有回执及当前 profile，不等待自身 Fiber 在 apply 中变成 ACTIVE。中断事务与损坏回执阻断继续安装。  |
-| `check(signal?)`                     | 查询签名源、取得官方锁内 baseline，并按完整当前组合规划单包更新。取消只影响本次查询。                  |
-| `submit({packageName, planId})`      | 下载、重核 baseline/组合、保存完整恢复材料，再写入持久 accepted 回执。返回接受结果后继续由 Host 执行。 |
-| `snapshot()` / `subscribe(listener)` | 读取/订阅同一操作投影。取消订阅或关闭页面不会取消安装。                                                |
-| `reconcileRuntime()`                 | 用实际新 Node 进程、固定 startup Host 导出和当前受控 client 观察核对待重启结果。                       |
-| `dispose()`                          | Host 卸载时取消、等待本次操作及已观察的受控进程组；不能证明全部写者停止时保留 unknown。                |
+客户端读取同一公司频道组合，校验下载包和 Core 支持范围，禁止降级与需要数据迁移的更新。发布预检负责官方组合的依赖兼容；客户端安装继续使用官方安装器的兼容检查。安装前只读取 profile 配置、锁及三个公司包的 manifest，不遍历依赖文件树或复制个人资源。
 
-必需配置是 profile、具有真实部署来源的 `FixedCore`、私有 `runtimeDirectory`、签名 `source` 与 `readRuntimeProofs(processIdentity)`。不设默认 OSS 地址、凭据或 Core 身份。运行时直接使用公共 `withFileLock`、`runProfilePnpm` 和 `resolveBundleDir`。
+`check` 生成计划。`submit` 与 `submitBatch` 都按同一计划，将全部有变化的公司包交给一次官方 pnpm 安装。持锁后重核计划、实际安装来源与活动 Host，拒绝外部公司包链接、安装锚阴影和并发 writer。已接受的安装属于 Host，关闭详情或取消订阅不会取消安装。
 
-`readRuntimeProofs` 必须读取现有 ACTIVE Host namespace 内的编译 literal stamp，并校验公共 callback 身份及实际解析路径。client 是经过认证、nonce/page/process/artifact 校验的受控观察，类型为 `kind: 'observed'`，不是 Host 独立认证的 ACTIVE Fiber。原始客户端 POST 不可直接强转为该类型。04 负责实际读取与边界解析。
+安装禁用生命周期脚本、pnpmfile、自动 peer 安装和新 bundle 激活，沿用 profile 已有 store。成功后只核目标版本及 profile 字段，进入 `pending-restart`。不自动重启或 HMR。
 
-首次读取若自身 Fiber 仍 loading，Host proof 保持未验证。后续安装前读取到 ACTIVE 后才固定；发生安装变更后不能用磁盘或新 import 升级旧 Host proof。进程身份采用 `node:perf_hooks` 的 `performance.timeOrigin` 与 pid，同一进程中的模块重载和控制器重建不会冒充重启。旧 browser 或缺失 client proof 保持 pending；新进程内错误 ACTIVE Host stamp 进入 unknown。
+新 Node 进程使用实际活动 Host 导出、当前受控 client 观察及安装目录确认完成。同一进程重建控制器、磁盘上的新版本、旧浏览器模块或缺失的 client 观察均不构成重启确认。进程身份由 pid 与 `performance.timeOrigin` 组成。client 观察仍经认证、nonce、页面、进程及模块来源校验，不接受客户端自报 ACTIVE。
 
-客户端启动恢复在既有 120 秒窗口内重试 Host 状态读取，避免 Host 尚未就绪时连续三次失败便停止。首次成功读取后结束该恢复窗口；待确认操作沿既有观察窗口等待真实 Loader 及 Host/client 证明。打开详情不是自动确认的前提，超时不冒充 completed，也不重新提交安装。
+## 失败与旧操作
 
-## 安装与恢复
+安装失败沿用官方返回和失败处理，不复制或恢复完整 `node_modules`，也不承诺失败后所有包仍是原版本。停止写入后报告 `failed`，保留日志，允许重新检查；需要修复依赖时重新安装。新进程读取到尚未启动安装的 `accepted` 回执且确认没有活动 writer 时，报告中断失败并允许重试；已确认退出的旧 run 记录交给官方安装器清理。不能确认写者已停止、结果无法读取或回执无法落盘时保留 `unknown`。
 
-操作只更新已在 profile manifest 注册的公司包。实际安装所有者必须来自该 profile 的 node_modules；installAnchor 阴影解析或外部公司包链接阻断安装。执行参数是 `add file:<verified archive> --save-exact --ignore-scripts --ignore-pnpmfile --config.auto-install-peers=false`，`activateNewBundles: false`。不触发 HMR、自动重启或生产写入。
+`dispose` 取消并等待本次受控进程。POSIX 使用已观察的进程组，Windows 使用原生 Job。旧 `unknown` 只有在新进程确认原写者停止后才继续核运行结果；仍有 writer 记录或进程时保持阻断。所有目标实际加载后可完成，确认运行的版本与目标不同则报告中断失败，允许重新检查。
 
-同一官方 package.json 锁覆盖重核 baseline、完整恢复图、accepted 持久记录、公共 runner 和 postcheck。baseline 包含 manifest/lock、当前用户 patch/workspace、完整可达依赖图、内容摘要及外部链接摘要。恢复图复制 symlink 本身，不跟随复制外部目标，记录空间需求及来源；文件内容和目录项在 accepted 前 fsync。
+新回执为 schema 2，保留目标、进程、日志和完成证明。schema 1 首次读取时在原操作目录保存 `receipt.legacy.json`，保留旧备份和失败材料。旧目录摘要和用户资料摘要不再参与重启确认。损坏回执继续阻断，不能当作没有操作。
 
-成功 postcheck 核实际目标版本、原非图 manifest 字段、完整组合、每个 consumer 的实际 peer 解析，以及已验证 TGZ 文件内容。它只证明磁盘安装，随后进入 pending-restart。该阶段和 unknown 都阻断后续更新。
+个人 Agent、Skill、Session、草稿、凭据和默认选择由原模块维护。更新不读写个人资源；并发用户编辑不应阻止安装确认。profile 非安装字段的异常变化报告失败并保留现值。
 
-可达图从 profile 当前根包出发，沿每个实际 consumer 的依赖、可选依赖及 peer 解析继续遍历，以 realpath 去重。pnpm 虚拟上下文中的同级 node_modules 也属于该图；未被当前根包引用的旧 .pnpm 实例不参与判断。普通包及公司 peer 按 consumer 的真实上下文核版本；Core 提供的 SDK peer 按公共解析合同使用真实 CLI installAnchor，不能用 consumer 的 package.json 冒充安装锚。
+## 验证
 
-当前进程所有权只支持受控 POSIX 进程组。Windows 在 check 和 submit 前均阻断，不能先写入依赖图再进入 unknown。投影保留 waiting-lock、snapshotting、installing、verifying 的真实阶段，公共 Core 合同与字典负责界面文案。
-
-失败时先根据官方 run.json 的实际进程观察判断写者是否停止。必须观察到受控 POSIX 进程组、生存及退出，才允许恢复完整旧 node_modules 和原 package.json/pnpm-lock。无观察、无组进程、Core 的无组兼容修复、仍活着的后代或权限不足均保留 unknown。恢复失败和回执写入失败也保留 unknown，不盲目重装。
-
-cordis.patch.yml 与 pnpm-workspace.yaml 只用于 baseline 观察，恢复保留它们的现值。若安装期间 package.json 非图字段改变，无法证明写入归属，保留 unknown 而不覆盖合法用户设置。Session、草稿、凭据和默认选择不属于安装事务。
-
-私有操作目录保留 TGZ、日志、receipt.json、recovery/snapshot.json、完整旧图和包外 `RECOVERY.md` / `recovery-status.mjs`。独立状态脚本仅输出恢复证据，不执行恢复，也不把进程组不存在当作完整树停止证明。accepted 前持久回执先原子替换并 fsync，再更新 latest 指针；损坏材料不会被重置成可重试。
-
-更新在 accepted 前按当前官方 `profile.home` 备份完整 `agent-plugins` 用户目录到 `recovery/user-data/agent-plugins`，包含个人 Agent、插件 Agent 的用户修改、MCP 配置及 Skill 正文、引用和脚本。备份复制链接本身，不复制外部来源；外部来源仍由原 owner 保全。备份前后内容不一致或空间不足时不运行安装。
-
-新操作的 `userDataSha256` 绑定私有备份清单。安装结束及正常新进程确认完成前，均核原文件仍存在且内容保留；两个 Agent JSON 允许序列化排版变化，比较完整解析结果。新增文件允许保留。原文件丢失、内容变化、home 变化或备份损坏进入 unknown，保留现值和备份供核对，不自动覆盖并发用户修改。旧操作没有该字段时沿旧协议读取，不将其追认成已通过本项检查。
-
-## 来源有效期与验收边界
-
-source 的 `assertCurrentRelease` 集中判断签名批准有效期，过期清除可执行 map。下载前、完整备份后以及物理 runner 前重新检查，旧 plan 不能绕过批准过期。频道 revision/时间及版本摘要保留在 source 的独立信任回执中。
-
-签名、HTTP 和来源读取失败使用 check-failed；Core 身份、依赖图或执行条件不满足使用 blocked。`src/shared/plugin-update-diagnostics.ts` 集中产生和解析安全事实：封闭错误种类、包名、所需范围、当前版本和 Core 版本/提交。原始路径、响应头、签名、凭据和 stderr 不进入公共 problem；client 不维护第二套错误字典。
-
-`GEA_PLUGIN_UPDATE_SDK=<generated fixed SDK> pnpm test:plugin-updates` 使用真实临时 profile、真实 Node 子进程及官方 public operations。显式 SDK 与候选 operations、run-tree、atomic-write、profile 源文件必须符合固定 SHA。候选 SDK 尚未生成 lib 时，可以用源码一致的原固定 SDK 只读测试，产品模块不含该绝对路径。此检查不等于完整 Core build、Native/真实 Loader、实际 pnpm 安装、OSS 频道或生产验收。
-
-控制器回归覆盖非空个人 Agent、插件用户修改、完整 Skill 引用文件的备份，以及安装期间和重启前丢失文件的拒绝。实际 pnpm/新进程与显式 desktop lane 同样检查这些文件及恢复副本；真实 Native 另须通过公开 Agent/Skill API 回读配置和引用内容，记录实际更新、旧新 PID、Host/client 装载及默认选择、Session 和草稿保全。
-
-真实隔离布局 fixture 另外要求 `GEA_PLUGIN_UPDATE_PNPM=<pnpm 11.7.0 的 bin/pnpm.cjs>`，固定版本断言后用私有 store 与本地 TGZ 离线安装。它覆盖不兼容 transitive peer、兼容图与无关旧上下文、以及由显式只读 Core installation 提供 SDK 的普通 profile；该 lane 不访问正式 App profile 或 OSS。
-
-当前实际 App pnpm 11.7.0 离线本地 TGZ 研究发现普通与 peer 上下文更新后旧实例及懒加载资产仍在，证据由总任务的 `pnpm-old-instance-probe-20261014/result.md` 与 receipt 文件提供。这只支持研究使用的精确命令和 layout，不保证其他管理器、prune/GC 或任意旧运行图完整可用。03 不增加保留旧安装实例的运行时机制。
+`test:plugin-updates` 使用显式 `GEA_PLUGIN_UPDATE_SDK` 和固定公开安装器源码，覆盖控制器、真实 pnpm、新进程 Host/client 接收和浏览器入口。它不代表用户设备、Native 或正式频道生效。Windows 原生 Job lane 使用 `tests/plugin-update-windows.native.mjs`；真实用户设备还须核安装前后版本、旧新进程和重启提示是否消失，并单独记录耗时。

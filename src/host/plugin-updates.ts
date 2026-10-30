@@ -3,6 +3,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-connection";
 import type {} from "@deepseek-ai/dsh-client-modules";
 import type {} from "@deepseek-ai/dsh-cmdline";
+import { startPluginUpdateChecks } from "./plugin-update-checks.ts";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
@@ -307,13 +308,24 @@ export function mountPluginUpdates(
       }),
     );
   }
+  let checks: ReturnType<typeof startPluginUpdateChecks> | undefined;
+  const startChecks = () => {
+    checks ??= startPluginUpdateChecks(async () => {
+      if (stopped) return;
+      await ready();
+      if (controllerReady && !stopped)
+        await controller?.check(AbortSignal.any([lifetime.signal, AbortSignal.timeout(timeout)]));
+    });
+  };
+  if (bootReady) startChecks();
   const cancelReady = ctx.get("appReady")?.onReady(() => {
     bootReady = true;
-    void ready();
+    startChecks();
   });
   return async () => {
     if (stopped) return;
     stopped = true;
+    checks?.dispose();
     cancelReady?.();
     for (const release of routes) release();
     pages.clear();

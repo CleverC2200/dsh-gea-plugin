@@ -47,22 +47,23 @@ export function currentTestTimings({ timings, root, environment }) {
   const sameInputs = Object.entries(timings.inputs ?? {}).every(([file, sha256]) =>
     matches(file, sha256),
   );
+  const orderingFiles = [];
   const files = timings.files.filter((entry) => {
     const reason =
       timings.schemaVersion !== 2
         ? "unbound-source"
         : !sameEnvironment
           ? "environment-changed"
-          : !sameInputs
-            ? "shared-input-changed-or-missing"
-            : !matches(entry.file, entry.sha256)
-              ? "file-changed-or-missing"
-              : !Array.isArray(entry.fixtures) ||
-                  !entry.fixtures.every((file) => matches(file, timings.fixtures?.[file]))
-                ? "fixture-changed-or-missing"
-                : null;
-    if (reason) invalidated.push({ file: entry.file, reason });
-    return !reason;
+          : !matches(entry.file, entry.sha256)
+            ? "file-changed-or-missing"
+            : !Array.isArray(entry.fixtures) ||
+                !entry.fixtures.every((file) => matches(file, timings.fixtures?.[file]))
+              ? "fixture-changed-or-missing"
+              : null;
+    if (!reason) orderingFiles.push(entry);
+    const predictionReason = reason ?? (!sameInputs ? "shared-input-changed-or-missing" : null);
+    if (predictionReason) invalidated.push({ file: entry.file, reason: predictionReason });
+    return !predictionReason;
   });
   return {
     source: {
@@ -71,6 +72,7 @@ export function currentTestTimings({ timings, root, environment }) {
       invalidated,
     },
     files,
+    orderingFiles,
   };
 }
 

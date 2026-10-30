@@ -38,7 +38,7 @@ test(
           },
         });
       } else if (path === "/personal/models") {
-        assert.equal(request.headers["x-gea-agent-code"], "sales_forecast");
+        assert.equal(request.headers["x-gea-agent-code"], "workbench");
         reply({
           data: [{ id: model, name: model === "first-model" ? "首次目录模型" : "新身份目录模型" }],
         });

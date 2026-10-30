@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 const bundle = await build({
   stdin: {
     contents:
@@ -60,7 +61,15 @@ function business(t) {
   t.after(() => value.dispose());
   return value;
 }
-function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = false } = {}) {
+function gateway(
+  t,
+  { deny = false, scopeChanged = false, expireFirstSave = false, bases = ["郑州"] } = {},
+) {
+  const ordered = [...bases].sort();
+  const scopeKey =
+    ordered.length === 1 && Buffer.byteLength("order:base:" + ordered[0]) <= 64
+      ? "order:base:" + ordered[0]
+      : "order:bases:" + createHash("sha256").update(JSON.stringify(ordered)).digest("base64url");
   let row,
     loads = 0,
     sessions = 0;
@@ -79,26 +88,62 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
       });
     }
     assert.equal(headers.get("X-Delegation-Token"), "synthetic-order");
-    assert.equal("sql" in body, false);
-    assert.equal("tenant" in body, false);
-    assert.equal("actor" in body, false);
-    if (path.endsWith("/ai/gateway/order-report/load")) {
+    if (path.endsWith("/ai/gateway/sql/execute")) {
+      if (body.sql.startsWith("SELECT DISTINCT belong_base")) {
+        assert.match(body.sql, /LIMIT 200$/);
+        const available = scopeChanged && writes.length ? ["上海"] : [...bases].sort();
+        const page = available
+          .filter(
+            (base) => body.parameters.scope_after === null || base > body.parameters.scope_after,
+          )
+          .slice(0, 200);
+        return Response.json({
+          success: true,
+          result: {
+            rows: page.map((belong_base) => ({ belong_base })),
+            returnedColumns: ["belong_base"],
+            rejectedColumns: [],
+          },
+        });
+      }
+      if (
+        body.parameters.scope ===
+        "order:edits:" + createHash("sha256").update(scopeKey).digest("base64url")
+      ) {
+        assert.equal(body.parameters.tenant, 0);
+        assert.equal(body.parameters.consumer, "order");
+        return Response.json({
+          success: true,
+          result: {
+            rows: [],
+            returnedColumns: ["report_data", "version", "last_request_id", "schema_version"],
+            rejectedColumns: [],
+          },
+        });
+      }
       loads++;
-      assert.deepEqual(body, {
-        periodType: period.type,
-        periodStart: period.start,
-        periodEndExclusive: period.end,
-      });
+      assert.match(body.sql, /period_start = CAST\(:start AS DATE\)/);
+      assert.equal(body.parameters.tenant, 0);
+      assert.equal(body.parameters.scope, scopeKey);
+      assert.equal(body.parameters.consumer, "order");
       return Response.json({
         success: true,
         result: {
-          scope: scopeChanged && writes.length ? { key: "order:base:上海", base: "上海" } : scope,
           rows: row ? [row] : [],
+          returnedColumns: ["report_data", "version", "last_request_id", "schema_version"],
+          rejectedColumns: [],
         },
       });
     }
-    if (path.endsWith("/ai/gateway/order-report/save")) {
-      saveAttempts.push(body.requestId);
+    if (path.endsWith("/ai/sql/execute")) {
+      assert.equal(body.dataSourceCode, "Doris-OA");
+      assert.match(body.sql, /^(INSERT INTO|UPDATE) agents_order_workbench_report\b/);
+      assert.equal(body.parameters.actor, "editor");
+      assert.equal(body.parameters.tenant, 0);
+      assert.equal(body.parameters.scope, scopeKey);
+      assert.equal(body.parameters.consumer, "order");
+      assert.equal(body.idempotencyKey, body.parameters.request);
+      saveAttempts.push(body.idempotencyKey);
       if (expireFirstSave && saveAttempts.length === 1)
         return Response.json({
           success: false,
@@ -106,21 +151,20 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
           message: "session expired",
         });
       if (deny) return Response.json({ success: false, message: "ORDER_REPORT_PERMISSION_DENIED" });
-      assert.equal(body.scopeKey, scope.key);
-      assert.equal(body.expectedVersion, 0);
-      const envelope = JSON.parse(body.reportData);
+      assert.equal(body.parameters.expected, 0);
+      const envelope = JSON.parse(body.parameters.report);
       assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(envelope.data, "base64"))), report);
       writes.push(body);
       row = {
-        report_data: body.reportData,
+        report_data: body.parameters.report,
         version: 1,
-        last_request_id: body.requestId,
+        last_request_id: body.idempotencyKey,
         schema_version: 1,
         period_end_exclusive: period.end,
       };
       return Response.json({
         success: true,
-        result: { saved: true, version: 1, requestId: body.requestId },
+        result: { affectedRows: 1 },
       });
     }
     throw Error("Unexpected endpoint: " + path);
@@ -136,7 +180,7 @@ function gateway(t, { deny = false, scopeChanged = false, expireFirstSave = fals
     },
   };
 }
-test("ordinary editor saves and reopens through order endpoints without management APIs or raw SQL", async (t) => {
+test("ordinary editor saves and reopens fixed report SQL with the existing order identity and governed base", async (t) => {
   const remote = gateway(t),
     editor = business(t),
     signal = new AbortController().signal;
@@ -165,6 +209,40 @@ test("backend write denial never falls back or reports saved", async (t) => {
   assert.equal(remote.writes.length, 0);
   assert.equal(remote.loads, 1);
 });
+test("order report scope reads all bases with gateway-sized keyset pages", async (t) => {
+  const bases = Array.from({ length: 205 }, (_, index) => "B" + String(index).padStart(4, "0"));
+  gateway(t, { bases });
+  const result = await business(t).orderReport(
+    { operation: "load", period },
+    new AbortController().signal,
+  );
+  assert.deepEqual(result.scope.bases, bases);
+  assert.equal(
+    result.scope.key,
+    "order:bases:" + createHash("sha256").update(JSON.stringify(bases)).digest("base64url"),
+  );
+  assert.ok(Buffer.byteLength(result.scope.key) <= 64);
+});
+test("an oversized scope is rejected instead of silently retaining the first page", async (t) => {
+  gateway(t, {
+    bases: Array.from({ length: 1001 }, (_, index) => "B" + String(index).padStart(4, "0")),
+  });
+  await assert.rejects(
+    business(t).orderReport({ operation: "load", period }, new AbortController().signal),
+    /ORDER_REPORT_SCOPE_UNSUPPORTED/,
+  );
+});
+test("long Unicode base names keep their full scope without exceeding the Doris key width", async (t) => {
+  const base = "基地".repeat(20);
+  gateway(t, { bases: [base] });
+  const result = await business(t).orderReport(
+    { operation: "load", period },
+    new AbortController().signal,
+  );
+  assert.equal(result.scope.base, base);
+  assert.match(result.scope.key, /^order:bases:[A-Za-z0-9_-]{43}$/);
+  assert.ok(Buffer.byteLength(result.scope.key) <= 64);
+});
 test("changed backend scope cannot confirm a save under the previous base", async (t) => {
   gateway(t, { scopeChanged: true });
   await assert.rejects(
@@ -185,4 +263,20 @@ test("expired order delegation renews once and keeps the same save request", asy
   assert.equal(remote.sessions, 2);
   assert.equal(remote.writes.length, 1);
   assert.deepEqual(remote.saveAttempts, ["host-request-00000001", "host-request-00000001"]);
+});
+
+test("multiple authorized bases save under a stable separate scope and preserve the full base set", async (t) => {
+  gateway(t, { bases: ["郑州", "华东"] });
+  const editor = business(t),
+    signal = new AbortController().signal;
+  await editor.orderReport(
+    { operation: "save", period, expectedVersion: 0, requestId: "multi-base-save-0001", report },
+    signal,
+  );
+  const reopened = await editor.orderReport({ operation: "load", period }, signal);
+  assert.deepEqual(reopened.report, report);
+  assert.equal(reopened.scope.base, "");
+  assert.deepEqual(reopened.scope.bases, ["华东", "郑州"]);
+  assert.match(reopened.scope.key, /^order:bases:[A-Za-z0-9_-]{43}$/);
+  assert.ok(Buffer.byteLength(reopened.scope.key) <= 64);
 });

@@ -125,7 +125,7 @@ corepack pnpm run delivery:reception --manifest /absolute/delivery/manifest.json
 
 Workbench 的 `lib/business/**/build-inputs.json` 是含源码构建路径的开发来源记录，companion curation 会从新包移除这些文件。原 raw tar 与 source 文件保持不变，收据记录每个 excludedProvenanceFiles 的路径/摘要及 raw archive SHA；页面 HTML、代码与公共 exports 仍逐项核验。来源 metadata 不作为运行资产随用户包交付。
 
-独立单包 release、签名频道和完整组合计划见 [签名插件来源](plugin-release-source.md)。三包交付沿最终 manifest 检查所有消费者的实际 peer ranges，保留已有 exact 约束；版本号独立不代表组合自动兼容。
+独立单包 release、更新频道和完整组合计划见 [插件来源](plugin-release-source.md)。三包交付沿最终 manifest 检查所有消费者的实际 peer ranges，保留已有 exact 约束；版本号独立不代表组合自动兼容。
 
 ## 公司桌面构建
 

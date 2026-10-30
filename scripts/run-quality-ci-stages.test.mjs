@@ -912,7 +912,7 @@ for (const concurrency of [3, 4])
     if (concurrency === 3)
       assert.deepEqual(receipt.results[0].libuvPool, {
         status: "declared",
-        size: 4,
+        size: Math.min(4, Math.floor(receipt.capacity.observed.availableParallelism / 3)),
         activeFiles: 1,
         availableParallelism: receipt.capacity.observed.availableParallelism,
         source: "capacity.observed.availableParallelism",
@@ -1197,7 +1197,11 @@ test("source workers prepare the full public input and execute only their own fr
       "HEAD",
     );
     writeFileSync(f.input, JSON.stringify(candidate));
-    const result = f.run("full", { GEA_SOURCE_CHECK_SHARD: id }, ["--source-only"]);
+    const result = f.run(
+      "full",
+      { GEA_SOURCE_CHECK_SHARD: id, GEA_SOURCE_CHECK_SHARD_COUNT: "2" },
+      ["--source-only"],
+    );
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const plan = JSON.parse(readFileSync(join(f.job, "quality-test-execution-plan.json")));
     const receipt = JSON.parse(readFileSync(join(f.job, "quality-test-execution.json")));

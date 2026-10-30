@@ -50,6 +50,31 @@ function credentialList() {
   });
 }
 
+test("the default model route and status use the workbench catalog independently of sales configuration", async (t) => {
+  const { business } = loggedInBusiness(t);
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const url = String(input);
+    if (url.includes("/my/list")) return credentialList();
+    if (url.includes("/my/claim"))
+      return Response.json({
+        success: true,
+        result: {
+          credentialId: "fixture-credential",
+          status: "ACTIVE",
+          baseUrl: "https://fixture.invalid/ai/v1",
+          secret: "fixture-secret",
+        },
+      });
+    assert.equal(url, "https://fixture.invalid/ai/v1/models");
+    assert.equal(init.headers["X-GEA-Agent-Code"], "workbench");
+    return Response.json({ data: [{ id: "workbench-model", name: "Workbench model" }] });
+  });
+  const route = await business.modelRoute(new AbortController().signal);
+  assert.equal(route.agentCode, "workbench");
+  assert.deepEqual(business.status().discoveredModels, ["workbench-model"]);
+  assert.equal(business.status().model, "workbench-model");
+});
+
 test("cancelling a credential claim preserves cancellation instead of reporting a network failure", async (t) => {
   const { business } = loggedInBusiness(t);
   const controller = new AbortController();

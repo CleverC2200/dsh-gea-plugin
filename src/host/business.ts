@@ -1,5 +1,7 @@
-import { orderReportStore } from "./order-report-store.ts";
 import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
+import { orderReportWithEdits } from "./order-report-edits.ts";
+import { resolveFcDmsTarget } from "./fc-dms-target.ts";
+import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
 import {
   decodeSalesPlanResult,
   salesPlanCustomer,
@@ -8,7 +10,9 @@ import {
   salesPlanWireKey,
 } from "./sales-plan-wire.ts";
 import { InventoryReadCache, recoverInventorySnapshot } from "./inventory-read-cache.ts";
-import { DmsClient, parseDmsOrder, submitDmsOrder, type DmsEnvironments } from "./dms-orders.ts";
+import { fcStorage, type FcStorageEnvironments } from "./fc-storage.ts";
+import { checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
+import { DmsClient, submitOwnedDmsOrder, type DmsEnvironments } from "./dms-orders.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
@@ -52,7 +56,8 @@ const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 
 import {
   validateServiceAccounts,
-  serviceAccountReady,
+  serviceAccountUnavailableReason,
+  serviceAccountUnavailableError,
   type ServiceAccounts,
 } from "./service-account.ts";
 import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
@@ -106,6 +111,7 @@ export interface Deployment {
   serviceAccounts?: ServiceAccounts;
   dms?: DmsEnvironments;
   orderFulfillmentConfirmation?: { production?: boolean; test?: boolean };
+  fcStorage?: FcStorageEnvironments;
   geaBaseUrl: string;
   environment?: "production" | "test";
   geaEnvironments?: { production: string; test: string };
@@ -865,6 +871,7 @@ export class Business {
     this.salesTransactions = new SalesPlanTransactions({
       scope: (effect) => {
         this.assertExecutionAllowed(this.config.analysisAgentCode, effect);
+        if (effect === "submit" && !this.auth) throw serviceAccountUnavailableError("signed-out");
         return {
           auth: this.authenticated(),
           base: this.base,
@@ -1361,16 +1368,18 @@ export class Business {
   /** 对外状态永远不包含 GEA 凭证。 */
   status() {
     const readonlyValidation = this.salesReadonly?.snapshot();
-    const models = this.modelRoutes.get(this.config.analysisAgentCode)?.models;
+    const models = this.modelRoutes.get(WORKBENCH_AGENT_CODE)?.models;
+    const resubmitUnavailableReason = serviceAccountUnavailableReason(
+      this.config.serviceAccounts?.[this.environment],
+      this.auth,
+    );
     return {
       environment: this.environment,
       environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
       pageScope: this.pageSessionScope() ?? null,
-      resubmitConnected: serviceAccountReady(
-        this.config.serviceAccounts?.[this.environment],
-        this.auth,
-      ),
+      resubmitConnected: resubmitUnavailableReason === undefined,
+      resubmitUnavailableReason,
       loginState: this.auth ? "authenticated" : this.loginExpired ? "expired" : "signed-out",
       permissionCodes: this.auth?.permissionCodes,
       roles: this.auth?.roles,
@@ -1487,17 +1496,116 @@ export class Business {
     return readSalesPlanWorkflowConfig(this.base, auth.token, this.apiLog.fetch, signal);
   }
 
+  /** Fixed FC persistence operations; page values cannot choose SQL, credentials or data source. */
+  async branchStorage(payload: Record<string, unknown>, caller: AbortSignal) {
+    this.assertExecutionAllowed("branch-inventory");
+    const auth = this.authenticated();
+    const config = this.config.fcStorage?.[this.environment];
+    const matches = config?.users?.filter(
+      (user) => user.tenantId === auth.tenantId && user.userId === auth.id,
+    );
+    if (!config?.published || matches?.length !== 1) throw Error("FC_STORAGE_NOT_CONFIGURED");
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
+    let delegation = this.pluginDelegations.get("branch-inventory");
+    if (delegation?.authToken !== auth.token) {
+      const requestId = randomUUID();
+      const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+        method: "POST",
+        redirect: "error",
+        signal,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Access-Token": auth.token,
+          "X-Tenant-Id": auth.tenantId,
+          "X-Request-Id": requestId,
+        },
+        body: JSON.stringify({
+          agentCode: "branch-inventory",
+          channel: "AI_PORTAL",
+          requestId,
+          conversationId: randomUUID(),
+        }),
+      });
+      const body = object(await response.json());
+      const session = object(body.result);
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      if (
+        !response.ok ||
+        body.success !== true ||
+        object(session.accessDecision).allowed !== true ||
+        !text(session.delegationToken)
+      )
+        throw Error("GEA_PLUGIN_SESSION_REJECTED");
+      delegation = { authToken: auth.token, delegationToken: text(session.delegationToken) };
+      this.pluginDelegations.set("branch-inventory", delegation);
+    }
+    const token = delegation!.delegationToken;
+    const result = await fcStorage(
+      config,
+      { tenantId: auth.tenantId, userId: auth.id, warehouses: matches[0].warehouses },
+      payload,
+      async (request) => {
+        signal.throwIfAborted();
+        this.assertExecutionAllowed("branch-inventory");
+        if (this.auth !== auth) throw Error("STALE_LOGIN");
+        const response = await this.apiLog.fetch(this.base.replace(/\/$/, "") + "/ai/sql/execute", {
+          method: "POST",
+          redirect: "error",
+          signal,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Delegation-Token": token,
+            "X-Request-Id": randomUUID(),
+          },
+          body: JSON.stringify(request),
+        });
+        const body = await response.json();
+        signal.throwIfAborted();
+        if (this.auth !== auth) throw Error("STALE_LOGIN");
+        if (!response.ok && body?.success === true) throw Error("FC_STORAGE_INVALID_RESPONSE");
+        return body;
+      },
+    );
+    signal.throwIfAborted();
+    if (this.auth !== auth) throw Error("STALE_LOGIN");
+    return result;
+  }
+
   /** Dedicated, deployment-authorized DMS action; not a general HTML write capability. */
   async branchDms(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed("branch-inventory");
     const auth = this.authenticated();
-    const config = this.config.dms?.[this.environment];
+    const config = resolveFcDmsDeployment(this.config.dms, this.environment, auth);
+    if (payload.operation === "resolve-target") {
+      keys(payload, ["operation", "warehouseCode", "addressCode"]);
+      if (
+        typeof payload.warehouseCode !== "string" ||
+        (payload.addressCode !== undefined && typeof payload.addressCode !== "string")
+      )
+        throw Error("DMS 主数据查询参数无效");
+      const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(6000)]);
+      const result = await resolveFcDmsTarget(
+        payload.warehouseCode,
+        typeof payload.addressCode === "string" ? payload.addressCode : "",
+        (query) => this.pluginSql({ consumerCode: "branch-inventory", ...query }, signal),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      this.assertExecutionAllowed("branch-inventory");
+      return { ...result, message: dmsTargetNotice(config) + result.message };
+    }
     const bindings = config?.users?.filter(
       (user) => user.tenantId === auth.tenantId && user.userId === auth.id,
     );
     if (!config || bindings?.length !== 1)
       throw Error("DMS 当前环境或用户映射未配置，请联系管理员");
-    keys(payload, ["operation", "order"]);
+    keys(payload, ["operation", "order", "warehouseCode"]);
     const signal = AbortSignal.any([
       caller,
       this.epoch.signal,
@@ -1506,26 +1614,36 @@ export class Business {
     const client = new DmsClient(config, bindings[0]);
     let result: unknown;
     if (payload.operation === "login") {
-      if (payload.order !== undefined) throw Error("DMS 登录参数无效");
+      if (payload.order !== undefined || payload.warehouseCode !== undefined)
+        throw Error("DMS 登录参数无效");
       const login = await client.login(signal);
       result = { redirect: login.redirect };
-    } else if (payload.operation === "submit") {
-      const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
-      const order = parseDmsOrder(payload.order);
-      // Upstream preorder identifiers are global, while page intent identifiers are owner-local.
-      order.aiPreOrderCode =
-        "AI" +
-        createHash("sha256")
-          .update(JSON.stringify([owner, order.aiPreOrderCode]))
-          .digest("hex")
-          .slice(0, 30);
-      result = await submitDmsOrder(
-        resolve(this.config.runtimeDir, "dms-orders"),
-        owner,
-        order,
-        client,
-        signal,
-      );
+    } else if (payload.operation === "submit" || payload.operation === "preflight") {
+      if (
+        typeof payload.warehouseCode !== "string" ||
+        !payload.warehouseCode.trim() ||
+        payload.warehouseCode.length > 64
+      )
+        throw Error("DMS 提交缺少分仓编码，请刷新分仓页面后重试");
+      if (payload.operation === "preflight") {
+        result = checkFcSubmissionReadiness(
+          config,
+          this.config.fcStorage?.[this.environment],
+          { tenantId: auth.tenantId, userId: auth.id },
+          payload.warehouseCode.trim(),
+          payload.order,
+        );
+      } else {
+        const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
+        result = await submitOwnedDmsOrder(
+          resolve(this.config.runtimeDir, "dms-orders"),
+          owner,
+          payload.order,
+          client,
+          signal,
+          payload.warehouseCode.trim(),
+        );
+      }
     } else throw Error("DMS 操作不支持");
     signal.throwIfAborted();
     if (this.auth !== auth) throw Error("STALE_LOGIN");
@@ -1533,7 +1651,7 @@ export class Business {
     return result;
   }
 
-  salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+  async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     return this.salesTransactions.submit(payload, caller);
   }
 
@@ -1807,7 +1925,7 @@ export class Business {
   /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
   async modelRoute(
     signal: AbortSignal,
-    agentCode = "sales_forecast",
+    agentCode = WORKBENCH_AGENT_CODE,
     pageSessionId?: string,
   ): Promise<GeaModelRoute> {
     this.assertModelAllowed();
@@ -1817,33 +1935,59 @@ export class Business {
     if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
     const cached = this.modelRoutes.get(agentCode);
     if (cached) return cached;
+    const credentialAccessError = (error: unknown): never => {
+      if (
+        error instanceof Error &&
+        ((error instanceof GeaResponseError && error.details.httpStatus === 403) ||
+          error.message === "GEA_MODEL_HTTP_403")
+      )
+        throw Object.assign(
+          Error(`${error.message}。当前账号无权访问 GEA 模型凭据，请联系管理员开通权限。`),
+          {
+            code: error instanceof GeaResponseError ? error.code : "GEA_MODEL_HTTP_403",
+            ...(error instanceof GeaResponseError ? { details: error.details } : {}),
+          },
+        );
+      throw error;
+    };
     const credentialResult = object(
-      await this.gatewayRequests.read(
-        "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
-        auth,
-        AbortSignal.any([signal, epoch]),
-        false,
-      ),
+      await this.gatewayRequests
+        .read(
+          "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
+          auth,
+          AbortSignal.any([signal, epoch]),
+          false,
+        )
+        .catch(credentialAccessError),
     );
     const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
     if (records.length > 1) throw new Error("GEA_MODEL_CREDENTIAL_AMBIGUOUS");
     const credential = records[0] ? object(records[0]) : undefined;
-    if (!credential) throw new Error("GEA_MODEL_CREDENTIAL_MISSING");
+    if (!credential)
+      throw Object.assign(Error("当前账号尚未开通 GEA 模型权限，请联系管理员开通。"), {
+        code: "GEA_MODEL_CREDENTIAL_MISSING",
+      });
     const status = credential.status;
     if (status === "DISABLED" || status === "REVOKED")
-      throw new Error("GEA_MODEL_CREDENTIAL_DISABLED");
+      throw Object.assign(Error("当前账号的 GEA 模型权限已停用，请联系管理员恢复。"), {
+        code: "GEA_MODEL_CREDENTIAL_DISABLED",
+      });
     const credentialId = text(credential.credentialId ?? credential.id);
-    const claim = await this.gatewayRequests.claim(
-      "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
-      auth,
-      AbortSignal.any([signal, epoch]),
-      false,
-    );
+    const claim = await this.gatewayRequests
+      .claim(
+        "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
+        auth,
+        AbortSignal.any([signal, epoch]),
+        false,
+      )
+      .catch(credentialAccessError);
     const claimed = object(claim);
     if (String(claimed.credentialId ?? "") !== credentialId)
       throw new Error("GEA_MODEL_CREDENTIAL_MISMATCH");
     if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
-      throw new Error("GEA_MODEL_CREDENTIAL_UNAVAILABLE");
+      throw Object.assign(Error("当前账号的 GEA 模型凭据不可用，请联系管理员检查权限。"), {
+        code: "GEA_MODEL_CREDENTIAL_UNAVAILABLE",
+      });
     const base = new URL(text(claimed.baseUrl));
     if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash)
       throw new Error("GEA_MODEL_BASE_URL_INVALID");
@@ -1872,7 +2016,10 @@ export class Business {
     const models = modelsPayload.data.map((entry) =>
       typeof entry === "string" ? entry : text(object(entry).id),
     );
-    if (!models.length) throw new Error("GEA_MODEL_EMPTY");
+    if (!models.length)
+      throw Object.assign(Error("当前账号没有可用的 GEA 模型，请联系管理员配置模型权限。"), {
+        code: "GEA_MODEL_EMPTY",
+      });
     const names: Record<string, string> = {};
     const contextWindows: Record<string, number> = {};
     for (const id of new Set(models)) {
@@ -2433,43 +2580,71 @@ export class Business {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const run = async () => {
       signal.throwIfAborted();
-      this.assertExecutionAllowed("order", payload.operation === "save" ? "submit" : "view");
-      const period = object(payload.period);
-      const load = async () =>
-        object(
-          await this.pluginSql(
-            {
-              consumerCode: "order",
-              sql: "SELECT report_data FROM agents_order_workbench_report LIMIT 2",
-            },
-            signal,
-            true,
-            { period },
-          ),
-        );
-      let snapshot: Record<string, unknown> | undefined = await load();
-      const scope = object(snapshot.scope);
-      if (
-        typeof scope.key !== "string" ||
-        !scope.key.startsWith("order:base:") ||
-        scope.base !== scope.key.slice("order:base:".length)
-      )
-        throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
-      const reportScope = { key: scope.key, base: String(scope.base) };
-      return orderReportStore(
+      this.assertExecutionAllowed("order", payload.operation === "load" ? "view" : "submit");
+      const resolveScope = async () => {
+        const bases: string[] = [];
+        let after: string | null = null;
+        while (true) {
+          const result = object(
+            await this.pluginSql(
+              {
+                consumerCode: "order",
+                sql: "SELECT DISTINCT belong_base FROM agents_order_cancel_change_di WHERE belong_base IS NOT NULL AND (:scope_after IS NULL OR belong_base > :scope_after) ORDER BY belong_base LIMIT 200",
+                parameters: { scope_after: after },
+              },
+              signal,
+              true,
+            ),
+          );
+          const rows = result.rows;
+          if (
+            !Array.isArray(rows) ||
+            rows.length > 200 ||
+            (result.rejectedColumns != null &&
+              (!Array.isArray(result.rejectedColumns) || result.rejectedColumns.length > 0))
+          )
+            throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+          for (const row of rows) {
+            const base = object(row).belong_base;
+            if (
+              typeof base !== "string" ||
+              !base.trim() ||
+              base !== base.trim() ||
+              base.length > 50 ||
+              bases.includes(base)
+            )
+              throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+            bases.push(base);
+          }
+          if (bases.length > 1000) throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+          if (rows.length < 200) break;
+          after = bases[bases.length - 1];
+        }
+        if (!bases.length) throw Error("ORDER_REPORT_SCOPE_UNSUPPORTED");
+        bases.sort();
+        const legacyKey = "order:base:" + bases[0];
+        if (bases.length === 1 && Buffer.byteLength(legacyKey) <= 64)
+          return { key: legacyKey, base: bases[0] };
+        return {
+          key:
+            "order:bases:" + createHash("sha256").update(JSON.stringify(bases)).digest("base64url"),
+          base: bases.length === 1 ? bases[0] : "",
+          ...(bases.length > 1 ? { bases } : {}),
+        };
+      };
+      const reportScope = await resolveScope();
+      return orderReportWithEdits(
         payload,
         { ...auth, reportScope },
         async (sql, parameters, requestId) => {
           signal.throwIfAborted();
+          if ((await resolveScope()).key !== reportScope.key)
+            throw Error("ORDER_REPORT_SCOPE_CHANGED");
           if (requestId)
             return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true, {
               idempotencyKey: requestId,
             });
-          const result = snapshot ?? (await load());
-          snapshot = undefined;
-          if (object(result.scope).key !== reportScope.key)
-            throw Error("ORDER_REPORT_SCOPE_CHANGED");
-          return { rows: result.rows, rejectedColumns: [] };
+          return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true);
         },
       );
     };
@@ -2483,7 +2658,7 @@ export class Business {
     payload: Record<string, unknown>,
     caller: AbortSignal,
     configured = false,
-    reportWrite?: { idempotencyKey: string } | { period: Record<string, unknown> },
+    reportWrite?: { idempotencyKey: string },
     recoverEmptySnapshot = false,
     pageRead = false,
   ): Promise<unknown> {
@@ -2515,6 +2690,7 @@ export class Business {
     const identity = this.epoch.signal;
     const signal = AbortSignal.any([caller, identity]);
     signal.throwIfAborted();
+    const readStartedAt = Date.now();
     const freshAfter = payload.cacheFreshAfter ?? 0;
     if (
       typeof freshAfter !== "number" ||
@@ -2603,35 +2779,14 @@ export class Business {
             limit: this.sqlReadLimit,
           };
           if (reportWrite) {
-            const loading = "period" in reportWrite;
-            this.assertExecutionAllowed("order", loading ? "view" : "submit");
+            this.assertExecutionAllowed("order", "submit");
             if (
               consumerCode !== "order" ||
-              (!loading &&
-                !/^\s*(INSERT INTO|UPDATE) agents_order_workbench_report\b/.test(String(query.sql)))
+              !/^\s*(INSERT INTO|UPDATE) agents_order_workbench_report\b/.test(String(query.sql))
             )
               throw Error("ORDER_REPORT_WRITE_INVALID");
-            const values = loading ? {} : object(query.parameters);
-            const requestId = loading ? randomUUID() : reportWrite.idempotencyKey;
-            const request = loading
-              ? {
-                  periodType: reportWrite.period.type,
-                  periodStart: reportWrite.period.start,
-                  periodEndExclusive: reportWrite.period.end,
-                }
-              : {
-                  scopeKey: values.scope,
-                  periodType: values.kind,
-                  periodStart: values.start,
-                  periodEndExclusive: values.end,
-                  expectedVersion: values.expected,
-                  requestId,
-                  reportData: values.report,
-                };
             const response = await this.apiLog.fetch(
-              this.base.replace(/\/$/, "") +
-                "/ai/gateway/order-report/" +
-                (loading ? "load" : "save"),
+              this.base.replace(/\/$/, "") + "/ai/sql/execute",
               {
                 method: "POST",
                 redirect: "error",
@@ -2639,9 +2794,14 @@ export class Business {
                 headers: {
                   "Content-Type": "application/json",
                   "X-Delegation-Token": delegation.delegationToken,
-                  "X-Request-Id": requestId,
+                  "X-Request-Id": reportWrite.idempotencyKey,
                 },
-                body: JSON.stringify(request),
+                body: JSON.stringify({
+                  dataSourceCode: "Doris-OA",
+                  sql: query.sql,
+                  parameters: query.parameters,
+                  idempotencyKey: reportWrite.idempotencyKey,
+                }),
               },
             );
             const body = object(await response.json().catch(() => ({})));
@@ -2662,21 +2822,44 @@ export class Business {
             }
             return body.result;
           }
-          const read = async () =>
+          const read = async (readSignal: AbortSignal) =>
             configured
-              ? await createGeaSqlDatabase(() => delegation.delegationToken, transport)
-                  .queryConfigured!({
+              ? await createGeaSqlDatabase(() => delegation.delegationToken, {
+                  ...transport,
+                  signal: readSignal,
+                }).queryConfigured!({
                   sql: query.sql,
                   parameters: query.parameters,
                   includeTotal: false,
                 } as ConfiguredSqlRequest)
-              : await readHtmlQuery(pagedQuery, transport);
-          const result =
+              : await readHtmlQuery(pagedQuery, { ...transport, signal: readSignal });
+          const perform = (readSignal: AbortSignal) =>
             cacheable && recoverEmptySnapshot
-              ? await recoverInventorySnapshot(read, signal)
-              : await read();
+              ? recoverInventorySnapshot(() => read(readSignal), readSignal)
+              : read(readSignal);
+          const shareRead =
+            cacheable &&
+            configured &&
+            ["base-safety-stock", "branch-inventory", "full-chain-inventory"].includes(
+              consumerCode,
+            );
+          const result = shareRead
+            ? await this.inventoryReads.share(
+                identity,
+                JSON.stringify([cacheKey, freshAfter, recoverEmptySnapshot]),
+                caller,
+                perform,
+              )
+            : await perform(signal);
           signal.throwIfAborted();
-          if (cacheable) this.inventoryReads.set(identity, cacheKey, result, recoverEmptySnapshot);
+          if (cacheable)
+            this.inventoryReads.set(
+              identity,
+              cacheKey,
+              result,
+              recoverEmptySnapshot,
+              readStartedAt,
+            );
           return result;
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {

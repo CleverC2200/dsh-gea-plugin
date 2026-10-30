@@ -18,6 +18,8 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
+import { finalGroupHistoricalCore } from "./source-preparation.mjs";
+
 const root = fileURLToPath(new URL("../", import.meta.url));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 function git(cwd, ...args) {
@@ -51,6 +53,8 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   for (const file of [
     "scripts/run-quality-ci.mjs",
     "scripts/final-group-input.contract.mjs",
+    "scripts/source-preparation.mjs",
+    "scripts/ci-platform-tests.mjs",
     "package.json",
   ])
     copyFileSync(join(root, file), join(gea, file));
@@ -66,6 +70,8 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     "add",
     "scripts/run-quality-ci.mjs",
     "scripts/final-group-input.contract.mjs",
+    "scripts/source-preparation.mjs",
+    "scripts/ci-platform-tests.mjs",
     "scripts/quality-peer-baseline.json",
     "package.json",
   );
@@ -282,9 +288,9 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   const wrongLock = run("actual-original-lock");
   writeFileSync(lockPath, lockBytes);
   reject(wrongLock, /CANDIDATE_LOCK/);
-  git(core, "checkout", "--quiet", "639ed015397290b3745d163aafe02ffee4aa3f84");
+  git(core, "checkout", "--quiet", finalGroupHistoricalCore);
   const rc = JSON.parse(original);
-  rc.core = "639ed015397290b3745d163aafe02ffee4aa3f84";
+  rc.core = finalGroupHistoricalCore;
   writeFileSync(file, JSON.stringify(rc));
   const rcGood = run("registered-rc2-cold-source", ["--core-head", rc.core]);
   assert.equal(rcGood.status, 0, rcGood.stdout + rcGood.stderr);

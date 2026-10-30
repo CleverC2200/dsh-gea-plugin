@@ -1,4 +1,3 @@
-import { archiveMatches } from "./plugin-update-archive.mjs";
 import { sourceUpdateProblem, planUpdateProblem } from "../shared/plugin-update-diagnostics.ts";
 import { withFileLock } from "@deepseek-ai/dsh-atomic-write";
 import { runProfilePnpm } from "@deepseek-ai/dsh-plugin-manager/operations";
@@ -11,8 +10,7 @@ import { performance } from "node:perf_hooks";
 import {
   companyPackageNames,
   parsePluginRelease,
-  planPluginSuiteUpdate,
-  validatePluginCombination,
+  planPluginSuiteVersions,
   type FixedCore,
   type CompanyPackageName,
   type PluginRelease,
@@ -31,19 +29,16 @@ import {
   optionalFile,
   pluginProfileStoreDirectory,
   readPluginProfile,
-  combinationManifests,
-  freezePluginProfile,
-  freezePluginUserData,
-  verifyPluginUserData,
-  restorePluginProfile,
   retainsProfileUpdates,
   retainsUnmanagedManifestFields,
-  validateActualProfile,
   within,
   type ProfileSnapshot,
 } from "./plugin-update-profile.ts";
-import { writePluginRecoveryNotes } from "./plugin-update-recovery-notes.ts";
-import { observeProfilePackageProcesses } from "./plugin-update-processes.ts";
+import {
+  profilePackageRunStopped,
+  previousPackageProcessesStopped,
+  observeProfilePackageProcesses,
+} from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun, type PluginUpdateFileCommit } from "./plugin-update-windows.ts";
 
 /** Stable for the lifetime of this Node process, including Controller recreation in the same process. */
@@ -116,12 +111,7 @@ async function durableJson(path: string, value: unknown, commit?: PluginUpdateFi
 function parseOperation(raw: unknown): PluginUpdateOperation {
   const value = object(raw);
   if (
-    value.userDataSha256 !== undefined &&
-    (typeof value.userDataSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.userDataSha256))
-  )
-    fail("UPDATE_JOURNAL_INVALID");
-  if (
-    value.schema !== 1 ||
+    (value.schema !== 1 && value.schema !== 2) ||
     !companyPackageNames.some((name) => name === value.packageName) ||
     !stageNames.some((stage) => stage === value.stage)
   )
@@ -133,9 +123,7 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
     "processIdentity",
     "startedAt",
     "updatedAt",
-    "baselineSha256",
     "archivePath",
-    "recoveryDirectory",
   ])
     if (typeof value[key] !== "string") return fail("UPDATE_JOURNAL_INVALID");
   if (
@@ -148,6 +136,8 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
     const process = object(row);
     if (
       typeof process.pid !== "number" ||
+      !Number.isSafeInteger(process.pid) ||
+      process.pid <= 0 ||
       typeof process.grouped !== "boolean" ||
       typeof process.sawAlive !== "boolean" ||
       !(process.startIdentity === null || typeof process.startIdentity === "string")
@@ -237,18 +227,27 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
     } else if (value.completionProofs !== undefined) fail("UPDATE_JOURNAL_INVALID");
   } else if (value.completionProofs !== undefined) fail("UPDATE_JOURNAL_INVALID");
   if (value.stage === "completed" && value.completionProof === null) fail("UPDATE_JOURNAL_INVALID");
-  if (
-    !(value.diagnostic === null || typeof value.diagnostic === "string") ||
-    !(value.installedGraphSha256 === null || typeof value.installedGraphSha256 === "string")
-  )
+  if (!(value.diagnostic === null || typeof value.diagnostic === "string"))
     return fail("UPDATE_JOURNAL_INVALID");
-  return value as PluginUpdateOperation;
+  if (value.schema === 1 && typeof value.recoveryDirectory !== "string")
+    fail("UPDATE_JOURNAL_INVALID");
+  const directory =
+    value.schema === 1 ? join(String(value.recoveryDirectory), "..") : value.directory;
+  if (typeof directory !== "string" || !isAbsolute(directory)) fail("UPDATE_JOURNAL_INVALID");
+  const operation = { ...value };
+  for (const key of [
+    "baselineSha256",
+    "recoveryDirectory",
+    "userDataSha256",
+    "installedGraphSha256",
+  ])
+    delete operation[key];
+  return { ...operation, schema: 2, directory } as PluginUpdateOperation;
 }
 function operationTargets(operation: PluginUpdateOperation) {
   return operation.targets ?? [operation];
 }
 
-/** One Host owner holds the official lock through verification, receipt commit and confirmed-safe recovery. */
 export function createPluginUpdateController(options: PluginUpdateControllerOptions) {
   if (
     !isAbsolute(options.profile.dir) ||
@@ -345,15 +344,21 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     const pointer = object(JSON.parse(bytes.toString("utf8")));
     if (typeof pointer.id !== "string" || !/^[-a-f0-9]{36}$/.test(pointer.id))
       return fail("UPDATE_JOURNAL_INVALID");
-    const operation = parseOperation(
-      JSON.parse(await readFile(join(operations, pointer.id, "receipt.json"), "utf8")),
+    const raw: unknown = JSON.parse(
+      await readFile(join(operations, pointer.id, "receipt.json"), "utf8"),
     );
+    const operation = parseOperation(raw);
     if (
       operation.id !== pointer.id ||
-      !within(operations, operation.recoveryDirectory) ||
+      operation.directory !== join(operations, pointer.id) ||
       !operationTargets(operation).every((target) => within(cache, target.archivePath))
     )
       return fail("UPDATE_JOURNAL_INVALID");
+    if (
+      object(raw).schema === 1 &&
+      !(await optionalFile(join(operation.directory, "receipt.legacy.json")))
+    )
+      await durableJson(join(operation.directory, "receipt.legacy.json"), raw, options.fileCommit);
     return operation;
   }
   async function persist(operation: PluginUpdateOperation) {
@@ -404,7 +409,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     }
     const operation = state.operation;
     if (
-      operation?.stage !== "pending-restart" ||
+      !operation ||
+      !["pending-restart", "unknown"].includes(operation.stage) ||
       operation.processIdentity === pluginUpdateProcessIdentity
     )
       return snapshot();
@@ -415,27 +421,37 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         if (
           !latestOperation ||
           latestOperation.id !== operation.id ||
-          latestOperation.stage !== "pending-restart"
+          !["pending-restart", "unknown"].includes(latestOperation.stage)
         )
           return snapshot();
         state = { ...state, operation: latestOperation };
         const profile = await readPluginProfile(options.profile.dir),
           proofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
         reflectProfile(profile, proofs);
-        if (profile.ownedSha256 !== latestOperation.installedGraphSha256) return snapshot();
+        if (!previousPackageProcessesStopped(options.profile.dir, latestOperation))
+          return snapshot();
         const completionProofs: NonNullable<PluginUpdateOperation["completionProof"]>[] = [];
         for (const target of operationTargets(operation)) {
           const hostOwner = startup.find((proof) => proof.name === target.packageName);
           const host = hostOwner?.host;
           const client = proofs.find((proof) => proof.name === target.packageName)?.client;
-          if (host?.kind === "active" && host.stamp.version !== target.targetVersion) {
-            await stage("unknown", "LOADED_VERSION_MISMATCH");
+          const installed = profile.packages.find((pkg) => pkg.name === target.packageName);
+          if (
+            installed &&
+            host?.kind === "active" &&
+            client?.kind === "observed" &&
+            host.stamp.version === installed.version &&
+            client.stamp.version === installed.version &&
+            installed.version !== target.targetVersion
+          ) {
+            await stage("failed", "PREVIOUS_OPERATION_INTERRUPTED");
             return snapshot();
           }
           if (
             host?.kind !== "active" ||
             client?.kind !== "observed" ||
             host.stamp.name !== target.packageName ||
+            host.stamp.version !== target.targetVersion ||
             client.stamp.name !== target.packageName ||
             client.stamp.version !== target.targetVersion ||
             !host.identity ||
@@ -445,11 +461,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             !client.binding.nonce
           )
             return snapshot();
-          const installed = profile.packages.find(
-            (pkg) => pkg.root && pkg.name === target.packageName,
-          );
           if (
             !installed ||
+            installed.version !== target.targetVersion ||
             !hostOwner ||
             (await realpath(hostOwner.resolvedDir)) !== installed.dir
           ) {
@@ -457,18 +471,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             return snapshot();
           }
           completionProofs.push({ processIdentity: pluginUpdateProcessIdentity, host, client });
-        }
-        if (latestOperation.userDataSha256) {
-          try {
-            await verifyPluginUserData(
-              options.profile.home,
-              latestOperation.recoveryDirectory,
-              latestOperation.userDataSha256,
-            );
-          } catch (error) {
-            await stage("unknown", code(error, "UPDATE_USER_DATA_NOT_PRESERVED"));
-            return snapshot();
-          }
         }
         await stage("completed", null, {
           completionProof: completionProofs[0] ?? null,
@@ -488,19 +490,28 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           const initialProofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
           reflectProfile(await readPluginProfile(options.profile.dir), initialProofs);
           state = { ...state, operation: await readLatest() };
+          if (state.operation) {
+            for (const target of operationTargets(state.operation))
+              row(target.packageName, {
+                state: state.operation.stage,
+                diagnostic: state.operation.diagnostic,
+                candidateVersion: target.targetVersion,
+              });
+            if (
+              state.operation.stage === "accepted" &&
+              state.operation.processIdentity !== pluginUpdateProcessIdentity &&
+              state.operation.processes.length === 0 &&
+              profilePackageRunStopped(options.profile.dir)
+            )
+              await stage("failed", "PREVIOUS_OPERATION_INTERRUPTED");
+            else if (
+              ["accepted", "installing", "verifying", "restoring"].includes(state.operation.stage)
+            )
+              await stage("unknown", "PREVIOUS_OPERATION_INTERRUPTED");
+          }
         },
         { waitMs: options.lockWaitMs ?? 30_000 },
       );
-      if (state.operation) {
-        for (const target of operationTargets(state.operation))
-          row(target.packageName, {
-            state: state.operation.stage,
-            diagnostic: state.operation.diagnostic,
-            candidateVersion: target.targetVersion,
-          });
-        if (["accepted", "installing", "verifying", "restoring"].includes(state.operation.stage))
-          await stage("unknown", "PREVIOUS_OPERATION_INTERRUPTED");
-      }
     } catch {
       journalBroken = true;
       state = {
@@ -563,7 +574,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             problem: { kind: "policy", code: "release-not-published" },
           });
       }
-      const installed = await combinationManifests(profile, options.core, options.profile.dir);
+      const installed = profile.packages;
       if (generation !== checking || closed) return snapshot();
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
@@ -608,7 +619,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             });
         return snapshot();
       }
-      const plan = planPluginSuiteUpdate({ releases, core: options.core, installed });
+      const plan = planPluginSuiteVersions({ releases, core: options.core, installed });
       if (plan.kind === "blocked") {
         const release =
           releases.find((release) => release.name === plan.packageName) ?? releases[0];
@@ -693,9 +704,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       reject = no;
     });
     const operationTask = async () => {
-      let mutationStarted = false,
-        baseline: ProfileSnapshot | null = null,
-        recovery: string | null = null;
+      let mutationStarted = false;
       try {
         const downloads: { release: PluginRelease; archivePath: string }[] = [];
         for (const selectedPlan of selected) {
@@ -719,16 +728,12 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             lifetime.signal.throwIfAborted();
             const diskOperation = await readLatest();
             if (blocking(diskOperation)) fail("UPDATE_OPERATION_BLOCKED");
-            baseline = await readPluginProfile(options.profile.dir);
-            if (selected.some((selectedPlan) => baseline?.sha256 !== selectedPlan.baseline.sha256))
+            const baseline = await readPluginProfile(options.profile.dir);
+            if (selected.some((selectedPlan) => baseline.sha256 !== selectedPlan.baseline.sha256))
               fail("UPDATE_BASELINE_CHANGED");
             const direct = object(baseline.manifest.dependencies ?? {});
             const runtimeProofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
-            const manifests = await combinationManifests(
-              baseline,
-              options.core,
-              options.profile.dir,
-            );
+            const manifests = baseline.packages;
             for (const release of selectedSuite) {
               if (
                 runtimeProofs.find((proof) => proof.name === release.name)?.host.kind !== "active"
@@ -746,7 +751,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               if (!within(await realpath(join(options.profile.dir, "node_modules")), resolved))
                 fail("INSTALL_ANCHOR_SHADOWED");
             }
-            const suitePlan = planPluginSuiteUpdate({
+            const suitePlan = planPluginSuiteVersions({
               releases: selectedSuite,
               core: options.core,
               installed: manifests,
@@ -759,11 +764,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               )
             )
               fail("UPDATE_COMBINATION_CHANGED");
-            if (await optionalFile(join(options.profile.dir, ".plugin-manager/run.json")))
-              fail("PROFILE_WRITER_UNCONFIRMED");
+            if (!profilePackageRunStopped(options.profile.dir)) fail("PROFILE_WRITER_UNCONFIRMED");
             const store = await pluginProfileStoreDirectory(options.profile.dir);
-            for (const selectedPlan of selected)
-              row(selectedPlan.release.name, { state: "snapshotting" });
             const id = randomUUID(),
               operationDirectory = join(operations, id);
             await mkdir(operationDirectory, { mode: 0o700 });
@@ -775,19 +777,16 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                     options.profile.installAnchor,
                     options.core.version,
                     options.profile.packageManager,
+                    async (observation) => {
+                      await stage("installing", null, { processes: [observation] });
+                    },
                   )
                 : null;
             currentMonitor = windowsRun;
-            recovery = join(operationDirectory, "recovery");
-            await freezePluginProfile(options.profile.dir, baseline, recovery, options.fileCommit);
-            const userDataSha256 = await freezePluginUserData(options.profile.home, recovery);
-            await writePluginRecoveryNotes(operationDirectory, options.profile.dir);
             lifetime.signal.throwIfAborted();
             for (const release of selectedSuite) options.source.assertCurrentRelease(release);
-            if ((await readPluginProfile(options.profile.dir)).sha256 !== baseline.sha256)
-              fail("UPDATE_BASELINE_CHANGED");
             const operation: PluginUpdateOperation = {
-              schema: 1,
+              schema: 2,
               ...(downloads.length > 1
                 ? {
                     targets: downloads.map(({ release, archivePath }) => ({
@@ -806,12 +805,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               stage: "accepted",
               startedAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-              baselineSha256: baseline.sha256,
               archivePath: archive,
-              recoveryDirectory: recovery,
-              userDataSha256,
+              directory: operationDirectory,
               diagnostic: null,
-              installedGraphSha256: null,
               completionProof: null,
               logs: [],
               processes: [],
@@ -859,6 +855,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                   "--ignore-scripts",
                   "--ignore-pnpmfile",
                   "--config.auto-install-peers=false",
+                  "--config.update-notifier=false",
                 ],
                 {
                   ...(windowsRun?.packageManager ?? options.profile.packageManager),
@@ -881,84 +878,34 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               options.quiescenceWaitMs ?? 2_000,
             );
             await stage("verifying", null, { logs: operation.logs, processes });
-            if (!stopped || outcome?.incompatible?.length)
-              await stage("unknown", "PACKAGE_WRITERS_UNCONFIRMED");
-            else if (
-              await verifyPluginUserData(options.profile.home, recovery, userDataSha256).then(
-                () => false,
-                () => true,
-              )
-            )
-              await stage("unknown", "UPDATE_USER_DATA_NOT_PRESERVED");
-            else if (
-              !retainsUnmanagedManifestFields(
-                baseline,
-                await readPluginProfile(options.profile.dir),
-              )
-            ) {
-              await stage("unknown", "PROFILE_SETTINGS_OWNERSHIP_UNCONFIRMED");
-            } else if (
-              installationError ||
-              !outcome ||
-              outcome.exitCode !== 0 ||
-              outcome.timedOut ||
-              lifetime.signal.aborted
-            ) {
-              await stage(
-                "restoring",
-                lifetime.signal.aborted ? "HOST_CANCELLED" : "PACKAGE_INSTALL_FAILED",
-              );
-              await restorePluginProfile(options.profile.dir, baseline, recovery);
-              reflectProfile(
-                await readPluginProfile(options.profile.dir),
-                await options.readRuntimeProofs(pluginUpdateProcessIdentity),
-              );
-              await stage(
-                "restored",
-                lifetime.signal.aborted ? "HOST_CANCELLED" : "PACKAGE_INSTALL_FAILED",
-              );
-            } else {
+            if (!stopped) await stage("unknown", "PACKAGE_WRITERS_UNCONFIRMED");
+            else {
               const after = await readPluginProfile(options.profile.dir);
-              let verified = retainsProfileUpdates(baseline, after, downloads);
-              for (const { release, archivePath } of downloads) {
-                const installed = after.packages.find(
-                  (pkg) => pkg.root && pkg.name === release.name,
+              reflectProfile(after, await options.readRuntimeProofs(pluginUpdateProcessIdentity));
+              if (!retainsUnmanagedManifestFields(baseline, after))
+                await stage("failed", "PROFILE_SETTINGS_OWNERSHIP_UNCONFIRMED");
+              else if (
+                installationError ||
+                !outcome ||
+                outcome.exitCode !== 0 ||
+                outcome.timedOut ||
+                lifetime.signal.aborted
+              )
+                await stage(
+                  "failed",
+                  lifetime.signal.aborted ? "HOST_CANCELLED" : "PACKAGE_INSTALL_FAILED",
                 );
-                if (
-                  !installed ||
-                  installed.version !== release.version ||
-                  !(await archiveMatches(archivePath, installed.dir, lifetime.signal))
+              else if (
+                !retainsProfileUpdates(baseline, after, downloads) ||
+                downloads.some(
+                  ({ release }) =>
+                    !after.packages.some(
+                      (pkg) => pkg.name === release.name && pkg.version === release.version,
+                    ),
                 )
-                  verified = false;
-              }
-              if (
-                !verified ||
-                validatePluginCombination({
-                  core: options.core,
-                  manifests: await combinationManifests(after, options.core, options.profile.dir),
-                }).length ||
-                (
-                  await validateActualProfile(
-                    after,
-                    options.core,
-                    options.profile.dir,
-                    options.profile.installAnchor,
-                  )
-                ).length
-              ) {
-                await stage("restoring", "PACKAGE_POSTCHECK_FAILED");
-                await restorePluginProfile(options.profile.dir, baseline, recovery);
-                reflectProfile(
-                  await readPluginProfile(options.profile.dir),
-                  await options.readRuntimeProofs(pluginUpdateProcessIdentity),
-                );
-                await stage("restored", "PACKAGE_POSTCHECK_FAILED");
-              } else {
-                reflectProfile(after, await options.readRuntimeProofs(pluginUpdateProcessIdentity));
-                await stage("pending-restart", null, {
-                  installedGraphSha256: after.ownedSha256,
-                });
-              }
+              )
+                await stage("failed", "PACKAGE_POSTCHECK_FAILED");
+              else await stage("pending-restart");
             }
           },
           { waitMs: options.lockWaitMs ?? 30_000 },

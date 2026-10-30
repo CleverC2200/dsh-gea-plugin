@@ -38,6 +38,90 @@ test("customer Cube intersects complete filtered customer set and snapshot, with
   c.abort();
   assert.throws(() => inheritModuleCubeScope(host, "s", args), /NOT_READY/);
 });
+for (const model of [
+  "agents_scm_cust_plan_order_analysis_d",
+  "cust_plan_order_analysis_qa",
+  "agents_scm_cust_jxc_ai_daliy_d",
+  "cust_jxc_ai_daily_qa",
+]) {
+  test(`${model} retains caller filters and intersects the current customer list and snapshot`, () => {
+    const host = { surfaceFor: () => ({ menu: "inventory-customer" }) };
+    const controller = new AbortController();
+    const binding = bindModulePage(host, "s", "inventory-customer", controller.signal);
+    const args = query(model);
+    args.queries[0].query.filters.push({
+      or: [
+        {
+          member: model + ".cust_code",
+          operator: "equals",
+          values: ["outside"],
+        },
+        {
+          member: model + ".stat_date",
+          operator: "in",
+          values: ["2026-10-27"],
+        },
+      ],
+    });
+    const original = structuredClone(args);
+    assert.throws(() => inheritModuleCubeScope(host, "s", args), /NOT_READY/);
+    const payload = {
+      inventorySnapshot: "2026-10-28",
+      filteredCustomerCodes: ["10155031"],
+    };
+    binding.observe(payload);
+    const historical = structuredClone(args);
+    historical.queries[0].query.timeDimensions = [
+      { dimension: model + ".stat_date", dateRange: ["2026-10-26", "2026-10-26"] },
+    ];
+    assert.throws(
+      () => inheritModuleCubeScope(host, "s", historical),
+      /DATE_CONFLICT.*不能据此判断历史源表无数据/,
+    );
+    const result = inheritModuleCubeScope(host, "s", args);
+    assert.deepEqual(args, original);
+    assert.deepEqual(result.queries[0].query.filters, [
+      ...original.queries[0].query.filters,
+      {
+        member: model + ".stat_date",
+        operator: "inDateRange",
+        values: ["2026-10-28", "2026-10-28"],
+      },
+      { member: model + ".cust_code", operator: "equals", values: ["10155031"] },
+    ]);
+    binding.observe({ ...payload, filteredCustomerCodes: ["10060002"] });
+    assert.deepEqual(
+      inheritModuleCubeScope(host, "s", args).queries[0].query.filters.at(-1).values,
+      ["10060002"],
+    );
+    const codes = Array.from({ length: 2843 }, (_, index) => String(10000000 + index));
+    binding.observe({ ...payload, filteredCustomerCodes: codes });
+    const groups = inheritModuleCubeScope(host, "s", args).queries[0].query.filters.at(-1).or;
+    assert.equal(groups.length, 29);
+    assert(
+      groups.every(
+        (group) =>
+          group.member === model + ".cust_code" &&
+          group.operator === "equals" &&
+          group.values.length <= 100,
+      ),
+    );
+    assert.deepEqual(
+      groups.flatMap((group) => group.values),
+      codes,
+    );
+    assert.deepEqual(args, original);
+    binding.observe({ ...payload, filteredCustomerCodes: [] });
+    assert.throws(() => inheritModuleCubeScope(host, "s", args), /SCOPE_EMPTY/);
+    binding.observe({ ...payload, filteredCustomerCodes: undefined });
+    assert.throws(() => inheritModuleCubeScope(host, "s", args), /NOT_READY/);
+    binding.observe({ ...payload, inventorySnapshot: undefined });
+    assert.throws(() => inheritModuleCubeScope(host, "s", args), /NOT_READY/);
+    binding.observe(payload);
+    controller.abort();
+    assert.throws(() => inheritModuleCubeScope(host, "s", args), /NOT_READY/);
+  });
+}
 test("fulfillment Cube preserves source date, exact order and all UI filters, failing closed on timezone changes", () => {
   const host = { surfaceFor: () => ({ menu: "inventory-orderfulfillment" }) };
   const b = bindModulePage(host, "s", "inventory-orderfulfillment", new AbortController().signal);

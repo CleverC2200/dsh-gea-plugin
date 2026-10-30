@@ -296,23 +296,6 @@ export async function registerHtmlPlugins(
       }),
     );
   register("/api/gea-html/compatibility", ["GET"], () => json(incompatible), false);
-  register(
-    "/api/gea-html/identity",
-    ["GET"],
-    () => {
-      const { environment, environments, authenticated, loginState, user } = business.status();
-      return json({
-        scope: business.pageSessionScope() ?? null,
-        subject: businessIdentityKey(business) ?? null,
-        status: { environment, environments, authenticated, loginState, user },
-        // A projection of the gateway-verified receipt. It is intentionally
-        // absent until the customer-inventory page has requested its own
-        // delegated session; page labels never manufacture an access range.
-        customerInventory: business.customerInventoryIdentity?.() ?? null,
-      });
-    },
-    false,
-  );
   for (const item of items) {
     for (const page of item.pages)
       ctx.effect(() =>
@@ -442,6 +425,14 @@ export async function registerHtmlPlugins(
               ) => capability.allows("gea-html-" + item.id, effect),
               ...(item.id === "inventory-fc" && !item.mock
                 ? {
+                    branchStorage: (parameters: any, requestSignal: AbortSignal) => {
+                      if (business.surfaceFor(session) !== surface)
+                        throw Error("PAGE_OWNER_RELEASED");
+                      return business.branchStorage(
+                        parameters,
+                        AbortSignal.any([requestSignal, grantSignal]),
+                      );
+                    },
                     branchDms: (parameters: any, requestSignal: AbortSignal) => {
                       if (business.surfaceFor(session) !== surface)
                         throw Error("PAGE_OWNER_RELEASED");
@@ -492,7 +483,7 @@ export async function registerHtmlPlugins(
                   true,
                 );
               },
-              ...(item.id === "inventory-aqkc" && !item.mock
+              ...(["inventory-aqkc", "inventory-fc"].includes(item.id) && !item.mock
                 ? {
                     insight: (parameters: unknown, requestSignal: AbortSignal) => {
                       if (business.surfaceFor(session) !== surface)

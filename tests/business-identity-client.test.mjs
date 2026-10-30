@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createBusinessIdentityReader } from "../src/business-identity-client.ts";
-import { registerHtmlPlugins } from "../src/html-plugins.ts";
+import { mountBusinessIdentity } from "../src/host/business-identity.ts";
 
 test("Host user identifiers remain exact strings and notify changes without accepting numeric IDs", async (t) => {
   const originalFetch = globalThis.fetch,
@@ -67,7 +67,7 @@ test("the read-only identity route exposes configured environment choices withou
     source: "must-not-be-exposed",
     token: "must-not-be-exposed",
   };
-  await registerHtmlPlugins(ctx, { status: () => status, pageSessionScope: () => undefined }, []);
+  mountBusinessIdentity(ctx, { status: () => status, pageSessionScope: () => undefined });
   const route = routes.get("/api/gea-html/identity");
   assert.deepEqual(route.methods, ["GET"]);
   const response = await route.fetch(new Request("https://fixture.invalid/api/gea-html/identity"));
@@ -450,7 +450,7 @@ test("startup budget is fixed across retries and publishes failure even while a 
   const reader = createBusinessIdentityReader();
   await assert.rejects(reader());
   assert.equal(reader.getSnapshot().state, "unknown");
-  t.mock.timers.tick(4000);
+  t.mock.timers.tick(19000);
   await assert.rejects(reader());
   const pending = Promise.withResolvers();
   globalThis.fetch = () => pending.promise;
@@ -485,7 +485,7 @@ test("a stopped observer cancels its request and a later owner cannot renew the 
   const reader = createBusinessIdentityReader();
   const stop = reader.start();
   await new Promise((resolve) => setImmediate(resolve));
-  t.mock.timers.tick(4000);
+  t.mock.timers.tick(19000);
   stop();
   assert.equal(signal.aborted, true);
   t.mock.timers.tick(2000);
@@ -493,4 +493,82 @@ test("a stopped observer cancels its request and a later owner cannot renew the 
   t.after(stopNext);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reader.getSnapshot().state, "error");
+});
+
+test("a ten-second cold startup stays unknown until the Host confirms the restored identity", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  const originalFetch = globalThis.fetch,
+    originalWindow = globalThis.window;
+  globalThis.window = new EventTarget();
+  let ready = false;
+  globalThis.fetch = async () =>
+    ready
+      ? Response.json({
+          scope: "restored-scope",
+          subject: "restored-user",
+          status: {
+            environment: "production",
+            authenticated: true,
+            loginState: "authenticated",
+            user: { id: "restored-user" },
+          },
+        })
+      : new Response(null, { status: 404 });
+  const reader = createBusinessIdentityReader();
+  const states = [];
+  const unsubscribe = reader.subscribe(() => states.push(reader.getSnapshot().state));
+  const stop = reader.start();
+  t.after(() => {
+    stop();
+    unsubscribe();
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  });
+  await new Promise(setImmediate);
+  for (let second = 1; second <= 10; second++) {
+    ready = second === 10;
+    t.mock.timers.tick(1000);
+    await new Promise(setImmediate);
+    if (!ready) {
+      assert.equal(reader.getSnapshot().state, "unknown", `startup second ${second}`);
+      assert.equal(reader.getSnapshot().status, null);
+      assert.equal(reader.getSnapshot().error, undefined);
+    }
+  }
+  assert.equal(reader.getSnapshot().state, "confirmed");
+  assert.equal(reader.getSnapshot().status.authenticated, true);
+  assert.equal(reader.getSnapshot().subject, "restored-user");
+  assert.deepEqual(states, ["confirmed"]);
+});
+
+test("a stalled startup request still aborts after five seconds within the startup grace period", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  t.mock.method(AbortSignal, "timeout", (milliseconds) => {
+    const controller = new AbortController();
+    setTimeout(
+      () => controller.abort(new DOMException("request timed out", "TimeoutError")),
+      milliseconds,
+    );
+    return controller.signal;
+  });
+  let signal;
+  globalThis.fetch = (_path, options) => {
+    signal = options.signal;
+    return new Promise((_resolve, reject) =>
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+    );
+  };
+  const reader = createBusinessIdentityReader();
+  const reading = assert.rejects(reader.refresh(), { code: "IDENTITY_TIMEOUT" });
+  t.mock.timers.tick(4999);
+  assert.equal(signal.aborted, false);
+  t.mock.timers.tick(1);
+  await reading;
+  assert.equal(signal.aborted, true);
+  assert.equal(reader.getSnapshot().state, "unknown");
+  assert.equal(reader.getSnapshot().error, undefined);
 });

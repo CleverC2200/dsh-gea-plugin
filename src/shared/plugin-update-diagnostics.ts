@@ -119,12 +119,7 @@ export function sourceUpdateProblem(code: string): PluginUpdateProblem {
     return { kind: "policy", code: "content-mismatch" };
   return {
     kind: "source",
-    code:
-      code === "SOURCE_SIGNATURE_INVALID"
-        ? "signature"
-        : code === "SOURCE_HTTP_FAILED"
-          ? "http"
-          : "unavailable",
+    code: code === "SOURCE_HTTP_FAILED" ? "http" : "unavailable",
   };
 }
 /** Retain compatible version facts, excluding synthetic owner ids and file/transport details. */
