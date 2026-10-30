@@ -2570,10 +2570,20 @@ export class Business {
   async orderSalesConfirmation(payload: unknown, caller: AbortSignal) {
     this.assertExecutionAllowed("order01");
     const auth = this.authenticated();
-    return orderSalesConfirmation(payload, {
-      enabled: this.config.orderFulfillmentConfirmation?.[this.environment as "production" | "test"] === true,
-      base: this.base, auth, identity: this.epoch.signal, signal: caller, timeoutMs: this.config.requestTimeoutMs,
-    }, this.apiLog.fetch);
+    return orderSalesConfirmation(
+      payload,
+      {
+        enabled:
+          this.config.orderFulfillmentConfirmation?.[this.environment as "production" | "test"] ===
+          true,
+        base: this.base,
+        auth,
+        identity: this.epoch.signal,
+        signal: caller,
+        timeoutMs: this.config.requestTimeoutMs,
+      },
+      this.apiLog.fetch,
+    );
   }
   async orderReport(payload: Record<string, unknown>, caller: AbortSignal) {
     const auth = this.authenticated();
