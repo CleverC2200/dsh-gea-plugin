@@ -3,6 +3,7 @@ import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import type { Business } from "./business.ts";
 import { GeaSqlError } from "../html-sql.ts";
+import { gatewaySessionExpired } from "./agent-tools.ts";
 import { validateCubeQueryResult } from "./cube-new.ts";
 
 const object = (value: unknown): Record<string, unknown> | undefined =>
@@ -14,7 +15,7 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
 export async function readConfiguredHtmlQuery(
   resource: { directory: string; manifest: Record<string, any> },
   input: unknown,
-  business: Pick<Business, "pluginSql" | "moduleMcp">,
+  business: Pick<Business, "pluginSql" | "moduleMcp" | "invalidateModuleMcp">,
   signal: AbortSignal,
   consumerCode: string = resource.manifest.gea.consumerCode,
   pageRead = false,
@@ -106,7 +107,14 @@ export async function readConfiguredHtmlQuery(
         queries: [{ name: queryId, query: request.cube }],
       };
       const client = await business.moduleMcp(consumerCode, signal);
-      const payload: unknown = JSON.parse(await client.call("query_business_data", args, signal));
+      let payload: unknown;
+      try {
+        payload = JSON.parse(await client.call("query_business_data", args, signal));
+      } catch (error) {
+        if (!signal.aborted && gatewaySessionExpired(error))
+          business.invalidateModuleMcp(consumerCode, client);
+        throw error;
+      }
       signal.throwIfAborted();
       validateCubeQueryResult(payload, args, "inline");
       const datasets = object(payload)?.datasets;

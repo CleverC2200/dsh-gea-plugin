@@ -333,3 +333,29 @@ for (const id of ["fc", "aqkc", "qll", "apsplan"])
       assert.ok(called);
     }
   });
+
+test("expired page Cube reads discard only the rejected cached connection and never retry the same request", async (t) => {
+  const r = await resource(t, "mps");
+  let calls = 0;
+  const expired = {
+    call: async () => {
+      calls++;
+      throw Object.assign(Error("AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED"), {
+        code: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
+      });
+    },
+  };
+  const cleared = [];
+  const result = await readConfiguredHtmlQuery(
+    r,
+    { queryId: "facts.history", parameters: { month: "2026-06-01", page_size: 200, offset: 0 } },
+    {
+      moduleMcp: async () => expired,
+      invalidateModuleMcp: (...args) => cleared.push(args),
+    },
+    signal(),
+  );
+  assert.equal(result.success, false);
+  assert.equal(calls, 1);
+  assert.deepEqual(cleared, [["mps", expired]]);
+});
