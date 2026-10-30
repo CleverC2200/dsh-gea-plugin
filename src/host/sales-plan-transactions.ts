@@ -145,15 +145,11 @@ export class SalesPlanTransactions {
           throw new GeaResponseError(409, {
             message: "计划已变化，请刷新后核对重提版本",
           });
-        if (version.status > 6) {
-          await this.host.permissions(signal);
-          if (
-            !salesPlan.salesPlanCanResubmit(version, salesPlanStagesForRoles(auth.roles), auth.id)
-          )
-            throw new GeaResponseError(403, {
-              message: "当前用户不是该退回版本的修改责任人，请由对应责任人修改后提交",
-            });
-        }
+        if (version.status > 6) await this.host.permissions(signal);
+        if (!salesPlan.salesPlanCanResubmit(version, salesPlanStagesForRoles(auth.roles), auth.id))
+          throw new GeaResponseError(403, {
+            message: "当前用户不是该退回版本的修改责任人，请由对应责任人修改后提交",
+          });
         const periods = object(
           await this.host.query(
             {

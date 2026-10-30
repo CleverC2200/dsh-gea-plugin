@@ -452,8 +452,13 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
   assert.equal(f.writes(), 2);
 });
 
-for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
-  test(`public Business resubmits returned M with exact customer ${customerCode}, separate service identity and nullable audit receipt`, async (t) => {
+for (const [customerCode, returnedStatus] of [
+  ["456", 7],
+  ["9007199254740993", 7],
+  ["9223372036854775807", 7],
+  ["456", 6],
+])
+  test(`public Business resubmits returned M status ${returnedStatus} with exact customer ${customerCode}, separate service identity and nullable audit receipt`, async (t) => {
     process.env.GEA_CONTRACT_CLIENT = "contract-client";
     process.env.GEA_CONTRACT_SECRET = "contract-secret";
     t.after(() => {
@@ -486,7 +491,8 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
         name: "Test",
         id: "user-1",
         username: "test",
-        roles: [{ code: "sales_plan_region_approver", name: "区域审批" }],
+        roles:
+          returnedStatus === 6 ? [] : [{ code: "sales_plan_region_approver", name: "区域审批" }],
       },
     });
     t.after(() => business.dispose());
@@ -497,7 +503,8 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
       periodId: "17",
       planTypeCode: "Y",
       orderType: "M",
-      status: 7,
+      status: returnedStatus,
+      submitter: "user-1",
       effective: true,
       seq: 1,
       cust_code: JSON.rawJSON(customerCode),
@@ -521,7 +528,7 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
     };
     const request = {
       orderType: "M",
-      status: 2,
+      status: returnedStatus === 6 ? 1 : 2,
       periodId: "17",
       periodMonth: "2026-10",
       planTypeCode: "Y",
@@ -599,7 +606,7 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
             planId,
             versionId: "v2",
             seq: 2,
-            status: 2,
+            status: request.status,
             replayed: false,
             requestId: init.headers["X-Request-Id"],
             traceId: "trace",
@@ -664,15 +671,25 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
     const signal = new AbortController().signal;
     await business.refreshApprovalRoles(signal);
     assert.equal(business.status().resubmitConnected, true);
-    employeeRole = false;
-    await business.refreshApprovalRoles(signal, { force: true });
-    await assert.rejects(
-      business.salesPlanSubmit(command("role-denied"), signal),
-      (error) =>
-        error.code === "GEA_HTTP_403" && error.details.resubmitUnavailableReason === undefined,
-    );
-    employeeRole = true;
-    await business.refreshApprovalRoles(signal, { force: true });
+    if (returnedStatus === 6) {
+      version.submitter = "another-submitter";
+      await assert.rejects(
+        business.salesPlanSubmit(command("submitter-denied"), signal),
+        (error) =>
+          error.code === "GEA_HTTP_403" && error.details.resubmitUnavailableReason === undefined,
+      );
+      version.submitter = "user-1";
+    } else {
+      employeeRole = false;
+      await business.refreshApprovalRoles(signal, { force: true });
+      await assert.rejects(
+        business.salesPlanSubmit(command("role-denied"), signal),
+        (error) =>
+          error.code === "GEA_HTTP_403" && error.details.resubmitUnavailableReason === undefined,
+      );
+      employeeRole = true;
+      await business.refreshApprovalRoles(signal, { force: true });
+    }
     sourceDenied = true;
     await assert.rejects(
       business.salesPlanSubmit(command("source-denied"), signal),
@@ -684,7 +701,7 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
     assert.equal(writes, 0);
     const receipt = await business.salesPlanSubmit(command("first"), signal);
     assert.equal(receipt.auditId, null);
-    assert.equal(receipt.status, 2);
+    assert.equal(receipt.status, request.status);
     assert.deepEqual(await business.salesPlanSubmit(command("first"), signal), receipt);
     assert.equal(writes, 1);
     await assert.rejects(
