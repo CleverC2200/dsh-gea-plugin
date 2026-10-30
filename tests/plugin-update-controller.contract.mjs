@@ -959,7 +959,8 @@ test("older channel keeps its candidate and reports a downgrade without acceptin
 test("plugin installation exits after Done even when the pnpm update registry never responds", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
-  const { configureStalledPnpmRegistry } = await import("./fixtures/plugin-updates/stalled-registry.mjs");
+  const { configureStalledPnpmRegistry } =
+    await import("./fixtures/plugin-updates/stalled-registry.mjs");
   const f = await controllerFixture(t);
   const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
   f.profile.packageManager.args = [manager];
@@ -973,7 +974,11 @@ test("plugin installation exits after Done even when the pnpm update registry ne
   const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
   const log = await readFile(operation.logs[0], "utf8");
   assert.match(log, /Done in .*using pnpm v11\.7\.0/);
-  assert.equal(operation.stage, "pending-restart", JSON.stringify({ operation, requests: registry.requests, log }));
+  assert.equal(
+    operation.stage,
+    "pending-restart",
+    JSON.stringify({ operation, requests: registry.requests, log }),
+  );
   assert.deepEqual(registry.requests, []);
 });
 

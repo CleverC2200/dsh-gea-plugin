@@ -16,14 +16,17 @@ export async function configureStalledPnpmRegistry(t, profile) {
   const directory = join(dirname(profile.dir), "stalled-registry-config");
   await mkdir(directory);
   const config = join(directory, "npmrc");
-  await writeFile(config, [
-    `registry=http://127.0.0.1:${server.address().port}/`,
-    "update-notifier=true",
-    "ci=false",
-    "fetch-timeout=60000",
-    "fetch-retries=0",
-    "",
-  ].join("\n"));
+  await writeFile(
+    config,
+    [
+      `registry=http://127.0.0.1:${server.address().port}/`,
+      "update-notifier=true",
+      "ci=false",
+      "fetch-timeout=60000",
+      "fetch-retries=0",
+      "",
+    ].join("\n"),
+  );
   profile.packageManager.env = {
     ...profile.packageManager.env,
     npm_config_userconfig: config,

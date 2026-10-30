@@ -72,20 +72,17 @@ for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-writ
       ["pending-restart", "failed", "unknown", "failed"],
       30000,
     );
-    const expected = mode === "success" || mode.startsWith("pnpm")
-      ? "pending-restart"
-      : mode === "fail-after-write"
-        ? "failed"
-        : "unknown";
+    const expected =
+      mode === "success" || mode.startsWith("pnpm")
+        ? "pending-restart"
+        : mode === "fail-after-write"
+          ? "failed"
+          : "unknown";
     if (result.stage !== expected) {
       for (const log of result.logs)
         console.error("WINDOWS_FIXTURE_LOG", mode, await readFile(log, "utf8"));
     }
-    assert.equal(
-      result.stage,
-      expected,
-      JSON.stringify(result),
-    );
+    assert.equal(result.stage, expected, JSON.stringify(result));
     assert(result.processes.some((x) => x.grouped === false && x.sawAlive && x.startIdentity));
     if (stalledRegistry) {
       assert.deepEqual(stalledRegistry.requests, []);

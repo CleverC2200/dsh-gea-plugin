@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, lstat } from "node:fs/promises";
+import { mkdir, readFile, writeFile, lstat, realpath } from "node:fs/promises";
 import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
@@ -94,7 +94,7 @@ function stoppedUpdateProcesses(processes) {
 
 async function readProfileUpdateState(
   profile,
-  { allowExitedPackageRun = false, allowStoppedUnknown = false } = {},
+  { allowExitedPackageRun = false, allowStoppedUpdate = false } = {},
 ) {
   const recorded = await optional(join(profile, ".plugin-manager/run.json"));
   if (recorded) {
@@ -102,11 +102,16 @@ async function readProfileUpdateState(
     const run = JSON.parse(recorded);
     if (!Number.isSafeInteger(run.pid) || run.pid < 1 || typeof run.grouped !== "boolean")
       throw Error("GEA_REFRESH_PROFILE_BUSY");
-    try {
-      process.kill(run.grouped && process.platform !== "win32" ? -run.pid : run.pid, 0);
-      throw Error("GEA_REFRESH_PROFILE_BUSY");
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
+    for (const pid of [
+      run.pid,
+      ...(run.grouped && process.platform !== "win32" ? [-run.pid] : []),
+    ]) {
+      try {
+        process.kill(pid, 0);
+        throw Error("GEA_REFRESH_PROFILE_BUSY");
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
     }
   }
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
@@ -119,19 +124,18 @@ async function readProfileUpdateState(
   );
   if (receipt.id !== pointer.id) throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
   if (
-    allowStoppedUnknown &&
-    receipt.stage === "unknown" &&
-    receipt.diagnostic === "PACKAGE_WRITERS_UNCONFIRMED" &&
+    allowStoppedUpdate &&
+    ["installing", "verifying", "unknown"].includes(receipt.stage) &&
     stoppedUpdateProcesses(receipt.processes)
   )
-    return receipt.stage;
+    return receipt;
   if (!["pending-restart", "completed", "restored", "failed"].includes(receipt.stage))
     throw Error("GEA_REFRESH_UPDATE_PENDING");
-  return receipt.stage;
+  return receipt;
 }
 
 export async function assertProfileIdle(profile, options) {
-  if ((await readProfileUpdateState(profile, options)) === "pending-restart")
+  if ((await readProfileUpdateState(profile, options))?.stage === "pending-restart")
     throw Error("GEA_REFRESH_UPDATE_PENDING");
 }
 
@@ -214,16 +218,147 @@ export async function assertCompletedGeaRefresh(profile, { allowArchiveRecovery 
   throw Error("GEA_REFRESH_RECOVERY_REQUIRED");
 }
 
+async function completeInterruptedUpdate({
+  root,
+  support,
+  home,
+  profile,
+  install,
+  receipt,
+  currentBytes,
+}) {
+  const runtime = join(profile, "gea/plugin-updates");
+  const operation = join(runtime, "operations", receipt.id);
+  const journal = join(operation, "receipt.json");
+  const original = await readFile(journal);
+  const targets = receipt.targets;
+  if (
+    !isDeepStrictEqual(JSON.parse(original), receipt) ||
+    receipt.schema !== 2 ||
+    receipt.directory !== operation ||
+    typeof receipt.processIdentity !== "string" ||
+    !receipt.processIdentity ||
+    !Array.isArray(receipt.logs) ||
+    !receipt.logs.every((log) => typeof log === "string") ||
+    !Array.isArray(targets) ||
+    targets.length !== companyPackageNames.length ||
+    !companyPackageNames.every(
+      (name) => targets.filter((row) => row?.packageName === name).length === 1,
+    ) ||
+    ["packageName", "targetVersion", "targetSha256", "archivePath"].some(
+      (key) => targets[0][key] !== receipt[key],
+    )
+  )
+    throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+  const current = JSON.parse(currentBytes);
+  if (!companyPackageNames.every((name) => typeof current.dependencies?.[name] === "string"))
+    throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+  const patch = await optional(join(profile, "cordis.patch.yml"));
+  await install({
+    root,
+    support,
+    home,
+    profile,
+    packages: targets.map((row) => row.archivePath),
+    store: join(home, "desktop-company-cache/gea-refresh/store"),
+    offline: false,
+    strictPeers: true,
+    activateNewBundles: false,
+    beforeInstall: async () => {
+      const latest = await readProfileUpdateState(profile, {
+        allowExitedPackageRun: true,
+        allowStoppedUpdate: true,
+      });
+      if (
+        latest?.id !== receipt.id ||
+        !stoppedUpdateProcesses(latest.processes) ||
+        !(await readFile(journal)).equals(original) ||
+        !(await readFile(join(profile, "package.json"))).equals(currentBytes)
+      )
+        throw Error("GEA_REFRESH_PROFILE_CHANGED");
+      const cache = await realpath(join(runtime, "cache"));
+      for (const target of targets) {
+        if (
+          typeof target.targetVersion !== "string" ||
+          !target.targetVersion ||
+          typeof target.targetSha256 !== "string" ||
+          !/^[a-f0-9]{64}$/.test(target.targetSha256) ||
+          typeof target.archivePath !== "string" ||
+          !isAbsolute(target.archivePath) ||
+          relative(join(runtime, "cache"), target.archivePath) !== target.targetSha256 + ".tgz" ||
+          (await realpath(target.archivePath)) !== join(cache, target.targetSha256 + ".tgz")
+        )
+          throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+        const entry = await lstat(target.archivePath);
+        if (
+          !entry.isFile() ||
+          entry.isSymbolicLink() ||
+          createHash("sha256")
+            .update(await readFile(target.archivePath))
+            .digest("hex") !== target.targetSha256
+        )
+          throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+      }
+    },
+    complete: async ({ writeFileAtomic, result }) => {
+      const after = JSON.parse(await readFile(join(profile, "package.json")));
+      const expected = structuredClone(current);
+      for (const target of targets) {
+        const actual = JSON.parse(
+          await readFile(join(profile, "node_modules", target.packageName, "package.json")),
+        );
+        const spec = after.dependencies?.[target.packageName];
+        if (
+          actual.name !== target.packageName ||
+          actual.version !== target.targetVersion ||
+          typeof spec !== "string" ||
+          spec.replaceAll("\\", "/") !== "file:" + target.archivePath.replaceAll("\\", "/")
+        )
+          throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
+        expected.dependencies[target.packageName] = spec;
+      }
+      if (!isDeepStrictEqual(after, expected)) throw Error("GEA_REFRESH_PROFILE_NOT_PRESERVED");
+      const afterPatch = await optional(join(profile, "cordis.patch.yml"));
+      if ((patch === null) !== (afterPatch === null) || (patch && !patch.equals(afterPatch)))
+        throw Error("GEA_REFRESH_CONFIG_NOT_PRESERVED");
+      if (!(await readFile(journal)).equals(original)) throw Error("GEA_REFRESH_PROFILE_CHANGED");
+      await writeFileAtomic(
+        journal,
+        JSON.stringify({
+          ...receipt,
+          stage: "pending-restart",
+          diagnostic: null,
+          logs: [...receipt.logs, ...(result?.logPath ? [result.logPath] : [])],
+          updatedAt: new Date().toISOString(),
+        }) + "\n",
+        { mode: 0o600 },
+      );
+    },
+  });
+  return { status: "pending-restart-preserved", changed: true };
+}
+
 export async function refreshBundledCompanySuite({ root, support, seed, home, manifest, install }) {
   const profile = join(home, "profiles/desktop");
   const directory = join(profile, "gea/bootstrap/gea-refresh");
   const journal = join(directory, "receipt.json");
   const currentBytes = await optional(join(profile, "package.json"));
   if (!currentBytes) return { status: "company-profile-not-installed", changed: false };
-  const updateStage = await readProfileUpdateState(profile, { allowStoppedUnknown: true });
-  if (updateStage === "unknown")
-    return { status: "unknown-update-preserved", changed: false };
-  if (updateStage === "pending-restart")
+  const update = await readProfileUpdateState(profile, {
+    allowExitedPackageRun: true,
+    allowStoppedUpdate: true,
+  });
+  if (update && ["installing", "verifying", "unknown"].includes(update.stage))
+    return completeInterruptedUpdate({
+      root,
+      support,
+      home,
+      profile,
+      install,
+      receipt: update,
+      currentBytes,
+    });
+  if (update?.stage === "pending-restart")
     return { status: "pending-restart-preserved", changed: false };
   const installedFiles = new Map(
     await Promise.all(
