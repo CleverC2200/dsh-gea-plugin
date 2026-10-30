@@ -22,8 +22,13 @@ try {
         $target = Join-Path $work ('update-' + $version + '.ps1')
         [IO.File]::WriteAllText($target,('Write-Output "version ' + $version + '"'),[Text.UTF8Encoding]::new($false))
         Write-Output ('[GEA-CERT] signing-version-' + $version)
-        & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'sign-windows.ps1') -TargetPath $target -PfxFile $pfx -PasswordFile $passwordFile -CertificatePath $cer
-        if ($LASTEXITCODE -ne 0) { throw 'SIGNING_FAILED' }
+        $previousModulePath = $env:PSModulePath
+        try {
+            $env:PSModulePath = ''
+            & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'sign-windows.ps1') -TargetPath $target -PfxFile $pfx -PasswordFile $passwordFile -CertificatePath $cer
+            $code = $LASTEXITCODE
+        } finally { $env:PSModulePath = $previousModulePath }
+        if ($code -ne 0) { throw 'SIGNING_FAILED' }
         $signature = Get-AuthenticodeSignature -LiteralPath $target
         if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint -or $null -eq $signature.TimeStamperCertificate) { throw 'UPDATE_SIGNATURE_INVALID' }
     }

@@ -83,8 +83,14 @@ export function createCompanyWindowsSigner(
             },
           },
         );
-      } catch {
-        throw Error("WINDOWS_SIGNING_OR_TIMESTAMP_FAILED");
+      } catch (error) {
+        const stage =
+          String(error.stdout ?? "")
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith("[GEA-CERT] "))
+            .at(-1) ?? "bootstrap";
+        const reason = String(error.stderr ?? "").match(/WINDOWS_[A-Z_]+/)?.[0] ?? "child-process";
+        throw Error(`WINDOWS_SIGNING_OR_TIMESTAMP_FAILED (${stage}; ${reason})`);
       }
     });
     pending = operation;

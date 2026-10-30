@@ -1,5 +1,8 @@
 param([Parameter(Mandatory=$true)][string]$CertificatePath,[switch]$CheckOnly,[ValidateSet('CurrentUser','LocalMachine')][string]$StoreLocation='CurrentUser')
 $ErrorActionPreference = 'Stop'
+foreach ($module in @('Utility','Management')) {
+    Import-Module "$PSHOME/Modules/Microsoft.PowerShell.$module/Microsoft.PowerShell.$module.psd1" -ErrorAction Stop
+}
 $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)
 $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root',$StoreLocation)
 try {

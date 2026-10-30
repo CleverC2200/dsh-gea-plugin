@@ -5,13 +5,16 @@ param(
     [Parameter(Mandatory=$true)][string]$CertificatePath
 )
 $ErrorActionPreference = 'Stop'
-Import-Module "$PSHOME/Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1" -ErrorAction Stop
+foreach ($module in @('Security','Utility','Management')) {
+    Import-Module "$PSHOME/Modules/Microsoft.PowerShell.$module/Microsoft.PowerShell.$module.psd1" -ErrorAction Stop
+}
 $public = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)
 $password = [IO.File]::ReadAllText($PasswordFile).TrimEnd("`r","`n")
 $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
 try {
     Write-Output '[GEA-CERT] load-pfx-begin'
-    $certificate.Import($PfxFile,$password,[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::DefaultKeySet)
+    try { $certificate.Import($PfxFile,$password,[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::DefaultKeySet) }
+    catch { throw 'WINDOWS_PFX_IMPORT_FAILED' }
     if (!$certificate.HasPrivateKey -or [Convert]::ToBase64String($certificate.RawData) -ne [Convert]::ToBase64String($public.RawData)) { throw 'WINDOWS_SIGNING_CERTIFICATE_MISMATCH' }
     Write-Output '[GEA-CERT] trust-root-begin'
     & (Join-Path $PSScriptRoot 'install-certificate.ps1') -CertificatePath $CertificatePath -StoreLocation LocalMachine

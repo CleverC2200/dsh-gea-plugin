@@ -91,7 +91,7 @@ test("a mismatched public certificate and a failed timestamp stop signed packagi
     result.every(
       (value) =>
         value.status === "rejected" &&
-        value.reason.message === "WINDOWS_SIGNING_OR_TIMESTAMP_FAILED",
+        value.reason.message.startsWith("WINDOWS_SIGNING_OR_TIMESTAMP_FAILED"),
     ),
   );
 });
