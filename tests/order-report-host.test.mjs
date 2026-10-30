@@ -106,9 +106,20 @@ function gateway(
           },
         });
       }
-      if(body.parameters.scope==='order:edits:'+createHash('sha256').update(scopeKey).digest('base64url')) {
-        assert.equal(body.parameters.tenant,0);assert.equal(body.parameters.consumer,'order');
-        return Response.json({success:true,result:{rows:[],returnedColumns:['report_data','version','last_request_id','schema_version'],rejectedColumns:[]}});
+      if (
+        body.parameters.scope ===
+        "order:edits:" + createHash("sha256").update(scopeKey).digest("base64url")
+      ) {
+        assert.equal(body.parameters.tenant, 0);
+        assert.equal(body.parameters.consumer, "order");
+        return Response.json({
+          success: true,
+          result: {
+            rows: [],
+            returnedColumns: ["report_data", "version", "last_request_id", "schema_version"],
+            rejectedColumns: [],
+          },
+        });
       }
       loads++;
       assert.match(body.sql, /period_start = CAST\(:start AS DATE\)/);
