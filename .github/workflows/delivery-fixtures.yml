@@ -681,6 +681,7 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/artifacts/nightly.yml
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/windows-signature-audit/*.jsonl
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json

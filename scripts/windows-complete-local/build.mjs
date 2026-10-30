@@ -222,7 +222,11 @@ execFileSync(
   { env: process.env, stdio: "inherit" },
 );
 stages.push({ name: "prepare-company-seed", code: 0, seconds: (Date.now() - seedStarted) / 1000 });
-if (signed) process.env.DSH_DESKTOP_UNSIGNED = "0";
+if (signed) {
+  process.env.DSH_DESKTOP_UNSIGNED = "0";
+  process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = join(output, "windows-signature-audit");
+  await mkdir(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, { recursive: true });
+}
 await run(
   "package-windows",
   [
