@@ -23,6 +23,16 @@ on:
         description: "Desktop version, required policy Core, merged GEA SHA and three immutable published packages as JSON"
         required: false
         type: string
+      windows_certificate_test:
+        description: "Run native certificate import and timestamped signing fixtures without production keys"
+        default: false
+        required: false
+        type: boolean
+      windows_signed:
+        description: "Sign the full Windows client, install the company public certificate on first install and enable electron-updater"
+        default: true
+        required: false
+        type: boolean
       mac_complete_input:
         description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
         required: false
@@ -45,8 +55,27 @@ permissions:
   contents: read
 
 jobs:
+  windows-certificate-fixture:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_certificate_test
+    runs-on: windows-2025
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify native public certificate import and signed updates
+        run: ./desktop/windows-certificate.test.ps1 -OutputDirectory "$env:RUNNER_TEMP/gea-certificate-result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-certificate-fixture
+          path: ${{ runner.temp }}/gea-certificate-result/result.json
+          if-no-files-found: warn
   core-cache-fixtures:
-    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache
+    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test
     strategy:
       fail-fast: false
       matrix:
@@ -204,7 +233,7 @@ jobs:
             ${{ runner.temp }}/gea-mac-complete/baseline-reuse.json
             ${{ runner.temp }}/gea-mac-complete/*.log
   delivery-fixtures:
-    if: (github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    if: (github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -439,6 +468,7 @@ jobs:
       DSH_DESKTOP_TARGET_ARCH: x64
       DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
       DSH_DESKTOP_UNSIGNED: "1"
+      GEA_WINDOWS_SIGNED: ${{ inputs.windows_signed && !inputs.prepare_windows_cache && '1' || '0' }}
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_7Z_FILTER: BCJ
@@ -502,6 +532,12 @@ jobs:
           $fixed = Get-Content -Raw $inputPath | ConvertFrom-Json
           "DSH_DESKTOP_BUILD_VERSION=$($fixed.desktopVersion)" | Out-File -Append -FilePath $env:GITHUB_ENV
           "GEA_DESKTOP_INPUT=$inputPath" | Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Prepare isolated Windows signing credentials
+        if: inputs.windows_signed && !inputs.prepare_windows_cache
+        env:
+          GEA_SIGNING_PFX_BASE64: ${{ secrets.GEA_WINDOWS_SIGNING_PFX_BASE64 }}
+          GEA_SIGNING_PASSWORD: ${{ secrets.GEA_WINDOWS_SIGNING_PASSWORD }}
+        run: ./gea/scripts/windows-complete-local/prepare-signing.ps1
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -640,6 +676,9 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            core/apps/desktop/.desktop-build/targets/win-x64/artifacts/*.exe
+            core/apps/desktop/.desktop-build/targets/win-x64/artifacts/*.blockmap
+            core/apps/desktop/.desktop-build/targets/win-x64/artifacts/nightly.yml
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.json
@@ -647,6 +686,12 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/bundle-binding.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/public/**
+      - name: Remove isolated signing credentials
+        if: always()
+        shell: pwsh
+        run: |
+          $directory = Join-Path $env:RUNNER_TEMP 'gea-windows-signing'
+          if (Test-Path -LiteralPath $directory) { Remove-Item -LiteralPath $directory -Recurse -Force }
       - name: Report cache sources and delivery step timings
         if: always()
         env:
