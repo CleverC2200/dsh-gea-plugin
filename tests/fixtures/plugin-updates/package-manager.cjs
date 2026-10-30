@@ -12,6 +12,14 @@ fs.appendFileSync(
     secretLeaked: Boolean(process.env.FIXTURE_SHOULD_BE_SCRUBBED),
   }) + "\n",
 );
+if (process.env.FIXTURE_UPDATE_RUNTIME) {
+  const runtime = process.env.FIXTURE_UPDATE_RUNTIME;
+  const { id } = JSON.parse(fs.readFileSync(path.join(runtime, "latest.json"), "utf8"));
+  fs.copyFileSync(
+    path.join(runtime, "operations", id, "receipt.json"),
+    path.join(process.cwd(), "installing-receipt.json"),
+  );
+}
 console.log("fixture package run started");
 setTimeout(() => {
   if (mode === "idle-exit-zero") {

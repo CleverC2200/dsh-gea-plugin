@@ -777,6 +777,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                     options.profile.installAnchor,
                     options.core.version,
                     options.profile.packageManager,
+                    async (observation) => {
+                      await stage("installing", null, { processes: [observation] });
+                    },
                   )
                 : null;
             currentMonitor = windowsRun;

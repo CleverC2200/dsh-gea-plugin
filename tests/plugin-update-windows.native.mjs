@@ -46,6 +46,7 @@ for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-writ
       if (mode === "pnpm-stalled-registry")
         stalledRegistry = await configureStalledPnpmRegistry(t, f.profile);
     }
+    f.profile.packageManager.env.FIXTURE_UPDATE_RUNTIME = f.options.runtimeDirectory;
     f.options.fileCommit = fileCommit;
     f.options.idleTimeoutMs = mode === "orphan" ? 1500 : 10000;
     f.options.quiescenceWaitMs = 1500;
@@ -90,6 +91,12 @@ for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-writ
       assert.equal(proof.stage, "empty");
       assert.equal(proof.exitCode, 0);
       assert.equal(proof.nonce, result.processes[0].startIdentity);
+    }
+    if (!mode.startsWith("pnpm")) {
+      const installing = JSON.parse(await readFile(join(f.dir, "installing-receipt.json"), "utf8"));
+      assert.equal(installing.stage, "installing");
+      assert.deepEqual(installing.processes, result.processes);
+      assert.equal(installing.id, result.id);
     }
     if (mode === "fail-after-write") assert.equal(result.diagnostic, "PACKAGE_INSTALL_FAILED");
     if (mode === "orphan") {
