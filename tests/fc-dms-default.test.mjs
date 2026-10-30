@@ -107,6 +107,22 @@ test("an explicit deployment with no matching user remains denied, without sandb
   assert.equal(calls, 0);
 });
 
+test("legacy per-user settings for the fixed test gateway do not exclude other GEA users", async () => {
+  const result = resolveFcDmsDeployment(
+    {
+      production: {
+        gatewayUrl: FC_DMS_TEST_GATEWAY,
+        secretEnv: "OLD_LOCAL_ONLY_SECRET",
+        users: [{ tenantId: "0", userId: "old-installer", username: "old-test-user" }],
+      },
+    },
+    "production",
+    { tenantId: "0", id: "another-user" },
+  );
+  assert.equal(result.credentialSource, "fc-bundled-dms-test");
+  assert.deepEqual(result.users, [{ tenantId: "0", userId: "another-user", username: "zhangxin" }]);
+});
+
 test("the bundled test credential cannot sign for a different gateway", async () => {
   const config = resolveFcDmsDeployment(undefined, "production", {
     tenantId: "0",

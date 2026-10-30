@@ -739,6 +739,10 @@ export class Business {
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly inventoryReads = new InventoryReadCache();
+  private readonly rejectedSqlLogins = new WeakMap<
+    AbortSignal,
+    { error: GeaResponseError; epoch: AbortController }
+  >();
   private readonly pluginDelegations = new Map<
     string,
     { authToken: string; delegationToken: string }
@@ -2727,52 +2731,65 @@ export class Business {
       const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
       if (cached !== undefined) return cached;
     }
-    let rejectedCurrentLogin: { error: GeaResponseError; epoch: AbortController } | undefined;
     const getDelegation = async () => {
-      let delegation = this.pluginDelegations.get(consumerCode);
-      if (delegation?.authToken === auth.token) return delegation;
-      const requestId = randomUUID();
-      const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
-        method: "POST",
-        redirect: "error",
-        signal,
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Access-Token": auth.token,
-          "X-Tenant-Id": auth.tenantId,
-          "X-Request-Id": requestId,
+      const cached = this.pluginDelegations.get(consumerCode);
+      if (cached?.authToken === auth.token) return cached;
+      await this.inventoryReads.share(
+        identity,
+        JSON.stringify(["sql-delegation", consumerCode]),
+        caller,
+        async (requestSignal) => {
+          const requestId = randomUUID();
+          const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+            method: "POST",
+            redirect: "error",
+            signal: requestSignal,
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              "X-Access-Token": auth.token,
+              "X-Tenant-Id": auth.tenantId,
+              "X-Request-Id": requestId,
+            },
+            body: JSON.stringify({
+              agentCode: consumerCode,
+              channel: "AI_PORTAL",
+              requestId,
+              conversationId: randomUUID(),
+            }),
+          });
+          if (!response.ok) {
+            const error = await geaResponseError(response, [auth.token]);
+            requestSignal.throwIfAborted();
+            if (response.status === 401 && this.auth?.token === auth.token) {
+              this.clearLogin(true);
+              this.rejectedSqlLogins.set(identity, { error, epoch: this.epoch });
+            }
+            throw error;
+          }
+          const body = object(await response.json());
+          requestSignal.throwIfAborted();
+          if (this.auth !== auth) throw Error("STALE_LOGIN");
+          const result = object(body.result);
+          if (
+            body.success !== true ||
+            object(result.accessDecision).allowed !== true ||
+            typeof result.delegationToken !== "string" ||
+            !result.delegationToken
+          )
+            throw new Error("GEA_PLUGIN_SESSION_REJECTED");
+          const delegation = {
+            authToken: auth.token,
+            delegationToken: result.delegationToken,
+          };
+          this.pluginDelegations.set(consumerCode, delegation);
+          requestSignal.throwIfAborted();
+          return true;
         },
-        body: JSON.stringify({
-          agentCode: consumerCode,
-          channel: "AI_PORTAL",
-          requestId,
-          conversationId: randomUUID(),
-        }),
-      });
-      if (!response.ok) {
-        const error = await geaResponseError(response, [auth.token]);
-        signal.throwIfAborted();
-        if (response.status === 401 && this.auth?.token === auth.token) {
-          this.clearLogin(true);
-          rejectedCurrentLogin = { error, epoch: this.epoch };
-        }
-        throw error;
-      }
-      const body = object(await response.json());
-      const result = object(body.result);
-      if (
-        body.success !== true ||
-        object(result.accessDecision).allowed !== true ||
-        typeof result.delegationToken !== "string" ||
-        !result.delegationToken
-      )
-        throw new Error("GEA_PLUGIN_SESSION_REJECTED");
-      delegation = {
-        authToken: auth.token,
-        delegationToken: result.delegationToken,
-      };
-      this.pluginDelegations.set(consumerCode, delegation);
+      );
+      signal.throwIfAborted();
+      const delegation = this.pluginDelegations.get(consumerCode);
+      if (delegation?.authToken !== auth.token) throw Error("GEA_PLUGIN_SESSION_REJECTED");
       return delegation;
     };
     try {
@@ -2884,14 +2901,14 @@ export class Business {
     } catch (error) {
       // Caller cancellation wins; only this live request's authentication rejection may explain its identity abort.
       caller.throwIfAborted();
+      const rejectedCurrentLogin = this.rejectedSqlLogins.get(identity);
       if (
         rejectedCurrentLogin !== undefined &&
-        rejectedCurrentLogin.error === error &&
         rejectedCurrentLogin.epoch === this.epoch &&
         !this.auth &&
         this.loginExpired
       )
-        throw error;
+        throw rejectedCurrentLogin.error;
       // Page refresh, range changes and identity cancellation are not failed reads.
       signal.throwIfAborted();
       // A failed delegated credential must not poison the next page refresh.

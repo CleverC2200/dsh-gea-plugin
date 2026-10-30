@@ -157,9 +157,7 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
   await expect(dialog).toContainText("没有数量修改");
-  await expect(dialog).toContainText(
-    "修改重提入口尚未就绪或权限不足，可核对以下修改，暂不发送重提",
-  );
+  await expect(dialog).toContainText("当前环境尚未配置服务提报通道，请联系管理员完成接入配置。");
   await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await frame.getByRole("tab", { name: "月初", exact: true }).click();

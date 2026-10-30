@@ -132,6 +132,57 @@ function data(id) {
     rejectedColumns: [],
   };
 }
+test("base supply questions use receiving-branch executions, full-scope metrics and ten-row pages", async () => {
+  const f = fixture(async (id, request) => {
+    const result = data(id);
+    if (id === "branch-supply.summary")
+      Object.assign(result.rows[0], {
+        row_count: 43,
+        demand: request.parameters.gea_p6 === "current" ? 17068 : 32124,
+        shipped: 26416,
+        pending: 5999,
+        in_transit: 1644,
+        fulfillment_rate: 26416 / 32124,
+      });
+    else if (id === "branch-supply.detail.atomic")
+      Object.assign(result.rows[0], {
+        warehouse_code: "A230",
+        order_no: "BASE-SUPPLY-1",
+        line_no: 1,
+        base_warehouse: "N411",
+        demand: 20,
+        shipped: 15,
+      });
+    return result;
+  });
+  for (const [view, demand] of [["supply", 32124]]) {
+    const result = JSON.parse(await f.call({ view, warehouseCode: "A230", asOf: "2026-10-30" }));
+    assert.equal(result.summary.demand, demand);
+    assert.equal(result.summary.in_transit, 1644);
+    assert.equal(result.rows[0].base_warehouse, "N411");
+    assert.equal(result.unit, "件");
+    assert.match(result.metricDefinitions.countGrain, /执行单/);
+  }
+  assert.equal(f.calls.length, 2);
+  assert.ok(f.calls.every((c) => c.id.startsWith("branch-supply.")));
+  assert.ok(f.calls.every((c) => c.request.parameters.gea_p3 === "A230"));
+  assert.ok(
+    f.calls.filter((c) => c.id.endsWith("atomic")).every((c) => c.request.parameters.gea_p8 === 10),
+  );
+});
+test("denied base supply returns its authorization failure without a zero or customer-order fallback", async () => {
+  const f = fixture(async () => ({
+    success: false,
+    errorCode: "ROW_SCOPE_DENIED",
+    failure: { stage: "AUTHORIZE", reasonCode: "ROW_SCOPE_DENIED" },
+  }));
+  const result = JSON.parse(await f.call({ view: "supply-current", warehouseCode: "A230" }));
+  assert.equal(result.success, false);
+  assert.equal(result.failure.reasonCode, "ROW_SCOPE_DENIED");
+  assert.equal(result.summary, undefined);
+  assert.ok(f.calls.length <= 2);
+  assert.ok(f.calls.every((c) => c.id.startsWith("orders.")));
+});
 test("orchestration denied SQL is not retried under the branch identity or Cube", async () => {
   const f = fixture(async () => ({
     success: false,
@@ -249,4 +300,64 @@ test("resource changes abort an in-flight branch query and release the watcher",
   const unchanged = fixture(async (id) => data(id));
   await unchanged.call({ view: "summary", asOf: "2026-10-23" });
   assert.equal(unchanged.listenerCount(), 0);
+});
+
+test("current supply questions use pending ASN orders, excluding execution and customer-order substitutes", async () => {
+  const f = fixture(async (id) => {
+    const response = data(id);
+    if (id === "orders.summary")
+      Object.assign(response.rows[0], {
+        row_count: 3,
+        demand: 17068,
+        allocated: 1000,
+        shortage: 4000,
+      });
+    return response;
+  });
+  const result = JSON.parse(
+    await f.call({ view: "supply-current", warehouseCode: "A230", asOf: "2026-10-30" }),
+  );
+  assert.equal(result.summary.demand, 17068);
+  assert.match(result.metricDefinitions.countGrain, /ASN/);
+  assert.ok(f.calls.every((call) => call.id.startsWith("orders.")));
+  for (const call of f.calls) {
+    const [key] = Object.entries(config.queries[call.id].parameterSpec).find(
+      ([, spec]) => spec.name === "warehouse_code",
+    );
+    assert.equal(call.request.parameters[key], "A230");
+  }
+});
+test("operations share WMS movement dates and exact warehouse scope with the page", async () => {
+  const f = fixture(async (id) => {
+    const response = data(id);
+    if (id === "warehouse-outbound.summary")
+      Object.assign(response.rows[0], {
+        row_count: 100,
+        incoming_qty: 7265,
+        outgoing_qty: 45489,
+        incoming_source_rows: 99,
+        source_rows: 100,
+      });
+    if (id === "branch-operations.summary")
+      Object.assign(response.rows[0], { row_count: 1, fc_act_dl_qty: 2829, ccfje: 0, ysfje: 0 });
+    return response;
+  });
+  const result = JSON.parse(
+    await f.call({ view: "operations", warehouseCode: "A040", asOf: "2026-10-30" }),
+  );
+  assert.equal(result.movement.summary.incoming_qty, 7265);
+  assert.equal(result.movement.summary.outgoing_qty, 45489);
+  assert.equal(result.cost.summary.fc_act_dl_qty, 2829);
+  assert.equal(result.cost.summary.ccfje, 0);
+  assert.equal(result.units.inbound, "件");
+  assert.equal(f.calls.length, 2);
+  for (const call of f.calls) {
+    const [key] = Object.entries(config.queries[call.id].parameterSpec).find(([, spec]) =>
+      ["warehouse_code", "warehouse_id"].includes(spec.name),
+    );
+    assert.equal(call.request.parameters[key], "A040");
+  }
+  const unsupported = JSON.parse(await f.call({ view: "operations", sku: "SKU1" }));
+  assert.equal(unsupported.success, false);
+  assert.match(unsupported.message, /OPERATIONS_SKU_SCOPE/);
 });

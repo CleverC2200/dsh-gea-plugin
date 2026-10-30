@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.208",
+  "version": "0.0.209",
   "private": true,
   "geaPluginUpdateStrategy": "suite",
   "packageManager": "pnpm@11.27.0",

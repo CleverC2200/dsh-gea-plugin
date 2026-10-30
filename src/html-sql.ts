@@ -297,13 +297,14 @@ export function createGeaSqlDatabase(
             "X-Request-Id": randomUUID(),
           },
           body: JSON.stringify(
-            options.configured ??
-              geaSqlPageRequest(
-                prepared as ReturnType<typeof prepareGeaSql>,
-                pageNo,
-                pageSize,
-                includeTotal,
-              ),
+            options.configured
+              ? options.configured
+              : geaSqlPageRequest(
+                  prepared as ReturnType<typeof prepareGeaSql>,
+                  pageNo,
+                  pageSize,
+                  includeTotal,
+                ),
           ),
           redirect: "error",
           cache: "no-store",
