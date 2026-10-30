@@ -80,6 +80,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { refreshBundledCompanySuite, assertProfileIdle } from "./company-gea-refresh.mjs";
 import { refreshCompanyStartup } from "./company-bootstrap.mjs";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "gea-refresh-"));
@@ -185,6 +187,128 @@ test("a pending restart defers bundled refresh while strict installation stays b
   const next = await refreshCompanyStartup(options);
   assert.equal(next.refresh.status, "current-company-suite-preserved");
   assert.ok(next.cleanup);
+});
+
+test("startup completes the accepted cached suite after partial installation and preserves disabled plugins", async (t) => {
+  const child = spawn(process.execPath, ["-e", ""], { detached: process.platform !== "win32" });
+  const pid = child.pid;
+  await once(child, "exit");
+  for (const variant of ["success", "failure", "partial", "tampered", "active", "unobserved"]) {
+    const f = await fixture(t);
+    const id = "00000000-0000-4000-8000-000000000000";
+    const operation = join(f.profile, "gea/plugin-updates/operations", id);
+    const cache = join(f.profile, "gea/plugin-updates/cache");
+    await mkdir(operation, { recursive: true });
+    await mkdir(cache, { recursive: true });
+    const targets = [];
+    for (const [index, row] of bundledSuite.entries()) {
+      const bytes = Buffer.from(row.name + " accepted " + row.version);
+      const targetSha256 = createHash("sha256").update(bytes).digest("hex");
+      const archivePath = join(cache, targetSha256 + ".tgz");
+      await writeFile(archivePath, bytes);
+      targets.push({
+        packageName: row.name,
+        targetVersion: row.version,
+        targetSha256,
+        archivePath,
+      });
+      if (index === 0) await rm(join(f.profile, "node_modules", row.name), { recursive: true });
+    }
+    const profile = structuredClone(current);
+    profile.dsh.profile.bundles = [name, "my-plugin"];
+    await writeFile(join(f.profile, "package.json"), JSON.stringify(profile));
+    const patch = await readFile(join(f.profile, "cordis.patch.yml"));
+    await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+    const receipt = {
+      schema: 2,
+      id,
+      directory: operation,
+      ...targets[0],
+      targets,
+      processIdentity: "old-host",
+      stage: "unknown",
+      diagnostic: "PACKAGE_WRITERS_UNCONFIRMED",
+      logs: ["original-pnpm.log"],
+      completionProof: null,
+      processes: [
+        {
+          pid: variant === "active" ? process.pid : pid,
+          grouped: process.platform !== "win32",
+          startIdentity: "observed",
+          sawAlive: variant !== "unobserved",
+        },
+      ],
+    };
+    const original = JSON.stringify(receipt);
+    await writeFile(join(operation, "receipt.json"), original);
+    if (variant === "tampered") await writeFile(targets[0].archivePath, "changed");
+    let installs = 0;
+    const options = {
+      ...f,
+      legacyData: f.home,
+      install: async (options) => {
+        await options.beforeInstall();
+        installs++;
+        assert.deepEqual(
+          options.packages,
+          targets.map((row) => row.archivePath),
+        );
+        assert.equal(options.seed, undefined);
+        assert.equal(options.activateNewBundles, false);
+        if (variant === "failure") throw Error("GEA_COMPANY_INSTALL_FAILED: retry-pnpm.log");
+        const after = structuredClone(profile);
+        for (const target of targets) {
+          after.dependencies[target.packageName] = "file:" + target.archivePath;
+          await mkdir(join(f.profile, "node_modules", target.packageName), { recursive: true });
+          await writeFile(
+            join(f.profile, "node_modules", target.packageName, "package.json"),
+            JSON.stringify({
+              name: target.packageName,
+              version:
+                variant === "partial" && target.packageName === name
+                  ? "0.0.130"
+                  : target.targetVersion,
+            }),
+          );
+        }
+        await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
+        await options.complete({
+          writeFileAtomic: writeFile,
+          result: { logPath: "retry-pnpm.log" },
+        });
+      },
+    };
+    if (variant !== "success") {
+      await assert.rejects(
+        refreshCompanyStartup(options),
+        variant === "failure"
+          ? /GEA_COMPANY_INSTALL_FAILED/
+          : variant === "partial"
+            ? /GEA_REFRESH_PROFILE_NOT_PRESERVED/
+            : variant === "tampered"
+              ? /GEA_REFRESH_UPDATE_UNKNOWN/
+              : /GEA_REFRESH_UPDATE_PENDING/,
+      );
+      assert.equal(installs, ["failure", "partial"].includes(variant) ? 1 : 0);
+      assert.equal(await readFile(join(operation, "receipt.json"), "utf8"), original);
+      continue;
+    }
+    const result = await refreshCompanyStartup(options);
+    assert.equal(result.refresh.status, "pending-restart-preserved");
+    assert.equal(result.refresh.changed, true);
+    assert.equal(result.cleanup, null);
+    const saved = JSON.parse(await readFile(join(operation, "receipt.json")));
+    assert.equal(saved.stage, "pending-restart");
+    assert.equal(saved.processIdentity, "old-host");
+    assert.deepEqual(saved.targets, targets);
+    assert.deepEqual(saved.logs, ["original-pnpm.log", "retry-pnpm.log"]);
+    const after = JSON.parse(await readFile(join(f.profile, "package.json")));
+    assert.deepEqual(after.dsh, profile.dsh);
+    assert.equal(after.dependencies["my-plugin"], "1.0.0");
+    assert.deepEqual(await readFile(join(f.profile, "cordis.patch.yml")), patch);
+    assert.equal((await refreshCompanyStartup(options)).refresh.changed, false);
+    assert.equal(installs, 1);
+  }
 });
 
 test("interrupted updates, unknown receipts and active writers still block startup refresh", async (t) => {

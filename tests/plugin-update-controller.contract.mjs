@@ -956,6 +956,32 @@ test("older channel keeps its candidate and reports a downgrade without acceptin
   assert.equal(controller.snapshot().operation, null);
 });
 
+test("plugin installation exits after Done even when the pnpm update registry never responds", async (t) => {
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
+  const { configureStalledPnpmRegistry } =
+    await import("./fixtures/plugin-updates/stalled-registry.mjs");
+  const f = await controllerFixture(t);
+  const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
+  f.profile.packageManager.args = [manager];
+  const registry = await configureStalledPnpmRegistry(t, f.profile);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const item = controller.snapshot().items.find((item) => item.planId);
+  await controller.submit({ packageName: item.packageName, planId: item.planId });
+  const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
+  const log = await readFile(operation.logs[0], "utf8");
+  assert.match(log, /Done in .*using pnpm v11\.7\.0/);
+  assert.equal(
+    operation.stage,
+    "pending-restart",
+    JSON.stringify({ operation, requests: registry.requests, log }),
+  );
+  assert.deepEqual(registry.requests, []);
+});
+
 test("company profile reading uses real pnpm roots without traversing obsolete or transitive contents", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");

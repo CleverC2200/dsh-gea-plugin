@@ -310,6 +310,7 @@ export async function installCompanyPackages({
   beforeInstall,
   complete,
   strictPeers = false,
+  activateNewBundles = true,
   seed,
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
@@ -395,12 +396,14 @@ export async function installCompanyPackages({
             ...(strictPeers
               ? ["--strict-peer-dependencies", "--config.auto-install-peers=false"]
               : []),
+            "--config.update-notifier=false",
             "--registry=https://registry.npmjs.org",
             "--store-dir=" + selectedStore,
             "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),
           ],
           {
             execution: "service",
+            activateNewBundles,
             command: process.execPath,
             args: ["--expose-internals", join(support, "pnpm/bin/pnpm.mjs")],
             env: {
@@ -414,7 +417,8 @@ export async function installCompanyPackages({
             lookupTimeoutMs: 30000,
           },
         );
-        if (result.exitCode !== 0) throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
+        if (result.exitCode !== 0 || result.timedOut)
+          throw Error("GEA_COMPANY_INSTALL_FAILED: " + result.logPath);
       } catch (error) {
         if (seededLock) {
           if (previousLock === undefined) await rm(lockPath, { force: true });
@@ -424,6 +428,7 @@ export async function installCompanyPackages({
       }
       await complete?.({
         writeFileAtomic,
+        result,
         archiveReplacements: archives.replacements,
       });
       return result;
