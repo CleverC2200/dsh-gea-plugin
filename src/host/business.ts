@@ -1,6 +1,6 @@
+import { orderReportWithEdits } from "./order-report-edits.ts";
 import { resolveFcDmsTarget } from "./fc-dms-target.ts";
 import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
-import { orderReportStore } from "./order-report-store.ts";
 import {
   decodeSalesPlanResult,
   salesPlanCustomer,
@@ -2566,7 +2566,7 @@ export class Business {
     const signal = AbortSignal.any([caller, this.epoch.signal]);
     const run = async () => {
       signal.throwIfAborted();
-      this.assertExecutionAllowed("order", payload.operation === "save" ? "submit" : "view");
+      this.assertExecutionAllowed("order", payload.operation === "load" ? "view" : "submit");
       const resolveScope = async () => {
         const bases: string[] = [];
         let after: string | null = null;
@@ -2619,7 +2619,7 @@ export class Business {
         };
       };
       const reportScope = await resolveScope();
-      return orderReportStore(
+      return orderReportWithEdits(
         payload,
         { ...auth, reportScope },
         async (sql, parameters, requestId) => {
