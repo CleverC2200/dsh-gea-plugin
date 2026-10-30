@@ -39,7 +39,9 @@ export async function orderReportWithEdits(
   }
   const result = await orderReportStore(input, identity, execute);
   if (input.operation !== "load") return result;
+  if (!("report" in result)) throw Error("ORDER_REPORT_FORMAT_INVALID");
   const edited = await orderReportStore(input, editIdentity, execute);
+  if (!("report" in edited)) throw Error("ORDER_REPORT_FORMAT_INVALID");
   if (edited.report && edited.report.facts?.kind !== "editor-content")
     throw Error("ORDER_REPORT_FORMAT_INVALID");
   return {
