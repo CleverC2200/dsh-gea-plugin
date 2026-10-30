@@ -12,17 +12,11 @@ export function validateServiceAccounts(value) {
       Array.isArray(raw)
     )
       throw new Error("INVALID_SERVICE_ACCOUNTS");
+    delete raw.allowedUserIds;
     const config = raw;
     if (
       Object.keys(config).some(
-        (key) =>
-          ![
-            "clientIdEnv",
-            "clientSecretEnv",
-            "keychainService",
-            "tenantId",
-            "allowedUserIds",
-          ].includes(key),
+        (key) => !["clientIdEnv", "clientSecretEnv", "keychainService", "tenantId"].includes(key),
       ) ||
       !/^GEA_[A-Z0-9_]+$/.test(String(config.clientIdEnv ?? "")) ||
       !/^GEA_[A-Z0-9_]+$/.test(String(config.clientSecretEnv ?? "")) ||
@@ -31,10 +25,7 @@ export function validateServiceAccounts(value) {
         (typeof config.keychainService !== "string" ||
           !/^[a-zA-Z0-9._-]+$/.test(config.keychainService))) ||
       typeof config.tenantId !== "string" ||
-      !/^\d+$/.test(config.tenantId) ||
-      !Array.isArray(config.allowedUserIds) ||
-      !config.allowedUserIds.length ||
-      config.allowedUserIds.some((id) => typeof id !== "string" || !id.trim())
+      !/^\d+$/.test(config.tenantId)
     )
       throw new Error("INVALID_SERVICE_ACCOUNTS");
   }

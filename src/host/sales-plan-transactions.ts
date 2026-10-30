@@ -19,7 +19,8 @@ import { isDeepStrictEqual } from "node:util";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { object, text, keys } from "./payload.ts";
 import {
-  serviceAccountReady,
+  serviceAccountUnavailableReason,
+  serviceAccountUnavailableError,
   ServiceAccountSession,
   type ServiceAccountConfig,
 } from "./service-account.ts";
@@ -94,10 +95,9 @@ export class SalesPlanTransactions {
     keys(payload, ["source", "request", "requestId", "idempotencyKey"]);
     const auth = scope.auth;
     const config = scope.serviceAccount;
-    if (!config || !serviceAccountReady(config, auth))
-      throw new GeaResponseError(403, {
-        message: "当前账号的修改重提入口尚未就绪或权限不足，暂不发送重提",
-      });
+    if (!config) throw serviceAccountUnavailableError("configuration");
+    const unavailableReason = serviceAccountUnavailableReason(config, auth);
+    if (unavailableReason) throw serviceAccountUnavailableError(unavailableReason);
     const source = object(payload.source);
     keys(source, ["planId", "versionId"]);
     const planId = text(source.planId),

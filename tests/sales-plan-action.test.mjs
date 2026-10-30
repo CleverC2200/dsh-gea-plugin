@@ -174,7 +174,8 @@ test("unavailable employee resubmission refuses before token exchange, internal 
       },
       new AbortController().signal,
     ),
-    (error) => error.code === "GEA_HTTP_403" && /重提入口尚未就绪|权限不足/.test(error.message),
+    (error) =>
+      error.details.resubmitUnavailableReason === "configuration" && /配置/.test(error.message),
   );
   assert.equal(globalThis.fetch.mock.callCount(), 0);
 });
@@ -471,7 +472,7 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
           clientIdEnv: "GEA_CONTRACT_CLIENT",
           clientSecretEnv: "GEA_CONTRACT_SECRET",
           tenantId: "1",
-          allowedUserIds: ["user-1"],
+          allowedUserIds: ["someone-else"],
         },
       },
     });
@@ -546,7 +547,9 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
     };
     let tokens = 0,
       writes = 0,
-      refuse = false;
+      refuse = false,
+      sourceDenied = false,
+      employeeRole = true;
     t.mock.method(globalThis, "fetch", async (url, init) => {
       const path = new URL(url).pathname;
       if (path.endsWith("/api/v1/internal/auth/token")) {
@@ -609,9 +612,10 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
       assert.equal(init.headers.Authorization, undefined);
       let result;
       if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:region-approve"] };
-      else if (path.endsWith("/plans/" + planId))
+      else if (path.endsWith("/plans/" + planId)) {
+        if (sourceDenied) return Response.json({ message: "来源无权读取" }, { status: 403 });
         result = { currentVersion: version, versions: [version], skus: [sku], logs: [] };
-      else if (path.endsWith("/versions/v1/skus")) result = [sku];
+      } else if (path.endsWith("/versions/v1/skus")) result = [sku];
       else if (path.endsWith("/plans"))
         result = {
           records: [{ ...version, versionId: "v1" }],
@@ -629,7 +633,7 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
       else if (path.endsWith("/current-user/resolve"))
         result = {
           success: true,
-          roles: [{ code: "sales_plan_region_approver", name: "区域审批" }],
+          roles: employeeRole ? [{ code: "sales_plan_region_approver", name: "区域审批" }] : [],
         };
       else if (path.endsWith("/sql/execute")) {
         const body = JSON.parse(init.body);
@@ -659,6 +663,25 @@ for (const customerCode of ["456", "9007199254740993", "9223372036854775807"])
     });
     const signal = new AbortController().signal;
     await business.refreshApprovalRoles(signal);
+    assert.equal(business.status().resubmitConnected, true);
+    employeeRole = false;
+    await business.refreshApprovalRoles(signal, { force: true });
+    await assert.rejects(
+      business.salesPlanSubmit(command("role-denied"), signal),
+      (error) =>
+        error.code === "GEA_HTTP_403" && error.details.resubmitUnavailableReason === undefined,
+    );
+    employeeRole = true;
+    await business.refreshApprovalRoles(signal, { force: true });
+    sourceDenied = true;
+    await assert.rejects(
+      business.salesPlanSubmit(command("source-denied"), signal),
+      (error) =>
+        error.code === "GEA_HTTP_403" && error.details.resubmitUnavailableReason === undefined,
+    );
+    sourceDenied = false;
+    assert.equal(tokens, 0);
+    assert.equal(writes, 0);
     const receipt = await business.salesPlanSubmit(command("first"), signal);
     assert.equal(receipt.auditId, null);
     assert.equal(receipt.status, 2);
@@ -1482,4 +1505,67 @@ test("Business enforces string organization dimensions while preserving leading 
     /GEA_INVALID_DIMENSION/,
   );
   assert.equal(calls, before);
+});
+
+test("Business exposes safe resubmission channel reasons and blocks before any network", async (t) => {
+  const network = t.mock.method(globalThis, "fetch", async () => {
+    throw Error("unexpected channel request");
+  });
+  process.env.GEA_STATUS_CLIENT = "fixture-client";
+  process.env.GEA_STATUS_SECRET = "fixture-secret";
+  t.after(() => {
+    delete process.env.GEA_STATUS_CLIENT;
+    delete process.env.GEA_STATUS_SECRET;
+  });
+  for (const [reason, tenantId, credential] of [
+    ["signed-out", undefined, true],
+    ["configuration", "1", true],
+    ["tenant", "2", true],
+    ["credential", "1", false],
+    [undefined, "1", true],
+  ]) {
+    const business = new module.exports.Business({
+      geaBaseUrl: "https://localhost",
+      analysisAgentCode: "sales_forecast",
+      requestTimeoutMs: 2000,
+      inputByteBudget: 30000,
+      pageSize: 20,
+      serviceAccounts:
+        reason === "configuration"
+          ? undefined
+          : {
+              production: {
+                clientIdEnv: "GEA_STATUS_CLIENT",
+                clientSecretEnv: "GEA_STATUS_SECRET",
+                tenantId: "1",
+              },
+            },
+    });
+    t.after(() => business.dispose());
+    if (tenantId)
+      business.restoreDesktopLogin({
+        schema: 1,
+        environment: "production",
+        base: "https://localhost",
+        auth: {
+          token: "fixture-token",
+          tenantId,
+          id: "ordinary-user",
+          name: "Test",
+          username: "test",
+        },
+      });
+    if (!credential) delete process.env.GEA_STATUS_SECRET;
+    const status = business.status();
+    assert.equal(status.resubmitUnavailableReason, reason);
+    assert.equal(status.resubmitConnected, reason === undefined);
+    assert.equal(JSON.stringify(status).includes("fixture-secret"), false);
+    if (reason)
+      await assert.rejects(
+        business.salesPlanSubmit({}, new AbortController().signal),
+        (error) => error.details?.resubmitUnavailableReason === reason,
+      );
+    process.env.GEA_STATUS_SECRET = "fixture-secret";
+  }
+  assert.equal(network.mock.callCount(), 0);
 });

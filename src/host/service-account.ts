@@ -1,5 +1,4 @@
 import { validateServiceAccounts as validateServiceAccountReferences } from "../shared/service-accounts.js";
-/** 服务账号只在 Host 内按当前环境、租户和用户白名单使用销售计划重提；浏览器永远拿不到客户端密钥。 */
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 
 export type ServiceAccountConfig = {
@@ -7,7 +6,6 @@ export type ServiceAccountConfig = {
   clientSecretEnv: string;
   keychainService?: string;
   tenantId: string;
-  allowedUserIds: string[];
 };
 export type ServiceAccounts = Partial<Record<"production" | "test", ServiceAccountConfig>>;
 
@@ -17,19 +15,39 @@ export function validateServiceAccounts(
   validateServiceAccountReferences(value);
 }
 
-/** 读取凭证是否可用，但不暴露凭证内容。 */
+export type ResubmitUnavailableReason = "signed-out" | "configuration" | "tenant" | "credential";
+
+export function serviceAccountUnavailableReason(
+  config: ServiceAccountConfig | undefined,
+  user: { id: string; tenantId: string } | undefined,
+): ResubmitUnavailableReason | undefined {
+  if (!user) return "signed-out";
+  if (!config) return "configuration";
+  if (config.tenantId !== user.tenantId) return "tenant";
+  if (!process.env[config.clientIdEnv]?.trim() || !process.env[config.clientSecretEnv]?.trim())
+    return "credential";
+  return undefined;
+}
+
 export function serviceAccountReady(
   config: ServiceAccountConfig | undefined,
   user: { id: string; tenantId: string } | undefined,
 ): boolean {
-  return Boolean(
-    config &&
-    user &&
-    config.tenantId === user.tenantId &&
-    config.allowedUserIds.includes(user.id) &&
-    process.env[config.clientIdEnv]?.trim() &&
-    process.env[config.clientSecretEnv]?.trim(),
-  );
+  return serviceAccountUnavailableReason(config, user) === undefined;
+}
+
+export function serviceAccountUnavailableError(reason: ResubmitUnavailableReason) {
+  const messages: Record<ResubmitUnavailableReason, string> = {
+    "signed-out": "请先登录后再修改重提销售计划",
+    configuration: "当前环境尚未配置销售计划重提服务，请联系管理员",
+    tenant: "当前登录租户与销售计划重提服务配置不一致，请联系管理员",
+    credential: "Host 缺少销售计划重提服务凭据，请联系管理员配置",
+  };
+  const error = new GeaResponseError(reason === "signed-out" ? 401 : 503, {
+    message: messages[reason],
+  });
+  error.details.resubmitUnavailableReason = reason;
+  return error;
 }
 
 function unknownSubmission() {
