@@ -1,4 +1,5 @@
 import { orderReportStore } from "./order-report-store.ts";
+import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
 import {
   decodeSalesPlanResult,
   salesPlanCustomer,
@@ -104,6 +105,7 @@ export interface Deployment {
   };
   serviceAccounts?: ServiceAccounts;
   dms?: DmsEnvironments;
+  orderFulfillmentConfirmation?: { production?: boolean; test?: boolean };
   geaBaseUrl: string;
   environment?: "production" | "test";
   geaEnvironments?: { production: string; test: string };
@@ -2418,6 +2420,14 @@ export class Business {
   }
 
   private orderReportQueue: Promise<unknown> = Promise.resolve();
+  async orderSalesConfirmation(payload: unknown, caller: AbortSignal) {
+    this.assertExecutionAllowed("order01");
+    const auth = this.authenticated();
+    return orderSalesConfirmation(payload, {
+      enabled: this.config.orderFulfillmentConfirmation?.[this.environment as "production" | "test"] === true,
+      base: this.base, auth, identity: this.epoch.signal, signal: caller, timeoutMs: this.config.requestTimeoutMs,
+    }, this.apiLog.fetch);
+  }
   async orderReport(payload: Record<string, unknown>, caller: AbortSignal) {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);

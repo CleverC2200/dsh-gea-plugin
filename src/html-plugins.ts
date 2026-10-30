@@ -510,6 +510,12 @@ export async function registerHtmlPlugins(
                     },
                   }
                 : {}),
+              ...(item.id === "inventory-orderfulfillment" && item.gea.consumerCode === "order01" && !item.mock
+                ? { workspace: (parameters: unknown, requestSignal: AbortSignal) => {
+                    if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
+                    return business.orderSalesConfirmation(parameters, AbortSignal.any([requestSignal, grantSignal]));
+                  } }
+                : {}),
               ...(item.id === "inventory-orderworkbench" &&
               item.gea.consumerCode === "order" &&
               item.reportStore === "order" &&
