@@ -278,3 +278,17 @@ test("deployment without service accounts does not read Keychain", async (t) => 
     },
   });
 });
+
+test("deployment normalizes legacy employee lists and accepts service references without them", async (t) => {
+  for (const allowedUserIds of [["someone-else"], undefined, "obsolete"]) {
+    const config = await readDeployment(
+      await configFile(t, {
+        ...deployment,
+        serviceAccounts: { production: { ...account, allowedUserIds } },
+      }),
+      { resolveCredentials: false },
+    );
+    assert.equal("allowedUserIds" in config.serviceAccounts.production, false);
+    assert.equal(config.serviceAccounts.production.tenantId, "0");
+  }
+});

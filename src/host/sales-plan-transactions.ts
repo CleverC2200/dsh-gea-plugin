@@ -19,7 +19,8 @@ import { isDeepStrictEqual } from "node:util";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { object, text, keys } from "./payload.ts";
 import {
-  serviceAccountReady,
+  serviceAccountUnavailableReason,
+  serviceAccountUnavailableError,
   ServiceAccountSession,
   type ServiceAccountConfig,
 } from "./service-account.ts";
@@ -94,10 +95,9 @@ export class SalesPlanTransactions {
     keys(payload, ["source", "request", "requestId", "idempotencyKey"]);
     const auth = scope.auth;
     const config = scope.serviceAccount;
-    if (!config || !serviceAccountReady(config, auth))
-      throw new GeaResponseError(403, {
-        message: "当前账号的修改重提入口尚未就绪或权限不足，暂不发送重提",
-      });
+    if (!config) throw serviceAccountUnavailableError("configuration");
+    const unavailableReason = serviceAccountUnavailableReason(config, auth);
+    if (unavailableReason) throw serviceAccountUnavailableError(unavailableReason);
     const source = object(payload.source);
     keys(source, ["planId", "versionId"]);
     const planId = text(source.planId),
@@ -145,15 +145,11 @@ export class SalesPlanTransactions {
           throw new GeaResponseError(409, {
             message: "计划已变化，请刷新后核对重提版本",
           });
-        if (version.status > 6) {
-          await this.host.permissions(signal);
-          if (
-            !salesPlan.salesPlanCanResubmit(version, salesPlanStagesForRoles(auth.roles), auth.id)
-          )
-            throw new GeaResponseError(403, {
-              message: "当前用户不是该退回版本的修改责任人，请由对应责任人修改后提交",
-            });
-        }
+        if (version.status > 6) await this.host.permissions(signal);
+        if (!salesPlan.salesPlanCanResubmit(version, salesPlanStagesForRoles(auth.roles), auth.id))
+          throw new GeaResponseError(403, {
+            message: "当前用户不是该退回版本的修改责任人，请由对应责任人修改后提交",
+          });
         const periods = object(
           await this.host.query(
             {

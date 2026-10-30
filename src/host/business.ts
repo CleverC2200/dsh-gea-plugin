@@ -55,7 +55,8 @@ const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 
 import {
   validateServiceAccounts,
-  serviceAccountReady,
+  serviceAccountUnavailableReason,
+  serviceAccountUnavailableError,
   type ServiceAccounts,
 } from "./service-account.ts";
 import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
@@ -868,6 +869,7 @@ export class Business {
     this.salesTransactions = new SalesPlanTransactions({
       scope: (effect) => {
         this.assertExecutionAllowed(this.config.analysisAgentCode, effect);
+        if (effect === "submit" && !this.auth) throw serviceAccountUnavailableError("signed-out");
         return {
           auth: this.authenticated(),
           base: this.base,
@@ -1365,15 +1367,17 @@ export class Business {
   status() {
     const readonlyValidation = this.salesReadonly?.snapshot();
     const models = this.modelRoutes.get(WORKBENCH_AGENT_CODE)?.models;
+    const resubmitUnavailableReason = serviceAccountUnavailableReason(
+      this.config.serviceAccounts?.[this.environment],
+      this.auth,
+    );
     return {
       environment: this.environment,
       environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
       pageScope: this.pageSessionScope() ?? null,
-      resubmitConnected: serviceAccountReady(
-        this.config.serviceAccounts?.[this.environment],
-        this.auth,
-      ),
+      resubmitConnected: resubmitUnavailableReason === undefined,
+      resubmitUnavailableReason,
       loginState: this.auth ? "authenticated" : this.loginExpired ? "expired" : "signed-out",
       permissionCodes: this.auth?.permissionCodes,
       roles: this.auth?.roles,
@@ -1645,7 +1649,7 @@ export class Business {
     return result;
   }
 
-  salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+  async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     return this.salesTransactions.submit(payload, caller);
   }
 
