@@ -12,7 +12,7 @@ import { prepareWorkbenchHtmlRoots } from "./fixtures/business-page.mjs";
 
 test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
-  { timeout: 90000 },
+  { timeout: process.env.GEA_TEST_SOURCE_CORE === "1" ? 180000 : 90000 },
   async (t) => {
     // 一个最小的业务页面插件：只用来验证"普通对话里页面工具怎么回答模型"。
     const probeRoot = await mkdtemp(join(tmpdir(), "gea-page-probe-"));
