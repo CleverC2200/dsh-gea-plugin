@@ -301,7 +301,10 @@ test("verified Core can be saved after wrapper failure without hiding the failed
 test("manual delivery runs dependency-free Core cache fixtures on Windows and macOS", () => {
   const job = workflow.jobs["core-cache-fixtures"];
   assert.ok(job);
-  assert.equal(job.if, "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test");
+  assert.equal(
+    job.if,
+    "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test",
+  );
   assert.deepEqual(job.strategy.matrix.os, ["windows-2025", "macos-15"]);
   assert.equal(job.strategy["fail-fast"], false);
   assert.equal(job["runs-on"], "${{ matrix.os }}");
