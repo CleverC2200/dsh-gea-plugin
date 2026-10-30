@@ -285,6 +285,58 @@ execFileSync(
 const files = (await readdir(artifactDirectory)).filter((name) => name.endsWith(".exe"));
 if (files.length !== 1) throw Error("EXPECTED_ONE_INSTALLER");
 const artifact = join(artifactDirectory, files[0]);
+if (signed) {
+  const { resolveWindowsUpdatePublisher } = await import(
+    pathToFileURL(join(desktop, "scripts/windows-sign.mjs")).href
+  );
+  const yaml = createRequire(require.resolve("electron-updater/package.json"))("js-yaml");
+  const update = yaml.load(
+    await readFile(join(artifactDirectory, "win-unpacked/resources/app-update.yml"), "utf8"),
+  );
+  const publishers = Array.isArray(update.publisherName)
+    ? update.publisherName
+    : [update.publisherName];
+  if (
+    update.provider !== "generic" ||
+    update.url !== companyWindowsUpdateUrl ||
+    update.channel !== "nightly" ||
+    !publishers.includes(resolveWindowsUpdatePublisher(signing.certificateFile))
+  )
+    throw Error("DESKTOP_SIGNED_UPDATE_CONFIG_MISMATCH");
+  const metadata = yaml.load(await readFile(join(artifactDirectory, "nightly.yml"), "utf8"));
+  if (
+    metadata.version !== input.desktopVersion ||
+    !metadata.files?.some((file) => file.url === files[0] && typeof file.sha512 === "string")
+  )
+    throw Error("DESKTOP_SIGNED_UPDATE_METADATA_MISMATCH");
+  const signature = JSON.parse(
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$ErrorActionPreference='Stop'; $s=Get-AuthenticodeSignature -LiteralPath $env:GEA_VERIFY_FILE; @{status=[string]$s.Status;timestamped=($null -ne $s.TimeStamperCertificate);certificate=[Convert]::ToBase64String($s.SignerCertificate.RawData)}|ConvertTo-Json -Compress",
+      ],
+      {
+        env: { ...process.env, GEA_VERIFY_FILE: artifact },
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 60000,
+      },
+    ),
+  );
+  const fingerprint = createHash("sha256")
+    .update(Buffer.from(signature.certificate, "base64"))
+    .digest("hex")
+    .toUpperCase();
+  if (
+    signature.status !== "Valid" ||
+    !signature.timestamped ||
+    fingerprint !== signing.fingerprint.replaceAll(":", "")
+  )
+    throw Error("DESKTOP_INSTALLER_SIGNATURE_INVALID");
+}
 for (const cwd of [root, gea])
   if (
     execFileSync("git", ["status", "--porcelain"], {
