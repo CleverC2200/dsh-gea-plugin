@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { controllerFixture, waitForStage } from "./fixtures/plugin-updates/profile.mjs";
 import { prepareWindowsFileCommit } from "../src/host/plugin-update-windows.ts";
+import { configureStalledPnpmRegistry } from "./fixtures/plugin-updates/stalled-registry.mjs";
 if (
   process.platform !== "win32" ||
   !process.env.GEA_WINDOWS_RUNTIME ||
@@ -18,7 +19,7 @@ const { createPluginUpdateController } = await import(
   pathToFileURL(process.env.GEA_WINDOWS_CONTROLLER)
 );
 const anchor = join(process.env.GEA_WINDOWS_RUNTIME, "dsh/package.json");
-for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
+for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-write", "orphan"]) {
   test("Windows official installer with native Job: " + mode, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "GEA native windows "));
     let controller;
@@ -38,9 +39,12 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
       join(f.root, "anchor/node_modules"),
       "junction",
     );
-    if (mode === "pnpm") {
+    let stalledRegistry;
+    if (mode.startsWith("pnpm")) {
       await installPnpmConsumerLayout(f, "^3.0.0");
       f.profile.packageManager.args = [process.env.GEA_PLUGIN_UPDATE_PNPM];
+      if (mode === "pnpm-stalled-registry")
+        stalledRegistry = await configureStalledPnpmRegistry(t, f.profile);
     }
     f.options.fileCommit = fileCommit;
     f.options.idleTimeoutMs = mode === "orphan" ? 1500 : 10000;
@@ -68,7 +72,7 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
       ["pending-restart", "failed", "unknown", "failed"],
       30000,
     );
-    const expected = ["success", "pnpm"].includes(mode)
+    const expected = mode === "success" || mode.startsWith("pnpm")
       ? "pending-restart"
       : mode === "fail-after-write"
         ? "failed"
@@ -79,14 +83,17 @@ for (const mode of ["success", "pnpm", "fail-after-write", "orphan"]) {
     }
     assert.equal(
       result.stage,
-      ["success", "pnpm"].includes(mode)
-        ? "pending-restart"
-        : mode === "fail-after-write"
-          ? "failed"
-          : "unknown",
+      expected,
       JSON.stringify(result),
     );
     assert(result.processes.some((x) => x.grouped === false && x.sawAlive && x.startIdentity));
+    if (stalledRegistry) {
+      assert.deepEqual(stalledRegistry.requests, []);
+      const proof = JSON.parse(await readFile(join(result.directory, "windows-job.json"), "utf8"));
+      assert.equal(proof.stage, "empty");
+      assert.equal(proof.exitCode, 0);
+      assert.equal(proof.nonce, result.processes[0].startIdentity);
+    }
     if (mode === "fail-after-write") assert.equal(result.diagnostic, "PACKAGE_INSTALL_FAILED");
     if (mode === "orphan") {
       const pid = Number(await readFile(join(f.dir, "orphan-pid"), "utf8"));

@@ -852,6 +852,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                   "--ignore-scripts",
                   "--ignore-pnpmfile",
                   "--config.auto-install-peers=false",
+                  "--config.update-notifier=false",
                 ],
                 {
                   ...(windowsRun?.packageManager ?? options.profile.packageManager),
