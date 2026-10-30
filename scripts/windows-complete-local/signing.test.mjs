@@ -42,12 +42,17 @@ test("the PFX signer repairs then signs sequentially without passing password co
     {
       certificateFile: companyWindowsCertificate,
       repairExecutable: async (path) => calls.push("repair:" + path),
+      signingEnvironment: {
+        USERPROFILE: "C:/Users/build",
+        APPDATA: "C:/Users/build/AppData/Roaming",
+      },
     },
     {
       env: { ...env, OTHER_SECRET: "must-not-leak" },
       run: async (command, args, options) => {
         calls.push("sign:" + args[args.indexOf("-TargetPath") + 1]);
         assert.equal(command, "powershell.exe");
+        assert.equal(options.env.USERPROFILE, "C:/Users/build");
         assert.ok(args.includes("-PasswordFile"));
         assert.doesNotMatch(
           JSON.stringify({ args, options }),

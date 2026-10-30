@@ -11,14 +11,17 @@ export const companyWindowsCertificate = fileURLToPath(
 export const companyWindowsUpdateUrl =
   "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/";
 
-export function resolveCompanyWindowsSigning(env = process.env) {
+export function resolveCompanyWindowsSigning(
+  env = process.env,
+  certificateFile = companyWindowsCertificate,
+) {
   const pfx = env.GEA_WINDOWS_PFX_FILE,
     passwordFile = env.GEA_WINDOWS_PFX_PASSWORD_FILE;
   if (!pfx || !passwordFile)
     throw Error("GEA_WINDOWS_PFX_FILE and GEA_WINDOWS_PFX_PASSWORD_FILE are required");
   for (const file of [pfx, passwordFile])
     if (!statSync(file).isFile()) throw Error("WINDOWS_SIGNING_FILE_INVALID");
-  const cert = new X509Certificate(readFileSync(companyWindowsCertificate));
+  const cert = new X509Certificate(readFileSync(certificateFile));
   if (
     cert.ca ||
     !cert.keyUsage?.includes("1.3.6.1.5.5.7.3.3") ||
@@ -29,7 +32,7 @@ export function resolveCompanyWindowsSigning(env = process.env) {
   return {
     pfx,
     passwordFile,
-    certificateFile: companyWindowsCertificate,
+    certificateFile,
     publisher: cert.subject,
     fingerprint: cert.fingerprint256,
   };
@@ -37,9 +40,13 @@ export function resolveCompanyWindowsSigning(env = process.env) {
 
 export function createCompanyWindowsSigner(
   options,
-  { env = process.env, run = promisify(execFile) } = {},
+  {
+    env = process.env,
+    run = promisify(execFile),
+    certificateFile = companyWindowsCertificate,
+  } = {},
 ) {
-  const signing = resolveCompanyWindowsSigning(env);
+  const signing = resolveCompanyWindowsSigning(env, certificateFile);
   if (
     new X509Certificate(readFileSync(options.certificateFile)).fingerprint256 !==
     signing.fingerprint
@@ -74,11 +81,7 @@ export function createCompanyWindowsSigner(
             timeout: 120000,
             maxBuffer: 65536,
             env: {
-              SystemRoot: env.SystemRoot,
-              WINDIR: env.WINDIR,
-              TEMP: env.TEMP,
-              TMP: env.TMP,
-              PATH: env.PATH,
+              ...options.signingEnvironment,
               PSModulePath: "",
             },
           },
@@ -106,7 +109,7 @@ export function adaptSignedWindowsFactory(source, desktop) {
   const replacements = [
     [
       "createWindowsTokenSigner({",
-      "createCompanyWindowsSigner({ repairExecutable: repairDanglingAuthenticodeDirectory,",
+      "createCompanyWindowsSigner({ repairExecutable: repairDanglingAuthenticodeDirectory, signingEnvironment: scrubWindowsSigningEnvironment(env),",
     ],
     [
       "resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",

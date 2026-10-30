@@ -18,6 +18,17 @@ try {
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'install-certificate.ps1') -CertificatePath $cer -StoreLocation LocalMachine -CheckOnly
     if ($LASTEXITCODE -ne 3) { throw 'EXPECTED_UNTRUSTED_CERTIFICATE' }
     Write-Output '[GEA-CERT] untrusted-check-passed'
+    $signerUrl = ([Uri](Join-Path $PSScriptRoot '../scripts/windows-complete-local/signing.mjs')).AbsoluteUri
+    $signerScript = Join-Path $work 'sign-fixture.mjs'
+    $javascript = @"
+import {createCompanyWindowsSigner} from '$signerUrl';
+const [target,pfx,passwordFile,certificateFile]=process.argv.slice(2);
+const env={...process.env,GEA_WINDOWS_PFX_FILE:pfx,GEA_WINDOWS_PFX_PASSWORD_FILE:passwordFile};
+const signingEnvironment=Object.fromEntries(Object.entries(env).filter(([name])=>!/(?:KEY|SECRET|TOKEN|PASSWORD)/i.test(name)&&!name.startsWith('DSH_DESKTOP_WINDOWS_')));
+const sign=createCompanyWindowsSigner({certificateFile,repairExecutable:async()=>{},signingEnvironment},{env,certificateFile});
+await sign({path:target,hash:'sha256'});
+"@
+    [IO.File]::WriteAllText($signerScript,$javascript,[Text.UTF8Encoding]::new($false))
     foreach ($version in @('1','2')) {
         $target = Join-Path $work ('update-' + $version + '.ps1')
         [IO.File]::WriteAllText($target,('Write-Output "version ' + $version + '"'),[Text.UTF8Encoding]::new($false))
@@ -25,7 +36,7 @@ try {
         $previousModulePath = $env:PSModulePath
         try {
             $env:PSModulePath = ''
-            & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'sign-windows.ps1') -TargetPath $target -PfxFile $pfx -PasswordFile $passwordFile -CertificatePath $cer
+            & node $signerScript $target $pfx $passwordFile $cer
             $code = $LASTEXITCODE
         } finally { $env:PSModulePath = $previousModulePath }
         if ($code -ne 0) { throw 'SIGNING_FAILED' }
