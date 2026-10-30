@@ -1,4 +1,5 @@
 import { CURRENT_SHORTAGE_ROUTING, currentShortageResource } from "./current-shortage-contract.ts";
+import { BASE_INVENTORY_ROUTING } from "./base-inventory-tool.ts";
 import { BRANCH_INVENTORY_ROUTING } from "./branch-inventory-tool.ts";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
 import { sessionConsumer, assertSessionResourceAvailable } from "./business-identity.ts";
@@ -18,7 +19,9 @@ import { modulePagePrompt } from "./module-page-scope.ts";
 import { orchestrationInventoryAllowed } from "./orchestration-inventory-access.ts";
 
 const fixedInventoryMethod = (name: string) =>
-  name === "gea_branch_inventory" || name === "gea_current_shortage";
+  name === "gea_branch_inventory" ||
+  name === "gea_base_inventory" ||
+  name === "gea_current_shortage";
 
 const gatewayMethod = (name: string) =>
   name === "mcp__gea-gateway__inspect_cube_model" ||
@@ -92,6 +95,7 @@ export function mountBusinessPrompts(
     const names = profileOf(agent) ? namesFor(agent, state) : new Set<string>();
     if (orchestrationInventoryAllowed(ctx, business, agent.id)) {
       names.add("gea_branch_inventory");
+      names.add("gea_base_inventory");
       names.add("gea_current_shortage");
     }
     if (cubeAllowed(ctx, business, agent.id)) {
@@ -475,6 +479,9 @@ export function mountBusinessPrompts(
               name: "gea-current-shortage",
               text:
                 CURRENT_SHORTAGE_ROUTING +
+                (profile.consumerCode === "base-safety-stock"
+                  ? "\n\n" + BASE_INVENTORY_ROUTING
+                  : "") +
                 (profile.consumerCode === "branch-inventory"
                   ? "\n\n" + BRANCH_INVENTORY_ROUTING
                   : ""),

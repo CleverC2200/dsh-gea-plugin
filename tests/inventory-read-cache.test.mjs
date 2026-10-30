@@ -168,3 +168,18 @@ test("late pre-refresh reads cannot overwrite newer data or qualify as fresh", (
   cache.set(identity.signal, "other", { rows: [{ qty: 1 }] }, false, 1000);
   assert.equal(cache.get(identity.signal, "other", 1200), undefined);
 });
+
+test("atomic empty-page markers and zero-source aggregates cannot hide a later ready inventory", () => {
+  const cache = new InventoryReadCache(),
+    scope = new AbortController().signal;
+  for (const result of [
+    { rows: [{ page_scope_total: 0, page_row_present: null, warehouse_code: null, sku: null }] },
+    { rows: [{ row_count: 0, total_qty: null, recommended_qty: null }] },
+  ]) {
+    cache.set(scope, "selected-warehouse", result);
+    assert.equal(cache.get(scope, "selected-warehouse", 0), undefined);
+  }
+  const zero = { rows: [{ row_count: 1, total_qty: 0 }] };
+  cache.set(scope, "selected-warehouse", zero);
+  assert.deepEqual(cache.get(scope, "selected-warehouse", 0), zero);
+});

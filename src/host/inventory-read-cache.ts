@@ -25,6 +25,13 @@ export function unavailableInventorySnapshot(value: unknown, requireSnapshotDate
     !value.rows.length ||
     value.rows.every(
       (row) =>
+        (Object.hasOwn(row, "page_scope_total") &&
+          Number(row.page_scope_total) === 0 &&
+          row.page_row_present == null) ||
+        (Object.hasOwn(row, "row_count") && Number(row.row_count) === 0),
+    ) ||
+    value.rows.every(
+      (row) =>
         !Object.values(row).some((cell) => cell !== null && cell !== undefined && cell !== ""),
     ) ||
     (requireSnapshotDate &&
