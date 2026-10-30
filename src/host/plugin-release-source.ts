@@ -139,6 +139,7 @@ export async function inspectPluginArchive(
     timeout: 30_000,
     killSignal: "SIGKILL" as const,
     encoding: "utf8" as const,
+    env: process.platform === "darwin" ? { ...process.env, LC_ALL: "en_US.UTF-8" } : process.env,
     signal,
   };
   const entries = (await run("tar", ["-tzf", path], options)).stdout.trim().split(/\r?\n/);

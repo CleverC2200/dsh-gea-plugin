@@ -44,6 +44,7 @@ async function fixture(t) {
       await writeFile(join(packageRoot, relative), "export default {};");
     }
     await writeFile(join(packageRoot, "cordis.patch.yml"), "[]");
+    await writeFile(join(packageRoot, "订单履约语义.md"), "订单履约");
     const archive = join(dir, `${releases.length}.tgz`);
     execFileSync("tar", ["-czf", archive, "-C", join(packageRoot, ".."), "package"]);
     const archiveBytes = await readFile(archive),
@@ -161,6 +162,59 @@ test("a channel suite capability must match the actual updater archive", async (
     /SOURCE_ARCHIVE_RELEASE_MISMATCH/,
   );
 });
+test(
+  "macOS archive download and cached validation accept Chinese paths regardless of parent locale",
+  { skip: process.platform !== "darwin" },
+  async (t) => {
+    const f = await fixture(t),
+      releases = await f.source.check(),
+      keys = ["LANG", "LC_ALL", "LC_CTYPE"],
+      previous = keys.map((key) => process.env[key]);
+    try {
+      for (const locale of ["C", undefined]) {
+        for (const key of keys) {
+          if (locale === undefined) delete process.env[key];
+          else process.env[key] = locale;
+        }
+        const cache = join(f.dir, locale ?? "unset");
+        for (const release of releases) {
+          const path = await f.source.download(release, cache);
+          assert.equal((await inspectPluginArchive(path)).name, release.name);
+          assert.equal(await f.source.download(release, cache), path);
+        }
+        assert.deepEqual(
+          keys.map((key) => process.env[key]),
+          keys.map(() => locale),
+        );
+      }
+    } finally {
+      keys.forEach((key, index) => {
+        if (previous[index] === undefined) delete process.env[key];
+        else process.env[key] = previous[index];
+      });
+    }
+  },
+);
+
+test(
+  "UTF-8 archive inspection still rejects backslashes, bundled node_modules and duplicate entries",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const f = await fixture(t),
+      root = join(f.dir, companyPackageNames[0].replaceAll("/", "-")),
+      archive = join(f.dir, "invalid.tgz");
+    for (const relative of ["back\\slash.md", "node_modules/dependency/index.js"]) {
+      const file = join(root, "package", relative);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, "invalid");
+      execFileSync("tar", ["-czf", archive, "-C", root, "package"]);
+      await assert.rejects(inspectPluginArchive(archive), /SOURCE_ARCHIVE_INVALID/);
+      await rm(join(root, "package", relative.split("/")[0]), { recursive: true });
+    }
+    execFileSync("tar", ["-czf", archive, "-C", root, "package", "package"]);
+    await assert.rejects(inspectPluginArchive(archive), /SOURCE_ARCHIVE_INVALID/);
+  },
+);
 test(
   "archive listing accepts Windows CRLF while retaining archive inspection",
   { skip: process.platform === "win32" },
