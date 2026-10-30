@@ -869,6 +869,7 @@ export class Business {
     this.salesTransactions = new SalesPlanTransactions({
       scope: (effect) => {
         this.assertExecutionAllowed(this.config.analysisAgentCode, effect);
+        if (effect === "submit" && !this.auth) throw serviceAccountUnavailableError("signed-out");
         return {
           auth: this.authenticated(),
           base: this.base,
@@ -1649,7 +1650,6 @@ export class Business {
   }
 
   async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    if (!this.auth) throw serviceAccountUnavailableError("signed-out");
     return this.salesTransactions.submit(payload, caller);
   }
 
