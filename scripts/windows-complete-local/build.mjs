@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
 import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
 import { inspectPluginArchive } from "../../src/host/plugin-release-source.ts";
-import { readFile, writeFile, mkdir, readdir, stat, symlink } from "node:fs/promises";
+import { cp, readFile, writeFile, mkdir, readdir, stat, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -24,6 +24,7 @@ const signed = process.env.GEA_WINDOWS_SIGNED === "1";
 const signing = signed ? resolveCompanyWindowsSigning() : undefined;
 if (signing) process.env.DSH_DESKTOP_WINDOWS_CER_FILE = signing.certificateFile;
 const artifactDirectory = join(target, signed ? "artifacts" : "unsigned-artifacts");
+const packagedDsh = signed ? join(target, "gea-signed-dsh") : join(target, "dsh");
 const coreSha = desktopCoreHead;
 const geaSha = process.env.GITHUB_SHA;
 const input = await readDesktopInput(process.argv[4], geaSha);
@@ -129,7 +130,7 @@ await writeFile(
 const config = `import { createElectronBuilderConfig } from './builder-factory.mjs';
 import { officialGeaBranding } from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
 import { execFileSync } from 'node:child_process';
-const config = officialGeaBranding(createElectronBuilderConfig(process.env), { companySeed: ${JSON.stringify(join(target, "company-seed"))} });
+const config = officialGeaBranding(createElectronBuilderConfig(process.env, undefined, undefined, ${JSON.stringify(packagedDsh)}), { companySeed: ${JSON.stringify(join(target, "company-seed"))} });
 if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || ${signed ? "config.publish?.[0]?.url !== " + JSON.stringify(companyWindowsUpdateUrl) : "config.publish !== null"}) throw Error('COMPANY_DESKTOP_ADAPTER_DRIFT');
 config.artifactName = 'GEA-Desktop-\${version}-win-\${arch}-${signed ? "signed" : "complete-local-unsigned"}.\${ext}';
 config.extraMetadata = { ...config.extraMetadata, dshLocalTestBuild: ${!signed}, geaBrandingCommit: process.env.GEA_COMPLETE_SOURCE_SHA, dshLocalPackaging: '${signed ? "official-layout-gea-windows-signed-no-publish" : "official-layout-gea-windows-unsigned-no-publish"}' };
@@ -164,7 +165,9 @@ foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninst
 );
 const smokePath = join(desktop, "scripts/smoke-packaged-runtime.ts");
 const smoke = relocate(
-  (await readFile(smokePath, "utf8")).replaceAll("'DeepSeek Harness.exe'", "'GEA Desktop.exe'"),
+  (await readFile(smokePath, "utf8"))
+    .replaceAll("'DeepSeek Harness.exe'", "'GEA Desktop.exe'")
+    .replaceAll("paths.dsh", JSON.stringify(packagedDsh)),
   smokePath,
 );
 await writeFile(join(output, "smoke-gea.mts"), smoke);
@@ -204,11 +207,36 @@ for (const row of seedInput.packages) {
 }
 await writeFile(join(output, "input-three.json"), JSON.stringify(seedInput));
 const { coreReuse, runtimeReuse, skipped } = await prepareWindows(root, output, run);
+if (signed) {
+  process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = join(output, "windows-signature-audit");
+  await mkdir(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, { recursive: true });
+  await cp(join(target, "dsh"), packagedDsh, {
+    recursive: true,
+    force: false,
+    errorOnExist: true,
+  });
+  const signingScript = join(output, "sign-company-runtime.mts");
+  await writeFile(
+    signingScript,
+    `import {readFile} from 'node:fs/promises';
+import {createCompanyWindowsSigner} from ${JSON.stringify(new URL("./signing.mjs", import.meta.url).href)};
+import {repairDanglingAuthenticodeDirectory,scrubWindowsSigningEnvironment} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/windows-sign.mjs")).href)};
+import {signWindowsDesktopRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/sign-primary-runtime.ts")).href)};
+import {smokePreparedRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/smoke-prepared-runtime.ts")).href)};
+import {recordPackagingEvent} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/packaging-run.mjs")).href)};
+const root=${JSON.stringify(packagedDsh)};
+const sign=createCompanyWindowsSigner({certificateFile:process.env.DSH_DESKTOP_WINDOWS_CER_FILE,repairExecutable:repairDanglingAuthenticodeDirectory,signingEnvironment:scrubWindowsSigningEnvironment(process.env)});
+const {version}=JSON.parse(await readFile(${JSON.stringify(join(packagedDsh, "package.json"))},'utf8'));
+await signWindowsDesktopRuntime(root,version,{sign,thumbprint:${JSON.stringify(new X509Certificate(await readFile(signing.certificateFile)).fingerprint.replaceAll(":", ""))},record:event=>recordPackagingEvent(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR,event),smoke:descriptor=>smokePreparedRuntime(root,${JSON.stringify(join(target, "electron/electron.exe"))},${JSON.stringify(join(target, "runtime"))},descriptor)});
+`,
+  );
+  await run("sign-company-runtime", ["exec", "tsx", signingScript]);
+}
 
 const seedStarted = Date.now();
 const seedRoot = join(target, "seed-root");
 await mkdir(seedRoot, { recursive: true });
-await symlink(join(target, "dsh"), join(seedRoot, "dsh"), "junction");
+await symlink(packagedDsh, join(seedRoot, "dsh"), "junction");
 execFileSync(
   process.execPath,
   [
@@ -222,11 +250,7 @@ execFileSync(
   { env: process.env, stdio: "inherit" },
 );
 stages.push({ name: "prepare-company-seed", code: 0, seconds: (Date.now() - seedStarted) / 1000 });
-if (signed) {
-  process.env.DSH_DESKTOP_UNSIGNED = "0";
-  process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = join(output, "windows-signature-audit");
-  await mkdir(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, { recursive: true });
-}
+if (signed) process.env.DSH_DESKTOP_UNSIGNED = "0";
 await run(
   "package-windows",
   [
