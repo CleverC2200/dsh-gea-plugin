@@ -1,3 +1,4 @@
+import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
 import { orderReportWithEdits } from "./order-report-edits.ts";
 import { resolveFcDmsTarget } from "./fc-dms-target.ts";
 import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
@@ -109,6 +110,7 @@ export interface Deployment {
   };
   serviceAccounts?: ServiceAccounts;
   dms?: DmsEnvironments;
+  orderFulfillmentConfirmation?: { production?: boolean; test?: boolean };
   fcStorage?: FcStorageEnvironments;
   geaBaseUrl: string;
   environment?: "production" | "test";
@@ -2565,6 +2567,24 @@ export class Business {
   }
 
   private orderReportQueue: Promise<unknown> = Promise.resolve();
+  async orderSalesConfirmation(payload: unknown, caller: AbortSignal) {
+    this.assertExecutionAllowed("order01");
+    const auth = this.authenticated();
+    return orderSalesConfirmation(
+      payload,
+      {
+        enabled:
+          this.config.orderFulfillmentConfirmation?.[this.environment as "production" | "test"] ===
+          true,
+        base: this.base,
+        auth,
+        identity: this.epoch.signal,
+        signal: caller,
+        timeoutMs: this.config.requestTimeoutMs,
+      },
+      this.apiLog.fetch,
+    );
+  }
   async orderReport(payload: Record<string, unknown>, caller: AbortSignal) {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
