@@ -1,4 +1,5 @@
 import { resolveFcDmsTarget } from "./fc-dms-target.ts";
+import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
 import { orderReportStore } from "./order-report-store.ts";
 import {
   decodeSalesPlanResult,
@@ -1573,6 +1574,7 @@ export class Business {
   async branchDms(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed("branch-inventory");
     const auth = this.authenticated();
+    const config = resolveFcDmsDeployment(this.config.dms, this.environment, auth);
     if (payload.operation === "resolve-target") {
       keys(payload, ["operation", "warehouseCode", "addressCode"]);
       if (
@@ -1590,9 +1592,8 @@ export class Business {
       signal.throwIfAborted();
       if (this.auth !== auth) throw Error("STALE_LOGIN");
       this.assertExecutionAllowed("branch-inventory");
-      return result;
+      return { ...result, message: dmsTargetNotice(config) + result.message };
     }
-    const config = this.config.dms?.[this.environment];
     const bindings = config?.users?.filter(
       (user) => user.tenantId === auth.tenantId && user.userId === auth.id,
     );

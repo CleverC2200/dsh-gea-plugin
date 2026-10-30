@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, rename, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { dmsSigningSecret } from "./fc-dms-default.ts";
 
-/** Deployment-only identity bindings; secrets are resolved from Host environment variables. */
+/** Host-owned identity bindings; custom deployments resolve secrets from their environment. */
 export interface DmsConfig {
   gatewayUrl: string;
   manageUrl?: string;
   secretEnv: string;
+  credentialSource?: "fc-bundled-dms-test";
   users: {
     tenantId: string;
     userId: string;
@@ -131,14 +133,14 @@ export class DmsClient {
     if (this.config.manageUrl) baseUrl(this.config.manageUrl);
     required(this.identity.username?.trim() || this.identity.workcode?.trim(), "登录账号");
     if (!/^[A-Z_][A-Z0-9_]*$/i.test(this.config.secretEnv)) throw Error("DMS 密钥环境变量配置无效");
-    if (!process.env[this.config.secretEnv]) throw Error("DMS 签名密钥未配置");
+    if (!dmsSigningSecret(this.config)) throw Error("DMS 签名密钥未配置");
   }
   async login(signal: AbortSignal) {
     this.assertConfigured();
     const username = this.identity.username?.trim(),
       workcode = this.identity.workcode?.trim();
     const key = required(username || workcode, "登录账号");
-    const secret = process.env[this.config.secretEnv]!;
+    const secret = dmsSigningSecret(this.config);
     const time = String(Date.now());
     const sign = createHash("md5")
       .update(key + time + secret)
