@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import semver from "semver";
 import { readFile } from "node:fs/promises";
 import { productionManifest } from "../scripts/production-manifest.mjs";
 const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -43,4 +44,18 @@ test("production manifest preserves an existing exact peer when another package 
     versions,
   );
   assert.equal(ranged.peerDependencies["dsh-agent-manage"], "^0.6.3");
+});
+
+test("production release accepts the integrated inventory companion versions", () => {
+  const targets = {
+    "@cleverc2200/dsh-agent-workbench": "0.1.46",
+    "dsh-agent-manage": "0.6.3-company.42",
+  };
+  const manifest = productionManifest(source, { ...versions, ...targets });
+  for (const [name, version] of Object.entries(targets))
+    assert.equal(
+      semver.satisfies(version, manifest.peerDependencies[name]),
+      true,
+      `${name}@${version} must be installable in the released suite`,
+    );
 });
