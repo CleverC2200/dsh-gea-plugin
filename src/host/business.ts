@@ -1,4 +1,6 @@
 import { orderReportWithEdits } from "./order-report-edits.ts";
+import { resolveFcDmsTarget } from "./fc-dms-target.ts";
+import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
 import {
   decodeSalesPlanResult,
   salesPlanCustomer,
@@ -1572,7 +1574,26 @@ export class Business {
   async branchDms(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed("branch-inventory");
     const auth = this.authenticated();
-    const config = this.config.dms?.[this.environment];
+    const config = resolveFcDmsDeployment(this.config.dms, this.environment, auth);
+    if (payload.operation === "resolve-target") {
+      keys(payload, ["operation", "warehouseCode", "addressCode"]);
+      if (
+        typeof payload.warehouseCode !== "string" ||
+        (payload.addressCode !== undefined && typeof payload.addressCode !== "string")
+      )
+        throw Error("DMS 主数据查询参数无效");
+      const signal = AbortSignal.any([caller, this.epoch.signal, AbortSignal.timeout(6000)]);
+      const result = await resolveFcDmsTarget(
+        payload.warehouseCode,
+        typeof payload.addressCode === "string" ? payload.addressCode : "",
+        (query) => this.pluginSql({ consumerCode: "branch-inventory", ...query }, signal),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      this.assertExecutionAllowed("branch-inventory");
+      return { ...result, message: dmsTargetNotice(config) + result.message };
+    }
     const bindings = config?.users?.filter(
       (user) => user.tenantId === auth.tenantId && user.userId === auth.id,
     );
