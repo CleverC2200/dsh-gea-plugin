@@ -14,7 +14,7 @@ try {
     $certificate.Import($PfxFile,$password,[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::DefaultKeySet)
     if (!$certificate.HasPrivateKey -or [Convert]::ToBase64String($certificate.RawData) -ne [Convert]::ToBase64String($public.RawData)) { throw 'WINDOWS_SIGNING_CERTIFICATE_MISMATCH' }
     Write-Output '[GEA-CERT] trust-root-begin'
-    & (Join-Path $PSScriptRoot 'install-certificate.ps1') -CertificatePath $CertificatePath
+    & (Join-Path $PSScriptRoot 'install-certificate.ps1') -CertificatePath $CertificatePath -StoreLocation LocalMachine
     Write-Output '[GEA-CERT] trust-root-end'
     $existing = Get-AuthenticodeSignature -LiteralPath $TargetPath
     if ($existing.Status -eq 'Valid' -and $null -ne $existing.TimeStamperCertificate) { return }

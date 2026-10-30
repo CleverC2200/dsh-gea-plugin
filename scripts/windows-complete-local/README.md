@@ -22,7 +22,7 @@ bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativ
 
 完整 Windows 构建默认 `windows_signed=true`。首次安装内置 `desktop/build/codesign.cer` 和公钥导入脚本。安装器保持 Core 的当前用户安装模式，在解压新程序前检查 `CurrentUser\Root`，缺少证书时向用户说明信任变更，经确认后导入。已信任时不再提示；首次静默安装缺少信任时直接失败。卸载不移除证书，避免破坏同一签名者的其他安装。
 
-签名构建要求构建机提供 `GEA_WINDOWS_PFX_FILE` 和 `GEA_WINDOWS_PFX_PASSWORD_FILE` 两个路径。PFX 必须与仓库内置的公钥完全一致。签名器检查 Windows 验签状态、签名者和时间戳，失败即中止。私钥和密码不进入应用、更新清单或构建 artifact。`windows_signed=false` 只用于原未签名诊断构建，不启用在线更新。
+签名构建要求构建机提供 `GEA_WINDOWS_PFX_FILE` 和 `GEA_WINDOWS_PFX_PASSWORD_FILE` 两个路径。PFX 必须与仓库内置的公钥完全一致。签名器在有管理员权限的构建机上将公钥导入 LocalMachine\Root，用于无人值守验签，并检查 Windows 验签状态、签名者和时间戳，失败即中止。私钥和密码不进入应用、更新清单或构建 artifact。`windows_signed=false` 只用于原未签名诊断构建，不启用在线更新。
 
 GitHub 构建从仓库 secrets `GEA_WINDOWS_SIGNING_PFX_BASE64`、`GEA_WINDOWS_SIGNING_PASSWORD` 读取私钥材料，写入 runner 临时目录，结束后删除。仓库不包含这些 secret；配置这些值和正式发布由发行负责人办理。手工 Windows 构建可直接设置本地路径，无需上传私钥。
 
@@ -30,4 +30,4 @@ GitHub 构建从仓库 secrets `GEA_WINDOWS_SIGNING_PFX_BASE64`、`GEA_WINDOWS_S
 
 已有客户端需要先安装一次包含新证书的引导版本，之后才能使用该证书验签更新。首次安装仍可能出现 Windows 安全提示。换证前必须提前部署新证书并核发布者兼容性，不能直接覆盖现有私钥。
 
-`windows_certificate_test=true` 单独执行 Windows 证书导入、重复导入、PFX 签名与时间戳夹具，使用临时测试证书，不使用正式私钥。它不构建完整桌面、不访问业务，也不证明真实旧版到新版升级。完整 NSIS 安装、真实公司证书签包及真实客户端更新仍需各自验收。
+`windows_certificate_test=true` 单独执行 Windows 机器证书库导入、重复导入、PFX 签名与时间戳夹具，使用临时测试证书，不使用正式私钥。它不构建完整桌面、不访问业务，也不证明真实旧版到新版升级。当前用户根证书导入可能出现 Windows 系统确认，保留给员工首次安装交互。完整 NSIS 安装、真实公司证书签包及真实客户端更新仍需各自验收。
