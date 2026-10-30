@@ -739,6 +739,10 @@ export class Business {
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly inventoryReads = new InventoryReadCache();
+  private readonly rejectedSqlLogins = new WeakMap<
+    AbortSignal,
+    { error: GeaResponseError; epoch: AbortController }
+  >();
   private readonly pluginDelegations = new Map<
     string,
     { authToken: string; delegationToken: string }
@@ -2727,7 +2731,6 @@ export class Business {
       const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
       if (cached !== undefined) return cached;
     }
-    let rejectedCurrentLogin: { error: GeaResponseError; epoch: AbortController } | undefined;
     const getDelegation = async () => {
       const cached = this.pluginDelegations.get(consumerCode);
       if (cached?.authToken === auth.token) return cached;
@@ -2760,7 +2763,7 @@ export class Business {
             requestSignal.throwIfAborted();
             if (response.status === 401 && this.auth?.token === auth.token) {
               this.clearLogin(true);
-              rejectedCurrentLogin = { error, epoch: this.epoch };
+              this.rejectedSqlLogins.set(identity, { error, epoch: this.epoch });
             }
             throw error;
           }
@@ -2898,14 +2901,14 @@ export class Business {
     } catch (error) {
       // Caller cancellation wins; only this live request's authentication rejection may explain its identity abort.
       caller.throwIfAborted();
+      const rejectedCurrentLogin = this.rejectedSqlLogins.get(identity);
       if (
         rejectedCurrentLogin !== undefined &&
-        rejectedCurrentLogin.error === error &&
         rejectedCurrentLogin.epoch === this.epoch &&
         !this.auth &&
         this.loginExpired
       )
-        throw error;
+        throw rejectedCurrentLogin.error;
       // Page refresh, range changes and identity cancellation are not failed reads.
       signal.throwIfAborted();
       // A failed delegated credential must not poison the next page refresh.

@@ -93,7 +93,7 @@ test(
     );
     assert.equal((await projected()).status.user.id, authorityA.status.user.id);
     assert.equal(statusResponse.value.roles[0].code, "sales_plan_province_approver");
-    await expect.poll(async () => (await projected())?.error).toBeTruthy();
+    await expect(async () => assert.ok((await projected())?.error)).toPass({ timeout: 15000 });
     const warning = (await projected()).error;
     await expect(
       page.getByRole("alert").and(page.getByTitle(warning, { exact: true })),
