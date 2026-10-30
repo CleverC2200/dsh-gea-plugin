@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
 import { inspectPluginArchive } from "../../src/host/plugin-release-source.ts";
 import { readFile, writeFile, mkdir, readdir, stat, symlink } from "node:fs/promises";
@@ -309,31 +309,17 @@ if (signed) {
     !metadata.files?.some((file) => file.url === files[0] && typeof file.sha512 === "string")
   )
     throw Error("DESKTOP_SIGNED_UPDATE_METADATA_MISMATCH");
-  const signature = JSON.parse(
-    execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "$ErrorActionPreference='Stop'; $s=Get-AuthenticodeSignature -LiteralPath $env:GEA_VERIFY_FILE; @{status=[string]$s.Status;timestamped=($null -ne $s.TimeStamperCertificate);certificate=[Convert]::ToBase64String($s.SignerCertificate.RawData)}|ConvertTo-Json -Compress",
-      ],
-      {
-        env: { ...process.env, GEA_VERIFY_FILE: artifact },
-        encoding: "utf8",
-        windowsHide: true,
-        timeout: 60000,
-      },
-    ),
+  const { inspectWindowsRuntimeSignature } = await import(
+    pathToFileURL(join(desktop, "scripts/windows-runtime-signature.mjs")).href
   );
-  const fingerprint = createHash("sha256")
-    .update(Buffer.from(signature.certificate, "base64"))
-    .digest("hex")
-    .toUpperCase();
+  const signature = await inspectWindowsRuntimeSignature(artifact);
+  const expectedThumbprint = new X509Certificate(
+    await readFile(signing.certificateFile),
+  ).fingerprint.replaceAll(":", "");
   if (
     signature.status !== "Valid" ||
     !signature.timestamped ||
-    fingerprint !== signing.fingerprint.replaceAll(":", "")
+    signature.thumbprint?.toUpperCase() !== expectedThumbprint
   )
     throw Error("DESKTOP_INSTALLER_SIGNATURE_INVALID");
 }
