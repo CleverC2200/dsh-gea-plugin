@@ -52,7 +52,8 @@
     "desktop/updates.test.mjs",
     "desktop/verify-client-artifacts.test.cjs",
     "scripts/windows-complete-local/input.test.mjs",
-    "scripts/windows-complete-local/core-cache.test.mjs"
+    "scripts/windows-complete-local/core-cache.test.mjs",
+    "scripts/windows-complete-local/signing.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -645,6 +646,12 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^tests/plugin-update-windows\\.native\\.mjs$",
       "tests": ["scripts/ci-windows-update.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-certificate\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|prepare-signing\\.ps1)$",
+      "tests": ["scripts/windows-complete-local/signing.test.mjs"],
+      "sourceTests": ["scripts/windows-complete-local/signing.test.mjs"]
     }
   ],
   "testOwners": {
