@@ -16,7 +16,7 @@ test(
       name: "确认修改并重提",
       exact: true,
     });
-    await expect(dialog).toContainText("当前账号的修改重提入口尚未就绪或权限不足");
+    await expect(dialog).toContainText("当前环境尚未配置服务提报通道，请联系管理员完成接入配置。");
     await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeDisabled();
     await captureEvidence(page, app, "submission-unavailable");
     assert.equal(submitted.length, 0);
