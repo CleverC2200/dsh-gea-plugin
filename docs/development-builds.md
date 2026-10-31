@@ -101,7 +101,7 @@ node scripts/development-tasks.mjs finish --outputs /absolute/task/outputs.json
 
 每个回收项执行实时 `lsof`、进程参数及项目/技能入口符号链接检查，检查失败、依赖仍引用或恢复来源将被删除时跳过并报告；不关闭读者。检查支持 macOS/Linux，其他平台保留原物并报告未支持。检查是当次观察，owner 在 finish 期间保持本票停止生产新输出。自动回收不遍历删除未登记项，也不清理会话和 Skill 的在用版本。
 
-通过实时检查后，先在清单旁原子写入 `<outputs>.cleanup.json` 的 prepared 记录，再删除并持久化完成回执，将该项改为 `remove`。重复执行读取实际状态，不重复删除。若进程在删除后退出，下一次核原进程已退出、prepared 记录及路径实际缺失后续写回执，标记 recovered，不追认为本次实时检查或删除。未成功项仍为 `cleanup`，退出 1 并报告阻断原因。存在未声明输出、路径问题或恢复来源缺口时整批保持原状。并发 finish 通过清单旁独占锁互斥，锁归属未知或原进程仍在则阻断；原进程已退出的匹配锁可以恢复。无法确认的中断状态交由 owner 核对。原回执及清单保留，不备份整套生成环境。
+通过实时检查后，先在清单旁原子写入 `<outputs>.cleanup.json` 的 prepared 记录，再删除并持久化完成回执，将该项改为 `remove`。重复执行读取实际状态，不重复删除。若进程在删除后退出，下一次核原进程已退出、prepared 记录及路径实际缺失后续写回执，标记 recovered，不追认为本次实时检查或删除。未成功项仍为 `cleanup`，退出 1 并报告阻断原因。存在未声明输出、路径问题或恢复来源缺口时整批保持原状。并发 finish 通过清单旁独占锁互斥，锁归属未知或原进程仍在则阻断；原进程已退出的匹配锁可以恢复。无法确认的中断状态交由 owner 核对。事务临时写及 claim 放在 `<outputs>.finish-state` 内，以 task/owner 标记归属，只接纳已知的普通元数据文件。持有进程退出后恢复匹配 claim、回收本事务临时写；未知内容或未知锁保持阻断。原回执及清单保留，不备份整套生成环境。
 
 已由其他获准流程完成的退场项用 `disposition: "remove"` 和 `cleanupReceipt` 指向原清理 journal。该 journal 的 `items` 中必须只有一条同路径记录，`removed` 为 true，`startedAt`、`completedAt` 有效且先后有序；实际目标必须已经不存在。只写一个计划、成功摘要或清单自报 removed 均不通过。恢复来源和 journal 留在删除目标外。已删根必须有同路径退场项，不因根已不存在而省去核对。
 
@@ -111,7 +111,7 @@ node scripts/development-tasks.mjs finish --outputs /absolute/task/outputs.json
 
 全部通过才返回 `disposition-complete`，仅表示声明范围的输出处置完成；`scope=declared-task-outputs` 限定范围。`performsCleanup` 仅在本次确实删除时为 true；`livePreflightVerified` 仅在本次所有自动回收项都完成检查及删除时为 true。历史回执和只读 report 不追认过去的占用状态，不替代业务、Native、发布或整票验收。带清单的 `finish` 遇到缺口退出 1；`report` 只报告并保持原退出合同。
 
-项目根启动器的版本化源码在 `scripts/plugin-split-development.mjs`。采用时将根 `tools/development.mjs` 明确链接到本票已提交 integration 的该脚本，并保留此 checkout。脚本核自身及唯一输出核对模块的字节等于当前 HEAD，继续按原冻结输入核三仓、Core 和旧 GEA 工具，不覆盖旧工具或改绑输入。根 `finish` 先输出原占用报告，再对本票输出清单执行回收及核对；缺少清单也返回 `needs-disposition` 并退出 1。根 `report` 不带清单时保持原占用报告。
+项目根启动器的版本化源码在 `scripts/plugin-split-development.mjs`。根 `tools/development.mjs` 从稳定主输入读取已接纳的 GEA 工具位置和提交，核固定 HEAD 后调用该脚本；串行接纳新的工具源码后同步主输入，不另外保留一套完整工具环境。脚本核自身及唯一输出核对模块的字节等于当前 HEAD，继续按原冻结输入核三仓、Core 和旧 GEA 工具，不覆盖旧工具或改绑输入。根 `finish` 先输出原占用报告，再对本票输出清单执行回收及核对；缺少清单也返回 `needs-disposition` 并退出 1。根 `report` 不带清单时保持原占用报告。
 
 ```sh
 node tools/development.mjs report --input /absolute/frozen-input.json

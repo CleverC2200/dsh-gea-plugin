@@ -599,3 +599,27 @@ test("automatic finish preserves a file held open by its own caller", (t) => {
   } finally { fs.closeSync(descriptor); }
   assert.equal(finishDevelopmentOutputs(outputs).status, "disposition-complete");
 });
+
+for (const interruption of ["claim", "record"]) {
+  test("automatic finish recovers a dead " + interruption + " writer without hiding unrelated files", (t) => {
+    const { root, outputs, manifest, save, source, generated } = taskOutputsFixture(t);
+    Object.assign(manifest.items[0], { disposition: "cleanup", restoreFrom: [source] });
+    save();
+    const runner = join(root, "interrupt-writer.mjs");
+    const hook = interruption === "claim"
+      ? "const write = fs.writeFileSync; fs.writeFileSync = (path, ...args) => { const result = write(path, ...args); if (path.endsWith('/claim.json')) process.exit(98); return result; };"
+      : "fs.renameSync = () => process.exit(98);";
+    fs.writeFileSync(runner, "import fs from 'node:fs';\nimport { finishDevelopmentOutputs } from " + JSON.stringify(new URL("./development-outputs.mjs", import.meta.url).href) + ";\n" + hook + "\nfinishDevelopmentOutputs(" + JSON.stringify(outputs) + ");\n");
+    const interrupted = cp.spawnSync(process.execPath, [runner], { encoding: "utf8" });
+    assert.equal(interrupted.status, 98, interrupted.stderr);
+    assert.equal(fs.existsSync(generated), true);
+    const completed = finishDevelopmentOutputs(outputs);
+    assert.equal(completed.status, "disposition-complete", JSON.stringify(completed.issues));
+    assert.equal(fs.existsSync(generated), false);
+    assert.deepEqual(fs.readdirSync(outputs + ".finish-state"), ["owner.json"]);
+    const unexpected = join(outputs + ".finish-state", "unpublished-source.ts");
+    fs.writeFileSync(unexpected, "PROTECTED");
+    assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_TRANSACTION_UNKNOWN_FILE"));
+    assert.equal(fs.readFileSync(unexpected, "utf8"), "PROTECTED");
+  });
+}
