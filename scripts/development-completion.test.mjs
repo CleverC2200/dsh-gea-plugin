@@ -270,3 +270,25 @@ test("empty task watches stop before activity collection without creating local 
     /COMPLETION_TASK_SCOPE_REQUIRED/,
   );
 });
+
+test("completed tasks stop watching while explicitly retained user data stays intact", async (t) => {
+  const x = fixture(t);
+  const kept = join(x.root, "necessary-source.txt");
+  fs.writeFileSync(kept, "necessary unpublished content");
+  const manifest = JSON.parse(fs.readFileSync(x.file, "utf8"));
+  manifest.items.push({
+    path: kept,
+    kind: "source",
+    disposition: "retain",
+    reason: "not published",
+  });
+  fs.writeFileSync(x.file, JSON.stringify(manifest));
+  await bindTaskPullRequest({ ...x.options, binding: x.binding });
+  x.merge();
+  assert.equal((await finishMergedTask(x.options)).status, "finished");
+  assert.equal(fs.readFileSync(kept, "utf8"), "necessary unpublished content");
+  assert.equal(fs.existsSync(x.screenshot), false);
+  assert.equal(JSON.parse(fs.readFileSync(x.file, "utf8")).completion, undefined);
+  assert.equal(completionWatchPlan(x.projectRoot, x.file).action, "stop");
+  assert.deepEqual(registeredTaskOutputs(x.projectRoot), []);
+});

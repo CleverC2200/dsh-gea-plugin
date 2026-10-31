@@ -322,7 +322,12 @@ export async function finishMergedTask({
       return { status: "retained", task: manifest.task, issues: result.issues };
     for (const row of manifest.completion.worktrees ?? [])
       retireWorktree(row, manifest, projectRoot, protectedPaths);
-    if (read(file).items.every((item) => item.disposition === "remove")) removeTaskMetadata(file);
+    const disposition = read(file);
+    if (disposition.items.every((item) => item.disposition === "remove")) removeTaskMetadata(file);
+    else {
+      delete disposition.completion;
+      fs.writeFileSync(file, JSON.stringify(disposition, null, 2) + "\n");
+    }
     return {
       status: "finished",
       task: manifest.task,
