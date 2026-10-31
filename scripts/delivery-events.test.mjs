@@ -40,9 +40,17 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "prepare_windows_cache",
     "reuse_prepared_inputs",
     "source_types_input",
+    "windows_certificate_test",
     "windows_complete_input",
+    "windows_signed",
   ]);
   for (const [name, input] of Object.entries(inputs)) {
+    if (name === "windows_signed" || name === "windows_certificate_test") {
+      assert.equal(input.type, "boolean");
+      assert.equal(input.default, name === "windows_signed");
+      assert.equal(input.required, false);
+      continue;
+    }
     if (name === "prepare_windows_cache") {
       assert.equal(input.type, "boolean");
       assert.equal(input.default, false);
@@ -149,7 +157,7 @@ test("standalone delivery retains package Prompt and source checks while candida
   const steps = job.steps;
   assert.equal(
     job.if,
-    "(github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
+    "(github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
   );
   assert.deepEqual(
     steps
@@ -293,7 +301,10 @@ test("verified Core can be saved after wrapper failure without hiding the failed
 test("manual delivery runs dependency-free Core cache fixtures on Windows and macOS", () => {
   const job = workflow.jobs["core-cache-fixtures"];
   assert.ok(job);
-  assert.equal(job.if, "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache");
+  assert.equal(
+    job.if,
+    "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test",
+  );
   assert.deepEqual(job.strategy.matrix.os, ["windows-2025", "macos-15"]);
   assert.equal(job.strategy["fail-fast"], false);
   assert.equal(job["runs-on"], "${{ matrix.os }}");

@@ -1,19 +1,30 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
 import { inspectPluginArchive } from "../../src/host/plugin-release-source.ts";
-import { readFile, writeFile, mkdir, readdir, stat, symlink } from "node:fs/promises";
+import { cp, readFile, writeFile, mkdir, readdir, stat, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { prepareWindows, stageRunner } from "./prepare.mjs";
+import {
+  adaptSignedWindowsFactory,
+  companyCertificateInstaller,
+  resolveCompanyWindowsSigning,
+  companyWindowsUpdateUrl,
+} from "./signing.mjs";
 
 const root = resolve(process.argv[2]);
 const gea = resolve(process.argv[3]);
 const desktop = join(root, "apps/desktop");
 const target = join(desktop, ".desktop-build/targets/win-x64");
 const output = join(target, "gea-local");
+const signed = process.env.GEA_WINDOWS_SIGNED === "1";
+const signing = signed ? resolveCompanyWindowsSigning() : undefined;
+if (signing) process.env.DSH_DESKTOP_WINDOWS_CER_FILE = signing.certificateFile;
+const artifactDirectory = join(target, signed ? "artifacts" : "unsigned-artifacts");
+const packagedDsh = signed ? join(target, "gea-signed-dsh") : join(target, "dsh");
 const coreSha = desktopCoreHead;
 const geaSha = process.env.GITHUB_SHA;
 const input = await readDesktopInput(process.argv[4], geaSha);
@@ -67,6 +78,7 @@ let factory = relocate(await readFile(factoryPath, "utf8"), factoryPath);
 const policy = "const policy = resolveDesktopPolicyEnvironment(env)";
 if (factory.split(policy).length !== 2) throw Error("LOCAL_CONFIG_ADAPTER_DRIFT");
 factory = factory.replace(policy, "const policy = undefined");
+if (signed) factory = adaptSignedWindowsFactory(factory, desktop);
 await writeFile(join(output, "builder-factory.mjs"), factory);
 const iconPath = join(gea, "desktop/build/icon.png");
 const icon = await sharp(iconPath).resize(256, 256).png().toBuffer();
@@ -103,17 +115,25 @@ const strings = (await readFile(join(desktop, "installer/strings.nsh"), "utf8"))
   "GEA Desktop",
 );
 await writeFile(join(output, "gea-strings.nsh"), strings);
+if (signed)
+  await writeFile(
+    join(output, "gea-certificate-installer.nsh"),
+    companyCertificateInstaller(
+      await readFile(join(desktop, "scripts/installer.nsh"), "utf8"),
+      desktop,
+    ),
+  );
 await writeFile(
   join(output, "gea-installer.nsh"),
-  `!define INSTALLER_STRINGS_FILE "${join(output, "gea-strings.nsh")}"\n!include "${join(desktop, "scripts/installer.nsh")}"\n`,
+  `!define INSTALLER_STRINGS_FILE "${join(output, "gea-strings.nsh")}"\n!include "${signed ? join(output, "gea-certificate-installer.nsh") : join(desktop, "scripts/installer.nsh")}"\n`,
 );
 const config = `import { createElectronBuilderConfig } from './builder-factory.mjs';
 import { officialGeaBranding } from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
 import { execFileSync } from 'node:child_process';
-const config = officialGeaBranding(createElectronBuilderConfig(process.env), { companySeed: ${JSON.stringify(join(target, "company-seed"))} });
-if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || config.publish !== null) throw Error('COMPANY_DESKTOP_ADAPTER_DRIFT');
-config.artifactName = 'GEA-Desktop-\${version}-win-\${arch}-complete-local-unsigned.\${ext}';
-config.extraMetadata = { ...config.extraMetadata, dshLocalTestBuild: true, geaBrandingCommit: process.env.GEA_COMPLETE_SOURCE_SHA, dshLocalPackaging: 'official-layout-gea-windows-unsigned-no-publish' };
+const config = officialGeaBranding(createElectronBuilderConfig(process.env, undefined, undefined, ${JSON.stringify(packagedDsh)}), { companySeed: ${JSON.stringify(join(target, "company-seed"))} });
+if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || ${signed ? "config.publish?.[0]?.url !== " + JSON.stringify(companyWindowsUpdateUrl) : "config.publish !== null"}) throw Error('COMPANY_DESKTOP_ADAPTER_DRIFT');
+config.artifactName = 'GEA-Desktop-\${version}-win-\${arch}-${signed ? "signed" : "complete-local-unsigned"}.\${ext}';
+config.extraMetadata = { ...config.extraMetadata, dshLocalTestBuild: ${!signed}, geaBrandingCommit: process.env.GEA_COMPLETE_SOURCE_SHA, dshLocalPackaging: '${signed ? "official-layout-gea-windows-signed-no-publish" : "official-layout-gea-windows-unsigned-no-publish"}' };
 config.win = { ...config.win, icon: ${JSON.stringify(iconPath)}, target: [{ target: 'nsis', arch: ['x64'] }] };
 config.extraResources = config.extraResources.map(item => item.to === 'tray.ico' ? { ...item, from: ${JSON.stringify(join(output, "gea.ico"))} } : item);
 config.nsis = { ...config.nsis, deleteAppDataOnUninstall: false, include: ${JSON.stringify(join(output, "gea-installer.nsh"))} };
@@ -145,7 +165,9 @@ foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninst
 );
 const smokePath = join(desktop, "scripts/smoke-packaged-runtime.ts");
 const smoke = relocate(
-  (await readFile(smokePath, "utf8")).replaceAll("'DeepSeek Harness.exe'", "'GEA Desktop.exe'"),
+  (await readFile(smokePath, "utf8"))
+    .replaceAll("'DeepSeek Harness.exe'", "'GEA Desktop.exe'")
+    .replaceAll("paths.dsh", JSON.stringify(packagedDsh)),
   smokePath,
 );
 await writeFile(join(output, "smoke-gea.mts"), smoke);
@@ -185,11 +207,36 @@ for (const row of seedInput.packages) {
 }
 await writeFile(join(output, "input-three.json"), JSON.stringify(seedInput));
 const { coreReuse, runtimeReuse, skipped } = await prepareWindows(root, output, run);
+if (signed) {
+  process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = join(output, "windows-signature-audit");
+  await mkdir(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, { recursive: true });
+  await cp(join(target, "dsh"), packagedDsh, {
+    recursive: true,
+    force: false,
+    errorOnExist: true,
+  });
+  const signingScript = join(output, "sign-company-runtime.mts");
+  await writeFile(
+    signingScript,
+    `import {readFile} from 'node:fs/promises';
+import {createCompanyWindowsSigner} from ${JSON.stringify(new URL("./signing.mjs", import.meta.url).href)};
+import {repairDanglingAuthenticodeDirectory,scrubWindowsSigningEnvironment} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/windows-sign.mjs")).href)};
+import {signWindowsDesktopRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/sign-primary-runtime.ts")).href)};
+import {smokePreparedRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/smoke-prepared-runtime.ts")).href)};
+import {recordPackagingEvent} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/packaging-run.mjs")).href)};
+const root=${JSON.stringify(packagedDsh)};
+const sign=createCompanyWindowsSigner({certificateFile:process.env.DSH_DESKTOP_WINDOWS_CER_FILE,repairExecutable:repairDanglingAuthenticodeDirectory,signingEnvironment:scrubWindowsSigningEnvironment(process.env)});
+const {version}=JSON.parse(await readFile(${JSON.stringify(join(packagedDsh, "package.json"))},'utf8'));
+await signWindowsDesktopRuntime(root,version,{sign,thumbprint:${JSON.stringify(new X509Certificate(await readFile(signing.certificateFile)).fingerprint.replaceAll(":", ""))},record:event=>recordPackagingEvent(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR,event),smoke:descriptor=>smokePreparedRuntime(root,${JSON.stringify(join(target, "electron/electron.exe"))},${JSON.stringify(join(target, "runtime"))},descriptor)});
+`,
+  );
+  await run("sign-company-runtime", ["exec", "tsx", signingScript]);
+}
 
 const seedStarted = Date.now();
 const seedRoot = join(target, "seed-root");
 await mkdir(seedRoot, { recursive: true });
-await symlink(join(target, "dsh"), join(seedRoot, "dsh"), "junction");
+await symlink(packagedDsh, join(seedRoot, "dsh"), "junction");
 execFileSync(
   process.execPath,
   [
@@ -203,6 +250,7 @@ execFileSync(
   { env: process.env, stdio: "inherit" },
 );
 stages.push({ name: "prepare-company-seed", code: 0, seconds: (Date.now() - seedStarted) / 1000 });
+if (signed) process.env.DSH_DESKTOP_UNSIGNED = "0";
 await run(
   "package-windows",
   [
@@ -217,11 +265,15 @@ await run(
   ],
   desktop,
 );
-await run("smoke-windows", ["exec", "tsx", join(output, "smoke-gea.mts"), "--unsigned"], desktop);
-const appRoot = join(target, "unsigned-artifacts/win-unpacked/resources/app.asar");
-const supportRoot = join(target, "unsigned-artifacts/win-unpacked/resources/runtime");
-const seed = join(target, "unsigned-artifacts/win-unpacked/resources/company-seed");
-const executable = join(target, "unsigned-artifacts/win-unpacked/GEA Desktop.exe");
+await run(
+  "smoke-windows",
+  ["exec", "tsx", join(output, "smoke-gea.mts"), ...(signed ? [] : ["--unsigned"])],
+  desktop,
+);
+const appRoot = join(artifactDirectory, "win-unpacked/resources/app.asar");
+const supportRoot = join(artifactDirectory, "win-unpacked/resources/runtime");
+const seed = join(artifactDirectory, "win-unpacked/resources/company-seed");
+const executable = join(artifactDirectory, "win-unpacked/GEA Desktop.exe");
 const cleanHome = join(target, "offline-new-install");
 const firstInstallStarted = Date.now();
 execFileSync(
@@ -258,11 +310,47 @@ execFileSync(
     stdio: "inherit",
   },
 );
-const files = (await readdir(join(target, "unsigned-artifacts"))).filter((name) =>
-  name.endsWith(".exe"),
-);
+const files = (await readdir(artifactDirectory)).filter((name) => name.endsWith(".exe"));
 if (files.length !== 1) throw Error("EXPECTED_ONE_INSTALLER");
-const artifact = join(target, "unsigned-artifacts", files[0]);
+const artifact = join(artifactDirectory, files[0]);
+if (signed) {
+  const { resolveWindowsUpdatePublisher } = await import(
+    pathToFileURL(join(desktop, "scripts/windows-sign.mjs")).href
+  );
+  const yaml = createRequire(require.resolve("electron-updater/package.json"))("js-yaml");
+  const update = yaml.load(
+    await readFile(join(artifactDirectory, "win-unpacked/resources/app-update.yml"), "utf8"),
+  );
+  const publishers = Array.isArray(update.publisherName)
+    ? update.publisherName
+    : [update.publisherName];
+  if (
+    update.provider !== "generic" ||
+    update.url !== companyWindowsUpdateUrl ||
+    update.channel !== "nightly" ||
+    !publishers.includes(resolveWindowsUpdatePublisher(signing.certificateFile))
+  )
+    throw Error("DESKTOP_SIGNED_UPDATE_CONFIG_MISMATCH");
+  const metadata = yaml.load(await readFile(join(artifactDirectory, "nightly.yml"), "utf8"));
+  if (
+    metadata.version !== input.desktopVersion ||
+    !metadata.files?.some((file) => file.url === files[0] && typeof file.sha512 === "string")
+  )
+    throw Error("DESKTOP_SIGNED_UPDATE_METADATA_MISMATCH");
+  const { inspectWindowsRuntimeSignature } = await import(
+    pathToFileURL(join(desktop, "scripts/windows-runtime-signature.mjs")).href
+  );
+  const signature = await inspectWindowsRuntimeSignature(artifact);
+  const expectedThumbprint = new X509Certificate(
+    await readFile(signing.certificateFile),
+  ).fingerprint.replaceAll(":", "");
+  if (
+    signature.status !== "Valid" ||
+    !signature.timestamped ||
+    signature.thumbprint?.toUpperCase() !== expectedThumbprint
+  )
+    throw Error("DESKTOP_INSTALLER_SIGNATURE_INVALID");
+}
 for (const cwd of [root, gea])
   if (
     execFileSync("git", ["status", "--porcelain"], {
@@ -329,7 +417,14 @@ await writeFile(
         .digest("hex"),
       coreSourceUnchanged: true,
       windowsHost: process.platform + "-" + process.arch,
-      unsigned: true,
+      unsigned: !signed,
+      windowsSigning: signing
+        ? {
+            publisher: signing.publisher,
+            fingerprint: signing.fingerprint,
+            updateUrl: companyWindowsUpdateUrl,
+          }
+        : null,
       publish: false,
       freshCompanyProfileProvisioning: receipt,
       pluginUpdateSubmit: "no real business or user update submitted",
