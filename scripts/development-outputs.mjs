@@ -323,6 +323,10 @@ export function assertIdle(path, roots, activityRoot) {
   for (const root of roots) visit(root);
 }
 
+export function userDependencyRoots() {
+  return [".agents/skills", ".codex/skills", ".local/bin"].map((path) => join(os.homedir(), path)).filter(exists);
+}
+
 function checkFinishState(directory, manifest) {
   physical(directory);
   const owner = read(join(directory, "owner.json"));
@@ -474,9 +478,7 @@ export function finishDevelopmentOutputs(
             dirname(file),
             ...protectedPaths,
             ...referenceRoots,
-            ...[".agents/skills", ".codex/skills", ".local/bin"]
-              .map((path) => join(os.homedir(), path))
-              .filter(exists),
+          ...userDependencyRoots(),
           ];
           assertIdle(
             item.path,

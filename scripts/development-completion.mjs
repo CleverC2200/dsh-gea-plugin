@@ -3,7 +3,11 @@ import cp from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
-import { assertIdle, finishDevelopmentOutputs } from "./development-outputs.mjs";
+import {
+  assertIdle,
+  finishDevelopmentOutputs,
+  userDependencyRoots,
+} from "./development-outputs.mjs";
 
 const execute = promisify(cp.execFile);
 const repositories = new Set([
@@ -52,7 +56,10 @@ export async function bindTaskPullRequest({
   binding,
   worktrees = [],
   readPullRequest = readCompletionPullRequest,
+  ownerThreadId = process.env.CODEX_THREAD_ID,
 }) {
+  if (typeof ownerThreadId !== "string" || !ownerThreadId)
+    throw Error("COMPLETION_OWNER_THREAD_REQUIRED");
   const manifest = taskScope(file, projectRoot);
   const pull = await readPullRequest(binding);
   if (
@@ -68,6 +75,7 @@ export async function bindTaskPullRequest({
   const previous = manifest.completion?.pullRequests ?? [];
   manifest.completion = {
     ...manifest.completion,
+    ownerThreadId,
     pullRequests: [
       ...previous.filter(
         (row) => row.repository !== binding.repository || row.number !== binding.number,
@@ -106,20 +114,37 @@ function retireWorktree(row, manifest, projectRoot, protectedPaths) {
     throw Error("COMPLETION_WORKTREE_NOT_PUBLISHED");
   const git = (...args) =>
     cp.execFileSync("git", ["-C", row.path, ...args], { encoding: "utf8" }).trim();
-  if (
-    git("rev-parse", "HEAD") !== row.head ||
-    git("status", "--porcelain", "--untracked-files=all") ||
-    git("ls-files", "--others", "--ignored", "--exclude-standard")
-  )
+  const modules = join(row.path, "node_modules");
+  const borrowed =
+    fs.existsSync(modules) &&
+    fs.lstatSync(modules).isSymbolicLink() &&
+    protectedPaths.some((path) => inside(path, fs.realpathSync(modules))) &&
+    !git("ls-files", "--", "node_modules");
+  const changes = git("status", "--porcelain", "--untracked-files=all")
+    .split("\n")
+    .filter((line) => line && !(borrowed && line === "?? node_modules"));
+  const ignored = git("ls-files", "--others", "--ignored", "--exclude-standard")
+    .split("\n")
+    .filter((line) => line && !(borrowed && line === "node_modules"));
+  if (git("rev-parse", "HEAD") !== row.head || changes.length || ignored.length)
     throw Error("COMPLETION_UNPUBLISHED_FILES");
   const gitdir = git("rev-parse", "--absolute-git-dir");
-  if (fs.existsSync(join(gitdir, "index.lock"))) throw Error("COMPLETION_GIT_LOCKED");
-  assertIdle(row.path, [projectRoot], row.path);
+  if (fs.existsSync(join(gitdir, "index.lock")) || fs.existsSync(join(gitdir, "locked")))
+    throw Error("COMPLETION_GIT_LOCKED");
+  assertIdle(row.path, [projectRoot, ...userDependencyRoots()], row.path);
   const common = git("rev-parse", "--path-format=absolute", "--git-common-dir");
-  cp.execFileSync("git", ["--git-dir", common, "worktree", "remove", "--", row.path], {
-    cwd: projectRoot,
-    stdio: "pipe",
-  });
+  const link = borrowed ? fs.readlinkSync(modules) : null;
+  if (borrowed) fs.unlinkSync(modules);
+  try {
+    cp.execFileSync("git", ["--git-dir", common, "worktree", "remove", "--", row.path], {
+      cwd: projectRoot,
+      stdio: "pipe",
+    });
+  } catch (error) {
+    if (link && fs.existsSync(row.path) && !fs.existsSync(modules))
+      fs.symlinkSync(link, modules, "dir");
+    throw error;
+  }
 }
 
 function removeTaskMetadata(file) {
@@ -141,11 +166,48 @@ export async function finishMergedTask({
   projectRoot,
   protectedPaths = [],
   readPullRequest = readCompletionPullRequest,
+  activity,
 }) {
   try {
+    const observed = Date.parse(activity?.observedAt);
+    if (
+      activity?.complete !== true ||
+      !Array.isArray(activity.protectedPaths) ||
+      !Array.isArray(activity.threads) ||
+      !activity.protectedPaths.every(isAbsolute) ||
+      !Number.isFinite(observed) ||
+      Date.now() - observed > 120_000 ||
+      observed > Date.now() + 5_000
+    )
+      throw Error("COMPLETION_CURRENT_TASKS_UNKNOWN");
+    protectedPaths = [...protectedPaths, ...activity.protectedPaths];
     const manifest = taskScope(file, projectRoot);
     const bindings = manifest.completion?.pullRequests;
     if (!bindings?.length) return { status: "unregistered" };
+    if (typeof manifest.completion.ownerThreadId !== "string")
+      throw Error("COMPLETION_OWNER_THREAD_REQUIRED");
+    const activeThreads = activity.threads.filter(
+      (thread) => !["idle", "notLoaded", "archived"].includes(thread.status),
+    );
+    if (
+      activeThreads.some(
+        (thread) =>
+          thread.id === manifest.completion.ownerThreadId &&
+          thread.id !== activity.executorThreadId,
+      )
+    )
+      throw Error("COMPLETION_OWNER_ACTIVE");
+    protectedPaths.push(
+      ...activeThreads
+        .map((thread) => thread.cwd)
+        .filter(
+          (path) =>
+            typeof path === "string" &&
+            [join(projectRoot, ".parallel"), join(projectRoot, ".scratch")].some((root) =>
+              inside(root, path),
+            ),
+        ),
+    );
     for (const binding of bindings) {
       const pull = await readPullRequest(binding);
       if (

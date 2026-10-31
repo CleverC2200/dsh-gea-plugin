@@ -44,7 +44,18 @@ function fixture(t) {
     merged: false,
   };
   const readPullRequest = async (request) => ({ ...structuredClone(pull), number: request.number });
-  const options = { file, projectRoot, readPullRequest };
+  const options = {
+    file,
+    projectRoot,
+    readPullRequest,
+    ownerThreadId: "fixture-owner",
+    activity: {
+      complete: true,
+      observedAt: new Date().toISOString(),
+      protectedPaths: [],
+      threads: [],
+    },
+  };
   const merge = () =>
     Object.assign(pull, {
       merged: true,
@@ -137,6 +148,11 @@ test("published clean linked worktrees retire without force while local changes 
   x.binding.head = git("rev-parse", "HEAD");
   x.pull.head.sha = x.binding.head;
   git("worktree", "add", "--detach", tree);
+  const shared = join(x.projectRoot, "main-dependencies");
+  fs.mkdirSync(shared);
+  fs.writeFileSync(join(shared, "keep"), "active dependency");
+  fs.symlinkSync(shared, join(tree, "node_modules"), "dir");
+  x.options.protectedPaths = [shared];
   await bindTaskPullRequest({
     ...x.options,
     binding: x.binding,
@@ -147,7 +163,39 @@ test("published clean linked worktrees retire without force while local changes 
   assert.equal((await finishMergedTask(x.options)).reason, "COMPLETION_UNPUBLISHED_FILES");
   assert.equal(fs.readFileSync(join(tree, "necessary-unpublished.txt"), "utf8"), "keep");
   fs.unlinkSync(join(tree, "necessary-unpublished.txt"));
+  const home = fs.realpathSync(fs.mkdtempSync(join(os.tmpdir(), "finish-reader-home-")));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  fs.mkdirSync(join(home, ".agents/skills"), { recursive: true });
+  const skill = join(home, ".agents/skills/current-task");
+  fs.symlinkSync(tree, skill, "dir");
+  t.mock.method(os, "homedir", () => home);
+  assert.equal((await finishMergedTask(x.options)).reason, "OUTPUT_DEPENDENCY_READER");
+  assert.equal(fs.existsSync(tree), true);
+  fs.unlinkSync(skill);
   assert.equal((await finishMergedTask(x.options)).status, "finished");
   assert.equal(fs.existsSync(tree), false);
+  assert.equal(fs.readFileSync(join(shared, "keep"), "utf8"), "active dependency");
   assert.equal(fs.readFileSync(join(provider, "source.txt"), "utf8"), "published source");
+});
+
+test("automatic completion requires fresh native task activity and protects another active owner", async (t) => {
+  const x = fixture(t);
+  await bindTaskPullRequest({ ...x.options, binding: x.binding });
+  x.merge();
+  assert.equal(
+    (await finishMergedTask({ ...x.options, activity: undefined })).reason,
+    "COMPLETION_CURRENT_TASKS_UNKNOWN",
+  );
+  const activity = {
+    ...x.options.activity,
+    threads: [{ id: "fixture-owner", status: "active", cwd: x.projectRoot }],
+    executorThreadId: "another-background-thread",
+  };
+  assert.equal(
+    (await finishMergedTask({ ...x.options, activity })).reason,
+    "COMPLETION_OWNER_ACTIVE",
+  );
+  assert.equal(fs.existsSync(x.screenshot), true);
+  activity.threads[0].status = "idle";
+  assert.equal((await finishMergedTask({ ...x.options, activity })).status, "finished");
 });

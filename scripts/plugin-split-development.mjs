@@ -18,6 +18,7 @@ const { values, positionals } = parseArgs({
     runtime: { type: "string" },
     "project-root": { type: "string" },
     pr: { type: "string" },
+    activity: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -115,7 +116,9 @@ async function main() {
       const files = values.outputs ? [values.outputs] : registeredTaskOutputs(projectRoot);
       const protectedPaths = [input, ...data.repositories.flatMap((row) => [fs.realpathSync(row.path), fs.realpathSync(resolve(fs.realpathSync(row.path), "../../official-latest-standard"))])];
       const tasks = [];
-      for (const file of files) tasks.push(await finishMergedTask({ file, projectRoot, protectedPaths }));
+      const activity = values.activity ? JSON.parse(fs.readFileSync(values.activity, "utf8")) : undefined;
+      if (activity) activity.executorThreadId = process.env.CODEX_THREAD_ID;
+      for (const file of files) tasks.push(await finishMergedTask({ file, projectRoot, protectedPaths, activity }));
       console.log(JSON.stringify({ status: tasks.some((task) => task.status === "retained") ? "needs-attention" : "checked", tasks }));
     }
     return;

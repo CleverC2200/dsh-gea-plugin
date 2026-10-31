@@ -129,3 +129,5 @@ node tools/development.mjs finish --input /absolute/frozen-input.json --outputs 
 验收与过程资料用 acceptance-evidence/process-evidence 加 cleanup 声明；任务已确认合并且重要情况已在 PR 保存时，artifact/failure-evidence 也可按本次授权退出。手工普通 finish 仍拒绝清理这些类别。原始业务材料、用户数据和必要源码差异不归为过程资料。来源和 GitHub 未覆盖改动保持 source/user-data 或移入必要源文件，不生成整套环境备份。
 
 已登记的 linked worktree 只有在 head 已被对应 PR 覆盖、源码无修改/未跟踪/未声明 ignored 文件、没有 Git 锁、进程和符号链接使用者时才以 Git 原生命令退出，不使用 force。当前主三仓/Core 永不作为任务环境退出。仍在用的项留待后台下一次核对。成功回收全部声明项和工作树后，移除本票清单、日志和事务元数据，最终重要说明只保留在 PR；本地不再保留验收和过程报告副本。未知文件保持阻断。
+
+自动入口要求后台提供两分钟内的原生聊天活动快照，包含当前 host 完整分页的 thread id/status/cwd 和显式工作树路径；读取不完整、快照过期或未知状态保留。登记同时绑定创建任务的 CODEX_THREAD_ID；其他仍在执行的 owner 会阻断退出。当前收尾执行器允许处理自己的已合并任务，其他活动聊天的具体任务路径继续保护。用户技能与可执行入口的符号链接也参与工作树读者检查。只读借用主依赖的 node_modules 链接在全部保护通过后只 unlink 链接本身，绝不删除主依赖；Git 原生退出失败时恢复链接。
