@@ -19,6 +19,7 @@ const { values, positionals } = parseArgs({
     "project-root": { type: "string" },
     pr: { type: "string" },
     activity: { type: "string" },
+    "watch-id": { type: "string" },
   },
   allowPositionals: true,
 });
@@ -101,7 +102,7 @@ async function main() {
       throw Error("DEVELOPMENT_SOURCE_MISMATCH");
   }
   const gea = data.repositories.find((row) => row.repo === "dsh-gea-plugin").path;
-  if (["bind-pr", "finish-merged"].includes(action)) {
+  if (["bind-pr", "finish-merged", "watch-plan"].includes(action)) {
     const module = "scripts/development-completion.mjs";
     if (
       !execFileSync("git", ["-C", toolRoot, "show", "HEAD:" + module]).equals(
@@ -109,36 +110,43 @@ async function main() {
       )
     )
       throw Error("DEVELOPMENT_TOOL_SOURCE_MISMATCH");
-    const { bindTaskPullRequest, registeredTaskOutputs, finishMergedTask } =
+    const { bindTaskPullRequest, registeredTaskOutputs, finishMergedTask, completionWatchPlan } =
       await import("./development-completion.mjs");
     const projectRoot = values["project-root"];
     if (!isAbsolute(projectRoot ?? "") || fs.realpathSync(projectRoot) !== projectRoot)
       throw Error("COMPLETION_PROJECT_REQUIRED");
+    if (action === "watch-plan") {
+      console.log(JSON.stringify(completionWatchPlan(projectRoot, values.outputs)));
+      return;
+    }
     if (action === "bind-pr") {
       const owner = data.repositories.find((row) => row.repo === values.repo);
       if (!owner) throw Error("DEVELOPMENT_REPOSITORY_REQUIRED");
-      console.log(
-        JSON.stringify(
-          await bindTaskPullRequest({
-            file: values.outputs,
-            projectRoot,
-            binding: {
-              repository: "CleverC2200/" + owner.repo,
-              number: Number(values.pr),
-              head: owner.head,
-            },
-            worktrees: [
-              {
-                path: fs.realpathSync(owner.path),
-                repository: "CleverC2200/" + owner.repo,
-                head: owner.head,
-              },
-            ],
-          }),
-        ),
-      );
+      const result = await bindTaskPullRequest({
+        file: values.outputs,
+        projectRoot,
+        binding: {
+          repository: "CleverC2200/" + owner.repo,
+          number: Number(values.pr),
+          head: owner.head,
+        },
+        worktrees: [
+          {
+            path: fs.realpathSync(owner.path),
+            repository: "CleverC2200/" + owner.repo,
+            head: owner.head,
+          },
+        ],
+        watchId: values["watch-id"],
+      });
+      console.log(JSON.stringify(result));
+      if (result.status === "watch-required") process.exitCode = 2;
     } else {
-      const files = values.outputs ? [values.outputs] : registeredTaskOutputs(projectRoot);
+      const files = values.outputs
+        ? completionWatchPlan(projectRoot, values.outputs).action === "check"
+          ? [values.outputs]
+          : []
+        : registeredTaskOutputs(projectRoot);
       const protectedPaths = [
         input,
         ...data.repositories.flatMap((row) => [
@@ -157,6 +165,7 @@ async function main() {
         JSON.stringify({
           status: tasks.some((task) => task.status === "retained") ? "needs-attention" : "checked",
           tasks,
+          ...(values.outputs ? { watch: completionWatchPlan(projectRoot, values.outputs) } : {}),
         }),
       );
     }

@@ -124,7 +124,11 @@ node tools/development.mjs finish --input /absolute/frozen-input.json --outputs 
 
 任务创建 PR 后，owner 将重要改动、验证结果和未完成边界写进 PR 正文，再用根入口 bind-pr --input <本票输入> --repo <仓库标识> --pr <编号> --outputs <本票清单> 登记。一个任务的所有 PR 都登记在同一清单；推送新提交或更新正文后重新登记。登记冻结准确 head 和远端正文摘要，不把本地“已完成”字段当作合并证明。
 
-根 finish-merged 扫描项目 .scratch/.parallel 下已登记的 outputs.json，不跟随符号链接，不扫描依赖和 Skill 树。它只读取登记的三仓 GitHub PR，要求同仓 main、准确 head、正文摘要、merged 与合并提交全部吻合；全部 PR 合并后才自动调用 finish。尚未合并、关闭未合并、读取失败和记录变化都保留本地文件。由 Codex 原生后台检查调用这一入口，创建 PR 后不需要人工执行 finish。
+登记入口首次写入 PR 后返回 `watch-required` 并退出 2，同时给出 `automation_update` 的原生任务请求。登记 owner 用 `list_projects` 将请求的 projectId 补为本项目 id，复用同标记的独立检查，或通过原生工具创建。请求为 `kind=cron`、`destination=local` 的独立项目任务，不挂到原聊天。随后用相同 `bind-pr` 参数加 `--watch-id <原生工具返回的id>` 完成登记。只有检查已启用、项目路径及本票指令一致才返回 `tracking`；缺少检查、暂停、heartbeat 或不匹配都不能声称登记完成。后续同组 PR 共用清单中已绑定的检查，按返回状态处理失效检查，不重复创建。
+
+独立检查先运行 `watch-plan --outputs <本票清单>`。返回 `action=stop` 时通过原生工具删除自身，不读取聊天或写临时文件。返回 `check` 才采集新鲜的原生活跃会话快照，调用 `finish-merged --outputs <本票清单> --activity <本轮快照>`，并在成功或失败时删除临时快照。每票使用自己的临时文件，通过普通文件写入，不生成 apply_patch 编辑卡片。收尾返回 `watch.action=stop` 后删除对应检查；本票清单已从其他入口退出时，下次检查也直接停止。合法 `retain` 项在其余动作完成后保持原文件及保留清单，只退出 PR 检查登记，不因保留必要源码而持续轮询。清单专属标记用于只读定位自己的原生配置，删除只调用 `automation_update`，不直接改自动任务文件。等待合并或应清理项仍被使用时继续检查同一票，不另建系统调度服务。
+
+根 finish-merged 不带清单时仍可扫描项目 .scratch/.parallel 下已登记的 outputs.json，不跟随符号链接，不扫描依赖和 Skill 树。它只读取登记的三仓 GitHub PR，要求同仓 main、准确 head、正文摘要、merged 与合并提交全部吻合；全部 PR 合并后才自动调用 finish。尚未合并、关闭未合并、读取失败和记录变化都保留本地文件。独立原生检查只调用本票入口，登记完成后不需要用户手工执行 finish。
 
 验收与过程资料用 acceptance-evidence/process-evidence 加 cleanup 声明；任务已确认合并且重要情况已在 PR 保存时，artifact/failure-evidence 也可按本次授权退出。手工普通 finish 仍拒绝清理这些类别。原始业务材料、用户数据和必要源码差异不归为过程资料。来源和 GitHub 未覆盖改动保持 source/user-data 或移入必要源文件，不生成整套环境备份。
 

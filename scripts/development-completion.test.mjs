@@ -8,6 +8,8 @@ import {
   bindTaskPullRequest,
   finishMergedTask,
   registeredTaskOutputs,
+  completionWatchPlan,
+  completionWatchRequest,
 } from "./development-completion.mjs";
 import { finishDevelopmentOutputs } from "./development-outputs.mjs";
 
@@ -198,4 +200,95 @@ test("automatic completion requires fresh native task activity and protects anot
   assert.equal(fs.existsSync(x.screenshot), true);
   activity.threads[0].status = "idle";
   assert.equal((await finishMergedTask({ ...x.options, activity })).status, "finished");
+});
+
+test("registration requires an active independent native watch and reuses it for the PR group", async (t) => {
+  const x = fixture(t);
+  const first = await bindTaskPullRequest({ ...x.options, binding: x.binding });
+  assert.equal(first.status, "watch-required");
+  assert.equal(first.watch.request.kind, "cron");
+  assert.equal(first.watch.request.destination, "local");
+  assert.equal(first.watch.request.targetThreadId, undefined);
+  assert.equal(completionWatchPlan(x.projectRoot, x.file).action, "check");
+  const automationDirectory = join(x.projectRoot, "native-automations");
+  const directory = join(automationDirectory, "fixture-watch");
+  fs.mkdirSync(directory, { recursive: true });
+  const request = completionWatchRequest(x.projectRoot, x.file);
+  const config = {
+    id: "fixture-watch",
+    kind: "cron",
+    status: "ACTIVE",
+    execution_environment: "local",
+    cwds: [x.projectRoot],
+    prompt: request.prompt,
+  };
+  const writeConfig = () =>
+    fs.writeFileSync(
+      join(directory, "automation.toml"),
+      Object.entries(config)
+        .map(([key, value]) => `${key} = ${JSON.stringify(value)}`)
+        .join("\n"),
+    );
+  const options = { ...x.options, binding: x.binding, watchId: config.id, automationDirectory };
+  for (const [key, value] of [
+    ["status", "PAUSED"],
+    ["kind", "heartbeat"],
+    ["prompt", "a different task"],
+    ["cwds", ["/different-project"]],
+  ]) {
+    const previous = config[key];
+    config[key] = value;
+    writeConfig();
+    await assert.rejects(bindTaskPullRequest(options), /COMPLETION_INDEPENDENT_WATCH_REQUIRED/);
+    config[key] = previous;
+  }
+  writeConfig();
+  assert.equal((await bindTaskPullRequest(options)).status, "tracking");
+  const second = await bindTaskPullRequest({
+    ...options,
+    watchId: undefined,
+    binding: { ...x.binding, number: 2 },
+  });
+  assert.equal(second.status, "tracking");
+  assert.equal(second.pullRequests, 2);
+  assert.deepEqual(second.watch, { automationId: config.id });
+  assert.equal(completionWatchPlan(x.projectRoot, x.file).automationId, config.id);
+  x.merge();
+  assert.equal((await finishMergedTask(x.options)).status, "finished");
+  assert.equal(completionWatchPlan(x.projectRoot, x.file).action, "stop");
+  assert.equal(fs.existsSync(x.root), false);
+});
+
+test("empty task watches stop before activity collection without creating local files", (t) => {
+  const x = fixture(t);
+  assert.equal(completionWatchPlan(x.projectRoot, x.file).action, "stop");
+  fs.rmSync(x.root, { recursive: true });
+  assert.equal(completionWatchPlan(x.projectRoot, x.file).action, "stop");
+  assert.equal(fs.existsSync(x.root), false);
+  assert.throws(
+    () => completionWatchPlan(x.projectRoot, join(x.projectRoot, "outside.json")),
+    /COMPLETION_TASK_SCOPE_REQUIRED/,
+  );
+});
+
+test("completed tasks stop watching while explicitly retained user data stays intact", async (t) => {
+  const x = fixture(t);
+  const kept = join(x.root, "necessary-source.txt");
+  fs.writeFileSync(kept, "necessary unpublished content");
+  const manifest = JSON.parse(fs.readFileSync(x.file, "utf8"));
+  manifest.items.push({
+    path: kept,
+    kind: "source",
+    disposition: "retain",
+    reason: "not published",
+  });
+  fs.writeFileSync(x.file, JSON.stringify(manifest));
+  await bindTaskPullRequest({ ...x.options, binding: x.binding });
+  x.merge();
+  assert.equal((await finishMergedTask(x.options)).status, "finished");
+  assert.equal(fs.readFileSync(kept, "utf8"), "necessary unpublished content");
+  assert.equal(fs.existsSync(x.screenshot), false);
+  assert.equal(JSON.parse(fs.readFileSync(x.file, "utf8")).completion, undefined);
+  assert.equal(completionWatchPlan(x.projectRoot, x.file).action, "stop");
+  assert.deepEqual(registeredTaskOutputs(x.projectRoot), []);
 });
