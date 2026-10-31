@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkDevelopmentOutputs } from "./development-outputs.mjs";
+import { checkDevelopmentOutputs, finishDevelopmentOutputs } from "./development-outputs.mjs";
 import { parseArgs } from "node:util";
 
 const { values, positionals } = parseArgs({
@@ -150,7 +150,9 @@ async function main() {
       throw Error(`DEVELOPMENT_TASK_FAILED:${owner.repo}:${result.status ?? result.error?.code}`);
   }
   if (action === "finish" || (action === "report" && values.outputs)) {
-    const outputDisposition = checkDevelopmentOutputs(values.outputs);
+    const outputDisposition = action === "finish"
+      ? finishDevelopmentOutputs(values.outputs, [input, ...data.repositories.map((row) => fs.realpathSync(row.path))])
+      : checkDevelopmentOutputs(values.outputs);
     console.log(
       JSON.stringify({
         status: outputDisposition.status,

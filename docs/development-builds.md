@@ -63,7 +63,7 @@ corepack pnpm install --frozen-lockfile --ignore-scripts --prefer-offline
 
 依赖与构建回执记录 owner、来源、用途和可再生输出；隔离验证目录记录生命周期。原 `finish`、`report` 不带输出清单时仍返回 `report-only`。它们不证明任意 `.scratch` 输出已经处置。旧目录没有回执时按未知保留。
 
-任务 owner 将清单放在本票输出目录，以原票授权确定自己的输出范围。需要退场的输出先用既有 cleanup_checks 计划核在途输入、读者、打开文件、锁和 Git 引用，按有效授权执行清理。收尾工具只读核对，不删除、复制或压缩文件，也不授予清理权限。
+任务 owner 将清单放在本票输出目录，以原票授权确定自己的输出范围。任务完成时执行 `finish --outputs`：声明为 `cleanup` 的可再生产物由工具检查并回收；`report` 始终只读。未声明、缺少恢复来源或检查不通过的项保持原状。工具不授予额外删除权限，也不在后台定时扫描。
 
 ```sh
 node scripts/development-tasks.mjs finish --outputs /absolute/task/outputs.json
@@ -97,15 +97,21 @@ node scripts/development-tasks.mjs finish --outputs /absolute/task/outputs.json
 
 `kind` 为 `generated`、`artifact`、`source`、`failure-evidence` 或 `user-data`。保留项需实际存在且给出理由。源码、最终交付包、必要原始失败和用户状态只支持保留。`generated` 的保留和退场都需指向自身目录外仍可读取的恢复来源文件；理由写明仍在使用的 owner/读者和后续退场条件。`pending` 或缺少处置保持未完成。
 
-退场项用 `disposition: "remove"` 和 `cleanupReceipt` 指向原清理 journal。该 journal 的 `items` 中必须只有一条同路径记录，`removed` 为 true，`startedAt`、`completedAt` 有效且先后有序；实际目标必须已经不存在。只写一个计划、成功摘要或清单自报 removed 均不通过。恢复来源和 journal 留在删除目标外。已删根必须有同路径退场项，不因根已不存在而省去核对。
+自动回收使用 `kind: "generated", disposition: "cleanup"` 和 `restoreFrom`。只登记本票已完成、可由保留来源重建的精确叶目录，例如独立构建输出或旧安装图；当前主环境和仍需验收的环境用 `retain` 并写明退场条件。工具拒绝源码仓、Git 已跟踪文件和已识别的用户状态，保留全部源码、独有提交及未提交改动，不代替源码差异迁移。整个工作树继续由 owner 核 GitHub 覆盖及必要差异，再用 Git 原生方式退出。
+
+每个回收项执行实时 `lsof`、进程参数及项目/技能入口符号链接检查，检查失败、依赖仍引用或恢复来源将被删除时跳过并报告；不关闭读者。检查支持 macOS/Linux，其他平台保留原物并报告未支持。检查是当次观察，owner 在 finish 期间保持本票停止生产新输出。自动回收不遍历删除未登记项，也不清理会话和 Skill 的在用版本。
+
+成功删除后在清单旁记录 `<outputs>.cleanup.json`，并将该项改为 `remove` 引用原始回执；重复执行读取实际状态，不重复删除。未成功项仍为 `cleanup`，退出 1 并报告阻断原因。存在未声明输出、路径问题或恢复来源缺口时整批保持原状。并发 finish 通过清单旁独占锁互斥；中断遗留锁保持阻断，owner 核原进程退出后处理。原回执及清单保留，不备份整套生成环境。
+
+已由其他获准流程完成的退场项用 `disposition: "remove"` 和 `cleanupReceipt` 指向原清理 journal。该 journal 的 `items` 中必须只有一条同路径记录，`removed` 为 true，`startedAt`、`completedAt` 有效且先后有序；实际目标必须已经不存在。只写一个计划、成功摘要或清单自报 removed 均不通过。恢复来源和 journal 留在删除目标外。已删根必须有同路径退场项，不因根已不存在而省去核对。
 
 只保留删除后无法从现存来源恢复的内容。源码提交及独有未提交改动、锁、冻结输入、必要原始失败、实际独有差异和关键回执通常已足够。可重建的完整依赖、SDK、解包应用和运行目录登记恢复来源并完成退场；不要因为同目录有证据而再备份整套环境。复用原包、原比较和原清理回执，执行前仅刷新会变化的占用与引用。目录分配量和 APFS 可用空间分别核算。
 
 `outputDisposition` 回读登记条目、缺口和保留空间。每个保留路径用 `du -sk` 量化为 `allocatedBytes`，合计为 `retainedAllocatedBytes`；测量失败保持未完成。这是目录分配量，不能当作独占 APFS 块或可回收量。保留整个 Home 或 evidence 父目录时，审阅者仍需核对它的实际体量、具体保留范围和理由，不能用类别名代替判断。
 
-全部通过才返回 `disposition-complete`，仅表示声明范围的输出处置完成；`scope=declared-task-outputs`、`performsCleanup=false`、`livePreflightVerified=false` 保留其限制。它不能证明原清理授权和当时进程状态，也不替代业务、Native、发布或整票验收。带清单的 `finish` 遇到缺口退出 1；`report` 只报告并保持原退出合同。
+全部通过才返回 `disposition-complete`，仅表示声明范围的输出处置完成；`scope=declared-task-outputs` 限定范围。`performsCleanup` 仅在本次确实删除时为 true；`livePreflightVerified` 仅在本次所有自动回收项都完成检查及删除时为 true。历史回执和只读 report 不追认过去的占用状态，不替代业务、Native、发布或整票验收。带清单的 `finish` 遇到缺口退出 1；`report` 只报告并保持原退出合同。
 
-项目根启动器的版本化源码在 `scripts/plugin-split-development.mjs`。采用时将根 `tools/development.mjs` 明确链接到本票已提交 integration 的该脚本，并保留此 checkout。脚本核自身及唯一输出核对模块的字节等于当前 HEAD，继续按原冻结输入核三仓、Core 和旧 GEA 工具，不覆盖旧工具或改绑输入。根 `finish` 先输出原占用报告，再对本票输出清单核对一次；缺少清单也返回 `needs-disposition` 并退出 1。根 `report` 不带清单时保持原占用报告。
+项目根启动器的版本化源码在 `scripts/plugin-split-development.mjs`。采用时将根 `tools/development.mjs` 明确链接到本票已提交 integration 的该脚本，并保留此 checkout。脚本核自身及唯一输出核对模块的字节等于当前 HEAD，继续按原冻结输入核三仓、Core 和旧 GEA 工具，不覆盖旧工具或改绑输入。根 `finish` 先输出原占用报告，再对本票输出清单执行回收及核对；缺少清单也返回 `needs-disposition` 并退出 1。根 `report` 不带清单时保持原占用报告。
 
 ```sh
 node tools/development.mjs report --input /absolute/frozen-input.json

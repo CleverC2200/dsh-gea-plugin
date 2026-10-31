@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import { dirname, isAbsolute, join, normalize, parse, relative, sep } from "node:path";
-import { execFileSync } from "node:child_process";
+import cp, { execFileSync } from "node:child_process";
 
 const inside = (root, path) => {
   const name = relative(root, path);
@@ -43,7 +43,7 @@ function readable(file) {
   fs.accessSync(file, fs.constants.R_OK);
 }
 
-export function checkDevelopmentOutputs(file) {
+export function checkDevelopmentOutputs(file, lockFile) {
   const issues = [];
   let manifest;
   let items = [];
@@ -86,7 +86,7 @@ export function checkDevelopmentOutputs(file) {
       paths.push(item.path);
       if (!["generated", "artifact", "source", "failure-evidence", "user-data"].includes(item.kind))
         throw Error("OUTPUT_KIND_REQUIRED");
-      if (item.disposition === "retain" ? !text(item.reason) : item.disposition !== "remove")
+      if (item.disposition === "retain" ? !text(item.reason) : !["remove", "cleanup"].includes(item.disposition))
         issues.push({ path: item.path, reason: "OUTPUT_DISPOSITION_REQUIRED" });
       if (item.disposition === "retain" && !exists(item.path))
         issues.push({
@@ -104,6 +104,9 @@ export function checkDevelopmentOutputs(file) {
         } catch (error) {
           issues.push({ path: item.path, reason: error.message });
         }
+      }
+      if (item.disposition === "cleanup") {
+        issues.push({ path: item.path, reason: item.kind === "generated" ? "OUTPUT_CLEANUP_PENDING" : "OUTPUT_PROTECTED_KIND" });
       }
       if (item.disposition === "remove") {
         try {
@@ -129,7 +132,11 @@ export function checkDevelopmentOutputs(file) {
     const inspect = (directory) => {
       for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
-        if (path === file) continue;
+        if (path === file || path === lockFile) continue;
+        if (path === file + ".cleanup.json") {
+          const journal = read(path);
+          if (journal.task === manifest.task && journal.owner === manifest.owner && journal.items?.every((record) => manifest.items.some((item) => item.path === record.path))) continue;
+        }
         if (!paths.some((declared) => inside(declared, path) || inside(path, declared))) {
           issues.push({ path, reason: "OUTPUT_UNDECLARED" });
           continue;
@@ -198,4 +205,232 @@ export function checkDevelopmentOutputs(file) {
     livePreflightVerified: false,
     issues,
   };
+}
+
+function assertDisposable(path) {
+  physical(path);
+  const inspect = (target) => {
+    const info = fs.lstatSync(target);
+    if (info.isSymbolicLink()) return;
+    if (!info.isDirectory()) return;
+    for (const name of fs.readdirSync(target)) {
+      if (
+        name === ".git" ||
+        [
+          "sessionData",
+          "selected-resources.json",
+          "user-agents.json",
+          "credentials.json",
+          "MEMORY.md",
+        ].includes(name)
+      )
+        throw Error("OUTPUT_SOURCE_OR_USER_STATE");
+      inspect(join(target, name));
+    }
+  };
+  inspect(path);
+  const git = cp.spawnSync(
+    "git",
+    [
+      "-C",
+      fs.statSync(path).isDirectory() ? path : dirname(path),
+      "rev-parse",
+      "--show-toplevel",
+    ],
+    { encoding: "utf8" },
+  );
+  if (git.status === 0) {
+    const root = fs.realpathSync(git.stdout.trim());
+    const tracked = cp.execFileSync(
+      "git",
+      ["-C", root, "ls-files", "-z", "--", relative(root, path)],
+      { encoding: "utf8" },
+    );
+    if (tracked) throw Error("OUTPUT_TRACKED_SOURCE");
+    const gitdir = cp.execFileSync("git", ["-C", root, "rev-parse", "--absolute-git-dir"], { encoding: "utf8" }).trim();
+    if (exists(join(gitdir, "index.lock"))) throw Error("OUTPUT_GIT_LOCKED");
+    return root;
+  } else if (git.error || git.status !== 128)
+    throw Error("OUTPUT_GIT_STATE_UNKNOWN");
+}
+
+function assertIdle(path, roots, activityRoot) {
+  if (!["darwin", "linux"].includes(process.platform))
+    throw Error("OUTPUT_LIVE_CHECK_UNSUPPORTED");
+  const open = cp.spawnSync("lsof", ["-nP", "-Fpfn"], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 ** 2,
+  });
+  if (open.error || open.status !== 0 || !open.stdout)
+    throw Error("OUTPUT_LIVE_CHECK_UNKNOWN");
+  let pid, descriptor;
+  for (const row of open.stdout.split("\n")) {
+    if (row.startsWith("p")) pid = Number(row.slice(1));
+    if (row.startsWith("f")) descriptor = row.slice(1);
+    if (
+      pid !== process.pid &&
+      row.startsWith("n") &&
+      isAbsolute(row.slice(1)) &&
+      (inside(path, row.slice(1)) || (descriptor === "cwd" && inside(activityRoot, row.slice(1)) && inside(row.slice(1), path)))
+    )
+      throw Error("OUTPUT_ACTIVE_READER");
+  }
+  const processes = cp.execFileSync("ps", ["-axo", "pid=,args="], {
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 ** 2,
+  });
+  for (const row of processes.split("\n")) {
+    const match = row.match(/^\s*(\d+)\s+([\s\S]*)$/);
+    if (
+      match &&
+      Number(match[1]) !== process.pid &&
+      new RegExp(
+        "(?:^|[\\s\"'=])" +
+          path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+          "(?=$|[/\\s\"'])",
+      ).test(match[2])
+    )
+      throw Error("OUTPUT_ACTIVE_PROCESS");
+  }
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = join(directory, entry.name);
+      if (inside(path, target)) continue;
+      if (entry.isSymbolicLink()) {
+        let linked;
+        try {
+          linked = fs.realpathSync(target);
+        } catch (error) {
+          if (error.code === "ENOENT") continue;
+          throw error;
+        }
+        if (inside(path, linked) || inside(linked, path))
+          throw Error("OUTPUT_DEPENDENCY_READER");
+      } else if (entry.isDirectory() && entry.name !== ".git") visit(target);
+    }
+  };
+  for (const root of roots) visit(root);
+}
+
+export function finishDevelopmentOutputs(
+  file,
+  protectedPaths = [],
+  referenceRoots = [process.cwd()],
+) {
+  const initial = checkDevelopmentOutputs(file);
+  if (initial.issues.some((issue) => issue.reason !== "OUTPUT_CLEANUP_PENDING"))
+    return initial;
+  const lock = file + ".finish-lock";
+  try {
+    fs.writeFileSync(lock, String(process.pid), { flag: "wx" });
+  } catch {
+    return {
+      ...initial,
+      issues: [
+        ...initial.issues,
+        { path: file, reason: "OUTPUT_FINISH_LOCKED" },
+      ],
+      status: "needs-disposition",
+    };
+  }
+  try {
+    const manifest = read(file);
+    const cleanup = [];
+    for (const item of manifest.items.filter(
+      (item) => item.disposition === "cleanup",
+    )) {
+      const startedAt = new Date().toISOString();
+      try {
+        if (
+          protectedPaths.some(
+            (protectedPath) =>
+              inside(item.path, protectedPath) ||
+              inside(protectedPath, item.path),
+          )
+        )
+          throw Error("OUTPUT_CURRENT_INPUT");
+        if (
+          manifest.items.some((other) =>
+            other.restoreFrom?.some((source) => inside(item.path, source)),
+          )
+        )
+          throw Error("OUTPUT_RECOVERY_DEPENDENCY");
+        const activityRoot = assertDisposable(item.path) ?? dirname(item.path);
+        const scope = [
+          dirname(file),
+          ...protectedPaths,
+          ...referenceRoots,
+          ...[".agents/skills", ".codex/skills", ".local/bin"]
+            .map((path) => join(os.homedir(), path))
+            .filter(exists),
+        ];
+        assertIdle(
+          item.path,
+          [...new Set(scope)].filter((root) => fs.statSync(root).isDirectory()),
+          activityRoot,
+        );
+        physical(item.path);
+        fs.rmSync(item.path, { recursive: true });
+        cleanup.push({
+          path: item.path,
+          removed: true,
+          startedAt,
+          completedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        cleanup.push({
+          path: item.path,
+          removed: false,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          reason: error.message,
+        });
+      }
+    }
+    const receipt = file + ".cleanup.json";
+    if (cleanup.length) {
+      const previous = exists(receipt) ? read(receipt) : { items: [] };
+      const records = [
+        ...previous.items.filter(
+          (record) => !cleanup.some((item) => item.path === record.path),
+        ),
+        ...cleanup,
+      ];
+      fs.writeFileSync(
+        receipt,
+        JSON.stringify(
+          { task: manifest.task, owner: manifest.owner, items: records },
+          null,
+          2,
+        ) + "\n",
+      );
+      for (const item of manifest.items) {
+        if (
+          cleanup.some((record) => record.path === item.path && record.removed)
+        ) {
+          item.disposition = "remove";
+          item.cleanupReceipt = receipt;
+        }
+      }
+      const temporary = file + ".tmp-" + process.pid;
+      fs.writeFileSync(temporary, JSON.stringify(manifest, null, 2) + "\n", {
+        flag: "wx",
+      });
+      fs.renameSync(temporary, file);
+    }
+    const report = checkDevelopmentOutputs(file, lock);
+    report.performsCleanup = cleanup.some((item) => item.removed);
+    report.livePreflightVerified =
+      cleanup.length > 0 && cleanup.every((item) => item.removed);
+    report.cleanup = cleanup;
+    report.issues.push(
+      ...cleanup
+        .filter((item) => !item.removed)
+        .map(({ path, reason }) => ({ path, reason })),
+    );
+    if (report.issues.length) report.status = "needs-disposition";
+    return report;
+  } finally {
+    fs.unlinkSync(lock);
+  }
 }
