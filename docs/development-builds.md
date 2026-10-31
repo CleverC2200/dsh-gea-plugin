@@ -119,3 +119,13 @@ node tools/development.mjs finish --input /absolute/frozen-input.json --outputs 
 ```
 
 根收尾入口输出为逐行 JSON，最后一行为本票处置和实际 `toolSource.path/head`。只有实现合并或测试通过，不能声称根入口已采用；应从根原路径实际运行并保存工具来源、未改的冻结输入和最终处置回执。该链接仍是 reader，回收 implementer 时保留被链接的 integration。
+
+## PR 合并后的自动收尾
+
+任务创建 PR 后，owner 将重要改动、验证结果和未完成边界写进 PR 正文，再用根入口 bind-pr --input <本票输入> --repo <仓库标识> --pr <编号> --outputs <本票清单> 登记。一个任务的所有 PR 都登记在同一清单；推送新提交或更新正文后重新登记。登记冻结准确 head 和远端正文摘要，不把本地“已完成”字段当作合并证明。
+
+根 finish-merged 扫描项目 .scratch/.parallel 下已登记的 outputs.json，不跟随符号链接，不扫描依赖和 Skill 树。它只读取登记的三仓 GitHub PR，要求同仓 main、准确 head、正文摘要、merged 与合并提交全部吻合；全部 PR 合并后才自动调用 finish。尚未合并、关闭未合并、读取失败和记录变化都保留本地文件。由 Codex 原生后台检查调用这一入口，创建 PR 后不需要人工执行 finish。
+
+验收与过程资料用 acceptance-evidence/process-evidence 加 cleanup 声明；任务已确认合并且重要情况已在 PR 保存时，artifact/failure-evidence 也可按本次授权退出。手工普通 finish 仍拒绝清理这些类别。原始业务材料、用户数据和必要源码差异不归为过程资料。来源和 GitHub 未覆盖改动保持 source/user-data 或移入必要源文件，不生成整套环境备份。
+
+已登记的 linked worktree 只有在 head 已被对应 PR 覆盖、源码无修改/未跟踪/未声明 ignored 文件、没有 Git 锁、进程和符号链接使用者时才以 Git 原生命令退出，不使用 force。当前主三仓/Core 永不作为任务环境退出。仍在用的项留待后台下一次核对。成功回收全部声明项和工作树后，移除本票清单、日志和事务元数据，最终重要说明只保留在 PR；本地不再保留验收和过程报告副本。未知文件保持阻断。

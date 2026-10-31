@@ -44,7 +44,7 @@ function readable(file) {
   fs.accessSync(file, fs.constants.R_OK);
 }
 
-export function checkDevelopmentOutputs(file, lockFile) {
+export function checkDevelopmentOutputs(file, lockFile, completedTask = false) {
   const issues = [];
   let manifest;
   let items = [];
@@ -85,7 +85,7 @@ export function checkDevelopmentOutputs(file, lockFile) {
       )
         throw Error("OUTPUT_PATH_OUTSIDE_OR_OVERLAPPING");
       paths.push(item.path);
-      if (!["generated", "artifact", "source", "failure-evidence", "user-data"].includes(item.kind))
+      if (!["generated", "artifact", "source", "failure-evidence", "user-data", "process-evidence", "acceptance-evidence"].includes(item.kind))
         throw Error("OUTPUT_KIND_REQUIRED");
       if (item.disposition === "retain" ? !text(item.reason) : !["remove", "cleanup"].includes(item.disposition))
         issues.push({ path: item.path, reason: "OUTPUT_DISPOSITION_REQUIRED" });
@@ -107,11 +107,11 @@ export function checkDevelopmentOutputs(file, lockFile) {
         }
       }
       if (item.disposition === "cleanup") {
-        issues.push({ path: item.path, reason: item.kind === "generated" ? "OUTPUT_CLEANUP_PENDING" : "OUTPUT_PROTECTED_KIND" });
+        issues.push({ path: item.path, reason: item.kind === "generated" || (completedTask && ["artifact", "failure-evidence", "process-evidence", "acceptance-evidence"].includes(item.kind)) ? "OUTPUT_CLEANUP_PENDING" : "OUTPUT_PROTECTED_KIND" });
       }
       if (item.disposition === "remove") {
         try {
-          if (item.kind !== "generated") throw Error("OUTPUT_PROTECTED_KIND");
+          if (item.kind !== "generated" && !(completedTask && ["artifact", "failure-evidence", "process-evidence", "acceptance-evidence"].includes(item.kind))) throw Error("OUTPUT_PROTECTED_KIND");
           if (inside(item.path, item.cleanupReceipt ?? ""))
             throw Error("OUTPUT_RECEIPT_INSIDE_REMOVED_PATH");
           const receipt = read(item.cleanupReceipt);
@@ -212,7 +212,7 @@ export function checkDevelopmentOutputs(file, lockFile) {
   };
 }
 
-function assertDisposable(path) {
+function assertDisposable(path, completedTask = false) {
   physical(path);
   const protectedNames = new Set([
     ".git",
@@ -229,7 +229,7 @@ function assertDisposable(path) {
   ]);
   if (path.split(sep).some((name) => protectedNames.has(name)))
     throw Error("OUTPUT_SOURCE_OR_USER_STATE");
-  if (!fs.statSync(path).isDirectory()) throw Error("OUTPUT_GENERATED_DIRECTORY_REQUIRED");
+  if (!completedTask && !fs.statSync(path).isDirectory()) throw Error("OUTPUT_GENERATED_DIRECTORY_REQUIRED");
   const inspect = (target) => {
     const info = fs.lstatSync(target);
     if (info.isSymbolicLink()) return;
@@ -267,7 +267,7 @@ function assertDisposable(path) {
   } else if (git.error || git.status !== 128) throw Error("OUTPUT_GIT_STATE_UNKNOWN");
 }
 
-function assertIdle(path, roots, activityRoot) {
+export function assertIdle(path, roots, activityRoot) {
   if (!["darwin", "linux"].includes(process.platform)) throw Error("OUTPUT_LIVE_CHECK_UNSUPPORTED");
   const open = cp.spawnSync("lsof", ["-nP", "-Fpfn"], {
     encoding: "utf8",
@@ -415,9 +415,10 @@ export function finishDevelopmentOutputs(
   file,
   protectedPaths = [],
   referenceRoots = [process.cwd()],
+  completedTask = false,
 ) {
   const lock = file + ".finish-lock";
-  const initial = checkDevelopmentOutputs(file, lock);
+  const initial = checkDevelopmentOutputs(file, lock, completedTask);
   if (initial.issues.some((issue) => issue.reason !== "OUTPUT_CLEANUP_PENDING")) return initial;
   if (!initial.items.some((item) => item.disposition === "cleanup")) return initial;
   const state = file + ".finish-state";
@@ -468,7 +469,7 @@ export function finishDevelopmentOutputs(
             )
           )
             throw Error("OUTPUT_RECOVERY_DEPENDENCY");
-          const activityRoot = assertDisposable(item.path) ?? dirname(item.path);
+          const activityRoot = assertDisposable(item.path, completedTask && item.kind !== "generated") ?? dirname(item.path);
           const scope = [
             dirname(file),
             ...protectedPaths,
@@ -503,7 +504,7 @@ export function finishDevelopmentOutputs(
         writeRecord(file, manifest, state);
       }
     }
-    const report = checkDevelopmentOutputs(file, lock);
+    const report = checkDevelopmentOutputs(file, lock, completedTask);
     report.performsCleanup = cleanup.some((item) => item.removed && !item.recovered);
     report.livePreflightVerified =
       cleanup.length > 0 && cleanup.every((item) => item.removed && !item.recovered);

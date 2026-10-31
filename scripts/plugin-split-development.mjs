@@ -16,6 +16,8 @@ const { values, positionals } = parseArgs({
     outputs: { type: "string" },
     "tool-head": { type: "string" },
     runtime: { type: "string" },
+    "project-root": { type: "string" },
+    pr: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -98,6 +100,26 @@ async function main() {
       throw Error("DEVELOPMENT_SOURCE_MISMATCH");
   }
   const gea = data.repositories.find((row) => row.repo === "dsh-gea-plugin").path;
+  if (["bind-pr", "finish-merged"].includes(action)) {
+    const module = "scripts/development-completion.mjs";
+    if (!execFileSync("git", ["-C", toolRoot, "show", "HEAD:" + module]).equals(fs.readFileSync(join(toolRoot, module))))
+      throw Error("DEVELOPMENT_TOOL_SOURCE_MISMATCH");
+    const { bindTaskPullRequest, registeredTaskOutputs, finishMergedTask } = await import("./development-completion.mjs");
+    const projectRoot = values["project-root"];
+    if (!isAbsolute(projectRoot ?? "") || fs.realpathSync(projectRoot) !== projectRoot) throw Error("COMPLETION_PROJECT_REQUIRED");
+    if (action === "bind-pr") {
+      const owner = data.repositories.find((row) => row.repo === values.repo);
+      if (!owner) throw Error("DEVELOPMENT_REPOSITORY_REQUIRED");
+      console.log(JSON.stringify(await bindTaskPullRequest({ file: values.outputs, projectRoot, binding: { repository: "CleverC2200/" + owner.repo, number: Number(values.pr), head: owner.head }, worktrees: [{ path: fs.realpathSync(owner.path), repository: "CleverC2200/" + owner.repo, head: owner.head }] })));
+    } else {
+      const files = values.outputs ? [values.outputs] : registeredTaskOutputs(projectRoot);
+      const protectedPaths = [input, ...data.repositories.flatMap((row) => [fs.realpathSync(row.path), fs.realpathSync(resolve(fs.realpathSync(row.path), "../../official-latest-standard"))])];
+      const tasks = [];
+      for (const file of files) tasks.push(await finishMergedTask({ file, projectRoot, protectedPaths }));
+      console.log(JSON.stringify({ status: tasks.some((task) => task.status === "retained") ? "needs-attention" : "checked", tasks }));
+    }
+    return;
+  }
   const light = ["preflight", "plan"].includes(action);
   const selected = values.repo
     ? data.repositories.filter((row) => row.repo === values.repo)
