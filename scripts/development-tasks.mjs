@@ -356,7 +356,14 @@ export async function developmentTask(action, values = {}, cwd = process.cwd()) 
       : [];
     return {
       status: "report-only",
-      ...(values.outputs ? { outputDisposition: action === "finish" ? finishDevelopmentOutputs(values.outputs, [owner.path]) : checkDevelopmentOutputs(values.outputs) } : {}),
+      ...(values.outputs
+        ? {
+            outputDisposition:
+              action === "finish"
+                ? finishDevelopmentOutputs(values.outputs, [owner.path])
+                : checkDevelopmentOutputs(values.outputs),
+          }
+        : {}),
       receipts,
       validations,
       admissions: readBuildAdmissions(owner.path),

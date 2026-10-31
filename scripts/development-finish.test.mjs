@@ -425,17 +425,10 @@ test("automatic finish removes declared idle generated output, records it and is
   assert.equal(checkDevelopmentOutputs(outputs).status, "needs-disposition");
   assert.equal(fs.existsSync(generated), true);
   const finished = finishDevelopmentOutputs(outputs);
-  assert.equal(
-    finished.status,
-    "disposition-complete",
-    JSON.stringify(finished.issues),
-  );
+  assert.equal(finished.status, "disposition-complete", JSON.stringify(finished.issues));
   assert.equal(finished.performsCleanup, true);
   assert.equal(fs.existsSync(generated), false);
-  assert.equal(
-    finishDevelopmentOutputs(outputs).status,
-    "disposition-complete",
-  );
+  assert.equal(finishDevelopmentOutputs(outputs).status, "disposition-complete");
   assert.equal(fs.readFileSync(source, "utf8"), '{"frozen":"fixture"}');
 });
 
@@ -487,8 +480,7 @@ test("automatic finish protects source repositories, recovery dependencies and c
 });
 
 test("automatic finish preserves a recovery source scheduled by another item and an external dependency link", (t) => {
-  const { root, outputs, manifest, save, source, generated } =
-    taskOutputsFixture(t);
+  const { root, outputs, manifest, save, source, generated } = taskOutputsFixture(t);
   const input = join(generated, "build.js");
   const sibling = join(root, "reader");
   fs.mkdirSync(sibling);
@@ -539,8 +531,7 @@ test("the project launcher performs automatic cleanup through its committed owne
   assert.equal(result.status, 0, result.stderr + result.stdout);
   assert.equal(fs.existsSync(path), false);
   assert.equal(
-    JSON.parse(result.stdout.trim().split("\n").at(-1)).outputDisposition
-      .performsCleanup,
+    JSON.parse(result.stdout.trim().split("\n").at(-1)).outputDisposition.performsCleanup,
     true,
   );
 });
@@ -550,9 +541,18 @@ test("automatic finish protects directly declared credentials and untracked sour
   Object.assign(manifest.items[0], { reason: "Fixture runtime", restoreFrom: [source] });
   const credentials = join(taskRoot, "credentials.json");
   fs.writeFileSync(credentials, "fixture protected credentials");
-  manifest.items.push({ path: credentials, kind: "generated", disposition: "cleanup", restoreFrom: [source] });
+  manifest.items.push({
+    path: credentials,
+    kind: "generated",
+    disposition: "cleanup",
+    restoreFrom: [source],
+  });
   save();
-  assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_SOURCE_OR_USER_STATE"));
+  assert.ok(
+    finishDevelopmentOutputs(outputs).issues.some(
+      (issue) => issue.reason === "OUTPUT_SOURCE_OR_USER_STATE",
+    ),
+  );
   assert.equal(fs.readFileSync(credentials, "utf8"), "fixture protected credentials");
   const repository = join(root, "repository");
   const unfinished = join(repository, "output");
@@ -560,9 +560,18 @@ test("automatic finish protects directly declared credentials and untracked sour
   cp.execFileSync("git", ["init", "-q", repository]);
   fs.writeFileSync(join(unfinished, "new-source.ts"), "UNPUBLISHED_SOURCE");
   manifest.roots.push(unfinished);
-  manifest.items.push({ path: unfinished, kind: "generated", disposition: "cleanup", restoreFrom: [source] });
+  manifest.items.push({
+    path: unfinished,
+    kind: "generated",
+    disposition: "cleanup",
+    restoreFrom: [source],
+  });
   save();
-  assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_UNTRACKED_SOURCE"));
+  assert.ok(
+    finishDevelopmentOutputs(outputs).issues.some(
+      (issue) => issue.reason === "OUTPUT_UNTRACKED_SOURCE",
+    ),
+  );
   assert.equal(fs.readFileSync(join(unfinished, "new-source.ts"), "utf8"), "UNPUBLISHED_SOURCE");
 });
 
@@ -571,12 +580,15 @@ test("automatic finish resumes after a process exits immediately after deleting 
   Object.assign(manifest.items[0], { disposition: "cleanup", restoreFrom: [source] });
   save();
   const runner = join(root, "interrupt.mjs");
-  fs.writeFileSync(runner, `import fs from 'node:fs';
+  fs.writeFileSync(
+    runner,
+    `import fs from 'node:fs';
 import { finishDevelopmentOutputs } from ${JSON.stringify(new URL("./development-outputs.mjs", import.meta.url).href)};
 const remove = fs.rmSync;
 fs.rmSync = (path, options) => { const result = remove(path, options); if (path === ${JSON.stringify(generated)}) process.exit(99); return result; };
 finishDevelopmentOutputs(${JSON.stringify(outputs)});
-`);
+`,
+  );
   const interrupted = cp.spawnSync(process.execPath, [runner], { encoding: "utf8" });
   assert.equal(interrupted.status, 99, interrupted.stderr);
   assert.equal(fs.existsSync(generated), false);
@@ -594,39 +606,66 @@ test("automatic finish preserves a file held open by its own caller", (t) => {
   save();
   const descriptor = fs.openSync(join(generated, "build.js"), "r");
   try {
-    assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_ACTIVE_READER"));
+    assert.ok(
+      finishDevelopmentOutputs(outputs).issues.some(
+        (issue) => issue.reason === "OUTPUT_ACTIVE_READER",
+      ),
+    );
     assert.equal(fs.existsSync(generated), true);
-  } finally { fs.closeSync(descriptor); }
+  } finally {
+    fs.closeSync(descriptor);
+  }
   assert.equal(finishDevelopmentOutputs(outputs).status, "disposition-complete");
 });
 
 for (const interruption of ["claim", "record"]) {
-  test("automatic finish recovers a dead " + interruption + " writer without hiding unrelated files", (t) => {
-    const { root, outputs, manifest, save, source, generated } = taskOutputsFixture(t);
-    Object.assign(manifest.items[0], { disposition: "cleanup", restoreFrom: [source] });
-    save();
-    const runner = join(root, "interrupt-writer.mjs");
-    const hook = interruption === "claim"
-      ? "const write = fs.writeFileSync; fs.writeFileSync = (path, ...args) => { const result = write(path, ...args); if (path.endsWith('/claim.json')) process.exit(98); return result; };"
-      : "fs.renameSync = () => process.exit(98);";
-    fs.writeFileSync(runner, "import fs from 'node:fs';\nimport { finishDevelopmentOutputs } from " + JSON.stringify(new URL("./development-outputs.mjs", import.meta.url).href) + ";\n" + hook + "\nfinishDevelopmentOutputs(" + JSON.stringify(outputs) + ");\n");
-    const interrupted = cp.spawnSync(process.execPath, [runner], { encoding: "utf8" });
-    assert.equal(interrupted.status, 98, interrupted.stderr);
-    assert.equal(fs.existsSync(generated), true);
-    const completed = finishDevelopmentOutputs(outputs);
-    assert.equal(completed.status, "disposition-complete", JSON.stringify(completed.issues));
-    assert.equal(fs.existsSync(generated), false);
-    assert.deepEqual(fs.readdirSync(outputs + ".finish-state"), ["owner.json"]);
-    const unexpected = join(outputs + ".finish-state", "unpublished-source.ts");
-    fs.writeFileSync(unexpected, "PROTECTED");
-    assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_TRANSACTION_UNKNOWN_FILE"));
-    assert.equal(fs.readFileSync(unexpected, "utf8"), "PROTECTED");
-  });
+  test(
+    "automatic finish recovers a dead " + interruption + " writer without hiding unrelated files",
+    (t) => {
+      const { root, outputs, manifest, save, source, generated } = taskOutputsFixture(t);
+      Object.assign(manifest.items[0], { disposition: "cleanup", restoreFrom: [source] });
+      save();
+      const runner = join(root, "interrupt-writer.mjs");
+      const hook =
+        interruption === "claim"
+          ? "const write = fs.writeFileSync; fs.writeFileSync = (path, ...args) => { const result = write(path, ...args); if (path.endsWith('/claim.json')) process.exit(98); return result; };"
+          : "fs.renameSync = () => process.exit(98);";
+      fs.writeFileSync(
+        runner,
+        "import fs from 'node:fs';\nimport { finishDevelopmentOutputs } from " +
+          JSON.stringify(new URL("./development-outputs.mjs", import.meta.url).href) +
+          ";\n" +
+          hook +
+          "\nfinishDevelopmentOutputs(" +
+          JSON.stringify(outputs) +
+          ");\n",
+      );
+      const interrupted = cp.spawnSync(process.execPath, [runner], { encoding: "utf8" });
+      assert.equal(interrupted.status, 98, interrupted.stderr);
+      assert.equal(fs.existsSync(generated), true);
+      const completed = finishDevelopmentOutputs(outputs);
+      assert.equal(completed.status, "disposition-complete", JSON.stringify(completed.issues));
+      assert.equal(fs.existsSync(generated), false);
+      assert.deepEqual(fs.readdirSync(outputs + ".finish-state"), ["owner.json"]);
+      const unexpected = join(outputs + ".finish-state", "unpublished-source.ts");
+      fs.writeFileSync(unexpected, "PROTECTED");
+      assert.ok(
+        finishDevelopmentOutputs(outputs).issues.some(
+          (issue) => issue.reason === "OUTPUT_TRANSACTION_UNKNOWN_FILE",
+        ),
+      );
+      assert.equal(fs.readFileSync(unexpected, "utf8"), "PROTECTED");
+    },
+  );
 }
 
 test("automatic finish cannot retire its own manifest or transaction evidence", (t) => {
   const { outputs, manifest, save, source, generated, taskRoot } = taskOutputsFixture(t);
-  Object.assign(manifest.items[0], { path: taskRoot, disposition: "cleanup", restoreFrom: [source] });
+  Object.assign(manifest.items[0], {
+    path: taskRoot,
+    disposition: "cleanup",
+    restoreFrom: [source],
+  });
   save();
   const result = finishDevelopmentOutputs(outputs);
   assert.equal(result.status, "needs-disposition");

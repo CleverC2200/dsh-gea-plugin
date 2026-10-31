@@ -79,15 +79,31 @@ export function checkDevelopmentOutputs(file, lockFile, completedTask = false) {
     for (const item of manifest.items) {
       physical(item.path, true);
       if (
-        [file, file + ".cleanup.json", file + ".finish-state", file + ".finish-lock"].some((evidence) => inside(item.path, evidence)) ||
+        [file, file + ".cleanup.json", file + ".finish-state", file + ".finish-lock"].some(
+          (evidence) => inside(item.path, evidence),
+        ) ||
         !manifest.roots.some((root) => inside(root, item.path)) ||
         paths.some((path) => inside(path, item.path) || inside(item.path, path))
       )
         throw Error("OUTPUT_PATH_OUTSIDE_OR_OVERLAPPING");
       paths.push(item.path);
-      if (!["generated", "artifact", "source", "failure-evidence", "user-data", "process-evidence", "acceptance-evidence"].includes(item.kind))
+      if (
+        ![
+          "generated",
+          "artifact",
+          "source",
+          "failure-evidence",
+          "user-data",
+          "process-evidence",
+          "acceptance-evidence",
+        ].includes(item.kind)
+      )
         throw Error("OUTPUT_KIND_REQUIRED");
-      if (item.disposition === "retain" ? !text(item.reason) : !["remove", "cleanup"].includes(item.disposition))
+      if (
+        item.disposition === "retain"
+          ? !text(item.reason)
+          : !["remove", "cleanup"].includes(item.disposition)
+      )
         issues.push({ path: item.path, reason: "OUTPUT_DISPOSITION_REQUIRED" });
       if (item.disposition === "retain" && !exists(item.path))
         issues.push({
@@ -107,11 +123,30 @@ export function checkDevelopmentOutputs(file, lockFile, completedTask = false) {
         }
       }
       if (item.disposition === "cleanup") {
-        issues.push({ path: item.path, reason: item.kind === "generated" || (completedTask && ["artifact", "failure-evidence", "process-evidence", "acceptance-evidence"].includes(item.kind)) ? "OUTPUT_CLEANUP_PENDING" : "OUTPUT_PROTECTED_KIND" });
+        issues.push({
+          path: item.path,
+          reason:
+            item.kind === "generated" ||
+            (completedTask &&
+              ["artifact", "failure-evidence", "process-evidence", "acceptance-evidence"].includes(
+                item.kind,
+              ))
+              ? "OUTPUT_CLEANUP_PENDING"
+              : "OUTPUT_PROTECTED_KIND",
+        });
       }
       if (item.disposition === "remove") {
         try {
-          if (item.kind !== "generated" && !(completedTask && ["artifact", "failure-evidence", "process-evidence", "acceptance-evidence"].includes(item.kind))) throw Error("OUTPUT_PROTECTED_KIND");
+          if (
+            item.kind !== "generated" &&
+            !(
+              completedTask &&
+              ["artifact", "failure-evidence", "process-evidence", "acceptance-evidence"].includes(
+                item.kind,
+              )
+            )
+          )
+            throw Error("OUTPUT_PROTECTED_KIND");
           if (inside(item.path, item.cleanupReceipt ?? ""))
             throw Error("OUTPUT_RECEIPT_INSIDE_REMOVED_PATH");
           const receipt = read(item.cleanupReceipt);
@@ -140,7 +175,14 @@ export function checkDevelopmentOutputs(file, lockFile, completedTask = false) {
         }
         if (path === file + ".cleanup.json") {
           const journal = read(path);
-          if (journal.task === manifest.task && journal.owner === manifest.owner && journal.items?.every((record) => manifest.items.some((item) => item.path === record.path))) continue;
+          if (
+            journal.task === manifest.task &&
+            journal.owner === manifest.owner &&
+            journal.items?.every((record) =>
+              manifest.items.some((item) => item.path === record.path),
+            )
+          )
+            continue;
         }
         if (!paths.some((declared) => inside(declared, path) || inside(path, declared))) {
           issues.push({ path, reason: "OUTPUT_UNDECLARED" });
@@ -163,7 +205,9 @@ export function checkDevelopmentOutputs(file, lockFile, completedTask = false) {
         if (fs.statSync(root).isDirectory()) inspect(root);
         else if (!paths.includes(root)) issues.push({ path: root, reason: "OUTPUT_UNDECLARED" });
       } else if (
-        !manifest.items.some((item) => item.path === root && ["remove", "cleanup"].includes(item.disposition))
+        !manifest.items.some(
+          (item) => item.path === root && ["remove", "cleanup"].includes(item.disposition),
+        )
       ) {
         issues.push({ path: root, reason: "OUTPUT_ROOT_MISSING" });
       }
@@ -229,7 +273,8 @@ function assertDisposable(path, completedTask = false) {
   ]);
   if (path.split(sep).some((name) => protectedNames.has(name)))
     throw Error("OUTPUT_SOURCE_OR_USER_STATE");
-  if (!completedTask && !fs.statSync(path).isDirectory()) throw Error("OUTPUT_GENERATED_DIRECTORY_REQUIRED");
+  if (!completedTask && !fs.statSync(path).isDirectory())
+    throw Error("OUTPUT_GENERATED_DIRECTORY_REQUIRED");
   const inspect = (target) => {
     const info = fs.lstatSync(target);
     if (info.isSymbolicLink()) return;
@@ -324,7 +369,9 @@ export function assertIdle(path, roots, activityRoot) {
 }
 
 export function userDependencyRoots() {
-  return [".agents/skills", ".codex/skills", ".local/bin"].map((path) => join(os.homedir(), path)).filter(exists);
+  return [".agents/skills", ".codex/skills", ".local/bin"]
+    .map((path) => join(os.homedir(), path))
+    .filter(exists);
 }
 
 function checkFinishState(directory, manifest) {
@@ -473,12 +520,14 @@ export function finishDevelopmentOutputs(
             )
           )
             throw Error("OUTPUT_RECOVERY_DEPENDENCY");
-          const activityRoot = assertDisposable(item.path, completedTask && item.kind !== "generated") ?? dirname(item.path);
+          const activityRoot =
+            assertDisposable(item.path, completedTask && item.kind !== "generated") ??
+            dirname(item.path);
           const scope = [
             dirname(file),
             ...protectedPaths,
             ...referenceRoots,
-          ...userDependencyRoots(),
+            ...userDependencyRoots(),
           ];
           assertIdle(
             item.path,
