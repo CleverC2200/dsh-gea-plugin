@@ -544,3 +544,58 @@ test("the project launcher performs automatic cleanup through its committed owne
     true,
   );
 });
+
+test("automatic finish protects directly declared credentials and untracked source", (t) => {
+  const { root, outputs, manifest, save, source, taskRoot } = taskOutputsFixture(t);
+  Object.assign(manifest.items[0], { reason: "Fixture runtime", restoreFrom: [source] });
+  const credentials = join(taskRoot, "credentials.json");
+  fs.writeFileSync(credentials, "fixture protected credentials");
+  manifest.items.push({ path: credentials, kind: "generated", disposition: "cleanup", restoreFrom: [source] });
+  save();
+  assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_SOURCE_OR_USER_STATE"));
+  assert.equal(fs.readFileSync(credentials, "utf8"), "fixture protected credentials");
+  const repository = join(root, "repository");
+  const unfinished = join(repository, "output");
+  fs.mkdirSync(unfinished, { recursive: true });
+  cp.execFileSync("git", ["init", "-q", repository]);
+  fs.writeFileSync(join(unfinished, "new-source.ts"), "UNPUBLISHED_SOURCE");
+  manifest.roots.push(unfinished);
+  manifest.items.push({ path: unfinished, kind: "generated", disposition: "cleanup", restoreFrom: [source] });
+  save();
+  assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_UNTRACKED_SOURCE"));
+  assert.equal(fs.readFileSync(join(unfinished, "new-source.ts"), "utf8"), "UNPUBLISHED_SOURCE");
+});
+
+test("automatic finish resumes after a process exits immediately after deleting its output", (t) => {
+  const { root, outputs, manifest, save, source, generated } = taskOutputsFixture(t);
+  Object.assign(manifest.items[0], { disposition: "cleanup", restoreFrom: [source] });
+  save();
+  const runner = join(root, "interrupt.mjs");
+  fs.writeFileSync(runner, `import fs from 'node:fs';
+import { finishDevelopmentOutputs } from ${JSON.stringify(new URL("./development-outputs.mjs", import.meta.url).href)};
+const remove = fs.rmSync;
+fs.rmSync = (path, options) => { const result = remove(path, options); if (path === ${JSON.stringify(generated)}) process.exit(99); return result; };
+finishDevelopmentOutputs(${JSON.stringify(outputs)});
+`);
+  const interrupted = cp.spawnSync(process.execPath, [runner], { encoding: "utf8" });
+  assert.equal(interrupted.status, 99, interrupted.stderr);
+  assert.equal(fs.existsSync(generated), false);
+  const completed = finishDevelopmentOutputs(outputs);
+  assert.equal(completed.status, "disposition-complete", JSON.stringify(completed.issues));
+  assert.equal(completed.cleanup[0].recovered, true);
+  assert.equal(completed.livePreflightVerified, false);
+  assert.equal(fs.existsSync(outputs + ".finish-lock"), false);
+  assert.equal(finishDevelopmentOutputs(outputs).status, "disposition-complete");
+});
+
+test("automatic finish preserves a file held open by its own caller", (t) => {
+  const { outputs, manifest, save, source, generated } = taskOutputsFixture(t);
+  Object.assign(manifest.items[0], { disposition: "cleanup", restoreFrom: [source] });
+  save();
+  const descriptor = fs.openSync(join(generated, "build.js"), "r");
+  try {
+    assert.ok(finishDevelopmentOutputs(outputs).issues.some((issue) => issue.reason === "OUTPUT_ACTIVE_READER"));
+    assert.equal(fs.existsSync(generated), true);
+  } finally { fs.closeSync(descriptor); }
+  assert.equal(finishDevelopmentOutputs(outputs).status, "disposition-complete");
+});

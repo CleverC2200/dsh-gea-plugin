@@ -151,7 +151,7 @@ async function main() {
   }
   if (action === "finish" || (action === "report" && values.outputs)) {
     const outputDisposition = action === "finish"
-      ? finishDevelopmentOutputs(values.outputs, [input, ...data.repositories.map((row) => fs.realpathSync(row.path))])
+      ? finishDevelopmentOutputs(values.outputs, [input, ...data.repositories.flatMap((row) => [fs.realpathSync(row.path), fs.realpathSync(resolve(fs.realpathSync(row.path), "../../official-latest-standard"))])])
       : checkDevelopmentOutputs(values.outputs);
     console.log(
       JSON.stringify({

@@ -97,11 +97,11 @@ node scripts/development-tasks.mjs finish --outputs /absolute/task/outputs.json
 
 `kind` 为 `generated`、`artifact`、`source`、`failure-evidence` 或 `user-data`。保留项需实际存在且给出理由。源码、最终交付包、必要原始失败和用户状态只支持保留。`generated` 的保留和退场都需指向自身目录外仍可读取的恢复来源文件；理由写明仍在使用的 owner/读者和后续退场条件。`pending` 或缺少处置保持未完成。
 
-自动回收使用 `kind: "generated", disposition: "cleanup"` 和 `restoreFrom`。只登记本票已完成、可由保留来源重建的精确叶目录，例如独立构建输出或旧安装图；当前主环境和仍需验收的环境用 `retain` 并写明退场条件。工具拒绝源码仓、Git 已跟踪文件和已识别的用户状态，保留全部源码、独有提交及未提交改动，不代替源码差异迁移。整个工作树继续由 owner 核 GitHub 覆盖及必要差异，再用 Git 原生方式退出。
+自动回收使用 `kind: "generated", disposition: "cleanup"` 和 `restoreFrom`。只登记本票已完成、可由保留来源重建的精确叶目录，例如独立构建输出或旧安装图；当前主环境和仍需验收的环境用 `retain` 并写明退场条件。自动回收只接受目录。工具拒绝源码仓、Git 已跟踪和未忽略的未跟踪文件、Git 锁及已识别的用户状态；保护名同时检查目标自身、祖先和子项，保留全部源码、独有提交及未提交改动，不代替源码差异迁移。整个工作树继续由 owner 核 GitHub 覆盖及必要差异，再用 Git 原生方式退出。
 
 每个回收项执行实时 `lsof`、进程参数及项目/技能入口符号链接检查，检查失败、依赖仍引用或恢复来源将被删除时跳过并报告；不关闭读者。检查支持 macOS/Linux，其他平台保留原物并报告未支持。检查是当次观察，owner 在 finish 期间保持本票停止生产新输出。自动回收不遍历删除未登记项，也不清理会话和 Skill 的在用版本。
 
-成功删除后在清单旁记录 `<outputs>.cleanup.json`，并将该项改为 `remove` 引用原始回执；重复执行读取实际状态，不重复删除。未成功项仍为 `cleanup`，退出 1 并报告阻断原因。存在未声明输出、路径问题或恢复来源缺口时整批保持原状。并发 finish 通过清单旁独占锁互斥；中断遗留锁保持阻断，owner 核原进程退出后处理。原回执及清单保留，不备份整套生成环境。
+通过实时检查后，先在清单旁原子写入 `<outputs>.cleanup.json` 的 prepared 记录，再删除并持久化完成回执，将该项改为 `remove`。重复执行读取实际状态，不重复删除。若进程在删除后退出，下一次核原进程已退出、prepared 记录及路径实际缺失后续写回执，标记 recovered，不追认为本次实时检查或删除。未成功项仍为 `cleanup`，退出 1 并报告阻断原因。存在未声明输出、路径问题或恢复来源缺口时整批保持原状。并发 finish 通过清单旁独占锁互斥，锁归属未知或原进程仍在则阻断；原进程已退出的匹配锁可以恢复。无法确认的中断状态交由 owner 核对。原回执及清单保留，不备份整套生成环境。
 
 已由其他获准流程完成的退场项用 `disposition: "remove"` 和 `cleanupReceipt` 指向原清理 journal。该 journal 的 `items` 中必须只有一条同路径记录，`removed` 为 true，`startedAt`、`completedAt` 有效且先后有序；实际目标必须已经不存在。只写一个计划、成功摘要或清单自报 removed 均不通过。恢复来源和 journal 留在删除目标外。已删根必须有同路径退场项，不因根已不存在而省去核对。
 
