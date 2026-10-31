@@ -623,3 +623,14 @@ for (const interruption of ["claim", "record"]) {
     assert.equal(fs.readFileSync(unexpected, "utf8"), "PROTECTED");
   });
 }
+
+test("automatic finish cannot retire its own manifest or transaction evidence", (t) => {
+  const { outputs, manifest, save, source, generated, taskRoot } = taskOutputsFixture(t);
+  Object.assign(manifest.items[0], { path: taskRoot, disposition: "cleanup", restoreFrom: [source] });
+  save();
+  const result = finishDevelopmentOutputs(outputs);
+  assert.equal(result.status, "needs-disposition");
+  assert.ok(result.issues.some((issue) => issue.reason === "OUTPUT_PATH_OUTSIDE_OR_OVERLAPPING"));
+  assert.equal(fs.existsSync(outputs), true);
+  assert.equal(fs.existsSync(generated), true);
+});

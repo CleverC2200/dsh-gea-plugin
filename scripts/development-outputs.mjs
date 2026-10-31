@@ -79,7 +79,7 @@ export function checkDevelopmentOutputs(file, lockFile) {
     for (const item of manifest.items) {
       physical(item.path, true);
       if (
-        item.path === file ||
+        [file, file + ".cleanup.json", file + ".finish-state", file + ".finish-lock"].some((evidence) => inside(item.path, evidence)) ||
         !manifest.roots.some((root) => inside(root, item.path)) ||
         paths.some((path) => inside(path, item.path) || inside(item.path, path))
       )
