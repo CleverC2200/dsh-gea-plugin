@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import cp from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
@@ -21,6 +22,80 @@ const inside = (root, path) => {
 };
 const digest = (body) => createHash("sha256").update(body).digest("hex");
 const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+
+function watchMarker(file) {
+  return `completion-watch:${digest(file).slice(0, 24)}`;
+}
+
+export function completionWatchRequest(projectRoot, file) {
+  const marker = watchMarker(file);
+  const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
+  const activity = join(
+    projectRoot,
+    ".development/main",
+    `finish-activity-${digest(file).slice(0, 12)}.json`,
+  );
+  const command = `node ${quote(join(projectRoot, "tools/development.mjs"))}`;
+  return {
+    mode: "create",
+    kind: "cron",
+    executionEnvironment: "local",
+    destination: "local",
+    name: `PR收尾 ${digest(file).slice(0, 12)}`,
+    model: "gpt-6.1-sol",
+    reasoningEffort: "high",
+    notificationPolicy: "failed_runs_only",
+    projectId: null,
+    rrule: "FREQ=MINUTELY;INTERVAL=5",
+    status: "ACTIVE",
+    prompt: [
+      `本机项目 ${projectRoot} 的独立 PR 收尾任务。唯一标记 ${marker}。只处理清单 ${file}，不发送消息到原聊天。`,
+      `先在项目根运行 ${command} watch-plan --outputs ${quote(file)}。action=stop 表示清单已退场或未登记，不读取聊天、不写活动快照，直接停止本检查。`,
+      `停止检查时，只读检查本机 $CODEX_HOME/automations（未设置时 ~/.codex/automations）中 kind=cron 且 prompt 包含完整标记 ${marker} 的配置，通过原生 automation_update mode=delete 删除匹配的检查；不得直接修改自动任务文件。`,
+      "action=check 时，用原生 list_threads history/codex 完整分页读取当前 host 未归档聊天直到 nextCursor 为空，再用 recent 确认 unavailableHosts/unavailableSources 为空。失败或不完整时保留文件，不能伪造无活动任务。只提取 id/status/cwd，不读取正文。",
+      `将 complete=true、本次 UTC observedAt、完整 threads 写入 ${activity}。protectedPaths 只含 active 或未知状态且 cwd 位于本项目 .parallel/.scratch 下的具体路径，不把整个项目根当成任务路径。用普通文件写入，不用 apply_patch。`,
+      `在项目根运行 ${command} finish-merged --outputs ${quote(file)} --activity ${quote(activity)}。只用这个入口，不删其他目录、不改数据库、不停止进程，不重发合并或安装。保留在用环境及 GitHub 未覆盖的必要改动。`,
+      `无论执行成功或失败，都删除本轮临时文件 ${activity}。返回 watch.action=stop 时立即按唯一标记删除本检查；等待合并、占用或必要改动导致保留时，下次继续核对同一清单。重要结果和边界保存在对应 PR，本地不另建报告。`,
+    ].join("\n"),
+  };
+}
+
+function activeCompletionWatch(projectRoot, file, id, directory) {
+  if (!/^[a-zA-Z0-9_-]{1,120}$/.test(id ?? "")) return false;
+  try {
+    const config = fs.readFileSync(join(directory, id, "automation.toml"), "utf8");
+    const value = (key) => {
+      const line = config.split("\n").find((line) => line.startsWith(key + " = "));
+      return line ? JSON.parse(line.slice(key.length + 3)) : null;
+    };
+    return (
+      value("id") === id &&
+      value("kind") === "cron" &&
+      value("status") === "ACTIVE" &&
+      value("execution_environment") === "local" &&
+      value("cwds")?.includes(projectRoot) &&
+      value("prompt") === completionWatchRequest(projectRoot, file).prompt &&
+      !/^target_thread_id\s*=/m.test(config)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function completionWatchPlan(projectRoot, file) {
+  if (
+    !isAbsolute(file ?? "") ||
+    ![".scratch", ".parallel"].some((root) => inside(join(projectRoot, root), file))
+  )
+    throw Error("COMPLETION_TASK_SCOPE_REQUIRED");
+  if (!fs.existsSync(file)) return { action: "stop", outputs: file };
+  const manifest = taskScope(file, projectRoot);
+  return {
+    action: manifest.completion?.pullRequests?.length ? "check" : "stop",
+    outputs: file,
+    automationId: manifest.completion?.watchAutomationId ?? null,
+  };
+}
 
 export async function readCompletionPullRequest(binding) {
   if (
@@ -57,6 +132,8 @@ export async function bindTaskPullRequest({
   worktrees = [],
   readPullRequest = readCompletionPullRequest,
   ownerThreadId = process.env.CODEX_THREAD_ID,
+  watchId,
+  automationDirectory = join(process.env.CODEX_HOME ?? join(os.homedir(), ".codex"), "automations"),
 }) {
   if (typeof ownerThreadId !== "string" || !ownerThreadId)
     throw Error("COMPLETION_OWNER_THREAD_REQUIRED");
@@ -88,11 +165,24 @@ export async function bindTaskPullRequest({
       ).values(),
     ],
   };
+  const id = watchId ?? manifest.completion.watchAutomationId;
+  const watching = activeCompletionWatch(projectRoot, file, id, automationDirectory);
+  if (watchId && !watching) throw Error("COMPLETION_INDEPENDENT_WATCH_REQUIRED");
+  if (watching) manifest.completion.watchAutomationId = id;
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + "\n");
   return {
-    status: "tracking",
+    status: watching ? "tracking" : "watch-required",
     task: manifest.task,
     pullRequests: manifest.completion.pullRequests.length,
+    watch: watching
+      ? { automationId: id }
+      : {
+          projectRoot,
+          tool: "automation_update",
+          instruction:
+            "用 list_projects 找到 projectRoot 的 projectId，复用或创建以下独立原生检查，再用 bind-pr --watch-id <返回的id> 完成登记。不要创建 heartbeat。",
+          request: completionWatchRequest(projectRoot, file),
+        },
   };
 }
 
