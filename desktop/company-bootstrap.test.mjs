@@ -818,8 +818,62 @@ test("an offline dependency failure resumes the suite and retains its failed rec
   );
 });
 
+test("a terminated network-stalled installation resumes safely and preserves its failure evidence", async (t) => {
+  for (const mode of ["recover", "active", "linked-log", "unknown-failure"]) {
+    const f = await interruptedProfile(t, { active: mode === "active" });
+    const log = join(f.profile, ".plugin-manager/logs/operation-network/pnpm.log");
+    await mkdir(join(log, ".."), { recursive: true });
+    const output =
+      "Progress: resolved 139, reused 139, downloaded 0, added 139, done\n" +
+      "[WARN] GET https://registry.npmjs.org/function-bind error (ECONNRESET). Will retry in 10 seconds. 2 retries left.\n" +
+      (mode === "unknown-failure"
+        ? "[ERR_PNPM_LOCKFILE_VERIFICATION_FAILED] rejected by policy\n"
+        : "dsh: pnpm printed nothing for 120000ms and was terminated\n");
+    await writeFile(log, output);
+    if (mode === "linked-log") {
+      const external = join(f.home, "external-logs");
+      await mkdir(external);
+      await writeFile(join(external, "pnpm.log"), output);
+      await rm(join(log, ".."), { recursive: true });
+      await symlink(external, join(log, ".."), "dir");
+    }
+    const failed = JSON.stringify({
+      status: "failed",
+      diagnostic: "GEA_COMPANY_INSTALL_FAILED: " + log,
+    });
+    await writeFile(join(f.record, "receipt.json"), failed);
+    const original = await readFile(join(f.profile, "package.json"));
+    if (mode === "recover") {
+      assert.equal((await bootstrapCompanyProfile(f)).status, "installed");
+      assert.equal(f.calls(), 1);
+      const backup = (await readdir(f.record)).find((name) => name.startsWith("interrupted-"));
+      assert.equal(await readFile(join(f.record, backup, "receipt.json"), "utf8"), failed);
+      assert.deepEqual(await readFile(join(f.record, backup, "package.json")), original);
+      assert.equal(await readFile(log, "utf8"), output);
+      assert.deepEqual(
+        JSON.parse(await readFile(join(f.profile, "package.json"), "utf8")).dsh.profile.bundles,
+        ["dsh-agent-manage"],
+      );
+      assert.equal((await bootstrapCompanyProfile(f)).status, "existing-profile-preserved");
+      assert.equal(f.calls(), 1);
+    } else {
+      await assert.rejects(
+        bootstrapCompanyProfile(f),
+        mode === "active" ? /GEA_REFRESH_PROFILE_BUSY/ : /GEA_COMPANY_INSTALL_INCOMPLETE/,
+      );
+      assert.equal(f.calls(), 0);
+      assert.equal(await readFile(join(f.record, "receipt.json"), "utf8"), failed);
+      assert.deepEqual(await readFile(join(f.profile, "package.json")), original);
+    }
+    assert.equal(
+      await readFile(join(f.profile, "sessions/old.jsonl"), "utf8"),
+      "existing user history\n",
+    );
+  }
+});
+
 test("bundled installation aligns an existing company lock and restores it on failure without replacing user dependencies", async (t) => {
-  for (const mode of ["company", "failure", "user"]) {
+  for (const mode of ["company", "failure", "user", "unverified"]) {
     const f = await interruptedProfile(t);
     const moduleRoot = join(f.root, "dsh/node_modules/@deepseek-ai");
     for (const name of ["dsh-app-boot", "dsh-plugin-manager"]) {
@@ -857,7 +911,8 @@ test("bundled installation aligns an existing company lock and restores it on fa
       packages: { "body-parser@2.4.0": {} },
     });
     await writeFile(join(f.seed, "dependency-lock.yaml"), lock);
-    manifest.dependencyLockSha256 = createHash("sha256").update(lock).digest("hex");
+    if (mode !== "unverified")
+      manifest.dependencyLockSha256 = createHash("sha256").update(lock).digest("hex");
     await writeFile(join(f.seed, "manifest.json"), JSON.stringify(manifest));
     const original = "lockfileVersion: 9\npackages:\n  body-parser@2.3.0: {}\n";
     await writeFile(join(f.profile, "pnpm-lock.yaml"), original);
@@ -882,14 +937,16 @@ test("bundled installation aligns an existing company lock and restores it on fa
     const called = JSON.parse(await readFile(join(f.profile, "call.json"), "utf8"));
     assert(called.args.includes("--config.update-notifier=false"));
     assert.equal(called.options.activateNewBundles, false);
-    if (mode === "user") {
+    if (mode === "user" || mode === "unverified") {
       assert.equal(called.lock, original);
-      assert(called.args.includes("--offline=false"));
+      assert.equal(called.args.includes("--offline=false"), mode === "user");
       assert(!called.args.includes("--config.frozen-lockfile=true"));
+      assert(!called.args.includes("--trust-lockfile"));
     } else {
       assert.match(called.lock, /body-parser@2\.4\.0/);
       assert.doesNotMatch(called.lock, /body-parser@2\.3\.0/);
       assert(called.args.includes("--config.frozen-lockfile=true"));
+      assert(called.args.includes("--trust-lockfile"));
     }
     if (mode === "failure")
       assert.equal(await readFile(join(f.profile, "pnpm-lock.yaml"), "utf8"), original);
