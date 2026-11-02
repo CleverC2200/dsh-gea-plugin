@@ -16,7 +16,7 @@ GITHUB_REPOSITORY=CleverC2200/dsh-gea-plugin GITHUB_RUN_ID=<run-id> GITHUB_RUN_A
 
 `recovery.action` 为 `diagnose` 时，先核失败日志、容量诊断或缺失 producer；准备失败和同阶段再次失败均进入此状态。`retry-failed-only` 仅表示首次行为检查失败可考虑只重跑失败项，实际操作仍需本票授权。执行前在同一命令追加 `--request-retry failed`，该准入在诊断、未知或运行未结束时退出非零；`--request-retry all` 一律拒绝。只有准入退出零后才串接既有 `gh run rerun --failed`。该 CLI 只读，不执行重跑或后台轮询，也不能拦截执行者直接调用 GitHub。修复输入或获得能区分故障原因的新证据后，再选择对应的最小验证。进度只报告新失败、诊断、输入变化、完成或待用户动作；作业完成计数不单独触发说明。
 
-依赖策略使用成功 producer 输出的 artifact ID、attempt 和回执摘要。失败项重跑不按 consumer attempt 推算产物名称；固定源码、Core、原锁、管理器、Node、平台、架构和原生依赖内容核验保持。分片汇总另读同一 run 的最新 job 清单，验证每份回执确由对应 attempt 的成功 worker 产生，再逐份核原始计划与精确覆盖。失败分片保留独立 attempt 证据，当前分片产物只替换自己的摘要入口。正式输入回执也从实际 source-plan producer 的 attempt 定位。
+依赖策略使用成功 producer 输出的 artifact ID、attempt 和回执摘要。失败项重跑不按 consumer attempt 推算产物名称；固定源码、Core、原锁、管理器、Node、平台、架构和原生依赖内容核验保持。分片汇总另读同一 run 的最新 job 清单，验证每份回执确由对应 attempt 的成功 worker 产生，再逐份核原始计划与精确覆盖。 GitHub 会把复用 job 的 run_attempt 标为新轮次；实际 producer 由原始执行时间、runner、steps 与各 attempt 的完整历史清单一致性确定，不单独相信该字段。失败分片保留独立 attempt 证据，当前分片产物只替换自己的摘要入口。正式输入回执也从实际 source-plan producer 的 attempt 定位。
 
 ## 日常计时参考
 

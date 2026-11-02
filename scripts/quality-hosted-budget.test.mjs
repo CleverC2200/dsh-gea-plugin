@@ -13,6 +13,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { hostedProducerAttempt } from "./quality-hosted-run.mjs";
 
 const expected = {
   repository: "CleverC2200/dsh-gea-plugin",
@@ -33,6 +34,17 @@ function snapshot(durationMs = 600000) {
     conclusion: "success",
     started_at: at(start),
     completed_at: at(end),
+    runner_id: 100 + id,
+    steps: [
+      {
+        name: "Run",
+        number: 1,
+        status: "completed",
+        conclusion: "success",
+        started_at: at(start),
+        completed_at: at(end),
+      },
+    ],
   });
   return {
     schemaVersion: 1,
@@ -642,7 +654,8 @@ test("latest producer inventory fetches every page and preserves each job's actu
       .slice(1)
       .every(
         (request) =>
-          request.path.endsWith("/runs/123/jobs") && request.query.includes("filter=latest"),
+          (request.path.endsWith("/runs/123/jobs") && request.query.includes("filter=latest")) ||
+          request.path.endsWith("/attempts/1/jobs"),
       ),
   );
 });
@@ -674,4 +687,27 @@ test("the public report CLI refuses a repeated retry request and all whole-run r
   writeFileSync(snapshotFile, JSON.stringify(first));
   writeFileSync(historyFile, JSON.stringify([first]));
   assert.equal(spawnSync(process.execPath, [...args, "failed"]).status, 0);
+});
+
+test("actual GitHub cloned job metadata resolves the original execution instead of its new attempt label", () => {
+  const snapshot = JSON.parse(
+    readFileSync(new URL("./fixtures/hosted-producer-clone.json", import.meta.url)),
+  );
+  assert.equal(snapshot.jobs[0].run_attempt, 2);
+  assert.equal(hostedProducerAttempt(snapshot, "source-plan"), 1);
+  const changed = structuredClone(snapshot);
+  changed.jobs[0].completed_at = "2026-11-02T03:37:40Z";
+  assert.throws(() => hostedProducerAttempt(changed, "source-plan"), /execution did not start/);
+  assert.throws(
+    () => hostedProducerAttempt({ ...snapshot, producerJobs: [] }, "source-plan"),
+    /HISTORY_REQUIRED/,
+  );
+  const drift = structuredClone(snapshot);
+  drift.producerJobs[0].jobs[0].head_sha = "b".repeat(40);
+  assert.throws(() => hostedProducerAttempt(drift, "source-plan"), /HOSTED_INPUT_MISMATCH/);
+  const current = structuredClone(snapshot);
+  current.jobs[0].started_at = "2026-11-02T03:46:15Z";
+  current.jobs[0].completed_at = "2026-11-02T03:46:40Z";
+  current.jobs[0].runner_id++;
+  assert.equal(hostedProducerAttempt(current, "source-plan"), 2);
 });

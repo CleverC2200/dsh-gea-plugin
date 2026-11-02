@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { aggregateSourceCheckShards, sourceCheckMatrix } from "./source-check-shards.mjs";
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { executionDigest, verifyExecutionResults } from "./quality-test-execution.mjs";
-import { verifyHostedSnapshot } from "./quality-hosted-run.mjs";
+import { verifyHostedSnapshot, hostedProducerAttempt } from "./quality-hosted-run.mjs";
 
 const json = (file) => JSON.parse(readFileSync(file, "utf8"));
 const same = (left, right) => executionDigest(left) === executionDigest(right);
@@ -78,9 +78,9 @@ export function summarizeSourceChecks(
                     (name === "source-checks-single"
                       ? "source-checks"
                       : name.replace(/-(\d+)$/, " ($1)")) &&
-                  job.run_attempt === Number(result.runAttempt) &&
                   job.status === "completed" &&
-                  job.conclusion === "success",
+                  job.conclusion === "success" &&
+                  hostedProducerAttempt(producers, job.name) === Number(result.runAttempt),
               ).length === 1
             : String(result.runAttempt) === String(runAttempt)) &&
           same(result.plan, selection),

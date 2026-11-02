@@ -10,7 +10,11 @@ import {
 } from "./quality-test-execution.mjs";
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { currentTestTimings } from "./quality-test-timings.mjs";
-import { readHostedRun, verifyHostedSnapshot } from "./quality-hosted-run.mjs";
+import {
+  readHostedRun,
+  verifyHostedSnapshot,
+  hostedProducerAttempt,
+} from "./quality-hosted-run.mjs";
 
 export const sourceCheckWorkerLimit = 40;
 export const sourceCheckWorkerTarget = 40;
@@ -97,9 +101,9 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt,
       );
       requireValue(
         jobs.length === 1 &&
-          jobs[0].run_attempt === Number(scope.runAttempt) &&
           jobs[0].status === "completed" &&
-          jobs[0].conclusion === "success",
+          jobs[0].conclusion === "success" &&
+          hostedProducerAttempt(producers, jobs[0].name) === Number(scope.runAttempt),
         "latest successful worker producer",
       );
     }

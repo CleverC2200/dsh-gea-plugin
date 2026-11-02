@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 export async function readHostedRun({
   repository,
   runId,
@@ -57,36 +58,23 @@ export async function readHostedRun({
     }
   };
   const run = await get(prefix);
-  const jobs = [];
   const jobsPrefix =
-    jobFilter === "latest" ? `/repos/${repository}/actions/runs/${expected.runId}` : prefix;
-  let totalCount, pageCount;
-  for (let page = 1; page === 1 || page <= pageCount; page++) {
-    const body = await get(
-      jobsPrefix +
-        `/jobs?per_page=${perPage}&page=${page}${jobFilter === "latest" ? "&filter=latest" : ""}`,
-    );
-    if (
-      !body ||
-      !Number.isSafeInteger(body.total_count) ||
-      body.total_count < 0 ||
-      !Array.isArray(body.jobs) ||
-      body.jobs.length > perPage ||
-      (totalCount !== undefined && body.total_count !== totalCount)
-    )
-      throw Error("HOSTED_JOBS_INCOMPLETE");
-    totalCount ??= body.total_count;
-    pageCount ??= Math.max(1, Math.ceil(totalCount / perPage));
-    jobs.push(...body.jobs);
-  }
+    jobFilter === "latest"
+      ? `/repos/${repository}/actions/runs/${expected.runId}/jobs?filter=latest`
+      : prefix + "/jobs";
+  const inventory = await readJobPages(get, jobsPrefix, perPage);
+  const producerJobs =
+    jobFilter === "latest" && expected.runAttempt > 1
+      ? await readHostedProducerJobs(get, expected, perPage)
+      : [];
   const snapshot = {
     schemaVersion: 1,
     expected,
     ...(jobFilter === "latest" ? { jobFilter } : {}),
     run,
-    jobs,
+    ...inventory,
+    ...(producerJobs.length ? { producerJobs } : {}),
     observedAt: new Date().toISOString(),
-    pagination: { complete: jobs.length === totalCount, totalCount, pageCount, perPage },
   };
   verifyHostedSnapshot(snapshot);
   return snapshot;
@@ -108,6 +96,10 @@ export function verifyHostedSnapshot(snapshot) {
       run.repository.full_name.toLowerCase() !== expected.repository.toLowerCase())
   )
     throw Error("HOSTED_INPUT_MISMATCH");
+  verifyHostedJobs({ jobs, pagination }, expected, snapshot.jobFilter === "latest");
+}
+
+function verifyHostedJobs({ jobs, pagination }, expected, latest = false) {
   if (
     !Array.isArray(jobs) ||
     !pagination ||
@@ -127,7 +119,7 @@ export function verifyHostedSnapshot(snapshot) {
       !Number.isSafeInteger(job.id) ||
       job.id < 1 ||
       job.run_id !== expected.runId ||
-      (snapshot.jobFilter === "latest"
+      (latest
         ? !Number.isSafeInteger(job.run_attempt) ||
           job.run_attempt < 1 ||
           job.run_attempt > expected.runAttempt
@@ -135,4 +127,96 @@ export function verifyHostedSnapshot(snapshot) {
       job.head_sha !== expected.headSha
     )
       throw Error("HOSTED_INPUT_MISMATCH");
+}
+
+async function readJobPages(read, path, perPage = 100) {
+  const jobs = [];
+  let totalCount, pageCount;
+  for (let page = 1; page === 1 || page <= pageCount; page++) {
+    const body = await read(
+      path + `${path.includes("?") ? "&" : "?"}per_page=${perPage}&page=${page}`,
+    );
+    if (
+      !Number.isSafeInteger(body?.total_count) ||
+      body.total_count < 0 ||
+      !Array.isArray(body.jobs) ||
+      body.jobs.length > perPage ||
+      (totalCount !== undefined && body.total_count !== totalCount)
+    )
+      throw Error("HOSTED_JOBS_INCOMPLETE");
+    totalCount ??= body.total_count;
+    pageCount ??= Math.max(1, Math.ceil(totalCount / perPage));
+    jobs.push(...body.jobs);
+  }
+  return {
+    jobs,
+    pagination: { complete: jobs.length === totalCount, totalCount, pageCount, perPage },
+  };
+}
+
+export async function readHostedProducerJobs(read, expected, perPage = 100) {
+  const history = [];
+  for (let attempt = 1; attempt < expected.runAttempt; attempt++) {
+    const inventory = await readJobPages(
+      read,
+      `/repos/${expected.repository}/actions/runs/${expected.runId}/attempts/${attempt}/jobs`,
+      perPage,
+    );
+    verifyHostedJobs(inventory, { ...expected, runAttempt: attempt });
+    history.push({ attempt, ...inventory });
+  }
+  return history;
+}
+
+export function hostedProducerAttempt(snapshot, name) {
+  verifyHostedSnapshot(snapshot);
+  const matches = snapshot.jobs.filter((job) => job.name === name);
+  if (
+    matches.length !== 1 ||
+    matches[0].status !== "completed" ||
+    matches[0].conclusion !== "success"
+  )
+    throw Error("HOSTED_PRODUCER_REQUIRED: latest successful job");
+  const job = matches[0],
+    current = snapshot.expected.runAttempt;
+  if (current === 1) return 1;
+  const history = snapshot.producerJobs;
+  if (!Array.isArray(history) || history.length !== current - 1)
+    throw Error("HOSTED_PRODUCER_HISTORY_REQUIRED");
+  const execution = (entry) => ({
+    name: entry.name,
+    startedAt: entry.started_at,
+    completedAt: entry.completed_at,
+    runner: entry.runner_id,
+    steps: entry.steps,
+    status: entry.status,
+    conclusion: entry.conclusion,
+  });
+  if (
+    !Number.isFinite(Date.parse(job.started_at)) ||
+    !Number.isFinite(Date.parse(job.completed_at)) ||
+    Date.parse(job.completed_at) < Date.parse(job.started_at) ||
+    !Number.isSafeInteger(job.runner_id) ||
+    job.runner_id < 1 ||
+    !Array.isArray(job.steps) ||
+    !job.steps.length
+  )
+    throw Error("HOSTED_PRODUCER_EXECUTION_REQUIRED");
+  let producer;
+  for (const [index, entry] of history.entries()) {
+    if (entry.attempt !== index + 1) throw Error("HOSTED_PRODUCER_HISTORY_REQUIRED");
+    verifyHostedJobs(entry, { ...snapshot.expected, runAttempt: entry.attempt });
+    const previous = entry.jobs.filter((candidate) => candidate.name === name);
+    if (previous.length > 1) throw Error("HOSTED_PRODUCER_REQUIRED: duplicate historical job");
+    if (previous.length === 1 && isDeepStrictEqual(execution(previous[0]), execution(job)))
+      producer ??= entry.attempt;
+  }
+  if (producer) return producer;
+  if (
+    job.run_attempt !== current ||
+    !Number.isFinite(Date.parse(snapshot.run.run_started_at)) ||
+    Date.parse(job.started_at) < Date.parse(snapshot.run.run_started_at)
+  )
+    throw Error("HOSTED_PRODUCER_REQUIRED: execution did not start in this attempt");
+  return current;
 }

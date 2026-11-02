@@ -429,7 +429,7 @@ test("failed-only reruns aggregate original successful workers with the actual l
     schemaVersion: 1,
     jobFilter: "latest",
     expected: { repository: "CleverC2200/dsh-gea-plugin", runId: 42, runAttempt: 2, headSha: head },
-    run: { id: 42, run_attempt: 2, head_sha: head },
+    run: { id: 42, run_attempt: 2, head_sha: head, run_started_at: "2026-11-02T03:46:11Z" },
     pagination: { complete: true, totalCount: 2, pageCount: 1, perPage: 100 },
     jobs: [1, 2].map((id) => ({
       id,
@@ -439,14 +439,28 @@ test("failed-only reruns aggregate original successful workers with the actual l
       head_sha: head,
       status: "completed",
       conclusion: "success",
+      started_at: id === 1 ? "2026-11-02T03:37:16Z" : "2026-11-02T03:46:15Z",
+      completed_at: id === 1 ? "2026-11-02T03:37:39Z" : "2026-11-02T03:46:40Z",
+      runner_id: id + 100,
+      steps: [{ name: "Execute", status: "completed", conclusion: "success" }],
     })),
   };
+  producers.producerJobs = [
+    {
+      attempt: 1,
+      jobs: producers.jobs.map((job) => ({ ...job, run_attempt: 1 })),
+      pagination: producers.pagination,
+    },
+  ];
+  producers.producerJobs[0].jobs[1].conclusion = "failure";
   assert.throws(() => aggregateSourceCheckShards(f.root, retry), /worker source/);
   assert.equal(aggregateSourceCheckShards(f.root, { ...retry, producers }).files, 4);
   producers.jobs[0].conclusion = "failure";
   assert.throws(() => aggregateSourceCheckShards(f.root, { ...retry, producers }), /producer/);
   producers.jobs[0].conclusion = "success";
   producers.jobs[0].run_attempt = 2;
+  producers.jobs[0].started_at = "2026-11-02T03:46:15Z";
+  producers.jobs[0].completed_at = "2026-11-02T03:46:40Z";
   assert.throws(() => aggregateSourceCheckShards(f.root, { ...retry, producers }), /producer/);
 });
 
