@@ -43,6 +43,11 @@ on:
         default: ""
         required: false
         type: string
+      windows_online_update:
+        description: "Exercise the running signed October client through the live feed, restart installation and new workspace startup"
+        default: false
+        required: false
+        type: boolean
       mac_complete_input:
         description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
         required: false
@@ -113,10 +118,18 @@ jobs:
           run-id: ${{ inputs.windows_overwrite_artifact_run }}
           pattern: GEA-Desktop-*-win-x64-complete
           path: ${{ runner.temp }}/signed-overwrite-package
+      - uses: actions/download-artifact@v4
+        if: inputs.windows_online_update
+        with:
+          github-token: ${{ github.token }}
+          run-id: 41028129549
+          name: GEA-Desktop-0.2.0-rc.2.20261030.2-win-x64-complete
+          path: ${{ runner.temp }}/online-update-baseline
       - name: Recheck installed package version and preserved user files
         shell: bash
         env:
           GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
+          GEA_WINDOWS_ONLINE_UPDATE: ${{ inputs.windows_online_update }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -126,7 +139,14 @@ jobs:
           function walk(root){return readdirSync(root,{withFileTypes:true}).flatMap(entry=>{const path=join(root,entry.name);return entry.isDirectory()?walk(path):[path]});}
           const files=walk(join(process.env.RUNNER_TEMP,'signed-overwrite-package')).filter(path=>path.endsWith(join('gea-local','result.json')));
           assert.equal(files.length,1);
-          execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),join(process.env.RUNNER_TEMP,'signed-overwrite-result'),'overwrite-only'],{stdio:'inherit'});
+          const output=join(process.env.RUNNER_TEMP,'signed-overwrite-result');
+          if(process.env.GEA_WINDOWS_ONLINE_UPDATE==='true') {
+            const baseline=walk(join(process.env.RUNNER_TEMP,'online-update-baseline')).filter(path=>path.endsWith('GEA-Desktop-0.2.0-rc.2.20261030.2-win-x64-signed.exe'));
+            assert.equal(baseline.length,1);
+            execFileSync(process.execPath,['gea/scripts/windows-complete-local/online-upgrade.mjs',baseline[0],output],{stdio:'inherit'});
+          } else {
+            execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
+          }
           NODE
       - uses: actions/upload-artifact@v4
         if: always()
@@ -136,6 +156,8 @@ jobs:
           path: |
             ${{ runner.temp }}/signed-overwrite-result/*.json
             ${{ runner.temp }}/signed-overwrite-result/*.log
+            ${{ runner.temp }}/signed-overwrite-result/*.png
+            ${{ runner.temp }}/signed-overwrite-result/journal/**
   windows-certificate-fixture:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_certificate_test
     runs-on: windows-2025

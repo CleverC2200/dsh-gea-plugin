@@ -679,7 +679,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|prepare-signing\\.ps1)$",
+      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|(?:signed|online)-upgrade\\.mjs|prepare-signing\\.ps1)$",
       "tests": [
         "scripts/windows-complete-local/signing.test.mjs",
         "scripts/delivery-events.test.mjs"
