@@ -429,9 +429,10 @@ test("the public verifier uses caller-frozen Manage input for copied Skills", as
   assert.match(missing.stderr, /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 
-test("AQKC, APS and branch copied Skills reject changed frozen sources, unknown outputs, staging and redirects", async (t) => {
+test("copied Skills reject changed frozen sources, unknown outputs, staging and redirects", async (t) => {
   for (const resource of [
     "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md",
+    "business-resources/inventory-qll/skills/qll/insight-rules.md",
     "business-resources/inventory-apsplan/skills/answer-visualization/scripts/render_answer.py",
     "business-resources/inventory-fc/skills/branch-policy/data-boundary.md",
   ]) {
@@ -439,6 +440,7 @@ test("AQKC, APS and branch copied Skills reject changed frozen sources, unknown 
     const output = join(fixture.prepared, fixture.output),
       original = join(fixture.manage.path, fixture.resource);
     const bytes = readFileSync(original);
+    await readPreparedWorkbench(fixture);
     for (const file of [output, original]) {
       writeFileSync(file, "changed resource\n");
       await assert.rejects(
