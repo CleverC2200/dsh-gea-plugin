@@ -37,6 +37,61 @@ export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000
   }
 }
 
+export function assessSourceRetry(history) {
+  if (!Array.isArray(history) || !history.length) throw Error("SOURCE_RETRY_HISTORY_REQUIRED");
+  const current = history.at(-1);
+  for (const [index, snapshot] of history.entries()) {
+    verifyHostedSnapshot(snapshot);
+    if (
+      snapshot.jobFilter ||
+      snapshot.expected.runAttempt !== index + 1 ||
+      history.length !== current.expected.runAttempt ||
+      (index < history.length - 1 && snapshot.run.status !== "completed")
+    )
+      throw Error("SOURCE_RETRY_REJECTED: complete attempt history required");
+    if (
+      ["repository", "runId", "headSha"].some(
+        (key) => snapshot.expected[key] !== current.expected[key],
+      )
+    )
+      throw Error("SOURCE_RETRY_REJECTED: history identity");
+  }
+  if (current.run.status !== "completed") return { action: "wait", reason: "run-not-completed" };
+  if (current.run.conclusion === "success") return { action: "complete", reason: "run-succeeded" };
+  const failures = (snapshot) =>
+    snapshot.jobs
+      .filter(
+        (job) =>
+          ["failure", "timed_out"].includes(job.conclusion) && job.name !== "candidate-quality",
+      )
+      .map((job) => ({
+        name: job.name,
+        step:
+          job.steps?.find((step) => ["failure", "timed_out"].includes(step.conclusion))?.name ??
+          null,
+      }));
+  const latest = failures(current);
+  const family = (failure) => failure.name.replace(/ \(\d+\)$/, "") + ":" + failure.step;
+  const earlier = new Set(history.slice(0, -1).flatMap(failures).map(family));
+  const repeated = latest.some((failure) => earlier.has(family(failure)));
+  const preparation = latest.some(
+    (failure) =>
+      !failure.step || /prepare|restore|download|polic|install|checkout/i.test(failure.step),
+  );
+  let reason = "failure-evidence-incomplete";
+  if (repeated) reason = "same-failure-stage-repeated";
+  else if (preparation) reason = "preparation-needs-diagnosis";
+  else if (latest.length) reason = "first-behavior-failure";
+  return {
+    action: reason === "first-behavior-failure" ? "retry-failed-only" : "diagnose",
+    repeated,
+    reason,
+    jobs: latest.map((failure) => failure.name),
+    failures: latest,
+    wholeRunRetry: "blocked",
+  };
+}
+
 export function assessSourceBudget(snapshot, options = {}) {
   const jobs = snapshot?.jobs ?? [];
   const sourceJobs = jobs.some((job) => /^source-checks \([12]\)$/.test(job.name))
@@ -395,11 +450,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     options: {
       "source-report": { type: "string" },
       snapshot: { type: "string" },
+      "retry-plan": { type: "boolean" },
+      "request-retry": { type: "string" },
+      "retry-history": { type: "string" },
       "source-checks": { type: "string" },
       mode: { type: "string", default: "in-gate" },
     },
   });
   if (!values["source-report"]) throw Error("SOURCE_BUDGET_OUTPUT_REQUIRED");
+  if (values["request-retry"]) {
+    if (values["request-retry"] !== "failed")
+      throw Error(
+        "SOURCE_RETRY_FAILED_ONLY: whole-run retries require diagnosis and a changed verification plan",
+      );
+    values["retry-plan"] = true;
+  }
   const { summarizeSourceChecks, sourceReportMarkdown } =
     await import("./source-check-summary.mjs");
   let result;
@@ -413,10 +478,41 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
           headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
           token: process.env.GITHUB_TOKEN,
         });
-    result = assessSourceBudget(snapshot, {
-      mode: values.mode,
-      admission: process.env.SOURCE_ADMISSION_RESULT,
-    });
+    if (values["retry-plan"]) {
+      const history = values["retry-history"]
+        ? JSON.parse(readFileSync(values["retry-history"], "utf8"))
+        : [];
+      if (!values["retry-history"] && values.snapshot && snapshot.expected.runAttempt !== 1)
+        throw Error(
+          "SOURCE_RETRY_HISTORY_REQUIRED: --retry-history <complete attempt snapshots.json>",
+        );
+      if (!values["retry-history"] && !values.snapshot)
+        for (let attempt = 1; attempt < snapshot.expected.runAttempt; attempt++)
+          history.push(
+            await readHostedRun({
+              repository: snapshot.expected.repository,
+              runId: snapshot.expected.runId,
+              runAttempt: attempt,
+              headSha: snapshot.expected.headSha,
+              token: process.env.GITHUB_TOKEN,
+            }),
+          );
+      if (values["retry-history"]) {
+        if (JSON.stringify(history.at(-1)?.expected) !== JSON.stringify(snapshot.expected))
+          throw Error(
+            "SOURCE_RETRY_REJECTED: history does not end at the observed run/attempt/head",
+          );
+        history[history.length - 1] = snapshot;
+      } else history.push(snapshot);
+      result = { recovery: assessSourceRetry(history) };
+    }
+    result = {
+      ...result,
+      ...assessSourceBudget(snapshot, {
+        mode: values.mode,
+        admission: process.env.SOURCE_ADMISSION_RESULT,
+      }),
+    };
   } catch (error) {
     result = {
       schemaVersion: 1,
@@ -425,6 +521,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       functional: { status: "unknown" },
       performance: { status: "unknown", budgetMs, reasons: [error.message] },
       passed: false,
+      ...(values["retry-plan"]
+        ? { recovery: { action: "diagnose", reason: error.message, wholeRunRetry: "blocked" } }
+        : {}),
     };
   }
   if (values["source-checks"]) {
@@ -433,20 +532,24 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
         runId: result.identity?.runId ?? process.env.GITHUB_RUN_ID,
         runAttempt: result.identity?.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT,
-        producers: values.snapshot ? undefined : await readHostedRun({
-          repository: process.env.GITHUB_REPOSITORY,
-          runId: process.env.GITHUB_RUN_ID,
-          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
-          headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-          token: process.env.GITHUB_TOKEN,
-          jobFilter: "latest",
-        }),
+        producers: values.snapshot
+          ? undefined
+          : await readHostedRun({
+              repository: process.env.GITHUB_REPOSITORY,
+              runId: process.env.GITHUB_RUN_ID,
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+              token: process.env.GITHUB_TOKEN,
+              jobFilter: "latest",
+            }),
       });
     } catch (error) {
       result.coverage = { status: "unknown", error: error.message };
     }
   }
   writeFileSync(values["source-report"], JSON.stringify(result, null, 2) + "\n");
+  if (values["request-retry"] && result.recovery?.action !== "retry-failed-only")
+    process.exitCode = 1;
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, sourceReportMarkdown(result));
 }

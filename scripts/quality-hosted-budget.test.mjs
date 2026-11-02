@@ -3,11 +3,16 @@ import assert from "node:assert/strict";
 import {
   assessHostedBudget,
   assessSourceBudget,
+  assessSourceRetry,
   readHostedRun,
   waitForHostedRun,
 } from "./quality-hosted-budget.mjs";
 import { createServer } from "node:http";
 import { once } from "node:events";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 const expected = {
   repository: "CleverC2200/dsh-gea-plugin",
@@ -580,6 +585,41 @@ test("documentation and dependency-review N/A jobs accept only absence or explic
   assert.equal(assess(required, { requiredJobs: ["scope", "Dependency review"] }).passed, false);
 });
 
+function failedAttempt(attempt, step, shard = 1) {
+  const value = snapshot();
+  value.expected.runAttempt = attempt;
+  value.run.run_attempt = attempt;
+  value.run.conclusion = "failure";
+  for (const job of value.jobs) job.run_attempt = attempt;
+  value.jobs[1].name = `source-checks (${shard})`;
+  value.jobs[1].conclusion = "failure";
+  value.jobs[1].steps = [{ name: step, conclusion: "failure", status: "completed" }];
+  return value;
+}
+
+test("recovery blocks repeated preparation failures across workers and never proposes a whole-run rerun", () => {
+  const sdk = "Prepare or verify SDK through existing cache contract";
+  const first = failedAttempt(1, sdk, 14),
+    second = failedAttempt(2, sdk, 10);
+  assert.equal(assessSourceRetry([first]).action, "diagnose");
+  const repeated = assessSourceRetry([first, second]);
+  assert.equal(repeated.action, "diagnose");
+  assert.equal(repeated.repeated, true);
+  assert.deepEqual(repeated.jobs, ["source-checks (10)"]);
+  const page = failedAttempt(1, "Run affected behavior and real TypeScript checks");
+  assert.equal(assessSourceRetry([page]).action, "retry-failed-only");
+  assert.equal(
+    assessSourceRetry([page, failedAttempt(2, page.jobs[1].steps[0].name, 2)]).action,
+    "diagnose",
+  );
+  assert.throws(() => assessSourceRetry([second]), /history/);
+  const foreign = failedAttempt(2, sdk);
+  foreign.expected.headSha = "b".repeat(40);
+  foreign.run.head_sha = foreign.expected.headSha;
+  for (const job of foreign.jobs) job.head_sha = foreign.expected.headSha;
+  assert.throws(() => assessSourceRetry([first, foreign]), /identity/);
+});
+
 test("latest producer inventory fetches every page and preserves each job's actual attempt", async (t) => {
   const api = await restFixture(t, (response) => {
     if (!response.path.endsWith("/jobs")) response.body.run_attempt = 2;
@@ -607,3 +647,31 @@ test("latest producer inventory fetches every page and preserves each job's actu
   );
 });
 
+test("the public report CLI refuses a repeated retry request and all whole-run requests", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "source-retry-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const step = "Prepare or verify SDK through existing cache contract";
+  const history = [failedAttempt(1, step, 14), failedAttempt(2, step, 10)];
+  const snapshotFile = join(directory, "snapshot.json"),
+    historyFile = join(directory, "history.json"),
+    report = join(directory, "report.json");
+  writeFileSync(snapshotFile, JSON.stringify(history[1]));
+  writeFileSync(historyFile, JSON.stringify(history));
+  const args = [
+    "scripts/quality-hosted-budget.mjs",
+    "--source-report",
+    report,
+    "--snapshot",
+    snapshotFile,
+    "--retry-history",
+    historyFile,
+    "--request-retry",
+  ];
+  assert.equal(spawnSync(process.execPath, [...args, "failed"]).status, 1);
+  assert.equal(JSON.parse(readFileSync(report)).recovery.repeated, true);
+  assert.notEqual(spawnSync(process.execPath, [...args, "all"]).status, 0);
+  const first = failedAttempt(1, "Run affected behavior and real TypeScript checks");
+  writeFileSync(snapshotFile, JSON.stringify(first));
+  writeFileSync(historyFile, JSON.stringify([first]));
+  assert.equal(spawnSync(process.execPath, [...args, "failed"]).status, 0);
+});
