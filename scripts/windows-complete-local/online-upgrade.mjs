@@ -34,7 +34,6 @@ const environment = Object.fromEntries(
       ),
   ),
 );
-environment.DSH_HOME = join(output, "dsh-home");
 environment.DSH_DESKTOP_UPDATE_JOURNAL_DIR = journal;
 const evidence = {
   status: "running",
@@ -100,7 +99,7 @@ function powershell(script, args = [], timeout = 30000) {
 async function processes() {
   return JSON.parse(
     await powershell(
-      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CreationDate,@{Name='IsDesktopHost';Expression={$_.CommandLine -match 'dsh-desktop-host[\\\\/]lib[\\\\/]index.js'}} | ConvertTo-Json -Compress",
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CreationDate,@{Name='IsDesktopHost';Expression={$_.CommandLine -match 'dsh-desktop-host[\\\\/]lib[\\\\/]index.js'}},@{Name='IsUpdatedClient';Expression={$_.CommandLine -match '(?:^|\\s)--updated(?:\\s|$)'}} | ConvertTo-Json -Compress",
     ),
   );
 }
@@ -271,7 +270,7 @@ try {
   await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
   port = socket.address().port;
   await new Promise((resolve) => socket.close(resolve));
-  const descriptor = openSync(join(output, "client.log"), "a");
+  const descriptor = openSync(join(output, "client-raw.txt"), "a");
   child = spawn(
     executable,
     [`--remote-debugging-port=${port}`, "--remote-debugging-address=127.0.0.1"],
@@ -445,23 +444,69 @@ try {
   milestone("old-client-and-owned-processes-exited", {
     elapsedMs: Date.now() - handoff,
   });
-  await until(
+  const relaunched = await until(
     "new installed application starts",
     async () =>
-      (await records()).some(
-        (row) => row.event === "started" && row.version === newVersion,
+      (await processes()).find(
+        (item) => item.ExecutablePath === executable && item.IsUpdatedClient,
       ),
     180000,
   );
   assert.equal(installedVersion(), newVersion);
-  await until(
-    "new workspace and Host ready",
+  evidence.relaunchedProcess = relaunched;
+  const newHost = await until(
+    "new Host process",
     async () =>
-      (await records()).some(
-        (row) => row.event === "workspace-ready" && row.version === newVersion,
+      (await processes()).find(
+        (item) =>
+          item.ParentProcessId === relaunched.ProcessId && item.IsDesktopHost,
       ),
     180000,
   );
+  const ports = await until(
+    "new Host listening server",
+    async () => {
+      const result = JSON.parse(
+        await powershell(
+          `param([int]$HostPid)
+ConvertTo-Json -InputObject @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.OwningProcess -eq $HostPid} | Select-Object -ExpandProperty LocalPort) -Compress`,
+          [String(newHost.ProcessId)],
+        ),
+      );
+      const values = Array.isArray(result)
+        ? result
+        : result === null
+          ? []
+          : [result];
+      for (const port of values) {
+        const response = await fetch("http://127.0.0.1:" + port + "/", {
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => undefined);
+        if (response && [200, 401, 403].includes(response.status))
+          return { port, status: response.status };
+      }
+      return false;
+    },
+    180000,
+  );
+  const window = await until(
+    "new application window",
+    async () => {
+      const result = JSON.parse(
+        await powershell(
+          `param([int]$ClientPid)
+$process=Get-Process -Id $ClientPid
+@{pid=$process.Id;windowHandle=$process.MainWindowHandle.ToInt64();windowTitle=$process.MainWindowTitle} | ConvertTo-Json -Compress`,
+          [String(relaunched.ProcessId)],
+        ),
+      );
+      return result.windowHandle !== 0 ? result : false;
+    },
+    30000,
+  );
+  evidence.newHost = newHost;
+  evidence.newHostServer = ports;
+  evidence.newWindow = window;
   assert.equal(await readFile(marker, "utf8"), markerBytes);
   const signature = JSON.parse(
     await powershell(
@@ -491,6 +536,18 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
 } finally {
   cdp?.close();
   evidence.journal = await records();
+  evidence.finalProcesses = (await processes().catch(() => [])).filter(
+    (item) => item.ExecutablePath === executable || item.IsUpdatedClient,
+  );
+  const raw = await readFile(join(output, "client-raw.txt"), "utf8").catch(
+    () => "",
+  );
+  await writeFile(
+    join(output, "client.log"),
+    raw
+      .replace(/([?&]token=)[^&\s"'<>]+/gi, "$1<REDACTED>")
+      .replace(/(Bearer\s+)[A-Za-z0-9._~-]+/gi, "$1<REDACTED>"),
+  );
   await writeFile(
     join(output, "online-upgrade.json"),
     JSON.stringify(evidence, null, 2),
