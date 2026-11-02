@@ -12,3 +12,5 @@ gea.config.json
 desktop/download-differential.cjs
 desktop/download-differential.LICENSE.txt
 desktop/core-asar-reader.cjs
+
+__pycache__/

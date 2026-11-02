@@ -23,6 +23,7 @@ test("desktop unit changes select their real CJS or MJS behavior without enablin
     ["desktop/navigation.cjs", "desktop/navigation.test.cjs"],
     ["desktop/permissions.cjs", "desktop/permissions.test.mjs"],
     ["desktop/updates.mjs", "desktop/updates.test.mjs"],
+    ["desktop/runtime-start.mjs", "desktop/runtime-start.test.mjs"],
     ["desktop/optimize-client-artifacts.mjs", "desktop/optimize-client-artifacts.test.mjs"],
   ])
     await t.test(source, (t) => {
@@ -1049,4 +1050,14 @@ test("gateway service changes select authorization and recovery contracts withou
   const integration = fixture.plan();
   assert.deepEqual(integration.required, businessCore);
   assert.ok(integration.files.includes("tests/unrelated.test.mjs"));
+});
+
+test("personal memory gateway changes run the public HTTP Python suite through the current CI selector", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.own, "gateway/personal_memory.py", "gateway source changed\n");
+  const plan = fixture.plan();
+  assert.deepEqual(plan.reasons["dsh-gea-plugin/gateway/personal_memory.py"], [
+    "tests/memory-gateway.test.mjs",
+  ]);
+  assert.ok(plan.files.includes("tests/memory-gateway.test.mjs"));
 });

@@ -24,6 +24,7 @@ const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;
 
 const METADATA_ONLY = new Set([
+  "memory.personal",
   "service.submit",
   "service.token",
   "plans.list",
@@ -60,6 +61,20 @@ const blocked = "包含登录、临时凭证、会话或流式上下文，不允
 const idempotent = "写请求仅可二次确认后按原请求体、请求 ID 和幂等键重发";
 
 const CATALOG: CatalogDefinition[] = [
+  endpoint(
+    {
+      id: "memory.personal",
+      group: "个人记忆",
+      name: "当前账号记忆",
+      method: "POST",
+      path: "/v1/memory/{action}",
+      description: "仅保留个人记忆调用的状态与时间，不保存正文。",
+      requestFields: [],
+      replayPolicy: "blocked",
+      replayNote: METADATA_REPLAY_NOTE,
+    },
+    /^\/v1\/memory\/(?:state|settings|list|get|recall|generate|update|delete|clear|operations)$/,
+  ),
   endpoint(
     {
       id: "auth.qrcode",

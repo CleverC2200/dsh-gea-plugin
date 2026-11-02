@@ -75,6 +75,7 @@ const optional = [
   "dsh-agent-plugins-market",
   "dsh-raw-html-v2",
   "dsh-worktable",
+  "dsh-personal-memory",
 ];
 const bundles = [
   "@deepseek-ai/dsh-base",
