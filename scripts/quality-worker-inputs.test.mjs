@@ -1672,6 +1672,7 @@ test("the real selector maps the shared worker implementation to both public CLI
     "scripts/quality-prepared-inputs.test.mjs",
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/windows-complete-local/core-cache.test.mjs",
+    "scripts/windows-complete-local/signing.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
     "tests/unrelated.browser.mjs",
