@@ -30,13 +30,22 @@ function Install-Client([string]$Installer) {
     Stop-InstalledApplication
     if (!(Test-Path -LiteralPath $executable)) { throw 'INSTALLED_EXECUTABLE_MISSING' }
 }
+function Installed-Version {
+    $previous = $env:ELECTRON_RUN_AS_NODE
+    try {
+        $env:ELECTRON_RUN_AS_NODE = '1'
+        $version = & $executable --expose-internals -p 'require(process.argv[1]).version' (Join-Path $installation 'resources/app.asar/package.json')
+        if ($LASTEXITCODE -ne 0) { throw 'INSTALLED_MANIFEST_READ_FAILED' }
+        return ($version | Out-String).Trim()
+    } finally { $env:ELECTRON_RUN_AS_NODE = $previous }
+}
 try {
     Install-Client $OldInstaller
-    if ((Get-Item -LiteralPath $executable).VersionInfo.ProductVersion -ne '0.2.0-rc.2.20261102.2') { throw 'BASELINE_VERSION_MISMATCH' }
+    if ((Installed-Version) -ne '0.2.0-rc.2.20261102.2') { throw 'BASELINE_VERSION_MISMATCH' }
     $state = '{"session":"existing-session","configuration":"preserve","draft":"existing-draft"}'
     [IO.File]::WriteAllText($marker,$state,[Text.UTF8Encoding]::new($false))
     Install-Client $NewInstaller
-    if ((Get-Item -LiteralPath $executable).VersionInfo.ProductVersion -ne $NewVersion) { throw 'UPGRADE_VERSION_MISMATCH' }
+    if ((Installed-Version) -ne $NewVersion) { throw 'UPGRADE_VERSION_MISMATCH' }
     if ([IO.File]::ReadAllText($marker) -ne $state) { throw 'USER_FILES_CHANGED' }
     $signature = Get-AuthenticodeSignature -LiteralPath $executable
     $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)

@@ -38,6 +38,11 @@ on:
         default: false
         required: false
         type: boolean
+      windows_overwrite_artifact_run:
+        description: "Recheck an already packaged main installer without rebuilding or accessing signing secrets"
+        default: ""
+        required: false
+        type: string
       mac_complete_input:
         description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
         required: false
@@ -60,6 +65,77 @@ permissions:
   contents: read
 
 jobs:
+  windows-overwrite-recheck:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_overwrite_artifact_run != ''
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gea
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - name: Verify original main packaging source
+        id: original
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_RUN: ${{ inputs.windows_overwrite_artifact_run }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {appendFileSync} from 'node:fs';
+          assert.match(process.env.ORIGINAL_RUN, /^[1-9][0-9]*$/);
+          const prefix='repos/CleverC2200/dsh-gea-plugin/actions/runs/'+process.env.ORIGINAL_RUN;
+          const run=JSON.parse(execFileSync('gh',['api',prefix],{encoding:'utf8'}));
+          assert.equal(run.head_repository.full_name,'CleverC2200/dsh-gea-plugin');
+          assert.equal(run.head_branch,'main');assert.equal(run.event,'workflow_dispatch');
+          assert.equal(run.path.split('@')[0],'.github/workflows/delivery-fixtures.yml');
+          execFileSync('git',['-C','gea','merge-base','--is-ancestor',run.head_sha,'HEAD']);
+          const jobs=JSON.parse(execFileSync('gh',['api',prefix+'/jobs?per_page=100'],{encoding:'utf8'}));
+          const build=jobs.jobs.find(job=>job.name==='windows-complete-package');
+          assert.equal(build.steps.find(step=>step.name==='Build full Windows package and verify isolated first installation').conclusion,'success');
+          appendFileSync(process.env.GITHUB_OUTPUT,'source='+run.head_sha+'\n');
+          NODE
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.windows_overwrite_artifact_run }}
+          pattern: GEA-Desktop-*-win-x64-complete
+          path: ${{ runner.temp }}/signed-overwrite-package
+      - name: Recheck installed package version and preserved user files
+        shell: bash
+        env:
+          GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readdirSync} from 'node:fs';
+          import {join,dirname} from 'node:path';
+          import {execFileSync} from 'node:child_process';
+          function walk(root){return readdirSync(root,{withFileTypes:true}).flatMap(entry=>{const path=join(root,entry.name);return entry.isDirectory()?walk(path):[path]});}
+          const files=walk(join(process.env.RUNNER_TEMP,'signed-overwrite-package')).filter(path=>path.endsWith(join('gea-local','result.json')));
+          assert.equal(files.length,1);
+          execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),join(process.env.RUNNER_TEMP,'signed-overwrite-result'),'overwrite-only'],{stdio:'inherit'});
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-overwrite-recheck-${{ inputs.windows_overwrite_artifact_run }}
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/signed-overwrite-result/*.json
+            ${{ runner.temp }}/signed-overwrite-result/*.log
   windows-certificate-fixture:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_certificate_test
     runs-on: windows-2025
@@ -80,7 +156,7 @@ jobs:
           path: ${{ runner.temp }}/gea-certificate-result/result.json
           if-no-files-found: warn
   core-cache-fixtures:
-    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test
+    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test && inputs.windows_overwrite_artifact_run == ''
     strategy:
       fail-fast: false
       matrix:
@@ -238,7 +314,7 @@ jobs:
             ${{ runner.temp }}/gea-mac-complete/baseline-reuse.json
             ${{ runner.temp }}/gea-mac-complete/*.log
   delivery-fixtures:
-    if: (github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    if: (github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test && inputs.windows_overwrite_artifact_run == '') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
