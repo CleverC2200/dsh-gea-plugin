@@ -45,7 +45,8 @@ for (const [operation, requiredGiB] of [
     assert.throws(
       () => acquireBuild({ operation, cwd: a }),
       (error) =>
-        error.message === "BUILD_CAPACITY_INSUFFICIENT" && error.requiredBytes === requiredBytes,
+        error.message.startsWith("BUILD_CAPACITY_INSUFFICIENT") &&
+        error.requiredBytes === requiredBytes,
     );
     assert.deepEqual(readBuildAdmissions(a), []);
   });
@@ -59,7 +60,8 @@ test("capacity refusal occurs before the output or command is created", async (t
       ran = true;
     }),
     (error) =>
-      error.message === "BUILD_CAPACITY_INSUFFICIENT" && error.requiredBytes > error.availableBytes,
+      error.message.startsWith("BUILD_CAPACITY_INSUFFICIENT") &&
+      error.requiredBytes > error.availableBytes,
   );
   assert.equal(ran, false);
   assert.equal(fs.existsSync(output), false);
@@ -105,4 +107,18 @@ test("failed work releases only its own lease and stale owners are retained for 
     /BUILD_ADMISSION_REQUIRES_REVIEW/,
   );
   assert.equal(fs.existsSync(join(dir, "stale.json")), true);
+});
+
+test("capacity diagnostics survive CLI error.message logging and identify the rejected operation", (t) => {
+  const { a } = fixture(t, 10 * 1024 ** 3);
+  assert.throws(
+    () => acquireBuild({ operation: "sdk", cwd: a }),
+    (error) => {
+      assert.match(error.message, /operation=sdk/);
+      assert.match(error.message, /availableBytes=10737418240/);
+      assert.match(error.message, /requiredBytes=30064771072/);
+      assert.match(error.message, /safetyBytes=21474836480/);
+      return true;
+    },
+  );
 });
