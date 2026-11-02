@@ -27,14 +27,16 @@ function fixture(t, { joint = true, parallel = true } = {}) {
     diffBase: "b".repeat(40),
     joint,
     files: parallel
-      ? ["cases/a.test.mjs", "cases/b.test.mjs"]
+      ? ["cases/a.test.mjs", "cases/b.test.mjs", "cases/c.test.mjs", "cases/d.test.mjs"]
       : ["cases/a.test.mjs", "tests/host-config-keychain.test.mjs"],
     mode: "source-affected",
     fullSuite: "not-run",
-    runtimeFiles: [],
+    runtimeFiles: parallel
+      ? ["cases/a.test.mjs", "cases/b.test.mjs", "cases/c.test.mjs", "cases/d.test.mjs"]
+      : [],
   };
   mkdirSync(join(root, "cases"));
-  for (const name of ["a", "b", "unselected"])
+  for (const name of ["a", "b", "c", "d", "unselected"])
     writeFileSync(
       join(root, "cases", name + ".test.mjs"),
       `import test from 'node:test'; test('${name}', () => {});`,
@@ -104,13 +106,13 @@ test("parallel summary reuses strict actual Node receipts and keeps unselected c
   const f = fixture(t);
   const result = f.read();
   assert.equal(result.execution.status, "verified");
-  assert.equal(result.execution.counts.tests, 2);
-  assert.equal(result.execution.verifiedFiles, 2);
-  assert.equal(result.scope.registeredFiles, 3);
+  assert.equal(result.execution.counts.tests, 4);
+  assert.equal(result.execution.verifiedFiles, 4);
+  assert.equal(result.scope.registeredFiles, 5);
   assert.deepEqual(result.scope.unselected, ["cases/unselected.test.mjs"]);
   assert.equal(result.scope.fullSuite, "not-run");
   assert.equal(result.scope.allRepositoryAndPlatforms, "not-established");
-  assert.equal(result.slowFiles.length, 2);
+  assert.equal(result.slowFiles.length, 4);
   assert.equal(result.workers[0].stages.tests.durationMs, 10);
   rmSync(join(f.directory, "source-checks-2"), { recursive: true });
   assert.throws(f.read, /worker inventory/);

@@ -170,6 +170,34 @@ test("policy transport rejects drift and tampering before creating a consumer ca
   await assert.rejects(restoreDependencyPolicy(consumer), /cache digest/);
   await fs.writeFile(file, bytes);
   await assert.rejects(restoreDependencyPolicy({ ...consumer, runAttempt: "2" }), /input binding/);
+  const retry = await f.clone("retry");
+  const receiptSha256 = createHash("sha256")
+    .update(await fs.readFile(join(f.context.directory, "receipt.json")))
+    .digest("hex");
+  assert.equal(
+    (
+      await restoreDependencyPolicy({
+        ...retry,
+        runAttempt: "2",
+        producerAttempt: "1",
+        receiptSha256,
+      })
+    ).status,
+    "restored",
+  );
+  await assert.rejects(
+    restoreDependencyPolicy({
+      ...retry,
+      runAttempt: "2",
+      producerAttempt: "1",
+      receiptSha256: "0".repeat(64),
+    }),
+    /receipt digest/,
+  );
+  await assert.rejects(
+    restoreDependencyPolicy({ ...retry, runAttempt: "1", producerAttempt: "2", receiptSha256 }),
+    /producer attempt/,
+  );
   await assert.rejects(restoreDependencyPolicy({ ...consumer, runId: "other" }), /input binding/);
   const receiptFile = join(f.context.directory, "receipt.json");
   const receiptBytes = await fs.readFile(receiptFile);

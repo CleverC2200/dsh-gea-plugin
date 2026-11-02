@@ -128,6 +128,9 @@ function hosted(workflow = sourceWorkflow) {
         run_attempt: 1,
         head_sha: context.head,
         status: "completed",
+        started_at: "2026-10-26T01:00:01Z",
+        completed_at: "2026-10-26T01:00:20Z",
+        runner_id: id + 1000,
       }));
   };
   const jobs = { 100: makeJobs(100), 200: makeJobs(200, true) };
@@ -144,6 +147,7 @@ function hosted(workflow = sourceWorkflow) {
       head_branch: context.branch,
     },
   };
+  const originalJobs = structuredClone(jobs);
   const calls = [];
   const read = async (path) => {
     calls.push(path);
@@ -155,7 +159,8 @@ function hosted(workflow = sourceWorkflow) {
       result = { total_count: 1, artifacts: [artifact] };
     else if (url.pathname.endsWith("/jobs")) {
       const id = Number(url.pathname.match(/runs\/(\d+)/)[1]);
-      result = { total_count: jobs[id].length, jobs: jobs[id] };
+      const selectedJobs = url.pathname.includes("/attempts/1/jobs") ? originalJobs[id] : jobs[id];
+      result = { total_count: selectedJobs.length, jobs: selectedJobs };
     } else {
       const id = Number(url.pathname.match(/runs\/(\d+)$/)[1]);
       result = runs.find((value) => value.id === id);
@@ -565,4 +570,45 @@ test("native input artifacts have a small positive bounded size before download"
     f.artifact.size_in_bytes = size;
     await assert.rejects(lookupFormalSource({ context, read: f.read }));
   }
+});
+
+test("metadata accepts a failed-only rerun using the successful source-plan producer's original input artifact", async () => {
+  const f = hosted();
+  f.runs[1].run_attempt = 2;
+  f.jobs[100].find((job) => job.name === "candidate-quality").run_attempt = 2;
+  const selection = await lookupFormalSource({ context, read: f.read });
+  assert.equal(selection.runAttempt, 2);
+  assert.equal(selection.inputRunAttempt, 1);
+  assert.equal(selection.artifactName, "source-inputs-1");
+  assert.equal(
+    (await verifyFormalSource({ context, selection, receipt: f.receipt(), read: f.read })).verified,
+    true,
+  );
+});
+
+test("formal inputs retain the original producer when GitHub clones successful jobs into the new attempt", async () => {
+  const f = hosted();
+  f.runs[1].run_attempt = 2;
+  f.runs[1].run_started_at = "2026-10-26T01:10:00Z";
+  for (const job of f.jobs[100]) {
+    job.run_attempt = 2;
+    job.started_at = "2026-10-26T01:00:01Z";
+    job.completed_at = "2026-10-26T01:00:20Z";
+    job.runner_id = 123;
+  }
+  const oldJobs = structuredClone(f.jobs[100]).map((job) => ({
+    ...job,
+    run_attempt: 1,
+    id: job.id - 100,
+  }));
+  const read = (path) =>
+    path.includes("/attempts/1/jobs")
+      ? Promise.resolve({ total_count: oldJobs.length, jobs: oldJobs })
+      : f.read(path);
+  const selection = await lookupFormalSource({ context, read });
+  assert.equal(selection.inputRunAttempt, 1);
+  assert.equal(
+    (await verifyFormalSource({ context, selection, receipt: f.receipt(), read })).verified,
+    true,
+  );
 });

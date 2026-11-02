@@ -291,7 +291,7 @@ function verifyShardResult(plan, shard, result, buildSha256) {
   );
 }
 
-export function verifyExecutionResults({ plan, receipt, buildSha256 }) {
+export function verifyExecutionResults({ plan, receipt, buildSha256, shardId }) {
   verifyExecutionPlan(plan);
   requireExecution(
     receipt.schemaVersion === 1 &&
@@ -304,22 +304,26 @@ export function verifyExecutionResults({ plan, receipt, buildSha256 }) {
       receipt.buildSha256 === buildSha256,
     "receipt input or terminal state",
   );
+  const shards =
+    shardId === undefined ? plan.shards : plan.shards.filter((shard) => shard.id === shardId);
+  requireExecution(shardId === undefined || shards.length === 1, "shard assignment");
   requireExecution(
     sameFiles(
       receipt.results?.map((result) => result.shardId),
-      plan.shards.map((shard) => shard.id),
+      shards.map((shard) => shard.id),
     ),
     "shard coverage",
   );
-  for (const shard of plan.shards) {
+  for (const shard of shards) {
     const result = receipt.results.find((entry) => entry.shardId === shard.id);
     verifyShardResult(plan, shard, result, buildSha256);
   }
   return {
     status: "passed",
     planSha256: plan.planSha256,
-    files: plan.files.length,
-    shards: plan.shards.length,
+    ...(shardId === undefined ? {} : { scope: "shard", shardId }),
+    files: shards.reduce((count, shard) => count + shard.files.length, 0),
+    shards: shards.length,
     execution: plan.files.length ? "observed" : "not-applicable",
   };
 }

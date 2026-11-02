@@ -131,8 +131,19 @@ export function acquireBuild({
         : buildPolicy.safetyBytes;
     const requiredBytes = safetyBytes + reservedBytes + reserveBytes;
     if (availableBytes < requiredBytes) {
-      const error = Error("BUILD_CAPACITY_INSUFFICIENT");
-      Object.assign(error, { availableBytes, requiredBytes, reserveBytes, reservedBytes });
+      const error = Error(
+        `BUILD_CAPACITY_INSUFFICIENT: operation=${operation} output=${target} availableBytes=${availableBytes} requiredBytes=${requiredBytes} safetyBytes=${safetyBytes} reserveBytes=${reserveBytes} reservedBytes=${reservedBytes}; diagnose capacity before retrying`,
+      );
+      Object.assign(error, {
+        code: "BUILD_CAPACITY_INSUFFICIENT",
+        operation,
+        output: target,
+        availableBytes,
+        requiredBytes,
+        safetyBytes,
+        reserveBytes,
+        reservedBytes,
+      });
       throw error;
     }
     fs.writeFileSync(

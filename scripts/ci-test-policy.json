@@ -139,6 +139,36 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/gateway-mcp-service\\.ts$",
+      "tests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/gateway-mcp.test.mjs",
+        "tests/prompt-execution-policy.test.mjs",
+        "tests/authorized-cube-loop.test.mjs",
+        "tests/business-profile-recovery.test.mjs",
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs",
+        "tests/gateway-handshake.test.mjs"
+      ],
+      "sourceTests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/gateway-mcp.test.mjs",
+        "tests/prompt-execution-policy.test.mjs",
+        "tests/authorized-cube-loop.test.mjs",
+        "tests/business-profile-recovery.test.mjs",
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs",
+        "tests/gateway-handshake.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/source-preparation(?:\\.test)?\\.mjs$",
       "tests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"],
       "sourceTests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"]

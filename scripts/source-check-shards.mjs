@@ -10,6 +10,11 @@ import {
 } from "./quality-test-execution.mjs";
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { currentTestTimings } from "./quality-test-timings.mjs";
+import {
+  readHostedRun,
+  verifyHostedSnapshot,
+  hostedProducerAttempt,
+} from "./quality-hosted-run.mjs";
 
 export const sourceCheckWorkerLimit = 40;
 export const sourceCheckWorkerTarget = 40;
@@ -35,14 +40,14 @@ export function sourceCheckShard(environment = process.env) {
 export function sourceCheckMatrix(plan) {
   requireValue(typeof plan?.joint === "boolean" && Array.isArray(plan.files), "source plan");
   const files = selectPlatformTests(plan, "linux").files;
-  const parallel = plan.joint && files.length > 1;
   const runtime = files.filter((file) => plan.runtimeFiles?.includes(file)).length;
   const count = Math.min(
     sourceCheckWorkerLimit,
     sourceCheckWorkerTarget,
     files.length,
-    Math.max(2, Math.ceil(runtime / 3) + Math.ceil((files.length - runtime) / 40)),
+    Math.max(1, Math.ceil(runtime / 3), Math.ceil((files.length - runtime) / 40)),
   );
+  const parallel = plan.joint && count > 1;
   return { parallel, shards: parallel ? shardIds(count) : ["single"] };
 }
 
@@ -57,7 +62,17 @@ export function sourceCheckCost({ selection, root, environment, timings }) {
   });
 }
 
-export function aggregateSourceCheckShards(directory, { head, runId, runAttempt }) {
+export function aggregateSourceCheckShards(directory, { head, runId, runAttempt, producers }) {
+  if (producers) {
+    verifyHostedSnapshot(producers);
+    requireValue(
+      producers.jobFilter === "latest" &&
+        producers.expected.runId === Number(runId) &&
+        producers.expected.runAttempt === Number(runAttempt) &&
+        producers.expected.headSha === head,
+      "producer source run",
+    );
+  }
   requireValue(/^[a-f0-9]{40}$/.test(head ?? "") && runId && runAttempt, "expected source run");
   const firstScope = json(join(directory, "source-checks-1", "source-checks-scope.json"));
   const expectedIds = sourceCheckMatrix(firstScope.plan).shards;
@@ -70,13 +85,28 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt 
       scope.schemaVersion === 1 &&
         scope.head === head &&
         String(scope.runId) === String(runId) &&
-        String(scope.runAttempt) === String(runAttempt) &&
+        (String(scope.runAttempt) === String(runAttempt) ||
+          (producers &&
+            /^[1-9]\d*$/.test(String(scope.runAttempt)) &&
+            Number(scope.runAttempt) < Number(runAttempt))) &&
         typeof scope.plan?.joint === "boolean" &&
         Array.isArray(scope.plan.files) &&
         scope.shard.id === expectedIds[index] &&
         scope.shard.count === expectedIds.length,
       "worker source or assignment",
     );
+    if (producers) {
+      const jobs = producers.jobs.filter(
+        (job) => job.name === `source-checks (${expectedIds[index]})`,
+      );
+      requireValue(
+        jobs.length === 1 &&
+          jobs[0].status === "completed" &&
+          jobs[0].conclusion === "success" &&
+          hostedProducerAttempt(producers, jobs[0].name) === Number(scope.runAttempt),
+        "latest successful worker producer",
+      );
+    }
     return { root, scope };
   });
   const scope = workers[0].scope;
@@ -94,7 +124,7 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt 
   const { plan, stages } = records[0];
   requireValue(
     String(plan.binding.runId) === String(runId) &&
-      String(plan.binding.runAttempt) === String(runAttempt) &&
+      String(plan.binding.runAttempt) === String(scope.runAttempt) &&
       plan.binding.platform === "linux" &&
       plan.binding.manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin")?.head ===
         head &&
@@ -106,47 +136,47 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt 
     "execution input",
   );
   const buildSha256 = executionDigest(stages.artifacts);
-  const results = records.flatMap((record) => {
+  const comparable = (value) => {
+    const contents = structuredClone(value);
+    delete contents.planSha256;
+    delete contents.binding.runAttempt;
+    return contents;
+  };
+  const verified = records.map((record) => {
     requireValue(
-      same(record.plan, plan) &&
-        same(record.stages.binding.executionPlan, plan) &&
-        same(record.stages.binding.manifest, plan.binding.manifest) &&
-        record.stages.binding.inputSha256 === plan.binding.inputSha256 &&
+      same(comparable(record.plan), comparable(plan)) &&
+        String(record.plan.binding.runAttempt) === String(record.scope.runAttempt) &&
+        same(record.stages.binding.executionPlan, record.plan) &&
+        same(record.stages.binding.manifest, record.plan.binding.manifest) &&
+        record.stages.binding.inputSha256 === record.plan.binding.inputSha256 &&
         executionDigest(record.stages.artifacts) === buildSha256 &&
         ["prepare", "build", "checks", "tests"].every(
           (name) => record.stages.stages[name]?.status === "passed",
         ),
       "worker preparation or build",
     );
-    const receipt = record.receipt;
     requireValue(
-      receipt.schemaVersion === 1 &&
-        receipt.scope === "shard" &&
-        receipt.terminal === true &&
-        receipt.status === "passed" &&
-        !receipt.error &&
-        receipt.planSha256 === plan.planSha256 &&
-        receipt.buildSha256 === buildSha256 &&
-        receipt.results.length === 1 &&
-        receipt.results[0].shardId === record.scope.shard.id,
+      record.receipt.scope === "shard" && record.receipt.status === "passed",
       "worker execution",
     );
-    return receipt.results;
-  });
-  return verifyExecutionResults({
-    plan,
-    buildSha256,
-    receipt: {
-      schemaVersion: 1,
-      scope: "platform",
-      status: "passed",
-      terminal: true,
-      executionId: "source-checks:" + plan.planSha256,
-      planSha256: plan.planSha256,
+    return verifyExecutionResults({
+      plan: record.plan,
+      receipt: record.receipt,
       buildSha256,
-      results,
-    },
+      shardId: record.scope.shard.id,
+    });
   });
+  return {
+    status: "passed",
+    files: verified.reduce((sum, result) => sum + result.files, 0),
+    shards: verified.length,
+    execution: "observed",
+    producers: records.map(({ scope, plan }) => ({
+      shard: scope.shard.id,
+      runAttempt: scope.runAttempt,
+      planSha256: plan.planSha256,
+    })),
+  };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -215,6 +245,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
           head,
           runId: process.env.GITHUB_RUN_ID,
           runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          producers: await readHostedRun({
+            repository: process.env.GITHUB_REPOSITORY,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            headSha: head,
+            token: process.env.GITHUB_TOKEN,
+            jobFilter: "latest",
+          }),
         }),
       ),
     );
