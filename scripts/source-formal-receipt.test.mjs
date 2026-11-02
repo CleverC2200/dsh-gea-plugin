@@ -566,3 +566,17 @@ test("native input artifacts have a small positive bounded size before download"
     await assert.rejects(lookupFormalSource({ context, read: f.read }));
   }
 });
+
+test("metadata accepts a failed-only rerun using the successful source-plan producer's original input artifact", async () => {
+  const f = hosted();
+  f.runs[1].run_attempt = 2;
+  f.jobs[100].find((job) => job.name === "candidate-quality").run_attempt = 2;
+  const selection = await lookupFormalSource({ context, read: f.read });
+  assert.equal(selection.runAttempt, 2);
+  assert.equal(selection.inputRunAttempt, 1);
+  assert.equal(selection.artifactName, "source-inputs-1");
+  assert.equal(
+    (await verifyFormalSource({ context, selection, receipt: f.receipt(), read: f.read })).verified,
+    true,
+  );
+});

@@ -90,10 +90,24 @@ export async function prepareDependencyPolicy(context) {
 }
 export async function restoreDependencyPolicy(context) {
   const directory = resolve(context.directory);
-  const receipt = JSON.parse(await fs.readFile(join(directory, "receipt.json"), "utf8"));
+  const receiptBytes = await fs.readFile(join(directory, "receipt.json"));
+  const producerAttempt = context.producerAttempt ?? context.runAttempt;
+  requireValue(
+    /^[1-9]\d*$/.test(String(producerAttempt)) &&
+      Number(producerAttempt) <= Number(context.runAttempt),
+    "producer attempt must belong to this run's past or current attempt",
+  );
+  requireValue(
+    context.receiptSha256
+      ? hash(receiptBytes) === context.receiptSha256
+      : producerAttempt === context.runAttempt,
+    "receipt digest from the successful producer required",
+  );
+  const receipt = JSON.parse(receiptBytes);
   requireValue(receipt.schemaVersion === 1 && receipt.status === "prepared", "receipt format");
   requireValue(
-    JSON.stringify(receipt.binding) === JSON.stringify(await binding(context)),
+    JSON.stringify(receipt.binding) ===
+      JSON.stringify(await binding({ ...context, runAttempt: producerAttempt })),
     "input binding mismatch",
   );
   const bytes = await fs.readFile(join(directory, "policy-cache.jsonl"));
@@ -152,6 +166,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     ...values,
     runId: process.env.GITHUB_RUN_ID,
     runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+    producerAttempt: process.env.DEPENDENCY_POLICY_PRODUCER_ATTEMPT,
+    receiptSha256: process.env.DEPENDENCY_POLICY_RECEIPT_SHA256,
   };
   requireValue(values.prepare || values.cache, "consumer cache required");
   const { ciCores } = await import("./ci-core-policy.mjs");
@@ -161,9 +177,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       hash(await fs.readFile(join(values.core, "pnpm-lock.yaml"))) === expected.lockSha256,
     "registered Core required",
   );
+  requireValue(
+    values.prepare || (context.producerAttempt && context.receiptSha256),
+    "successful producer outputs required",
+  );
   console.log(
     JSON.stringify(
       await (values.prepare ? prepareDependencyPolicy(context) : restoreDependencyPolicy(context)),
     ),
   );
+  if (values.prepare && process.env.GITHUB_OUTPUT)
+    await fs.appendFile(
+      process.env.GITHUB_OUTPUT,
+      `run-attempt=${context.runAttempt}\nreceipt-sha256=${hash(await fs.readFile(join(values.directory, "receipt.json")))}\n`,
+    );
 }

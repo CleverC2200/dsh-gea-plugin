@@ -122,16 +122,13 @@ function bindRun(run, context) {
   return prs[0];
 }
 async function readJobs(read, run, context) {
-  const jobs = await pages(
-    read,
-    `${prefix}/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
-    "jobs",
-  );
+  const jobs = await pages(read, `${prefix}/runs/${run.id}/jobs?filter=latest`, "jobs");
   requireValue(
     jobs.every(
       (job) =>
         job.run_id === run.id &&
-        job.run_attempt === run.run_attempt &&
+        positive(job.run_attempt) &&
+        job.run_attempt <= run.run_attempt &&
         job.head_sha === context.head &&
         typeof job.name === "string",
     ),
@@ -233,8 +230,9 @@ async function inspect({ context, read }) {
       "formal admission missing",
     );
     const artifacts = await pages(read, `${prefix}/runs/${run.id}/artifacts`, "artifacts");
+    const inputRunAttempt = jobs.find((job) => job.name === "source-plan").run_attempt;
     const matches = artifacts.filter(
-      (artifact) => artifact.name === `source-inputs-${run.run_attempt}`,
+      (artifact) => artifact.name === `source-inputs-${inputRunAttempt}`,
     );
     requireValue(
       matches.length === 1 &&
@@ -259,6 +257,7 @@ async function inspect({ context, read }) {
         context,
         runId: run.id,
         runAttempt: run.run_attempt,
+        inputRunAttempt,
         artifactId: artifact.id,
         artifactName: artifact.name,
       },
@@ -300,7 +299,7 @@ export async function verifyFormalSource({ context, selection, receipt, read }) 
       same(receipt.context, {
         ...context,
         runId: selection.runId,
-        runAttempt: selection.runAttempt,
+        runAttempt: selection.inputRunAttempt,
       }),
     "receipt identity",
   );

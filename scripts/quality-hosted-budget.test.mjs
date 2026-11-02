@@ -579,3 +579,31 @@ test("documentation and dependency-review N/A jobs accept only absence or explic
   required.jobs[1].conclusion = "skipped";
   assert.equal(assess(required, { requiredJobs: ["scope", "Dependency review"] }).passed, false);
 });
+
+test("latest producer inventory fetches every page and preserves each job's actual attempt", async (t) => {
+  const api = await restFixture(t, (response) => {
+    if (!response.path.endsWith("/jobs")) response.body.run_attempt = 2;
+    return response;
+  });
+  const result = await readHostedRun({
+    ...expected,
+    runAttempt: 2,
+    jobFilter: "latest",
+    apiBase: api.apiBase,
+    perPage: 1,
+  });
+  assert.equal(result.jobFilter, "latest");
+  assert.deepEqual(
+    result.jobs.map((job) => job.run_attempt),
+    [1, 1, 1],
+  );
+  assert.ok(
+    api.requests
+      .slice(1)
+      .every(
+        (request) =>
+          request.path.endsWith("/runs/123/jobs") && request.query.includes("filter=latest"),
+      ),
+  );
+});
+

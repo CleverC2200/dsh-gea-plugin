@@ -20,7 +20,7 @@ import {
 } from "./source-check-shards.mjs";
 
 const head = "a".repeat(40);
-const expected = { head, runId: "test-run", runAttempt: "1" };
+const expected = { head, runId: "42", runAttempt: "1" };
 const write = (file, value) => writeFileSync(file, JSON.stringify(value) + "\n");
 
 test("source planning shows unknown costs and uses valid timings without changing coverage", (t) => {
@@ -63,7 +63,7 @@ test("source planning shows unknown costs and uses valid timings without changin
   assert.equal(changed.estimates.unknownFiles, 1);
   assert.equal(changed.estimates.estimatedMs, null);
 });
-function fixture(t, count = 2) {
+function fixture(t, count = 2, attempts = {}) {
   const parent = mkdtempSync(join(tmpdir(), "gea-source-shards-"));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, "results"),
@@ -107,12 +107,19 @@ function fixture(t, count = 2) {
         runtimeFiles: count === 3 ? files.slice(0, 7) : count === 10 ? files.slice(0, 30) : files,
       },
     });
-    write(join(worker, "quality-test-execution-plan.json"), plan);
+    const workerPlan = structuredClone(plan);
+    workerPlan.binding.runAttempt = attempts[id] ?? expected.runAttempt;
+    delete workerPlan.planSha256;
+    workerPlan.planSha256 = executionDigest(workerPlan);
+    const scope = JSON.parse(readFileSync(join(worker, "source-checks-scope.json")));
+    scope.runAttempt = workerPlan.binding.runAttempt;
+    write(join(worker, "source-checks-scope.json"), scope);
+    write(join(worker, "quality-test-execution-plan.json"), workerPlan);
     write(join(worker, "quality-stages.json"), {
       binding: {
-        executionPlan: plan,
-        manifest: plan.binding.manifest,
-        inputSha256: plan.binding.inputSha256,
+        executionPlan: workerPlan,
+        manifest: workerPlan.binding.manifest,
+        inputSha256: workerPlan.binding.inputSha256,
       },
       artifacts,
       stages: Object.fromEntries(
@@ -120,7 +127,7 @@ function fixture(t, count = 2) {
       ),
     });
     runExecutionPlan({
-      plan,
+      plan: workerPlan,
       root: source,
       shardId: id,
       resultFile: join(worker, "quality-test-execution.json"),
@@ -216,6 +223,13 @@ test("workflow preserves the reusable single job and requires independent receip
       step.with.name.startsWith("source-checks-"),
   );
   assert.equal(upload.with.name, "source-checks-${{ matrix.shard }}");
+  assert.equal(upload.with.overwrite, true);
+  const failureArchive = workers.steps.find(
+    (step) =>
+      step.with?.name === "failed-source-checks-${{ matrix.shard }}-a${{ github.run_attempt }}",
+  );
+  assert.equal(failureArchive.if, "failure()");
+  assert.ok(failureArchive.with.path.includes("quality-test-execution.json"));
   for (const receipt of [
     "source-checks-scope.json",
     "quality-stages.json",
@@ -391,6 +405,12 @@ test("the source workflow admits workers only after successful or inapplicable p
   assert.match(producer.if, /outputs.parallel == 'true'/);
   const upload = producer.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(upload.with["if-no-files-found"], "error");
+  assert.equal(producer.outputs["artifact-id"], "${{ steps.upload.outputs.artifact-id }}");
+  const download = worker.steps.find(
+    (step) => step.with?.path === "${{ runner.temp }}/dependency-policy-input",
+  );
+  assert.equal(download.with["artifact-ids"], "${{ needs.dependency-policy.outputs.artifact-id }}");
+  assert.equal(download.with.name, undefined);
   assert.ok(!upload.with.path.includes("node_modules"));
   const restore = worker.steps.findIndex(
     (step) => step.name === "Restore policies into this worker's private cache",
@@ -400,6 +420,34 @@ test("the source workflow admits workers only after successful or inapplicable p
   );
   assert.ok(restore >= 0 && restore < install);
   assert.match(worker.env.PNPM_CONFIG_CACHE_DIR, /github.workspace/);
+});
+
+test("failed-only reruns aggregate original successful workers with the actual latest hosted producers", (t) => {
+  const f = fixture(t, 2, { 2: "2" });
+  const retry = { ...expected, runAttempt: "2" };
+  const producers = {
+    schemaVersion: 1,
+    jobFilter: "latest",
+    expected: { repository: "CleverC2200/dsh-gea-plugin", runId: 42, runAttempt: 2, headSha: head },
+    run: { id: 42, run_attempt: 2, head_sha: head },
+    pagination: { complete: true, totalCount: 2, pageCount: 1, perPage: 100 },
+    jobs: [1, 2].map((id) => ({
+      id,
+      name: `source-checks (${id})`,
+      run_id: 42,
+      run_attempt: id,
+      head_sha: head,
+      status: "completed",
+      conclusion: "success",
+    })),
+  };
+  assert.throws(() => aggregateSourceCheckShards(f.root, retry), /worker source/);
+  assert.equal(aggregateSourceCheckShards(f.root, { ...retry, producers }).files, 4);
+  producers.jobs[0].conclusion = "failure";
+  assert.throws(() => aggregateSourceCheckShards(f.root, { ...retry, producers }), /producer/);
+  producers.jobs[0].conclusion = "success";
+  producers.jobs[0].run_attempt = 2;
+  assert.throws(() => aggregateSourceCheckShards(f.root, { ...retry, producers }), /producer/);
 });
 
 test("a small mixed source selection uses one preparation and still assigns every file", () => {

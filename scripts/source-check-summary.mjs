@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { aggregateSourceCheckShards, sourceCheckMatrix } from "./source-check-shards.mjs";
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { executionDigest, verifyExecutionResults } from "./quality-test-execution.mjs";
+import { verifyHostedSnapshot } from "./quality-hosted-run.mjs";
 
 const json = (file) => JSON.parse(readFileSync(file, "utf8"));
 const same = (left, right) => executionDigest(left) === executionDigest(right);
@@ -20,9 +21,19 @@ const runtimeFile = (worker, name) => {
 
 export function summarizeSourceChecks(
   directory,
-  { head, runId, runAttempt, root = process.cwd() },
+  { head, runId, runAttempt, root = process.cwd(), producers },
 ) {
   requireValue(/^[a-f0-9]{40}$/.test(head ?? "") && runId && runAttempt, "expected source run");
+  if (producers) {
+    verifyHostedSnapshot(producers);
+    requireValue(
+      producers.jobFilter === "latest" &&
+        producers.expected.runId === Number(runId) &&
+        producers.expected.runAttempt === Number(runAttempt) &&
+        producers.expected.headSha === head,
+      "producer source run",
+    );
+  }
   const flat = existsSync(runtimeFile(directory, "source-checks-plan.json"));
   const workerRoot = (name) => (flat ? directory : join(directory, name));
   const names = flat
@@ -60,7 +71,18 @@ export function summarizeSourceChecks(
         result.schemaVersion === 1 &&
           result.head === head &&
           String(result.runId) === String(runId) &&
-          String(result.runAttempt) === String(runAttempt) &&
+          (producers
+            ? producers.jobs.filter(
+                (job) =>
+                  job.name ===
+                    (name === "source-checks-single"
+                      ? "source-checks"
+                      : name.replace(/-(\d+)$/, " ($1)")) &&
+                  job.run_attempt === Number(result.runAttempt) &&
+                  job.status === "completed" &&
+                  job.conclusion === "success",
+              ).length === 1
+            : String(result.runAttempt) === String(runAttempt)) &&
           same(result.plan, selection),
         "worker result input",
       );
@@ -73,13 +95,13 @@ export function summarizeSourceChecks(
   let verificationError = null;
   try {
     if (matrix.parallel)
-      verified = aggregateSourceCheckShards(directory, { head, runId, runAttempt });
+      verified = aggregateSourceCheckShards(directory, { head, runId, runAttempt, producers });
     else if (selection.joint) {
       const { worker, stages } = workers[0];
       const plan = json(join(worker, "quality-test-execution-plan.json"));
       requireValue(
         String(plan.binding.runId) === String(runId) &&
-          String(plan.binding.runAttempt) === String(runAttempt) &&
+          String(plan.binding.runAttempt) === String(workers[0].result?.runAttempt ?? runAttempt) &&
           plan.binding.platform === "linux" &&
           plan.binding.manifest.repositories.find((entry) => entry.repo === "dsh-gea-plugin")
             ?.head === head &&
