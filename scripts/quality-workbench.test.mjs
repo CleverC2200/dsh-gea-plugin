@@ -103,6 +103,39 @@ function copiedSqlFixture(t, resource = "business/inventory-apsplan/sql.config.j
   return { ...fixture, resource, output };
 }
 
+test("copied query scheduler must match its frozen source and remain frozen in the receipt", async (t) => {
+  const fixture = preparedFixture(t);
+  const resource = "business/shared/query-scheduler.js";
+  mkdirSync(join(fixture.source, "business/shared"), { recursive: true });
+  writeFileSync(join(fixture.source, resource), "export const scheduler = true;\n");
+  fixture.git("-C", fixture.source, "add", resource);
+  fixture.git(
+    "-C",
+    fixture.source,
+    "-c",
+    "user.name=fixture",
+    "-c",
+    "user.email=fixture@invalid",
+    "commit",
+    "-qm",
+    "fixed query scheduler",
+  );
+  fixture.head = fixture.git("-C", fixture.source, "rev-parse", "HEAD");
+  fixture.git("-C", fixture.prepared, "fetch", "-q", "origin");
+  fixture.git("-C", fixture.prepared, "checkout", "--detach", fixture.head);
+  const output = join(fixture.prepared, "lib/query-scheduler.js");
+  copyFileSync(join(fixture.source, resource), output);
+  const record = await readPreparedWorkbench(fixture);
+  assert.ok(record.files["lib/query-scheduler.js"]);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(output, "export const scheduler = false;\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  rmSync(output);
+  symlinkSync(join(fixture.source, resource), output);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
 function derivedSqlFixture(t) {
   const fixture = preparedFixture(t);
   const producer = "business/inventory-orderworkbench/source-config.mjs";

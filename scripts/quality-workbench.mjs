@@ -121,6 +121,17 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
       // Declaration emission adds regular files; lstat never follows external targets.
       if ((await lstat(join(prepared, file))).isFile()) continue;
     }
+    if (line.startsWith("?? ") && file === "lib/query-scheduler.js") {
+      const output = join(prepared, file);
+      const expected = await frozenFileBytes(source, head, "business/shared/query-scheduler.js");
+      if (
+        expected &&
+        (await lstat(output)).isFile() &&
+        (await realpath(output)) === output &&
+        expected.equals(await readFile(output))
+      )
+        continue;
+    }
     if (
       line.startsWith("?? ") &&
       /^lib\/(?:business\/inventory-(?:aqkc|fc|qll|apsplan|dealer|orderfulfillment)|static\/mps)\/sql\.config\.json$/.test(
