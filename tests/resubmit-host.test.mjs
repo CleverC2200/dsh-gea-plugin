@@ -104,7 +104,7 @@ test(
         throw Error("Desktop must use its employee session");
       if (path.endsWith("/sales-plan/plans/resubmit")) {
         writes++;
-        assert.equal(JSON.parse(req.body).submitterCode, "original-owner");
+        assert.equal(JSON.parse(req.body).submitterCode, version.submitter);
         assert.equal(JSON.parse(req.body).submitterName, undefined);
         assert.equal(req.headers.authorization, undefined);
         assert.equal(req.headers["x-access-token"], "fixture-gea-token");
