@@ -1,9 +1,16 @@
+import {mkdtemp, rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { build } from "esbuild";
 import { DmsClient } from "../src/host/dms-orders.ts";
-import { resolveFcDmsDeployment, FC_DMS_TEST_GATEWAY } from "../src/host/fc-dms-default.ts";
+import {
+  resolveFcDmsDeployment,
+  FC_DMS_TEST_GATEWAY,
+  FC_DMS_PRODUCTION_GATEWAY,
+} from "../src/host/fc-dms-default.ts";
 const built = await build({
   stdin: {
     contents:
@@ -57,115 +64,184 @@ function fixture(t, dms) {
   t.after(() => business.dispose());
   return business;
 }
-test("installed formal GEA opens only test DMS without machine-specific DMS configuration", async (t) => {
-  const requests = [];
+function secret(t) {
+  const previous = process.env.GEA_DMS_PRODUCTION_SECRET;
+  process.env.GEA_DMS_PRODUCTION_SECRET = "production-fixture-secret";
+  t.after(() => {
+    if (previous === undefined) delete process.env.GEA_DMS_PRODUCTION_SECRET;
+    else process.env.GEA_DMS_PRODUCTION_SECRET = previous;
+  });
+}
+function profile(id, workNo = id + "-work") {
+  return Response.json({
+    success: true,
+    code: 200,
+    result: {
+      userInfo: { id, loginTenantId: "0", username: id + "-account", workNo },
+    },
+  });
+}
+test("production uses the current verified GEA employee for every login", async (t) => {
+  secret(t);
+  const business = fixture(t),
+    requests = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
-    requests.push({ url: String(url), body: new URLSearchParams(init.body) });
+    if (String(url).endsWith("/sys/user/getUserInfo")) {
+      assert.equal(init.headers["X-Tenant-Id"], "0");
+      return profile(business.auth.id);
+    }
+    requests.push({
+      url: String(url),
+      body: JSON.parse(new URLSearchParams(init.body).get("ssoToken")),
+    });
     return Response.json({
       success: true,
       code: 200,
       result: {
-        access_token: "test-access-fixture",
-        redirect: "https://dms.fixture/user/loginSSO?token=fixture-ticket&menu=/corder/ordermgt",
+        access_token: "fixture",
+        redirect: "https://dms.fixture/user/loginSSO?token=fixture",
       },
     });
   });
-  const business = fixture(t);
   for (const id of ["user-a", "user-b"]) {
     business.auth.id = id;
-    const result = await business.branchDms({ operation: "login" }, new AbortController().signal);
-    assert.match(result.redirect, /loginSSO/);
-    assert.equal(business.status().environment, "production");
-    assert.equal(business.status().user.id, id);
+    await business.branchDms({ operation: "login" }, new AbortController().signal);
   }
-  assert.equal(requests.length, 2);
-  for (const request of requests) {
-    assert.equal(request.url, "http://100.100.1.147:8000/synear_test/DMS/auth/oauthout/ssoLogin");
-    const body = JSON.parse(request.body.get("ssoToken"));
-    assert.equal(body.username, "zhangxin");
-    assert.equal(body.menu, "/corder/ordermgt");
-    assert.match(body.sign, /^[a-f0-9]{32}$/);
-  }
-});
-test("an explicit deployment with no matching user remains denied, without sandbox fallback", async (t) => {
-  const business = fixture(t, {
-    production: {
-      gatewayUrl: "https://custom.fixture/DMS",
-      secretEnv: "UNCONFIGURED_FIXTURE",
-      users: [],
-    },
-  });
-  let calls = 0;
-  t.mock.method(globalThis, "fetch", async () => {
-    calls++;
-    throw Error("must not request");
-  });
-  await assert.rejects(
-    business.branchDms({ operation: "login" }, new AbortController().signal),
-    /用户映射/,
+  assert.deepEqual(
+    requests.map((r) => r.body.workcode),
+    ["user-a-work", "user-b-work"],
   );
-  assert.equal(calls, 0);
+  assert.ok(
+    requests.every(
+      (r) => r.url === FC_DMS_PRODUCTION_GATEWAY + "/auth/oauthout/ssoLogin" && !r.body.username,
+    ),
+  );
 });
-
-test("legacy per-user settings for the fixed test gateway do not exclude other GEA users", async () => {
-  const result = resolveFcDmsDeployment(
+test("legacy test deployments and static user mappings cannot select the production user", () => {
+  const identity = {
+    tenantId: "0",
+    id: "current",
+    workNo: "current-work",
+    username: "current-account",
+  };
+  const old = {
+    gatewayUrl: FC_DMS_TEST_GATEWAY,
+    secretEnv: "GEA_DMS_TEST_SECRET",
+    users: [{ tenantId: "0", userId: "current", username: "fixed-test" }],
+  };
+  const config = resolveFcDmsDeployment({ production: old }, "production", identity);
+  assert.equal(config.gatewayUrl, FC_DMS_PRODUCTION_GATEWAY);
+  assert.equal(config.secretEnv, "GEA_DMS_PRODUCTION_SECRET");
+  assert.equal(config.credentialSource, undefined);
+  assert.deepEqual(config.users, [{ tenantId: "0", userId: "current", workcode: "current-work" }]);
+  const custom = resolveFcDmsDeployment(
     {
       production: {
-        gatewayUrl: FC_DMS_TEST_GATEWAY,
-        secretEnv: "OLD_LOCAL_ONLY_SECRET",
-        users: [{ tenantId: "0", userId: "old-installer", username: "old-test-user" }],
+        ...old,
+        gatewayUrl: "https://production.fixture/DMS",
+        secretEnv: "PROD_KEY",
       },
     },
     "production",
-    { tenantId: "0", id: "another-user" },
+    identity,
   );
-  assert.equal(result.credentialSource, "fc-bundled-dms-test");
-  assert.deepEqual(result.users, [{ tenantId: "0", userId: "another-user", username: "zhangxin" }]);
+  assert.deepEqual(custom.users, config.users);
+  assert.equal(custom.secretEnv, "PROD_KEY");
 });
-
-test("the bundled test credential cannot sign for a different gateway", async () => {
+test("missing production signing secret never falls back to bundled sandbox credentials", async (t) => {
+  const previous = process.env.GEA_DMS_PRODUCTION_SECRET;
+  delete process.env.GEA_DMS_PRODUCTION_SECRET;
+  t.after(() => {
+    if (previous !== undefined) process.env.GEA_DMS_PRODUCTION_SECRET = previous;
+  });
   const config = resolveFcDmsDeployment(undefined, "production", {
     tenantId: "0",
-    id: "user-a",
+    id: "current",
+    username: "account",
   });
-  for (const url of [
-    "https://different.fixture/DMS",
-    FC_DMS_TEST_GATEWAY + "/other",
-    FC_DMS_TEST_GATEWAY + "?other=1",
-  ]) {
-    let calls = 0;
-    const client = new DmsClient({ ...config, gatewayUrl: url }, config.users[0], async () => {
-      calls++;
-      throw Error("must not request");
-    });
-    await assert.rejects(client.login(new AbortController().signal), /固定测试网关|地址配置无效/);
-    assert.equal(calls, 0);
-  }
-});
-
-test("sandbox login availability does not skip confirmation-storage readiness", async (t) => {
-  const business = fixture(t);
   let calls = 0;
-  t.mock.method(globalThis, "fetch", async () => {
+  const client = new DmsClient(config, config.users[0], async () => {
     calls++;
-    throw Error("must not request");
+    throw Error("unexpected");
+  });
+  await assert.rejects(client.login(new AbortController().signal), /密钥未配置/);
+  assert.equal(calls, 0);
+});
+test("mismatched profile or changed login blocks DMS before sending", async (t) => {
+  secret(t);
+  const business = fixture(t);
+  t.mock.method(globalThis, "fetch", async (url) => {
+    assert.ok(String(url).endsWith("/sys/user/getUserInfo"));
+    return profile("other");
   });
   await assert.rejects(
-    business.branchDms(
-      {
-        operation: "preflight",
-        warehouseCode: "A030",
-        order: {
-          aiPreOrderCode: "AI-fixture",
-          customerCode: "customer-fixture",
-          addressCode: "address-fixture",
-          pupCode: "02",
-          itemList: [{ productCode: "sku-fixture", quantity: 1 }],
-        },
-      },
-      new AbortController().signal,
-    ),
-    /分仓业务入库配置未完成/,
+    business.branchDms({ operation: "login" }, new AbortController().signal),
+    /身份核验失败/,
   );
-  assert.equal(calls, 0);
+  t.mock.method(globalThis, "fetch", async () => {
+    business.auth = { ...business.auth, id: "new-user" };
+    return profile("user-a");
+  });
+  await assert.rejects(
+    business.branchDms({ operation: "login" }, new AbortController().signal),
+    /STALE_LOGIN/,
+  );
+});
+test("missing employee number uses only the verified account, never display name", () => {
+  const config = resolveFcDmsDeployment(undefined, "production", {
+    tenantId: "0",
+    id: "current",
+    username: "verified-account",
+  });
+  assert.deepEqual(config.users, [
+    { tenantId: "0", userId: "current", username: "verified-account" },
+  ]);
+  const missing = resolveFcDmsDeployment(undefined, "production", {
+    tenantId: "0",
+    id: "current",
+  });
+  assert.throws(() => new DmsClient(missing, missing.users[0]).assertConfigured(), /登录账号/);
+});
+test("explicit test environment retains test-only credential boundary", async () => {
+  const config = resolveFcDmsDeployment(undefined, "test", {
+    tenantId: "0",
+    id: "current",
+  });
+  assert.equal(config.gatewayUrl, FC_DMS_TEST_GATEWAY);
+  const client = new DmsClient(
+    { ...config, gatewayUrl: FC_DMS_PRODUCTION_GATEWAY },
+    config.users[0],
+  );
+  await assert.rejects(client.login(new AbortController().signal), /固定测试网关/);
+});
+
+test("production submission preserves the current form and uses current user; identical retry does not resend", async t => {
+  secret(t);
+  const business=fixture(t);
+  const directory=await mkdtemp(join(tmpdir(),"dms-production-fixture-"));
+  business.config.runtimeDir=directory;
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  const orders=[];
+  t.mock.method(globalThis,"fetch",async(url,init)=>{
+    if(String(url).endsWith("/sys/user/getUserInfo")) return profile("user-a");
+    if(String(url).endsWith("/ssoLogin")) {
+      const body=JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
+      assert.equal(body.workcode,"user-a-work");
+      return Response.json({success:true,code:200,result:{access_token:"fixture-access",redirect:"https://dms.fixture/user/loginSSO?token=fixture"}});
+    }
+    assert.equal(String(url), FC_DMS_PRODUCTION_GATEWAY+"/dms/order/dmsOrderHead/submitZcOrderDirect");
+    assert.equal(init.headers.Authorization,"Bearer fixture-access");
+    const order=JSON.parse(init.body);orders.push(order);
+    assert.equal(order.customerCode,"entered-customer");
+    assert.equal(order.addressCode,"entered-address");
+    assert.equal(order.pupCode,"07");
+    assert.deepEqual(order.itemList,[{productCode:"selected-sku",quantity:17}]);
+    return Response.json({success:true,code:200,result:{aiPreOrderCode:order.aiPreOrderCode,orderCode:"fixture-order"}});
+  });
+  const payload={operation:"submit",warehouseCode:"selected-warehouse",order:{aiPreOrderCode:"current-form",customerCode:"entered-customer",addressCode:"entered-address",pupCode:"07",itemList:[{productCode:"selected-sku",quantity:17}]}};
+  const first=await business.branchDms(payload,new AbortController().signal);
+  const again=await business.branchDms(payload,new AbortController().signal);
+  assert.equal(first.orderCode,"fixture-order");
+  assert.equal(again.orderCode,first.orderCode);
+  assert.equal(orders.length,1);
 });
