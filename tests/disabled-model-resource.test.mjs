@@ -126,7 +126,11 @@ async function fixture(
   const ctx = {
     profileContext: { dir: root },
     sessionController: {
-      inspect: async (id) => ({ meta: { id, isSeeded: false }, inheritedEventCount: 0, events: [] }),
+      inspect: async (id) => ({
+        meta: { id, isSeeded: false },
+        inheritedEventCount: 0,
+        events: [],
+      }),
     },
     effect(fn) {
       const off = fn();
