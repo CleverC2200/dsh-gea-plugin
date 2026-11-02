@@ -13,25 +13,17 @@ const [baseline, output] = process.argv.slice(2).map((path) => resolve(path));
 const gea = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const oldVersion = "0.2.0-rc.2.20261030.2";
 const newVersion = "0.2.0-rc.2.20261102.3";
-const expectedNewSha =
-  "2d030084d92bf115aa4850d7b80b968174dffc6a1b6a3ceb846f988bc64444e0";
+const expectedNewSha = "2d030084d92bf115aa4850d7b80b968174dffc6a1b6a3ceb846f988bc64444e0";
 const feed =
   "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/nightly.yml";
 const installation = join(output, "installed");
 const executable = join(installation, "GEA Desktop.exe");
 const journal = join(output, "journal");
-const marker = join(
-  process.env.APPDATA,
-  "dsh-gea-desktop",
-  "online-upgrade-preservation.json",
-);
+const marker = join(process.env.APPDATA, "dsh-gea-desktop", "online-upgrade-preservation.json");
 const markerBytes = '{"existingUserFile":"preserve-through-live-update"}\n';
 const environment = Object.fromEntries(
   Object.entries(process.env).filter(
-    ([name]) =>
-      !/KEY|SECRET|TOKEN|PASSWORD|^NODE_OPTIONS$|^ELECTRON_RUN_AS_NODE$/iu.test(
-        name,
-      ),
+    ([name]) => !/KEY|SECRET|TOKEN|PASSWORD|^NODE_OPTIONS$|^ELECTRON_RUN_AS_NODE$/iu.test(name),
   ),
 );
 environment.DSH_DESKTOP_UPDATE_JOURNAL_DIR = journal;
@@ -65,21 +57,10 @@ async function sha256(path) {
 }
 function powershell(script, args = [], timeout = 30000) {
   const path = join(output, "probe.ps1");
-  return writeFile(
-    path,
-    "$ErrorActionPreference='Stop'\n& {\n" + script + "\n} @args",
-  ).then(() => {
+  return writeFile(path, "$ErrorActionPreference='Stop'\n& {\n" + script + "\n} @args").then(() => {
     const result = spawnSync(
       "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        path,
-        ...args,
-      ],
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path, ...args],
       {
         encoding: "utf8",
         timeout,
@@ -88,11 +69,7 @@ function powershell(script, args = [], timeout = 30000) {
         maxBuffer: 4 * 1024 * 1024,
       },
     );
-    assert.equal(
-      result.status,
-      0,
-      String(result.stderr || result.error || result.stdout),
-    );
+    assert.equal(result.status, 0, String(result.stderr || result.error || result.stdout));
     return result.stdout.trim();
   });
 }
@@ -107,12 +84,9 @@ async function records() {
   const result = [];
   for (const name of await readdir(journal).catch(() => [])) {
     const contents = await readFile(join(journal, name), "utf8");
-    for (const line of contents.trim().split("\n").filter(Boolean))
-      result.push(JSON.parse(line));
+    for (const line of contents.trim().split("\n").filter(Boolean)) result.push(JSON.parse(line));
   }
-  return result.sort(
-    (a, b) => a.time.localeCompare(b.time) || a.sequence - b.sequence,
-  );
+  return result.sort((a, b) => a.time.localeCompare(b.time) || a.sequence - b.sequence);
 }
 async function until(name, run, timeout = 120000) {
   const deadline = Date.now() + timeout;
@@ -140,8 +114,7 @@ async function connection(url) {
     else item.resolve(message.result);
   });
   socket.addEventListener("close", () => {
-    for (const item of pending.values())
-      item.reject(new Error("CDP connection closed"));
+    for (const item of pending.values()) item.reject(new Error("CDP connection closed"));
     pending.clear();
   });
   return {
@@ -161,8 +134,7 @@ async function evaluate(client, expression) {
     awaitPromise: true,
     returnByValue: true,
   });
-  if (response.exceptionDetails)
-    throw new Error(JSON.stringify(response.exceptionDetails));
+  if (response.exceptionDetails) throw new Error(JSON.stringify(response.exceptionDetails));
   return response.result.value;
 }
 async function screenshot(client, name) {
@@ -178,9 +150,7 @@ async function targets() {
     .catch(() => []);
 }
 async function target(prefix) {
-  return (await targets()).find(
-    (item) => item.type === "page" && item.url.startsWith(prefix),
-  );
+  return (await targets()).find((item) => item.type === "page" && item.url.startsWith(prefix));
 }
 try {
   assert.equal(
@@ -220,10 +190,7 @@ try {
     stdio: "ignore",
   });
   const installed = await new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("BASELINE_INSTALL_TIMEOUT")),
-      180000,
-    );
+    const timer = setTimeout(() => reject(new Error("BASELINE_INSTALL_TIMEOUT")), 180000);
     install.once("error", reject);
     install.once("exit", (code) => {
       clearTimeout(timer);
@@ -250,19 +217,14 @@ try {
     return result.stdout.trim();
   }
   assert.equal(installedVersion(), oldVersion);
-  const config = await readFile(
-    join(installation, "resources/app-update.yml"),
-    "utf8",
-  );
+  const config = await readFile(join(installation, "resources/app-update.yml"), "utf8");
   assert.ok(
     config.includes(
       "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/",
     ),
   );
   assert.ok(config.includes("publisherName:"));
-  const cacheName = /^updaterCacheDirName:\s*['"]?([^'"\r\n]+)['"]?\s*$/m.exec(
-    config,
-  )?.[1];
+  const cacheName = /^updaterCacheDirName:\s*['"]?([^'"\r\n]+)['"]?\s*$/m.exec(config)?.[1];
   assert.ok(cacheName);
   await mkdir(dirname(marker), { recursive: true });
   await writeFile(marker, markerBytes);
@@ -282,14 +244,9 @@ try {
     async () => {
       const windows = await targets();
       return (
-        windows.find(
-          (item) => item.type === "page" && item.url.includes("welcome"),
-        ) ??
+        windows.find((item) => item.type === "page" && item.url.includes("welcome")) ??
         ((await records()).some((row) => row.event === "workspace-ready")
-          ? windows.find(
-              (item) =>
-                item.type === "page" && item.url.startsWith("dsh-app://app/"),
-            )
+          ? windows.find((item) => item.type === "page" && item.url.startsWith("dsh-app://app/"))
           : undefined)
       );
     },
@@ -301,18 +258,11 @@ try {
       evaluate(cdp, "Boolean(document.getElementById('company-login'))"),
     );
     await screenshot(cdp, "01-old-welcome.png");
-    await evaluate(
-      cdp,
-      "document.getElementById('company-login').click(); true",
-    );
+    await evaluate(cdp, "document.getElementById('company-login').click(); true");
     cdp.close();
     cdp = undefined;
   }
-  const application = await until(
-    "old workspace renderer",
-    () => target("dsh-app://app/"),
-    180000,
-  );
+  const application = await until("old workspace renderer", () => target("dsh-app://app/"), 180000);
   cdp = await connection(application.webSocketDebuggerUrl);
   await until(
     "old Host ready",
@@ -328,7 +278,7 @@ try {
   await screenshot(cdp, "02-old-workspace.png");
   const before = await processes();
   const owned = new Set([child.pid]);
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const item of before)
       if (owned.has(item.ParentProcessId) && !owned.has(item.ProcessId)) {
@@ -341,10 +291,7 @@ try {
     oldProcesses.some((item) => item.IsDesktopHost),
     "The actual old Host must be running",
   );
-  await writeFile(
-    join(output, "old-processes.json"),
-    JSON.stringify(oldProcesses, null, 2),
-  );
+  await writeFile(join(output, "old-processes.json"), JSON.stringify(oldProcesses, null, 2));
   milestone("old-client-and-host-running", {
     mainPid: child.pid,
     ownedProcesses: oldProcesses.length,
@@ -356,14 +303,8 @@ try {
     "real install-and-restart confirmation",
     async () => {
       const rows = await records();
-      const failure = rows.find(
-        (row) => row.event === "state" && row.phase === "error",
-      );
-      assert.equal(
-        failure,
-        undefined,
-        "Real updater failed: " + JSON.stringify(failure),
-      );
+      const failure = rows.find((row) => row.event === "state" && row.phase === "error");
+      assert.equal(failure, undefined, "Real updater failed: " + JSON.stringify(failure));
       const dialog = await target("dsh-app://shell/update-dialog.html");
       if (!dialog) return false;
       const client = await connection(dialog.webSocketDebuggerUrl);
@@ -374,17 +315,10 @@ try {
           /download|下载/i.test(view.buttons[0]) &&
           !rows.some((row) => row.phase === "downloading")
         ) {
-          await evaluate(
-            client,
-            "document.querySelector('#actions button').click(); true",
-          );
+          await evaluate(client, "document.querySelector('#actions button').click(); true");
           return false;
         }
-        if (
-          !rows.some(
-            (row) => row.phase === "ready" && row.targetVersion === newVersion,
-          )
-        )
+        if (!rows.some((row) => row.phase === "ready" && row.targetVersion === newVersion))
           return false;
         assert.match(view.buttons[0], /restart|重启|重新启动/i);
         await screenshot(client, "03-install-and-restart.png");
@@ -421,8 +355,7 @@ try {
     "actual installer handoff",
     async () =>
       (await records()).some(
-        (row) =>
-          row.event === "install-confirmed" && row.version === oldVersion,
+        (row) => row.event === "install-confirmed" && row.version === oldVersion,
       ),
     60000,
   );
@@ -433,9 +366,7 @@ try {
       return oldProcesses.every(
         (old) =>
           !alive.some(
-            (item) =>
-              item.ProcessId === old.ProcessId &&
-              item.CreationDate === old.CreationDate,
+            (item) => item.ProcessId === old.ProcessId && item.CreationDate === old.CreationDate,
           ),
       );
     },
@@ -458,8 +389,7 @@ try {
     "new Host process",
     async () =>
       (await processes()).find(
-        (item) =>
-          item.ParentProcessId === relaunched.ProcessId && item.IsDesktopHost,
+        (item) => item.ParentProcessId === relaunched.ProcessId && item.IsDesktopHost,
       ),
     180000,
   );
@@ -473,11 +403,7 @@ ConvertTo-Json -InputObject @(Get-NetTCPConnection -State Listen -ErrorAction Si
           [String(newHost.ProcessId)],
         ),
       );
-      const values = Array.isArray(result)
-        ? result
-        : result === null
-          ? []
-          : [result];
+      const values = Array.isArray(result) ? result : result === null ? [] : [result];
       for (const port of values) {
         const response = await fetch("http://127.0.0.1:" + port + "/", {
           signal: AbortSignal.timeout(5000),
@@ -539,19 +465,14 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
   evidence.finalProcesses = (await processes().catch(() => [])).filter(
     (item) => item.ExecutablePath === executable || item.IsUpdatedClient,
   );
-  const raw = await readFile(join(output, "client-raw.txt"), "utf8").catch(
-    () => "",
-  );
+  const raw = await readFile(join(output, "client-raw.txt"), "utf8").catch(() => "");
   await writeFile(
     join(output, "client.log"),
     raw
       .replace(/([?&]token=)[^&\s"'<>]+/gi, "$1<REDACTED>")
       .replace(/(Bearer\s+)[A-Za-z0-9._~-]+/gi, "$1<REDACTED>"),
   );
-  await writeFile(
-    join(output, "online-upgrade.json"),
-    JSON.stringify(evidence, null, 2),
-  );
+  await writeFile(join(output, "online-upgrade.json"), JSON.stringify(evidence, null, 2));
   await powershell(
     `param([string]$Executable)
 Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -eq $Executable} | ForEach-Object { & taskkill /PID $_.ProcessId /T /F | Out-Null }`,
