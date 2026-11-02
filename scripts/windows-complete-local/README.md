@@ -26,8 +26,10 @@ bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativ
 
 GitHub 构建从仓库 secrets `GEA_WINDOWS_SIGNING_PFX_BASE64`、`GEA_WINDOWS_SIGNING_PASSWORD` 读取私钥材料，写入 runner 临时目录，结束后删除。仓库不包含这些 secret；配置这些值和正式发布由发行负责人办理。手工 Windows 构建可直接设置本地路径，无需上传私钥。
 
-公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启，更新地址固定为 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/`。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`；后续发布先上传 EXE 与 blockmap，再更新 `nightly.yml`，并保留旧版本供差分下载。现有桌面 JSON 频道仍服务旧客户端，本次不改它。新更新地址尚未发布内容，构建始终使用 `--publish never`。
+公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启，更新地址固定为 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/`。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`；后续发布先上传 EXE 与 blockmap，再更新 `nightly.yml`，并保留旧版本供差分下载。现有桌面 JSON 频道仍服务旧客户端，本次不改它。更新源通过独立发布步骤维护，构建始终使用 `--publish never`。
 
 已有客户端需要先安装一次包含新证书的引导版本，之后才能使用该证书验签更新。首次安装仍可能出现 Windows 安全提示。换证前必须提前部署新证书并核发布者兼容性，不能直接覆盖现有私钥。
 
 `windows_certificate_test=true` 单独执行 Windows 机器证书库导入、重复导入、PFX 签名与时间戳夹具，使用临时测试证书，不使用正式私钥。它不构建完整桌面、不访问业务，也不证明真实旧版到新版升级。当前用户根证书导入可能出现 Windows 系统确认，保留给员工首次安装交互。完整 NSIS 安装、真实公司证书签包及真实客户端更新仍需各自验收。
+
+`windows_update_acceptance=true` 在 Windows runner 上复用 Core 的真实下载、发布者及负向验签夹具，并从固定的 `20261102.2` 未签名版覆盖安装到本次签名版，检查实际 EXE 版本、签名及原有用户文件保留。它使用临时构建机，不代表员工设备或生产业务验收。

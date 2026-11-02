@@ -8,6 +8,24 @@ import { parse } from "yaml";
 
 const workflow = parse(readFileSync(".github/workflows/delivery-fixtures.yml", "utf8"));
 
+test("Windows installed upgrade qualification requires explicit signed packaging", () => {
+  const steps = workflow.jobs["windows-complete-package"].steps;
+  const qualification = steps.find(
+    (step) => step.name === "Verify signed downloads and unsigned-to-signed overwrite",
+  );
+  assert.equal(
+    qualification.if,
+    "inputs.windows_update_acceptance && inputs.windows_signed && !inputs.prepare_windows_cache",
+  );
+  assert.match(qualification.run, /signed-upgrade\.mjs core gea/);
+  assert.ok(
+    steps.indexOf(qualification) >
+      steps.findIndex(
+        (step) => step.name === "Build full Windows package and verify isolated first installation",
+      ),
+  );
+});
+
 function eligible(
   condition,
   steps,
@@ -43,9 +61,12 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "windows_certificate_test",
     "windows_complete_input",
     "windows_signed",
+    "windows_update_acceptance",
   ]);
   for (const [name, input] of Object.entries(inputs)) {
-    if (name === "windows_signed" || name === "windows_certificate_test") {
+    if (
+      ["windows_signed", "windows_certificate_test", "windows_update_acceptance"].includes(name)
+    ) {
       assert.equal(input.type, "boolean");
       assert.equal(input.default, name === "windows_signed");
       assert.equal(input.required, false);

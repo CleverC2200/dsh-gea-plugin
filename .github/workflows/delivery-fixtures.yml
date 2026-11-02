@@ -33,6 +33,11 @@ on:
         default: true
         required: false
         type: boolean
+      windows_update_acceptance:
+        description: "Verify signed updater downloads and overwrite the fixed 20261102.2 unsigned baseline in the isolated Windows runner"
+        default: false
+        required: false
+        type: boolean
       mac_complete_input:
         description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
         required: false
@@ -616,6 +621,9 @@ jobs:
           DSH_DELIVERY_RUNTIME_RESTORE: ${{ steps.delivery-runtime-restore.outcome }}
           DSH_DELIVERY_PREFLIGHT: ${{ runner.temp }}/windows-cache-preflight.json
         run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
+      - name: Verify signed downloads and unsigned-to-signed overwrite
+        if: inputs.windows_update_acceptance && inputs.windows_signed && !inputs.prepare_windows_cache
+        run: node gea/scripts/windows-complete-local/signed-upgrade.mjs core gea
       - name: Verify Core output after packaging
         id: delivery-core-after-package
         if: "!cancelled() && steps.delivery-core-plan.outcome == 'success'"
@@ -682,6 +690,8 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/windows-signature-audit/*.jsonl
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/signed-upgrade/*.json
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/signed-upgrade/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/legacy-bootstrap/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance/receipt.json
