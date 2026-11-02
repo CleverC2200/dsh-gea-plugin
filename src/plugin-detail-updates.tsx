@@ -421,7 +421,13 @@ function SidebarUpdate({
     state.items.some((row) => ["failed", "unknown", "check-failed"].includes(row.state));
   if (!available && !pending && !progress && !failed) return null;
   const label = t(
-    pending ? "pending-restart" : progress ? "installing" : failed ? "viewStatus" : "updateAll",
+    pending
+      ? "sidebarRestart"
+      : progress
+        ? "sidebarUpdating"
+        : failed
+          ? "sidebarStatus"
+          : "sidebarUpdate",
   );
   return (
     <Tooltip label={label} side="top">
