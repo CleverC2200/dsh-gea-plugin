@@ -48,6 +48,7 @@
     "desktop/recovery.test.mjs",
     "desktop/runtime-cookies.test.cjs",
     "desktop/runtime-resolution.test.mjs",
+    "desktop/runtime-start.test.mjs",
     "desktop/startup-copy.test.cjs",
     "desktop/updates.test.mjs",
     "desktop/verify-client-artifacts.test.cjs",
@@ -167,6 +168,11 @@
         "tests/business-page-grant.test.mjs",
         "tests/gateway-handshake.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^gateway/",
+      "tests": ["tests/memory-gateway.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",

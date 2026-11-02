@@ -1,3 +1,12 @@
+import { DEFAULT_MEMORY_GATEWAY_URL } from "./shared/memory-gateway.js";
+import { mountMemorySessionGuard } from "./host/memory-session-guard.ts";
+import {
+  memoryUpdateInputSchema,
+  memoryDeleteInputSchema,
+  memoryClearInputSchema,
+} from "./shared/memory-contract.ts";
+import { MemorySessionLedger } from "./host/memory-session-ledger.ts";
+import { createGeaMemoryService } from "./host/memory-service.ts";
 import { loadServiceAccountCredentials } from "./shared/service-accounts.js";
 import type { ServiceAccounts } from "./host/service-account.ts";
 import {
@@ -52,6 +61,10 @@ import {
 import { DEFAULT_MCP_RESPONSE_BYTES } from "./host/mcp-response.ts";
 import { createCapabilityRegistry } from "./capability/registry.ts";
 import { workbenchContract } from "./capability/contract.ts";
+function keys(value: Record<string, unknown>, allowed: string[]) {
+  if (Object.keys(value).some((key) => !allowed.includes(key)))
+    throw Error("MEMORY_INVALID_REQUEST");
+}
 const WORKBENCH_SURFACE = "gea-workbench";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "dsh-agent-manage/business-resources";
@@ -77,6 +90,8 @@ export const inject = [
 ];
 const environmentSchema = z.union(["production", "test"]);
 export const Config = z.object({
+  memoryGatewayUrl: z.string().default(DEFAULT_MEMORY_GATEWAY_URL),
+  memoryGatewayAllowPrivateHttp: z.boolean().default(false),
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
   serviceAccounts: z.any<ServiceAccounts>(),
   dms: z.any<Deployment["dms"]>(),
@@ -196,7 +211,10 @@ class ReceiptAdapter extends LlmAdapter {
 /** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(
   ctx: Context,
-  input: Omit<Deployment, "runtimeDir"> & { runtimeDir?: string; pluginUpdates?: unknown },
+  input: Omit<Deployment, "runtimeDir"> & {
+    runtimeDir?: string;
+    pluginUpdates?: unknown;
+  },
 ): Promise<void> {
   const runtimeDir = input.runtimeDir ?? resolve(ctx.profileContext.dir, "gea");
   if (!isAbsolute(runtimeDir)) throw Error("INVALID_GEA_RUNTIME_DIR: absolute directory required");
@@ -315,7 +333,10 @@ export async function apply(
         if (!agent || ctx.sessionProjections.stateOf(agent.session, "agentPreset") !== resourceId)
           throw Error("PAGE_AGENT_SESSION_MISMATCH");
         signal.throwIfAborted();
-        const surface = business.setSurface(sessionId, { menu: "gea-proof", title: "销售计划" });
+        const surface = business.setSurface(sessionId, {
+          menu: "gea-proof",
+          title: "销售计划",
+        });
         const identity = business.identitySignal();
         const pageIdentity = {
           pluginId: "gea-proof",
@@ -353,6 +374,12 @@ export async function apply(
   ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
+  const memory = createGeaMemoryService(business, {
+    ledger: new MemorySessionLedger(ctx.profileContext.dir),
+    sessions: ctx.sessionController,
+  });
+  ctx.provide("geaMemory", memory);
+  mountMemorySessionGuard(ctx, business, memory);
   ctx.provide("geaMcp", createGatewayMcpService(ctx, business));
   registerGeaTools(ctx, business, capability, htmlPackages);
   ctx.effect(() => mountBusinessPrompts(ctx, business, capability));
@@ -395,7 +422,11 @@ export async function apply(
             if (!signal.aborted) {
               const { code, message } = errorEnvelope(error);
               console.warn(
-                JSON.stringify({ event: "GEA_DEFAULT_MODEL_UNAVAILABLE", code, message }),
+                JSON.stringify({
+                  event: "GEA_DEFAULT_MODEL_UNAVAILABLE",
+                  code,
+                  message,
+                }),
               );
             }
           })
@@ -505,6 +536,15 @@ export async function apply(
     return attempt.result;
   }
   registerEndpoints([
+    "memory/state",
+    "memory/list",
+    "memory/get",
+    "memory/source",
+    "memory/update",
+    "memory/delete",
+    "memory/clear",
+    "memory/settings",
+    "memory/operations",
     "navigation/poll",
     "navigation/finish",
     "navigation/retry",
@@ -551,6 +591,87 @@ export async function apply(
               const payload = object(await request.json());
               let value: unknown;
               switch (endpoint) {
+                case "memory/state":
+                  keys(payload, []);
+                  value = await business.memory.state(request.signal);
+                  break;
+                case "memory/list":
+                  keys(payload, ["query", "category"]);
+                  value = await business.memory.list(payload, request.signal);
+                  break;
+                case "memory/update":
+                  keys(payload, [
+                    "operationId",
+                    "id",
+                    "expectedVersion",
+                    "expectedRevision",
+                    "bankGeneration",
+                    "category",
+                    "content",
+                  ]);
+                  value = await business.memory.update(
+                    z.resolve(payload, memoryUpdateInputSchema, {}, true)[0],
+                    request.signal,
+                  );
+                  break;
+                case "memory/delete":
+                  keys(payload, [
+                    "operationId",
+                    "id",
+                    "expectedVersion",
+                    "expectedRevision",
+                    "bankGeneration",
+                  ]);
+                  value = await business.memory.delete(
+                    z.resolve(payload, memoryDeleteInputSchema, {}, true)[0],
+                    request.signal,
+                  );
+                  break;
+                case "memory/clear":
+                  keys(payload, [
+                    "operationId",
+                    "expectedRevision",
+                    "bankGeneration",
+                    "confirmation",
+                  ]);
+                  value = await business.memory.clear(
+                    z.resolve(payload, memoryClearInputSchema, {}, true)[0],
+                    request.signal,
+                  );
+                  break;
+                case "memory/source":
+                  keys(payload, ["id"]);
+                  if (typeof payload.id !== "string") throw Error("MEMORY_INVALID_REQUEST");
+                  value = await memory.source(payload.id, request.signal);
+                  break;
+                case "memory/get":
+                  keys(payload, ["id"]);
+                  if (typeof payload.id !== "string") throw Error("MEMORY_INVALID_REQUEST");
+                  value = await business.memory.get(payload.id, request.signal);
+                  break;
+                case "memory/settings":
+                  keys(payload, ["generationEnabled", "expectedRevision", "operationId"]);
+                  if (
+                    typeof payload.generationEnabled !== "boolean" ||
+                    !Number.isSafeInteger(payload.expectedRevision) ||
+                    typeof payload.operationId !== "string"
+                  )
+                    throw Error("MEMORY_INVALID_REQUEST");
+                  value = await business.memory.settings(
+                    {
+                      generationEnabled: payload.generationEnabled,
+                      expectedRevision: Number(payload.expectedRevision),
+                      operationId: payload.operationId,
+                    },
+                    request.signal,
+                  );
+                  break;
+                case "memory/operations":
+                  keys(payload, ["operationId"]);
+                  if (typeof payload.operationId !== "string")
+                    throw Error("MEMORY_INVALID_REQUEST");
+                  value = await business.memory.operation(payload.operationId, request.signal);
+                  break;
                 case "navigation/catalog":
                   value = await business.navigationCatalog(payload, request.signal);
                   break;
@@ -614,7 +735,9 @@ export async function apply(
                 // 不用重新登录就能看到新的可审批节点。
                 case "approval/roles":
                   business.assertExecutionAllowed(config.analysisAgentCode);
-                  await business.refreshApprovalRoles(request.signal, { force: true });
+                  await business.refreshApprovalRoles(request.signal, {
+                    force: true,
+                  });
                   value = { roles: business.status().roles ?? [] };
                   break;
                 case "notifications":
@@ -704,7 +827,9 @@ export async function apply(
                     config.analysisSource === "direct"
                       ? {
                           models: [config.analysisModel],
-                          names: { [config.analysisModel]: config.analysisModel },
+                          names: {
+                            [config.analysisModel]: config.analysisModel,
+                          },
                         }
                       : await business.modelRoute(request.signal, discoveryConsumer);
                   const selected = route.models.includes(config.analysisModel)

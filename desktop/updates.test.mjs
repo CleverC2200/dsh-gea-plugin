@@ -284,3 +284,15 @@ test('the shipped channel configuration keeps a public source ahead of the compa
   assert.match(candidates[candidates.length-1],/^http:\/\/100\.100\.6\.191:20656\/chenyonghao\/dsh-plugin-releases\//,channel+' must keep the company GitLab channel last');
  }
 });
+
+test('installed personal memory uses the existing optional plugin toggle and persists its choice', async t => {
+ const f=await fixture(t,{restartRuntime:async()=>{}});
+ const file=join(f.data,'baseline/package.json');const manifest=JSON.parse(await readFile(file,'utf8'));
+ manifest.dependencies['dsh-personal-memory']='0.1.0';await writeFile(file,JSON.stringify(manifest));
+ await mkdir(join(f.data,'baseline/node_modules/dsh-personal-memory'),{recursive:true});
+ await writeFile(join(f.data,'baseline/node_modules/dsh-personal-memory/package.json'),JSON.stringify({name:'dsh-personal-memory',version:'0.1.0'}));
+ assert.equal((await f.updates.optional()).plugins.find(p=>p.key==='dsh-personal-memory')?.enabled,true);
+ await f.updates.optionalToggle({name:'dsh-personal-memory',enabled:false});
+ assert.equal((await f.updates.optional()).plugins.find(p=>p.key==='dsh-personal-memory')?.enabled,false);
+ assert.equal(JSON.parse(await readFile(join(f.data,'plugins/optional-state.json'),'utf8'))['dsh-personal-memory'],false);
+});

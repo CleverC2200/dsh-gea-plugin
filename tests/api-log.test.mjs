@@ -361,3 +361,45 @@ test("service submission and its detail reads retain only audit metadata and can
     await assert.rejects(center.replay(record.id, true), /API_LOG_REPLAY_UNAVAILABLE/);
   }
 });
+
+test("personal memory audit never stores original input or saved content and cannot replay", async () => {
+  const center = new GeaApiLogCenter(
+    () => "test",
+    20,
+    async () => json({ success: true, result: { content: "saved-personal-content" } }),
+  );
+  for (const endpoint of [
+    "state",
+    "settings",
+    "list",
+    "get",
+    "recall",
+    "generate",
+    "update",
+    "delete",
+    "clear",
+    "operations",
+  ]) {
+    const response = await center.fetch("https://memory.example/v1/memory/" + endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Access-Token": "memory-token" },
+      body: JSON.stringify({ text: "original-personal-input", content: "manual-edit-content" }),
+    });
+    await response.body.cancel();
+  }
+  const snapshot = center.snapshot();
+  const wire = JSON.stringify(snapshot);
+  for (const secret of [
+    "original-personal-input",
+    "saved-personal-content",
+    "manual-edit-content",
+    "memory-token",
+  ])
+    assert.equal(wire.includes(secret), false);
+  assert.ok(
+    snapshot.records.every(
+      (record) =>
+        !record.replayAvailable && record.request.body === null && !record.response.body.content,
+    ),
+  );
+});
