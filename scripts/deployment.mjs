@@ -2,6 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { loadServiceAccountCredentials } from "../src/shared/service-accounts.js";
 import { resolveEnvironments } from "../src/shared/environments.js";
+import {
+  DEFAULT_MEMORY_GATEWAY_URL,
+  resolveMemoryGatewayUrl,
+} from "../src/shared/memory-gateway.js";
 import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
 import { validateSalesReadonly } from "../src/shared/sales-readonly.js";
 /** Validate deployment inputs before creating a profile or reading credentials. */
@@ -44,6 +48,13 @@ export async function readDeployment(
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
+  if (config.memoryGatewayAllowPrivateHttp === undefined)
+    config.memoryGatewayAllowPrivateHttp = false;
+  config.memoryGatewayUrl =
+    resolveMemoryGatewayUrl(
+      config.memoryGatewayUrl === undefined ? DEFAULT_MEMORY_GATEWAY_URL : config.memoryGatewayUrl,
+      config.memoryGatewayAllowPrivateHttp,
+    ) ?? "";
   validateSqlReadLimit(config.sqlReadLimit);
   if (
     config.workbenchCapability !== undefined &&
@@ -195,6 +206,8 @@ export function businessDeploymentPatch(
           name: resolve(root, "lib/host.js"),
           config: {
             geaBaseUrl: config.geaBaseUrl,
+            memoryGatewayUrl: config.memoryGatewayUrl,
+            memoryGatewayAllowPrivateHttp: config.memoryGatewayAllowPrivateHttp,
             serviceAccounts: config.serviceAccounts,
             dms: config.dms,
             fcStorage: config.fcStorage,

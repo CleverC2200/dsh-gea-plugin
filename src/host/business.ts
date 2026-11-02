@@ -1,5 +1,7 @@
 import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
 import { orderReportWithEdits } from "./order-report-edits.ts";
+import type { MemoryScope } from "../shared/memory-contract.ts";
+import { PersonalMemoryGateway } from "./memory-service.ts";
 import { resolveFcDmsTarget } from "./fc-dms-target.ts";
 import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
 import {
@@ -87,6 +89,8 @@ export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean | null>;
 
 export interface Deployment {
+  memoryGatewayUrl?: string;
+  memoryGatewayAllowPrivateHttp?: boolean;
   /** Optional fixed-run SQL allowance; zero refuses before credentials and transport. */
   sqlReadLimit?: {
     consumerCode: string;
@@ -808,7 +812,36 @@ export class Business {
   private readonly sqlReadLimit: ReturnType<typeof createSqlReadLimit>;
   private readonly salesReadonly: ReturnType<typeof createSalesReadonly>;
 
+  memoryScope(): MemoryScope {
+    const auth = this.authenticated();
+    if (!auth.id || !/^\d+$/.test(auth.tenantId)) throw Error("GEA_IDENTITY_INCOMPLETE");
+    return { environment: this.environment, tenantId: auth.tenantId, userId: auth.id };
+  }
+
+  readonly memory: PersonalMemoryGateway;
+
   constructor(readonly config: Deployment) {
+    this.memory = new PersonalMemoryGateway(config.memoryGatewayUrl, {
+      allowPrivateHttp: config.memoryGatewayAllowPrivateHttp,
+      timeoutMs: config.requestTimeoutMs,
+      identity: () => {
+        const auth = this.authenticated();
+        return {
+          token: auth.token,
+          scope: this.memoryScope(),
+          signal: this.epoch.signal,
+        };
+      },
+      expire: (identity) => {
+        if (
+          this.auth?.token === identity.token &&
+          this.epoch.signal === identity.signal &&
+          !identity.signal.aborted
+        )
+          this.clearLogin(true);
+      },
+      fetch: (url, init) => this.apiLog.fetch(url, init),
+    });
     this.sqlReadLimit = createSqlReadLimit(config.sqlReadLimit);
     this.salesReadonly = createSalesReadonly(
       config.workbenchCapability?.readonlyValidation,

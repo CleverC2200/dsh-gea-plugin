@@ -124,6 +124,14 @@ async function fixture(
     session: { preset, header: { cwd: root }, snapshotEvents: () => [] },
   };
   const ctx = {
+    profileContext: { dir: root },
+    sessionController: {
+      inspect: async (id) => ({
+        meta: { id, isSeeded: false },
+        inheritedEventCount: 0,
+        events: [],
+      }),
+    },
     effect(fn) {
       const off = fn();
       if (typeof off === "function") cleanups.push(off);
