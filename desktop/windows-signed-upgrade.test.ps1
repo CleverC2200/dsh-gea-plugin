@@ -31,13 +31,22 @@ function Install-Client([string]$Installer) {
     if (!(Test-Path -LiteralPath $executable)) { throw 'INSTALLED_EXECUTABLE_MISSING' }
 }
 function Installed-Version {
-    $previous = $env:ELECTRON_RUN_AS_NODE
-    try {
-        $env:ELECTRON_RUN_AS_NODE = '1'
-        $version = & $executable --expose-internals -p 'require(process.argv[1]).version' (Join-Path $installation 'resources/app.asar/package.json')
-        if ($LASTEXITCODE -ne 0) { throw 'INSTALLED_MANIFEST_READ_FAILED' }
-        return ($version | Out-String).Trim()
-    } finally { $env:ELECTRON_RUN_AS_NODE = $previous }
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $executable
+    $info.Arguments = '--expose-internals -p "require(process.argv[1]).version" "' + (Join-Path $installation 'resources/app.asar/package.json') + '"'
+    $info.UseShellExecute = $false
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    $info.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $info
+    if (!$process.Start()) { throw 'INSTALLED_MANIFEST_PROCESS_FAILED' }
+    $output = $process.StandardOutput.ReadToEndAsync()
+    $errors = $process.StandardError.ReadToEndAsync()
+    if (!$process.WaitForExit(30000)) { $process.Kill(); throw 'INSTALLED_MANIFEST_TIMEOUT' }
+    $value = $output.Result
+    if ($process.ExitCode -ne 0) { throw ('INSTALLED_MANIFEST_READ_FAILED: ' + $value + $errors.Result) }
+    return $value.Trim()
 }
 try {
     Install-Client $OldInstaller
