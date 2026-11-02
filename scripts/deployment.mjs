@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { loadServiceAccountCredentials } from "../src/shared/service-accounts.js";
+import { validateServiceAccounts } from "../src/shared/service-accounts.js";
 import { resolveEnvironments } from "../src/shared/environments.js";
 import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
 import { validateSalesReadonly } from "../src/shared/sales-readonly.js";
@@ -21,20 +21,9 @@ function httpsEndpoint(value, code) {
   return url;
 }
 
-/**
- * Read and normalize deployment before Host launch. resolveCredentials:false skips keychain
- * resolution; checkDirectCredential:false permits admission's structural comparison without
- * reading a secret. Launch callers retain direct-key checks against credentialEnv.
- */
 export async function readDeployment(
   path,
-  {
-    credentialEnv = process.env,
-    platform = process.platform,
-    readKeychain,
-    resolveCredentials = true,
-    checkDirectCredential = true,
-  } = {},
+  { credentialEnv = process.env, checkDirectCredential = true } = {},
 ) {
   let config;
   try {
@@ -105,12 +94,7 @@ export async function readDeployment(
     }
     config.analysis = a;
   }
-  await loadServiceAccountCredentials(config.serviceAccounts, {
-    credentialEnv,
-    platform,
-    readKeychain,
-    resolveCredentials,
-  });
+  validateServiceAccounts(config.serviceAccounts);
   return { ...config, geaBaseUrl: url.href.replace(/\/$/, "") };
 }
 

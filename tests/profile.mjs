@@ -390,11 +390,7 @@ async function createProfile(t, options) {
   async function start() {
     t.signal?.throwIfAborted();
     recordLifecycle({ event: "preparation-started" });
-    const fixture = JSON.parse(await readFile(config, "utf8"));
-    if (Object.values(fixture.serviceAccounts ?? {}).some((account) => account.keychainService))
-      throw new Error("SOURCE_TEST_REQUIRES_FIXTURE_CREDENTIALS");
     const deployment = await readDeployment(config, {
-      resolveCredentials: false,
       credentialEnv: options.env ?? {},
     });
     for (const endpoint of [

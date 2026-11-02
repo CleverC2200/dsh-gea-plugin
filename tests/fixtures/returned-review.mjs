@@ -18,7 +18,6 @@ export const fixture = async (
     denySubmit = false,
     endedReject = false,
     readbackFailure = false,
-    serviceReady = true,
     shortened = false,
     unknownOnce = false,
     normalBatch = false,
@@ -29,19 +28,6 @@ export const fixture = async (
 ) => {
   const app = await profile(t, {
     roles: role === "customer" ? [] : [{ code: `sales_plan_${role}_approver`, name: role }],
-    config: serviceReady
-      ? {
-          serviceAccounts: {
-            production: {
-              clientIdEnv: "GEA_SUBMIT_CLIENT",
-              clientSecretEnv: "GEA_SUBMIT_SECRET",
-              tenantId: "0",
-              allowedUserIds: ["9007199254740993"],
-            },
-          },
-        }
-      : {},
-    env: { GEA_SUBMIT_CLIENT: "fixture", GEA_SUBMIT_SECRET: "fixture-secret" },
   });
   const state = new Map([
     [
@@ -75,6 +61,7 @@ export const fixture = async (
       },
     ],
   ]);
+  const sourceVersions = new Map([...state].map(([planId, row]) => [row.versionId, planId]));
   const submitted = [];
   const logs = [];
   let readbackBlocked = readbackFailure;
@@ -310,21 +297,21 @@ export const fixture = async (
       });
     }
     if (path.endsWith("/api/v1/internal/auth/token"))
-      return send({
-        access_token: "fixture-service",
-        token_type: "Bearer",
-        expires_in: 600,
-        scope: "sales-plan:write",
-      });
+      throw Error("Employee flow cannot use service credentials");
     if (path.endsWith("/api/v1/internal/sales-plans")) {
       const body = JSON.parse(req.body);
-      const planId = [...state.entries()].find(
-        ([, row]) => Number(row.dealerCode) === body.cust_code,
-      )?.[0];
+      const versionId = req.headers["x-source-version-id"];
+      const planId = sourceVersions.get(versionId);
       assert.ok(planId);
+      assert.equal(req.headers["x-access-token"], "fixture-gea-token");
+      assert.equal(req.headers.authorization, undefined);
+      assert.equal(typeof body.cust_code, "number");
+      const status = returnedStatus - 5;
+      assert.equal(body.status, status);
       submitted.push({
         planId,
         body,
+        status,
         key: req.headers["idempotency-key"],
         requestId: req.headers["x-request-id"],
       });
@@ -334,16 +321,15 @@ export const fixture = async (
         reply({ success: false, message: "提报窗口已关闭，请联系业务管理员" }, 403);
         return true;
       }
-      assert.equal(body.status, returnedStatus - 5);
       assert.equal(body.items.length, 1);
-      assert.equal(body.items[0].price, "12.3400");
+      assert.equal(body.items[0].skuCode, sku(planId).skuCode);
       const row = state.get(planId);
       row.versionId = planId === PLAN_A ? "v-new" : "v-new-b";
       row.seq = 2;
-      row.status = body.status;
+      row.status = status;
       const nodes = shortened ? [1, 3, 4] : [1, 2, 3, 4];
       row.nextActor = { 1: "region", 2: "province", 3: "area", 4: "category" }[
-        nodes.find((node) => node >= body.status)
+        nodes.find((node) => node >= status)
       ];
       submittedQuantities.set(planId, body.items[0].qty);
       logs.push({
@@ -356,7 +342,7 @@ export const fixture = async (
         planId: planId,
         versionId: row.versionId,
         seq: 2,
-        status: body.status,
+        status,
         requestId: req.headers["x-request-id"],
         traceId: "t",
         auditId: "a",

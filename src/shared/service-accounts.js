@@ -1,5 +1,3 @@
-import { execFileSync } from "node:child_process";
-
 export function validateServiceAccounts(value) {
   if (value === undefined) return;
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -29,51 +27,4 @@ export function validateServiceAccounts(value) {
     )
       throw new Error("INVALID_SERVICE_ACCOUNTS");
   }
-}
-
-function readServiceAccountKeychain(service) {
-  try {
-    return JSON.parse(
-      execFileSync(
-        "/usr/bin/security",
-        ["find-generic-password", "-a", "service-account", "-s", service, "-w"],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 30000 },
-      ),
-    );
-  } catch {
-    throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING");
-  }
-}
-
-export async function loadServiceAccountCredentials(
-  serviceAccounts,
-  {
-    credentialEnv = process.env,
-    platform = process.platform,
-    readKeychain = readServiceAccountKeychain,
-    resolveCredentials = true,
-  } = {},
-) {
-  validateServiceAccounts(serviceAccounts);
-  const credentials = {};
-  for (const account of Object.values(serviceAccounts ?? {})) {
-    if (!account.keychainService || !resolveCredentials) continue;
-    if (platform !== "darwin") throw new Error("GEA_KEYCHAIN_UNAVAILABLE");
-    let loaded;
-    try {
-      loaded = await readKeychain(account.keychainService);
-    } catch {
-      throw new Error("GEA_KEYCHAIN_CREDENTIAL_MISSING");
-    }
-    if (
-      typeof loaded?.clientId !== "string" ||
-      !loaded.clientId.trim() ||
-      typeof loaded?.secret !== "string" ||
-      !loaded.secret.trim()
-    )
-      throw new Error("GEA_KEYCHAIN_CREDENTIAL_INVALID");
-    credentials[account.clientIdEnv] = loaded.clientId;
-    credentials[account.clientSecretEnv] = loaded.secret;
-  }
-  Object.assign(credentialEnv, credentials);
 }

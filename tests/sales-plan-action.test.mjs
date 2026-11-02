@@ -149,8 +149,13 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
   };
 }
 
-test("unavailable employee resubmission refuses before token exchange, internal submission or approval", async (t) => {
-  const f = fixture(t);
+test("signed-out employee resubmission refuses before any network", async (t) => {
+  const business = new module.exports.Business({ geaBaseUrl: "https://localhost" });
+  t.after(() => business.dispose());
+  const f = { business };
+  t.mock.method(globalThis, "fetch", async () => {
+    throw Error("unexpected request");
+  });
   await assert.rejects(
     f.business.salesPlanSubmit(
       {
@@ -175,7 +180,7 @@ test("unavailable employee resubmission refuses before token exchange, internal 
       new AbortController().signal,
     ),
     (error) =>
-      error.details.resubmitUnavailableReason === "configuration" && /配置/.test(error.message),
+      error.details.resubmitUnavailableReason === "signed-out" && /登录/.test(error.message),
   );
   assert.equal(globalThis.fetch.mock.callCount(), 0);
 });
@@ -458,13 +463,7 @@ for (const [customerCode, returnedStatus] of [
   ["9223372036854775807", 7],
   ["456", 6],
 ])
-  test(`public Business resubmits returned M status ${returnedStatus} with exact customer ${customerCode}, separate service identity and nullable audit receipt`, async (t) => {
-    process.env.GEA_CONTRACT_CLIENT = "contract-client";
-    process.env.GEA_CONTRACT_SECRET = "contract-secret";
-    t.after(() => {
-      delete process.env.GEA_CONTRACT_CLIENT;
-      delete process.env.GEA_CONTRACT_SECRET;
-    });
+  test(`public Business resubmits returned M status ${returnedStatus} with exact customer ${customerCode}, employee login without service configuration and nullable audit receipt`, async (t) => {
     const business = new module.exports.Business({
       geaBaseUrl: "https://localhost",
       analysisAgentCode: "sales_forecast",
@@ -472,14 +471,6 @@ for (const [customerCode, returnedStatus] of [
       inputByteBudget: 30000,
       pageSize: 20,
       periodPageSize: 100,
-      serviceAccounts: {
-        production: {
-          clientIdEnv: "GEA_CONTRACT_CLIENT",
-          clientSecretEnv: "GEA_CONTRACT_SECRET",
-          tenantId: "1",
-          allowedUserIds: ["someone-else"],
-        },
-      },
     });
     business.restoreDesktopLogin({
       schema: 1,
@@ -556,48 +547,34 @@ for (const [customerCode, returnedStatus] of [
       writes = 0,
       refuse = false,
       sourceDenied = false,
-      employeeRole = true;
+      employeeRole = true,
+      replyMode = "normal";
     t.mock.method(globalThis, "fetch", async (url, init) => {
       const path = new URL(url).pathname;
       if (path.endsWith("/api/v1/internal/auth/token")) {
         tokens++;
-        assert.equal(init.headers["X-Access-Token"], undefined);
-        return Response.json({
-          success: true,
-          result: {
-            access_token: "service-" + tokens,
-            token_type: "Bearer",
-            expires_in: 600,
-            scope: "sales-plan:write",
-          },
-        });
+        throw Error("Employee resubmission must not exchange service credentials");
       }
       if (path.endsWith("/api/v1/internal/sales-plans")) {
         writes++;
-        assert.equal(init.headers.Authorization, "Bearer service-" + tokens);
-        assert.equal(init.headers["X-Access-Token"], undefined);
-        const {
-          dealerCode: _dealerCode,
-          areaCode: _areaCode,
-          provinceCode: _provinceCode,
-          orgCode: _orgCode,
-          baseName: _baseName,
-          ...unchanged
-        } = request;
-        const sent = JSON.parse(init.body, (key, value, context) =>
-          key === "cust_code" ? { type: typeof value, source: context.source } : value,
-        );
-        assert.deepEqual(sent, {
-          ...unchanged,
-          cust_code: { type: "number", source: customerCode },
-          region_code: "27",
-          province_region_code: "0005",
-          sales_group_code: "578",
-          belong_base: "郑州",
-        });
+        assert.equal(init.headers.Authorization, undefined);
+        assert.equal(init.headers["X-Access-Token"], "employee-token");
+        assert.equal(init.headers["X-Tenant-Id"], "1");
+        assert.equal(init.headers["X-Source-Version-Id"], "v1");
+        assert.deepEqual(JSON.parse(init.body).items, request.items);
+        assert.equal(JSON.parse(init.body).cust_code, Number(request.dealerCode));
+        if (replyMode === "timeout") {
+          await new Promise((resolve) =>
+            init.signal.addEventListener("abort", resolve, { once: true }),
+          );
+          throw init.signal.reason;
+        }
+        if (replyMode === "broken") return new Response("not json", { status: 200 });
+        if (replyMode === "wrong-result")
+          return Response.json({ success: true, result: "unexpected" });
         if (refuse)
           return Response.json(
-            { errorCode: "UNAUTHORIZED", message: "服务授权失效", traceId: "service-failure" },
+            { errorCode: "UNAUTHORIZED", message: "员工登录已过期", traceId: "service-failure" },
             { status: 401 },
           );
         return Response.json({
@@ -699,7 +676,11 @@ for (const [customerCode, returnedStatus] of [
     sourceDenied = false;
     assert.equal(tokens, 0);
     assert.equal(writes, 0);
-    const receipt = await business.salesPlanSubmit(command("first"), signal);
+    const [receipt, concurrent] = await Promise.all([
+      business.salesPlanSubmit(command("first"), signal),
+      business.salesPlanSubmit(command("first"), signal),
+    ]);
+    assert.deepEqual(concurrent, receipt);
     assert.equal(receipt.auditId, null);
     assert.equal(receipt.status, request.status);
     assert.deepEqual(await business.salesPlanSubmit(command("first"), signal), receipt);
@@ -713,16 +694,23 @@ for (const [customerCode, returnedStatus] of [
     );
     assert.equal(writes, 1);
     await business.salesPlanSubmit(command("second"), signal);
-    assert.equal(tokens, 1);
+    assert.equal(tokens, 0);
     assert.equal(writes, 2);
-    refuse = true;
-    await assert.rejects(
-      business.salesPlanSubmit(command("service-failure"), signal),
-      (error) => error.details.authentication === "service",
-    );
-    assert.equal(writes, 4);
-    assert.equal(tokens, 2);
-    assert.equal(business.status().loginState, "authenticated");
+    if (customerCode === "456" && returnedStatus === 7) {
+      for (const mode of ["timeout", "broken", "wrong-result"]) {
+        replyMode = mode;
+        const intent = command("uncertain-" + mode);
+        await assert.rejects(
+          business.salesPlanSubmit(intent, signal),
+          (error) => error.details?.retrySameIntent === true,
+        );
+        replyMode = "normal";
+        sourceDenied = true;
+        assert.equal((await business.salesPlanSubmit(intent, signal)).status, request.status);
+        sourceDenied = false;
+      }
+    }
+    const writesBeforeExpiration = writes;
     const records = business
       .apiLogSnapshot({})
       .records.filter((record) =>
@@ -735,6 +723,14 @@ for (const [customerCode, returnedStatus] of [
     );
     assert.equal(JSON.stringify(records).includes('"789"'), false);
     assert.equal(JSON.stringify(records).includes("contract-secret"), false);
+    refuse = true;
+    await assert.rejects(
+      business.salesPlanSubmit(command("employee-expired"), signal),
+      (error) => error.code === "GEA_HTTP_401",
+    );
+    assert.equal(writes, writesBeforeExpiration + 1);
+    assert.equal(tokens, 0);
+    assert.equal(business.status().loginState, "expired");
   });
 
 function correctionFixture(t, actionReply) {
@@ -1524,65 +1520,47 @@ test("Business enforces string organization dimensions while preserving leading 
   assert.equal(calls, before);
 });
 
-test("Business exposes safe resubmission channel reasons and blocks before any network", async (t) => {
+test("employee resubmission readiness needs login and ignores absent or obsolete service references", async (t) => {
   const network = t.mock.method(globalThis, "fetch", async () => {
     throw Error("unexpected channel request");
   });
-  process.env.GEA_STATUS_CLIENT = "fixture-client";
-  process.env.GEA_STATUS_SECRET = "fixture-secret";
-  t.after(() => {
-    delete process.env.GEA_STATUS_CLIENT;
-    delete process.env.GEA_STATUS_SECRET;
-  });
-  for (const [reason, tenantId, credential] of [
-    ["signed-out", undefined, true],
-    ["configuration", "1", true],
-    ["tenant", "2", true],
-    ["credential", "1", false],
-    [undefined, "1", true],
+  for (const serviceAccounts of [
+    undefined,
+    {
+      production: {
+        clientIdEnv: "GEA_STATUS_CLIENT",
+        clientSecretEnv: "GEA_STATUS_SECRET",
+        tenantId: "different-tenant",
+        keychainService: "old-local-reference",
+      },
+    },
   ]) {
+    if (serviceAccounts) serviceAccounts.production.tenantId = "2";
     const business = new module.exports.Business({
       geaBaseUrl: "https://localhost",
-      analysisAgentCode: "sales_forecast",
-      requestTimeoutMs: 2000,
-      inputByteBudget: 30000,
-      pageSize: 20,
-      serviceAccounts:
-        reason === "configuration"
-          ? undefined
-          : {
-              production: {
-                clientIdEnv: "GEA_STATUS_CLIENT",
-                clientSecretEnv: "GEA_STATUS_SECRET",
-                tenantId: "1",
-              },
-            },
+      serviceAccounts,
     });
     t.after(() => business.dispose());
-    if (tenantId)
-      business.restoreDesktopLogin({
-        schema: 1,
-        environment: "production",
-        base: "https://localhost",
-        auth: {
-          token: "fixture-token",
-          tenantId,
-          id: "ordinary-user",
-          name: "Test",
-          username: "test",
-        },
-      });
-    if (!credential) delete process.env.GEA_STATUS_SECRET;
-    const status = business.status();
-    assert.equal(status.resubmitUnavailableReason, reason);
-    assert.equal(status.resubmitConnected, reason === undefined);
-    assert.equal(JSON.stringify(status).includes("fixture-secret"), false);
-    if (reason)
-      await assert.rejects(
-        business.salesPlanSubmit({}, new AbortController().signal),
-        (error) => error.details?.resubmitUnavailableReason === reason,
-      );
-    process.env.GEA_STATUS_SECRET = "fixture-secret";
+    assert.equal(business.status().resubmitConnected, false);
+    assert.equal(business.status().resubmitUnavailableReason, "signed-out");
+    await assert.rejects(
+      business.salesPlanSubmit({}, new AbortController().signal),
+      (error) => error.details?.resubmitUnavailableReason === "signed-out",
+    );
+    business.restoreDesktopLogin({
+      schema: 1,
+      environment: "production",
+      base: "https://localhost",
+      auth: {
+        token: "employee-token",
+        tenantId: "1",
+        id: "ordinary-user",
+        name: "Test",
+        username: "test",
+      },
+    });
+    assert.equal(business.status().resubmitConnected, true);
+    assert.equal(business.status().resubmitUnavailableReason, undefined);
   }
   assert.equal(network.mock.callCount(), 0);
 });

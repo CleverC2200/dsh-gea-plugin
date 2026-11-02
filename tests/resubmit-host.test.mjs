@@ -52,19 +52,7 @@ test(
   "Host revalidates source, rejects forged values and binds retries to one identity and body",
   { timeout: 60000 },
   async (t) => {
-    const app = await profile(t, {
-      config: {
-        serviceAccounts: {
-          production: {
-            clientIdEnv: "GEA_SUBMIT_CLIENT",
-            clientSecretEnv: "GEA_SUBMIT_SECRET",
-            tenantId: "0",
-            allowedUserIds: ["9007199254740993"],
-          },
-        },
-      },
-      env: { GEA_SUBMIT_CLIENT: "fixture-client", GEA_SUBMIT_SECRET: "fixture-secret" },
-    });
+    const app = await profile(t);
     let expectedRequest = request;
     let writes = 0;
     let upstreamActions = 0;
@@ -111,24 +99,15 @@ test(
         reply({ success: true, result: {} });
         return true;
       }
-      if (path.endsWith("/api/v1/internal/auth/token")) {
-        assert.equal(req.headers["x-access-token"], undefined);
-        reply({
-          success: true,
-          result: {
-            access_token: "fixture-service",
-            token_type: "Bearer",
-            expires_in: 600,
-            scope: "sales-plan:write",
-          },
-        });
-        return true;
-      }
+      if (path.endsWith("/api/v1/internal/auth/token"))
+        throw Error("Desktop must use its employee session");
       if (path.endsWith("/api/v1/internal/sales-plans")) {
         writes++;
-        assert.equal(req.headers.authorization, "Bearer fixture-service");
-        const { dealerCode, ...unchanged } = expectedRequest;
-        assert.deepEqual(JSON.parse(req.body), { ...unchanged, cust_code: Number(dealerCode) });
+        assert.equal(req.headers.authorization, undefined);
+        assert.equal(req.headers["x-access-token"], "fixture-gea-token");
+        assert.equal(req.headers["x-source-version-id"], "v1");
+        assert.deepEqual(JSON.parse(req.body).items, expectedRequest.items);
+        assert.equal(JSON.parse(req.body).cust_code, 456);
         reply({
           success: true,
           result: {
