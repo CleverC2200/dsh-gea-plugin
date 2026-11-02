@@ -13,7 +13,7 @@ const input = {
   analysisModel: "receipt",
   inputByteBudget: 10000,
 };
-test("ordinary Host preserves configured service references and loads credentials before initializing business", async (t) => {
+test("ordinary Host preserves old service references without reading or installing credentials", async (t) => {
   const { apply } = await import("../lib/host.js");
   const childProcess = (await import("node:child_process")).default;
   const { syncBuiltinESMExports } = await import("node:module");
@@ -36,18 +36,9 @@ test("ordinary Host preserves configured service references and loads credential
     syncBuiltinESMExports();
   });
   let reads = 0;
-  t.mock.method(childProcess, "execFileSync", (file, args) => {
+  t.mock.method(childProcess, "execFileSync", () => {
     reads++;
-    assert.equal(file, "/usr/bin/security");
-    assert.deepEqual(args, [
-      "find-generic-password",
-      "-a",
-      "service-account",
-      "-s",
-      "gea-host-service-fixture",
-      "-w",
-    ]);
-    return JSON.stringify({ clientId: "fixture-client", secret: "fixture-secret" });
+    throw Error("unexpected credential access");
   });
   syncBuiltinESMExports();
   t.after(() => {
@@ -77,8 +68,8 @@ test("ordinary Host preserves configured service references and loads credential
     ),
     (error) => error === initialized,
   );
-  assert.equal(reads, 1);
-  assert.equal(process.env[clientIdEnv], "fixture-client");
-  assert.equal(process.env[clientSecretEnv], "fixture-secret");
+  assert.equal(reads, 0);
+  assert.equal(process.env[clientIdEnv], before[0]);
+  assert.equal(process.env[clientSecretEnv], before[1]);
   assert.equal(JSON.stringify(value).includes("fixture-secret"), false);
 });
