@@ -838,7 +838,7 @@ test("bundled installation aligns an existing company lock and restores it on fa
     );
     await writeFile(
       join(moduleRoot, "dsh-plugin-manager/index.mjs"),
-      `import {readFile,writeFile} from 'node:fs/promises';import {join} from 'node:path';export async function runProfilePnpm(context,args){await writeFile(join(context.dir,'call.json'),JSON.stringify({args,lock:await readFile(join(context.dir,'pnpm-lock.yaml'),'utf8')}));return {exitCode:${mode === "failure" ? 1 : 0},logPath:join(context.dir,'pnpm.log')}}`,
+      `import {readFile,writeFile} from 'node:fs/promises';import {join} from 'node:path';export async function runProfilePnpm(context,args,options){await writeFile(join(context.dir,'call.json'),JSON.stringify({args,options,lock:await readFile(join(context.dir,'pnpm-lock.yaml'),'utf8')}));return {exitCode:${mode === "failure" ? 1 : 0},logPath:join(context.dir,'pnpm.log')}}`,
     );
     const require = createRequire(join(f.root, "dsh/package.json"));
     const YAML = require("yaml");
@@ -875,10 +875,13 @@ test("bundled installation aligns an existing company lock and restores it on fa
       packages: manifest.packages.map((row) => join(f.seed, "archives", row.file)),
       store: join(f.home, "store"),
       offline: true,
+      activateNewBundles: false,
     });
     if (mode === "failure") await assert.rejects(operation, /GEA_COMPANY_INSTALL_FAILED/);
     else await operation;
     const called = JSON.parse(await readFile(join(f.profile, "call.json"), "utf8"));
+    assert(called.args.includes("--config.update-notifier=false"));
+    assert.equal(called.options.activateNewBundles, false);
     if (mode === "user") {
       assert.equal(called.lock, original);
       assert(called.args.includes("--offline=false"));

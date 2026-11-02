@@ -7,6 +7,7 @@ import {
   query,
   rawResult,
   serverSchema,
+  cubeCode,
 } from "./fixtures/current-mcp.mjs";
 
 test("current registered MCP tools retain server schemas and exact direct results", async (t) => {
@@ -14,6 +15,7 @@ test("current registered MCP tools retain server schemas and exact direct result
   assert.deepEqual(
     f.ctx.tools.schemas(f.agents.get("sales")).find((tool) => tool.name === queryTool).parameters,
     serverSchema,
+    cubeCode,
   );
   const result = await f.execute();
   assert.equal(result.isError, false, JSON.stringify(result));
@@ -324,7 +326,66 @@ test("registered cancellation preserves the current identity and allows the next
   assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 2);
 });
 
-test("registered expired gateway preserves the failure and stops the turn until a new session is negotiated", async (t) => {
+for (const code of ["AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED", "AI_GATEWAY_SESSION_EXPIRED"]) {
+  test(`registered overnight query renews ${code} and completes the original call`, async (t) => {
+    let issued = 0;
+    const f = await currentMcp(t, {
+      orchestration: true,
+      prompts: true,
+      sessionHandler: (wire) =>
+        Response.json({
+          success: true,
+          result: {
+            accessDecision: { allowed: true },
+            gatewayContext: {
+              consumerType: "AGENT",
+              consumerCode: wire.consumerCode,
+              sessionId: `session-${++issued}`,
+              conversationId: wire.conversationId,
+            },
+            delegationToken: `fixture-delegation-${issued}`,
+          },
+        }),
+    });
+    assert.equal((await f.execute(queryTool, query, "orchestration")).isError, false);
+    const sessions = f.calls.filter(({ url }) => url.endsWith("/session")).length;
+    let rejected = false;
+    f.setHandler((_wire, _init, reply) => {
+      if (rejected) return;
+      rejected = true;
+      return reply({
+        isError: true,
+        structuredContent: { success: false, code, message: "会话已过期" },
+      });
+    });
+    const result = await f.execute(queryTool, query, "orchestration");
+    assert.equal(result.isError, false, JSON.stringify(result));
+    assert.equal(result.value, rawResult);
+    assert.equal(f.business.turnStopped("orchestration"), undefined);
+    const handshakes = f.calls.filter(({ url }) => url.endsWith("/session"));
+    assert.equal(handshakes.length, sessions + 1);
+    assert.equal(handshakes.at(-1).wire.consumerCode, "workbench");
+    assert.equal(handshakes.at(-1).headers.get("X-Access-Token"), "fixture-private-login");
+    assert.equal(handshakes.at(-1).headers.get("X-Tenant-Id"), "0");
+    const workbenchSessions = handshakes.filter(({ wire }) => wire.consumerCode === "workbench");
+    assert.notEqual(
+      workbenchSessions.at(-1).wire.conversationId,
+      workbenchSessions[0].wire.conversationId,
+    );
+    const queries = f.calls.filter(({ wire }) => wire.method === "tools/call");
+    assert.equal(queries.length, 3);
+    assert.equal(queries[1].wire.params._meta.sessionId, queries[0].wire.params._meta.sessionId);
+    assert.notEqual(
+      queries.at(-1).wire.params._meta.sessionId,
+      queries[1].wire.params._meta.sessionId,
+    );
+    assert.equal(queries.at(-1).wire.params._meta.sessionId, `session-${issued}`);
+    assert.equal(queries.at(-1).wire.params._meta.delegationToken, `fixture-delegation-${issued}`);
+    assert.deepEqual(queries.at(-1).wire.params.arguments, query);
+  });
+}
+
+test("registered gateway still expired after one renewal retains diagnostics and stops the turn", async (t) => {
   const f = await currentMcp(t, {
     handler: (_wire, _init, reply) =>
       reply({
@@ -337,8 +398,11 @@ test("registered expired gateway preserves the failure and stops the turn until 
         },
       }),
   });
+  const before = f.calls.filter(({ url }) => url.endsWith("/session")).length;
   const first = await f.execute();
   assert.equal(first.isError, true);
+  assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, before + 1);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 2);
   assert.match(JSON.stringify(first), /GEA_GATEWAY_SESSION_EXPIRED/);
   assert.match(JSON.stringify(first), /00000000-0000-4000-8000-000000000001/);
   assert.match(JSON.stringify(await f.execute()), /TURN_STOPPED/);
@@ -347,6 +411,156 @@ test("registered expired gateway preserves the failure and stops the turn until 
   f.business.clearTurnStops("sales");
   assert.equal((await f.execute()).isError, false);
   assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, sessions + 1);
+});
+
+test("registered renewal rechecks server authorization and never queries a denied session", async (t) => {
+  let sessions = 0;
+  const f = await currentMcp(t, {
+    sessionHandler: () => {
+      if (++sessions === 1) return;
+      return Response.json({
+        success: true,
+        result: {
+          accessDecision: {
+            allowed: false,
+            code: "AGENT_ACCESS_DENIED",
+            message: "当前授权已撤销",
+          },
+        },
+      });
+    },
+    handler: (_wire, _init, reply) =>
+      reply({
+        isError: true,
+        structuredContent: {
+          success: false,
+          code: "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED",
+          message: "会话已过期",
+        },
+      }),
+  });
+  const result = await f.execute();
+  assert.equal(result.isError, true);
+  assert.match(JSON.stringify(result), /AGENT_ACCESS_DENIED/);
+  assert.equal(sessions, 2);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  assert.equal(f.business.status().authenticated, true);
+});
+
+test("registered renewal cannot reuse a tool omitted from the new server grant", async (t) => {
+  let sessions = 0;
+  const f = await currentMcp(t, {
+    sessionHandler: () => {
+      sessions++;
+    },
+    toolsHandler: (_wire, _init, reply) =>
+      sessions === 1
+        ? undefined
+        : reply({
+            tools: [
+              {
+                name: "inspect_cube_model",
+                inputSchema: { type: "object" },
+                _meta: { sourceType: "MCP", sourceCode: cubeCode },
+              },
+            ],
+          }),
+    handler: (_wire, _init, reply) =>
+      reply({
+        isError: true,
+        structuredContent: {
+          success: false,
+          code: "AI_GATEWAY_SESSION_EXPIRED",
+          message: "会话已过期",
+        },
+      }),
+  });
+  const result = await f.execute();
+  assert.equal(result.isError, true);
+  assert.match(JSON.stringify(result), /GEA_MCP_TOOL_UNAVAILABLE/);
+  assert.equal(sessions, 2);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+});
+
+test("registered revoked sessions never renew automatically", async (t) => {
+  const f = await currentMcp(t, {
+    handler: (_wire, _init, reply) =>
+      reply({
+        isError: true,
+        structuredContent: {
+          success: false,
+          code: "AI_GATEWAY_SESSION_REVOKED",
+          message: "会话已撤销",
+        },
+      }),
+  });
+  assert.equal((await f.execute()).isError, true);
+  assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, 1);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+});
+
+for (const transition of ["identity", "resource", "preset", "cancel", "stop"]) {
+  test(`registered expiry cannot renew after ${transition} changes`, async (t) => {
+    let entered, release;
+    const started = new Promise((done) => {
+      entered = done;
+    });
+    const f = await currentMcp(t, {
+      handler: async (_wire, _init, reply) => {
+        entered();
+        await new Promise((done) => {
+          release = done;
+        });
+        return reply({
+          isError: true,
+          structuredContent: {
+            success: false,
+            code: "AI_GATEWAY_SESSION_EXPIRED",
+            message: "会话已过期",
+          },
+        });
+      },
+    });
+    const controller = new AbortController();
+    const pending = f.execute(queryTool, query, "sales", controller.signal);
+    await started;
+    if (transition === "identity") f.business.logout({});
+    if (transition === "resource") f.setEnabled(false);
+    if (transition === "preset") f.agents.get("sales").preset = "standard";
+    if (transition === "cancel") controller.abort(Error("fixture-user-cancel"));
+    if (transition === "stop") f.business.stopTurn("sales", "fixture-turn-stopped");
+    release();
+    const result = await pending;
+    assert.equal(result.isError, true);
+    assert.doesNotMatch(JSON.stringify(result), /9007199254740993/);
+    assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, 1);
+    assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
+  });
+}
+
+test("registered renewed session rechecks local resource ownership before repeating the query", async (t) => {
+  let sessions = 0;
+  let disable;
+  const f = await currentMcp(t, {
+    sessionHandler: () => {
+      if (++sessions === 2) disable();
+    },
+    handler: (_wire, _init, reply) =>
+      reply({
+        isError: true,
+        structuredContent: {
+          success: false,
+          code: "AI_GATEWAY_SESSION_EXPIRED",
+          message: "会话已过期",
+        },
+      }),
+  });
+  disable = () => f.setEnabled(false);
+  const result = await f.execute();
+  assert.equal(result.isError, true);
+  assert.match(JSON.stringify(result), /GEA_CUBE_SOURCE_UNAVAILABLE/);
+  assert.equal(sessions, 2);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "tools/call").length, 1);
 });
 
 test("registered malformed data stays failed without blocking an independent valid query", async (t) => {

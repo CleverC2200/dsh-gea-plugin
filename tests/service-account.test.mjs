@@ -30,10 +30,10 @@ const receipt = {
   traceId: "trace",
   auditId: null,
 };
-test("service identity is environment-configured and does not authorize another tenant or user", () => {
+test("service channel accepts any signed-in user in its configured tenant", () => {
   validateServiceAccounts({ production: config });
   assert.equal(serviceAccountReady(config, { id: "user", tenantId: "0" }), true);
-  assert.equal(serviceAccountReady(config, { id: "other", tenantId: "0" }), false);
+  assert.equal(serviceAccountReady(config, { id: "other", tenantId: "0" }), true);
   assert.equal(serviceAccountReady(config, { id: "user", tenantId: "1" }), false);
   assert.throws(() => validateServiceAccounts({ production: { ...config, secret: "plaintext" } }));
 });

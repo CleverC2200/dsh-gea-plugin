@@ -15,10 +15,10 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     : undefined;
 
 export const BRANCH_INVENTORY_ROUTING =
-  "分仓库存结构与补货问题直接使用gea_branch_inventory：summary返回全范围库存、可用、占用、冻结、目标及补货测算；health返回分仓货龄与超龄风险汇总；replenishment返回正建议量清单，按建议量降序，每页10条。" +
+  "分仓库存结构与补货问题直接使用gea_branch_inventory：summary返回全范围库存、可用、占用、冻结、目标及补货测算；health返回分仓货龄与超龄风险汇总；replenishment返回正建议量清单，按建议量降序，每页10条。supply返回本月分仓向基地补货执行单的全范围汇总、满足率和分页明细；supply-current返回当前未收货完成的ASN订单汇总和明细；ASN按warehouseid收货分仓、source_warehouseid来源基地归属，关联基地出库占用并按订单创建时间分配基地与SKU共享可用库存。supply的月度履约按receive_wh归属，不能拿客户出库订单替代。operations返回本月入库、自身出货和分仓费用/过仓全范围摘要。" +
   "与分仓页面共用固定SQL、快照、周期和计算，不要求打开页面，也不改用Cube重算。追问沿用已返回的分仓编码、SKU和周期；下一页保留筛选并递增page。" +
   "该清单只是只读建议，不是正式下单；不含未保存的页面计划/草稿。结构符合率暂不计算。" +
-  "所有行计数均为分仓+SKU组合数，不是去重SKU数。plan_count/stock_only_count只代表是否有计划表记录，不能据此认定有无订单需求或历史发货。" +
+  "库存与建议的行计数为分仓+SKU组合数；补货订单的行计数为收货分仓+执行单+行号+SKU，order_count为去重执行单数。plan_count/stock_only_count只代表是否有计划表记录，不能据此认定有无订单需求或历史发货。" +
   "target_gap_qty=可用库存+调拨中量-目标库存，正数表示富余、负数表示不足，必须保留符号，不能称为绝对值缺口。" +
   "recommended_qty是逐分仓SKU截零后的建议量之和，不得跨SKU抵扣富余或用汇总差额倒算。回答用业务名称，不照抄内部字段名。";
 
@@ -36,9 +36,9 @@ export function registerBranchInventoryTool(
         parameters: {
           view: {
             type: "string",
-            enum: ["summary", "health", "replenishment"],
+            enum: ["summary", "health", "replenishment", "supply", "supply-current", "operations"],
             description:
-              "summary为全范围汇总；health为货龄风险汇总；replenishment为正建议量分页清单。",
+              "summary为库存与补货建议汇总；health为货龄汇总；replenishment为建议清单；supply为本月基地供货履约汇总及明细；supply-current为当前未收货完成ASN汇总及明细；operations为同分仓、同月份的入库、自身出货和过仓/费用摘要。",
           },
           warehouseCode: {
             type: "string",
@@ -116,6 +116,7 @@ export function registerBranchInventoryTool(
                   typeof entry[1] === "string" && entry[1].trim() !== "",
               ),
             );
+            const supply = args.view === "supply" || args.view === "supply-current";
             let result: unknown;
             try {
               const root = await realpath(resource.directory);
@@ -128,29 +129,74 @@ export function registerBranchInventoryTool(
                 throw Error("INVALID_AGENT_SQL_CONFIG");
               const { readConfiguredFacts } =
                 await import("@cleverc2200/dsh-agent-workbench/configured-facts");
-              const detail = args.view === "replenishment";
-              result = await readConfiguredFacts(
-                config,
-                detail
-                  ? "replenishment-suggestions"
-                  : args.view === "health"
-                    ? "health"
-                    : "replenishment",
-                { asOf, cycleDays, page, pageSize: 10, filters },
-                {
-                  signal,
-                  execute: (_request, call) =>
-                    readConfiguredHtmlQuery(
-                      resource,
-                      { queryId: call.queryId, parameters: call.values },
-                      business,
+              if (args.view === "operations") {
+                if (args.sku) throw Error("OPERATIONS_SKU_SCOPE_NOT_SUPPORTED");
+                const read = (viewId: string, filterName: string) =>
+                  readConfiguredFacts(
+                    config,
+                    viewId,
+                    {
+                      asOf,
+                      filters: args.warehouseCode ? { [filterName]: args.warehouseCode } : {},
+                    },
+                    {
                       signal,
-                      consumer,
-                    ),
-                  summaryOnly: !detail,
-                  detailsOnly: detail,
-                },
-              );
+                      execute: (_request, call) =>
+                        readConfiguredHtmlQuery(
+                          resource,
+                          { queryId: call.queryId, parameters: call.values },
+                          business,
+                          signal,
+                          consumer,
+                        ),
+                      summaryOnly: true,
+                    },
+                  );
+                const [movement, cost] = await Promise.all([
+                  read("warehouse-outbound", "warehouse_code"),
+                  read("branch-operations", "warehouse_id"),
+                ]);
+                result = {
+                  movement,
+                  cost,
+                  units: {
+                    inbound: "件",
+                    throughput: "件",
+                    outbound: "件",
+                    storageFee: "元",
+                    transportFee: "元",
+                  },
+                  scope: { warehouseCode: args.warehouseCode ?? "全部分仓", asOf },
+                };
+              } else {
+                const detail = args.view === "replenishment" || supply;
+                result = await readConfiguredFacts(
+                  config,
+                  supply
+                    ? args.view === "supply"
+                      ? "branch-supply"
+                      : "orders"
+                    : detail
+                      ? "replenishment-suggestions"
+                      : args.view === "health"
+                        ? "health"
+                        : "replenishment",
+                  { asOf, cycleDays, page, pageSize: 10, filters },
+                  {
+                    signal,
+                    execute: (_request, call) =>
+                      readConfiguredHtmlQuery(
+                        resource,
+                        { queryId: call.queryId, parameters: call.values },
+                        business,
+                        signal,
+                        consumer,
+                      ),
+                    summaryOnly: !detail,
+                    detailsOnly: detail && !supply,
+                  },
+                );
+              }
             } catch (error) {
               signal.throwIfAborted();
               const details = record(error);
@@ -178,12 +224,21 @@ export function registerBranchInventoryTool(
             }
             return JSON.stringify({
               ...record(result),
-              unit: "箱",
+              unit: args.view === "operations" ? "各指标单位见units" : "件",
               cycleDays,
               asOf,
               readonly: true,
               metricDefinitions: {
-                countGrain: "分仓编码+SKU组合；计数不是去重SKU数。",
+                countGrain:
+                  args.view === "supply-current"
+                    ? "收货分仓+ASN+行号+SKU；仅未收货完成ASN。"
+                    : supply
+                      ? "收货分仓+补货执行单+行号+SKU；order_count为去重执行单数。"
+                      : "分仓编码+SKU组合；计数不是去重SKU数。",
+                baseSupply:
+                  "分仓向基地补货，按receive_wh归属；月度池按创建时间，本月满足率为逐行限额发货量合计÷同池订货量合计。当前订单按未收货完成ASN统计，关联基地出库单取占用；需求减占用后按订单创建时间分配基地与SKU共享可用库存。来源为当前加载，历史日期不构成历史状态重放。",
+                operations:
+                  "本月入库按已发布transactiontime业务日期统计月初至所选日期，in_qty单位件；自身出货按WMS关单日期与delivery_qty件统计，与页面本月出库同口径、按当前所选分仓统计，不代表省区全部出货；过仓及费用按warehouseid和月份精确匹配。缺日期或数量时不得把已知部分称为完整合计。",
                 planPresence:
                   "plan_count/stock_only_count仅描述计划记录覆盖，不证明有无订单需求或历史发货。",
                 target_gap_qty: {
@@ -195,7 +250,8 @@ export function registerBranchInventoryTool(
                 },
                 recommended_qty: {
                   label: "建议补货量",
-                  formula: "每个分仓SKU取max(目标库存-可用库存-调拨中量,0)，再相加",
+                  formula:
+                    "以已安装页面推荐量字段为准，使用当前订单净缺口及目标库存计算，已扣减已备货及在途；逐SKU截零后再相加，禁止另按汇总差额重算",
                   aggregation: "不同SKU的富余不能抵扣缺口，不能由全范围净差额倒算。",
                 },
                 open_transfer_reported_qty: "调拨备单与在途合计，已含在途，不重复叠加。",

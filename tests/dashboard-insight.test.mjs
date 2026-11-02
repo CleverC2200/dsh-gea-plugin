@@ -19,7 +19,9 @@ const owner = {
   consumer: "base-safety-stock",
   promptPath: "/installed/insight-prompt.md",
 };
-const input = { evidence: { metrics: { current: 100, target: 80 }, missing: ["orders"] } };
+const input = {
+  evidence: { metrics: { current: 100, target: 80 }, missing: ["orders"] },
+};
 function fixture() {
   let time = 1000,
     calls = [],
@@ -102,7 +104,9 @@ test("incomplete answers and cancelled requests are never cached", async () => {
   assert.equal(f.calls.length, 2);
   const c = new AbortController();
   c.abort();
-  await assert.rejects(f.generate(owner, input, c.signal), { name: "AbortError" });
+  await assert.rejects(f.generate(owner, input, c.signal), {
+    name: "AbortError",
+  });
   let allowed = true,
     calls = 0;
   const run = createDashboardInsightGenerator({
@@ -152,7 +156,80 @@ test("branch invalid format is rewritten at most once and never cached; base beh
   f.answer("过短的建议【待人工确认】。");
   await assert.rejects(f.generate(branch, input, new AbortController().signal), /FORMAT_INVALID/);
   assert.equal(f.calls.length, 2);
-  assert.match(f.calls[1].messages[1].content[0].text, /格式未通过/);
+  assert.equal(f.calls[1].messages[1].role, "assistant");
+  assert.equal(f.calls[1].messages[1].content[0].text, "过短的建议【待人工确认】。");
+  assert.match(f.calls[1].messages[2].content[0].text, /格式未通过/);
   await assert.rejects(f.generate(branch, input, new AbortController().signal), /FORMAT_INVALID/);
   assert.equal(f.calls.length, 4);
+});
+
+test("branch refuses unsupported stop-supply advice even when format passes", async () => {
+  const f = fixture();
+  f.answer(
+    "全仓目标缺失393个SKU，整体高低未知，但82个可比SKU订单扣减后可供量高于子集目标、偏差26.8%，高于目标仅限子集。缺目标与缺计算要素无SKU交集，品类分布未知，只能判断子集偏高与全仓目标缺失并存，不确认错配对象；基地侧月度满足率86.7%，待发11918件。本周对子集偏高部分停补并转去化【待人工确认】，今日内补齐目标口径再判全仓高低【待人工确认】。",
+  );
+  await assert.rejects(
+    f.generate(
+      { ...owner, consumer: "branch-inventory" },
+      {
+        evidence: {
+          decisionEvidence: {
+            slowSalesAndAgingConfirmed: false,
+            recommendationAllocatedToUrgentSkus: false,
+          },
+        },
+      },
+      new AbortController().signal,
+    ),
+    /EVIDENCE_INVALID/,
+  );
+  assert.equal(f.calls.length, 2);
+  assert.match(f.calls[1].messages[2].content[0].text, /未确认动销偏慢且货龄偏长/);
+});
+
+test("branch never assigns a summary recommendation to urgent SKUs without an allocation", async () => {
+  const f = fixture();
+  f.answer(
+    "全仓目标缺失，整体库存高低未知，仅已核实可比子集显示订单扣减后可供库存2033件、目标5010件、差额-2977件、偏差率-59.4%，子集明显偏低但不能代表全仓。当前无品类结构明细和SKU级交集证据，只能判断可比范围外存在目标或计算要素缺失，结构现象不能判定为跨品类错配。建议对17个紧急SKU本周内人工确认补货149件，并同步补齐缺口计算要素，均【待人工确认】。",
+  );
+  await assert.rejects(
+    f.generate(
+      { ...owner, consumer: "branch-inventory" },
+      { evidence: { decisionEvidence: { recommendationAllocatedToUrgentSkus: false } } },
+      new AbortController().signal,
+    ),
+    /EVIDENCE_INVALID/,
+  );
+  assert.equal(f.calls.length, 2);
+});
+
+test("full-chain uses its own judgement rules, keeps channel evidence, and rejects action instructions", async () => {
+  const f = fixture();
+  f.prompt("全链规则：200–280字，只写触发的经营判断，渠道观测未计入主值。");
+  const answer =
+    "公司体系库存100万件，其中基地60万件、分仓40万件，基地与分仓处在不同的库存位置，当前订单缺口2万件，现有证据只能确认库存水位与订单需求并存，不能据此认定总量不足或某一经营对象存在真实缺货。渠道库存当前不可观测，判断仅覆盖公司体系口径；渠道的覆盖率、业务日期和动销强度缺失，无法确认公司库存与渠道需求是否同向。当前缺少全量大区与品类风险排序、跨层SKU交集和同批次货龄明细，不能把页面当前展示的对象解释为全量风险排名。当前只能判断现象，不能确认具体SKU原因。";
+  f.answer(answer);
+  const chainOwner = {
+    ...owner,
+    consumer: "full-chain-inventory",
+    promptPath: "/installed/qll/insight-prompt.md",
+  };
+  await f.generate(
+    chainOwner,
+    { evidence: { channel: { inventory: null } } },
+    new AbortController().signal,
+  );
+  assert.match(f.calls[0].system, /全链库存看板/);
+  assert.doesNotMatch(f.calls[0].system, /基地库存看板|总量、结构分析、建议三段/);
+  assert.deepEqual(f.calls[0].tools, []);
+  f.answer(answer.replace("当前只能判断现象", "建议当前只能判断现象"));
+  await assert.rejects(
+    f.generate(
+      chainOwner,
+      { evidence: { channel: { inventory: 0 } } },
+      new AbortController().signal,
+    ),
+    /FORMAT_INVALID/,
+  );
+  assert.equal(f.calls.length, 3);
 });

@@ -315,6 +315,30 @@ test("actual HTML grant retains its declared Consumer and protected SQL failures
   grant.release();
   assert.equal(h.identities.size, 0);
 });
+test("full-chain live page grants insight and releases it with the page owner", async (t) => {
+  const h = await fixture(t, {
+    id: "inventory-qll",
+    consumer: "full-chain-inventory",
+  });
+  const grant = await h.authorize();
+  assert.equal(typeof grant.insight, "function");
+  await assert.rejects(
+    grant.insight({ prompt: "override" }, new AbortController().signal),
+    /INVALID_DASHBOARD_INSIGHT_INPUT/,
+  );
+  grant.release();
+  await assert.rejects(
+    async () => grant.insight({ evidence: {} }, new AbortController().signal),
+    /PAGE_OWNER_RELEASED/,
+  );
+  h.dispose();
+  const mock = await fixture(t, {
+    id: "inventory-qll",
+    consumer: "full-chain-inventory",
+    mock: true,
+  });
+  assert.equal((await mock.authorize()).insight, undefined);
+});
 test("real grant verifies selected official preset and installed resource before any Consumer launch", async (t) => {
   const h = await fixture(t);
   h.select("unrelated");

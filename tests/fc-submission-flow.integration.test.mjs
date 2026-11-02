@@ -132,6 +132,7 @@ test("real calculation, page persistence and Host adapters complete two batches 
         inventory_qty: 50,
         open_transfer_reported_qty: 40,
         current_order_remaining: 80,
+        calculation_order_remaining: 0,
         month_ship_positive: 30,
         period_next_out: 300,
         cycle_days: 7,
@@ -140,7 +141,7 @@ test("real calculation, page persistence and Host adapters complete two batches 
       "2026-10-26",
       7,
     );
-    assert.equal(row.recommended_qty, 115);
+    assert.equal(row.recommended_qty, 35);
     const provenance = await flow.fcSubmissionProvenance({
       warehouse: "001",
       asOf: "2026-10-26",
@@ -156,9 +157,9 @@ test("real calculation, page persistence and Host adapters complete two batches 
       {
         sku: "0001",
         productName: "测试产品",
-        recommendedQty: 115,
+        recommendedQty: 35,
         actualQty: 110,
-        reason: "人工确认调减5件",
+        reason: "人工确认增补75件",
       },
     ];
     const order = {

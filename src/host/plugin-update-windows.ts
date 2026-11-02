@@ -82,6 +82,7 @@ export async function prepareWindowsPackageRun(
   anchor: string,
   coreVersion: string,
   manager: PackageManager,
+  persistObservation: (observation: Observation) => Promise<void>,
 ) {
   if (
     !manager?.command ||
@@ -117,8 +118,11 @@ export async function prepareWindowsPackageRun(
   );
   let observed: Observation | null = null,
     empty = false,
-    unreliable = false;
-  function capture() {
+    unreliable = false,
+    capturing = false;
+  async function capture() {
+    if (capturing || unreliable) return;
+    capturing = true;
     try {
       const value: unknown = JSON.parse(readFileSync(proofPath, "utf8"));
       if (
@@ -150,7 +154,19 @@ export async function prepareWindowsPackageRun(
         )
           throw Error("WINDOWS_JOB_RUN_RECORD_MISMATCH");
         process.kill(value.pid, 0);
-        observed = { pid: value.pid, grouped: false, startIdentity: nonce, sawAlive: true };
+        const observation = {
+          pid: value.pid,
+          grouped: false,
+          startIdentity: nonce,
+          sawAlive: true,
+        };
+        try {
+          await persistObservation(observation);
+        } catch {
+          unreliable = true;
+          return;
+        }
+        observed = observation;
         const acknowledgement = join(directory, "windows-job-ack.json");
         writeFileSync(acknowledgement + ".tmp", JSON.stringify({ nonce }), {
           flag: "wx",
@@ -166,6 +182,8 @@ export async function prepareWindowsPackageRun(
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
         unreliable = true;
+    } finally {
+      capturing = false;
     }
   }
   const timer = setInterval(capture, 10);
@@ -181,7 +199,7 @@ export async function prepareWindowsPackageRun(
     async waitForQuiescence(waitMs: number) {
       const deadline = Date.now() + waitMs;
       do {
-        capture();
+        await capture();
         if (observed && empty && !unreliable) return true;
         await new Promise((resolve) => setTimeout(resolve, 25));
       } while (Date.now() < deadline);

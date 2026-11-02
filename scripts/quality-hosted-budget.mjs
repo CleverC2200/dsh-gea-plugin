@@ -1,3 +1,5 @@
+import { readHostedRun, verifyHostedSnapshot } from "./quality-hosted-run.mjs";
+export { readHostedRun, verifyHostedSnapshot } from "./quality-hosted-run.mjs";
 const budgetMs = 600000;
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -35,6 +37,61 @@ export async function waitForHostedRun({ intervalMs = 30000, timeoutMs = 1800000
   }
 }
 
+export function assessSourceRetry(history) {
+  if (!Array.isArray(history) || !history.length) throw Error("SOURCE_RETRY_HISTORY_REQUIRED");
+  const current = history.at(-1);
+  for (const [index, snapshot] of history.entries()) {
+    verifyHostedSnapshot(snapshot);
+    if (
+      snapshot.jobFilter ||
+      snapshot.expected.runAttempt !== index + 1 ||
+      history.length !== current.expected.runAttempt ||
+      (index < history.length - 1 && snapshot.run.status !== "completed")
+    )
+      throw Error("SOURCE_RETRY_REJECTED: complete attempt history required");
+    if (
+      ["repository", "runId", "headSha"].some(
+        (key) => snapshot.expected[key] !== current.expected[key],
+      )
+    )
+      throw Error("SOURCE_RETRY_REJECTED: history identity");
+  }
+  if (current.run.status !== "completed") return { action: "wait", reason: "run-not-completed" };
+  if (current.run.conclusion === "success") return { action: "complete", reason: "run-succeeded" };
+  const failures = (snapshot) =>
+    snapshot.jobs
+      .filter(
+        (job) =>
+          ["failure", "timed_out"].includes(job.conclusion) && job.name !== "candidate-quality",
+      )
+      .map((job) => ({
+        name: job.name,
+        step:
+          job.steps?.find((step) => ["failure", "timed_out"].includes(step.conclusion))?.name ??
+          null,
+      }));
+  const latest = failures(current);
+  const family = (failure) => failure.name.replace(/ \(\d+\)$/, "") + ":" + failure.step;
+  const earlier = new Set(history.slice(0, -1).flatMap(failures).map(family));
+  const repeated = latest.some((failure) => earlier.has(family(failure)));
+  const preparation = latest.some(
+    (failure) =>
+      !failure.step || /prepare|restore|download|polic|install|checkout/i.test(failure.step),
+  );
+  let reason = "failure-evidence-incomplete";
+  if (repeated) reason = "same-failure-stage-repeated";
+  else if (preparation) reason = "preparation-needs-diagnosis";
+  else if (latest.length) reason = "first-behavior-failure";
+  return {
+    action: reason === "first-behavior-failure" ? "retry-failed-only" : "diagnose",
+    repeated,
+    reason,
+    jobs: latest.map((failure) => failure.name),
+    failures: latest,
+    wholeRunRetry: "blocked",
+  };
+}
+
 export function assessSourceBudget(snapshot, options = {}) {
   const jobs = snapshot?.jobs ?? [];
   const sourceJobs = jobs.some((job) => /^source-checks \([12]\)$/.test(job.name))
@@ -60,133 +117,6 @@ export function assessSourceBudget(snapshot, options = {}) {
     result.passed = false;
   }
   return result;
-}
-
-export async function readHostedRun({
-  repository,
-  runId,
-  runAttempt,
-  headSha,
-  token,
-  apiBase = "https://api.github.com",
-  perPage = 100,
-}) {
-  const base = new URL(apiBase);
-  if (
-    (base.origin !== "https://api.github.com" &&
-      !(
-        base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)
-      )) ||
-    base.username ||
-    base.password ||
-    base.search ||
-    base.hash ||
-    base.pathname !== "/" ||
-    !/^[\w.-]+\/[\w.-]+$/.test(repository) ||
-    repository.split("/").some((part) => [".", ".."].includes(part)) ||
-    !Number.isSafeInteger(Number(runId)) ||
-    Number(runId) < 1 ||
-    !Number.isSafeInteger(Number(runAttempt)) ||
-    Number(runAttempt) < 1 ||
-    !/^[a-f0-9]{40}$/.test(headSha) ||
-    !Number.isInteger(perPage) ||
-    perPage < 1 ||
-    perPage > 100
-  )
-    throw Error("HOSTED_API_INPUT_REQUIRED");
-  const expected = { repository, runId: Number(runId), runAttempt: Number(runAttempt), headSha };
-  const prefix = `/repos/${repository}/actions/runs/${expected.runId}/attempts/${expected.runAttempt}`;
-  const get = async (path) => {
-    let response;
-    try {
-      response = await fetch(new URL(path, base), {
-        redirect: "error",
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2026-03-10",
-          ...(token ? { Authorization: "Bearer " + token } : {}),
-        },
-      });
-    } catch {
-      throw Error("HOSTED_API_READ_FAILED");
-    }
-    if (!response.ok) throw Error("HOSTED_API_READ_FAILED: " + response.status);
-    try {
-      return await response.json();
-    } catch {
-      throw Error("HOSTED_API_RESPONSE_REQUIRED");
-    }
-  };
-  const run = await get(prefix);
-  const jobs = [];
-  let totalCount, pageCount;
-  for (let page = 1; page === 1 || page <= pageCount; page++) {
-    const body = await get(prefix + `/jobs?per_page=${perPage}&page=${page}`);
-    if (
-      !body ||
-      !Number.isSafeInteger(body.total_count) ||
-      body.total_count < 0 ||
-      !Array.isArray(body.jobs) ||
-      body.jobs.length > perPage ||
-      (totalCount !== undefined && body.total_count !== totalCount)
-    )
-      throw Error("HOSTED_JOBS_INCOMPLETE");
-    totalCount ??= body.total_count;
-    pageCount ??= Math.max(1, Math.ceil(totalCount / perPage));
-    jobs.push(...body.jobs);
-  }
-  const snapshot = {
-    schemaVersion: 1,
-    expected,
-    run,
-    jobs,
-    observedAt: new Date().toISOString(),
-    pagination: { complete: jobs.length === totalCount, totalCount, pageCount, perPage },
-  };
-  verifyHostedSnapshot(snapshot);
-  return snapshot;
-}
-
-function verifyHostedSnapshot(snapshot) {
-  const { expected, run, jobs, pagination } = snapshot ?? {};
-  if (
-    snapshot?.schemaVersion !== 1 ||
-    !expected ||
-    !run ||
-    !Number.isSafeInteger(expected.runId) ||
-    !Number.isSafeInteger(expected.runAttempt) ||
-    !/^[a-f0-9]{40}$/.test(expected.headSha) ||
-    run.id !== expected.runId ||
-    run.run_attempt !== expected.runAttempt ||
-    run.head_sha !== expected.headSha ||
-    (run.repository?.full_name &&
-      run.repository.full_name.toLowerCase() !== expected.repository.toLowerCase())
-  )
-    throw Error("HOSTED_INPUT_MISMATCH");
-  if (
-    !Array.isArray(jobs) ||
-    !pagination ||
-    pagination.complete !== true ||
-    !Number.isSafeInteger(pagination.totalCount) ||
-    pagination.totalCount < 0 ||
-    jobs.length !== pagination.totalCount ||
-    !Number.isInteger(pagination.perPage) ||
-    pagination.perPage < 1 ||
-    pagination.perPage > 100 ||
-    pagination.pageCount !== Math.max(1, Math.ceil(pagination.totalCount / pagination.perPage)) ||
-    new Set(jobs.map((job) => job.id)).size !== jobs.length
-  )
-    throw Error("HOSTED_JOBS_INCOMPLETE");
-  for (const job of jobs)
-    if (
-      !Number.isSafeInteger(job.id) ||
-      job.id < 1 ||
-      job.run_id !== expected.runId ||
-      job.run_attempt !== expected.runAttempt ||
-      job.head_sha !== expected.headSha
-    )
-      throw Error("HOSTED_INPUT_MISMATCH");
 }
 
 export function assessFinalDependencies({
@@ -520,11 +450,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     options: {
       "source-report": { type: "string" },
       snapshot: { type: "string" },
+      "retry-plan": { type: "boolean" },
+      "request-retry": { type: "string" },
+      "retry-history": { type: "string" },
       "source-checks": { type: "string" },
       mode: { type: "string", default: "in-gate" },
     },
   });
   if (!values["source-report"]) throw Error("SOURCE_BUDGET_OUTPUT_REQUIRED");
+  if (values["request-retry"]) {
+    if (values["request-retry"] !== "failed")
+      throw Error(
+        "SOURCE_RETRY_FAILED_ONLY: whole-run retries require diagnosis and a changed verification plan",
+      );
+    values["retry-plan"] = true;
+  }
   const { summarizeSourceChecks, sourceReportMarkdown } =
     await import("./source-check-summary.mjs");
   let result;
@@ -538,10 +478,41 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
           headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
           token: process.env.GITHUB_TOKEN,
         });
-    result = assessSourceBudget(snapshot, {
-      mode: values.mode,
-      admission: process.env.SOURCE_ADMISSION_RESULT,
-    });
+    if (values["retry-plan"]) {
+      const history = values["retry-history"]
+        ? JSON.parse(readFileSync(values["retry-history"], "utf8"))
+        : [];
+      if (!values["retry-history"] && values.snapshot && snapshot.expected.runAttempt !== 1)
+        throw Error(
+          "SOURCE_RETRY_HISTORY_REQUIRED: --retry-history <complete attempt snapshots.json>",
+        );
+      if (!values["retry-history"] && !values.snapshot)
+        for (let attempt = 1; attempt < snapshot.expected.runAttempt; attempt++)
+          history.push(
+            await readHostedRun({
+              repository: snapshot.expected.repository,
+              runId: snapshot.expected.runId,
+              runAttempt: attempt,
+              headSha: snapshot.expected.headSha,
+              token: process.env.GITHUB_TOKEN,
+            }),
+          );
+      if (values["retry-history"]) {
+        if (JSON.stringify(history.at(-1)?.expected) !== JSON.stringify(snapshot.expected))
+          throw Error(
+            "SOURCE_RETRY_REJECTED: history does not end at the observed run/attempt/head",
+          );
+        history[history.length - 1] = snapshot;
+      } else history.push(snapshot);
+      result = { recovery: assessSourceRetry(history) };
+    }
+    result = {
+      ...result,
+      ...assessSourceBudget(snapshot, {
+        mode: values.mode,
+        admission: process.env.SOURCE_ADMISSION_RESULT,
+      }),
+    };
   } catch (error) {
     result = {
       schemaVersion: 1,
@@ -550,6 +521,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       functional: { status: "unknown" },
       performance: { status: "unknown", budgetMs, reasons: [error.message] },
       passed: false,
+      ...(values["retry-plan"]
+        ? { recovery: { action: "diagnose", reason: error.message, wholeRunRetry: "blocked" } }
+        : {}),
     };
   }
   if (values["source-checks"]) {
@@ -558,12 +532,24 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
         runId: result.identity?.runId ?? process.env.GITHUB_RUN_ID,
         runAttempt: result.identity?.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT,
+        producers: values.snapshot
+          ? undefined
+          : await readHostedRun({
+              repository: process.env.GITHUB_REPOSITORY,
+              runId: process.env.GITHUB_RUN_ID,
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              headSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+              token: process.env.GITHUB_TOKEN,
+              jobFilter: "latest",
+            }),
       });
     } catch (error) {
       result.coverage = { status: "unknown", error: error.message };
     }
   }
   writeFileSync(values["source-report"], JSON.stringify(result, null, 2) + "\n");
+  if (values["request-retry"] && result.recovery?.action !== "retry-failed-only")
+    process.exitCode = 1;
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, sourceReportMarkdown(result));
 }

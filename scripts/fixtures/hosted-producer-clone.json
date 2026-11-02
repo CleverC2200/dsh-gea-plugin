@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "jobFilter": "latest",
+  "expected": {
+    "repository": "CleverC2200/dsh-gea-plugin",
+    "runId": 41384087206,
+    "runAttempt": 2,
+    "headSha": "3d65835ee8ecb006833e8e4c94df681d3d9710ca"
+  },
+  "run": {
+    "id": 41384087206,
+    "run_attempt": 2,
+    "head_sha": "3d65835ee8ecb006833e8e4c94df681d3d9710ca",
+    "run_started_at": "2026-11-02T03:46:11Z"
+  },
+  "pagination": {
+    "complete": true,
+    "totalCount": 1,
+    "pageCount": 1,
+    "perPage": 100
+  },
+  "jobs": [
+    {
+      "id": 125083349692,
+      "name": "source-plan",
+      "run_id": 41384087206,
+      "run_attempt": 2,
+      "head_sha": "3d65835ee8ecb006833e8e4c94df681d3d9710ca",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-11-02T03:37:16Z",
+      "completed_at": "2026-11-02T03:37:39Z",
+      "runner_id": 1000025028,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-11-02T03:37:17Z",
+          "completed_at": "2026-11-02T03:37:17Z"
+        },
+        {
+          "name": "Record formal source inputs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-11-02T03:37:34Z",
+          "completed_at": "2026-11-02T03:37:34Z"
+        },
+        {
+          "name": "Keep formal source input receipt",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-11-02T03:37:34Z",
+          "completed_at": "2026-11-02T03:37:35Z"
+        }
+      ]
+    }
+  ],
+  "producerJobs": [
+    {
+      "attempt": 1,
+      "jobs": [
+        {
+          "id": 125080960138,
+          "name": "source-plan",
+          "run_id": 41384087206,
+          "run_attempt": 1,
+          "head_sha": "3d65835ee8ecb006833e8e4c94df681d3d9710ca",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T03:37:16Z",
+          "completed_at": "2026-11-02T03:37:39Z",
+          "runner_id": 1000025028,
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-11-02T03:37:17Z",
+              "completed_at": "2026-11-02T03:37:17Z"
+            },
+            {
+              "name": "Record formal source inputs",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12,
+              "started_at": "2026-11-02T03:37:34Z",
+              "completed_at": "2026-11-02T03:37:34Z"
+            },
+            {
+              "name": "Keep formal source input receipt",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13,
+              "started_at": "2026-11-02T03:37:34Z",
+              "completed_at": "2026-11-02T03:37:35Z"
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "complete": true,
+        "totalCount": 1,
+        "pageCount": 1,
+        "perPage": 100
+      }
+    }
+  ]
+}

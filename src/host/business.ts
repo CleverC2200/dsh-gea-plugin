@@ -1,3 +1,4 @@
+import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
 import { orderReportWithEdits } from "./order-report-edits.ts";
 import { resolveFcDmsTarget } from "./fc-dms-target.ts";
 import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
@@ -55,7 +56,8 @@ const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 
 import {
   validateServiceAccounts,
-  serviceAccountReady,
+  serviceAccountUnavailableReason,
+  serviceAccountUnavailableError,
   type ServiceAccounts,
 } from "./service-account.ts";
 import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
@@ -108,6 +110,7 @@ export interface Deployment {
   };
   serviceAccounts?: ServiceAccounts;
   dms?: DmsEnvironments;
+  orderFulfillmentConfirmation?: { production?: boolean; test?: boolean };
   fcStorage?: FcStorageEnvironments;
   geaBaseUrl: string;
   environment?: "production" | "test";
@@ -736,6 +739,10 @@ export class Business {
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly inventoryReads = new InventoryReadCache();
+  private readonly rejectedSqlLogins = new WeakMap<
+    AbortSignal,
+    { error: GeaResponseError; epoch: AbortController }
+  >();
   private readonly pluginDelegations = new Map<
     string,
     { authToken: string; delegationToken: string }
@@ -868,6 +875,7 @@ export class Business {
     this.salesTransactions = new SalesPlanTransactions({
       scope: (effect) => {
         this.assertExecutionAllowed(this.config.analysisAgentCode, effect);
+        if (effect === "submit" && !this.auth) throw serviceAccountUnavailableError("signed-out");
         return {
           auth: this.authenticated(),
           base: this.base,
@@ -1365,15 +1373,17 @@ export class Business {
   status() {
     const readonlyValidation = this.salesReadonly?.snapshot();
     const models = this.modelRoutes.get(WORKBENCH_AGENT_CODE)?.models;
+    const resubmitUnavailableReason = serviceAccountUnavailableReason(
+      this.config.serviceAccounts?.[this.environment],
+      this.auth,
+    );
     return {
       environment: this.environment,
       environments: Object.keys(this.environments),
       authenticated: Boolean(this.auth),
       pageScope: this.pageSessionScope() ?? null,
-      resubmitConnected: serviceAccountReady(
-        this.config.serviceAccounts?.[this.environment],
-        this.auth,
-      ),
+      resubmitConnected: resubmitUnavailableReason === undefined,
+      resubmitUnavailableReason,
       loginState: this.auth ? "authenticated" : this.loginExpired ? "expired" : "signed-out",
       permissionCodes: this.auth?.permissionCodes,
       roles: this.auth?.roles,
@@ -1574,7 +1584,32 @@ export class Business {
   async branchDms(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed("branch-inventory");
     const auth = this.authenticated();
-    const config = resolveFcDmsDeployment(this.config.dms, this.environment, auth);
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
+    let dmsIdentity: typeof auth & { workNo?: string } = auth;
+    if (this.environment === "production" && payload.operation !== "resolve-target") {
+      const profile = object(
+        await this.gatewayRequests.read(
+          "/sys/user/getUserInfo",
+          { token: auth.token, tenantId: auth.tenantId },
+          signal,
+        ),
+      );
+      const user = object(profile.userInfo);
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      if (
+        text(user.id) !== auth.id ||
+        String(user.loginTenantId ?? user.tenantId ?? "") !== auth.tenantId
+      )
+        throw Error("DMS 当前用户身份核验失败，请重新登录");
+      dmsIdentity = { ...auth, username: text(user.username), workNo: text(user.workNo) };
+      this.assertExecutionAllowed("branch-inventory");
+    }
+    const config = resolveFcDmsDeployment(this.config.dms, this.environment, dmsIdentity);
     if (payload.operation === "resolve-target") {
       keys(payload, ["operation", "warehouseCode", "addressCode"]);
       if (
@@ -1600,11 +1635,6 @@ export class Business {
     if (!config || bindings?.length !== 1)
       throw Error("DMS 当前环境或用户映射未配置，请联系管理员");
     keys(payload, ["operation", "order", "warehouseCode"]);
-    const signal = AbortSignal.any([
-      caller,
-      this.epoch.signal,
-      AbortSignal.timeout(this.config.requestTimeoutMs),
-    ]);
     const client = new DmsClient(config, bindings[0]);
     let result: unknown;
     if (payload.operation === "login") {
@@ -1645,7 +1675,7 @@ export class Business {
     return result;
   }
 
-  salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
+  async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     return this.salesTransactions.submit(payload, caller);
   }
 
@@ -2561,6 +2591,24 @@ export class Business {
   }
 
   private orderReportQueue: Promise<unknown> = Promise.resolve();
+  async orderSalesConfirmation(payload: unknown, caller: AbortSignal) {
+    this.assertExecutionAllowed("order01");
+    const auth = this.authenticated();
+    return orderSalesConfirmation(
+      payload,
+      {
+        enabled:
+          this.config.orderFulfillmentConfirmation?.[this.environment as "production" | "test"] ===
+          true,
+        base: this.base,
+        auth,
+        identity: this.epoch.signal,
+        signal: caller,
+        timeoutMs: this.config.requestTimeoutMs,
+      },
+      this.apiLog.fetch,
+    );
+  }
   async orderReport(payload: Record<string, unknown>, caller: AbortSignal) {
     const auth = this.authenticated();
     const signal = AbortSignal.any([caller, this.epoch.signal]);
@@ -2703,52 +2751,65 @@ export class Business {
       const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
       if (cached !== undefined) return cached;
     }
-    let rejectedCurrentLogin: { error: GeaResponseError; epoch: AbortController } | undefined;
     const getDelegation = async () => {
-      let delegation = this.pluginDelegations.get(consumerCode);
-      if (delegation?.authToken === auth.token) return delegation;
-      const requestId = randomUUID();
-      const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
-        method: "POST",
-        redirect: "error",
-        signal,
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Access-Token": auth.token,
-          "X-Tenant-Id": auth.tenantId,
-          "X-Request-Id": requestId,
+      const cached = this.pluginDelegations.get(consumerCode);
+      if (cached?.authToken === auth.token) return cached;
+      await this.inventoryReads.share(
+        identity,
+        JSON.stringify(["sql-delegation", consumerCode]),
+        caller,
+        async (requestSignal) => {
+          const requestId = randomUUID();
+          const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+            method: "POST",
+            redirect: "error",
+            signal: requestSignal,
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              "X-Access-Token": auth.token,
+              "X-Tenant-Id": auth.tenantId,
+              "X-Request-Id": requestId,
+            },
+            body: JSON.stringify({
+              agentCode: consumerCode,
+              channel: "AI_PORTAL",
+              requestId,
+              conversationId: randomUUID(),
+            }),
+          });
+          if (!response.ok) {
+            const error = await geaResponseError(response, [auth.token]);
+            requestSignal.throwIfAborted();
+            if (response.status === 401 && this.auth?.token === auth.token) {
+              this.clearLogin(true);
+              this.rejectedSqlLogins.set(identity, { error, epoch: this.epoch });
+            }
+            throw error;
+          }
+          const body = object(await response.json());
+          requestSignal.throwIfAborted();
+          if (this.auth !== auth) throw Error("STALE_LOGIN");
+          const result = object(body.result);
+          if (
+            body.success !== true ||
+            object(result.accessDecision).allowed !== true ||
+            typeof result.delegationToken !== "string" ||
+            !result.delegationToken
+          )
+            throw new Error("GEA_PLUGIN_SESSION_REJECTED");
+          const delegation = {
+            authToken: auth.token,
+            delegationToken: result.delegationToken,
+          };
+          this.pluginDelegations.set(consumerCode, delegation);
+          requestSignal.throwIfAborted();
+          return true;
         },
-        body: JSON.stringify({
-          agentCode: consumerCode,
-          channel: "AI_PORTAL",
-          requestId,
-          conversationId: randomUUID(),
-        }),
-      });
-      if (!response.ok) {
-        const error = await geaResponseError(response, [auth.token]);
-        signal.throwIfAborted();
-        if (response.status === 401 && this.auth?.token === auth.token) {
-          this.clearLogin(true);
-          rejectedCurrentLogin = { error, epoch: this.epoch };
-        }
-        throw error;
-      }
-      const body = object(await response.json());
-      const result = object(body.result);
-      if (
-        body.success !== true ||
-        object(result.accessDecision).allowed !== true ||
-        typeof result.delegationToken !== "string" ||
-        !result.delegationToken
-      )
-        throw new Error("GEA_PLUGIN_SESSION_REJECTED");
-      delegation = {
-        authToken: auth.token,
-        delegationToken: result.delegationToken,
-      };
-      this.pluginDelegations.set(consumerCode, delegation);
+      );
+      signal.throwIfAborted();
+      const delegation = this.pluginDelegations.get(consumerCode);
+      if (delegation?.authToken !== auth.token) throw Error("GEA_PLUGIN_SESSION_REJECTED");
       return delegation;
     };
     try {
@@ -2860,14 +2921,14 @@ export class Business {
     } catch (error) {
       // Caller cancellation wins; only this live request's authentication rejection may explain its identity abort.
       caller.throwIfAborted();
+      const rejectedCurrentLogin = this.rejectedSqlLogins.get(identity);
       if (
         rejectedCurrentLogin !== undefined &&
-        rejectedCurrentLogin.error === error &&
         rejectedCurrentLogin.epoch === this.epoch &&
         !this.auth &&
         this.loginExpired
       )
-        throw error;
+        throw rejectedCurrentLogin.error;
       // Page refresh, range changes and identity cancellation are not failed reads.
       signal.throwIfAborted();
       // A failed delegated credential must not poison the next page refresh.

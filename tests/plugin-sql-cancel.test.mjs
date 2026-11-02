@@ -198,6 +198,26 @@ test("a current login rejected by SQL delegation preserves its original 401 whil
   assert.equal(business.status().authenticated, false);
 });
 
+test("shared delegation 401 reaches every active waiter without replacing it with identity cancellation", async (t) => {
+  const business = fixture(t);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return Response.json({ message: "login expired" }, { status: 401 });
+  });
+  const results = await Promise.allSettled([
+    business.pluginSql(query, new AbortController().signal),
+    business.pluginSql(query, new AbortController().signal),
+  ]);
+  assert.equal(calls, 1);
+  for (const result of results) {
+    assert.equal(result.status, "rejected");
+    assert.equal(result.reason.code, "GEA_HTTP_401");
+  }
+  assert.equal(business.status().authenticated, false);
+});
+
 for (const transition of ["caller", "logout", "user", "environment"])
   test("late delegation 401 cannot override " + transition + " cancellation", async (t) => {
     const business = fixture(t);

@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual; inventory-fc fixed-tool and calculation rules use merged Manage #81 author source; inventory AQKC and FC full source bytes follow merged Manage #91 at 662413674cfac1fd2942f1a8e4d03b3fd3847f2c",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; MPS metadata uses its separately pinned author source, never model actual; inventory-fc fixed-tool and calculation rules use merged Manage #81 author source; inventory AQKC and FC full source bytes follow merged Manage #91 at 662413674cfac1fd2942f1a8e4d03b3fd3847f2c; current MPS author bytes follow already merged Manage a92b42cfe44dc350224d98d9b0832b85cc01dfc5; this inventory integration does not modify that Skill",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -16,10 +16,10 @@
       {
         "owner": "workbench",
         "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
-        "sha256": "1f14aef0df7c5d2eb77ac9d2dc647443f0ad8c1f6fc732b71bfae17a7124fc81",
+        "sha256": "1756c184ffa5946e63e8b2cc2fd9611090edd21be1ec1dc6eacd25513af8af39",
         "name": "inventory-mps",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "17e61697d7d24b50314bbabefb337b8790436a2d",
+        "sourceHead": "a92b42cfe44dc350224d98d9b0832b85cc01dfc5",
         "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       },
       {

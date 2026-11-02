@@ -162,7 +162,7 @@ for (const id of ["fc", "aqkc", "qll", "dealer", "apsplan", "mps"])
       { name: "AbortError" },
     );
   });
-test("configured gateway transport sends named parameters once without appending pagination, preserving permission metadata", async () => {
+test("configured gateway transport preserves SQL-owned pagination without conflicting request pagination", async () => {
   const requests = [];
   const s = signal();
   const db = createGeaSqlDatabase(() => "private-fixture-token", {
@@ -189,6 +189,35 @@ test("configured gateway transport sends named parameters once without appending
   const result = await db.queryConfigured(request);
   assert.deepEqual(requests, [request]);
   assert.equal(result.rejectedColumns[0].outputAlias, "qty");
+});
+test("configured 200-row SQL pages preserve the requested limit and offset", async () => {
+  const request = {
+    sql: "SELECT t.sku AS sku FROM published AS t ORDER BY t.sku LIMIT :gea_p1 OFFSET :gea_p2",
+    parameters: { gea_p1: 200, gea_p2: 200 },
+    includeTotal: false,
+  };
+  let envelope;
+  const db = createGeaSqlDatabase(() => "fixture-token", {
+    endpoint: "https://fixture.invalid/sql",
+    signal: signal(),
+    fetch: async (_url, init) => {
+      envelope = JSON.parse(init.body);
+      return Response.json({
+        success: true,
+        result: {
+          rows: Array.from({ length: envelope.parameters.gea_p1 }, (_, i) => ({
+            sku: String(200 + i),
+          })),
+        },
+      });
+    },
+  });
+  const result = await db.queryConfigured(request);
+  assert.equal(result.rows.length, 200);
+  assert.equal(envelope.pageNo, undefined, "SQL owns the offset");
+  assert.equal(envelope.pageSize, undefined, "SQL owns the limit");
+  assert.equal(envelope.sql, request.sql);
+  assert.deepEqual(envelope.parameters, request.parameters);
 });
 test("structured permission failures survive configured transport with secret redaction and no retry", async () => {
   let calls = 0;

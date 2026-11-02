@@ -1,3 +1,4 @@
+import { readHostedProducerJobs, hostedProducerAttempt } from "./quality-hosted-run.mjs";
 import { isDeepStrictEqual, parseArgs } from "node:util";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
@@ -122,16 +123,13 @@ function bindRun(run, context) {
   return prs[0];
 }
 async function readJobs(read, run, context) {
-  const jobs = await pages(
-    read,
-    `${prefix}/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
-    "jobs",
-  );
+  const jobs = await pages(read, `${prefix}/runs/${run.id}/jobs?filter=latest`, "jobs");
   requireValue(
     jobs.every(
       (job) =>
         job.run_id === run.id &&
-        job.run_attempt === run.run_attempt &&
+        positive(job.run_attempt) &&
+        job.run_attempt <= run.run_attempt &&
         job.head_sha === context.head &&
         typeof job.name === "string",
     ),
@@ -233,8 +231,31 @@ async function inspect({ context, read }) {
       "formal admission missing",
     );
     const artifacts = await pages(read, `${prefix}/runs/${run.id}/artifacts`, "artifacts");
+    const expectedProducer = {
+      repository: context.repository,
+      runId: run.id,
+      runAttempt: run.run_attempt,
+      headSha: context.head,
+    };
+    const inputRunAttempt = hostedProducerAttempt(
+      {
+        schemaVersion: 1,
+        expected: expectedProducer,
+        run,
+        jobs,
+        jobFilter: "latest",
+        pagination: {
+          complete: true,
+          totalCount: jobs.length,
+          perPage: 100,
+          pageCount: Math.max(1, Math.ceil(jobs.length / 100)),
+        },
+        producerJobs: await readHostedProducerJobs(read, expectedProducer),
+      },
+      "source-plan",
+    );
     const matches = artifacts.filter(
-      (artifact) => artifact.name === `source-inputs-${run.run_attempt}`,
+      (artifact) => artifact.name === `source-inputs-${inputRunAttempt}`,
     );
     requireValue(
       matches.length === 1 &&
@@ -259,6 +280,7 @@ async function inspect({ context, read }) {
         context,
         runId: run.id,
         runAttempt: run.run_attempt,
+        inputRunAttempt,
         artifactId: artifact.id,
         artifactName: artifact.name,
       },
@@ -300,7 +322,7 @@ export async function verifyFormalSource({ context, selection, receipt, read }) 
       same(receipt.context, {
         ...context,
         runId: selection.runId,
-        runAttempt: selection.runAttempt,
+        runAttempt: selection.inputRunAttempt,
       }),
     "receipt identity",
   );

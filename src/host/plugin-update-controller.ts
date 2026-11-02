@@ -777,6 +777,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                     options.profile.installAnchor,
                     options.core.version,
                     options.profile.packageManager,
+                    async (observation) => {
+                      await stage("installing", null, { processes: [observation] });
+                    },
                   )
                 : null;
             currentMonitor = windowsRun;
@@ -852,6 +855,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                   "--ignore-scripts",
                   "--ignore-pnpmfile",
                   "--config.auto-install-peers=false",
+                  "--config.update-notifier=false",
                 ],
                 {
                   ...(windowsRun?.packageManager ?? options.profile.packageManager),
