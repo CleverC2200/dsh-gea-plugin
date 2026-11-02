@@ -210,6 +210,7 @@ export function businessDeploymentPatch(
             memoryGatewayAllowPrivateHttp: config.memoryGatewayAllowPrivateHttp,
             serviceAccounts: config.serviceAccounts,
             dms: config.dms,
+            orderFulfillmentConfirmation: config.orderFulfillmentConfirmation,
             fcStorage: config.fcStorage,
             environment: config.environment,
             geaEnvironments: config.geaEnvironments,
