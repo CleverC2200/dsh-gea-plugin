@@ -7,8 +7,7 @@ import {
 } from "./shared/memory-contract.ts";
 import { MemorySessionLedger } from "./host/memory-session-ledger.ts";
 import { createGeaMemoryService } from "./host/memory-service.ts";
-import { loadServiceAccountCredentials } from "./shared/service-accounts.js";
-import type { ServiceAccounts } from "./host/service-account.ts";
+import { validateServiceAccounts } from "./shared/service-accounts.js";
 import {
   GeaModelAdapter,
   geaKeptReasoningEffort,
@@ -93,7 +92,7 @@ export const Config = z.object({
   memoryGatewayUrl: z.string().default(DEFAULT_MEMORY_GATEWAY_URL),
   memoryGatewayAllowPrivateHttp: z.boolean().default(false),
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
-  serviceAccounts: z.any<ServiceAccounts>(),
+  serviceAccounts: z.any(),
   dms: z.any<Deployment["dms"]>(),
   orderFulfillmentConfirmation: z.any<Deployment["orderFulfillmentConfirmation"]>(),
   fcStorage: z.any<Deployment["fcStorage"]>(),
@@ -228,7 +227,7 @@ export async function apply(
         ? companyDefaults.geaEnvironments
         : undefined),
   };
-  await loadServiceAccountCredentials(config.serviceAccounts);
+  validateServiceAccounts(config.serviceAccounts);
   ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config));
   const business = new Business(config);
   const desktopLogin = await attachDesktopLogin(business);

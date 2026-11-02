@@ -312,6 +312,7 @@ test("service submission and its detail reads retain only audit metadata and can
   );
   for (const [path, method] of [
     ["/api/v1/internal/sales-plans", "POST"],
+    ["/sales-plan/plans/resubmit", "POST"],
     ["/sales-plan/plans/private-plan", "GET"],
     ["/sales-plan/plans/versions/private-version/skus", "GET"],
     ["/sales-plan/plans", "GET"],

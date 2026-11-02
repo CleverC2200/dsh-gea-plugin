@@ -1,4 +1,3 @@
-import { serializeSalesPlanSubmission } from "./sales-plan-wire.ts";
 import {
   correctionDecimal,
   salesPlanAccessForRow,
@@ -18,12 +17,7 @@ import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { isDeepStrictEqual } from "node:util";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { object, text, keys } from "./payload.ts";
-import {
-  serviceAccountUnavailableReason,
-  serviceAccountUnavailableError,
-  ServiceAccountSession,
-  type ServiceAccountConfig,
-} from "./service-account.ts";
+import { serializeSalesPlanSubmission } from "./sales-plan-wire.ts";
 
 /** Borrow Business's current identity for one write attempt. */
 export type SalesPlanWriteIdentity = {
@@ -38,7 +32,6 @@ type SalesPlanWriteScope = {
   auth: SalesPlanWriteIdentity;
   base: string;
   signal: AbortSignal;
-  serviceAccount: ServiceAccountConfig | undefined;
 };
 type WriteIntent = {
   fingerprint: string;
@@ -80,11 +73,9 @@ function upstreamActionBody(request: Record<string, unknown>): Record<string, un
 export class SalesPlanTransactions {
   constructor(private readonly host: SalesPlanHost) {}
   clear(): void {
-    this.serviceAccount.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
   }
-  private readonly serviceAccount = new ServiceAccountSession();
   /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
   private readonly resubmissions = new Map<string, WriteIntent>();
 
@@ -94,10 +85,6 @@ export class SalesPlanTransactions {
     payload = structuredClone(payload);
     keys(payload, ["source", "request", "requestId", "idempotencyKey"]);
     const auth = scope.auth;
-    const config = scope.serviceAccount;
-    if (!config) throw serviceAccountUnavailableError("configuration");
-    const unavailableReason = serviceAccountUnavailableReason(config, auth);
-    if (unavailableReason) throw serviceAccountUnavailableError(unavailableReason);
     const source = object(payload.source);
     keys(source, ["planId", "versionId"]);
     const planId = text(source.planId),
@@ -215,16 +202,16 @@ export class SalesPlanTransactions {
           });
         if (scope.signal.aborted) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
-        attempt.body = serializeSalesPlanSubmission(prepared.request);
+        const submission = { ...prepared.request, submitterCode: text(version.submitter) };
+        delete submission.submitterName;
+        attempt.body = serializeSalesPlanSubmission(submission);
       }
-      const receipt = await this.serviceAccount.submit(
-        config,
-        scope.base,
-        attempt.body,
+      const receipt = await this.executeResubmission(
         requestId,
         idempotencyKey,
+        attempt.body,
+        scope,
         signal,
-        this.host.fetch,
       );
       attempt.receipt = receipt;
       return receipt;
@@ -233,6 +220,110 @@ export class SalesPlanTransactions {
       attempt.flight = undefined;
     });
     return attempt.flight;
+  }
+
+  private async executeResubmission(
+    requestId: string,
+    idempotencyKey: string,
+    body: string,
+    scope: SalesPlanWriteScope,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const uncertain = () => {
+      const error = new GeaResponseError(502, {
+        message: "重提结果暂时未知，请使用原操作重试或回读状态",
+      });
+      error.details.retrySameIntent = true;
+      return error;
+    };
+    const assertCurrent = () => {
+      if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+      if (signal.aborted) throw uncertain();
+    };
+    let response: Response;
+    try {
+      response = await this.host.fetch(scope.base + "/sales-plan/plans/resubmit", {
+        method: "POST",
+        redirect: "error",
+        signal,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Access-Token": scope.auth.token,
+          "X-Tenant-Id": scope.auth.tenantId,
+          "X-Request-Id": requestId,
+          "Idempotency-Key": idempotencyKey,
+        },
+        body,
+      });
+    } catch {
+      assertCurrent();
+      throw uncertain();
+    }
+    assertCurrent();
+    if (!response.ok) {
+      const error = await geaResponseError(response, [scope.auth.token]);
+      assertCurrent();
+      if (response.status === 401) this.host.expire(scope.auth);
+      if (response.status >= 500 && error.details.retryable !== false)
+        error.details.retrySameIntent = true;
+      throw error;
+    }
+    let data: Record<string, unknown>;
+    try {
+      data = object(this.host.decode(await response.text()));
+    } catch {
+      assertCurrent();
+      throw uncertain();
+    }
+    assertCurrent();
+    if (data.success !== true || !data.result) {
+      const status =
+        data.code === 510
+          ? 403
+          : typeof data.code === "number" && data.code >= 400 && data.code <= 599
+            ? data.code
+            : 502;
+      const error = new GeaResponseError(status, data, [scope.auth.token]);
+      if (status === 401) this.host.expire(scope.auth);
+      if (status >= 500 && error.details.retryable !== false) error.details.retrySameIntent = true;
+      throw error;
+    }
+    let receipt: Record<string, unknown>;
+    try {
+      receipt = object(data.result);
+    } catch {
+      throw uncertain();
+    }
+    if (
+      typeof receipt.planId !== "string" ||
+      !receipt.planId.trim() ||
+      typeof receipt.versionId !== "string" ||
+      !receipt.versionId.trim() ||
+      typeof receipt.seq !== "number" ||
+      !Number.isSafeInteger(receipt.seq) ||
+      receipt.seq <= 0 ||
+      typeof receipt.status !== "number" ||
+      !Number.isInteger(receipt.status) ||
+      receipt.status < 0 ||
+      receipt.status > 10 ||
+      typeof receipt.replayed !== "boolean" ||
+      receipt.requestId !== requestId ||
+      typeof receipt.traceId !== "string" ||
+      !receipt.traceId.trim() ||
+      (receipt.auditId != null && typeof receipt.auditId !== "string")
+    )
+      throw uncertain();
+    return {
+      planId: receipt.planId,
+      versionId: receipt.versionId,
+      seq: receipt.seq,
+      status: receipt.status,
+      replayed: receipt.replayed,
+      requestId: receipt.requestId,
+      traceId: receipt.traceId,
+      auditId: receipt.auditId ?? null,
+    };
   }
 
   private readonly correctionRequests = new Map<string, WriteIntent>();

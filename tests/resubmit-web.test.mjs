@@ -5,7 +5,7 @@ import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 import { profile } from "./profile.mjs";
 
-test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { timeout: 60000 }, async (t) => {
+test("月初与纠偏入口恢复，无数量修改仍禁止重提", { timeout: 60000 }, async (t) => {
   const app = await profile(t);
   const plan = {
     planId: "p-jxs-2026-10-00001",
@@ -157,14 +157,14 @@ test("月初与纠偏入口恢复，客户重提仍受服务授权控制", { tim
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
   await expect(dialog).toContainText("没有数量修改");
-  await expect(dialog).toContainText("当前环境尚未配置服务提报通道，请联系管理员完成接入配置。");
+  await expect(dialog).not.toContainText("当前环境尚未配置服务提报通道");
   await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await frame.getByRole("tab", { name: "月初", exact: true }).click();
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   assert.equal(
     app.requests.some(
-      (r) => r.method === "POST" && r.url.pathname.includes("/internal/sales-plans"),
+      (r) => r.method === "POST" && r.url.pathname.endsWith("/sales-plan/plans/resubmit"),
     ),
     false,
   );

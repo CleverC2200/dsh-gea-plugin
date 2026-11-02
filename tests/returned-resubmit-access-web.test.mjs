@@ -3,25 +3,20 @@ import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import { fixture, captureEvidence, selectPlan } from "./fixtures/returned-review.mjs";
 
-test(
-  "service configuration unavailable permits review but blocks submission",
-  { timeout: 90000 },
-  async (t) => {
-    const { frame, page, app, submitted } = await fixture(t, {
-      serviceReady: false,
-    });
-    await selectPlan(frame);
-    await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
-    const dialog = frame.getByRole("dialog", {
-      name: "确认修改并重提",
-      exact: true,
-    });
-    await expect(dialog).toContainText("当前环境尚未配置服务提报通道，请联系管理员完成接入配置。");
-    await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeDisabled();
-    await captureEvidence(page, app, "submission-unavailable");
-    assert.equal(submitted.length, 0);
-  },
-);
+test("employee can resubmit without local service configuration", { timeout: 90000 }, async (t) => {
+  const { frame, page, app, submitted } = await fixture(t);
+  await selectPlan(frame);
+  await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
+  const dialog = frame.getByRole("dialog", {
+    name: "确认修改并重提",
+    exact: true,
+  });
+  await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
+  await expect(dialog).toContainText("提交成功，已核验最新状态。");
+  await captureEvidence(page, app, "employee-without-service-configuration");
+  assert.equal(submitted.length, 1);
+});
 
 test(
   "submission refusal preserves the business reason without another write path",
