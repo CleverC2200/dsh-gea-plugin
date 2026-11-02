@@ -16,6 +16,7 @@ import { allowedTools, profileFor, promptMeasurement, TOOL_DESCRIPTIONS } from "
 import { cubeAllowed, resolveCubeAccess } from "./cube-access.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
 import { modulePagePrompt } from "./module-page-scope.ts";
+import { moduleAnswerPolicy } from "./module-answer-policy.ts";
 import { orchestrationInventoryAllowed } from "./orchestration-inventory-access.ts";
 
 const fixedInventoryMethod = (name: string) =>
@@ -472,7 +473,7 @@ export function mountBusinessPrompts(
             description: TOOL_DESCRIPTIONS[tool.name] ?? tool.description,
           }),
         );
-      const sections = currentShortageResource(profile.consumerCode)
+      const baseSections = currentShortageResource(profile.consumerCode)
         ? [
             ...assembled.sections,
             {
@@ -488,6 +489,10 @@ export function mountBusinessPrompts(
             },
           ]
         : assembled.sections;
+      const answerPolicy = moduleAnswerPolicy(presetOf(agent) ?? undefined);
+      const sections = answerPolicy
+        ? [...baseSections, { name: "module-answer-evidence", text: answerPolicy }]
+        : baseSections;
       const measurement = promptMeasurement(
         sections.map((section) => section.text).join("\n\n"),
         tools,

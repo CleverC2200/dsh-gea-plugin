@@ -46,6 +46,7 @@ export function modulePagePrompt(host: Host, session: string): string | undefine
         observationSemantics: payload.observationSemantics,
         metrics: payload.metrics,
         metricSemantics: payload.metricSemantics,
+        metricContract: payload.metricContract,
         totalFilteredRows: payload.totalFilteredRows,
         fieldCoverage: payload.fieldCoverage,
         summary: payload.summary ? { ...payload.summary, customerCodes: undefined } : undefined,

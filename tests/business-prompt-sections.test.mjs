@@ -144,6 +144,14 @@ test("business section policy preserves native UI protocol and leaves ordinary c
     /Do not call present just to list edited source files.*run commands to check whether a diff view/,
   );
   assert.equal(assembly.sections[3].text, nativeFiles.text);
+  for (const module of ["customer", "orderfulfillment", "orderworkbench"]) {
+    preset = "gea-html-inventory-" + module;
+    const pageView = await assemble();
+    assert.deepEqual(pageView.sections.slice(0, sections.length), sections);
+    assert.equal(pageView.sections.at(-1).name, "module-answer-evidence");
+    assert.deepEqual(pageView.tools, assembly.tools);
+    assert.equal(assembly.sections, sections);
+  }
   preset = "standard";
   const ordinary = await assemble();
   assert.deepEqual(ordinary.sections, sections);
