@@ -254,7 +254,9 @@ export async function currentMcp(t, options = {}) {
       );
     }
     if (wire.method === "notifications/initialized") return new Response(null, { status: 202 });
-    if (wire.method === "tools/list")
+    if (wire.method === "tools/list") {
+      const custom = await options.toolsHandler?.(wire, init, reply);
+      if (custom !== undefined) return custom;
       return reply({
         tools: [
           ...(options.extraTools ?? []),
@@ -276,6 +278,7 @@ export async function currentMcp(t, options = {}) {
           },
         ],
       });
+    }
     const custom = await handler?.(wire, init, reply);
     if (custom !== undefined) return custom;
     if (wire.method === "tools/call" && wire.params.name === "inspect_cube_model")
