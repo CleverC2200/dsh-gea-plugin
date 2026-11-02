@@ -21,7 +21,9 @@ const names = [...companyPackageNames, "@changfenhuang/dsh-genui"];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const recoveringInstallation = (receipt) =>
-  receipt?.status === "installing" || receipt?.recovery === "offline-dependency";
+  receipt?.status === "installing" ||
+  receipt?.recovery === "offline-dependency" ||
+  receipt?.recovery === "installation-timeout";
 const desktopCore = ciCores("required")[0];
 const registeredCores = await json(new URL("../scripts/supported-cores.json", import.meta.url));
 const desktopCoreHeads = new Set(
@@ -207,10 +209,21 @@ async function assertCompletedInstallation(record, profile, { allowInterrupted =
       local[1] !== "pnpm.log"
     )
       throw Error("NOT_RECOVERABLE");
-    if ((await lstat(log)).isSymbolicLink()) throw Error("NOT_RECOVERABLE");
+    for (const path of [
+      join(profile, ".plugin-manager"),
+      join(profile, ".plugin-manager/logs"),
+      join(profile, ".plugin-manager/logs", local[0]),
+      log,
+    ])
+      if ((await lstat(path)).isSymbolicLink()) throw Error("NOT_RECOVERABLE");
     const output = await readFile(log, "utf8");
     if (allowInterrupted && /^\[ERR_PNPM_NO_OFFLINE_TARBALL\](?: |$)/m.test(output))
       return { ...receipt, recovery: "offline-dependency" };
+    if (
+      allowInterrupted &&
+      /(?:^|\n)dsh: pnpm printed nothing for 120000ms and was terminated\n?$/.test(output)
+    )
+      return { ...receipt, recovery: "installation-timeout" };
     if (
       !output.startsWith("[ERR_PNPM_UNEXPECTED_STORE]") ||
       existsSync(join(record, "before-store-conflict-retry.json"))
@@ -392,7 +405,7 @@ export async function installCompanyPackages({
             "add",
             ...archives.packages,
             ...offlineArguments,
-            ...(seededLock ? ["--config.frozen-lockfile=true"] : []),
+            ...(seededLock ? ["--config.frozen-lockfile=true", "--trust-lockfile"] : []),
             ...(strictPeers
               ? ["--strict-peer-dependencies", "--config.auto-install-peers=false"]
               : []),

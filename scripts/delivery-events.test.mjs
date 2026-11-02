@@ -60,6 +60,7 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "source_types_input",
     "windows_certificate_test",
     "windows_complete_input",
+    "windows_overwrite_artifact_run",
     "windows_signed",
     "windows_update_acceptance",
   ]);
@@ -178,7 +179,7 @@ test("standalone delivery retains package Prompt and source checks while candida
   const steps = job.steps;
   assert.equal(
     job.if,
-    "(github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
+    "(github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test && inputs.windows_overwrite_artifact_run == '') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
   );
   assert.deepEqual(
     steps
@@ -324,7 +325,7 @@ test("manual delivery runs dependency-free Core cache fixtures on Windows and ma
   assert.ok(job);
   assert.equal(
     job.if,
-    "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test",
+    "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test && inputs.windows_overwrite_artifact_run == ''",
   );
   assert.deepEqual(job.strategy.matrix.os, ["windows-2025", "macos-15"]);
   assert.equal(job.strategy["fail-fast"], false);

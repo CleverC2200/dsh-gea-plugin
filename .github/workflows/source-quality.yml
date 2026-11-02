@@ -301,6 +301,12 @@ jobs:
             npm install --global npm@11.11.0
           fi
           corepack enable
+      - name: Reclaim unused hosted SDKs before native preparation
+        if: (steps.affected.outputs.core == 'true' || steps.affected.outputs.sdk == 'true') && steps.reuse.outputs.hit != 'true'
+        run: |
+          df -h "$GITHUB_WORKSPACE"
+          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /usr/local/.ghcup /opt/ghc
+          df -h "$GITHUB_WORKSPACE"
       - name: Locate existing package download cache
         if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
         id: cache-path
