@@ -171,8 +171,14 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/source-preparation(?:\\.test)?\\.mjs$",
-      "tests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"],
-      "sourceTests": ["scripts/source-preparation.test.mjs", "scripts/run-quality-ci.test.mjs"]
+      "tests": [
+        "scripts/source-preparation.test.mjs",
+        "scripts/run-quality-ci.test.mjs"
+      ],
+      "sourceTests": [
+        "scripts/source-preparation.test.mjs",
+        "scripts/run-quality-ci.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -201,18 +207,30 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:ci-core-policy\\.(?:json|mjs)|supported-cores\\.json)$",
-      "tests": ["scripts/windows-complete-local/input.test.mjs", "scripts/delivery-events.test.mjs"]
+      "tests": [
+        "scripts/windows-complete-local/input.test.mjs",
+        "scripts/delivery-events.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/capability/html-mcp(?:\\.mjs|\\.d\\.mts)$",
-      "tests": ["tests/html-resource-contract.test.mjs", "scripts/deliver-packages.test.mjs"]
+      "tests": [
+        "tests/html-resource-contract.test.mjs",
+        "scripts/deliver-packages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^\\.codex/environments/environment\\.toml$",
-      "tests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"],
-      "sourceTests": ["scripts/source-quality.test.mjs", "scripts/development-tasks.test.mjs"]
+      "tests": [
+        "scripts/source-quality.test.mjs",
+        "scripts/development-tasks.test.mjs"
+      ],
+      "sourceTests": [
+        "scripts/source-quality.test.mjs",
+        "scripts/development-tasks.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -228,7 +246,10 @@
     {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/build\\.mjs$",
-      "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/development-tasks.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci-stages.test.mjs",
+        "scripts/development-tasks.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -254,12 +275,18 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/plugin-reception/(?:empty-profile|install-worker|download-store(?:\\.test)?|observe-worker|preset-discovery|readiness(?:\\.test)?)\\.mjs$",
-      "tests": ["scripts/plugin-reception.test.mjs", "scripts/deliver-packages.test.mjs"]
+      "tests": [
+        "scripts/plugin-reception.test.mjs",
+        "scripts/deliver-packages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^src/sql-config-document\\.ts$|^scripts/(?:agent_sql\\.py|test_agent_sql\\.py|requirements-sql\\.txt|build_deep_query_configs\\.py|update-inventory-batch-source\\.py)$",
-      "tests": ["tests/configured-html-query.test.mjs", "tests/business-page-grant.test.mjs"]
+      "tests": [
+        "tests/configured-html-query.test.mjs",
+        "tests/business-page-grant.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -301,7 +328,10 @@
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^business/inventory-(?:aqkc|dealer|fc|personal|qll)/source/",
-      "tests": ["tests/source-integrity.test.mjs", "tests/branch-stock-ability-web.test.mjs"]
+      "tests": [
+        "tests/source-integrity.test.mjs",
+        "tests/branch-stock-ability-web.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -320,7 +350,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/fixtures/quality-system-chrome-commands\\.mjs$",
-      "tests": ["scripts/quality-system-chrome.test.mjs", "scripts/quality-worker-inputs.test.mjs"]
+      "tests": [
+        "scripts/quality-system-chrome.test.mjs",
+        "scripts/quality-worker-inputs.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -333,7 +366,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/quality-test-timings\\.json$",
-      "tests": ["scripts/run-quality-ci-stages.test.mjs", "scripts/quality-shards.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci-stages.test.mjs",
+        "scripts/quality-shards.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -361,7 +397,10 @@
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^(?:business|static|theme)/",
-      "tests": ["scripts/quality-workbench.test.mjs", "tests/business-page-grant.test.mjs"]
+      "tests": [
+        "scripts/quality-workbench.test.mjs",
+        "tests/business-page-grant.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -371,7 +410,10 @@
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^src/workbench/(?:original/workbenches/regionalApproval/|workbench\\.css$)",
-      "tests": ["tests/progress-column-web.test.mjs", "tests/detail-summary-web.test.mjs"]
+      "tests": [
+        "tests/progress-column-web.test.mjs",
+        "tests/detail-summary-web.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -399,17 +441,26 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:package\\.json|pnpm-lock\\.yaml|tsconfig(?:\\.[^/]+)?\\.json|scripts/ci-test-policy\\.json)$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "tests/window-launch-admission.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "tests/window-launch-admission.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/ci-test-policy\\.json$",
-      "tests": ["scripts/ci-policy-impact.test.mjs", "tests/sales-plan-action.test.mjs"]
+      "tests": [
+        "scripts/ci-policy-impact.test.mjs",
+        "tests/sales-plan-action.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/final-group-input\\.contract\\.mjs$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -419,7 +470,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/fixtures/quality-browser-install\\.cjs$",
-      "tests": ["scripts/quality-worker-inputs.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/quality-worker-inputs.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -434,17 +488,26 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^(?:presets|default-presets|business-skills)/",
-      "tests": ["tests/prompt-execution-state.test.mjs", "tests/capability-recipes.test.mjs"]
+      "tests": [
+        "tests/prompt-execution-state.test.mjs",
+        "tests/capability-recipes.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^src/(?:host\\.ts$|html-view-state\\.ts$|client|company|frame|page|workbench|business)",
-      "tests": ["tests/controlled-execution.test.mjs", "tests/business-page-grant.test.mjs"]
+      "tests": [
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-manage",
       "pattern": "^(?:src|business-resources|presets)/",
-      "tests": ["tests/controlled-execution.test.mjs", "tests/business-page-grant.test.mjs"]
+      "tests": [
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -472,7 +535,10 @@
     {
       "repo": "dsh-agent-manage",
       "pattern": "^src/runtime/gea-mcp(?:-scope)?\\.ts$",
-      "tests": ["tests/knowledge-mcp.test.mjs", "tests/current-mcp-tools.test.mjs"]
+      "tests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -506,7 +572,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/start-isolated-validation\\.mjs$",
-      "tests": ["tests/window-launch-admission.test.mjs", "tests/source-selection-start.test.mjs"]
+      "tests": [
+        "tests/window-launch-admission.test.mjs",
+        "tests/source-selection-start.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -520,7 +589,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^\\.github/workflows/(?:quality|compatibility)\\.yml$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -553,7 +625,10 @@
     {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/(?:prepare-official-sdk|sdk-artifact-cache)\\.mjs$",
-      "tests": ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]
+      "tests": [
+        "scripts/run-quality-ci.test.mjs",
+        "scripts/run-quality-ci-stages.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -581,7 +656,10 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:plugin-release-preflight|release-preflight|package-source-integrity|deliver-packages)\\.mjs$",
-      "tests": ["scripts/deliver-packages.test.mjs", "tests/plugin-release-preflight.test.mjs"]
+      "tests": [
+        "scripts/deliver-packages.test.mjs",
+        "tests/plugin-release-preflight.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -622,7 +700,10 @@
     {
       "repo": "dsh-agent-manage",
       "pattern": "^scripts/(?:source-quality|workflow-preflight)(?:\\.test)?\\.mjs$",
-      "tests": ["scripts/source-quality.test.mjs", "scripts/workflow-preflight.test.mjs"]
+      "tests": [
+        "scripts/source-quality.test.mjs",
+        "scripts/workflow-preflight.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -636,17 +717,26 @@
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^scripts/(?:source-quality|workflow-preflight)(?:\\.test)?\\.mjs$",
-      "tests": ["scripts/source-quality.test.mjs", "scripts/workflow-preflight.test.mjs"]
+      "tests": [
+        "scripts/source-quality.test.mjs",
+        "scripts/workflow-preflight.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^scripts/(?:test_current_shortage_source|test_fc_aging_source|test_batch_age_lists|test_qll_structure|update_current_shortage_sql|update-batch-age-lists|update-fc-list-completion|update-qll-list-completion)\\.py$",
-      "tests": ["scripts/quality-workbench.test.mjs", "tests/source-assembly.test.mjs"]
+      "tests": [
+        "scripts/quality-workbench.test.mjs",
+        "tests/source-assembly.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^\\.gitignore$",
-      "tests": ["scripts/quality-workbench.test.mjs", "scripts/quality-prepared-inputs.test.mjs"]
+      "tests": [
+        "scripts/quality-workbench.test.mjs",
+        "scripts/quality-prepared-inputs.test.mjs"
+      ]
     },
     {
       "repo": "dsh-gea-plugin",
