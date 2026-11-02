@@ -849,7 +849,7 @@ test("explicit resource rejection preserves the business failure and a healthy c
   assert.equal(f.calls.filter(({ wire }) => wire.method === "initialize").length, 1);
 });
 
-test("expired knowledge connections retain HTTP and business trace and recover on the next explicit turn", async (t) => {
+test("knowledge connections still expired after renewal retain HTTP and business trace", async (t) => {
   const f = await fixture(t, {
     prompts: true,
     handler: () =>
@@ -881,8 +881,49 @@ test("expired knowledge connections retain HTTP and business trace and recover o
   );
   f.business.clearTurnStops("sales");
   successful(await invoke(f, ask, args));
+  assert.equal(count(f, "weknora_ask"), 3);
+  assert.equal(f.calls.filter(({ wire }) => wire.method === "initialize").length, 3);
+});
+
+test("expired knowledge asks renew once and recheck the authorized catalog", async (t) => {
+  let expired = false;
+  const f = await fixture(t, {
+    prompts: true,
+    handler: (_wire, _init, reply) => {
+      if (expired) return reply({ structuredContent: answer() });
+      expired = true;
+      return Response.json(
+        { success: false, code: "AI_GATEWAY_SESSION_EXPIRED", message: "会话已过期" },
+        { status: 410 },
+      );
+    },
+  });
+  successful(await invoke(f, ask, args));
   assert.equal(count(f, "weknora_ask"), 2);
-  assert.equal(f.calls.filter(({ wire }) => wire.method === "initialize").length, 2);
+  assert.equal(count(f, "weknora_list_knowledge_bases"), 2);
+  assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, 2);
+  assert.equal(f.business.turnStopped("sales"), undefined);
+});
+
+test("knowledge renewal cannot ask a library absent from the newly authorized catalog", async (t) => {
+  let sessions = 0;
+  const f = await fixture(t, {
+    sessionHandler: () => {
+      sessions++;
+    },
+    catalogHandler: (_wire, _init, reply) =>
+      reply({ structuredContent: sessions === 1 ? [library("current-library")] : [] }),
+    handler: () =>
+      Response.json(
+        { success: false, code: "AI_GATEWAY_SESSION_EXPIRED", message: "会话已过期" },
+        { status: 410 },
+      ),
+  });
+  const result = await invoke(f, ask, args);
+  assert.equal(result.isError, true);
+  assert.equal(count(f, "weknora_ask"), 1);
+  assert.equal(count(f, "weknora_list_knowledge_bases"), 2);
+  assert.equal(sessions, 2);
 });
 
 for (const [label, retry, expected, absent] of [
