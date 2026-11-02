@@ -30,13 +30,31 @@ function Install-Client([string]$Installer) {
     Stop-InstalledApplication
     if (!(Test-Path -LiteralPath $executable)) { throw 'INSTALLED_EXECUTABLE_MISSING' }
 }
+function Installed-Version {
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $executable
+    $info.Arguments = '--expose-internals -p "require(process.argv[1]).version" "' + (Join-Path $installation 'resources/app.asar/package.json') + '"'
+    $info.UseShellExecute = $false
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    $info.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $info
+    if (!$process.Start()) { throw 'INSTALLED_MANIFEST_PROCESS_FAILED' }
+    $output = $process.StandardOutput.ReadToEndAsync()
+    $errors = $process.StandardError.ReadToEndAsync()
+    if (!$process.WaitForExit(30000)) { $process.Kill(); throw 'INSTALLED_MANIFEST_TIMEOUT' }
+    $value = $output.Result
+    if ($process.ExitCode -ne 0) { throw ('INSTALLED_MANIFEST_READ_FAILED: ' + $value + $errors.Result) }
+    return $value.Trim()
+}
 try {
     Install-Client $OldInstaller
-    if ((Get-Item -LiteralPath $executable).VersionInfo.ProductVersion -ne '0.2.0-rc.2.20261102.2') { throw 'BASELINE_VERSION_MISMATCH' }
+    if ((Installed-Version) -ne '0.2.0-rc.2.20261102.2') { throw 'BASELINE_VERSION_MISMATCH' }
     $state = '{"session":"existing-session","configuration":"preserve","draft":"existing-draft"}'
     [IO.File]::WriteAllText($marker,$state,[Text.UTF8Encoding]::new($false))
     Install-Client $NewInstaller
-    if ((Get-Item -LiteralPath $executable).VersionInfo.ProductVersion -ne $NewVersion) { throw 'UPGRADE_VERSION_MISMATCH' }
+    if ((Installed-Version) -ne $NewVersion) { throw 'UPGRADE_VERSION_MISMATCH' }
     if ([IO.File]::ReadAllText($marker) -ne $state) { throw 'USER_FILES_CHANGED' }
     $signature = Get-AuthenticodeSignature -LiteralPath $executable
     $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)
