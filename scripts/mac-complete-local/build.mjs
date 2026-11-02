@@ -315,24 +315,52 @@ try {
   );
   await run("mounted-signature", "/usr/bin/codesign", ["--verify", "--deep", "--strict", mounted]);
   const home = join(output, "fresh-install");
-  await run(
-    "fresh-install",
+  const bootstrapArguments = [
+    "-p",
+    "(version 1)(allow default)(deny network*)",
     executable,
-    [
-      "--expose-internals",
-      join(mountedArchive, "company-bootstrap.mjs"),
-      mountedArchive,
-      join(mountedResources, "runtime"),
-      join(mountedResources, "company-seed"),
-    ],
-    { ...process.env, ELECTRON_RUN_AS_NODE: "1", DSH_HOME: home },
-  );
+    "--expose-internals",
+    join(mountedArchive, "company-bootstrap.mjs"),
+    mountedArchive,
+    join(mountedResources, "runtime"),
+    join(mountedResources, "company-seed"),
+  ];
+  await run("fresh-install", "/usr/bin/sandbox-exec", bootstrapArguments, {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: "1",
+    DSH_HOME: home,
+  });
   const receipt = JSON.parse(
     await readFile(join(home, "profiles/desktop/gea/bootstrap/receipt.json"), "utf8"),
   );
   assert.equal(receipt.status, "installed");
   assert.equal(receipt.packages.length, 3);
   await writeFile(join(output, "first-install-receipt.json"), JSON.stringify(receipt, null, 2));
+  const profile = join(home, "profiles/desktop");
+  const log = join(profile, ".plugin-manager/logs/operation-network-recovery/pnpm.log");
+  await mkdir(join(log, ".."));
+  await writeFile(
+    log,
+    "[WARN] GET https://registry.npmjs.org/function-bind error (ECONNRESET). Will retry in 10 seconds. 2 retries left.\n" +
+      "dsh: pnpm printed nothing for 120000ms and was terminated\n",
+  );
+  const failed = JSON.stringify({
+    status: "failed",
+    diagnostic: "GEA_COMPANY_INSTALL_FAILED: " + log,
+  });
+  const record = join(profile, "gea/bootstrap");
+  await writeFile(join(record, "receipt.json"), failed);
+  const patch = await readFile(join(profile, "cordis.patch.yml"));
+  const history = join(profile, "install-recovery-history-fixture.jsonl");
+  await writeFile(history, "existing history fixture\n");
+  await run("network-failure-recovery", "/usr/bin/sandbox-exec", bootstrapArguments, {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: "1",
+    DSH_HOME: home,
+  });
+  assert.equal(JSON.parse(await readFile(join(record, "receipt.json"))).status, "installed");
+  assert.deepEqual(await readFile(join(profile, "cordis.patch.yml")), patch);
+  assert.equal(await readFile(history, "utf8"), "existing history fixture\n");
   const smoke = join(output, "runtime-smoke.mts");
   await writeFile(
     smoke,
