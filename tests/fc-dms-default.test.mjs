@@ -1,6 +1,6 @@
-import {mkdtemp, rm} from "node:fs/promises";
-import {tmpdir} from "node:os";
-import {join} from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -215,33 +215,58 @@ test("explicit test environment retains test-only credential boundary", async ()
   await assert.rejects(client.login(new AbortController().signal), /固定测试网关/);
 });
 
-test("production submission preserves the current form and uses current user; identical retry does not resend", async t => {
+test("production submission preserves the current form and uses current user; identical retry does not resend", async (t) => {
   secret(t);
-  const business=fixture(t);
-  const directory=await mkdtemp(join(tmpdir(),"dms-production-fixture-"));
-  business.config.runtimeDir=directory;
-  t.after(()=>rm(directory,{recursive:true,force:true}));
-  const orders=[];
-  t.mock.method(globalThis,"fetch",async(url,init)=>{
-    if(String(url).endsWith("/sys/user/getUserInfo")) return profile("user-a");
-    if(String(url).endsWith("/ssoLogin")) {
-      const body=JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
-      assert.equal(body.workcode,"user-a-work");
-      return Response.json({success:true,code:200,result:{access_token:"fixture-access",redirect:"https://dms.fixture/user/loginSSO?token=fixture"}});
+  const business = fixture(t);
+  const directory = await mkdtemp(join(tmpdir(), "dms-production-fixture-"));
+  business.config.runtimeDir = directory;
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const orders = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    if (String(url).endsWith("/sys/user/getUserInfo")) return profile("user-a");
+    if (String(url).endsWith("/ssoLogin")) {
+      const body = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
+      assert.equal(body.workcode, "user-a-work");
+      return Response.json({
+        success: true,
+        code: 200,
+        result: {
+          access_token: "fixture-access",
+          redirect: "https://dms.fixture/user/loginSSO?token=fixture",
+        },
+      });
     }
-    assert.equal(String(url), FC_DMS_PRODUCTION_GATEWAY+"/dms/order/dmsOrderHead/submitZcOrderDirect");
-    assert.equal(init.headers.Authorization,"Bearer fixture-access");
-    const order=JSON.parse(init.body);orders.push(order);
-    assert.equal(order.customerCode,"entered-customer");
-    assert.equal(order.addressCode,"entered-address");
-    assert.equal(order.pupCode,"07");
-    assert.deepEqual(order.itemList,[{productCode:"selected-sku",quantity:17}]);
-    return Response.json({success:true,code:200,result:{aiPreOrderCode:order.aiPreOrderCode,orderCode:"fixture-order"}});
+    assert.equal(
+      String(url),
+      FC_DMS_PRODUCTION_GATEWAY + "/dms/order/dmsOrderHead/submitZcOrderDirect",
+    );
+    assert.equal(init.headers.Authorization, "Bearer fixture-access");
+    const order = JSON.parse(init.body);
+    orders.push(order);
+    assert.equal(order.customerCode, "entered-customer");
+    assert.equal(order.addressCode, "entered-address");
+    assert.equal(order.pupCode, "07");
+    assert.deepEqual(order.itemList, [{ productCode: "selected-sku", quantity: 17 }]);
+    return Response.json({
+      success: true,
+      code: 200,
+      result: { aiPreOrderCode: order.aiPreOrderCode, orderCode: "fixture-order" },
+    });
   });
-  const payload={operation:"submit",warehouseCode:"selected-warehouse",order:{aiPreOrderCode:"current-form",customerCode:"entered-customer",addressCode:"entered-address",pupCode:"07",itemList:[{productCode:"selected-sku",quantity:17}]}};
-  const first=await business.branchDms(payload,new AbortController().signal);
-  const again=await business.branchDms(payload,new AbortController().signal);
-  assert.equal(first.orderCode,"fixture-order");
-  assert.equal(again.orderCode,first.orderCode);
-  assert.equal(orders.length,1);
+  const payload = {
+    operation: "submit",
+    warehouseCode: "selected-warehouse",
+    order: {
+      aiPreOrderCode: "current-form",
+      customerCode: "entered-customer",
+      addressCode: "entered-address",
+      pupCode: "07",
+      itemList: [{ productCode: "selected-sku", quantity: 17 }],
+    },
+  };
+  const first = await business.branchDms(payload, new AbortController().signal);
+  const again = await business.branchDms(payload, new AbortController().signal);
+  assert.equal(first.orderCode, "fixture-order");
+  assert.equal(again.orderCode, first.orderCode);
+  assert.equal(orders.length, 1);
 });

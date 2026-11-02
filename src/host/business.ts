@@ -1591,13 +1591,20 @@ export class Business {
     ]);
     let dmsIdentity: typeof auth & { workNo?: string } = auth;
     if (this.environment === "production" && payload.operation !== "resolve-target") {
-      const profile = object(await this.gatewayRequests.read(
-        "/sys/user/getUserInfo", { token: auth.token, tenantId: auth.tenantId }, signal,
-      ));
+      const profile = object(
+        await this.gatewayRequests.read(
+          "/sys/user/getUserInfo",
+          { token: auth.token, tenantId: auth.tenantId },
+          signal,
+        ),
+      );
       const user = object(profile.userInfo);
       signal.throwIfAborted();
       if (this.auth !== auth) throw Error("STALE_LOGIN");
-      if (text(user.id) !== auth.id || String(user.loginTenantId ?? user.tenantId ?? "") !== auth.tenantId)
+      if (
+        text(user.id) !== auth.id ||
+        String(user.loginTenantId ?? user.tenantId ?? "") !== auth.tenantId
+      )
         throw Error("DMS 当前用户身份核验失败，请重新登录");
       dmsIdentity = { ...auth, username: text(user.username), workNo: text(user.workNo) };
       this.assertExecutionAllowed("branch-inventory");
