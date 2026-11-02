@@ -1,15 +1,45 @@
 import type { DmsConfig, DmsEnvironments } from "./dms-orders.ts";
 import { FC_DMS_TEST_SIGNING_SECRET } from "./fc-dms-test-credential.ts";
 
+export const FC_DMS_PRODUCTION_GATEWAY = "http://100.100.6.46:38000/synear/dms";
+
 export const FC_DMS_TEST_GATEWAY = "http://100.100.1.147:8000/synear_test/DMS";
 
-/** Custom gateways retain explicit authorization; the fixed sandbox is shared by design. */
+/** Production uses the authenticated GEA profile; sandbox credentials never cross environments. */
 export function resolveFcDmsDeployment(
   deployments: DmsEnvironments | undefined,
   environment: "production" | "test",
-  identity: { tenantId: string; id: string },
+  identity: {
+    tenantId: string;
+    id: string;
+    username?: string;
+    workNo?: string;
+  },
 ): DmsConfig {
   const configured = deployments?.[environment];
+  if (environment === "production") {
+    const deployment =
+      configured && configured.gatewayUrl !== FC_DMS_TEST_GATEWAY
+        ? configured
+        : {
+            gatewayUrl: FC_DMS_PRODUCTION_GATEWAY,
+            secretEnv: "GEA_DMS_PRODUCTION_SECRET",
+          };
+    if ("credentialSource" in deployment && deployment.credentialSource === "fc-bundled-dms-test")
+      throw Error("正式 DMS 不能使用测试签名配置");
+    const workcode = identity.workNo?.trim();
+    const username = identity.username?.trim();
+    return {
+      ...deployment,
+      users: [
+        {
+          tenantId: identity.tenantId,
+          userId: identity.id,
+          ...(workcode ? { workcode } : username ? { username } : {}),
+        },
+      ],
+    };
+  }
   if (configured && configured.gatewayUrl !== FC_DMS_TEST_GATEWAY) return configured;
   return {
     gatewayUrl: FC_DMS_TEST_GATEWAY,

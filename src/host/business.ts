@@ -1584,7 +1584,32 @@ export class Business {
   async branchDms(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed("branch-inventory");
     const auth = this.authenticated();
-    const config = resolveFcDmsDeployment(this.config.dms, this.environment, auth);
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
+    let dmsIdentity: typeof auth & { workNo?: string } = auth;
+    if (this.environment === "production" && payload.operation !== "resolve-target") {
+      const profile = object(
+        await this.gatewayRequests.read(
+          "/sys/user/getUserInfo",
+          { token: auth.token, tenantId: auth.tenantId },
+          signal,
+        ),
+      );
+      const user = object(profile.userInfo);
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      if (
+        text(user.id) !== auth.id ||
+        String(user.loginTenantId ?? user.tenantId ?? "") !== auth.tenantId
+      )
+        throw Error("DMS 当前用户身份核验失败，请重新登录");
+      dmsIdentity = { ...auth, username: text(user.username), workNo: text(user.workNo) };
+      this.assertExecutionAllowed("branch-inventory");
+    }
+    const config = resolveFcDmsDeployment(this.config.dms, this.environment, dmsIdentity);
     if (payload.operation === "resolve-target") {
       keys(payload, ["operation", "warehouseCode", "addressCode"]);
       if (
@@ -1610,11 +1635,6 @@ export class Business {
     if (!config || bindings?.length !== 1)
       throw Error("DMS 当前环境或用户映射未配置，请联系管理员");
     keys(payload, ["operation", "order", "warehouseCode"]);
-    const signal = AbortSignal.any([
-      caller,
-      this.epoch.signal,
-      AbortSignal.timeout(this.config.requestTimeoutMs),
-    ]);
     const client = new DmsClient(config, bindings[0]);
     let result: unknown;
     if (payload.operation === "login") {
