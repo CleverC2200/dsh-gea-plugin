@@ -31,6 +31,7 @@ async function host(t, readonlyValidation) {
     await rm(runtimeDir, { recursive: true, force: true });
   });
   const ctx = {
+    profileContext: { dir: runtimeDir },
     get: () => undefined,
     effect(fn) {
       const stop = fn();
