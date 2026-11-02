@@ -942,7 +942,19 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   policy.rules = policy.rules.filter((rule) => rule.tests.includes("tests/knowledge-mcp.test.mjs"));
   put(own.path, "scripts/ci-test-policy.json", JSON.stringify(policy));
   put(own.path, "scripts/quality-peer-baseline.json", JSON.stringify({ repositories }));
-  const expected = [...new Set(policy.rules.flatMap((rule) => rule.tests))];
+  const expected = [
+    ...new Set(
+      policy.rules
+        .filter((rule) =>
+          [
+            "src/host/cube-mcp-client.ts",
+            "src/host/gateway-mcp-client.ts",
+            "src/host/knowledge-mcp.ts",
+          ].some((file) => new RegExp(rule.pattern).test(file)),
+        )
+        .flatMap((rule) => rule.tests),
+    ),
+  ];
   for (const file of [
     "tests/required.test.mjs",
     ...(policy.versionTests ?? []),
@@ -1003,4 +1015,38 @@ test("complete package inputs select existing release and platform contracts", a
         );
       assert.deepEqual(plan.required, businessCore);
     });
+});
+
+test("gateway service changes select authorization and recovery contracts without every Profile consumer", (t) => {
+  const fixture = resourceImpactFixture(t);
+  fixture.change(fixture.own, "src/host.ts", "import './host/gateway-mcp-service.ts';");
+  fixture.change(fixture.own, "tests/profile.mjs", "import '../src/host.ts';");
+  fixture.change(fixture.own, "tests/unrelated.test.mjs", "import './profile.mjs';");
+  fixture.change(fixture.own, "src/host/gateway-mcp-service.ts", "export const changed = true;");
+  const source = fixture.plan({ sourceOnly: true });
+  for (const file of [
+    "tests/current-mcp-tools.test.mjs",
+    "tests/knowledge-mcp.test.mjs",
+    "tests/cube-direct-mcp.test.mjs",
+    "tests/cube-new.test.mjs",
+    "tests/gateway-mcp.test.mjs",
+    "tests/prompt-execution-policy.test.mjs",
+    "tests/authorized-cube-loop.test.mjs",
+    "tests/business-profile-recovery.test.mjs",
+    "tests/controlled-execution.test.mjs",
+    "tests/business-page-grant.test.mjs",
+    "tests/gateway-handshake.test.mjs",
+  ])
+    assert.ok(
+      source.reasons[fixture.own.repo + "/src/host/gateway-mcp-service.ts"].includes(file),
+      file,
+    );
+  assert.ok(
+    !source.reasons[fixture.own.repo + "/src/host/gateway-mcp-service.ts"].includes(
+      "tests/unrelated.test.mjs",
+    ),
+  );
+  const integration = fixture.plan();
+  assert.deepEqual(integration.required, businessCore);
+  assert.ok(integration.files.includes("tests/unrelated.test.mjs"));
 });

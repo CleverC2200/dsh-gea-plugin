@@ -1,10 +1,22 @@
 # CI Core 门禁策略
 
-源码检查中的联合用例集合在 Linux 上超过一个文件时，按同一冻结执行计划分给两个独立 worker。每个 worker 保留原静态检查、构建、容量和60分钟预算，业务断言不变。最终门禁还核本次 HEAD、run/attempt、输入与构建摘要，以及所有文件和用例的精确一次覆盖；缺片、取消、跳过或输入变化均拒绝。纯工具与单文件集合保持一个完整 worker。
+日常源码分片由 `scripts/source-check-shards.mjs` 按完整 Linux 选中集合分配。小集合在一个 worker 内完成准备、构建、检查及测试；达到分片条件时，普通文件与 Profile 文件共用同组 worker，分片不截断覆盖。最终门禁核 HEAD、输入、构建摘要及每个原始执行计划，拒绝缺片、取消、跳过、重复和输入变化。
 
 PR 与 main push 由 `.github/workflows/source-quality.yml` 按实际 Git 差异选择检查。纯说明文档只完成适用性判断与必需状态汇总；包内 Prompt、Skill、资源声明及其资产走资源检查；代码与未知输入保留工程检查。`candidate-quality` 拒绝失败、取消、缺失或非预期跳过的适用检查。工程检查读取固定配套源码，按影响计划准备所需依赖与构建。分类、CLI 和资源检查边界见[共享日常 CI 规则](../../dsh-agent-workbench/docs/ci-required-and-affected.md)。
 
 独立三仓联合验收由 `.github/workflows/quality.yml` 的手动 `workflow_dispatch` 执行，最终检查名为 `joint-quality`，不再作为日常合并条件。手动 alpha compatibility 入口保留。日常绿灯只证明实际选中的源码集合，不能表示完整三仓或客户端验收通过。
+
+## 按需 CI 恢复
+
+失败后使用现有预算 CLI 读取同一 run/head 的完整 attempt 历史，显式请求恢复判断。先在环境中提供只读 `GITHUB_TOKEN`：
+
+```sh
+GITHUB_REPOSITORY=CleverC2200/dsh-gea-plugin GITHUB_RUN_ID=<run-id> GITHUB_RUN_ATTEMPT=<attempt> node scripts/quality-hosted-budget.mjs --source-report /absolute/source-report.json --mode completed --retry-plan
+```
+
+`recovery.action` 为 `diagnose` 时，先核失败日志、容量诊断或缺失 producer；准备失败和同阶段再次失败均进入此状态。`retry-failed-only` 仅表示首次行为检查失败可考虑只重跑失败项，实际操作仍需本票授权。执行前在同一命令追加 `--request-retry failed`，该准入在诊断、未知或运行未结束时退出非零；`--request-retry all` 一律拒绝。只有准入退出零后才串接既有 `gh run rerun --failed`。该 CLI 只读，不执行重跑或后台轮询，也不能拦截执行者直接调用 GitHub。修复输入或获得能区分故障原因的新证据后，再选择对应的最小验证。进度只报告新失败、诊断、输入变化、完成或待用户动作；作业完成计数不单独触发说明。
+
+依赖策略使用成功 producer 输出的 artifact ID、attempt 和回执摘要。失败项重跑不按 consumer attempt 推算产物名称；固定源码、Core、原锁、管理器、Node、平台、架构和原生依赖内容核验保持。分片汇总另读同一 run 的最新 job 清单，验证每份回执确由对应 attempt 的成功 worker 产生，再逐份核原始计划与精确覆盖。 GitHub 会把复用 job 的 run_attempt 标为新轮次；实际 producer 由原始执行时间、runner、steps 与各 attempt 的完整历史清单一致性确定，不单独相信该字段。失败分片保留独立 attempt 证据，当前分片产物只替换自己的摘要入口。正式输入回执也从实际 source-plan producer 的 attempt 定位。
 
 ## 日常计时参考
 

@@ -7,7 +7,7 @@ import { createBusinessSession } from "./fixtures/business-session.mjs";
 import { fixtureCubeTools, querySchema } from "./fixtures/cube-wire.mjs";
 
 test(
-  "native queries preserve successful reads, server denial, expiry and next-turn recovery",
+  "native queries preserve successful reads, server denial and bounded expiry recovery",
   { timeout: 45000 },
   async (t) => {
     const app = await profile(t, {
@@ -223,14 +223,14 @@ test(
     assert.match(expired[1].text, /GEA_TURN_STOPPED/);
     assert.equal(
       queries.length,
-      4,
-      "the second tool attempt cannot reopen an expired gateway in the same turn",
+      5,
+      "one automatic renewal is allowed, then a second expired response stops the turn",
     );
     const opened = sessions.length;
     phase = "recovered";
     const recovered = await ask("新一轮重新查询库存。");
     assert.equal(recovered[0].isError, false, recovered[0].text);
-    assert.equal(queries.length, 5);
+    assert.equal(queries.length, 6);
     assert.equal(sessions.length, opened + 1);
     const firstSchema = requests[0].body.tools.find(
       (tool) => tool.function.name === "mcp__gea-gateway__query_business_data",
