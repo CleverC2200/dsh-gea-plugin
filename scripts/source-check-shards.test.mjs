@@ -41,7 +41,7 @@ test("source planning shows unknown costs and uses valid timings without changin
   assert.equal(unknown.estimates.estimatedMs, null);
   assert.equal(unknown.estimates.unknownFiles, 2);
   assert.equal(unknown.estimates.profileFiles, 1);
-  assert.equal(unknown.shards.length, 2);
+  assert.equal(unknown.shards.length, 1);
   mkdirSync(join(root, "tests"));
   for (const file of selection.files) writeFileSync(join(root, file), file);
   const timings = {
@@ -104,7 +104,7 @@ function fixture(t, count = 2) {
       plan: {
         joint: true,
         files,
-        runtimeFiles: count === 3 ? files.slice(0, 6) : count === 10 ? files.slice(0, 24) : [],
+        runtimeFiles: count === 3 ? files.slice(0, 7) : count === 10 ? files.slice(0, 30) : files,
       },
     });
     write(join(worker, "quality-test-execution-plan.json"), plan);
@@ -161,7 +161,7 @@ test("source workers bind a bounded shard count and reject malformed assignment"
 
 test("large runtime selections expand within the shared account concurrency allowance", () => {
   const files = Array.from({ length: 209 }, (_, i) => `tests/fixture-${i}.test.mjs`);
-  const matrix = sourceCheckMatrix({ joint: true, files, runtimeFiles: files.slice(0, 109) });
+  const matrix = sourceCheckMatrix({ joint: true, files, runtimeFiles: files.slice(0, 120) });
   assert.equal(matrix.shards.length, sourceCheckWorkerTarget);
   assert.deepEqual(
     matrix.shards,
@@ -193,13 +193,11 @@ test("tools and single-file joint selections retain one complete worker", () => 
     { joint: false, files: ["a", "b"] },
     { joint: true, files: ["a"] },
     { joint: true, files: [] },
+    { joint: true, files: ["a", "b"] },
     { joint: true, files: ["a", "tests/host-config-keychain.test.mjs"] },
   ])
     assert.deepEqual(sourceCheckMatrix(plan), { parallel: false, shards: ["single"] });
-  assert.deepEqual(sourceCheckMatrix({ joint: true, files: ["a", "b"] }), {
-    parallel: true,
-    shards: ["1", "2"],
-  });
+
   assert.throws(() => sourceCheckMatrix({}), /source plan/);
 });
 
@@ -402,4 +400,16 @@ test("the source workflow admits workers only after successful or inapplicable p
   );
   assert.ok(restore >= 0 && restore < install);
   assert.match(worker.env.PNPM_CONFIG_CACHE_DIR, /github.workspace/);
+});
+
+test("a small mixed source selection uses one preparation and still assigns every file", () => {
+  const files = Array.from({ length: 13 }, (_, index) => `tests/gateway-${index}.test.mjs`);
+  const plan = { joint: true, files, runtimeFiles: files.slice(0, 2) };
+  assert.deepEqual(sourceCheckMatrix(plan), { parallel: false, shards: ["single"] });
+  const cost = sourceCheckCost({
+    selection: plan,
+    root: process.cwd(),
+    environment: { platform: "linux", fileConcurrency: 3 },
+  });
+  assert.deepEqual(cost.shards.flatMap((shard) => shard.files).sort(), files.sort());
 });

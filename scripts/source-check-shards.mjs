@@ -35,14 +35,14 @@ export function sourceCheckShard(environment = process.env) {
 export function sourceCheckMatrix(plan) {
   requireValue(typeof plan?.joint === "boolean" && Array.isArray(plan.files), "source plan");
   const files = selectPlatformTests(plan, "linux").files;
-  const parallel = plan.joint && files.length > 1;
   const runtime = files.filter((file) => plan.runtimeFiles?.includes(file)).length;
   const count = Math.min(
     sourceCheckWorkerLimit,
     sourceCheckWorkerTarget,
     files.length,
-    Math.max(2, Math.ceil(runtime / 3) + Math.ceil((files.length - runtime) / 40)),
+    Math.max(1, Math.ceil(runtime / 3), Math.ceil((files.length - runtime) / 40)),
   );
+  const parallel = plan.joint && count > 1;
   return { parallel, shards: parallel ? shardIds(count) : ["single"] };
 }
 
