@@ -54,6 +54,7 @@ const fixtureSourceFiles = [
   "quality-ci-stages.mjs",
   "quality-docs.mjs",
   "quality-hosted-budget.mjs",
+  "quality-hosted-run.mjs",
   "run-quality-checks.mjs",
   "quality-upstreams.mjs",
   "quality-upstreams.json",

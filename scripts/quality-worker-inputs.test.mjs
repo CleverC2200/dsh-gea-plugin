@@ -100,6 +100,7 @@ function fixture(
     "source-check-shards.mjs",
     "quality-test-timings.mjs",
     "quality-hosted-budget.mjs",
+    "quality-hosted-run.mjs",
     "quality-worker-control.mjs",
     "quality-ci-stages.mjs",
     "build-admission.mjs",
