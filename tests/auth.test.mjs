@@ -197,6 +197,7 @@ test(
     // 审批身份要走网关会话解析当前用户角色：这两条是身份查询（POST 只为带 body），
     // 不是业务写入；可见 MCP 目录只允许初始化与列工具，不能发送工具执行。
     const identityLookups = [
+      "/sys/logout",
       "/ai/gateway/session",
       "/ai/gateway/agent/session",
       "/ai/gateway/agent/session/current-user/resolve",
@@ -304,5 +305,57 @@ test(
     assert.equal(saved.auth.avatar, "https://example.com/restored.png");
     await app.rpc("status");
     assert.equal(reads, 1);
+  },
+);
+
+test(
+  "public Host accepts captcha password login and both login methods share server logout",
+  { timeout: 60000 },
+  async (t) => {
+    const app = await profile(t);
+    const submissions = [];
+    app.route((request, _response, reply) => {
+      if (request.url.pathname.includes("/sys/randomImage/")) {
+        reply({ success: true, code: 0, result: "data:image/jpg;base64,c3ludGhldGlj" });
+        return true;
+      }
+      if (request.url.pathname.endsWith("/sys/login")) {
+        submissions.push({ headers: request.headers, body: JSON.parse(request.body) });
+        reply({ success: true, code: 200, result: { token: "fixture-gea-token" } });
+        return true;
+      }
+    });
+    const qr = (await app.rpc("login/start")).value;
+    const challenge = (await app.rpc("login/password/prepare", { environment: "production" }))
+      .value;
+    assert.equal(challenge.expiresIn, 60);
+    assert.equal((await app.rpc("login/poll", { loginId: qr.loginId })).ok, false);
+    const authenticated = await app.rpc("login/password", {
+      challengeId: challenge.challengeId,
+      username: "fixture",
+      password: " synthetic-password ",
+      captcha: "a1B2",
+    });
+    assert.equal(authenticated.ok, true);
+    assert.equal(authenticated.value.authenticated, true);
+    assert.equal(JSON.stringify(authenticated).includes("fixture-gea-token"), false);
+    assert.equal(submissions.length, 1);
+    assert.deepEqual(submissions[0].body, {
+      username: "fixture",
+      password: " synthetic-password ",
+      captcha: "a1B2",
+      checkKey: challenge.challengeId,
+    });
+    assert.equal(submissions[0].headers["x-version"], "v3");
+    assert.equal(submissions[0].headers["x-access-token"], undefined);
+    assert.equal((await app.rpc("logout")).value.remoteLogout, "confirmed");
+    await app.login();
+    assert.equal((await app.rpc("status")).value.authenticated, true);
+    assert.equal((await app.rpc("logout")).value.remoteLogout, "confirmed");
+    assert.equal((await app.rpc("status")).value.authenticated, false);
+    assert.equal(
+      app.requests.filter((request) => request.url.pathname.endsWith("/sys/logout")).length,
+      2,
+    );
   },
 );

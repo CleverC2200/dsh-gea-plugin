@@ -18,6 +18,7 @@ test("public account actions consume the same GEA Host identity and reject expir
   const endpoints = [];
   let authenticated = false;
   let pollStatus = "pending";
+  let remoteLogout = "confirmed";
   let environment = "production";
   const fetch = async (url, options) => {
     endpoints.push([url, options]);
@@ -47,9 +48,22 @@ test("public account actions consume the same GEA Host identity and reject expir
       authenticated = pollStatus === "authenticated";
       value = { status: pollStatus };
     }
+    if (endpoint === "prepare") {
+      environment = JSON.parse(options.body).environment;
+      authenticated = false;
+      value = {
+        challengeId: "host-captcha",
+        image: "data:image/jpg;base64,fixture",
+        expiresIn: 60,
+      };
+    }
+    if (endpoint === "password") {
+      authenticated = true;
+      value = { authenticated: true };
+    }
     if (endpoint === "logout") {
       authenticated = false;
-      value = { authenticated: false };
+      value = { authenticated: false, remoteLogout };
     }
     return Response.json({ ok: true, value });
   };
@@ -95,6 +109,23 @@ test("public account actions consume the same GEA Host identity and reject expir
   assert.equal(await account.pollLogin("host-qr", signal), true);
   assert.equal(account.getSnapshot().status.authenticated, true);
   await account.logout(signal);
+  assert.equal(account.getSnapshot().status.authenticated, false);
+  assert.equal(account.getSnapshot().scope, null);
+  const challenge = await account.preparePasswordLogin(signal, "test");
+  assert.equal(challenge.challengeId, "host-captcha");
+  assert.equal(account.getSnapshot().status.environment, "test");
+  await account.loginWithPassword(
+    {
+      challengeId: challenge.challengeId,
+      username: "employee",
+      password: " synthetic ",
+      captcha: "a1B2",
+    },
+    signal,
+  );
+  assert.equal(account.getSnapshot().status.authenticated, true);
+  remoteLogout = "unconfirmed";
+  await assert.rejects(account.logout(signal), { code: "GEA_LOGOUT_UNCONFIRMED" });
   assert.equal(account.getSnapshot().status.authenticated, false);
   assert.equal(account.getSnapshot().scope, null);
   await account.startLogin(signal, "production");
