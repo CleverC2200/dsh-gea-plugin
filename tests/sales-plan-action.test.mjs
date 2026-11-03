@@ -464,8 +464,13 @@ for (const [customerCode, returnedStatus, orderType] of [
   ["456", 6, "M"],
   ["456", 7, "Z"],
   ["456", 6, "Z"],
+  ["456", 8, "M"],
+  ["456", 9, "M"],
+  ["456", 8, "Z"],
+  ["456", 9, "Z"],
 ])
   test(`public Business resubmits returned ${orderType} status ${returnedStatus} with exact customer ${customerCode}, employee login without service configuration and nullable audit receipt`, async (t) => {
+    const role = { 7: "region", 8: "province", 9: "area" }[returnedStatus];
     const business = new module.exports.Business({
       geaBaseUrl: "https://localhost",
       analysisAgentCode: "sales_forecast",
@@ -485,7 +490,7 @@ for (const [customerCode, returnedStatus, orderType] of [
         id: "user-1",
         username: "test",
         roles:
-          returnedStatus === 6 ? [] : [{ code: "sales_plan_region_approver", name: "区域审批" }],
+          returnedStatus === 6 ? [] : [{ code: `sales_plan_${role}_approver`, name: "审批人" }],
       },
     });
     t.after(() => business.dispose());
@@ -522,7 +527,7 @@ for (const [customerCode, returnedStatus, orderType] of [
     const request = {
       ...(orderType === "Z" ? { adjustmentMode: "ABSOLUTE_NET" } : {}),
       orderType,
-      status: returnedStatus === 6 ? 1 : 2,
+      status: returnedStatus - 5,
       periodId: "17",
       periodMonth: "2026-10",
       planTypeCode: "Y",
@@ -553,6 +558,7 @@ for (const [customerCode, returnedStatus, orderType] of [
       sourceDenied = false,
       employeeRole = true,
       replyMode = "normal";
+    const sentBodies = new Map();
     t.mock.method(globalThis, "fetch", async (url, init) => {
       const path = new URL(url).pathname;
       if (path.endsWith("/api/v1/internal/auth/token")) {
@@ -569,6 +575,9 @@ for (const [customerCode, returnedStatus, orderType] of [
         assert.equal(JSON.parse(init.body).submitterCode, version.submitter);
         assert.equal(JSON.parse(init.body).submitterName, undefined);
         assert.equal(JSON.parse(init.body).cust_code, Number(request.dealerCode));
+        const key = init.headers["Idempotency-Key"];
+        if (sentBodies.has(key)) assert.equal(init.body, sentBodies.get(key));
+        else sentBodies.set(key, init.body);
         if (replyMode === "timeout") {
           await new Promise((resolve) =>
             init.signal.addEventListener("abort", resolve, { once: true }),
@@ -601,7 +610,8 @@ for (const [customerCode, returnedStatus, orderType] of [
         assert.equal(init.headers["X-Access-Token"], "employee-token");
       assert.equal(init.headers.Authorization, undefined);
       let result;
-      if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:region-approve"] };
+      if (path.endsWith("/getPermCode"))
+        result = { codeList: role ? [`sales-plan:plan:${role}-approve`] : [] };
       else if (path.endsWith("/plans/" + planId)) {
         if (sourceDenied) return Response.json({ message: "来源无权读取" }, { status: 403 });
         result = { currentVersion: version, versions: [version], skus: [sku], logs: [] };
@@ -623,7 +633,8 @@ for (const [customerCode, returnedStatus, orderType] of [
       else if (path.endsWith("/current-user/resolve"))
         result = {
           success: true,
-          roles: employeeRole ? [{ code: "sales_plan_region_approver", name: "区域审批" }] : [],
+          roles:
+            role && employeeRole ? [{ code: `sales_plan_${role}_approver`, name: "审批人" }] : [],
         };
       else if (path.endsWith("/sql/execute")) {
         const body = JSON.parse(init.body);
@@ -691,6 +702,10 @@ for (const [customerCode, returnedStatus, orderType] of [
     assert.equal(receipt.status, request.status);
     assert.deepEqual(await business.salesPlanSubmit(command("first"), signal), receipt);
     assert.equal(writes, 1);
+    assert.deepEqual(JSON.parse(sentBodies.get("first")).notification, {
+      title: "需求预测重新提报待审批",
+      content: `一份2026年10月${orderType === "Z" ? "纠偏" : "月初"}需求预测已修改并重新提报，请查看并按最新内容处理。`,
+    });
     await assert.rejects(
       business.salesPlanSubmit(
         { ...command("first"), request: { ...request, targetQty: "2.000" } },
