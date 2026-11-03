@@ -143,6 +143,27 @@ export function readDesktopPluginSource(input, checkout) {
     throw Error("DESKTOP_GEA_PACKAGE_SOURCE_MISMATCH");
   }
 }
+
+export function resolveDesktopAcceptanceSource(sourceSha, qualifiedSourceSha, checkout) {
+  const expected = qualifiedSourceSha ?? sourceSha;
+  if (!/^[a-f0-9]{40}$/.test(expected ?? "")) throw Error("DESKTOP_NATIVE_SOURCE_INVALID");
+  if (qualifiedSourceSha !== undefined) {
+    try {
+      const head = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: checkout,
+        encoding: "utf8",
+      }).trim();
+      if (head !== sourceSha) throw Error();
+      execFileSync("git", ["merge-base", "--is-ancestor", expected, head], {
+        cwd: checkout,
+        stdio: "pipe",
+      });
+    } catch {
+      throw Error("DESKTOP_NATIVE_SOURCE_INVALID");
+    }
+  }
+  return expected;
+}
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
     options: {

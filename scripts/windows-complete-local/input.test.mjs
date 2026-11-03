@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
-import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
+import {
+  readDesktopInput,
+  readDesktopPluginSource,
+  desktopCoreHead,
+  resolveDesktopAcceptanceSource,
+} from "./input.mjs";
 import { assertMacBaseline, macBaseline } from "../mac-complete-local/baseline.mjs";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -190,6 +195,37 @@ test("native acceptance bundle input refuses mutable, foreign or incomplete iden
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DESKTOP_NATIVE_BUNDLE_INVALID/);
   }
+});
+
+test("Native artifact rechecks bind an ancestor build to the actual qualification checkout", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-native-source-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("config", "user.name", "fixture");
+  git("config", "user.email", "fixture@invalid");
+  await writeFile(join(directory, "input"), "build");
+  git("add", ".");
+  git("commit", "-qm", "build");
+  const built = git("rev-parse", "HEAD");
+  await writeFile(join(directory, "input"), "qualification");
+  git("add", ".");
+  git("commit", "-qm", "qualification");
+  const current = git("rev-parse", "HEAD");
+  assert.equal(resolveDesktopAcceptanceSource(current, undefined, directory), current);
+  assert.equal(resolveDesktopAcceptanceSource(current, built, directory), built);
+  assert.throws(
+    () => resolveDesktopAcceptanceSource(built, built, directory),
+    /DESKTOP_NATIVE_SOURCE_INVALID/,
+  );
+  assert.throws(
+    () => resolveDesktopAcceptanceSource(current, "a".repeat(40), directory),
+    /DESKTOP_NATIVE_SOURCE_INVALID/,
+  );
+  assert.throws(
+    () => resolveDesktopAcceptanceSource(current, "", directory),
+    /DESKTOP_NATIVE_SOURCE_INVALID/,
+  );
 });
 
 test("a wrapper-only build binds the fixed plugin commit and rejects unrelated or wrong-version sources", async (t) => {

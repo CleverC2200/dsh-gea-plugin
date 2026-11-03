@@ -114,6 +114,7 @@ jobs:
           pattern: GEA-Desktop-*-win-x64-complete
           path: ${{ runner.temp }}/signed-overwrite-package
       - name: Recheck installed package version and preserved user files
+        if: inputs.native_acceptance_bundle_url == ''
         shell: bash
         env:
           GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
@@ -128,6 +129,34 @@ jobs:
           assert.equal(files.length,1);
           execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),join(process.env.RUNNER_TEMP,'signed-overwrite-result'),'overwrite-only'],{stdio:'inherit'});
           NODE
+      - name: Select GNU tar for Native artifact recheck
+        if: inputs.native_acceptance_bundle_url != ''
+        shell: pwsh
+        run: |
+          $tarDirectory = 'C:\Program Files\Git\usr\bin'
+          if (!(Test-Path (Join-Path $tarDirectory 'tar.exe'))) { throw 'DELIVERY_GNU_TAR_REQUIRED' }
+          $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
+          'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Recheck Native recovery using the original installer artifact
+        if: inputs.native_acceptance_bundle_url != ''
+        shell: bash
+        env:
+          GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
+          NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
+          NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
+        run: |
+          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 yaml@2.9.0
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File gea/desktop/build/install-certificate.ps1 -CertificatePath gea/desktop/build/codesign.cer -StoreLocation CurrentUser
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readdirSync,readFileSync} from 'node:fs';
+          import {join,dirname} from 'node:path';
+          import {execFileSync} from 'node:child_process';
+          function walk(root){return readdirSync(root,{withFileTypes:true}).flatMap(entry=>{const path=join(root,entry.name);return entry.isDirectory()?walk(path):[path]});}
+          const files=walk(join(process.env.RUNNER_TEMP,'signed-overwrite-package')).filter(path=>path.endsWith(join('gea-local','result.json')) && JSON.parse(readFileSync(path)).status==='packaged-and-runtime-smoke-passed');
+          assert.equal(files.length,1);
+          execFileSync(process.execPath,['gea/scripts/windows-complete-local/run-bundle.mjs','--bundle-url',process.env.NATIVE_BUNDLE_URL,'--bundle-sha256',process.env.NATIVE_BUNDLE_SHA256,'--build-receipt',files[0],'--input',join(dirname(files[0]),'fixed-input.json'),'--output',join(process.env.RUNNER_TEMP,'native-artifact-recheck')],{stdio:'inherit'});
+          NODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -136,6 +165,8 @@ jobs:
           path: |
             ${{ runner.temp }}/signed-overwrite-result/*.json
             ${{ runner.temp }}/signed-overwrite-result/*.log
+            ${{ runner.temp }}/native-artifact-recheck/*.json
+            ${{ runner.temp }}/native-artifact-recheck/public/**
   windows-certificate-fixture:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_certificate_test
     runs-on: windows-2025

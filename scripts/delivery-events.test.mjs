@@ -8,6 +8,21 @@ import { parse } from "yaml";
 
 const workflow = parse(readFileSync(".github/workflows/delivery-fixtures.yml", "utf8"));
 
+test("Native artifact rechecks use a fresh runner without installing the target before its baseline", () => {
+  const steps = workflow.jobs["windows-overwrite-recheck"].steps;
+  const ordinary = steps.find(
+    (step) => step.name === "Recheck installed package version and preserved user files",
+  );
+  const native = steps.find(
+    (step) => step.name === "Recheck Native recovery using the original installer artifact",
+  );
+  assert.equal(ordinary.if, "inputs.native_acceptance_bundle_url == ''");
+  assert.equal(native.if, "inputs.native_acceptance_bundle_url != ''");
+  assert.equal(native.env.GEA_QUALIFICATION_SOURCE_SHA, "${{ steps.original.outputs.source }}");
+  assert.match(native.run, /fixed-input\.json/);
+  assert.match(native.run, /run-bundle\.mjs/);
+});
+
 test("Windows installed upgrade qualification requires explicit signed packaging", () => {
   const steps = workflow.jobs["windows-complete-package"].steps;
   const qualification = steps.find(
