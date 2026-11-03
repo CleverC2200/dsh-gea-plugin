@@ -37,10 +37,12 @@ export async function orderReportWithEdits(
       execute,
     );
   }
-  const result = await orderReportStore(input, identity, execute);
-  if (input.operation !== "load") return result;
+  if (input.operation !== "load") return orderReportStore(input, identity, execute);
+  const [result, edited] = await Promise.all([
+    orderReportStore(input, identity, execute),
+    orderReportStore(input, editIdentity, execute),
+  ]);
   if (!("report" in result)) throw Error("ORDER_REPORT_FORMAT_INVALID");
-  const edited = await orderReportStore(input, editIdentity, execute);
   if (!("report" in edited)) throw Error("ORDER_REPORT_FORMAT_INVALID");
   if (edited.report && edited.report.facts?.kind !== "editor-content")
     throw Error("ORDER_REPORT_FORMAT_INVALID");
@@ -48,7 +50,10 @@ export async function orderReportWithEdits(
     ...result,
     editVersion: edited.version,
     report: edited.report
-      ? { ...(result.report ?? { schemaVersion: 1, facts: null }), edits: edited.report.edits }
+      ? {
+          ...(result.report ?? { schemaVersion: 1, facts: null }),
+          edits: edited.report.edits,
+        }
       : result.report,
   };
 }
