@@ -93,19 +93,35 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt,
         Array.isArray(scope.plan.files) &&
         scope.shard.id === expectedIds[index] &&
         scope.shard.count === expectedIds.length,
-      "worker source or assignment",
+      `worker source or assignment; shard=${expectedIds[index]} expectedAttempt=${runAttempt} observedAttempt=${scope.runAttempt} expectedRun=${runId} observedRun=${scope.runId} expectedHead=${head} observedHead=${scope.head} observedAssignment=${JSON.stringify(scope.shard)}`,
     );
     if (producers) {
       const jobs = producers.jobs.filter(
         (job) => job.name === `source-checks (${expectedIds[index]})`,
       );
-      requireValue(
-        jobs.length === 1 &&
-          jobs[0].status === "completed" &&
-          jobs[0].conclusion === "success" &&
-          hostedProducerAttempt(producers, jobs[0].name) === Number(scope.runAttempt),
-        "latest successful worker producer",
-      );
+      let observedProducerAttempt;
+      try {
+        requireValue(
+          jobs.length === 1 &&
+            jobs[0].status === "completed" &&
+            jobs[0].conclusion === "success" &&
+            (observedProducerAttempt = hostedProducerAttempt(producers, jobs[0].name)) ===
+              Number(scope.runAttempt),
+          "latest successful worker producer",
+        );
+      } catch (error) {
+        const observedJobs = jobs.map((job) => ({
+          id: job.id,
+          name: job.name,
+          attempt: job.run_attempt,
+          status: job.status,
+          conclusion: job.conclusion,
+        }));
+        throw Error(
+          `${error.message}; shard=${expectedIds[index]} expectedAttempt=${scope.runAttempt} latestMatches=${jobs.length} observedProducerAttempt=${observedProducerAttempt ?? "unknown"} observedJobs=${JSON.stringify(observedJobs)}`,
+          { cause: error },
+        );
+      }
     }
     return { root, scope };
   });
