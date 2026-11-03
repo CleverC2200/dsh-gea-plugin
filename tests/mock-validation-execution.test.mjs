@@ -26,7 +26,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module.exports,
 );
 const { Business, createCapabilityRegistry, workbenchContract } = module.exports;
-function fixture(t, config = {}) {
+function fixture(t, config = {}, { signedIn = true } = {}) {
   const requests = [];
   t.mock.method(globalThis, "fetch", async (input) => {
     requests.push(String(input));
@@ -38,18 +38,20 @@ function fixture(t, config = {}) {
     requestTimeoutMs: 1000,
     ...config,
   });
-  business.restoreDesktopLogin({
-    schema: 1,
-    environment: "production",
-    base: "https://fixture.invalid",
-    auth: {
-      token: "fixture-only",
-      tenantId: "1",
-      id: "fixture-user",
-      name: "Fixture",
-      username: "fixture",
-    },
-  });
+  if (signedIn) {
+    business.restoreDesktopLogin({
+      schema: 1,
+      environment: "production",
+      base: "https://fixture.invalid",
+      auth: {
+        token: "fixture-only",
+        tenantId: "1",
+        id: "fixture-user",
+        name: "Fixture",
+        username: "fixture",
+      },
+    });
+  }
   t.after(() => business.dispose());
   return { business, requests };
 }
@@ -76,10 +78,13 @@ test("disabled native capability refuses sales reads before credentials or exter
 });
 
 test("disabled native contracts refuse direct sales, workflow, notification, model and MCP execution even without login", async (t) => {
-  const { business, requests } = fixture(t, {
-    workbenchCapability: { enabled: false },
-  });
-  business.logout({});
+  const { business, requests } = fixture(
+    t,
+    {
+      workbenchCapability: { enabled: false },
+    },
+    { signedIn: false },
+  );
   const signal = new AbortController().signal;
   const attempts = [
     () => business.workbenchQuery({}, signal),
@@ -116,9 +121,13 @@ test("disabled native contracts refuse direct sales, workflow, notification, mod
 });
 
 test("mock and disabled installed capabilities cannot resolve delegated SQL, schema, MCP, launch or model credentials", async (t) => {
-  const { business, requests } = fixture(t, {
-    workbenchCapability: { enabled: false },
-  });
+  const { business, requests } = fixture(
+    t,
+    {
+      workbenchCapability: { enabled: false },
+    },
+    { signedIn: false },
+  );
   business.setCapabilities(
     createCapabilityRegistry([
       workbenchContract({
@@ -150,7 +159,6 @@ test("mock and disabled installed capabilities cannot resolve delegated SQL, sch
       },
     ]),
   );
-  business.logout({});
   const signal = new AbortController().signal;
   for (const [consumerCode, code] of [
     ["base-safety-stock", "GEA_CAPABILITY_DISABLED"],
