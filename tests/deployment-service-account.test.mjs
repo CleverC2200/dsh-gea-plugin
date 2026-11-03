@@ -170,85 +170,27 @@ test("DMS environment bindings reach Host in source and bundle deployments", asy
   }
 });
 
-test("the plugin deployment loader supplies desktop Host credentials from Keychain without serializing them", async (t) => {
-  const path = await configFile(t);
-  const credentialEnv = {};
-  let reads = 0;
-  const config = await readDeployment(path, {
-    credentialEnv,
-    platform: "darwin",
-    readKeychain: async (service) => {
-      reads++;
-      assert.equal(service, account.keychainService);
-      return { clientId: "fixture-client", secret: "fixture-secret" };
-    },
-  });
-  assert.equal(reads, 1);
-  assert.deepEqual(credentialEnv, {
-    GEA_RESUBMIT_TEST_CLIENT: "fixture-client",
-    GEA_RESUBMIT_TEST_SECRET: "fixture-secret",
-  });
-  assert.equal(JSON.stringify(config).includes("fixture-secret"), false);
-});
-
-test("missing Keychain material fails closed without partially setting credential environment", async (t) => {
-  const path = await configFile(t);
-  const credentialEnv = {};
-  await assert.rejects(
-    readDeployment(path, {
+for (const platform of ["win32", "darwin"]) {
+  test(`upgraded ${platform} deployment preserves old references without requiring service credentials`, async (t) => {
+    const path = await configFile(t);
+    const credentialEnv = {};
+    const config = await readDeployment(path, {
       credentialEnv,
-      platform: "darwin",
-      readKeychain: async () => ({ clientId: "fixture-client", secret: "" }),
-    }),
-    /GEA_KEYCHAIN_CREDENTIAL_INVALID/,
-  );
-  assert.deepEqual(credentialEnv, {});
-});
-
-test("a later Keychain failure cannot leave earlier account credentials in the environment", async (t) => {
-  const path = await configFile(t, {
-    ...deployment,
-    serviceAccounts: {
-      production: account,
-      test: {
-        ...account,
-        clientIdEnv: "GEA_RESUBMIT_TEST_OTHER_CLIENT",
-        clientSecretEnv: "GEA_RESUBMIT_TEST_OTHER_SECRET",
-        keychainService: "gea-resubmit-other-fixture",
-      },
-    },
-  });
-  const credentialEnv = {};
-  await assert.rejects(
-    readDeployment(path, {
-      credentialEnv,
-      platform: "darwin",
-      readKeychain: async (service) => {
-        if (service === account.keychainService)
-          return { clientId: "fixture-client", secret: "fixture-secret" };
-        throw new Error("fixture-secret must not appear in the error");
-      },
-    }),
-    (error) => error.message === "GEA_KEYCHAIN_CREDENTIAL_MISSING",
-  );
-  assert.deepEqual(credentialEnv, {});
-});
-
-test("Keychain-backed deployment fails closed on unsupported platforms", async (t) => {
-  const path = await configFile(t);
-  const credentialEnv = {};
-  await assert.rejects(
-    readDeployment(path, {
-      credentialEnv,
-      platform: "win32",
+      platform,
       readKeychain: async () => {
-        throw new Error("should not read Keychain");
+        throw Error("retired service credential source must not be read");
       },
-    }),
-    /GEA_KEYCHAIN_UNAVAILABLE/,
-  );
-  assert.deepEqual(credentialEnv, {});
-});
+    });
+    assert.equal(config.serviceAccounts.production.keychainService, account.keychainService);
+    assert.deepEqual(credentialEnv, {});
+    assert.deepEqual(
+      businessDeploymentPatch(config, "/fixture/plugin", "/fixture/runtime")
+        .find((row) => row.insert)
+        ?.insert.find((row) => row.id === "gea-proof")?.config.serviceAccounts,
+      config.serviceAccounts,
+    );
+  });
+}
 
 test("deployment rejects inline secrets before reading Keychain", async (t) => {
   const path = await configFile(t, {

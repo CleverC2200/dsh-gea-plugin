@@ -170,7 +170,7 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      /^lib\/business\/(?:inventory-(?:aqkc|apsplan|fc|qll|customer|orderfulfillment|orderworkbench)\/skills\/|inventory-orderfulfillment\/(?:agent-prompt\.md|SOURCE\.json|README\.md)$)/.test(
+      /^lib\/business\/(?:inventory-(?:aqkc|apsplan|fc|qll|customer|orderfulfillment|orderworkbench)\/skills\/|inventory-qll\/insight-prompt\.md$|inventory-orderfulfillment\/(?:agent-prompt\.md|SOURCE\.json|README\.md)$)/.test(
         file,
       ) &&
       manage
@@ -178,7 +178,10 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
       const owner = await realpath(manage.path);
       if (!/^[a-f0-9]{40}$/.test(manage.head) || git(owner, "rev-parse", "HEAD") !== manage.head)
         throw Error("QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH");
-      const resource = file.replace(/^lib\/business\//, "business-resources/");
+      const resource =
+        file === "lib/business/inventory-qll/insight-prompt.md"
+          ? "business-resources/inventory-qll/skills/qll/insight-rules.md"
+          : file.replace(/^lib\/business\//, "business-resources/");
       const entry = git(owner, "ls-tree", manage.head, "--", resource);
       const original = join(owner, resource),
         output = join(prepared, file);

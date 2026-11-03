@@ -9,19 +9,7 @@ test(
   "returned Z plan resubmits fixed baseline with edited correction and verifies successor node fields are empty",
   { timeout: 60000 },
   async (t) => {
-    const app = await profile(t, {
-      config: {
-        serviceAccounts: {
-          production: {
-            clientIdEnv: "GEA_CORR_CLIENT",
-            clientSecretEnv: "GEA_CORR_SECRET",
-            tenantId: "0",
-            allowedUserIds: ["9007199254740993"],
-          },
-        },
-      },
-      env: { GEA_CORR_CLIENT: "fixture", GEA_CORR_SECRET: "fixture-secret" },
-    });
+    const app = await profile(t);
     const planId = "p-jxs-2026-10-00001";
     const old = {
       id: "v1",
@@ -134,22 +122,18 @@ test(
         reply({ success: true, result: skus });
         return true;
       }
-      if (path.endsWith("/api/v1/internal/auth/token")) {
-        reply({
-          success: true,
-          result: {
-            access_token: "service",
-            token_type: "Bearer",
-            expires_in: 600,
-            scope: "sales-plan:write",
-          },
-        });
-        return true;
-      }
-      if (path.endsWith("/api/v1/internal/sales-plans")) {
+      if (path.endsWith("/api/v1/internal/auth/token"))
+        throw Error("Employee flow cannot use service credentials");
+      if (path.endsWith("/sales-plan/plans/resubmit")) {
+        assert.equal(req.headers["x-access-token"], "fixture-gea-token");
+        assert.equal(req.headers.authorization, undefined);
         received = JSON.parse(req.body);
         current = { ...old, id: "v2", seq: 2, status: 1 };
         skus = received.items.map((i) => ({
+          skuCode: i.skuCode,
+          productCategName: skus.find((sku) => sku.skuCode === i.skuCode).productCategName,
+          baseQty: skus.find((sku) => sku.skuCode === i.skuCode).baseQty,
+          price: skus.find((sku) => sku.skuCode === i.skuCode).price,
           ...i,
           id: "2",
           versionId: "v2",
@@ -227,7 +211,8 @@ test(
     await expect(d).toContainText("提交成功，已核验最新状态。");
     await d.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(d).toHaveCount(0);
-    assert.equal(received.orderType, "Z");
+    assert.equal(received.cust_code, 456);
+    assert.equal(received.items[0].price, "2.0000");
     assert.equal(received.items[0].baseQty, "30.000");
     assert.equal(received.items[0].qty, "30.000");
     assert.equal(received.items[0].adjAddQty, "5");
