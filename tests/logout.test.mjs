@@ -122,7 +122,14 @@ test(
       .filter({ hasText: "AI工作台" })
       .click();
     // Current Workbench retains visited Documents while the main Conversation becomes active.
-    await expect(salesPlanFrameElement(page)).toBeHidden();
+    try {
+      await expect(salesPlanFrameElement(page)).toBeHidden();
+    } catch (error) {
+      const alerts = await page.getByRole("alert").allTextContents();
+      throw new Error(`Conversation did not replace Document: ${JSON.stringify(alerts)}`, {
+        cause: error,
+      });
+    }
     await expect(
       page.getByRole("heading", { name: "AI不止于对话，更融入工作", exact: true }),
     ).toBeVisible();

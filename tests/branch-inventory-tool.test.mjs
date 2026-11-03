@@ -9,7 +9,7 @@ const directory = resolve("../dsh-agent-workbench/business/inventory-fc");
 const config = JSON.parse(await readFile(resolve(directory, "sql.config.json"), "utf8"));
 const snapshotId =
   config.dailySummary?.bundle?.bootstrapQueryId ?? config.dailySummary?.snapshotQueryId;
-const fixture = (execute) => {
+const fixture = (execute, readySummary = false) => {
   let tool,
     preset = "gea-html-inventory-fc",
     enabled = true;
@@ -51,6 +51,7 @@ const fixture = (execute) => {
       if (id === config.dailySummary?.snapshotQueryId)
         return { rows: [], returnedColumns: config.queries[id].resultColumns, rejectedColumns: [] };
       calls.push({ id, request, configured });
+      if (readySummary && id === snapshotId) return summaryData();
       return execute(id, request, signal);
     },
     moduleMcp: async () => {
@@ -83,7 +84,7 @@ const fixture = (execute) => {
   };
 };
 test("managed orchestration reads page targets using its own Workbench authorization", async () => {
-  const f = fixture(async (id) => data(id));
+  const f = fixture(async (id) => data(id), true);
   f.switchTo("auto-negotiation");
   const result = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23" }));
   assert.ok(result.summary, JSON.stringify(result));
@@ -99,6 +100,7 @@ test("managed orchestration reads page targets using its own Workbench authoriza
 });
 function data(id) {
   const q = config.queries[id];
+  id = id.replace(/^snapshot(?:-default)?\./, "");
   if (id === "summary.snapshot" || id === "summary.bootstrap")
     return { rows: [], returnedColumns: q.resultColumns, rejectedColumns: [] };
   const values =
@@ -136,6 +138,28 @@ function data(id) {
   return {
     rows: [Object.fromEntries(q.resultColumns.map((name) => [name, values[name] ?? 0]))],
     returnedColumns: q.resultColumns,
+    rejectedColumns: [],
+  };
+}
+function summaryData() {
+  const parts = new Map();
+  for (const member of config.dailySummary.bundle.members) {
+    const row = parts.get(member.part) ?? {
+      bundle_part: member.part,
+      bundle_total: 1,
+      bundle_present: 1,
+      batch_id: "20261023080000000000",
+      business_date: "2026-10-23",
+      stock_date: "2026-10-22",
+      target_month: "2026-10-01",
+    };
+    const values = data(member.queryId).rows[0];
+    for (const [name, column] of Object.entries(member.columns)) row[column] = values[name];
+    parts.set(member.part, row);
+  }
+  return {
+    rows: [...parts.values()].map((row) => ({ ...row, bundle_scope_total: parts.size })),
+    returnedColumns: config.queries[snapshotId].resultColumns,
     rejectedColumns: [],
   };
 }
@@ -218,7 +242,7 @@ test("withdrawn orchestration source cancels pending inventory results", async (
   assert.equal(f.listenerCount(), 0);
 });
 test("branch summary and follow-up suggestions use installed page calculations and fresh scoped parameters", async () => {
-  const f = fixture(async (id) => data(id));
+  const f = fixture(async (id) => data(id), true);
   const summary = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23", cycleDays: 10 }));
   assert.equal(summary.summary.recommended_qty, 35);
   assert.equal(summary.summary.frozen_qty, 0);
@@ -236,10 +260,9 @@ test("branch summary and follow-up suggestions use installed page calculations a
   assert.deepEqual(
     f.calls.filter((c) => c.id !== snapshotId).map((c) => c.id),
     [
-      "source.branch-stock-date",
-      "replenishment.overview",
-      "source.branch-stock-date",
-      "replenishment-suggestions.detail.atomic",
+      "snapshot.replenishment.overview",
+      "snapshot.source.branch-stock-date",
+      "snapshot.replenishment-suggestions.detail.atomic",
     ],
   );
   const last = f.calls.at(-1).request.parameters;
@@ -252,6 +275,17 @@ test("branch summary and follow-up suggestions use installed page calculations a
   );
   assert.ok(allowedTools(PROFILES["gea-html-inventory-fc"]).has("gea_branch_inventory"));
   assert.ok(!allowedTools(PROFILES["gea-html-inventory-aqkc"]).has("gea_branch_inventory"));
+});
+test("missing daily summary never substitutes live replenishment facts", async () => {
+  const f = fixture(async (id) => data(id));
+  const result = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23" }));
+  assert.equal(result.success, false);
+  assert.equal(result.errorCode, "SUMMARY_NOT_AVAILABLE");
+  assert.equal(result.summary, undefined);
+  assert.deepEqual(
+    f.calls.map((call) => call.id),
+    [snapshotId],
+  );
 });
 test("denied snapshots stop once; unrelated or disabled Sessions cannot use the inventory tool", async () => {
   const f = fixture(async () => {
