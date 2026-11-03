@@ -403,7 +403,9 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
     for (const target of update.targets) {
       const bundled = manifest.packages.find((row) => row.name === target.packageName);
       const actual = installed.find((row) => row.name === target.packageName);
-      if (bundled.version !== target.targetVersion || bundled.sha256 !== target.targetSha256)
+      const from = companyReleaseIndex(target.packageName, target.targetVersion);
+      const to = companyReleaseIndex(target.packageName, bundled.version);
+      if (to < from || (to === from && bundled.sha256 !== target.targetSha256))
         return preservedPending;
       if (
         actual.version !== target.targetVersion ||

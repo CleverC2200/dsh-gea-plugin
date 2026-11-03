@@ -203,7 +203,7 @@ test("a pending restart defers bundled refresh while strict installation stays b
   assert.ok(next.cleanup);
 });
 
-async function pendingCompanions(t) {
+async function pendingCompanions(t, bundledVersions = ["0.1.51", "0.6.3-company.47", "0.0.219"]) {
   const f = await fixture(t);
   const child = spawn(process.execPath, ["-e", ""], {
     detached: process.platform !== "win32",
@@ -221,18 +221,21 @@ async function pendingCompanions(t) {
   const packages = [];
   const targets = [];
   for (const [index, row] of bundledSuite.entries()) {
-    const bytes = Buffer.from(row.name + "@" + versions[index]);
+    const bytes = Buffer.from(row.name + "@" + bundledVersions[index]);
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const file = row.name.replace(/^@/, "").replace("/", "-") + "-" + versions[index] + ".tgz";
-    packages.push({ name: row.name, version: versions[index], file, sha256 });
+    const file =
+      row.name.replace(/^@/, "").replace("/", "-") + "-" + bundledVersions[index] + ".tgz";
+    packages.push({ name: row.name, version: bundledVersions[index], file, sha256 });
     await writeFile(join(seed, "archives", file), bytes);
-    const archivePath = join(cache, sha256 + ".tgz");
     if (index < 2) {
-      await writeFile(archivePath, bytes);
+      const installedBytes = Buffer.from(row.name + "@" + versions[index]);
+      const installedSha256 = createHash("sha256").update(installedBytes).digest("hex");
+      const archivePath = join(cache, installedSha256 + ".tgz");
+      await writeFile(archivePath, installedBytes);
       targets.push({
         packageName: row.name,
         targetVersion: versions[index],
-        targetSha256: sha256,
+        targetSha256: installedSha256,
         archivePath,
       });
       profile.dependencies[row.name] = "file:" + archivePath;
@@ -298,86 +301,109 @@ async function pendingCompanions(t) {
   };
 }
 
-test("startup repairs an older GEA behind a companion-only pending restart and leaves the complete suite awaiting actual observation", async (t) => {
-  const f = await pendingCompanions(t);
-  const result = await refreshCompanyStartup({
-    ...f,
-    legacyData: f.home,
-    install: async (options) => {
-      await options.beforeInstall();
-      assert.equal(options.strictPeers, true);
-      assert.equal(options.activateNewBundles, false);
-      assert.deepEqual(
-        options.packages,
-        f.manifest.packages.map((row) => join(f.seed, "archives", row.file)),
-      );
-      const after = structuredClone(f.profileManifest);
-      for (const row of f.manifest.packages) {
-        after.dependencies[row.name] =
-          "file:" + join(f.home, "desktop-company-cache/archives", row.sha256, row.file);
-        await writeFile(
-          join(f.profile, "node_modules", row.name, "package.json"),
-          JSON.stringify(row),
-        );
-      }
-      await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
-      await options.complete({
-        writeFileAtomic: writeFile,
-        result: { logPath: "recovery-pnpm.log" },
-      });
-    },
-  });
-  assert.equal(result.refresh.status, "pending-restart-preserved");
-  assert.equal(result.refresh.changed, true);
-  assert.equal(result.cleanup, null);
-  const journal = JSON.parse(await readFile(join(f.operation, "receipt.json")));
-  assert.equal(journal.stage, "pending-restart");
-  assert.equal(journal.completionProof, null);
-  assert.equal(journal.processIdentity, f.receipt.processIdentity);
-  assert.equal(journal.diagnostic, f.receipt.diagnostic);
-  assert.deepEqual(journal.logs, ["original-pnpm.log", "recovery-pnpm.log"]);
-  assert.deepEqual(
-    journal.targets.map((row) => [row.packageName, row.targetVersion]),
-    [
+for (const scenario of [
+  {
+    title: "matching bundled companions",
+    versions: ["0.1.51", "0.6.3-company.47", "0.0.219"],
+    expectedTargets: [
       [companions[0].name, "0.1.51"],
       [companions[1].name, "0.6.3-company.47"],
       [name, "0.0.219"],
     ],
-  );
-  for (const row of journal.targets) {
-    assert.equal(
-      createHash("sha256")
-        .update(await readFile(row.archivePath))
-        .digest("hex"),
-      row.targetSha256,
-    );
-    assert.equal(
-      row.archivePath,
-      join(f.profile, "gea/plugin-updates/cache", row.targetSha256 + ".tgz"),
-    );
-  }
-  const backup = join(f.profile, "gea/bootstrap/gea-refresh/before-0.0.216-to-0.0.219");
-  assert.equal(await readFile(join(backup, "pending-update-receipt.json"), "utf8"), f.original);
-  assert.equal(
-    await readFile(join(backup, "package.json"), "utf8"),
-    JSON.stringify(f.profileManifest),
-  );
-  for (const [file, bytes] of Object.entries(f.userFiles))
-    assert.equal(await readFile(join(f.profile, file), "utf8"), bytes);
-  assert.equal(
-    await readFile(join(f.profile, "cordis.patch.yml"), "utf8"),
-    "# user configuration\n- id: custom\n",
-  );
-  assert.equal(
-    (
-      await refreshCompanyStartup({
+    backup: "before-0.0.216-to-0.0.219",
+  },
+  {
+    title: "newer bundled companions",
+    versions: ["0.1.53", "0.6.3-company.48", "0.0.221"],
+    expectedTargets: [
+      [companions[0].name, "0.1.53"],
+      [companions[1].name, "0.6.3-company.48"],
+      [name, "0.0.221"],
+    ],
+    backup: "before-0.0.216-to-0.0.221",
+  },
+])
+  test(
+    "startup repairs an older GEA behind a companion-only pending restart with " +
+      scenario.title +
+      " and leaves the complete suite awaiting actual observation",
+    async (t) => {
+      const f = await pendingCompanions(t, scenario.versions);
+      const result = await refreshCompanyStartup({
         ...f,
-        install: () => assert.fail("must not reinstall"),
-      })
-    ).refresh.changed,
-    false,
+        legacyData: f.home,
+        install: async (options) => {
+          await options.beforeInstall();
+          assert.equal(options.strictPeers, true);
+          assert.equal(options.activateNewBundles, false);
+          assert.deepEqual(
+            options.packages,
+            f.manifest.packages.map((row) => join(f.seed, "archives", row.file)),
+          );
+          const after = structuredClone(f.profileManifest);
+          for (const row of f.manifest.packages) {
+            after.dependencies[row.name] =
+              "file:" + join(f.home, "desktop-company-cache/archives", row.sha256, row.file);
+            await writeFile(
+              join(f.profile, "node_modules", row.name, "package.json"),
+              JSON.stringify(row),
+            );
+          }
+          await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
+          await options.complete({
+            writeFileAtomic: writeFile,
+            result: { logPath: "recovery-pnpm.log" },
+          });
+        },
+      });
+      assert.equal(result.refresh.status, "pending-restart-preserved");
+      assert.equal(result.refresh.changed, true);
+      assert.equal(result.cleanup, null);
+      const journal = JSON.parse(await readFile(join(f.operation, "receipt.json")));
+      assert.equal(journal.stage, "pending-restart");
+      assert.equal(journal.completionProof, null);
+      assert.equal(journal.processIdentity, f.receipt.processIdentity);
+      assert.equal(journal.diagnostic, f.receipt.diagnostic);
+      assert.deepEqual(journal.logs, ["original-pnpm.log", "recovery-pnpm.log"]);
+      assert.deepEqual(
+        journal.targets.map((row) => [row.packageName, row.targetVersion]),
+        scenario.expectedTargets,
+      );
+      for (const row of journal.targets) {
+        assert.equal(
+          createHash("sha256")
+            .update(await readFile(row.archivePath))
+            .digest("hex"),
+          row.targetSha256,
+        );
+        assert.equal(
+          row.archivePath,
+          join(f.profile, "gea/plugin-updates/cache", row.targetSha256 + ".tgz"),
+        );
+      }
+      const backup = join(f.profile, "gea/bootstrap/gea-refresh", scenario.backup);
+      assert.equal(await readFile(join(backup, "pending-update-receipt.json"), "utf8"), f.original);
+      assert.equal(
+        await readFile(join(backup, "package.json"), "utf8"),
+        JSON.stringify(f.profileManifest),
+      );
+      for (const [file, bytes] of Object.entries(f.userFiles))
+        assert.equal(await readFile(join(f.profile, file), "utf8"), bytes);
+      assert.equal(
+        await readFile(join(f.profile, "cordis.patch.yml"), "utf8"),
+        "# user configuration\n- id: custom\n",
+      );
+      assert.equal(
+        (
+          await refreshCompanyStartup({
+            ...f,
+            install: () => assert.fail("must not reinstall"),
+          })
+        ).refresh.changed,
+        false,
+      );
+    },
   );
-});
 
 test("pending restart recovery preserves unsupported suites and refuses unconfirmed writers or changed receipts", async (t) => {
   for (const variant of [

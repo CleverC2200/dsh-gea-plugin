@@ -314,8 +314,11 @@ export async function installedScenario(
       )
     : {};
   const expectedVersions = startupRecovery
-    ? ["0.1.51", "0.6.3-company.47", "0.0.219"]
+    ? ["0.1.53", "0.6.3-company.48", "0.0.221"]
     : ["1.1.0", "2.1.0", "3.1.0"];
+  const updateVersions = startupRecovery
+    ? ["0.1.51", "0.6.3-company.47", "0.0.216"]
+    : expectedVersions;
   if (startupRecovery) {
     const archive = join(
       root,
@@ -331,8 +334,8 @@ export async function installedScenario(
     location = runtimeLocation(proof, sdk);
   const targets = allUpdates
     ? [
-        await makeArchive(root, companyPackageNames[0], expectedVersions[0], peers),
-        await makeArchive(root, companyPackageNames[1], expectedVersions[1], peers),
+        await makeArchive(root, companyPackageNames[0], updateVersions[0], peers),
+        await makeArchive(root, companyPackageNames[1], updateVersions[1], peers),
         target,
       ]
     : [old[0], old[1], target];
@@ -599,14 +602,19 @@ export async function installedScenario(
     const gea = await makeArchive(
       root,
       companyPackageNames[2],
-      "0.0.219",
+      expectedVersions[2],
       Object.fromEntries(
         companyPackageNames.slice(0, 2).map((name, index) => [name, expectedVersions[index]]),
       ),
       true,
     );
+    const replacements = await Promise.all(
+      companyPackageNames
+        .slice(0, 2)
+        .map((name, index) => makeArchive(root, name, expectedVersions[index])),
+    );
     const packages = [];
-    for (const artifact of [targets[0], targets[1], gea]) {
+    for (const artifact of [...replacements, gea]) {
       const file =
         artifact.manifest.name.replace(/^@/, "").replace("/", "-") +
         "-" +
@@ -647,7 +655,7 @@ export async function installedScenario(
       await readFile(
         join(
           root,
-          "profiles/desktop/gea/bootstrap/gea-refresh/before-0.0.216-to-0.0.219/pending-update-receipt.json",
+          "profiles/desktop/gea/bootstrap/gea-refresh/before-0.0.216-to-0.0.221/pending-update-receipt.json",
         ),
       ),
       original,
