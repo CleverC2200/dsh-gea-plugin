@@ -99,6 +99,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-session':
         specifier: link:../../official-latest-standard/packages/client/ui-session
         version: link:../../official-latest-standard/packages/client/ui-session
+      '@deepseek-ai/dsh-client-ui-settings-general':
+        specifier: link:../../official-latest-standard/packages/client/ui-settings-general
+        version: link:../../official-latest-standard/packages/client/ui-settings-general
       '@deepseek-ai/dsh-client-ui-settings':
         specifier: link:../../official-latest-standard/packages/client/ui-settings
         version: link:../../official-latest-standard/packages/client/ui-settings

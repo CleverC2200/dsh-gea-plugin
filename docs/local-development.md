@@ -24,7 +24,7 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 完整 build 也仅构建 GEA host/client；页面在同组 Workbench 按自己的工具链构建。watch 只编译，不启动应用，勿并发写同一输出。官方类型检查需要明确准备的只读 SDK 与 peer 声明，不能以旧 SDK 或历史产物代替当前输入。
 
-插件更新使用官方 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，等待公开 slots、locale 与 modules 服务就绪后向三个公司 bundle 贡献内容。定向类型检查只需将 `GEA_PLUGIN_UPDATE_SDK` 指向未修改、已准备的官方 SDK 绝对路径，再运行 `typecheck:plugin-updates`。该检查包含实际详情 TSX、公共组件与本地样式声明；部署配置和分层验证见 [插件来源](plugin-release-source.md)。
+公司更新入口通过公开的 `settings.update` 替换标准按钮，打开 `company-updates` 设置页；`sidebar.toggle.badge` 汇总折叠提示。页面共用一个插件更新 owner 和一个原生 updates 观察器，客户端与插件分别执行原操作，关闭页面不取消后台更新。插件详情保留版本和兼容性诊断，其动作与列表动作打开同一更新页。当前安装客户端版本只读 `dshDesktop.appVersion()`，缺失或失败保持未确认。公开槽位与状态源接线由 `tests/plugin-update-{detail,list}.browser.mjs` 和同组 Workbench 的 `tests/sidebar-reopen.browser.mjs` 核验；运行不代表原生安装或真实网络验收。
 
 只读交付一致性检查使用 `pnpm run delivery:check --input request.json`，failed/unknown 返回非零；人工浏览报告使用 `pnpm run delivery:report --input request.json`，短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。报告命令退出0只表示生成成功，检查命令退出0只证明一致性；两者都不授予业务验收、不启动应用或恢复自动化。
 
