@@ -327,10 +327,10 @@ test("MPS static SQL copies require the frozen Workbench blob and reject altered
 function copiedSkillFixture(
   t,
   resource = "business-resources/inventory-aqkc/skills/inventory-policy/rules/data-boundary.md",
+  output = resource.replace(/^business-resources\//, "lib/business/"),
 ) {
   const fixture = preparedFixture(t);
   const path = join(fixture.source, "..", "manage");
-  const output = resource.replace(/^business-resources\//, "lib/business/");
   mkdirSync(join(path, resource, ".."), { recursive: true });
   writeFileSync(join(path, resource), "Only admitted inventory rows may be read.\n");
   fixture.git("-C", path, "init", "-q");
@@ -915,4 +915,27 @@ test("declared ignored public build outputs remain frozen by the prepared receip
   await verifyPreparedWorkbench(fixture);
   writeFileSync(join(fixture.prepared, outputs[0]), "changed runtime output\n");
   await assert.rejects(verifyPreparedWorkbench(fixture), /QUALITY_WORKBENCH_ASSET_MISMATCH/);
+});
+
+test("QLL insight prompt must equal its frozen Manage rules and remain a regular file", async (t) => {
+  const fixture = copiedSkillFixture(
+    t,
+    "business-resources/inventory-qll/skills/qll/insight-rules.md",
+    "lib/business/inventory-qll/insight-prompt.md",
+  );
+  const record = await readPreparedWorkbench(fixture);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  const output = join(fixture.prepared, fixture.output);
+  const original = join(fixture.manage.path, fixture.resource);
+  const bytes = readFileSync(original);
+  writeFileSync(output, "changed prompt\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  writeFileSync(output, bytes);
+  writeFileSync(original, "changed source\n");
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+  writeFileSync(original, bytes);
+  rmSync(output);
+  symlinkSync(original, output);
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });

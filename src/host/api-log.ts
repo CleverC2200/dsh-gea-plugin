@@ -25,6 +25,7 @@ const SENSITIVE_KEY =
 
 const METADATA_ONLY = new Set([
   "memory.personal",
+  "plans.resubmit",
   "service.submit",
   "service.token",
   "plans.list",
@@ -419,7 +420,7 @@ const CATALOG: CatalogDefinition[] = [
   endpoint(
     {
       id: "service.token",
-      group: "服务账号重提",
+      group: "销售计划提报",
       name: "交换服务令牌",
       method: "POST",
       path: "/api/v1/internal/auth/token",
@@ -433,16 +434,30 @@ const CATALOG: CatalogDefinition[] = [
   endpoint(
     {
       id: "service.submit",
-      group: "服务账号重提",
-      name: "销售计划重提",
+      group: "销售计划提报",
+      name: "销售计划提报与重提",
       method: "POST",
       path: "/api/v1/internal/sales-plans",
-      description: "使用服务账号提交一份已完成来源校验的销售计划。",
+      description: "使用服务账号提交销售计划快照。",
       requestFields: [],
       replayPolicy: "blocked",
       replayNote: "重提仅可从原受控提交意图重试，日志中心不保存或重发业务载荷",
     },
     /^\/api\/v1\/internal\/sales-plans$/,
+  ),
+  endpoint(
+    {
+      id: "plans.resubmit",
+      group: "销售计划",
+      name: "员工修改重提",
+      method: "POST",
+      path: "/sales-plan/plans/resubmit",
+      description: "使用当前员工登录提交已完成来源校验的销售计划新版本。",
+      requestFields: [],
+      replayPolicy: "blocked",
+      replayNote: "重提须从原受控提交意图重试，日志仅保留审计元数据",
+    },
+    /^\/sales-plan\/plans\/resubmit$/,
   ),
 ];
 

@@ -56,12 +56,7 @@ import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 
-import {
-  validateServiceAccounts,
-  serviceAccountUnavailableReason,
-  serviceAccountUnavailableError,
-  type ServiceAccounts,
-} from "./service-account.ts";
+import { validateServiceAccounts } from "../shared/service-accounts.js";
 import { readSalesPlanWorkflowConfig } from "./workflow-config.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { brandString, type Branded } from "@deepseek-ai/dsh-brand";
@@ -112,7 +107,7 @@ export interface Deployment {
       metadata: number;
     };
   };
-  serviceAccounts?: ServiceAccounts;
+  serviceAccounts?: unknown;
   dms?: DmsEnvironments;
   orderFulfillmentConfirmation?: { production?: boolean; test?: boolean };
   fcStorage?: FcStorageEnvironments;
@@ -908,12 +903,15 @@ export class Business {
     this.salesTransactions = new SalesPlanTransactions({
       scope: (effect) => {
         this.assertExecutionAllowed(this.config.analysisAgentCode, effect);
-        if (effect === "submit" && !this.auth) throw serviceAccountUnavailableError("signed-out");
+        if (effect === "submit" && !this.auth) {
+          const error = new GeaResponseError(401, { message: "请先登录后再修改重提销售计划" });
+          error.details.resubmitUnavailableReason = "signed-out";
+          throw error;
+        }
         return {
           auth: this.authenticated(),
           base: this.base,
           signal: this.epoch.signal,
-          serviceAccount: this.config.serviceAccounts?.[this.environment],
         };
       },
       query: (payload, signal) => this.workbenchQuery(payload, signal),
@@ -1406,10 +1404,7 @@ export class Business {
   status() {
     const readonlyValidation = this.salesReadonly?.snapshot();
     const models = this.modelRoutes.get(WORKBENCH_AGENT_CODE)?.models;
-    const resubmitUnavailableReason = serviceAccountUnavailableReason(
-      this.config.serviceAccounts?.[this.environment],
-      this.auth,
-    );
+    const resubmitUnavailableReason = this.auth ? undefined : "signed-out";
     return {
       environment: this.environment,
       environments: Object.keys(this.environments),
