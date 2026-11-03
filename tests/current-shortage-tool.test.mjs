@@ -64,9 +64,7 @@ function fixture(
         enabled && id === "auto-negotiation"
           ? { consumerCode: "workbench", signal: source.signal }
           : undefined,
-      list: async () => [
-        { id: preset, kind: "prompt", installed: true, enabled },
-      ],
+      list: async () => [{ id: preset, kind: "prompt", installed: true, enabled }],
       watch: (listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -128,9 +126,7 @@ test("orchestration selects the explicit fixed location scope without borrowing 
     const result = JSON.parse(await f.call({ locationType, view: "summary" }));
     const config = JSON.parse(
       await readFile(
-        "../dsh-agent-workbench/business/inventory-" +
-          agent +
-          "/sql.config.json",
+        "../dsh-agent-workbench/business/inventory-" + agent + "/sql.config.json",
         "utf8",
       ),
     );
@@ -160,33 +156,18 @@ test("four Session profiles reuse their installed page SQL without a page or Cub
     assert.equal(f.calls[0].configured, true);
     const config = JSON.parse(
       await readFile(
-        "../dsh-agent-workbench/business/inventory-" +
-          agent +
-          "/sql.config.json",
+        "../dsh-agent-workbench/business/inventory-" + agent + "/sql.config.json",
         "utf8",
       ),
     );
-    assert.equal(
-      f.calls[0].request.sql,
-      config.queries["current-shortage.summary"].request.sql,
-    );
-    assert.ok(
-      allowedTools(PROFILES["gea-html-inventory-" + agent]).has(
-        "gea_current_shortage",
-      ),
-    );
+    assert.equal(f.calls[0].request.sql, config.queries["current-shortage.summary"].request.sql);
+    assert.ok(allowedTools(PROFILES["gea-html-inventory-" + agent]).has("gea_current_shortage"));
   }
-  assert.equal(
-    allowedTools(PROFILES["gea-readonly"]).has("gea_current_shortage"),
-    false,
-  );
+  assert.equal(allowedTools(PROFILES["gea-readonly"]).has("gea_current_shortage"), false);
 });
 test("branch ranking and a follow-up SKU page reuse one Session with explicit warehouse codes", async () => {
   const config = JSON.parse(
-    await readFile(
-      "../dsh-agent-workbench/business/inventory-fc/sql.config.json",
-      "utf8",
-    ),
+    await readFile("../dsh-agent-workbench/business/inventory-fc/sql.config.json", "utf8"),
   );
   const locations = [
     {
@@ -208,8 +189,7 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
       shortage: 8,
     },
   ];
-  const locationColumns =
-    config.queries["current-shortage.locations"].resultColumns;
+  const locationColumns = config.queries["current-shortage.locations"].resultColumns;
   const detailColumns = config.queries["current-shortage.detail"].resultColumns;
   const f = fixture("fc", async (request) =>
     request.sql === config.queries["current-shortage.locations"].request.sql
@@ -239,10 +219,7 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   );
   const ranking = JSON.parse(await f.call({ view: "locations" }));
   assert.ok(f.calls.length, JSON.stringify(ranking));
-  assert.equal(
-    f.calls[0].request.sql,
-    config.queries["current-shortage.locations"].request.sql,
-  );
+  assert.equal(f.calls[0].request.sql, config.queries["current-shortage.locations"].request.sql);
   assert.equal(ranking.coverage, "complete-location-ranking");
   assert.deepEqual(
     ranking.rows.map((r) => r.location_code),
@@ -256,20 +233,14 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   );
   assert.equal(detail.rows[0].sku, "S1");
   assert.equal(f.calls[1].request.parameters.gea_p2, "W1");
-  assert.ok(
-    f.calls.every((c) => c.request.consumerCode === "branch-inventory"),
-  );
+  assert.ok(f.calls.every((c) => c.request.consumerCode === "branch-inventory"));
 });
 test("paginated branch rankings collect every location and reject an incomplete later page", async (t) => {
   const config = JSON.parse(
-    await readFile(
-      "../dsh-agent-workbench/business/inventory-fc/sql.config.json",
-      "utf8",
-    ),
+    await readFile("../dsh-agent-workbench/business/inventory-fc/sql.config.json", "utf8"),
   );
   const query = config.queries["current-shortage.locations"];
-  if (!query.pagination)
-    return t.skip("installed peer uses the earlier unpaged contract");
+  if (!query.pagination) return t.skip("installed peer uses the earlier unpaged contract");
   const offsetKey = Object.entries(query.parameterSpec).find(
     ([, spec]) => spec.name === "offset",
   )[0];
@@ -288,8 +259,7 @@ test("paginated branch rankings collect every location and reject an incomplete 
     fixture("fc", async (request) => {
       const offset = request.parameters[offsetKey];
       return {
-        rows:
-          truncate && offset > 0 ? [] : locations.slice(offset, offset + 50),
+        rows: truncate && offset > 0 ? [] : locations.slice(offset, offset + 50),
         returnedColumns: query.resultColumns,
         rejectedColumns: [],
       };
@@ -338,10 +308,7 @@ test("disabled, changed and unrelated identities cannot execute or receive data"
   assert.equal(disabled.calls.length, 0);
   const unrelated = fixture();
   unrelated.switchTo("gea-readonly");
-  await assert.rejects(
-    unrelated.call({}),
-    /GEA_CURRENT_SHORTAGE_NOT_AVAILABLE/,
-  );
+  await assert.rejects(unrelated.call({}), /GEA_CURRENT_SHORTAGE_NOT_AVAILABLE/);
   assert.equal(unrelated.calls.length, 0);
   let f;
   f = fixture("aqkc", async () => {
@@ -395,21 +362,11 @@ test("missing fields, invalid rows and partial pages cannot become zero shortage
     { ...row, invalid: null },
   ])
     assert.throws(
-      () =>
-        currentShortageResult(
-          { rows: [r], returnedColumns: columns },
-          false,
-          1,
-        ),
+      () => currentShortageResult({ rows: [r], returnedColumns: columns }, false, 1),
       /CURRENT_SHORTAGE_INCOMPLETE/,
     );
   assert.throws(
-    () =>
-      currentShortageResult(
-        { rows: [row], returnedColumns: columns.slice(1) },
-        false,
-        1,
-      ),
+    () => currentShortageResult({ rows: [row], returnedColumns: columns.slice(1) }, false, 1),
     /CURRENT_SHORTAGE_INCOMPLETE/,
   );
   const detailColumns = [
@@ -429,28 +386,16 @@ test("missing fields, invalid rows and partial pages cannot become zero shortage
     page_row_present: 1,
   };
   assert.throws(
-    () =>
-      currentShortageResult(
-        { rows: [detail], returnedColumns: detailColumns },
-        true,
-        1,
-      ),
+    () => currentShortageResult({ rows: [detail], returnedColumns: detailColumns }, true, 1),
     /CURRENT_SHORTAGE_PAGE_INCOMPLETE/,
   );
   assert.equal(
-    currentShortageResult(
-      { rows: [detail], returnedColumns: detailColumns },
-      true,
-      2,
-    ).hasMorePages,
+    currentShortageResult({ rows: [detail], returnedColumns: detailColumns }, true, 2).hasMorePages,
     false,
   );
   assert.equal(
-    currentShortageResult(
-      { rows: [{ ...row, shortage: 0 }], returnedColumns: columns },
-      false,
-      1,
-    ).rows[0].shortage,
+    currentShortageResult({ rows: [{ ...row, shortage: 0 }], returnedColumns: columns }, false, 1)
+      .rows[0].shortage,
     0,
   );
 });
