@@ -150,6 +150,7 @@ test("both entries preserve HTTP and invalid JSON failure facts", async () => {
 test("order handshake retries a reset once with the original request identity", async () => {
   const { prepareGatewaySession } = await import("../src/host/gateway-session.ts");
   const calls = [];
+  const requestIds = [];
   const response = payload();
   response.result.gatewayContext.consumerCode = "order";
   await prepareGatewaySession(
@@ -160,6 +161,7 @@ test("order handshake retries a reset once with the original request identity", 
     1000,
     async (url, init) => {
       calls.push(init.body);
+      requestIds.push(new Headers(init.headers).get("X-Request-Id"));
       if (calls.length === 1)
         throw new Error("captured", {
           cause: new TypeError("fetch failed", {
@@ -171,6 +173,8 @@ test("order handshake retries a reset once with the original request identity", 
   );
   assert.equal(calls.length, 2);
   assert.equal(calls[0], calls[1]);
+  for (const id of requestIds) assert.match(id, /^[0-9a-f-]{36}$/);
+  assert.notEqual(requestIds[0], requestIds[1]);
 });
 test("order handshake never retries cancellation, other Consumers or a second reset", async () => {
   const { prepareGatewaySession } = await import("../src/host/gateway-session.ts");

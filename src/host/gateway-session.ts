@@ -38,7 +38,11 @@ export async function prepareGatewaySession(
       channel: "MCP_CLIENT",
     }),
   };
-  const send = () => fetchImpl(base + "/ai/gateway/session", request);
+  const send = () =>
+    fetchImpl(base + "/ai/gateway/session", {
+      ...request,
+      headers: { ...request.headers, "X-Request-Id": randomUUID() },
+    });
   let response: Response;
   try {
     response = await send();
