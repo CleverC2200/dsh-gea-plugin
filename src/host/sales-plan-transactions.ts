@@ -202,7 +202,16 @@ export class SalesPlanTransactions {
           });
         if (scope.signal.aborted) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
-        const submission = { ...prepared.request, submitterCode: text(version.submitter) };
+        const [year, month] = prepared.request.periodMonth.split("-");
+        const planKind = prepared.request.orderType === "Z" ? "纠偏" : "月初";
+        const submission = {
+          ...prepared.request,
+          submitterCode: text(version.submitter),
+          notification: {
+            title: "需求预测重新提报待审批",
+            content: `一份${year}年${Number(month)}月${planKind}需求预测已修改并重新提报，请查看并按最新内容处理。`,
+          },
+        };
         delete submission.submitterName;
         attempt.body = serializeSalesPlanSubmission(submission);
       }
