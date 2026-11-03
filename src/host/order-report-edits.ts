@@ -11,10 +11,7 @@ export async function orderReportWithEdits(
     reportScope: {
       ...identity.reportScope,
       key:
-        "order:edits:" +
-        createHash("sha256")
-          .update(identity.reportScope.key)
-          .digest("base64url"),
+        "order:edits:" + createHash("sha256").update(identity.reportScope.key).digest("base64url"),
     },
   };
   if (input.operation === "save-edits") {
@@ -40,8 +37,7 @@ export async function orderReportWithEdits(
       execute,
     );
   }
-  if (input.operation !== "load")
-    return orderReportStore(input, identity, execute);
+  if (input.operation !== "load") return orderReportStore(input, identity, execute);
   const [result, edited] = await Promise.all([
     orderReportStore(input, identity, execute),
     orderReportStore(input, editIdentity, execute),

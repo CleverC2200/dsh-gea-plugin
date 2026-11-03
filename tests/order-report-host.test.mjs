@@ -63,7 +63,13 @@ function business(t) {
 }
 function gateway(
   t,
-  { deny = false, scopeChanged = false, expireFirstSave = false, bases = ["郑州"], beforeSave } = {},
+  {
+    deny = false,
+    scopeChanged = false,
+    expireFirstSave = false,
+    bases = ["郑州"],
+    beforeSave,
+  } = {},
 ) {
   const ordered = [...bases].sort();
   const scopeKey =
@@ -200,17 +206,40 @@ test("ordinary editor saves and reopens fixed report SQL with the existing order
 
 test("a new period load is not blocked by an earlier report save", async (t) => {
   let release, started, timer;
-  const held = new Promise(resolve => { release = resolve; });
-  const savingStarted = new Promise(resolve => { started = resolve; });
-  gateway(t, { beforeSave: async () => { started(); await held; } });
-  const editor = business(t), signal = new AbortController().signal;
-  const saving = editor.orderReport({ operation: "save", period, expectedVersion: 0,
-    requestId: "save-before-independent-load", report }, signal);
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const savingStarted = new Promise((resolve) => {
+    started = resolve;
+  });
+  gateway(t, {
+    beforeSave: async () => {
+      started();
+      await held;
+    },
+  });
+  const editor = business(t),
+    signal = new AbortController().signal;
+  const saving = editor.orderReport(
+    {
+      operation: "save",
+      period,
+      expectedVersion: 0,
+      requestId: "save-before-independent-load",
+      report,
+    },
+    signal,
+  );
   await savingStarted;
   try {
     const loaded = await Promise.race([
-      editor.orderReport({ operation: "load", period: { ...period, start: "2026-10-12", end: "2026-10-19" } }, signal),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(Error("READ_BLOCKED_BY_SAVE")), 1000); }),
+      editor.orderReport(
+        { operation: "load", period: { ...period, start: "2026-10-12", end: "2026-10-19" } },
+        signal,
+      ),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Error("READ_BLOCKED_BY_SAVE")), 1000);
+      }),
     ]);
     assert.equal(loaded.report, null);
     assert.equal(loaded.scope.base, "郑州");
