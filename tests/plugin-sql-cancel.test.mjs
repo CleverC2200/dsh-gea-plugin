@@ -304,9 +304,11 @@ test("configured SQL uses the authenticated Consumer delegation and forwards one
   assert.equal(requests[1].headers["X-Delegation-Token"], "fixture-delegation");
   const { consumerCode: _consumerCode, ...expected } = configured;
   assert.deepEqual(requests[1].body, expected);
-  business.logout({});
+  await business.logout({});
+  assert.equal(requests.length, 3);
+  assert.match(requests[2].url, /\/sys\/logout$/);
   await assert.rejects(business.pluginSql(configured, new AbortController().signal, true));
-  assert.equal(requests.length, 2, "logged-out reads must not reach the gateway");
+  assert.equal(requests.length, 3, "logged-out reads must not reach the gateway");
 });
 
 test("four inventory Consumers reuse completed SQL snapshots and explicit refresh bypasses them", async (t) => {
