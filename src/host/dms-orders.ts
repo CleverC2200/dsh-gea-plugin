@@ -8,7 +8,7 @@ export interface DmsConfig {
   gatewayUrl: string;
   manageUrl?: string;
   secretEnv: string;
-  credentialSource?: "fc-bundled-dms-test";
+  credentialSource?: "fc-bundled-dms-test" | "fc-bundled-dms-production";
   users: {
     tenantId: string;
     userId: string;
