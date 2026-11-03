@@ -194,7 +194,11 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   const f = fixture("fc", async (request) =>
     request.sql === config.queries["current-shortage.locations"].request.sql
       ? {
-          rows: locations,
+          rows: locations.map((row) => ({
+            ...row,
+            page_scope_total: 2,
+            page_row_present: 1,
+          })),
           returnedColumns: locationColumns,
           rejectedColumns: [],
           hasMorePages: false,
@@ -214,6 +218,7 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
         },
   );
   const ranking = JSON.parse(await f.call({ view: "locations" }));
+  assert.ok(f.calls.length, JSON.stringify(ranking));
   assert.equal(f.calls[0].request.sql, config.queries["current-shortage.locations"].request.sql);
   assert.equal(f.calls[0].request.parameters.gea_p49901, 50);
   assert.equal(f.calls[0].request.parameters.gea_p49902, 0);
@@ -232,15 +237,73 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   assert.equal(f.calls[1].request.parameters.gea_p2, "W1");
   assert.ok(f.calls.every((c) => c.request.consumerCode === "branch-inventory"));
 });
+test("paginated branch rankings collect every location and reject an incomplete later page", async (t) => {
+  const config = JSON.parse(
+    await readFile("../dsh-agent-workbench/business/inventory-fc/sql.config.json", "utf8"),
+  );
+  const query = config.queries["current-shortage.locations"];
+  if (!query.pagination) return t.skip("installed peer uses the earlier unpaged contract");
+  const offsetKey = Object.entries(query.parameterSpec).find(
+    ([, spec]) => spec.name === "offset",
+  )[0];
+  const locations = Array.from({ length: 51 }, (_, i) => ({
+    ...row,
+    location_type: "分仓",
+    location_code: `W${i}`,
+    location_name: `分仓${i}`,
+    warehouse_code: `W${i}`,
+    base: "郑州",
+    shortage: i,
+    page_scope_total: 51,
+    page_row_present: 1,
+  }));
+  const run = (truncate) =>
+    fixture("fc", async (request) => {
+      const offset = request.parameters[offsetKey];
+      return {
+        rows: truncate && offset > 0 ? [] : locations.slice(offset, offset + 50),
+        returnedColumns: query.resultColumns,
+        rejectedColumns: [],
+      };
+    });
+  const complete = run(false);
+  const ranking = JSON.parse(await complete.call({ view: "locations" }));
+  assert.equal(ranking.coverage, "complete-location-ranking");
+  assert.equal(ranking.rows.length, 51);
+  assert.equal(ranking.rows[0].location_code, "W50");
+  assert.deepEqual(
+    complete.calls.map((c) => c.request.parameters[offsetKey]),
+    [0, 50],
+  );
+  const incomplete = JSON.parse(await run(true).call({ view: "locations" }));
+  assert.equal(incomplete.success, false);
+  assert.equal(incomplete.coverage, undefined);
+});
 test("location ranking uses the installed pagination contract for each profile", async () => {
   for (const [agent] of definitions) {
+    const config = JSON.parse(
+      await readFile(`../dsh-agent-workbench/business/inventory-${agent}/sql.config.json`, "utf8"),
+    );
+    const query = config.queries["current-shortage.locations"];
     const f = fixture(agent, async () => ({
-      rows: [],
-      returnedColumns: [...columns, "location_code", "location_name", "base", "warehouse_code"],
+      rows: query.pagination?.atomicQuery
+        ? [
+            {
+              ...Object.fromEntries(query.resultColumns.map((key) => [key, null])),
+              page_scope_total: 0,
+              page_row_present: null,
+            },
+          ]
+        : [],
+      returnedColumns: query.resultColumns,
       rejectedColumns: [],
     }));
     const result = JSON.parse(await f.call({ view: "locations" }));
-    assert.equal(result.coverage, "complete-location-ranking");
+    assert.equal(
+      result.coverage,
+      "complete-location-ranking",
+      JSON.stringify({ agent, result, pagination: query.pagination }),
+    );
     assert.equal(f.calls[0].request.parameters.gea_p49901, agent === "apsplan" ? undefined : 50);
     assert.equal(f.calls[0].request.parameters.gea_p49902, agent === "apsplan" ? undefined : 0);
   }

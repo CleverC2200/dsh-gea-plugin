@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained)",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -70,10 +70,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
-        "sha256": "a3226e0f3e5b7729e8adf6c47b843806a513e266de4bfe3aae8381fedbaf4377",
+        "sha256": "ed0b01ee34fbd0ccff2818c3c6c1f11ffc94b07e48cab8325ffddf07d41511ea",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "662413674cfac1fd2942f1a8e4d03b3fd3847f2c",
+        "sourceHead": "e8a718f796790ed5bd8f09e8dc991448ad017755",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
@@ -97,10 +97,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-qll/skills/qll/SKILL.md",
-        "sha256": "db69b50ca61bddb7cd71924db373e1afa4f1a76c3c38a158d846ea5fcad8bddd",
+        "sha256": "33ebd8f82d7820faf74b16fda0eeb961dc8fdcac39b634ae108e61291ae949f8",
         "name": "inventory-qll",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "76078202e44ab486a6c6feb94d45d7b30143a20f",
+        "sourceHead": "1afe4b2d2a9259335895cc84df2ec1437804e5a2",
         "sourceFile": "business-resources/inventory-qll/skills/qll/SKILL.md"
       },
       {
@@ -461,6 +461,48 @@
       "write"
     ],
     "6156856b3a33ad2d408c2cf8162df1b32371c3d7": [
+      "ask_user_question",
+      "bash",
+      "create_goal",
+      "edit",
+      "exit_plan_mode",
+      "forecast_compute",
+      "gea_capabilities",
+      "gea_evidence_read",
+      "gea_runtime_diagnose",
+      "gea_sales_plan_read",
+      "gea_visible_workbench_context",
+      "get_goal",
+      "glob",
+      "grep",
+      "interrupt_agent",
+      "job_kill",
+      "job_list",
+      "job_output",
+      "list_agents",
+      "mcp__gea-gateway__inspect_cube_model",
+      "mcp__gea-gateway__query_business_data",
+      "page_reference_read",
+      "present",
+      "read",
+      "read_image",
+      "render_ui",
+      "report_market_issue",
+      "send_message",
+      "skill",
+      "skill_reference_read",
+      "subagent",
+      "subagent_fork",
+      "subagents_run",
+      "todo_write",
+      "update_goal",
+      "validate_dsh_ui",
+      "web_fetch",
+      "web_search",
+      "workflow",
+      "write"
+    ],
+    "e00863fb9a48745b292a1f61beb547cc79dfbf8f": [
       "ask_user_question",
       "bash",
       "create_goal",

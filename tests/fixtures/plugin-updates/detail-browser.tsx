@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/base.css";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/design-platform.css";
 import { Context } from "@deepseek-ai/cordis";
@@ -19,6 +19,12 @@ const locale = new LocaleRuntime(ctx);
 ctx.provide("locale", locale);
 ctx.slots.installLocale(locale);
 ctx.provide("pluginNavigation", { openBundle() {} });
+let navigateUpdates = () => {};
+ctx.provide("settingsNavigation", {
+  open() {
+    navigateUpdates();
+  },
+});
 let subject = {
   kind: "bundle",
   pkg: {
@@ -32,18 +38,35 @@ ctx.slots.register(
   {
     name: "root",
     children: {
+      "settings.section": { kind: "list", scope: "root" },
       "plugins.detail.actions": { kind: "list", scope: "root" },
       "plugins.detail.badge": { kind: "list", scope: "root" },
       "plugins.detail.section": { kind: "list", scope: "root" },
     },
   },
-  ({ renderSlot }) => (
-    <main>
-      {renderSlot("plugins.detail.actions", { subject })}
-      {renderSlot("plugins.detail.badge", { subject })}
-      {renderSlot("plugins.detail.section", { subject })}
-    </main>
-  ),
+  ({ renderSlot }) => {
+    const [updatesOpen, setUpdatesOpen] = useState(false);
+    navigateUpdates = () => setUpdatesOpen(true);
+    return (
+      <main>
+        {updatesOpen ? (
+          <div data-update-panel>
+            {renderSlot(
+              "settings.section",
+              { close: () => setUpdatesOpen(false) },
+              { only: "company-updates" },
+            )}
+          </div>
+        ) : (
+          <>
+            {renderSlot("plugins.detail.actions", { subject })}
+            {renderSlot("plugins.detail.badge", { subject })}
+            {renderSlot("plugins.detail.section", { subject })}
+          </>
+        )}
+      </main>
+    );
+  },
 );
 ctx.provide("modules", {
   entries: { state: { getSnapshot: () => ({ syncing: true, failures: [] }) } },

@@ -115,6 +115,10 @@ export function adaptSignedWindowsFactory(source, desktop) {
       "resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",
       "resolveCompanyWindowsUpdate()",
     ],
+    [
+      "{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }",
+      "{ provider: 'generic', url: update.publicUrl, channel: 'nightly', useMultipleRangeRequest: false }",
+    ],
   ];
   for (const [before, after] of replacements) {
     if (source.split(before).length !== 2) throw Error("SIGNED_COMPANY_CONFIG_ADAPTER_DRIFT");

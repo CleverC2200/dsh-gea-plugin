@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveFcDmsTarget, FC_DMS_TARGET_SQL } from "../src/host/fc-dms-target.ts";
+import { resolveFcDmsTarget, FC_DMS_WAREHOUSE_TARGET_SQL } from "../src/host/fc-dms-target.ts";
 const signal = new AbortController().signal;
 test("unmatched warehouse leaves manual fields and never guesses a code", async () => {
   let calls = 0;
@@ -43,35 +43,57 @@ test("unique exact warehouse/customer name and one coded ship-to fill only known
   const conflict = await resolveFcDmsTarget("A160", "", async () => ({ rows: [row, row] }), signal);
   assert.deepEqual(conflict.fields, { addressCode: "", customerCode: "", pupCode: "" });
 });
-test("exact address resolves customer and first default pickup; preserves leading zeros", async () => {
+const warehouse = {
+  warehouse_code: "A160",
+  warehouse_name: "南京分仓",
+  customer_name: "南京分仓",
+  customer_code: "49001039",
+  receive_addresses: '[{"cust_code":"A1"},{"cust_code":"A2"}]',
+};
+test("explicit address is checked within the selected warehouse and preserves pickup leading zeros", async () => {
+  let calls = 0;
   const r = await resolveFcDmsTarget(
     "A160",
-    " 49001039 ",
+    " A2 ",
     async (q) => {
-      assert.deepEqual(q.parameters, { gea_p1: "49001039" });
-      assert.equal(q.sql, FC_DMS_TARGET_SQL);
-      assert.match(q.sql, /p.is_default_shipping=TRUE/);
-      assert.doesNotMatch(q.sql, /hive\.|data_service\.|OVER\s*\(|DISTINCT ON/);
-      return { rows: [{ address_code: "49001039", customer_code: "49001039", pup_code: "02" }] };
+      calls++;
+      if (calls === 1) {
+        assert.equal(q.sql, FC_DMS_WAREHOUSE_TARGET_SQL);
+        assert.equal(q.parameters.gea_p1, "A160");
+        return { rows: [warehouse] };
+      }
+      assert.equal(q.parameters.gea_p1, "49001039");
+      return { rows: [{ pup_code: "02" }] };
     },
     signal,
   );
-  assert.deepEqual(r.fields, { addressCode: "49001039", customerCode: "49001039", pupCode: "02" });
+  assert.deepEqual(r.fields, { addressCode: "A2", customerCode: "49001039", pupCode: "02" });
 });
-test("ambiguous customer does not assign a pickup; absent pickup can be supplied manually", async () => {
-  for (const [customer, pickup] of [
-    [null, "02"],
-    ["C1", null],
-  ]) {
+test("unknown address or ambiguous customer cannot autofill a pickup", async () => {
+  for (const rows of [[warehouse], [warehouse, { ...warehouse, customer_code: "C2" }]]) {
+    let calls = 0;
     const r = await resolveFcDmsTarget(
-      "W1",
-      "A1",
-      async () => ({ rows: [{ address_code: "A1", customer_code: customer, pup_code: pickup }] }),
+      "A160",
+      "OTHER",
+      async () => {
+        calls++;
+        return { rows };
+      },
       signal,
     );
-    assert.equal(r.fields.customerCode, customer ?? "");
-    assert.equal(r.fields.pupCode, "");
+    assert.equal(calls, 1);
+    assert.deepEqual(r.fields, { addressCode: "", customerCode: "", pupCode: "" });
   }
+});
+test("a missing canonical pickup preserves the verified customer and address", async () => {
+  let calls = 0;
+  const r = await resolveFcDmsTarget(
+    "A160",
+    "A1",
+    async () => (++calls === 1 ? { rows: [warehouse] } : { rows: [{ pup_code: null }] }),
+    signal,
+  );
+  assert.deepEqual(r.fields, { addressCode: "A1", customerCode: "49001039", pupCode: "" });
 });
 test("permission rejection is attempted once and becomes explicit manual fallback; cancellation stays cancelled", async () => {
   let calls = 0;
@@ -116,7 +138,7 @@ test("out-of-scope or rejected returned fields never autofill", async () => {
   assert.equal(r.fields.customerCode, "");
 });
 
-test("a denied default-pickup lookup preserves the already matched customer and address", async () => {
+test("a denied canonical-pickup lookup preserves the already matched customer and address", async () => {
   let calls = 0;
   const r = await resolveFcDmsTarget(
     "A160",
@@ -143,7 +165,7 @@ test("a denied default-pickup lookup preserves the already matched customer and 
   assert.deepEqual(r.fields, { addressCode: "49001039", customerCode: "49001039", pupCode: "" });
   assert.match(r.message, /RESOURCE_NOT_IN_DATASET/);
 });
-test("only a unique first-default relation fills the pickup automatically", async () => {
+test("only a unique canonical relation fills the pickup automatically", async () => {
   for (const points of [[{ pup_code: "02" }], [{ pup_code: "02" }, { pup_code: "01" }]]) {
     let calls = 0;
     const r = await resolveFcDmsTarget(
@@ -167,4 +189,10 @@ test("only a unique first-default relation fills the pickup automatically", asyn
     );
     assert.equal(r.fields.pupCode, points.length === 1 ? "02" : "");
   }
+});
+
+test("warehouse lookup uses the published warehouseid field and keeps the output alias", () => {
+  assert.match(FC_DMS_WAREHOUSE_TARGET_SQL, /t\.warehouseid AS warehouse_code/);
+  assert.match(FC_DMS_WAREHOUSE_TARGET_SQL, /WHERE t\.warehouseid=:gea_p1 GROUP BY t\.warehouseid/);
+  assert.doesNotMatch(FC_DMS_WAREHOUSE_TARGET_SQL, /t\.warehouse_code/);
 });

@@ -328,6 +328,7 @@ if (signed) {
     update.provider !== "generic" ||
     update.url !== companyWindowsUpdateUrl ||
     update.channel !== "nightly" ||
+    update.useMultipleRangeRequest !== false ||
     !publishers.includes(resolveWindowsUpdatePublisher(signing.certificateFile))
   )
     throw Error("DESKTOP_SIGNED_UPDATE_CONFIG_MISMATCH");

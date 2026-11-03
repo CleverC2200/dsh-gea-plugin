@@ -2854,6 +2854,7 @@ export class Business {
         },
       );
     };
+    if (payload.operation === "load") return run();
     const task = this.orderReportQueue.then(run, run);
     this.orderReportQueue = task.catch(() => {});
     return task;

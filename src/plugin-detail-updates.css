@@ -74,7 +74,7 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.gea-sidebar-update {
+.gea-update-entry {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -91,14 +91,63 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.gea-sidebar-update:hover {
+.gea-update-entry:hover {
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
-.gea-sidebar-update:focus-visible {
+.gea-update-entry:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
-.gea-sidebar-update:disabled {
+.gea-update-entry:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+.gea-update-entry {
+  position: relative;
+}
+.gea-update-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+}
+.gea-updates-panel {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.gea-updates-panel > section + section {
+  margin-top: 28px;
+  border-top: 1px solid var(--dsw-alias-border-l3);
+  padding-top: 24px;
+}
+.gea-updates-panel h2 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.gea-updates-plugin {
+  margin-top: 20px;
+  min-width: 0;
+}
+.gea-updates-plugin > h3 {
+  display: inline;
+  margin: 0 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.gea-updates-plugin .gea-plugin-update-section {
+  border: 0;
+  padding-block: 12px;
+}
+.gea-updates-panel progress {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin: 12px 0;
+  accent-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
 }

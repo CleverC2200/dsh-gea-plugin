@@ -218,6 +218,8 @@ export function registerCurrentShortageTool(
               business,
               signal,
               consumer,
+              false,
+              locations,
             );
             signal.throwIfAborted();
             await assertSessionResourceAvailable(ctx, session, signal);

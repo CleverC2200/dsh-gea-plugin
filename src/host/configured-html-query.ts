@@ -19,6 +19,7 @@ export async function readConfiguredHtmlQuery(
   signal: AbortSignal,
   consumerCode: string = resource.manifest.gea.consumerCode,
   pageRead = false,
+  completeCollection = false,
 ) {
   signal.throwIfAborted();
   let raw: string;
@@ -35,7 +36,11 @@ export async function readConfiguredHtmlQuery(
       throw Object.assign(Error("配置查询只接受查询 ID 和业务参数"), {
         code: "INVALID_CONFIGURED_QUERY",
       });
-    const query = input as { queryId?: unknown; parameters?: unknown; freshAfter?: unknown };
+    const query = input as {
+      queryId?: unknown;
+      parameters?: unknown;
+      freshAfter?: unknown;
+    };
     const candidateId = query.queryId;
     const candidateParameters = query.parameters;
     if (
@@ -98,6 +103,37 @@ export async function readConfiguredHtmlQuery(
     await import(contractUrl);
   signal.throwIfAborted();
   try {
+    const definition = config.queries[queryId];
+    if (completeCollection && definition?.pagination?.countQuery) {
+      const client = queryContract.createQueryClient(config, (_request, call) =>
+        readConfiguredHtmlQuery(
+          resource,
+          { queryId: call.queryId, parameters: call.values },
+          business,
+          signal,
+          consumerCode,
+          pageRead,
+        ),
+      );
+      const result = await client.readAll(
+        queryId,
+        { ...parameters, page_size: 50, offset: 0 },
+        {
+          signal,
+          requiredColumns: definition.resultColumns,
+          keyFields: definition.pagination.keyFields,
+          atomicPages: true,
+          maxRows: 100000,
+        },
+      );
+      return {
+        ...result,
+        returnedColumns: result.pages[0]?.returnedColumns ?? definition.resultColumns,
+        rejectedColumns: result.pages[0]?.rejectedColumns ?? [],
+        totalRowCount: result.total,
+        hasMorePages: false,
+      };
+    }
     const request = queryContract.makeRequest(config, queryId, parameters);
     signal.throwIfAborted();
     if ("cube" in request) {

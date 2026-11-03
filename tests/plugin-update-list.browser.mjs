@@ -1,4 +1,5 @@
 import test from "node:test";
+import { sourceTools } from "./fixtures/plugin-updates/source-tools.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
@@ -16,11 +17,12 @@ const names = [
   "@cleverc2200/gea-dsh-prototype",
 ];
 
-test("official installed list offers only suite updates, refreshes the channel on click and offers restart", async (t) => {
+test("official installed list opens the shared update panel for suite actions and restart", async (t) => {
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/list-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await build(clientBuildOptions(join(root, "gea-client.js")));
+  const clientOptions = clientBuildOptions(join(root, "gea-client.js"));
+  await build({ ...clientOptions, plugins: [...sourceTools(sdk), ...clientOptions.plugins] });
   const sources = {
     "@fixture/remote": "packages/test-support/client-runtime/src/remote.ts",
     "@deepseek-ai/dsh-client-ui-primitives": "packages/client/ui-primitives/src/index.ts",
@@ -40,6 +42,7 @@ test("official installed list offers only suite updates, refreshes the channel o
     loader: { ".woff": "dataurl", ".woff2": "dataurl", ".ttf": "dataurl" },
     define: { "process.env.NODE_ENV": '"test"' },
     plugins: [
+      ...sourceTools(sdk),
       {
         name: "official-source",
         setup(b) {
@@ -154,31 +157,16 @@ test("official installed list offers only suite updates, refreshes the channel o
   for (const name of ["dsh-agent-workbench", "dsh-agent-manage", "gea-dsh-prototype"])
     assert.equal(await page.getByRole("button", { name: `查看 ${name}`, exact: true }).count(), 1);
   assert.equal(await page.getByRole("button", { name: /@cleverc2200/ }).count(), 0);
-  await page.getByRole("button", { name: "刷新", exact: true }).dblclick();
-  await page.getByRole("button", { name: "全部更新", exact: true }).waitFor();
+  await page.getByRole("button", { name: "查看更新状态", exact: true }).click();
+  const panel = page.locator(".gea-updates-panel");
+  await panel.getByRole("heading", { name: "公司插件", exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.fixture.openedSections), ["company-updates"]);
+  await panel.getByRole("button", { name: "检查更新", exact: true }).dblclick();
+  await panel.getByRole("button", { name: "全部更新", exact: true }).waitFor();
   assert.equal(checks, 1);
-  assert.equal(await page.getByRole("button", { name: "更新", exact: true }).count(), 0);
-  for (const width of [835, 620, 520]) {
-    await page.setViewportSize({ width, height: 800 });
-    assert.equal(await page.getByRole("button", { name: "全部更新", exact: true }).count(), 1);
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
-      false,
-    );
-  }
-  if (process.env.GEA_LIST_SCREENSHOT)
-    await page.locator("[data-plugin-panel]").screenshot({ path: process.env.GEA_LIST_SCREENSHOT });
-  await page.getByRole("button", { name: "全部更新", exact: true }).click();
-  const progress = page.getByRole("alert").filter({ hasText: "插件正在更新，可查看更新状态。" });
-  await progress.waitFor();
-  await page.getByRole("button", { name: "查看 dsh-agent-manage", exact: true }).click();
-  await page.locator('[data-plugin-detail="dsh-agent-manage"]').waitFor();
+  await panel.getByRole("button", { name: "全部更新", exact: true }).click();
+  await page.getByRole("alert").filter({ hasText: "插件正在更新，可查看更新状态。" }).waitFor();
   await page.evaluate(() => window.fixture.closeSettings());
-  await cards.first().waitFor({ state: "detached" });
-  await progress.waitFor();
-  await page.evaluate(() => window.fixture.reloadGea());
-  await progress.waitFor();
-  assert.equal(checks, 2);
   assert.equal(batches, 1);
   phase = "pending-restart";
   const pending = page
@@ -186,88 +174,23 @@ test("official installed list offers only suite updates, refreshes the channel o
     .filter({ hasText: "插件更新已安装，需要重启应用后生效。" });
   await pending.waitFor();
   await pending.getByRole("button", { name: "查看更新状态", exact: true }).click();
-  await page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]').waitFor();
-  await page.getByRole("button", { name: "返回插件列表", exact: true }).click();
-  await cards.first().waitFor();
-  assert.deepEqual(await page.evaluate(() => window.fixture.openedSections), ["plugin-manager"]);
-  const restart = page
-    .locator("[data-plugin-panel]")
-    .getByRole("button", { name: "一键重启", exact: true });
-  await restart.waitFor();
-  assert.equal(await restart.isEnabled(), true);
-  assert.equal(batches, 1);
-  await restart.click();
+  await panel.getByRole("button", { name: "重启应用以启用插件", exact: true }).click();
   assert.equal(await page.evaluate(() => window.restartCalls), 1);
-  await pending.getByRole("button", { name: "一键重启", exact: true }).click();
-  assert.equal(await page.evaluate(() => window.restartCalls), 2);
-  phase = "available";
-  await page.getByRole("button", { name: "全部更新", exact: true }).click();
-  await progress.waitFor();
-  await page.getByRole("button", { name: "查看 dsh-agent-workbench", exact: true }).click();
-  await page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]').waitFor();
-  phase = "pending-restart";
-  await pending.waitFor();
-  await page.evaluate(() => window.fixture.locale("en"));
-  await page
-    .getByRole("alert")
-    .filter({
-      hasText: "Plugin updates are installed. Restart the application to apply them.",
-    })
-    .getByRole("button", { name: "View update status", exact: true })
-    .click();
-  const manageDetail = page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]');
-  await manageDetail.waitFor();
-  assert.equal(
-    await manageDetail.locator("[data-plugin-name]").textContent(),
-    "@cleverc2200/dsh-agent-workbench",
-  );
-  await manageDetail
-    .getByRole("status")
-    .filter({
-      hasText: "Restart the application to load the installed version.",
-    })
+  await panel
+    .getByText("重启已取消或当前无法重启，已安装的插件更新仍在等待重启。", { exact: true })
     .waitFor();
-  await manageDetail.getByRole("button", { name: "Back to plugins", exact: true }).click();
-  await page.evaluate(() => window.fixture.locale("zh"));
-  await page
-    .locator('[data-plugin-package="dsh-agent-manage"]')
-    .getByRole("status")
-    .filter({ hasText: "需要重启" })
-    .waitFor();
-  await restart.click();
-  assert.equal(await page.evaluate(() => window.restartCalls), 3);
+  assert.equal(batches, 1);
   assert.equal(singles, 0);
-  assert.equal(batches, 2);
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "dshDesktop", { value: undefined, writable: false });
-  });
-  await page.reload();
-  await page.getByText("需要重启", { exact: false }).first().waitFor();
-  assert.equal(await page.getByRole("button", { name: "一键重启", exact: true }).count(), 0);
-  const previousChecks = checks,
-    previousBatches = batches;
-  singleTarget = undefined;
-  phase = "available";
+  await page.evaluate(() => window.fixture.locale("en"));
+  await panel.getByRole("heading", { name: "Company plugins", exact: true }).waitFor();
   await page.goto(url + "?sidebar");
   const footer = page.locator("footer");
-  await footer.getByRole("button", { name: "插件更新", exact: true }).waitFor();
-  assert.equal(checks, previousChecks);
-  assert.equal(batches, previousBatches);
-  assert.equal(await page.locator("[data-plugin-panel]").count(), 0);
-  await footer.screenshot({
-    path: process.env.GEA_SIDEBAR_SCREENSHOT ?? join(root, "sidebar.png"),
-  });
-  await footer.getByRole("button", { name: "插件更新", exact: true }).dblclick();
-  await page.getByRole("alert").filter({ hasText: "插件正在更新，可查看更新状态。" }).waitFor();
-  assert.equal(checks, previousChecks + 1);
-  assert.equal(batches, previousBatches + 1);
-  assert.equal(singles, 0);
-  phase = "pending-restart";
-  await footer.getByRole("button", { name: "插件待重启", exact: true }).waitFor();
-  await footer.getByRole("button", { name: "插件待重启", exact: true }).click();
-  await page.locator('[data-plugin-detail="@cleverc2200/dsh-agent-workbench"]').waitFor();
-  await page.evaluate(() => window.fixture.locale("en"));
-  await footer.getByRole("button", { name: "Plugin restart needed", exact: true }).waitFor();
+  await footer.getByRole("button", { name: "更新", exact: true }).waitFor();
+  assert.equal(await footer.locator(".gea-sidebar-update").count(), 0);
+  const previous = batches;
+  await footer.getByRole("button", { name: "更新", exact: true }).click();
+  await page.locator(".gea-updates-panel").waitFor();
+  assert.equal(batches, previous);
   assert.deepEqual(errors, []);
   await page.evaluate(() => window.fixture.dispose());
 });

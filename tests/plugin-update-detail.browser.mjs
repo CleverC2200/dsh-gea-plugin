@@ -1,4 +1,5 @@
 import test from "node:test";
+import { sourceTools } from "./fixtures/plugin-updates/source-tools.mjs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 import assert from "node:assert/strict";
@@ -16,19 +17,13 @@ const names = [
   "@cleverc2200/gea-dsh-prototype",
 ];
 const pkg = (name) => ({ name, version: "1.2.3", installed: true, enabled: true, rows: [] });
-async function until(predicate) {
-  const deadline = Date.now() + 5000;
-  while (!predicate()) {
-    assert.ok(Date.now() < deadline, "Expected HTTP fixture request within 5 seconds");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-}
 
-test("official detail slots check, update, close and reenter through controlled HTTP", async (t) => {
+test("official detail diagnostics navigate to the shared update panel", async (t) => {
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/detail-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await build(clientBuildOptions(join(root, "gea-client.js")));
+  const clientOptions = clientBuildOptions(join(root, "gea-client.js"));
+  await build({ ...clientOptions, plugins: [...sourceTools(sdk), ...clientOptions.plugins] });
   await build({
     entryPoints: ["tests/fixtures/plugin-updates/detail-browser.tsx"],
     bundle: true,
@@ -39,6 +34,7 @@ test("official detail slots check, update, close and reenter through controlled 
     loader: { ".woff": "dataurl", ".woff2": "dataurl", ".ttf": "dataurl" },
     define: { "process.env.NODE_ENV": '"test"' },
     plugins: [
+      ...sourceTools(sdk),
       {
         name: "official-source",
         setup(builder) {
@@ -62,14 +58,8 @@ test("official detail slots check, update, close and reenter through controlled 
     phase = "available",
     checks = 0,
     updates = 0,
-    statuses = 0,
-    holdCheck = false,
     sourceMissing = false,
-    problem,
-    checkAborted = false,
-    updateAborted = false,
-    updateResponded = false,
-    releaseUpdate;
+    problem;
   const status = () => ({
     revision: revision++,
     hostProcessIdentity: "fixture-host",
@@ -96,7 +86,6 @@ test("official detail slots check, update, close and reenter through controlled 
       let body = "";
       for await (const chunk of req) body += chunk;
       if (url.endsWith("/status")) {
-        statuses++;
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ ok: true, value: status() }));
         return;
@@ -108,12 +97,6 @@ test("official detail slots check, update, close and reenter through controlled 
           res.end(JSON.stringify({ ok: false, error: { code: "UPDATE_SOURCE_NOT_CONFIGURED" } }));
           return;
         }
-        if (holdCheck) {
-          res.on("close", () => {
-            checkAborted = true;
-          });
-          return;
-        }
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
       if (url.endsWith("/update-all")) {
@@ -121,13 +104,6 @@ test("official detail slots check, update, close and reenter through controlled 
         assert.deepEqual(JSON.parse(body), {
           plans: names.map((packageName) => ({ packageName, planId: "plan-one" })),
         });
-        res.on("close", () => {
-          if (!res.writableEnded) updateAborted = true;
-        });
-        await new Promise((resolve) => {
-          releaseUpdate = resolve;
-        });
-        updateResponded = true;
       }
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ ok: true, value: {} }));
@@ -166,116 +142,26 @@ test("official detail slots check, update, close and reenter through controlled 
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.goto(`http://127.0.0.1:${server.address().port}`);
-  await page
-    .getByRole("button", { name: "Check for updates", exact: true })
-    .waitFor()
-    .catch(async (error) => {
-      console.error({ errors, html: await page.locator("body").innerHTML() });
-      throw error;
-    });
-  await page.getByRole("button", { name: "Update all", exact: true }).waitFor();
+  await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: "Check for updates", exact: true }).count(),
+    0,
+  );
+  assert.match(await page.locator("main").textContent(), /1.2.2/);
   const packageVersion = await page.evaluate(() => window.fixture.packageVersion);
   const packageManifest = JSON.parse(await readFile("package.json", "utf8"));
   assert.deepEqual(packageVersion, {
     value: { name: packageManifest.name, version: packageManifest.version },
     frozen: true,
   });
-  assert.equal(
-    await page
-      .locator(".gea-plugin-update-actions")
-      .evaluate((node) => getComputedStyle(node).display),
-    "flex",
-  );
-  assert.equal(
-    await page
-      .locator(".gea-plugin-update-versions")
-      .evaluate((node) => getComputedStyle(node).display),
-    "grid",
-  );
-  if (process.env.GEA_DETAIL_SCREENSHOT)
-    await page.screenshot({
-      path: process.env.GEA_DETAIL_SCREENSHOT + "-available.png",
-    });
-  await page.getByRole("button", { name: "Check for updates", exact: true }).dblclick();
-  await page.waitForTimeout(200);
-  assert.equal(checks, 1);
-  await page.getByRole("button", { name: "Update all", exact: true }).click();
-  await until(() => updates === 1);
-  await page.getByText("Submitting update", { exact: true }).waitFor();
-  assert.equal(await page.getByText("Update accepted", { exact: true }).count(), 0);
-  await page.evaluate(() => window.fixture.locale("zh"));
-  await page.getByText("正在提交更新", { exact: true }).waitFor();
-  await page.evaluate(() => window.fixture.locale("en"));
-  phase = "downloading";
-  await page.getByText("Downloading", { exact: true }).waitFor();
-  assert.equal(await page.getByText("Update accepted", { exact: true }).count(), 0);
-  // Controlled status samples verify display precedence, independently of Host transitions.
-  for (const [next, label] of [
-    ["waiting-lock", "Waiting for other plugin changes"],
-    ["snapshotting", "Backing up"],
-    ["check-failed", "Check failed"],
-    ["blocked", "Update unavailable"],
-    ["failed", "Update failed"],
-    ["unknown", "Result unknown"],
-    ["accepted", "Update accepted"],
-    ["installing", "Installing"],
-    ["pending-restart", "Restart required"],
-  ]) {
-    phase = next;
-    await page.getByText(label, { exact: true }).first().waitFor();
-    assert.equal(typeof releaseUpdate, "function");
-    assert.equal(updateResponded, false);
-    t.diagnostic(`Observed Host ${next} while the update response remained pending`);
-    assert.equal(updateAborted, false);
-  }
-  await page.evaluate(() => window.fixture.close());
-  assert.equal(updateAborted, false);
-  releaseUpdate();
-  await page.waitForTimeout(200);
-  assert.equal(updateAborted, false);
-  await page.evaluate(() => window.fixture.open());
-  await page.getByText("Restart required", { exact: true }).first().waitFor();
-  assert.equal(updates, 1);
-  assert.match(await page.locator("main").textContent(), /1.2.2/);
-  await page.evaluate(() => window.fixture.close());
-  const count = statuses;
-  await page.waitForTimeout(1200);
-  assert.equal(statuses, count);
-  await page.evaluate(() => window.fixture.open());
-  await page.getByText("Restart required", { exact: true }).first().waitFor();
-  for (const name of names) {
-    await page.evaluate((pkg) => window.fixture.subject({ kind: "bundle", pkg }), pkg(name));
-    await page.getByRole("button", { name: "Check for updates", exact: true }).waitFor();
-  }
   for (const subject of [
     { kind: "bundle", pkg: pkg("other") },
-    {
-      kind: "row",
-      pkg: pkg(names[0]),
-      row: { rowId: "x", moduleName: "x", enabled: true },
-    },
     { kind: "item", id: "x" },
   ]) {
     await page.evaluate((subject) => window.fixture.subject(subject), subject);
     assert.equal(await page.locator("main").textContent(), "");
   }
   await page.evaluate((pkg) => window.fixture.subject({ kind: "bundle", pkg }), pkg(names[2]));
-  await page.evaluate(() => window.fixture.locale("zh"));
-  await page.getByRole("button", { name: "检查更新", exact: true }).waitFor();
-  if (process.env.GEA_DETAIL_SCREENSHOT) {
-    await page.screenshot({
-      path: process.env.GEA_DETAIL_SCREENSHOT + "-desktop.png",
-    });
-    await page.setViewportSize({ width: 390, height: 640 });
-    await page.screenshot({
-      path: process.env.GEA_DETAIL_SCREENSHOT + "-mobile.png",
-    });
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-      true,
-    );
-  }
-  await page.evaluate(() => window.fixture.locale("en"));
   phase = "check-failed";
   await page
     .getByRole("alert")
@@ -319,7 +205,7 @@ test("official detail slots check, update, close and reenter through controlled 
     .waitFor();
   assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
   assert.equal(
-    await page.getByRole("button", { name: "Check for updates", exact: true }).isEnabled(),
+    await page.getByRole("button", { name: "View update status", exact: true }).isEnabled(),
     true,
   );
   await page.evaluate(() => window.fixture.locale("zh"));
@@ -378,7 +264,7 @@ test("official detail slots check, update, close and reenter through controlled 
       .scrollIntoViewIfNeeded();
     assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
     assert.equal(
-      await page.getByRole("button", { name: "Check for updates", exact: true }).isEnabled(),
+      await page.getByRole("button", { name: "View update status", exact: true }).isEnabled(),
       true,
     );
     if (process.env.GEA_DETAIL_SCREENSHOT)
@@ -454,18 +340,6 @@ test("official detail slots check, update, close and reenter through controlled 
   problem = undefined;
   phase = "unknown";
   await page.getByRole("alert").filter({ hasText: "The update result is unknown." }).waitFor();
-  phase = "available";
-  await page.getByRole("button", { name: "Update all", exact: true }).waitFor();
-  holdCheck = true;
-  await page.getByRole("button", { name: "Check for updates", exact: true }).click();
-  await until(() => checks === 3);
-  await page.evaluate(() => window.fixture.close());
-  for (let i = 0; i < 100 && !checkAborted; i++)
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.equal(checkAborted, true);
-  holdCheck = false;
-  await page.evaluate(() => window.fixture.open());
-  await page.getByRole("button", { name: "Check for updates", exact: true }).waitFor();
   sourceMissing = true;
   phase = "blocked";
   await page
@@ -473,22 +347,20 @@ test("official detail slots check, update, close and reenter through controlled 
     .filter({ hasText: "Updates are not configured for this installation." })
     .waitFor();
   assert.equal(await page.locator(".gea-plugin-update-versions dd").first().textContent(), "1.2.3");
-  await page.getByRole("button", { name: "Check for updates", exact: true }).click();
-  await until(() => checks === 4);
-  await page.waitForTimeout(50);
-  await page
-    .getByRole("alert")
-    .filter({ hasText: "Updates are not configured for this installation." })
-    .waitFor();
-  assert.equal(
-    await page.getByText("Could not check for updates. Try again.", { exact: true }).count(),
-    0,
-  );
   await page.evaluate(() => window.fixture.locale("zh"));
-  await page.getByRole("alert").filter({ hasText: "当前安装尚未配置更新来源。" }).waitFor();
-  assert.doesNotMatch(await page.locator("main").textContent(), /private|secret-credential/);
+  await page.getByRole("button", { name: "查看更新状态", exact: true }).click();
+  const panel = page.locator("[data-update-panel]");
+  await panel.getByRole("heading", { name: "客户端", exact: true }).waitFor();
+  await panel.getByRole("heading", { name: "公司插件", exact: true }).waitFor();
+  assert.equal(checks, 0);
+  assert.equal(updates, 0);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 840 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+  }
   await page.evaluate(() => window.fixture.dispose());
-  await page.waitForTimeout(20);
-  assert.equal(await page.locator("main").textContent(), "");
   assert.deepEqual(errors, []);
 });

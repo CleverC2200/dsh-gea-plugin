@@ -4,6 +4,8 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
+import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
+import { createDesktopUpdates } from "./desktop-updates-client.ts";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
 import {
@@ -27,7 +29,8 @@ import { en, zh, pluginUpdateLocale } from "./plugin-update-locales.ts";
 import css from "./plugin-detail-updates.css";
 
 type Owner = ReturnType<typeof createPluginDetailUpdates>;
-type Props = PluginDetailProps & PropsLocale<typeof pluginUpdateLocale> & { updates: Owner };
+type Props = PluginDetailProps &
+  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openUpdates: () => void };
 function targetName(subject: PluginDetailProps["subject"]) {
   return subject.kind === "bundle"
     ? companyPackageNames.find((name) => name === subject.pkg.name)
@@ -37,9 +40,13 @@ function useDetail(updates: Owner) {
   useEffect(() => updates.retain(), [updates]);
   return useSyncExternalStore(updates.subscribe, updates.getSnapshot);
 }
-function UpdateActions({ subject, updates, t }: Props): ReactNode {
+function UpdateActions({ subject, openUpdates, t }: Props): ReactNode {
   const name = targetName(subject);
-  return name ? <DetailActions updates={updates} t={t} /> : null;
+  return name ? (
+    <Button size="sm" variant="outline" onClick={openUpdates}>
+      {t("viewStatus")}
+    </Button>
+  ) : null;
 }
 function DetailActions({
   updates,
@@ -148,9 +155,10 @@ function UpdateSection({ subject, updates, t }: Props): ReactNode {
 function DetailSection({
   name,
   installedVersion,
+  showTitle = true,
   updates,
   t,
-}: { name: string; installedVersion?: string; updates: Owner } & PropsLocale<
+}: { name: string; installedVersion?: string; showTitle?: boolean; updates: Owner } & PropsLocale<
   typeof pluginUpdateLocale
 >): ReactNode {
   const state = useDetail(updates),
@@ -170,7 +178,7 @@ function DetailSection({
         : problem;
   return (
     <section className="gea-plugin-update-section" aria-label={t("title")}>
-      <h3 className="gea-plugin-update-title">{t("title")}</h3>
+      {showTitle ? <h3 className="gea-plugin-update-title">{t("title")}</h3> : null}
       <dl className="gea-plugin-update-versions">
         <dt>{t("installed")}</dt>
         <dd>{row?.installedVersion ?? installedVersion ?? t("unavailable")}</dd>
@@ -254,12 +262,12 @@ function ListBadge({ subject, updates, t }: Props): ReactNode {
   );
 }
 function ListTools({
-  packages,
   registerRefresh,
   updates,
+  openUpdates,
   t,
 }: PropsRuntime<"plugins.list.tools"> &
-  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner }): ReactNode {
+  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openUpdates: () => void }): ReactNode {
   const state = useDetail(updates);
   useEffect(
     () =>
@@ -268,67 +276,14 @@ function ListTools({
       }),
     [registerRefresh, updates],
   );
-  const installed = new Set(packages.map((pkg) => pkg.name));
-  const available = state.items.filter(
-    (row) => installed.has(row.packageName) && row.state === "available" && row.planId,
-  );
-  const pending = state.items.some(
-    (row) => installed.has(row.packageName) && row.state === "pending-restart",
-  );
-  const busy = state.checking || state.submitting !== null || pluginUpdateBusy(state.items);
-  const bridge = desktopRestart();
-  const [restarting, setRestarting] = useState(false);
-  const [restartFailed, setRestartFailed] = useState(false);
-  const restartBusy =
-    state.checking ||
-    state.submitting !== null ||
-    state.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
   return (
     <div className="gea-plugin-list-tools">
       <span className="gea-plugin-list-summary" role="status">
-        {state.transportError
-          ? t(
-              state.transportError === "check"
-                ? "checkError"
-                : state.transportError === "unknown"
-                  ? "unknownError"
-                  : "statusError",
-            )
-          : state.checking
-            ? t("checking")
-            : available.length
-              ? t("availableCount", { count: String(available.length) })
-              : ""}
+        {state.checking ? t("checking") : state.transportError ? t("statusError") : ""}
       </span>
-      {available.length && pluginSuiteReady(state.items) ? (
-        <Button
-          size="sm"
-          variant="primary"
-          disabled={busy}
-          onClick={() => {
-            void updates.updateAll();
-          }}
-        >
-          {t("updateAll")}
-        </Button>
-      ) : null}
-      {restartFailed ? <span role="alert">{t("restartError")}</span> : null}
-      {pending && bridge ? (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={restartBusy || restarting}
-          onClick={() => {
-            setRestarting(true);
-            setRestartFailed(false);
-            void bridge()
-              .catch(() => setRestartFailed(true))
-              .finally(() => setRestarting(false));
-          }}
-        >
-          {t("restartNow")}
-        </Button>
-      ) : null}
+      <Button size="sm" variant="outline" onClick={openUpdates}>
+        {t("viewStatus")}
+      </Button>
     </div>
   );
 }
@@ -402,54 +357,206 @@ function UpdateNotice({
   );
 }
 
-function SidebarUpdate({
+type DesktopOwner = ReturnType<typeof createDesktopUpdates>;
+type SharedProps = PropsLocale<typeof pluginUpdateLocale> & {
+  updates: Owner;
+  desktop: DesktopOwner;
+  openUpdates: () => void;
+};
+function UpdateEntry({
   wide,
   updates,
+  desktop,
+  openUpdates,
   t,
-  openStatus,
-}: PropsRuntime<"sidebar.footer.action"> &
-  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openStatus: () => void }): ReactNode {
-  const state = useDetail(updates);
-  const available =
-    state.items.some((row) => row.state === "available") && pluginSuiteReady(state.items);
-  const pending = state.items.some((row) => row.state === "pending-restart");
-  const busy = state.checking || state.submitting !== null || pluginUpdateBusy(state.items);
-  const progress =
-    busy && !state.checking && !pending && !state.items.some((row) => row.state === "checking");
-  const failed =
-    state.transportError ||
-    state.items.some((row) => ["failed", "unknown", "check-failed"].includes(row.state));
-  if (!available && !pending && !progress && !failed) return null;
-  const label = t(
-    pending
-      ? "sidebarRestart"
-      : progress
-        ? "sidebarUpdating"
-        : failed
-          ? "sidebarStatus"
-          : "sidebarUpdate",
-  );
+}: PropsRuntime<"settings.update"> & SharedProps): ReactNode {
+  const plugins = useDetail(updates);
+  const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
+  const attention =
+    client.failed ||
+    (client.presentation && client.presentation.phase !== "idle") ||
+    plugins.transportError ||
+    plugins.items.some((row) => !["idle", "current", "completed"].includes(row.state));
   return (
-    <Tooltip label={label} side="top">
+    <Tooltip label={t("updates")} side="top">
       <button
         type="button"
-        className="gea-sidebar-update"
-        aria-label={label}
-        disabled={progress || state.checking || state.submitting !== null}
-        onClick={() => {
-          if (available && !busy && !state.transportError) void updates.updateAll();
-          else openStatus();
-        }}
+        className="gea-update-entry"
+        aria-label={t("updates")}
+        aria-haspopup="dialog"
+        onClick={openUpdates}
       >
         <IconDownloadOutlineRegular size={14} />
-        {wide ? <span>{label}</span> : null}
+        {wide ? <span>{t("updates")}</span> : null}
+        {attention ? <span className="gea-update-dot" aria-hidden="true" /> : null}
       </button>
     </Tooltip>
   );
 }
+function UpdateToggleBadge({
+  updates,
+  desktop,
+  t,
+}: PropsRuntime<"sidebar.toggle.badge"> & SharedProps): ReactNode {
+  const plugins = useDetail(updates);
+  const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
+  if (
+    !client.failed &&
+    (!client.presentation || client.presentation.phase === "idle") &&
+    !plugins.transportError &&
+    plugins.items.every((row) => ["idle", "current", "completed"].includes(row.state))
+  )
+    return null;
+  return (
+    <Tooltip label={t("updates")} side="right">
+      <span role="img" aria-label={t("updates")} className="gea-update-dot" />
+    </Tooltip>
+  );
+}
+function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
+  const plugins = useDetail(updates);
+  const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
+  const [restarting, setRestarting] = useState(false);
+  const [restartResult, setRestartResult] = useState<"cancelled" | "failed">();
+  const state = client.presentation;
+  const nativeBusy =
+    client.opening ||
+    (state && ["checking", "downloading", "verifying", "installing"].includes(state.phase));
+  const pending = plugins.items.some((row) => row.state === "pending-restart");
+  const restartBusy =
+    plugins.checking ||
+    plugins.submitting !== null ||
+    plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
+  const restart = desktopRestart();
+  const failure = state?.failure;
+  const failureText =
+    failure === "check" || failure === "check-network"
+      ? t("desktopFailureCheck")
+      : failure === "download" || failure === "download-network"
+        ? t("desktopFailureDownload")
+        : failure === "stop-failed"
+          ? t("desktopFailureStop")
+          : failure === "tasks-changed" || failure === "tasks-unavailable"
+            ? t("desktopFailureTasks")
+            : t("desktopFailureInstall");
+  return (
+    <div className="gea-updates-panel">
+      <section aria-labelledby="gea-desktop-update-title">
+        <h2 id="gea-desktop-update-title">{t("desktopTitle")}</h2>
+        <dl className="gea-plugin-update-versions">
+          <dt>{t("currentVersion")}</dt>
+          <dd>{client.current ?? t(client.versionFailed ? "unavailable" : "versionLoading")}</dd>
+          <dt>{t("targetVersion")}</dt>
+          <dd>{state?.version ?? t("unavailable")}</dd>
+        </dl>
+        {!client.supported ? (
+          <p>{t("desktopUnavailable")}</p>
+        ) : (
+          <>
+            <p role="status">
+              {state?.phase === "ready"
+                ? t("desktopRestart")
+                : state?.phase === "idle"
+                  ? t("desktopIdle")
+                  : state?.phase === "downloading" && state.percent !== undefined
+                    ? t("desktopProgress", { percent: String(Math.round(state.percent)) })
+                    : state && state.phase !== "error"
+                      ? t(state.phase)
+                      : ""}
+            </p>
+            {state && ["downloading", "verifying", "installing"].includes(state.phase) ? (
+              <progress
+                aria-label={t("desktopTitle")}
+                max={100}
+                value={state.phase === "downloading" ? state.percent : undefined}
+              />
+            ) : null}
+            {client.failed || state?.phase === "error" ? (
+              <p role="alert" className="gea-plugin-update-error">
+                {client.failed ? t("desktopStatusError") : failureText}
+              </p>
+            ) : null}
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={Boolean(nativeBusy)}
+              onClick={() => {
+                void desktop.open();
+              }}
+            >
+              {t(
+                state?.phase === "ready"
+                  ? "desktopReady"
+                  : state?.phase === "available"
+                    ? "desktopDownload"
+                    : state?.phase === "error" || client.failed
+                      ? "desktopRetry"
+                      : "desktopCheck",
+              )}
+            </Button>
+          </>
+        )}
+      </section>
+      <section aria-labelledby="gea-plugin-update-title">
+        <h2 id="gea-plugin-update-title">{t("pluginsTitle")}</h2>
+        <DetailActions updates={updates} t={t} />
+        {plugins.transportError ? (
+          <p role="alert" className="gea-plugin-update-error">
+            {t(
+              plugins.transportError === "check"
+                ? "checkError"
+                : plugins.transportError === "unknown"
+                  ? "unknownError"
+                  : "statusError",
+            )}
+          </p>
+        ) : null}
+        {pending ? <p role="status">{t(restart ? "pendingNotice" : "pendingWebNotice")}</p> : null}
+        {pending && restart ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={restartBusy || restarting}
+            onClick={() => {
+              setRestarting(true);
+              setRestartResult(undefined);
+              void restart()
+                .then(
+                  (result) => {
+                    if (result !== true) setRestartResult("cancelled");
+                  },
+                  () => setRestartResult("failed"),
+                )
+                .finally(() => setRestarting(false));
+            }}
+          >
+            {t("pluginRestart")}
+          </Button>
+        ) : null}
+        {restartResult ? (
+          <p role={restartResult === "failed" ? "alert" : "status"}>
+            {t(restartResult === "failed" ? "restartError" : "pluginRestartCancelled")}
+          </p>
+        ) : null}
+        {plugins.items.map((row) => (
+          <div className="gea-updates-plugin" key={row.packageName}>
+            <h3>{row.packageName}</h3>
+            <Tag tone={tone(row.state)}>{t(plugins.submitting ? "submitting" : row.state)}</Tag>
+            {pluginUpdateBusy([row]) &&
+            row.state !== "pending-restart" &&
+            row.state !== "unknown" ? (
+              <progress aria-label={row.packageName} />
+            ) : null}
+            <DetailSection name={row.packageName} showTitle={false} updates={updates} t={t} />
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
 
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
-  const fiber = ctx.inject(["slots", "locale", "modules", "pluginNavigation"], (scope) => {
+  const fiber = ctx.inject(["slots", "locale", "modules", "settingsNavigation"], (scope) => {
     scope.effect(() => {
       const style = document.createElement("style");
       style.textContent = css;
@@ -457,23 +564,49 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
       return () => style.remove();
     });
     const updates = createPluginDetailUpdates(scope);
+    const desktop = createDesktopUpdates();
+    const openUpdates = () => scope.settingsNavigation.open("company-updates");
+    const shared = () => ({ updates, desktop, openUpdates });
+    scope.effect(() => {
+      const release = updates.retain();
+      return () => {
+        release();
+        desktop.dispose();
+      };
+    });
     scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
     scope.effect(() => {
       void updates.resume();
       return () => updates.dispose();
     });
-    scope.slots.inject("sidebar.footer.action", () =>
+    scope.slots.inject("settings.update", () =>
+      scope.slots.register(
+        { name: "settings.update", priority: -10, locale: pluginUpdateLocale, inject: shared },
+        UpdateEntry,
+      ),
+    );
+    scope.slots.inject("sidebar.toggle.badge", () =>
       scope.slots.register(
         {
-          name: "sidebar.footer.action",
-          id: "gea.plugin-updates.sidebar",
+          name: "sidebar.toggle.badge",
+          priority: -10,
           locale: pluginUpdateLocale,
-          inject: () => ({
-            updates,
-            openStatus: () => scope.pluginNavigation.openBundle(companyPackageNames[0]),
-          }),
+          inject: shared,
         },
-        SidebarUpdate,
+        UpdateToggleBadge,
+      ),
+    );
+    scope.slots.inject("settings.section", () =>
+      scope.slots.register(
+        {
+          name: "settings.section",
+          id: "company-updates",
+          order: 80,
+          label: () => scope.locale.bind(pluginUpdateLocale)("updates"),
+          locale: pluginUpdateLocale,
+          inject: shared,
+        },
+        UpdatesPanel,
       ),
     );
     scope.slots.inject("shell.overlay", () =>
@@ -484,7 +617,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           locale: pluginUpdateLocale,
           inject: () => ({
             updates,
-            openStatus: (packageName: string) => scope.pluginNavigation.openBundle(packageName),
+            openStatus: openUpdates,
           }),
         },
         UpdateNotice,
@@ -496,7 +629,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           name: "plugins.list.badge",
           id: "gea.plugins.list.badge",
           locale: pluginUpdateLocale,
-          inject: () => ({ updates }),
+          inject: () => ({ updates, openUpdates }),
         },
         ListBadge,
       ),
@@ -507,7 +640,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           name: "plugins.list.tools",
           id: "gea.plugins.list.tools",
           locale: pluginUpdateLocale,
-          inject: () => ({ updates }),
+          inject: () => ({ updates, openUpdates }),
         },
         ListTools,
       ),
@@ -518,7 +651,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           name: "plugins.detail.actions",
           id: "gea.plugin-updates.actions",
           locale: pluginUpdateLocale,
-          inject: () => ({ updates }),
+          inject: () => ({ updates, openUpdates }),
         },
         UpdateActions,
       ),
@@ -529,7 +662,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           name: "plugins.detail.badge",
           id: "gea.plugin-updates.badge",
           locale: pluginUpdateLocale,
-          inject: () => ({ updates }),
+          inject: () => ({ updates, openUpdates }),
         },
         UpdateBadge,
       ),
@@ -540,7 +673,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
           name: "plugins.detail.section",
           id: "gea.plugin-updates.section",
           locale: pluginUpdateLocale,
-          inject: () => ({ updates }),
+          inject: () => ({ updates, openUpdates }),
         },
         UpdateSection,
       ),
