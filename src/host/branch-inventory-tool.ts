@@ -135,6 +135,15 @@ export function registerBranchInventoryTool(
               const config = record(JSON.parse(raw));
               if (config?.schemaVersion !== 1 || config.agentId !== resource.manifest.id)
                 throw Error("INVALID_AGENT_SQL_CONFIG");
+              const queries = record(config.queries);
+              const customerSummary = record(queries?.["orders.summary"]);
+              if (
+                (args.view === "orders" &&
+                  (!Array.isArray(customerSummary?.resultColumns) ||
+                    !customerSummary.resultColumns.includes("fulfillment_order_quantity"))) ||
+                (args.view === "supply-current" && !queries?.["upstream-orders.summary"])
+              )
+                throw Error("GEA_WORKBENCH_UPDATE_REQUIRED");
               const { readConfiguredFacts } =
                 await import("@cleverc2200/dsh-agent-workbench/configured-facts");
               if (args.view === "operations") {
