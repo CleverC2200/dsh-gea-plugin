@@ -1667,6 +1667,7 @@ test("the real selector maps the shared worker implementation to both public CLI
   for (const file of [
     "tests/required.test.mjs",
     ...policy.versionTests,
+    ...(policy.companionPeerTests ?? []),
     ...policy.browserFixtures,
     "scripts/quality-worker-inputs.test.mjs",
     "scripts/quality-prepared-inputs.test.mjs",
