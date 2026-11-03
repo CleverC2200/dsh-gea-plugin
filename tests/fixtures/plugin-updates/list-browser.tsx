@@ -10,8 +10,8 @@ import * as settings from "@deepseek-ai/dsh-client-ui-settings/client";
 import * as manager from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import { TestRemote } from "@fixture/remote";
 import * as jsxRuntime from "react/jsx-runtime";
-import workbenchMeta from "../../../../dsh-agent-workbench/locale/zh.json";
-import manageMeta from "../../../../dsh-agent-manage/locale/zh.json";
+const workbenchMeta = { meta: { title: "dsh-agent-workbench", description: "Workbench fixture" } };
+const manageMeta = { meta: { title: "dsh-agent-manage", description: "Manage fixture" } };
 import geaMeta from "../../../locale/zh.json";
 
 const sidebar = new URLSearchParams(location.search).has("sidebar");
@@ -58,11 +58,13 @@ new TestRemote(ctx, {
 });
 await ctx.plugin(settings).await();
 let openSettings = () => {};
+let selectSection = (_id: string) => {};
 let closeSettings = () => {};
 const openedSections: string[] = [];
 ctx.provide("settingsNavigation", {
   open(sectionId) {
     openedSections.push(sectionId);
+    selectSection(sectionId);
     openSettings();
   },
 });
@@ -72,11 +74,13 @@ ctx.slots.register(
     children: {
       "settings.section": { kind: "list", scope: "root" },
       "shell.overlay": { kind: "list", scope: "root" },
-      "sidebar.footer.action": { kind: "list", scope: "root" },
+      "settings.update": { kind: "single", scope: "root" },
     },
   },
   ({ renderSlot }) => {
     const [visible, setVisible] = useState(!sidebar);
+    const [section, setSection] = useState("plugin-manager");
+    selectSection = setSection;
     openSettings = () => setVisible(true);
     closeSettings = () => setVisible(false);
     return (
@@ -91,11 +95,11 @@ ctx.slots.register(
             }}
           >
             <span>陈勇浩</span>
-            {renderSlot("sidebar.footer.action", { wide: true })}
+            {renderSlot("settings.update", { wide: true, hidden: false })}
           </footer>
         ) : null}
         {visible
-          ? renderSlot("settings.section", { close: closeSettings }, { only: "plugin-manager" })
+          ? renderSlot("settings.section", { close: closeSettings }, { only: section })
           : null}
         {renderSlot("shell.overlay", {})}
       </div>
