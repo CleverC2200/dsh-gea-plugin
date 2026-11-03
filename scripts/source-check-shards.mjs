@@ -70,17 +70,22 @@ export function sourceSelectionMarkdown(selection, workers) {
     (selection?.changes ?? []).map((change) => [`${change.repo}/${change.file}`, change]),
   );
   const triggers = [...new Set([...changes.keys(), ...Object.keys(reasons ?? {})])]
-    .map((change) => ({
-      change,
-      files: Array.isArray(reasons?.[change]) ? [...new Set(reasons[change])] : null,
-      relation: !Array.isArray(reasons?.[change])
-        ? "unknown"
-        : changes.get(change)?.versionOnly
-          ? "version contract"
-          : changes.get(change)?.companionPeerOnly
-            ? "companion peer compatibility contract"
-            : "policy rules or transitive consumers; exact path unknown",
-    }))
+    .map((change) => {
+      const details = selection?.reasonDetails?.[change];
+      return {
+        change,
+        files: Array.isArray(reasons?.[change]) ? [...new Set(reasons[change])] : null,
+        relation: !Array.isArray(reasons?.[change])
+          ? "unknown"
+          : changes.get(change)?.versionOnly
+            ? "version contract"
+            : changes.get(change)?.companionPeerOnly
+              ? "companion peer compatibility contract"
+              : details
+                ? `rules: ${details.rules.join(", ") || "none"}; rule files: ${details.rule}; direct consumers: ${details.direct}; transitive consumers: ${details.transitive}`
+                : unknown,
+      };
+    })
     .sort(
       (a, b) =>
         (b.files?.length ?? -1) - (a.files?.length ?? -1) || a.change.localeCompare(b.change),
@@ -93,11 +98,11 @@ export function sourceSelectionMarkdown(selection, workers) {
       ? `| Changed file (largest trigger first) | Triggered files | Profile files | Selection relation | Main test consumers (up to 3) |\n| --- | ---: | ---: | --- | --- |\n${triggers
           .map(
             ({ change, files, relation }) =>
-              `| ${cell(change)} | ${files?.length ?? unknown} | ${files && profile ? files.filter((file) => profile.includes(file)).length : unknown} | ${relation} | ${files ? cell(files.slice(0, 3).join(", ") || "none") + (files.length > 3 ? `; +${files.length - 3} more` : "") : unknown} |`,
+              `| ${cell(change)} | ${files?.length ?? unknown} | ${files && profile ? files.filter((file) => profile.includes(file)).length : unknown} | ${cell(relation)} | ${files ? cell(files.slice(0, 3).join(", ") || "none") + (files.length > 3 ? `; +${files.length - 3} more` : "") : unknown} |`,
           )
           .join("\n")}\n\n`
       : `Change triggers: ${reasons ? "none recorded" : unknown}.\n\n`) +
-    `Counts reuse plan.reasons. Trigger sets may overlap and must not be added to obtain total selection. Required files are included independently. Rule matches and dependency consumers are combined in the plan; individual dependency paths are not recorded. Test file counts do not represent total cost; preparation, builds, scheduling and finalization have separate costs.\n\n`
+    `Triggered file counts reuse plan.reasons. Source counts reuse plan.reasonDetails. Trigger sets may overlap and must not be added to obtain total selection. Required files are included independently. Source categories may overlap after owner deduplication; their counts must not be added. Individual dependency paths are not recorded; older plans without source metadata report unknown. Test file counts do not represent total cost; preparation, builds, scheduling and finalization have separate costs.\n\n`
   );
 }
 
