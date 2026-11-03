@@ -7,6 +7,8 @@ import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
 
 const directory = resolve("../dsh-agent-workbench/business/inventory-fc");
 const config = JSON.parse(await readFile(resolve(directory, "sql.config.json"), "utf8"));
+const snapshotId =
+  config.dailySummary?.bundle?.bootstrapQueryId ?? config.dailySummary?.snapshotQueryId;
 const fixture = (execute) => {
   let tool,
     preset = "gea-html-inventory-fc",
@@ -82,6 +84,7 @@ test("managed orchestration reads page targets using its own Workbench authoriza
   const f = fixture(async (id) => data(id));
   f.switchTo("auto-negotiation");
   const result = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23" }));
+  assert.ok(result.summary, JSON.stringify(result));
   assert.equal(result.summary.recommended_qty, 35);
   assert.equal(result.summary.available_qty, 85);
   assert.equal(result.summary.target_inventory_qty, 150);
@@ -94,6 +97,8 @@ test("managed orchestration reads page targets using its own Workbench authoriza
 });
 function data(id) {
   const q = config.queries[id];
+  if (id === "summary.snapshot" || id === "summary.bootstrap")
+    return { rows: [], returnedColumns: q.resultColumns, rejectedColumns: [] };
   const values =
     id === "source.branch-stock-date" || id === "source.health-date"
       ? { day: "2026-10-22" }
@@ -108,7 +113,7 @@ function data(id) {
             overaged_qty: 20,
             stagnant_qty: 10,
           }
-        : id === "replenishment.summary"
+        : ["replenishment.summary", "replenishment.overview"].includes(id)
           ? {
               row_count: 20,
               recommended_qty: 35,
@@ -163,9 +168,12 @@ test("base supply questions use receiving-branch executions, full-scope metrics 
     assert.equal(result.unit, "件");
     assert.match(result.metricDefinitions.countGrain, /执行单/);
   }
-  assert.equal(f.calls.length, 2);
-  assert.ok(f.calls.every((c) => c.id.startsWith("branch-supply.")));
-  assert.ok(f.calls.every((c) => c.request.parameters.gea_p3 === "A230"));
+  assert.equal(f.calls.length, 3);
+  assert.equal(f.calls.filter((c) => c.id === snapshotId).length, 1);
+  const supplyCalls = f.calls.filter((c) => c.id !== snapshotId);
+  assert.equal(supplyCalls.length, 2);
+  assert.ok(supplyCalls.every((c) => c.id.startsWith("branch-supply.")));
+  assert.ok(supplyCalls.every((c) => c.request.parameters.gea_p3 === "A230"));
   assert.ok(
     f.calls.filter((c) => c.id.endsWith("atomic")).every((c) => c.request.parameters.gea_p8 === 10),
   );
@@ -227,8 +235,10 @@ test("branch summary and follow-up suggestions use installed page calculations a
   assert.deepEqual(
     f.calls.map((c) => c.id),
     [
+      snapshotId,
       "source.branch-stock-date",
-      "replenishment.summary",
+      "replenishment.overview",
+      snapshotId,
       "source.branch-stock-date",
       "replenishment-suggestions.detail.atomic",
     ],
@@ -270,7 +280,7 @@ test("branch age and risk questions use the same scoped page health summary", as
   assert.equal(result.summary.total_qty, 130);
   assert.deepEqual(
     f.calls.map((call) => call.id),
-    ["source.health-date", "health.cards"],
+    [snapshotId, "source.health-date", "health.cards"],
   );
 });
 test("identity changes and cancellation prevent late branch data from being published", async () => {
