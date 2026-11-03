@@ -237,6 +237,14 @@ test("scope summary ranks overlapping change triggers and retains preparation re
           "cases/c.test.mjs",
         ],
       },
+      reasonDetails: {
+        "dsh-gea-plugin/src/gateway.ts": {
+          rules: ["^src/(gateway|session)\\.ts$"],
+          rule: 2,
+          direct: 1,
+          transitive: 2,
+        },
+      },
       required: ["cases/d.test.mjs"],
       typecheck: true,
       dependencies: true,
@@ -266,7 +274,18 @@ test("scope summary ranks overlapping change triggers and retains preparation re
   );
   assert.match(text, /cases\/a.test.mjs/);
   assert.match(text, /version contract/);
-  assert.match(text, /policy rules or transitive consumers/);
+  assert.deepEqual(coverage.scope.selection.reasonDetails["dsh-gea-plugin/src/gateway.ts"], {
+    rules: ["^src/(gateway|session)\\.ts$"],
+    rule: 2,
+    direct: 1,
+    transitive: 2,
+  });
+  assert.ok(
+    text.includes(
+      "rules: ^src/(gateway\\|session)\\.ts$; rule files: 2; direct consumers: 1; transitive consumers: 2",
+    ),
+  );
+  assert.match(text, /Source categories may overlap after owner deduplication/);
   assert.match(text, /overlap and must not be added/);
   assert.match(
     text,
@@ -280,7 +299,11 @@ test("missing trigger and preparation metadata remain unknown rather than zero o
     joint: false,
     parallel: false,
     selectionDetails: {
-      changes: [{ repo: "dsh-gea-plugin", file: "src/unknown.ts" }],
+      changes: [
+        { repo: "dsh-gea-plugin", file: "src/unknown.ts" },
+        { repo: "dsh-gea-plugin", file: "src/legacy.ts" },
+      ],
+      reasons: { "dsh-gea-plugin/src/legacy.ts": ["cases/a.test.mjs"] },
       runtimeFiles: undefined,
     },
   });
@@ -297,6 +320,10 @@ test("missing trigger and preparation metadata remain unknown rather than zero o
     text,
     /\| dsh-gea-plugin\/src\/unknown.ts \| unknown \| unknown \| unknown \| unknown \|/,
   );
+  assert.match(
+    text,
+    /\| dsh-gea-plugin\/src\/legacy.ts \| 1 \| unknown \| unknown \| cases\/a.test.mjs \|/,
+  );
 });
 
 test("matrix CLI includes trigger and preparation details before preparing dependencies", (t) => {
@@ -306,6 +333,14 @@ test("matrix CLI includes trigger and preparation details before preparing depen
     selectionDetails: {
       runtimeFiles: undefined,
       reasons: { "dsh-gea-plugin/src/gateway.ts": ["cases/a.test.mjs"] },
+      reasonDetails: {
+        "dsh-gea-plugin/src/gateway.ts": {
+          rules: ["^src/gateway\\.ts$"],
+          rule: 1,
+          direct: 0,
+          transitive: 0,
+        },
+      },
       required: [],
       typecheck: false,
       dependencies: true,
@@ -356,6 +391,11 @@ test("matrix CLI includes trigger and preparation details before preparing depen
   const text = readFileSync(summary, "utf8");
   assert.match(text, /Selected 2 files; Profile unknown; shards 1/);
   assert.match(text, /\| dsh-gea-plugin\/src\/gateway.ts \| 1 \| unknown \|/);
+  assert.ok(
+    text.includes(
+      "rules: ^src/gateway\\.ts$; rule files: 1; direct consumers: 0; transitive consumers: 0",
+    ),
+  );
   assert.match(text, /Types: false; dependencies: true; SDK: false/);
   assert.match(text, /overlap and must not be added/);
   assert.match(text, /Preparation, scheduling and finalization are excluded/);

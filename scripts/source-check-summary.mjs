@@ -151,6 +151,7 @@ export function summarizeSourceChecks(
       selection: Object.fromEntries(
         [
           "reasons",
+          "reasonDetails",
           "changes",
           "required",
           "runtimeFiles",
