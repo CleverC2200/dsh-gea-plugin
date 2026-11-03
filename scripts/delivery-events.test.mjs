@@ -189,7 +189,7 @@ test("both desktop jobs select checkout and build metadata from the required Cor
 test("Windows complete packaging uses its own input or Native bundle without selecting macOS", () => {
   assert.equal(
     workflow.jobs["windows-complete-package"].if,
-    "github.event_name == 'workflow_dispatch' && (inputs.prepare_windows_cache || inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')",
+    "github.event_name == 'workflow_dispatch' && inputs.windows_overwrite_artifact_run == '' && (inputs.prepare_windows_cache || inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')",
   );
 });
 
