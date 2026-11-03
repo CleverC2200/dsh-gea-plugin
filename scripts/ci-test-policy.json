@@ -5,6 +5,12 @@
     "tests/plugin-release.test.mjs",
     "tests/plugin-release-preflight.test.mjs"
   ],
+  "companionPeerTests": [
+    "tests/optional-companion-manifest.test.mjs",
+    "tests/plugin-release.test.mjs",
+    "tests/plugin-release-preflight.test.mjs",
+    "tests/published-runtime.test.mjs"
+  ],
   "required": [
     "tests/controlled-execution.test.mjs",
     "tests/plugin-sql-cancel.test.mjs",
@@ -139,6 +145,46 @@
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/gateway-(?:mcp|session)\\.ts$",
+      "tests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/gateway-mcp.test.mjs",
+        "tests/prompt-execution-policy.test.mjs",
+        "tests/authorized-cube-loop.test.mjs",
+        "tests/authorized-cube-query.test.mjs",
+        "tests/business-profile-recovery.test.mjs",
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs",
+        "tests/gateway-handshake.test.mjs",
+        "tests/inventory-role.test.mjs"
+      ],
+      "sourceTests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/gateway-mcp.test.mjs",
+        "tests/prompt-execution-policy.test.mjs",
+        "tests/authorized-cube-loop.test.mjs",
+        "tests/authorized-cube-query.test.mjs",
+        "tests/business-profile-recovery.test.mjs",
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs",
+        "tests/gateway-handshake.test.mjs",
+        "tests/inventory-role.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/gateway-session\\.ts$",
+      "tests": ["tests/html-gateway.test.mjs", "tests/order-sales-confirmation.test.mjs"],
+      "sourceTests": ["tests/html-gateway.test.mjs", "tests/order-sales-confirmation.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/host/gateway-mcp-service\\.ts$",
