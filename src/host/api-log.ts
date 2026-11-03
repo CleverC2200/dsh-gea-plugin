@@ -24,6 +24,9 @@ const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;
 
 const METADATA_ONLY = new Set([
+  "auth.password",
+  "auth.captcha",
+  "auth.logout",
   "memory.personal",
   "plans.resubmit",
   "service.submit",
@@ -75,6 +78,41 @@ const CATALOG: CatalogDefinition[] = [
       replayNote: METADATA_REPLAY_NOTE,
     },
     /^\/v1\/memory\/(?:state|settings|list|get|recall|generate|update|delete|clear|operations)$/,
+  ),
+  ...[
+    {
+      id: "auth.password",
+      name: "账号密码登录",
+      method: "POST",
+      path: "/sys/login",
+      pattern: /^\/sys\/login$/,
+    },
+    {
+      id: "auth.captcha",
+      name: "获取图形验证码",
+      method: "GET",
+      path: "/sys/randomImage/{key}",
+      pattern: /^\/sys\/randomImage\/[^/]+$/,
+    },
+    {
+      id: "auth.logout",
+      name: "退出登录",
+      method: "POST",
+      path: "/sys/logout",
+      pattern: /^\/sys\/logout$/,
+    },
+  ].map(({ pattern, ...entry }) =>
+    endpoint(
+      {
+        ...entry,
+        group: "登录与身份",
+        description: "仅保留认证请求状态，不保存凭据或正文。",
+        requestFields: [],
+        replayPolicy: "blocked",
+        replayNote: blocked,
+      },
+      pattern,
+    ),
   ),
   endpoint(
     {
@@ -572,9 +610,17 @@ async function responsePreview(response: Response): Promise<unknown> {
   }
 }
 
-function auditMetadata(value: unknown): Record<string, string> {
+function auditMetadata(
+  value: unknown,
+  authentication = false,
+): Record<string, string | number | boolean> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const data = value as Record<string, unknown>;
+  if (authentication)
+    return {
+      ...(typeof data.success === "boolean" ? { success: data.success } : {}),
+      ...(typeof data.code === "number" && Number.isFinite(data.code) ? { code: data.code } : {}),
+    };
   const result =
     data.result && typeof data.result === "object" && !Array.isArray(data.result)
       ? (data.result as Record<string, unknown>)
@@ -750,7 +796,7 @@ export class GeaApiLogCenter {
         statusText: response.statusText,
         headers: metadataOnly ? auditHeaders(response.headers) : sanitizeHeaders(response.headers),
         body: metadataOnly
-          ? auditMetadata(await responsePreview(response))
+          ? auditMetadata(await responsePreview(response), catalog.group === "登录与身份")
           : catalog?.id === "model.chat"
             ? response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")
               ? STREAM_OMITTED

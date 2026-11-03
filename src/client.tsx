@@ -51,14 +51,33 @@ export function apply(ctx: Context): void {
       if (value.status === "authenticated") await identity.refresh(signal);
       return value.status === "authenticated";
     },
+    preparePasswordLogin: async (signal, environment) => {
+      const challenge = await request<
+        Awaited<ReturnType<Context["businessAccount"]["preparePasswordLogin"]>>
+      >(
+        "login/password/prepare",
+        { environment },
+        AbortSignal.any([signal, AbortSignal.timeout(10000)]),
+      );
+      await identity.refresh(signal);
+      return challenge;
+    },
+    loginWithPassword: async (input, signal) => {
+      await request("login/password", input, AbortSignal.any([signal, AbortSignal.timeout(30000)]));
+      await identity.refresh(signal);
+    },
     logout: async (signal) => {
-      const value = await request<{ authenticated: boolean }>(
+      const value = await request<{ authenticated: boolean; remoteLogout?: string }>(
         "logout",
         {},
         AbortSignal.any([signal, AbortSignal.timeout(10000)]),
       );
       if (value.authenticated !== false) throw Error("LOGOUT_FAILED");
       await identity.refresh(signal);
+      if (value.remoteLogout === "unconfirmed")
+        throw Object.assign(Error("已退出本机，但服务端注销未确认。"), {
+          code: "GEA_LOGOUT_UNCONFIRMED",
+        });
     },
   });
 }
@@ -75,6 +94,7 @@ async function request<T>(
     signal,
   });
   const result = await response.json();
+  signal?.throwIfAborted();
   if (!response.ok || result.ok !== true)
     throw Object.assign(
       Error(result.error?.message ?? result.error?.code ?? "GEA_REQUEST_FAILED"),

@@ -404,3 +404,62 @@ test("personal memory audit never stores original input or saved content and can
     ),
   );
 });
+
+test("password, captcha and logout keep only safe audit fields and cannot be replayed", async () => {
+  const center = new GeaApiLogCenter(
+    () => "test",
+    500,
+    async (url) =>
+      json({
+        success: false,
+        code: String(url).includes("randomImage") ? 0 : 500,
+        message: "synthetic-password",
+        result: {
+          token: "synthetic-auth-token",
+          userInfo: { username: "synthetic-username" },
+          image: "synthetic-captcha-image",
+        },
+      }),
+  );
+  const headers = { "Content-Type": "application/json", "X-Access-Token": "synthetic-auth-token" };
+  for (const path of ["/sys/login", "/sys/randomImage/synthetic-check-key", "/sys/logout"]) {
+    const response = await center.fetch(
+      "https://gea.example/gea-boot" + path,
+      path.includes("randomImage")
+        ? {}
+        : {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              username: "synthetic-username",
+              password: "synthetic-password",
+              captcha: "a1B2",
+              checkKey: "synthetic-check-key",
+            }),
+          },
+    );
+    await response.body.cancel();
+  }
+  const snapshot = center.snapshot();
+  assert.deepEqual(snapshot.records.map((record) => record.catalogId).sort(), [
+    "auth.captcha",
+    "auth.logout",
+    "auth.password",
+  ]);
+  for (const record of snapshot.records) {
+    assert.equal(record.request.body, null);
+    assert.equal(record.response.body.success, false);
+    assert.equal(record.replayAvailable, false);
+    assert.equal(record.replayPolicy, "blocked");
+    assert.ok([0, 500].includes(record.response.body.code));
+  }
+  for (const secret of [
+    "synthetic-password",
+    "synthetic-auth-token",
+    "synthetic-username",
+    "synthetic-captcha-image",
+    "synthetic-check-key",
+    "a1B2",
+  ])
+    assert.equal(JSON.stringify(snapshot).includes(secret), false);
+});

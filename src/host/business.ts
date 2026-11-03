@@ -712,6 +712,7 @@ export class Business {
     roles?: SalesPlanApprovalRole[];
   };
   private qr?: { id: string; loginId: string; createdAt: number };
+  private passwordChallenge?: { id: string; createdAt: number; submitting: boolean };
   private epoch = new AbortController();
   private pageIdentityGeneration = randomUUID();
   private queryEpoch = new AbortController();
@@ -798,10 +799,27 @@ export class Business {
   }
 
   /** 结束当前 GEA 登录，并使所有绑定旧身份的进行中任务失效。 */
-  logout(payload: Record<string, unknown>) {
+  async logout(payload: Record<string, unknown>, signal = new AbortController().signal) {
     keys(payload, []);
+    const auth = this.auth;
+    const base = this.base;
     this.clearLogin();
-    return this.status();
+    let remoteLogout: "confirmed" | "unconfirmed" | "not-needed" = "not-needed";
+    if (auth) {
+      try {
+        await this.authenticationRequest(
+          "/sys/logout",
+          AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+          {},
+          auth.token,
+          base,
+        );
+        remoteLogout = "confirmed";
+      } catch {
+        remoteLogout = "unconfirmed";
+      }
+    }
+    return { ...this.status(), remoteLogout };
   }
 
   private readonly sqlReadLimit: ReturnType<typeof createSqlReadLimit>;
@@ -1014,6 +1032,7 @@ export class Business {
     this.turnStops.clear();
     this.salesTransactions.clear();
     this.qr = undefined;
+    this.passwordChallenge = undefined;
     this.loginExpired = expired;
     // 身份变化后，之前的可见页快照一律作废。
     this.visibleWorkbenchContexts.clear();
@@ -2171,24 +2190,149 @@ export class Business {
       await this.gatewayRequests.read("/sys/user/getUserInfo", { token }, combined),
     );
     const user = object(identity.userInfo);
+    if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
+    return this.completeLogin(token, user, combined);
+  }
+
+  private async completeLogin(token: string, user: Record<string, unknown>, signal: AbortSignal) {
+    signal.throwIfAborted();
     const tenantId = String(user.loginTenantId ?? user.tenantId ?? "");
     if (!user.id || !/^\d+$/.test(tenantId)) throw new Error("GEA_IDENTITY_INCOMPLETE");
-    const name = text(user.realname || user.username);
-    if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
-    this.auth = {
+    const auth = {
       token,
       tenantId,
-      name,
+      name: text(user.realname || user.username),
       id: text(user.id),
       username: text(user.username || user.realname),
       avatar: avatarUrl(user.avatar, this.base),
     };
+    this.auth = auth;
     this.qr = undefined;
-    await this.refreshPermissions(combined);
-    await this.refreshApprovalRoles(combined);
-    combined.throwIfAborted();
+    this.passwordChallenge = undefined;
+    try {
+      await this.refreshPermissions(signal);
+      await this.refreshApprovalRoles(signal);
+      signal.throwIfAborted();
+    } catch (error) {
+      if (this.auth === auth) this.clearLogin();
+      throw error;
+    }
     this.notifyIdentity();
     return { status: "authenticated", ...this.status() };
+  }
+
+  private async authenticationRequest(
+    path: string,
+    signal: AbortSignal,
+    body?: Record<string, unknown>,
+    token?: string,
+    base = this.base,
+  ): Promise<Record<string, unknown>> {
+    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
+    const combined = AbortSignal.any([signal, timeout]);
+    const active = () => {
+      signal.throwIfAborted();
+      if (timeout.aborted) throw Error("GEA_REQUEST_TIMEOUT");
+    };
+    active();
+    let response: Response;
+    let data: Record<string, unknown>;
+    try {
+      response = await this.apiLog.fetch(base + path, {
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Version": "v3",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(token ? { "X-Access-Token": token } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        redirect: "error",
+        signal: combined,
+      });
+    } catch {
+      active();
+      throw Error("GEA_NETWORK_ERROR");
+    }
+    active();
+    try {
+      data = object(JSON.parse(await response.text()));
+    } catch {
+      active();
+      if (response.ok) throw Error("GEA_INVALID_JSON");
+      data = {};
+    }
+    active();
+    if (!response.ok || data.success !== true || (path === "/sys/login" && data.code !== 200)) {
+      const code = !response.ok ? response.status : data.code;
+      switch (code) {
+        case 412:
+          throw Error("GEA_LOGIN_CAPTCHA_INVALID");
+        case 429:
+          throw Error("GEA_LOGIN_RATE_LIMITED");
+        case 503:
+          throw Error("GEA_LOGIN_UNAVAILABLE");
+        case 500:
+          throw Error("GEA_LOGIN_REJECTED");
+        default:
+          throw Error(!response.ok ? "GEA_HTTP_" + response.status : "GEA_INVALID_LOGIN");
+      }
+    }
+    return data;
+  }
+
+  async passwordLoginPrepare(signal: AbortSignal, payload: Record<string, unknown>) {
+    keys(payload, ["environment"]);
+    this.selectEnvironment(payload);
+    const combined = AbortSignal.any([signal, this.epoch.signal]);
+    const id = randomUUID();
+    const data = await this.authenticationRequest("/sys/randomImage/" + id, combined);
+    const image = data.result;
+    if (typeof image !== "string" || !/^data:image\/jpe?g;base64,[A-Za-z0-9+/=\r\n]+$/.test(image))
+      throw Error("GEA_INVALID_CAPTCHA");
+    combined.throwIfAborted();
+    this.passwordChallenge = { id, createdAt: Date.now(), submitting: false };
+    return { challengeId: id, image, expiresIn: 60 };
+  }
+
+  async passwordLogin(payload: Record<string, unknown>, signal: AbortSignal) {
+    keys(payload, ["challengeId", "username", "password", "captcha"]);
+    const challenge = this.passwordChallenge;
+    if (!challenge || payload.challengeId !== challenge.id) throw Error("STALE_LOGIN");
+    if (Date.now() - challenge.createdAt >= 60000) throw Error("GEA_LOGIN_CAPTCHA_INVALID");
+    if (challenge.submitting) throw Error("GEA_LOGIN_IN_PROGRESS");
+    if (
+      typeof payload.username !== "string" ||
+      !payload.username.trim() ||
+      payload.username.length > 256 ||
+      typeof payload.password !== "string" ||
+      !payload.password ||
+      payload.password.length > 4096 ||
+      typeof payload.captcha !== "string" ||
+      !/^[A-Za-z0-9]{4}$/.test(payload.captcha.trim())
+    )
+      throw Error("GEA_INVALID_LOGIN_INPUT");
+    const combined = AbortSignal.any([signal, this.epoch.signal]);
+    challenge.submitting = true;
+    try {
+      const data = await this.authenticationRequest("/sys/login", combined, {
+        username: payload.username.trim(),
+        password: payload.password,
+        captcha: payload.captcha.trim(),
+        checkKey: challenge.id,
+      });
+      const result = object(data.result);
+      if (typeof result.token !== "string" || !result.token.trim() || result.token.length > 16384)
+        throw Error("GEA_INVALID_LOGIN");
+      const identity = object(
+        await this.gatewayRequests.read("/sys/user/getUserInfo", { token: result.token }, combined),
+      );
+      combined.throwIfAborted();
+      if (this.passwordChallenge !== challenge) throw Error("STALE_LOGIN");
+      return await this.completeLogin(result.token, object(identity.userInfo), combined);
+    } finally {
+      if (this.passwordChallenge === challenge) this.passwordChallenge = undefined;
+    }
   }
 
   /** 只使用当前进程登录准备 Gateway 传输能力。 */
