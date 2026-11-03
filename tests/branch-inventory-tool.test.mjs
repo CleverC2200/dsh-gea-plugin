@@ -189,7 +189,7 @@ test("denied base supply returns its authorization failure without a zero or cus
   assert.equal(result.failure.reasonCode, "ROW_SCOPE_DENIED");
   assert.equal(result.summary, undefined);
   assert.ok(f.calls.length <= 2);
-  assert.ok(f.calls.every((c) => c.id.startsWith("orders.")));
+  assert.ok(f.calls.every((c) => c.id.startsWith("upstream-orders.")));
 });
 test("orchestration denied SQL is not retried under the branch identity or Cube", async () => {
   const f = fixture(async () => ({
@@ -315,7 +315,7 @@ test("resource changes abort an in-flight branch query and release the watcher",
 test("current supply questions use pending ASN orders, excluding execution and customer-order substitutes", async () => {
   const f = fixture(async (id) => {
     const response = data(id);
-    if (id === "orders.summary")
+    if (id === "upstream-orders.summary")
       Object.assign(response.rows[0], {
         row_count: 3,
         demand: 17068,
@@ -329,7 +329,7 @@ test("current supply questions use pending ASN orders, excluding execution and c
   );
   assert.equal(result.summary.demand, 17068);
   assert.match(result.metricDefinitions.countGrain, /ASN/);
-  assert.ok(f.calls.every((call) => call.id.startsWith("orders.")));
+  assert.ok(f.calls.every((call) => call.id.startsWith("upstream-orders.")));
   for (const call of f.calls) {
     const [key] = Object.entries(config.queries[call.id].parameterSpec).find(
       ([, spec]) => spec.name === "warehouse_code",
@@ -370,4 +370,27 @@ test("operations share WMS movement dates and exact warehouse scope with the pag
   const unsupported = JSON.parse(await f.call({ view: "operations", sku: "SKU1" }));
   assert.equal(unsupported.success, false);
   assert.match(unsupported.message, /OPERATIONS_SKU_SCOPE/);
+});
+
+test("customer orders use downstream quantities and never ASN supply", async () => {
+  const f = fixture(async (id) => {
+    const response = data(id);
+    if (id === "orders.summary")
+      Object.assign(response.rows[0], {
+        row_count: 181,
+        order_quantity: 19665,
+        fulfillment_shipped_quantity: 19079,
+        fulfillment_order_quantity: 19405,
+        fulfillment_rate: 19079 / 19405,
+      });
+    return response;
+  });
+  const result = JSON.parse(
+    await f.call({ view: "orders", warehouseCode: "A230", asOf: "2026-11-03" }),
+  );
+  assert.equal(result.summary.fulfillment_order_quantity, 19405);
+  assert.equal(result.summary.fulfillment_shipped_quantity, 19079);
+  assert.ok(f.calls.some((call) => call.id === "orders.summary"));
+  assert.ok(f.calls.every((call) => call.id === snapshotId || call.id.startsWith("orders.")));
+  assert.match(result.metricDefinitions.countGrain, /下游/);
 });
