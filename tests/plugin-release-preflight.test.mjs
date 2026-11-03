@@ -9,6 +9,34 @@ import { companyPackageNames } from "../src/shared/plugin-release.mjs";
 const [, M, G] = companyPackageNames;
 import { createReleasePreflightFixture as fixture } from "./fixtures/plugin-release-preflight.mjs";
 
+test("unchanged published companions require both deployed archive identity and the exact source tag", async (t) => {
+  const f = await fixture(t);
+  const row = f.delivery.packages[0];
+  const target = f.input.targets[0];
+  const manifest = JSON.parse(
+    execFileSync("tar", ["-xOf", target.archive, "package/package.json"], { encoding: "utf8" }),
+  );
+  const git = (...args) => execFileSync("git", ["-C", row.source.path, ...args]);
+  git("tag", `v${row.version}`, row.source.head);
+  row.source.kind = "immutable-published-archive";
+  delete row.source.buildReceipt;
+  delete row.source.buildReceiptSha256;
+  const save = () => writeFile(f.input.deliveryManifest, JSON.stringify(f.delivery));
+  await save();
+  assert.match((await f.run()).stderr, /RELEASE_PUBLISHED_ARCHIVE_PROOF_REQUIRED/);
+  const deployed = f.input.deployed[0].installed;
+  const previous = deployed.findIndex((installed) => installed.name === manifest.name);
+  deployed[previous] = { ...manifest, artifactSha256: row.sha256 };
+  assert.equal((await f.run()).status, 0);
+  git("tag", "-d", `v${row.version}`);
+  assert.match((await f.run()).stderr, /RELEASE_PUBLISHED_ARCHIVE_PROOF_REQUIRED/);
+  git("tag", `v${row.version}`, row.source.head);
+  const gea = f.delivery.packages.find((row) => row.name === G);
+  gea.source.kind = "immutable-published-archive";
+  await save();
+  assert.match((await f.run()).stderr, /RELEASE_PUBLISHED_ARCHIVE_PROOF_REQUIRED/);
+});
+
 test("release preflight respects hash-bound provenance curation but never skips runtime outputs", async (t) => {
   const f = await fixture(t);
   const row = f.delivery.packages[0];
