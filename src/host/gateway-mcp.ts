@@ -1,5 +1,6 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
 import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
+import { randomUUID } from "node:crypto";
 import { KNOWLEDGE_METHODS, KNOWLEDGE_SOURCE } from "./knowledge-mcp.ts";
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
@@ -101,9 +102,12 @@ export function gatewayMcpTransport(
    * 传输层是最早的边界，在这里统一翻成可读错误。
    */
   const send = async (init: RequestInit): Promise<Response> => {
+    const headers = new Headers(init.headers);
+    headers.set("X-Request-Id", randomUUID());
     try {
       return await fetchImpl(url, {
         ...init,
+        headers,
         redirect: "error",
         signal: AbortSignal.any([
           identity,
@@ -380,6 +384,7 @@ export function gatewayMcpTransport(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        "X-Request-Id": randomUUID(),
       },
       body: JSON.stringify({ ...meta, mcpCode, toolName }),
       signal: AbortSignal.any([identity, signal, AbortSignal.timeout(timeoutMs)]),

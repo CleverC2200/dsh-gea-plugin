@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { parse } from "yaml";
 import {
@@ -145,6 +145,25 @@ function fixture(t, count = 2, attempts = {}) {
   return { root, plan, change };
 }
 
+function firstAttemptProducers() {
+  return {
+    schemaVersion: 1,
+    jobFilter: "latest",
+    expected: { repository: "CleverC2200/dsh-gea-plugin", runId: 42, runAttempt: 1, headSha: head },
+    run: { id: 42, run_attempt: 1, head_sha: head },
+    pagination: { complete: true, totalCount: 2, pageCount: 1, perPage: 100 },
+    jobs: [1, 2].map((id) => ({
+      id,
+      name: `source-checks (${id})`,
+      run_id: 42,
+      run_attempt: 1,
+      head_sha: head,
+      status: "completed",
+      conclusion: "success",
+    })),
+  };
+}
+
 test("source workers bind a bounded shard count and reject malformed assignment", () => {
   assert.equal(sourceCheckShard({}), undefined);
   for (const count of [2, 8, 16, 20, 40])
@@ -179,6 +198,86 @@ test("large runtime selections expand within the shared account concurrency allo
 test("independent actual Node workers prove complete exact-once file and case coverage", (t) => {
   const f = fixture(t);
   assert.equal(aggregateSourceCheckShards(f.root, expected).files, 4);
+});
+
+test("first-attempt producer diagnostics distinguish missing, duplicate and unsuccessful jobs", (t) => {
+  const f = fixture(t);
+  assert.equal(
+    aggregateSourceCheckShards(f.root, { ...expected, producers: firstAttemptProducers() }).files,
+    4,
+  );
+  for (const [condition, matches] of [
+    ["missing", 0],
+    ["duplicate", 2],
+    ["failure", 1],
+    ["cancelled", 1],
+    ["in_progress", 1],
+  ]) {
+    const producers = firstAttemptProducers();
+    if (condition === "missing") producers.jobs.pop();
+    else if (condition === "duplicate") producers.jobs.push({ ...producers.jobs[1], id: 3 });
+    else if (condition === "in_progress") {
+      producers.jobs[1].status = "in_progress";
+      producers.jobs[1].conclusion = null;
+    } else producers.jobs[1].conclusion = condition;
+    producers.pagination.totalCount = producers.jobs.length;
+    assert.throws(
+      () => aggregateSourceCheckShards(f.root, { ...expected, producers }),
+      (error) => {
+        assert.ok(error.message.includes(`shard=2 expectedAttempt=1 latestMatches=${matches}`));
+        if (condition === "missing") assert.match(error.message, /observedJobs=\[\]/);
+        else {
+          assert.match(error.message, /"id":2,"name":"source-checks \(2\)","attempt":1/);
+          if (condition !== "duplicate")
+            assert.ok(error.message.includes(JSON.stringify(condition)), error.message);
+        }
+        return true;
+      },
+    );
+  }
+});
+
+test("the aggregate CLI reports the missing hosted producer without making network requests", (t) => {
+  const f = fixture(t);
+  const currentHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  for (const id of [1, 2]) {
+    const file = join(f.root, `source-checks-${id}`, "source-checks-scope.json");
+    const scope = JSON.parse(readFileSync(file));
+    write(file, { ...scope, head: currentHead });
+  }
+  const producers = firstAttemptProducers();
+  producers.run.head_sha = currentHead;
+  producers.jobs = [{ ...producers.jobs[0], head_sha: currentHead }];
+  const api = join(f.root, "..", "hosted-api.json");
+  const preload = join(f.root, "..", "hosted-api.mjs");
+  write(api, producers);
+  writeFileSync(
+    preload,
+    `import { readFileSync } from "node:fs";
+const snapshot = JSON.parse(readFileSync(${JSON.stringify(api)}));
+globalThis.fetch = async (url) => Response.json(String(url).includes("/jobs?")
+  ? { total_count: snapshot.jobs.length, jobs: snapshot.jobs } : snapshot.run);
+`,
+  );
+  const result = spawnSync(
+    process.execPath,
+    ["--import", preload, "scripts/source-check-shards.mjs", "--aggregate", f.root],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GITHUB_REPOSITORY: "CleverC2200/dsh-gea-plugin",
+        GITHUB_RUN_ID: "42",
+        GITHUB_RUN_ATTEMPT: "1",
+        GITHUB_TOKEN: "",
+      },
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /SOURCE_CHECK_SHARDS_REJECTED: latest successful worker producer/);
+  assert.match(result.stderr, /shard=2 expectedAttempt=1 latestMatches=0/);
+  assert.match(result.stderr, /observedJobs=\[\]/);
 });
 
 test("three actual workers prove the expanded assignment without missing or duplicate cases", (t) => {
@@ -453,15 +552,50 @@ test("failed-only reruns aggregate original successful workers with the actual l
     },
   ];
   producers.producerJobs[0].jobs[1].conclusion = "failure";
-  assert.throws(() => aggregateSourceCheckShards(f.root, retry), /worker source/);
+  assert.throws(
+    () => aggregateSourceCheckShards(f.root, retry),
+    (error) => {
+      assert.match(error.message, /worker source/);
+      assert.match(error.message, /shard=1 expectedAttempt=2 observedAttempt=1/);
+      return true;
+    },
+  );
   assert.equal(aggregateSourceCheckShards(f.root, { ...retry, producers }).files, 4);
   producers.jobs[0].conclusion = "failure";
-  assert.throws(() => aggregateSourceCheckShards(f.root, { ...retry, producers }), /producer/);
+  assert.throws(
+    () => aggregateSourceCheckShards(f.root, { ...retry, producers }),
+    (error) => {
+      assert.match(error.message, /producer/);
+      assert.match(error.message, /shard=1 expectedAttempt=1 latestMatches=1/);
+      assert.match(error.message, /"id":1,"name":"source-checks \(1\)","attempt":1/);
+      assert.match(error.message, /"status":"completed","conclusion":"failure"/);
+      return true;
+    },
+  );
   producers.jobs[0].conclusion = "success";
   producers.jobs[0].run_attempt = 2;
   producers.jobs[0].started_at = "2026-11-02T03:46:15Z";
   producers.jobs[0].completed_at = "2026-11-02T03:46:40Z";
-  assert.throws(() => aggregateSourceCheckShards(f.root, { ...retry, producers }), /producer/);
+  assert.throws(
+    () => aggregateSourceCheckShards(f.root, { ...retry, producers }),
+    (error) => {
+      assert.match(error.message, /producer/);
+      assert.match(error.message, /shard=1 expectedAttempt=1 latestMatches=1/);
+      assert.match(error.message, /observedProducerAttempt=2/);
+      assert.match(error.message, /"attempt":2,"status":"completed","conclusion":"success"/);
+      return true;
+    },
+  );
+  delete producers.producerJobs;
+  assert.throws(
+    () => aggregateSourceCheckShards(f.root, { ...retry, producers }),
+    (error) => {
+      assert.match(error.message, /HOSTED_PRODUCER_HISTORY_REQUIRED/);
+      assert.match(error.message, /shard=1 expectedAttempt=1 latestMatches=1/);
+      assert.match(error.message, /observedProducerAttempt=unknown/);
+      return true;
+    },
+  );
 });
 
 test("a small mixed source selection uses one preparation and still assigns every file", () => {

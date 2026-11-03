@@ -220,6 +220,8 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   const ranking = JSON.parse(await f.call({ view: "locations" }));
   assert.ok(f.calls.length, JSON.stringify(ranking));
   assert.equal(f.calls[0].request.sql, config.queries["current-shortage.locations"].request.sql);
+  assert.equal(f.calls[0].request.parameters.gea_p49901, 50);
+  assert.equal(f.calls[0].request.parameters.gea_p49902, 0);
   assert.equal(ranking.coverage, "complete-location-ranking");
   assert.deepEqual(
     ranking.rows.map((r) => r.location_code),
@@ -276,6 +278,35 @@ test("paginated branch rankings collect every location and reject an incomplete 
   const incomplete = JSON.parse(await run(true).call({ view: "locations" }));
   assert.equal(incomplete.success, false);
   assert.equal(incomplete.coverage, undefined);
+});
+test("location ranking uses the installed pagination contract for each profile", async () => {
+  for (const [agent] of definitions) {
+    const config = JSON.parse(
+      await readFile(`../dsh-agent-workbench/business/inventory-${agent}/sql.config.json`, "utf8"),
+    );
+    const query = config.queries["current-shortage.locations"];
+    const f = fixture(agent, async () => ({
+      rows: query.pagination?.atomicQuery
+        ? [
+            {
+              ...Object.fromEntries(query.resultColumns.map((key) => [key, null])),
+              page_scope_total: 0,
+              page_row_present: null,
+            },
+          ]
+        : [],
+      returnedColumns: query.resultColumns,
+      rejectedColumns: [],
+    }));
+    const result = JSON.parse(await f.call({ view: "locations" }));
+    assert.equal(
+      result.coverage,
+      "complete-location-ranking",
+      JSON.stringify({ agent, result, pagination: query.pagination }),
+    );
+    assert.equal(f.calls[0].request.parameters.gea_p49901, agent === "apsplan" ? undefined : 50);
+    assert.equal(f.calls[0].request.parameters.gea_p49902, agent === "apsplan" ? undefined : 0);
+  }
 });
 test("a truncated location collection cannot claim a complete ranking", () => {
   assert.throws(

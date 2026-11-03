@@ -203,6 +203,7 @@ export function registerCurrentShortageTool(
               sku: args.sku ?? null,
               category: args.category ?? null,
               ...(detail ? { page_size: 10, offset: (page - 1) * 10 } : {}),
+              ...(locations && id !== "inventory-apsplan" ? { page_size: 50, offset: 0 } : {}),
             };
             const result = await readConfiguredHtmlQuery(
               resource,

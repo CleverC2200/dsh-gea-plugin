@@ -62,6 +62,50 @@ export function sourceCheckCost({ selection, root, environment, timings }) {
   });
 }
 
+export function sourceSelectionMarkdown(selection, workers) {
+  const unknown = "unknown";
+  const cell = (value) => String(value).replaceAll("|", "\\|").replaceAll(/\r?\n/g, " ");
+  const reasons = selection?.reasons;
+  const changes = new Map(
+    (selection?.changes ?? []).map((change) => [`${change.repo}/${change.file}`, change]),
+  );
+  const triggers = [...new Set([...changes.keys(), ...Object.keys(reasons ?? {})])]
+    .map((change) => {
+      const details = selection?.reasonDetails?.[change];
+      return {
+        change,
+        files: Array.isArray(reasons?.[change]) ? [...new Set(reasons[change])] : null,
+        relation: !Array.isArray(reasons?.[change])
+          ? "unknown"
+          : changes.get(change)?.versionOnly
+            ? "version contract"
+            : changes.get(change)?.companionPeerOnly
+              ? "companion peer compatibility contract"
+              : details
+                ? `rules: ${details.rules.join(", ") || "none"}; rule files: ${details.rule}; direct consumers: ${details.direct}; transitive consumers: ${details.transitive}`
+                : unknown,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (b.files?.length ?? -1) - (a.files?.length ?? -1) || a.change.localeCompare(b.change),
+    );
+  const profile = selection?.runtimeFiles;
+  return (
+    `### Selection triggers and preparation\n\nProfile files: ${profile?.length ?? unknown}; workers: ${workers ?? unknown}; required files: ${selection?.required?.length ?? unknown}. Profile files transitively import tests/profile.mjs. File counts cover all selected platforms; workers run the Linux selection.\n\n` +
+    `Types: ${selection?.typecheck ?? unknown}; dependencies: ${selection?.dependencies ?? unknown}; SDK: ${selection?.sdk ?? unknown}; browser: ${selection?.browser ?? unknown}; upstreams: ${selection?.upstreams ?? unknown}. These are planned requirements; preparation completion is reported separately.\n\n` +
+    (triggers.length
+      ? `| Changed file (largest trigger first) | Triggered files | Profile files | Selection relation | Main test consumers (up to 3) |\n| --- | ---: | ---: | --- | --- |\n${triggers
+          .map(
+            ({ change, files, relation }) =>
+              `| ${cell(change)} | ${files?.length ?? unknown} | ${files && profile ? files.filter((file) => profile.includes(file)).length : unknown} | ${cell(relation)} | ${files ? cell(files.slice(0, 3).join(", ") || "none") + (files.length > 3 ? `; +${files.length - 3} more` : "") : unknown} |`,
+          )
+          .join("\n")}\n\n`
+      : `Change triggers: ${reasons ? "none recorded" : unknown}.\n\n`) +
+    `Triggered file counts reuse plan.reasons. Source counts reuse plan.reasonDetails. Trigger sets may overlap and must not be added to obtain total selection. Required files are included independently. Source categories may overlap after owner deduplication; their counts must not be added. Individual dependency paths are not recorded; older plans without source metadata report unknown. Test file counts do not represent total cost; preparation, builds, scheduling and finalization have separate costs.\n\n`
+  );
+}
+
 export function aggregateSourceCheckShards(directory, { head, runId, runAttempt, producers }) {
   if (producers) {
     verifyHostedSnapshot(producers);
@@ -93,19 +137,35 @@ export function aggregateSourceCheckShards(directory, { head, runId, runAttempt,
         Array.isArray(scope.plan.files) &&
         scope.shard.id === expectedIds[index] &&
         scope.shard.count === expectedIds.length,
-      "worker source or assignment",
+      `worker source or assignment; shard=${expectedIds[index]} expectedAttempt=${runAttempt} observedAttempt=${scope.runAttempt} expectedRun=${runId} observedRun=${scope.runId} expectedHead=${head} observedHead=${scope.head} observedAssignment=${JSON.stringify(scope.shard)}`,
     );
     if (producers) {
       const jobs = producers.jobs.filter(
         (job) => job.name === `source-checks (${expectedIds[index]})`,
       );
-      requireValue(
-        jobs.length === 1 &&
-          jobs[0].status === "completed" &&
-          jobs[0].conclusion === "success" &&
-          hostedProducerAttempt(producers, jobs[0].name) === Number(scope.runAttempt),
-        "latest successful worker producer",
-      );
+      let observedProducerAttempt;
+      try {
+        requireValue(
+          jobs.length === 1 &&
+            jobs[0].status === "completed" &&
+            jobs[0].conclusion === "success" &&
+            (observedProducerAttempt = hostedProducerAttempt(producers, jobs[0].name)) ===
+              Number(scope.runAttempt),
+          "latest successful worker producer",
+        );
+      } catch (error) {
+        const observedJobs = jobs.map((job) => ({
+          id: job.id,
+          name: job.name,
+          attempt: job.run_attempt,
+          status: job.status,
+          conclusion: job.conclusion,
+        }));
+        throw Error(
+          `${error.message}; shard=${expectedIds[index]} expectedAttempt=${scope.runAttempt} latestMatches=${jobs.length} observedProducerAttempt=${observedProducerAttempt ?? "unknown"} observedJobs=${JSON.stringify(observedJobs)}`,
+          { cause: error },
+        );
+      }
     }
     return { root, scope };
   });
@@ -210,7 +270,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const { appendFileSync } = await import("node:fs");
       appendFileSync(
         process.env.GITHUB_STEP_SUMMARY,
-        `## Source check cost before preparation\n\nSelected ${e.selectedFiles} files; Profile ${e.profileFiles}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Historical ordering hints ${e.advisoryFiles} (advisory only). Estimated tests: ${e.estimatedMs === null ? "unknown" : e.estimatedMs + " ms"}. Preparation, scheduling and finalization are excluded. This is a cost estimate, not execution evidence.\n`,
+        `## Source check cost before preparation\n\nSelected ${e.selectedFiles} files; Profile ${selection.runtimeFiles?.length ?? "unknown"}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Historical ordering hints ${e.advisoryFiles} (advisory only). Estimated tests: ${e.estimatedMs === null ? "unknown" : e.estimatedMs + " ms"}. Preparation, scheduling and finalization are excluded. This is a cost estimate, not execution evidence.\n\n` +
+          sourceSelectionMarkdown(selection, shards.length),
       );
     }
     requireValue(process.env.GITHUB_OUTPUT, "matrix output");

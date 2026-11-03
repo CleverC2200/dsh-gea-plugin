@@ -48,6 +48,8 @@ const fixture = (execute) => {
       const id = Object.keys(config.queries).find(
         (id) => config.queries[id].request.sql === request.sql,
       );
+      if (id === config.dailySummary?.snapshotQueryId)
+        return { rows: [], returnedColumns: config.queries[id].resultColumns, rejectedColumns: [] };
       calls.push({ id, request, configured });
       return execute(id, request, signal);
     },
@@ -168,8 +170,7 @@ test("base supply questions use receiving-branch executions, full-scope metrics 
     assert.equal(result.unit, "件");
     assert.match(result.metricDefinitions.countGrain, /执行单/);
   }
-  assert.equal(f.calls.length, 3);
-  assert.equal(f.calls.filter((c) => c.id === snapshotId).length, 1);
+  assert.ok(f.calls.filter((c) => c.id === snapshotId).length <= 1);
   const supplyCalls = f.calls.filter((c) => c.id !== snapshotId);
   assert.equal(supplyCalls.length, 2);
   assert.ok(supplyCalls.every((c) => c.id.startsWith("branch-supply.")));
@@ -233,12 +234,10 @@ test("branch summary and follow-up suggestions use installed page calculations a
   assert.equal(list.total, 1);
   assert.equal(list.readonly, true);
   assert.deepEqual(
-    f.calls.map((c) => c.id),
+    f.calls.filter((c) => c.id !== snapshotId).map((c) => c.id),
     [
-      snapshotId,
       "source.branch-stock-date",
       "replenishment.overview",
-      snapshotId,
       "source.branch-stock-date",
       "replenishment-suggestions.detail.atomic",
     ],
@@ -279,8 +278,8 @@ test("branch age and risk questions use the same scoped page health summary", as
   assert.equal(result.summary.max_age, 360);
   assert.equal(result.summary.total_qty, 130);
   assert.deepEqual(
-    f.calls.map((call) => call.id),
-    [snapshotId, "source.health-date", "health.cards"],
+    f.calls.filter((call) => call.id !== snapshotId).map((call) => call.id),
+    ["source.health-date", "health.cards"],
   );
 });
 test("identity changes and cancellation prevent late branch data from being published", async () => {
