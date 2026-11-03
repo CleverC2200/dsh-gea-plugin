@@ -1,6 +1,10 @@
 import { existsSync, globSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { aggregateSourceCheckShards, sourceCheckMatrix } from "./source-check-shards.mjs";
+import {
+  aggregateSourceCheckShards,
+  sourceCheckMatrix,
+  sourceSelectionMarkdown,
+} from "./source-check-shards.mjs";
 import { selectPlatformTests } from "./ci-platform-tests.mjs";
 import { executionDigest, verifyExecutionResults } from "./quality-test-execution.mjs";
 import { verifyHostedSnapshot, hostedProducerAttempt } from "./quality-hosted-run.mjs";
@@ -144,6 +148,20 @@ export function summarizeSourceChecks(
     schemaVersion: 1,
     identity: { head, runId, runAttempt, base: selection.base, diffBase: selection.diffBase },
     scope: {
+      selection: Object.fromEntries(
+        [
+          "reasons",
+          "changes",
+          "required",
+          "runtimeFiles",
+          "typecheck",
+          "dependencies",
+          "sdk",
+          "browser",
+          "upstreams",
+        ].map((key) => [key, selection[key]]),
+      ),
+      workers: matrix.shards.length,
       mode: selection.mode,
       platform: "linux",
       fullSuite: selection.fullSuite,
@@ -230,6 +248,7 @@ export function sourceReportMarkdown(result) {
     (scope
       ? `Scope: ${scope.mode}, ${scope.platform}; fullSuite: ${scope.fullSuite}. All-repository and cross-platform acceptance: ${scope.allRepositoryAndPlatforms}.\n\n| Coverage | Files |\n| --- | ---: |\n| Registered pool | ${scope.registeredFiles} |\n| Selected | ${scope.selectedFiles} |\n| Selected on this platform | ${scope.platformFiles} |\n| Deferred to other platforms | ${scope.deferred.length} |\n| Registered entries not directly selected | ${scope.unselected.length} |\n| Verified executed files | ${execution.verifiedFiles ?? unknown} |\n\nExecution: ${execution.status}. Cases: ${execution.counts?.tests ?? unknown}; failed: ${execution.counts?.failed ?? unknown}; skipped: ${execution.counts?.skipped ?? unknown}. ${execution.note} ${execution.verificationError ?? ""}\n\nRegistered entries may delegate cases to selected owners; owner mappings are retained in the JSON.\n\n`
       : `Coverage: unknown (${result.coverage?.error ?? "no engineering execution receipts"}).\n\n`) +
+    sourceSelectionMarkdown(scope?.selection, scope?.workers) +
     `Workflow to ${result.completedMeasurement ? "completion" : "observation"}: ${result.performance.workflowToDecisionMs ?? unknown} ms. Trigger queue: ${result.performance.triggerQueueMs ?? unknown} ms. In-gate timing excludes subsequent upload and cleanup. The historical ${result.performance.budgetMs} ms reference is informational and does not change admission.\n\n| Longest jobs | Allocated duration ms | Measurement |\n| --- | ---: | --- |\n${jobs
       .slice(0, 5)
       .map((job) => `| ${job.name} | ${job.durationMs ?? unknown} | ${job.measurement} |`)
