@@ -38,6 +38,8 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 preflight 使用以下文件合同，所有路径为绝对路径。sources、targets 与交付清单必须各含三个唯一公司包。`requiredCommits` 必须非空，记录本版必含的原提交或合并提交；每项必须是实际 source HEAD 的祖先。其它来源的明确排除仍由本票的来源清单说明，不能用排除记录代替必含提交。
 
+未改变的 Workbench、Manage 已发布归档可在交付清单中使用 `source.kind: "immutable-published-archive"`。其 source.path/head 仍绑定干净源码，并必须等于本地已核实的 `v<version>` 标签提交；归档版本与摘要还必须匹配一个明确 deployed 输入。只有这些条件同时成立，才复用原归档而不要求再次构建。新 GEA 不接受此模式，继续核本次构建回执与输出字节。预检不认证 deployed 输入的取得过程，调用者须从实际受控发布来源读取并保留对应回执。
+
 ```json
 {
   "schemaVersion": 1,
