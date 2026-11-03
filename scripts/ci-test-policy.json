@@ -703,6 +703,11 @@
         "scripts/windows-complete-local/signing.test.mjs",
         "scripts/delivery-events.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/test_fc_dms_pickup\\.py$",
+      "tests": ["tests/fc-dms-pickup-sql.test.mjs"]
     }
   ],
   "testOwners": {
