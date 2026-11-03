@@ -5,6 +5,7 @@ import { productionManifest } from "../scripts/production-manifest.mjs";
 import {
   validatePluginCombination,
   planPluginUpdate,
+  planPluginSuiteVersions,
   planPluginSuiteUpdate,
   projectPluginRelease,
 } from "../src/shared/plugin-release.mjs";
@@ -55,6 +56,47 @@ const release = () =>
     dataCompatibility: { kind: "preserve" },
     notes: "Fix",
   });
+test("the recovery release replaces both desktop 216 variants after the KPI companion update", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const releases = [
+    { name: W, version: "0.1.51" },
+    { name: M, version: "0.6.3-company.47" },
+    { name: manifest.name, version: manifest.version },
+  ].map((manifest) =>
+    projectPluginRelease({
+      manifest,
+      artifact,
+      supportedCores: [core],
+      dataCompatibility: { kind: "preserve" },
+      notes: "KPI startup recovery",
+    }),
+  );
+  for (const gea of [
+    { name: G, version: "0.0.216" },
+    {
+      name: G,
+      version: "0.0.216",
+      artifactSha256: "05aebeb4843ca295249583fa220f579eb0eade3b7f88258657c3d1f95a78d3f9",
+    },
+    {
+      name: G,
+      version: "0.0.216",
+      artifactSha256: "27ba6ae8b27f9d8e2941cb8223120bfc515368c953d38a0059bf69b69c2a1915",
+    },
+  ]) {
+    const installed = [
+      { name: W, version: "0.1.51" },
+      { name: M, version: "0.6.3-company.47" },
+      gea,
+    ];
+    const plan = planPluginSuiteVersions({ releases, core, installed });
+    assert.equal(plan.kind, "ready");
+    assert.deepEqual(
+      plan.releases.map(({ name }) => name),
+      [G],
+    );
+  }
+});
 test("suite planning upgrades mutually dependent old versions without intermediate mixtures", () => {
   const releases = graph.map((manifest, index) =>
     projectPluginRelease({
