@@ -2,6 +2,78 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { orderSalesConfirmation } from "../src/host/order-sales-confirmation.ts";
 
+test("push settings use fixed routes, current identity and a frozen rule snapshot", async () => {
+  let release;
+  const wait = new Promise((resolve) => {
+    release = resolve;
+  });
+  const calls = [];
+  const settings = {
+    thresholdEnabled: true,
+    thresholdPercent: 95,
+    reminderEnabled: true,
+    reminderHours: 3,
+  };
+  const owner = scope();
+  const pending = orderSalesConfirmation(
+    { operation: "settings_save", settings, expectedVersion: "0" },
+    owner,
+    async (url, init) => {
+      calls.push({ url, init });
+      if (url.endsWith("/session")) {
+        await wait;
+        return grant();
+      }
+      return Response.json({
+        success: true,
+        result: { settings: JSON.parse(init.body).settings, version: "new" },
+      });
+    },
+  );
+  settings.thresholdPercent = 0;
+  release();
+  const result = await pending;
+  assert.equal(result.settings.thresholdPercent, 95);
+  assert.ok(calls[1].url.endsWith("/settings/save"));
+  await orderSalesConfirmation({ operation: "settings_get" }, owner, async (url) =>
+    url.endsWith("/session") ? grant() : Response.json({ success: true, result: { settings: {} } }),
+  );
+});
+
+test("push settings cannot change authority, inject recipients or save invalid intervals", async () => {
+  const settings = {
+    thresholdEnabled: true,
+    thresholdPercent: 95,
+    reminderEnabled: true,
+    reminderHours: 2,
+  };
+  for (const payload of [
+    { operation: "settings_get", userId: "other" },
+    {
+      operation: "settings_save",
+      settings: { ...settings, chatId: "other" },
+      expectedVersion: "0",
+    },
+    {
+      operation: "settings_save",
+      settings: { ...settings, reminderHours: 0 },
+      expectedVersion: "0",
+    },
+    {
+      operation: "settings_save",
+      settings: { ...settings, thresholdPercent: 95.001 },
+      expectedVersion: "0",
+    },
+    { operation: "settings_save", settings, expectedVersion: "invalid" },
+  ])
+    await assert.rejects(
+      orderSalesConfirmation(payload, scope(), () => {
+        throw Error("network must not run");
+      }),
+      /INVALID/,
+    );
+});
+
 const selection = {
   orderNo: "order1",
   customerCode: "cust1",

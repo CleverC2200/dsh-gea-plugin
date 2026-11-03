@@ -38,13 +38,44 @@ export async function orderSalesConfirmation(
   fetchImpl: typeof fetch,
 ) {
   const input = { ...object(payload) };
+  const settingsOperation =
+    input.operation === "settings_get" || input.operation === "settings_save";
+  const savingSettings = input.operation === "settings_save";
+  let settings: Record<string, unknown> | undefined;
+  if (settingsOperation) {
+    const allowed = savingSettings ? ["operation", "settings", "expectedVersion"] : ["operation"];
+    if (Object.keys(input).some((key) => !allowed.includes(key)))
+      throw Error("ORDER_CONFIRMATION_PAYLOAD_INVALID");
+    if (savingSettings) {
+      settings = { ...object(input.settings) };
+      if (
+        Object.keys(settings).sort().join(",") !==
+          "reminderEnabled,reminderHours,thresholdEnabled,thresholdPercent" ||
+        typeof settings.thresholdEnabled !== "boolean" ||
+        typeof settings.reminderEnabled !== "boolean" ||
+        typeof settings.thresholdPercent !== "number" ||
+        !Number.isFinite(settings.thresholdPercent) ||
+        settings.thresholdPercent < 0 ||
+        settings.thresholdPercent > 100 ||
+        Math.abs(settings.thresholdPercent * 100 - Math.round(settings.thresholdPercent * 100)) >
+          1e-7 ||
+        !Number.isInteger(settings.reminderHours) ||
+        Number(settings.reminderHours) < 1 ||
+        Number(settings.reminderHours) > 168 ||
+        typeof input.expectedVersion !== "string" ||
+        !/^(0|[a-f0-9-]{36})$/.test(input.expectedVersion)
+      )
+        throw Error("ORDER_CONFIRMATION_SETTINGS_INVALID");
+    }
+  }
   if (!scope.enabled) {
     if (input.operation === "capabilities" && Object.keys(input).length === 1)
       return { available: false };
     throw Error("ORDER_CONFIRMATION_NOT_ENABLED");
   }
   if (
-    Object.keys(input).some(
+    !settingsOperation &&
+    (Object.keys(input).some(
       (key) =>
         ![
           "operation",
@@ -56,9 +87,9 @@ export async function orderSalesConfirmation(
           "handlerUserId",
         ].includes(key),
     ) ||
-    !["create", "status", "lookup", "lookup_batch", "capabilities", "participants"].includes(
-      String(input.operation),
-    )
+      !["create", "status", "lookup", "lookup_batch", "capabilities", "participants"].includes(
+        String(input.operation),
+      ))
   )
     throw Error("ORDER_CONFIRMATION_PAYLOAD_INVALID");
   const capabilities = input.operation === "capabilities";
@@ -70,7 +101,10 @@ export async function orderSalesConfirmation(
   )
     throw Error("ORDER_CONFIRMATION_BATCH_INVALID");
   const selections = batch ? (input.selections as unknown[]).map(selectionValue) : [];
-  const selection = capabilities || batch || participants ? {} : selectionValue(input.selection);
+  const selection =
+    capabilities || batch || participants || settingsOperation
+      ? {}
+      : selectionValue(input.selection);
   if (batch ? input.selection !== undefined : input.selections !== undefined)
     throw Error("ORDER_CONFIRMATION_PAYLOAD_INVALID");
   const creating = input.operation === "create";
@@ -133,7 +167,7 @@ export async function orderSalesConfirmation(
     }
     return cached.value;
   };
-  if (creating || participants) grants.delete(scope.identity);
+  if (creating || participants || settingsOperation) grants.delete(scope.identity);
   for (let attempt = 0; attempt < 2; attempt++) {
     signal.throwIfAborted();
     const grant = await authorize();
@@ -141,7 +175,15 @@ export async function orderSalesConfirmation(
     const response = await fetchImpl(
       scope.base.replace(/\/$/, "") +
         "/ai/order-fulfillment/confirmation/" +
-        (creating ? (targeted ? "requests/recipients" : "requests") : input.operation),
+        (settingsOperation
+          ? savingSettings
+            ? "settings/save"
+            : "settings/get"
+          : creating
+            ? targeted
+              ? "requests/recipients"
+              : "requests"
+            : input.operation),
       {
         method: "POST",
         redirect: "error",
@@ -151,21 +193,25 @@ export async function orderSalesConfirmation(
           "X-Delegation-Token": grant.delegationToken,
         },
         body: JSON.stringify(
-          participants
-            ? { query: input.query }
-            : targeted
-              ? {
-                  selection,
-                  recipientUserIds: recipients,
-                  ...(input.handlerUserId === undefined
-                    ? {}
-                    : { handlerUserId: input.handlerUserId }),
-                }
-              : batch
-                ? { selections }
-                : input.operation === "status"
-                  ? { requestId: input.requestId, selection }
-                  : selection,
+          settingsOperation
+            ? savingSettings
+              ? { settings, expectedVersion: input.expectedVersion }
+              : {}
+            : participants
+              ? { query: input.query }
+              : targeted
+                ? {
+                    selection,
+                    recipientUserIds: recipients,
+                    ...(input.handlerUserId === undefined
+                      ? {}
+                      : { handlerUserId: input.handlerUserId }),
+                  }
+                : batch
+                  ? { selections }
+                  : input.operation === "status"
+                    ? { requestId: input.requestId, selection }
+                    : selection,
         ),
       },
     );

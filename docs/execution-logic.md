@@ -8,6 +8,8 @@
 
 订单飞书确认的专用 workspace 端口支持读取后端人员目录及显式提交收件人，创建和人员搜索均重新取得当前身份的 order01 委托。最多十个收件人，测试处理人必须在收件人中；后端再次核租户、飞书映射和实时 GEA 查看／处理／测试能力，正常模式拒绝覆盖订单销售。页面不能传应用、群、权限、SQL、路由或测试开关，也不能通过此端口执行销售决定或 OMS 操作。身份取消后不能发送或发布旧结果，未知写入结果不自动重试。
 
+同一订单端口的 settings_get、settings_save 分别映射固定的 settings/get、settings/save 后端路径。仅接收两个推送开关、满足率阈值、提醒小时数和预期版本；规则在身份握手之前复制并校验，读写都重新取得当前委托。页面不能指定租户、规则所有者、调度器开关、接收人或 SQL。保存超时或结果未知不自动重试，需重新读取后台版本核对。
+
 [Business](../src/host/business.ts) 持有唯一 GEA 身份、环境、凭据和登录代际。[client](../src/client.tsx) 发布一个 [只读身份 reader](../src/business-identity-client.ts) 与账户动作；Native、HTML 和账户呈现消费这个投影。读取故障保留最后确认身份，不把未知或读取失败当作主动退出。
 
 [业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。通用模型目录、默认模型信息与无可信 profile 会话使用共用 `workbench` 模型路由；明确指定业务预设的模型发现和推理继续使用该业务 Consumer。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
