@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { build } from "esbuild";
 const { outputFiles } = await build({
   entryPoints: ["src/host/gateway-mcp.ts"],
@@ -24,6 +25,99 @@ const session = () => ({
     },
     delegationToken: "delegation-secret",
   },
+});
+
+test("MCP HTTP sends carry distinct request IDs through handshake, reconnect and resources", async (t) => {
+  const received = [];
+  let generation = 0;
+  let toolAttempts = 0;
+  const server = createServer(async (request, response) => {
+    try {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks).toString());
+      received.push({ path: request.url, headers: request.headers, body });
+      response.setHeader("Content-Type", "application/json");
+      response.setHeader("X-Request-Id", request.headers["x-request-id"] ?? "missing");
+      if (request.url.endsWith("/session")) return response.end(JSON.stringify(session()));
+      if (request.url.endsWith("/resources"))
+        return response.end(JSON.stringify({ success: true, resources: [] }));
+      let result = {};
+      if (body.method === "initialize") {
+        response.setHeader("MCP-Session-Id", `transport-${++generation}`);
+        result = { protocolVersion: body.params.protocolVersion };
+      } else if (body.method === "notifications/initialized") {
+        response.statusCode = 202;
+        return response.end();
+      } else if (body.method === "tools/list") {
+        result = {
+          tools: [{ name: "read", _meta: { sourceType: "MCP", sourceCode: "read-service" } }],
+        };
+      } else if (body.method === "tools/call") {
+        if (++toolAttempts === 1) {
+          response.statusCode = 404;
+          return response.end();
+        }
+        result = { content: [{ type: "text", text: "ok" }] };
+      }
+      response.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
+    } catch (error) {
+      response.statusCode = 500;
+      response.end(String(error));
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(
+    () =>
+      new Promise((resolve) => {
+        server.close(resolve);
+        server.closeAllConnections();
+      }),
+  );
+  const signal = new AbortController().signal;
+  const connection = await prepareGatewayMcp(
+    `http://127.0.0.1:${server.address().port}`,
+    auth,
+    consumer,
+    signal,
+    3000,
+  );
+  const rpc = async (id, method, params) => {
+    const response = await connection.fetch(connection.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2025-11-25",
+        "X-Request-Id": "must-not-reuse-caller-id",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", ...(id ? { id } : {}), method, params }),
+    });
+    assert.ok(response.ok);
+    assert.equal(response.headers.get("X-Request-Id"), received.at(-1).headers["x-request-id"]);
+    return response.status === 202 ? response.text() : response.json();
+  };
+  await rpc("init", "initialize", { protocolVersion: "2025-11-25" });
+  await rpc(null, "notifications/initialized");
+  await rpc("list", "tools/list", {});
+  const result = await rpc("tool", "tools/call", { name: "read", arguments: { query: "x" } });
+  assert.equal(result.result.content[0].text, "ok");
+  await connection.authorizedResources("read", signal);
+  assert.equal(received.length, 9);
+  const ids = received.map((item) => item.headers["x-request-id"]);
+  for (const id of ids)
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(new Set(ids).size, received.length);
+  const attempts = received.filter((item) => item.body.method === "tools/call");
+  assert.equal(attempts.length, 2);
+  assert.deepEqual(attempts[0].body, attempts[1].body);
+  assert.equal(attempts[1].headers["mcp-session-id"], "transport-2");
+  assert.deepEqual(attempts[1].body.params.arguments, { query: "x" });
+  assert.equal(attempts[1].body.params._meta.mcpCode, "read-service");
+  assert.equal(received[0].headers["x-access-token"], auth.token);
+  for (const item of received.slice(1)) assert.equal(item.headers["x-access-token"], undefined);
+  for (const item of received)
+    t.diagnostic(`${item.body.method ?? item.path}: X-Request-Id=${item.headers["x-request-id"]}`);
 });
 
 test("stopping a setup or request does not poison the retained login transport", async () => {
