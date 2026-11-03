@@ -63,7 +63,7 @@ function business(t) {
 }
 function gateway(
   t,
-  { deny = false, scopeChanged = false, expireFirstSave = false, bases = ["郑州"] } = {},
+  { deny = false, scopeChanged = false, expireFirstSave = false, bases = ["郑州"], beforeSave } = {},
 ) {
   const ordered = [...bases].sort();
   const scopeKey =
@@ -136,6 +136,7 @@ function gateway(
       });
     }
     if (path.endsWith("/ai/sql/execute")) {
+      await beforeSave?.();
       assert.equal(body.dataSourceCode, "Doris-OA");
       assert.match(body.sql, /^(INSERT INTO|UPDATE) agents_order_workbench_report\b/);
       assert.equal(body.parameters.actor, "editor");
@@ -195,6 +196,29 @@ test("ordinary editor saves and reopens fixed report SQL with the existing order
   assert.deepEqual(reopened.report, report);
   assert.deepEqual(reopened.scope, scope);
   assert.equal(reopened.version, 1);
+});
+
+test("a new period load is not blocked by an earlier report save", async (t) => {
+  let release, started, timer;
+  const held = new Promise(resolve => { release = resolve; });
+  const savingStarted = new Promise(resolve => { started = resolve; });
+  gateway(t, { beforeSave: async () => { started(); await held; } });
+  const editor = business(t), signal = new AbortController().signal;
+  const saving = editor.orderReport({ operation: "save", period, expectedVersion: 0,
+    requestId: "save-before-independent-load", report }, signal);
+  await savingStarted;
+  try {
+    const loaded = await Promise.race([
+      editor.orderReport({ operation: "load", period: { ...period, start: "2026-10-12", end: "2026-10-19" } }, signal),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(Error("READ_BLOCKED_BY_SAVE")), 1000); }),
+    ]);
+    assert.equal(loaded.report, null);
+    assert.equal(loaded.scope.base, "郑州");
+  } finally {
+    clearTimeout(timer);
+    release();
+    await saving;
+  }
 });
 test("backend write denial never falls back or reports saved", async (t) => {
   const remote = gateway(t, { deny: true }),
