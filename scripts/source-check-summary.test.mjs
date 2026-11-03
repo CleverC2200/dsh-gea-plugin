@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import {
   createExecutionPlan,
   executionDigest,
@@ -16,7 +17,7 @@ const write = (file, value) => {
   mkdirSync(resolve(file, ".."), { recursive: true });
   writeFileSync(file, JSON.stringify(value) + "\n");
 };
-function fixture(t, { joint = true, parallel = true } = {}) {
+function fixture(t, { joint = true, parallel = true, selectionDetails = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), "source-summary-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const directory = join(root, "artifacts");
@@ -34,6 +35,7 @@ function fixture(t, { joint = true, parallel = true } = {}) {
     runtimeFiles: parallel
       ? ["cases/a.test.mjs", "cases/b.test.mjs", "cases/c.test.mjs", "cases/d.test.mjs"]
       : [],
+    ...selectionDetails,
   };
   mkdirSync(join(root, "cases"));
   for (const name of ["a", "b", "c", "d", "unselected"])
@@ -218,4 +220,166 @@ test("download-artifact with one matched artifact can be summarized without a wo
   });
   assert.equal(result.execution.status, "entry-passed");
   assert.equal(result.scope.platformFiles, 1);
+});
+
+test("scope summary ranks overlapping change triggers and retains preparation requirements", (t) => {
+  const f = fixture(t, {
+    selectionDetails: {
+      changes: [
+        { repo: "dsh-gea-plugin", file: "src/gateway.ts" },
+        { repo: "dsh-gea-plugin", file: "package.json", versionOnly: true },
+      ],
+      reasons: {
+        "dsh-gea-plugin/package.json": ["cases/a.test.mjs"],
+        "dsh-gea-plugin/src/gateway.ts": [
+          "cases/a.test.mjs",
+          "cases/b.test.mjs",
+          "cases/c.test.mjs",
+        ],
+      },
+      required: ["cases/d.test.mjs"],
+      typecheck: true,
+      dependencies: true,
+      sdk: true,
+      browser: false,
+      upstreams: "artifacts",
+    },
+  });
+  const coverage = f.read();
+  const text = sourceReportMarkdown({
+    mode: "in-gate",
+    completedMeasurement: false,
+    functional: { status: "passed" },
+    performance: { budgetMs: 600000, jobs: [] },
+    coverage,
+  });
+  assert.deepEqual(coverage.scope.selection.reasons["dsh-gea-plugin/src/gateway.ts"], [
+    "cases/a.test.mjs",
+    "cases/b.test.mjs",
+    "cases/c.test.mjs",
+  ]);
+  assert.match(text, /Profile files: 4; workers: 2; required files: 1/);
+  assert.match(text, /\| dsh-gea-plugin\/src\/gateway.ts \| 3 \| 3 \|/);
+  assert.match(text, /\| dsh-gea-plugin\/package.json \| 1 \| 1 \|/);
+  assert.ok(
+    text.indexOf("| dsh-gea-plugin/src/gateway.ts") < text.indexOf("| dsh-gea-plugin/package.json"),
+  );
+  assert.match(text, /cases\/a.test.mjs/);
+  assert.match(text, /version contract/);
+  assert.match(text, /policy rules or transitive consumers/);
+  assert.match(text, /overlap and must not be added/);
+  assert.match(
+    text,
+    /Types: true; dependencies: true; SDK: true; browser: false; upstreams: artifacts/,
+  );
+  assert.match(text, /Test file counts do not represent total cost/);
+});
+
+test("missing trigger and preparation metadata remain unknown rather than zero or false", (t) => {
+  const f = fixture(t, {
+    joint: false,
+    parallel: false,
+    selectionDetails: {
+      changes: [{ repo: "dsh-gea-plugin", file: "src/unknown.ts" }],
+      runtimeFiles: undefined,
+    },
+  });
+  const text = sourceReportMarkdown({
+    mode: "in-gate",
+    completedMeasurement: false,
+    functional: { status: "passed" },
+    performance: { budgetMs: 600000, jobs: [] },
+    coverage: f.read(),
+  });
+  assert.match(text, /Profile files: unknown; workers: 1; required files: unknown/);
+  assert.match(text, /Types: unknown; dependencies: unknown; SDK: unknown/);
+  assert.match(
+    text,
+    /\| dsh-gea-plugin\/src\/unknown.ts \| unknown \| unknown \| unknown \| unknown \|/,
+  );
+});
+
+test("matrix CLI includes trigger and preparation details before preparing dependencies", (t) => {
+  const f = fixture(t, {
+    joint: false,
+    parallel: false,
+    selectionDetails: {
+      runtimeFiles: undefined,
+      reasons: { "dsh-gea-plugin/src/gateway.ts": ["cases/a.test.mjs"] },
+      required: [],
+      typecheck: false,
+      dependencies: true,
+      sdk: false,
+      browser: false,
+      upstreams: "source-links",
+    },
+  });
+  for (const args of [
+    ["init", "--quiet"],
+    [
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "--quiet",
+      "--allow-empty",
+      "-m",
+      "fixture",
+    ],
+  ])
+    assert.equal(spawnSync("git", args, { cwd: f.root }).status, 0);
+  mkdirSync(join(f.root, ".runtime"));
+  write(join(f.root, "scripts/quality-test-timings.json"), {
+    schemaVersion: 2,
+    source: {},
+    files: [],
+  });
+  const summary = join(f.root, "summary.md");
+  const child = spawnSync(
+    process.execPath,
+    [
+      resolve("scripts/source-check-shards.mjs"),
+      "--matrix",
+      join(
+        f.directory,
+        "source-checks-single/candidate/dsh-gea-plugin/.runtime/source-checks-plan.json",
+      ),
+    ],
+    {
+      cwd: f.root,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_STEP_SUMMARY: summary, GITHUB_OUTPUT: join(f.root, "outputs") },
+    },
+  );
+  assert.equal(child.status, 0, child.stderr);
+  const text = readFileSync(summary, "utf8");
+  assert.match(text, /Selected 2 files; Profile unknown; shards 1/);
+  assert.match(text, /\| dsh-gea-plugin\/src\/gateway.ts \| 1 \| unknown \|/);
+  assert.match(text, /Types: false; dependencies: true; SDK: false/);
+  assert.match(text, /overlap and must not be added/);
+  assert.match(text, /Preparation, scheduling and finalization are excluded/);
+  assert.equal(
+    JSON.parse(readFileSync(join(f.root, ".runtime/source-check-cost.json"))).selected.length,
+    2,
+  );
+});
+
+test("companion peer selection shows the compatibility contract recorded by the planner", (t) => {
+  const f = fixture(t, {
+    joint: false,
+    parallel: false,
+    selectionDetails: {
+      changes: [{ repo: "dsh-gea-plugin", file: "package.json", companionPeerOnly: true }],
+      reasons: { "dsh-gea-plugin/package.json": ["cases/a.test.mjs"] },
+    },
+  });
+  const text = sourceReportMarkdown({
+    mode: "in-gate",
+    completedMeasurement: false,
+    functional: { status: "passed" },
+    performance: { budgetMs: 600000, jobs: [] },
+    coverage: f.read(),
+  });
+  assert.match(text, /companion peer compatibility contract/);
 });

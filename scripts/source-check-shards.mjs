@@ -62,6 +62,45 @@ export function sourceCheckCost({ selection, root, environment, timings }) {
   });
 }
 
+export function sourceSelectionMarkdown(selection, workers) {
+  const unknown = "unknown";
+  const cell = (value) => String(value).replaceAll("|", "\\|").replaceAll(/\r?\n/g, " ");
+  const reasons = selection?.reasons;
+  const changes = new Map(
+    (selection?.changes ?? []).map((change) => [`${change.repo}/${change.file}`, change]),
+  );
+  const triggers = [...new Set([...changes.keys(), ...Object.keys(reasons ?? {})])]
+    .map((change) => ({
+      change,
+      files: Array.isArray(reasons?.[change]) ? [...new Set(reasons[change])] : null,
+      relation: !Array.isArray(reasons?.[change])
+        ? "unknown"
+        : changes.get(change)?.versionOnly
+          ? "version contract"
+          : changes.get(change)?.companionPeerOnly
+            ? "companion peer compatibility contract"
+            : "policy rules or transitive consumers; exact path unknown",
+    }))
+    .sort(
+      (a, b) =>
+        (b.files?.length ?? -1) - (a.files?.length ?? -1) || a.change.localeCompare(b.change),
+    );
+  const profile = selection?.runtimeFiles;
+  return (
+    `### Selection triggers and preparation\n\nProfile files: ${profile?.length ?? unknown}; workers: ${workers ?? unknown}; required files: ${selection?.required?.length ?? unknown}. Profile files transitively import tests/profile.mjs. File counts cover all selected platforms; workers run the Linux selection.\n\n` +
+    `Types: ${selection?.typecheck ?? unknown}; dependencies: ${selection?.dependencies ?? unknown}; SDK: ${selection?.sdk ?? unknown}; browser: ${selection?.browser ?? unknown}; upstreams: ${selection?.upstreams ?? unknown}. These are planned requirements; preparation completion is reported separately.\n\n` +
+    (triggers.length
+      ? `| Changed file (largest trigger first) | Triggered files | Profile files | Selection relation | Main test consumers (up to 3) |\n| --- | ---: | ---: | --- | --- |\n${triggers
+          .map(
+            ({ change, files, relation }) =>
+              `| ${cell(change)} | ${files?.length ?? unknown} | ${files && profile ? files.filter((file) => profile.includes(file)).length : unknown} | ${relation} | ${files ? cell(files.slice(0, 3).join(", ") || "none") + (files.length > 3 ? `; +${files.length - 3} more` : "") : unknown} |`,
+          )
+          .join("\n")}\n\n`
+      : `Change triggers: ${reasons ? "none recorded" : unknown}.\n\n`) +
+    `Counts reuse plan.reasons. Trigger sets may overlap and must not be added to obtain total selection. Required files are included independently. Rule matches and dependency consumers are combined in the plan; individual dependency paths are not recorded. Test file counts do not represent total cost; preparation, builds, scheduling and finalization have separate costs.\n\n`
+  );
+}
+
 export function aggregateSourceCheckShards(directory, { head, runId, runAttempt, producers }) {
   if (producers) {
     verifyHostedSnapshot(producers);
@@ -226,7 +265,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const { appendFileSync } = await import("node:fs");
       appendFileSync(
         process.env.GITHUB_STEP_SUMMARY,
-        `## Source check cost before preparation\n\nSelected ${e.selectedFiles} files; Profile ${e.profileFiles}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Historical ordering hints ${e.advisoryFiles} (advisory only). Estimated tests: ${e.estimatedMs === null ? "unknown" : e.estimatedMs + " ms"}. Preparation, scheduling and finalization are excluded. This is a cost estimate, not execution evidence.\n`,
+        `## Source check cost before preparation\n\nSelected ${e.selectedFiles} files; Profile ${selection.runtimeFiles?.length ?? "unknown"}; shards ${plan.shards.length}. Known timings ${e.knownFiles}; unknown ${e.unknownFiles}. Historical ordering hints ${e.advisoryFiles} (advisory only). Estimated tests: ${e.estimatedMs === null ? "unknown" : e.estimatedMs + " ms"}. Preparation, scheduling and finalization are excluded. This is a cost estimate, not execution evidence.\n\n` +
+          sourceSelectionMarkdown(selection, shards.length),
       );
     }
     requireValue(process.env.GITHUB_OUTPUT, "matrix output");
