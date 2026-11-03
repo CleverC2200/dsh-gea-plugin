@@ -110,7 +110,7 @@ function data(id) {
             overaged_qty: 20,
             stagnant_qty: 10,
           }
-        : ["replenishment.summary", "replenishment.overview"].includes(id)
+        : id === "replenishment.summary"
           ? {
               row_count: 20,
               recommended_qty: 35,
@@ -230,7 +230,7 @@ test("branch summary and follow-up suggestions use installed page calculations a
     f.calls.map((c) => c.id),
     [
       "source.branch-stock-date",
-      "replenishment.overview",
+      "replenishment.summary",
       "source.branch-stock-date",
       "replenishment-suggestions.detail.atomic",
     ],
