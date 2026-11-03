@@ -9,6 +9,10 @@ import { parse } from "yaml";
 const workflow = parse(readFileSync(".github/workflows/delivery-fixtures.yml", "utf8"));
 
 test("Native artifact rechecks use a fresh runner without installing the target before its baseline", () => {
+  assert.match(
+    workflow.jobs["windows-complete-package"].if,
+    /inputs\.windows_overwrite_artifact_run == ''/,
+  );
   const steps = workflow.jobs["windows-overwrite-recheck"].steps;
   const ordinary = steps.find(
     (step) => step.name === "Recheck installed package version and preserved user files",
