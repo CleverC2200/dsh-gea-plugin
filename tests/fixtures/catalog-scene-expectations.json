@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained)",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -70,10 +70,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-fc/skills/fc/SKILL.md",
-        "sha256": "eea5a1d451d04dceed4775f71a9e9df83d1ba39975df7cc91a4c0402626fdd15",
+        "sha256": "ed0b01ee34fbd0ccff2818c3c6c1f11ffc94b07e48cab8325ffddf07d41511ea",
         "name": "inventory-fc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "1afe4b2d2a9259335895cc84df2ec1437804e5a2",
+        "sourceHead": "e8a718f796790ed5bd8f09e8dc991448ad017755",
         "sourceFile": "business-resources/inventory-fc/skills/fc/SKILL.md"
       },
       {
