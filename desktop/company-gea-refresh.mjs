@@ -205,9 +205,15 @@ export async function assertCompletedGeaRefresh(profile, { allowArchiveRecovery 
       const match = /^\[ENOENT\] ENOENT: no such file or directory, open '(.+)'$/.exec(errors[0]);
       if (
         !match ||
-        !match[1].replaceAll("\\", "/").endsWith("/company-seed/archives/dsh-genui-0.11.3.tgz") ||
-        current.dependencies?.["@changfenhuang/dsh-genui"]?.slice(5).replaceAll("\\", "/") !==
-          match[1].replaceAll("\\", "/")
+        ![...companyPackageNames, "@changfenhuang/dsh-genui"].some((name) => {
+          const spec = current.dependencies?.[name];
+          if (typeof spec !== "string" || !spec.startsWith("file:")) return false;
+          const archive = spec.slice(5).replaceAll("\\", "/");
+          return (
+            /\/company-seed\/archives\/[^/]+\.tgz$/.test(archive) &&
+            archive === match[1].replaceAll("\\", "/")
+          );
+        })
       )
         throw Error("UNKNOWN_FAILURE");
       return { bytes, backup };

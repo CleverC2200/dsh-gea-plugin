@@ -873,8 +873,19 @@ test("legacy archive recovery rejects changed bytes and refuses to downgrade a n
   }
 });
 
-test("only the logged pre-write missing GenUI archive failure may resume and the original failed receipt is retained", async (t) => {
-  for (const variant of ["known", "changed", "other", "retried"]) {
+test("only the logged pre-write missing company archive failure may resume and the original failed receipt is retained", async (t) => {
+  for (const variant of [
+    "known",
+    "workbench",
+    "manage",
+    "gea",
+    "changed",
+    "other",
+    "retried",
+    "unrelated",
+    "nonseed",
+    "custom-dependency",
+  ]) {
     const f = await legacyArchives(t);
     const directory = join(f.profile, "gea/bootstrap/gea-refresh");
     const backup = join(directory, "before-0.0.159-to-0.0.177");
@@ -884,13 +895,29 @@ test("only the logged pre-write missing GenUI archive failure may resume and the
       recursive: true,
     });
     const profile = JSON.parse(await readFile(join(f.profile, "package.json")));
-    const oldGenui = profile.dependencies["@changfenhuang/dsh-genui"].slice(5);
+    const packageName =
+      {
+        workbench: "@cleverc2200/dsh-agent-workbench",
+        manage: "dsh-agent-manage",
+        gea: name,
+      }[variant] ?? "@changfenhuang/dsh-genui";
+    let oldArchive = profile.dependencies[packageName].slice(5);
+    if (variant === "unrelated") oldArchive = join(f.home, "other/dsh-genui-0.11.3.tgz");
+    if (variant === "nonseed") {
+      oldArchive = join(f.home, "custom/dsh-genui-0.11.3.tgz");
+      profile.dependencies[packageName] = "file:" + oldArchive;
+    }
+    if (variant === "custom-dependency") {
+      oldArchive = join(f.home, "removed-client/company-seed/archives/user-plugin-1.0.0.tgz");
+      profile.dependencies["user-plugin"] = "file:" + oldArchive;
+    }
+    await writeFile(join(f.profile, "package.json"), JSON.stringify(profile));
     await writeFile(
       log,
       variant === "other"
         ? "[ERR_PNPM_OTHER] unexpected failure\n"
         : "Progress: resolved 4\n[ENOENT] ENOENT: no such file or directory, open '" +
-            oldGenui +
+            oldArchive +
             "'\n",
     );
     for (const file of ["package.json", "cordis.patch.yml", "pnpm-lock.yaml"])
@@ -918,7 +945,7 @@ test("only the logged pre-write missing GenUI archive failure may resume and the
         await options.complete({ writeFileAtomic: writeFile });
       },
     });
-    if (variant === "known") {
+    if (["known", "workbench", "manage", "gea"].includes(variant)) {
       assert.equal((await task).status, "completed");
       assert.equal(await readFile(join(backup, "failed-receipt.json"), "utf8"), failed);
     } else {
