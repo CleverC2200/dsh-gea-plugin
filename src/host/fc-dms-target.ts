@@ -1,26 +1,30 @@
 /** Published reads only. Unique name matches remain explicit candidates for human confirmation. */
-export const FC_DMS_TARGET_SQL = `SELECT r.receive_cust_code AS address_code,
- CASE WHEN COUNT(DISTINCT r.cust_code)=1 THEN MAX(r.cust_code) ELSE NULL END AS customer_code,
- CASE WHEN COUNT(DISTINCT r.cust_code)=1 AND COUNT(DISTINCT p.warehouse_group_id)=1
- THEN MAX(p.warehouse_group_id) ELSE NULL END AS pup_code
- FROM agents_scm_customer_receive AS r
- LEFT JOIN agents_scm_cust_pickup_point AS p
- ON p.cust_code=r.cust_code AND p.is_default_shipping=TRUE
- WHERE r.receive_cust_code=:gea_p1
- GROUP BY r.receive_cust_code LIMIT 1`;
 export const FC_DMS_WAREHOUSE_TARGET_SQL = `SELECT w.warehouse_code AS warehouse_code,
  w.warehouse_name AS warehouse_name, d.cust_code AS customer_code,
  d.cust_name AS customer_name, d.dealer_receive_addr AS receive_addresses
- FROM (SELECT t.warehouse_code AS warehouse_code, MAX(t.warehouse_name) AS warehouse_name
+ FROM (SELECT t.warehouseid AS warehouse_code, MAX(t.warehouse_name) AS warehouse_name
  FROM agents_scm_warehouse_transfer_plan_data_d AS t
- WHERE t.warehouse_code=:gea_p1 GROUP BY t.warehouse_code
+ WHERE t.warehouseid=:gea_p1 GROUP BY t.warehouseid
  HAVING COUNT(DISTINCT t.warehouse_name)=1) AS w
  INNER JOIN agents_dim_dealer_data_d AS d ON TRIM(d.cust_name)=TRIM(w.warehouse_name)
+ GROUP BY w.warehouse_code,w.warehouse_name,d.cust_code,d.cust_name,d.dealer_receive_addr
  LIMIT 2`;
-export const FC_DMS_DEFAULT_PICKUP_SQL = `SELECT p.warehouse_group_id AS pup_code
- FROM agents_scm_cust_pickup_point AS p
- WHERE p.cust_code=:gea_p1 AND p.is_default_shipping=TRUE
- GROUP BY p.warehouse_group_id LIMIT 2`;
+// Validate both code and name against the published pickup master. Some dealer
+// rows swap these two fields; accept only an exact canonical pair, never a guessed code.
+export const FC_DMS_DEFAULT_PICKUP_SQL = `WITH pickup_master AS (
+ SELECT p.pickup_point_code AS pup_code,p.pickup_point_name AS pup_name
+ FROM agents_dim_pickup_point_data_d AS p
+ GROUP BY p.pickup_point_code,p.pickup_point_name
+), customer_links AS (
+ SELECT d.pickup_point_code AS source_code,d.pickup_point_name AS source_name
+ FROM agents_dim_dealer_data_d AS d WHERE d.cust_code=:gea_p1
+ GROUP BY d.pickup_point_code,d.pickup_point_name
+)
+SELECT CASE WHEN COUNT(*)=COUNT(p.pup_code) AND COUNT(DISTINCT p.pup_code)=1
+ THEN MAX(p.pup_code) ELSE NULL END AS pup_code
+FROM customer_links AS d LEFT JOIN pickup_master AS p ON
+ (TRIM(d.source_code)=TRIM(p.pup_code) AND TRIM(d.source_name)=TRIM(p.pup_name))
+ OR (TRIM(d.source_name)=TRIM(p.pup_code) AND TRIM(d.source_code)=TRIM(p.pup_name))`;
 export type FcDmsTarget = {
   warehouseCode: string;
   fields: { addressCode: string; customerCode: string; pupCode: string };
@@ -48,8 +52,8 @@ export async function resolveFcDmsTarget(
   try {
     result = record(
       await execute({
-        sql: addressCode.trim() ? FC_DMS_TARGET_SQL : FC_DMS_WAREHOUSE_TARGET_SQL,
-        parameters: { gea_p1: addressCode.trim() || warehouseCode },
+        sql: FC_DMS_WAREHOUSE_TARGET_SQL,
+        parameters: { gea_p1: warehouseCode },
         includeTotal: false,
       }),
     );
@@ -72,7 +76,7 @@ export async function resolveFcDmsTarget(
   if (!Array.isArray(rows) || rows.length !== 1)
     return { warehouseCode, fields, message: "未找到唯一送达方，请核对并补填三个编码。" };
   const row = record(rows[0]);
-  if (!addressCode.trim()) {
+  {
     if (
       text(row.warehouse_code) !== warehouseCode ||
       !text(row.warehouse_name) ||
@@ -87,9 +91,19 @@ export async function resolveFcDmsTarget(
     } catch {
       addresses = null;
     }
-    if (Array.isArray(addresses) && addresses.length === 1) {
-      const code = text(record(addresses[0]).cust_code);
-      if (/^[A-Za-z0-9_-]{1,64}$/.test(code)) fields.addressCode = code;
+    const candidates = Array.isArray(addresses)
+      ? addresses.map((address) => text(record(address).cust_code))
+      : [];
+    if (addressCode.trim()) {
+      if (candidates.filter((code) => code === addressCode.trim()).length !== 1)
+        return {
+          warehouseCode,
+          fields: { addressCode: "", customerCode: "", pupCode: "" },
+          message: "当前分仓未找到该收货地址的唯一关系，请核对后补填编码。",
+        };
+      fields.addressCode = addressCode.trim();
+    } else if (candidates.length === 1 && /^[A-Za-z0-9_-]{1,64}$/.test(candidates[0])) {
+      fields.addressCode = candidates[0];
     }
     let pickupMessage = "";
     try {
@@ -117,19 +131,7 @@ export async function resolveFcDmsTarget(
     return {
       warehouseCode,
       fields,
-      message: `已按分仓名称匹配唯一客户，请复核与所选分仓一致。${fields.addressCode ? "已带入唯一收货地址。" : "收货地址不唯一或未提供，请补填。"}${fields.pupCode ? "已带入第一默认提货点。" : "第一默认提货点暂未确认，请补填。"}${pickupMessage}`,
+      message: `已按分仓名称匹配唯一客户，请复核与所选分仓一致。${fields.addressCode ? "已带入唯一收货地址。" : "收货地址不唯一或未提供，请补填。"}${fields.pupCode ? "已带入经主数据核对的唯一提货点。" : "提货点未能唯一核对，请补填。"}${pickupMessage}`,
     };
   }
-
-  if (text(row.address_code) !== addressCode.trim()) throw Error("DMS 收货地址主数据范围不一致");
-  fields.addressCode = text(row.address_code);
-  fields.customerCode = text(row.customer_code);
-  fields.pupCode = fields.customerCode ? text(row.pup_code) : "";
-  return {
-    warehouseCode,
-    fields,
-    message: Object.values(fields).every(Boolean)
-      ? "已按收货地址关联客户及第一默认提货点，请核对与所选分仓一致。"
-      : "已带入可唯一关联的编码；未匹配或存在多条配置的字段请核对后补填。",
-  };
 }
