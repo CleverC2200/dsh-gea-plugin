@@ -6,6 +6,8 @@
 
 订单履约的可信预设为 `gea-html-inventory-orderfulfillment`，Consumer 为 `order01`，Skill 清单与 Manage 安装声明一致。页面通过命名查询接入当前用户的 GEA 委托；本地数据库预览不证明用户权限，也不作为正式入口的拒权回退。
 
+订单飞书确认的专用 workspace 端口支持读取后端人员目录及显式提交收件人，创建和人员搜索均重新取得当前身份的 order01 委托。最多十个收件人，测试处理人必须在收件人中；后端再次核租户、飞书映射和实时 GEA 查看／处理／测试能力，正常模式拒绝覆盖订单销售。页面不能传应用、群、权限、SQL、路由或测试开关，也不能通过此端口执行销售决定或 OMS 操作。身份取消后不能发送或发布旧结果，未知写入结果不自动重试。
+
 [Business](../src/host/business.ts) 持有唯一 GEA 身份、环境、凭据和登录代际。[client](../src/client.tsx) 发布一个 [只读身份 reader](../src/business-identity-client.ts) 与账户动作；Native、HTML 和账户呈现消费这个投影。读取故障保留最后确认身份，不把未知或读取失败当作主动退出。
 
 [业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。通用模型目录、默认模型信息与无可信 profile 会话使用共用 `workbench` 模型路由；明确指定业务预设的模型发现和推理继续使用该业务 Consumer。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
@@ -80,12 +82,12 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 
 ## 分析发起与业务提单
 
-| 路径           | 当前实现与条件                                                                                                                                                                                                                                                                     |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                                            |
-| 退回重提 | [Business.salesPlanSubmit](../src/host/business.ts) 使用当前员工的 `X-Access-Token` 和 `X-Tenant-Id` 调用 `/sales-plan/plans/resubmit`。Host 重读来源版本和完整 SKU，只接受数量修改，保留原业务提报人，按原业务键提交新版本。服务端记录实际操作员工，复用提报事务。 |
-| 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                                   |
-| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                                       |
+| 路径           | 当前实现与条件                                                                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                             |
+| 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 使用当前员工的 `X-Access-Token` 和 `X-Tenant-Id` 调用 `/sales-plan/plans/resubmit`。Host 重读来源版本和完整 SKU，只接受数量修改，保留原业务提报人，按原业务键提交新版本。服务端记录实际操作员工，复用提报事务。 |
+| 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                    |
+| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                        |
 
 M/Z 查询和审批复用原接口。`salesPlanAction` 从新鲜明细核对有效版本及状态，Z 的通过、退回沿月初既有角色与流程校验、原请求正文执行；原响应提供快照时仍核一致性，不要求纠偏专用 context、节点字段或 `ABSOLUTE_NET` 标记。界面保存调整复用 [Business.salesPlanDraft](../src/host/business.ts) 本地草稿，不推进节点；Z 的远端 SAVE 拒绝发送，原月初远端 SAVE 行为保留。0、5、10 和历史版本均拒绝写入；选择查看节点不授予写权限。本轮不执行 DMS。源码规则不证明真实服务或客户端验收通过。
 

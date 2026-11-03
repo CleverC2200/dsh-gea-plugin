@@ -24,7 +24,7 @@ function selectionValue(value: unknown) {
   return Object.fromEntries(names.map((name) => [name, selection[name]]));
 }
 
-/** 专用订单动作；页面不能选择 Consumer、路由、接收人、机器人、SQL 或业务执行动作。 */
+/** 页面仅选择后台已授权人选；Consumer、路由、机器人、SQL 和业务动作不可覆盖。 */
 export async function orderSalesConfirmation(
   payload: unknown,
   scope: {
@@ -45,14 +45,24 @@ export async function orderSalesConfirmation(
   }
   if (
     Object.keys(input).some(
-      (key) => !["operation", "selection", "selections", "requestId"].includes(key),
+      (key) =>
+        ![
+          "operation",
+          "selection",
+          "selections",
+          "requestId",
+          "query",
+          "recipientUserIds",
+          "handlerUserId",
+        ].includes(key),
     ) ||
-    !["create", "status", "lookup", "lookup_batch", "capabilities"].includes(
+    !["create", "status", "lookup", "lookup_batch", "capabilities", "participants"].includes(
       String(input.operation),
     )
   )
     throw Error("ORDER_CONFIRMATION_PAYLOAD_INVALID");
   const capabilities = input.operation === "capabilities";
+  const participants = input.operation === "participants";
   const batch = input.operation === "lookup_batch";
   if (
     batch &&
@@ -60,10 +70,38 @@ export async function orderSalesConfirmation(
   )
     throw Error("ORDER_CONFIRMATION_BATCH_INVALID");
   const selections = batch ? (input.selections as unknown[]).map(selectionValue) : [];
-  const selection = capabilities || batch ? {} : selectionValue(input.selection);
+  const selection = capabilities || batch || participants ? {} : selectionValue(input.selection);
   if (batch ? input.selection !== undefined : input.selections !== undefined)
     throw Error("ORDER_CONFIRMATION_PAYLOAD_INVALID");
   const creating = input.operation === "create";
+  const targeted = creating && input.recipientUserIds !== undefined;
+  if (
+    participants
+      ? typeof input.query !== "string" ||
+        input.query.length > 80 ||
+        input.selection !== undefined ||
+        input.selections !== undefined
+      : input.query !== undefined
+  )
+    throw Error("ORDER_CONFIRMATION_PAYLOAD_INVALID");
+  if (!creating && (input.recipientUserIds !== undefined || input.handlerUserId !== undefined))
+    throw Error("ORDER_CONFIRMATION_PAYLOAD_INVALID");
+  const recipients = targeted
+    ? Array.isArray(input.recipientUserIds)
+      ? [...input.recipientUserIds]
+      : input.recipientUserIds
+    : [];
+  const userId = (value: unknown): value is string =>
+    typeof value === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(value);
+  if (
+    !Array.isArray(recipients) ||
+    recipients.length > 10 ||
+    recipients.some((value) => !userId(value)) ||
+    new Set(recipients).size !== recipients.length ||
+    (input.handlerUserId !== undefined &&
+      (!userId(input.handlerUserId) || !recipients.includes(input.handlerUserId)))
+  )
+    throw Error("ORDER_CONFIRMATION_RECIPIENT_INVALID");
   if (
     input.operation === "status"
       ? typeof input.requestId !== "string" || !/^order-sales-[a-f0-9]{64}$/.test(input.requestId)
@@ -95,6 +133,7 @@ export async function orderSalesConfirmation(
     }
     return cached.value;
   };
+  if (creating || participants) grants.delete(scope.identity);
   for (let attempt = 0; attempt < 2; attempt++) {
     signal.throwIfAborted();
     const grant = await authorize();
@@ -102,7 +141,7 @@ export async function orderSalesConfirmation(
     const response = await fetchImpl(
       scope.base.replace(/\/$/, "") +
         "/ai/order-fulfillment/confirmation/" +
-        (creating ? "requests" : input.operation),
+        (creating ? (targeted ? "requests/recipients" : "requests") : input.operation),
       {
         method: "POST",
         redirect: "error",
@@ -112,11 +151,21 @@ export async function orderSalesConfirmation(
           "X-Delegation-Token": grant.delegationToken,
         },
         body: JSON.stringify(
-          batch
-            ? { selections }
-            : input.operation === "status"
-              ? { requestId: input.requestId, selection }
-              : selection,
+          participants
+            ? { query: input.query }
+            : targeted
+              ? {
+                  selection,
+                  recipientUserIds: recipients,
+                  ...(input.handlerUserId === undefined
+                    ? {}
+                    : { handlerUserId: input.handlerUserId }),
+                }
+              : batch
+                ? { selections }
+                : input.operation === "status"
+                  ? { requestId: input.requestId, selection }
+                  : selection,
         ),
       },
     );

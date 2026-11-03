@@ -183,3 +183,79 @@ test("selection and operation are frozen before the authorization await", async 
   assert.equal(calls[1].url.endsWith("/requests"), true);
   assert.deepEqual(JSON.parse(calls[1].init.body), selection);
 });
+
+test("participant lookup and selected processing identity use fixed routes without exposing auth", async () => {
+  const calls = [];
+  const owner = scope();
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return String(url).endsWith("/session")
+      ? grant()
+      : Response.json({ success: true, result: { participants: [] } });
+  };
+  await orderSalesConfirmation({ operation: "participants", query: "测试" }, owner, fetchImpl);
+  assert.ok(calls[1].url.endsWith("/confirmation/participants"));
+  assert.deepEqual(JSON.parse(calls[1].init.body), { query: "测试" });
+  await orderSalesConfirmation(
+    {
+      operation: "create",
+      selection,
+      recipientUserIds: ["viewer1", "tester"],
+      handlerUserId: "tester",
+    },
+    owner,
+    fetchImpl,
+  );
+  assert.ok(calls.at(-1).url.endsWith("/confirmation/requests/recipients"));
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), {
+    selection,
+    recipientUserIds: ["viewer1", "tester"],
+    handlerUserId: "tester",
+  });
+  assert.equal("X-Access-Token" in calls.at(-1).init.headers, false);
+});
+
+test("recipient selection is frozen before awaiting the current identity handshake", async () => {
+  let release;
+  const pending = new Promise((resolve) => (release = resolve));
+  const ids = ["tester"];
+  let sent;
+  const operation = orderSalesConfirmation(
+    { operation: "create", selection, recipientUserIds: ids, handlerUserId: "tester" },
+    scope(),
+    async (url, init) => {
+      if (String(url).endsWith("/session")) {
+        await pending;
+        return grant();
+      }
+      sent = JSON.parse(init.body);
+      return Response.json({ success: true, result: { status: "pending" } });
+    },
+  );
+  ids[0] = "other";
+  release();
+  await operation;
+  assert.deepEqual(sent.recipientUserIds, ["tester"]);
+});
+
+test("personnel selection cannot inject permissions, routes, modes or a handler outside the mentions", async () => {
+  for (const payload of [
+    { operation: "participants", query: "x", selection },
+    { operation: "create", selection, recipientUserIds: ["a", "a"] },
+    { operation: "create", selection, recipientUserIds: ["a"], handlerUserId: "b" },
+    { operation: "create", selection, recipientUserIds: ["a"], testMode: true },
+    {
+      operation: "status",
+      selection,
+      requestId: "order-sales-" + "a".repeat(64),
+      recipientUserIds: ["a"],
+    },
+    { operation: "participants", query: "x", chatId: "oc_other" },
+  ])
+    await assert.rejects(
+      orderSalesConfirmation(payload, scope(), () => {
+        throw Error("must not call");
+      }),
+      /INVALID/,
+    );
+});
