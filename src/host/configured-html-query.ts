@@ -19,6 +19,7 @@ export async function readConfiguredHtmlQuery(
   signal: AbortSignal,
   consumerCode: string = resource.manifest.gea.consumerCode,
   pageRead = false,
+  completeCollection = false,
 ) {
   signal.throwIfAborted();
   let raw: string;
@@ -30,12 +31,18 @@ export async function readConfiguredHtmlQuery(
       !input ||
       typeof input !== "object" ||
       Array.isArray(input) ||
-      Object.keys(input).some((key) => !["queryId", "parameters", "freshAfter"].includes(key))
+      Object.keys(input).some(
+        (key) => !["queryId", "parameters", "freshAfter"].includes(key),
+      )
     )
       throw Object.assign(Error("配置查询只接受查询 ID 和业务参数"), {
         code: "INVALID_CONFIGURED_QUERY",
       });
-    const query = input as { queryId?: unknown; parameters?: unknown; freshAfter?: unknown };
+    const query = input as {
+      queryId?: unknown;
+      parameters?: unknown;
+      freshAfter?: unknown;
+    };
     const candidateId = query.queryId;
     const candidateParameters = query.parameters;
     if (
@@ -58,7 +65,8 @@ export async function readConfiguredHtmlQuery(
       throw Error("INVALID_QUERY_CACHE_REFRESH");
     queryId = candidateId;
     parameters = candidateParameters as Record<string, unknown>;
-    if (resource.manifest.sqlConfig !== "sql.config.json") throw Error("INVALID_SQL_CONFIG_PATH");
+    if (resource.manifest.sqlConfig !== "sql.config.json")
+      throw Error("INVALID_SQL_CONFIG_PATH");
     const root = await realpath(resource.directory);
     const path = await realpath(resolve(root, "sql.config.json"));
     if (!path.startsWith(root + sep)) throw Error("INVALID_SQL_CONFIG_PATH");
@@ -78,7 +86,9 @@ export async function readConfiguredHtmlQuery(
   }
   let contractUrl: string;
   try {
-    contractUrl = import.meta.resolve("@cleverc2200/dsh-agent-workbench/configured-query");
+    contractUrl = import.meta.resolve(
+      "@cleverc2200/dsh-agent-workbench/configured-query",
+    );
   } catch (error) {
     signal.throwIfAborted();
     if (
@@ -98,6 +108,38 @@ export async function readConfiguredHtmlQuery(
     await import(contractUrl);
   signal.throwIfAborted();
   try {
+    const definition = config.queries[queryId];
+    if (completeCollection && definition?.pagination?.countQuery) {
+      const client = queryContract.createQueryClient(config, (_request, call) =>
+        readConfiguredHtmlQuery(
+          resource,
+          { queryId: call.queryId, parameters: call.values },
+          business,
+          signal,
+          consumerCode,
+          pageRead,
+        ),
+      );
+      const result = await client.readAll(
+        queryId,
+        { ...parameters, page_size: 50, offset: 0 },
+        {
+          signal,
+          requiredColumns: definition.resultColumns,
+          keyFields: definition.pagination.keyFields,
+          atomicPages: true,
+          maxRows: 100000,
+        },
+      );
+      return {
+        ...result,
+        returnedColumns:
+          result.pages[0]?.returnedColumns ?? definition.resultColumns,
+        rejectedColumns: result.pages[0]?.rejectedColumns ?? [],
+        totalRowCount: result.total,
+        hasMorePages: false,
+      };
+    }
     const request = queryContract.makeRequest(config, queryId, parameters);
     signal.throwIfAborted();
     if ("cube" in request) {
@@ -109,7 +151,9 @@ export async function readConfiguredHtmlQuery(
       const client = await business.moduleMcp(consumerCode, signal);
       let payload: unknown;
       try {
-        payload = JSON.parse(await client.call("query_business_data", args, signal));
+        payload = JSON.parse(
+          await client.call("query_business_data", args, signal),
+        );
       } catch (error) {
         if (!signal.aborted && gatewaySessionExpired(error))
           business.invalidateModuleMcp(consumerCode, client);
@@ -119,11 +163,17 @@ export async function readConfiguredHtmlQuery(
       validateCubeQueryResult(payload, args, "inline");
       const datasets = object(payload)?.datasets;
       const dataset = Array.isArray(datasets) ? object(datasets[0]) : undefined;
-      if (!dataset || !Array.isArray(dataset.rows) || !Array.isArray(dataset.fields))
+      if (
+        !dataset ||
+        !Array.isArray(dataset.rows) ||
+        !Array.isArray(dataset.fields)
+      )
         throw Error("GEA_CUBE_NEW_QUERY_RESULT_INVALID");
       return {
         rows: dataset.rows,
-        returnedColumns: dataset.fields.map((field: unknown) => object(field)?.name),
+        returnedColumns: dataset.fields.map(
+          (field: unknown) => object(field)?.name,
+        ),
         rejectedColumns: [],
         totalRowCount: dataset.totalRowCount,
         hasMorePages: dataset.hasMorePages,
@@ -167,7 +217,10 @@ function configuredQueryFailure(
   queryContract?: typeof import("@cleverc2200/dsh-agent-workbench/configured-query"),
 ) {
   signal.throwIfAborted();
-  const errorCode = error && typeof error === "object" && "code" in error ? error.code : undefined;
+  const errorCode =
+    error && typeof error === "object" && "code" in error
+      ? error.code
+      : undefined;
   const message = error instanceof Error ? error.message : undefined;
   const code =
     typeof errorCode === "string" && /^[A-Z][A-Z0-9_]{1,127}$/.test(errorCode)

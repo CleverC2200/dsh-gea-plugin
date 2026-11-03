@@ -2,7 +2,10 @@ import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import type { Business } from "./business.ts";
-import { assertSessionResourceAvailable, sessionConsumer } from "./business-identity.ts";
+import {
+  assertSessionResourceAvailable,
+  sessionConsumer,
+} from "./business-identity.ts";
 import { readConfiguredHtmlQuery } from "./configured-html-query.ts";
 import { orchestrationInventoryAccess } from "./orchestration-inventory-access.ts";
 import { sameCubeAccess } from "./cube-access.ts";
@@ -21,7 +24,11 @@ const quantity = (value: unknown): boolean =>
   Number.isFinite(Number(value));
 
 /** Failed or partially authorized queries never become a zero-valued business answer. */
-export function currentShortageResult(input: unknown, view: boolean | "locations", page: number) {
+export function currentShortageResult(
+  input: unknown,
+  view: boolean | "locations",
+  page: number,
+) {
   const detail = view === true;
   const locations = view === "locations";
   const result = record(input);
@@ -39,8 +46,15 @@ export function currentShortageResult(input: unknown, view: boolean | "locations
     "invalid",
   ];
   if (detail)
-    required.push("location_code", "location_name", "sku", "page_scope_total", "page_row_present");
-  if (locations) required.push("location_code", "location_name", "base", "warehouse_code");
+    required.push(
+      "location_code",
+      "location_name",
+      "sku",
+      "page_scope_total",
+      "page_row_present",
+    );
+  if (locations)
+    required.push("location_code", "location_name", "base", "warehouse_code");
   if (
     !Array.isArray(columns) ||
     required.some((name) => !columns.includes(name)) ||
@@ -51,7 +65,8 @@ export function currentShortageResult(input: unknown, view: boolean | "locations
   const rows = result.rows.map(record);
   if (rows.some((row) => !row)) throw Error("CURRENT_SHORTAGE_RESULT_INVALID");
   const present = rows.filter(
-    (row): row is Record<string, unknown> => !!row && (!detail || row.page_row_present != null),
+    (row): row is Record<string, unknown> =>
+      !!row && (!detail || row.page_row_present != null),
   );
   if (
     present.some(
@@ -70,10 +85,14 @@ export function currentShortageResult(input: unknown, view: boolean | "locations
   if (locations) {
     if (
       result.hasMorePages === true ||
-      (result.totalRowCount != null && Number(result.totalRowCount) !== present.length) ||
+      (result.totalRowCount != null &&
+        Number(result.totalRowCount) !== present.length) ||
       present.some((row) => !row.location_code || !row.location_name) ||
-      new Set(present.map((row) => JSON.stringify([row.location_type, row.location_code]))).size !==
-        present.length
+      new Set(
+        present.map((row) =>
+          JSON.stringify([row.location_type, row.location_code]),
+        ),
+      ).size !== present.length
     )
       throw Error("CURRENT_SHORTAGE_INCOMPLETE");
     present.sort(
@@ -84,7 +103,11 @@ export function currentShortageResult(input: unknown, view: boolean | "locations
   }
   if (detail) {
     const count = rows[0]?.page_scope_total;
-    if (!quantity(count) || !Number.isSafeInteger(Number(count)) || Number(count) < 0)
+    if (
+      !quantity(count) ||
+      !Number.isSafeInteger(Number(count)) ||
+      Number(count) < 0
+    )
       throw Error("CURRENT_SHORTAGE_PAGE_INVALID");
     total = Number(count);
     if (
@@ -126,7 +149,8 @@ export function registerCurrentShortageTool(
           locationType: {
             type: "string",
             enum: ["基地", "分仓"],
-            description: "智能编排必须按问题指定基地或分仓；业务Agent沿原资源范围。",
+            description:
+              "智能编排必须按问题指定基地或分仓；业务Agent沿原资源范围。",
           },
           view: {
             type: "string",
@@ -168,7 +192,8 @@ export function registerCurrentShortageTool(
           await assertSessionResourceAvailable(ctx, session, exec.signal);
           const consumer = sessionConsumer(ctx, business, session);
           const access = orchestrationInventoryAccess(ctx, business, session);
-          if (access && !args.locationType) throw Error("CURRENT_SHORTAGE_LOCATION_TYPE_REQUIRED");
+          if (access && !args.locationType)
+            throw Error("CURRENT_SHORTAGE_LOCATION_TYPE_REQUIRED");
           const resourceConsumer = access
             ? args.locationType === "分仓"
               ? "branch-inventory"
@@ -184,7 +209,9 @@ export function registerCurrentShortageTool(
           );
           if (!resource) throw Error("GEA_AGENT_RESOURCE_MISSING");
           const resourceChange = new AbortController();
-          const unwatch = ctx.agentResources.watch(() => resourceChange.abort());
+          const unwatch = ctx.agentResources.watch(() =>
+            resourceChange.abort(),
+          );
           const signal = AbortSignal.any([
             exec.signal,
             business.identitySignal(),
@@ -217,18 +244,28 @@ export function registerCurrentShortageTool(
               business,
               signal,
               consumer,
+              false,
+              locations,
             );
             signal.throwIfAborted();
             await assertSessionResourceAvailable(ctx, session, signal);
             if (sessionConsumer(ctx, business, session) !== consumer)
               throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
             if (access) {
-              const current = orchestrationInventoryAccess(ctx, business, session);
+              const current = orchestrationInventoryAccess(
+                ctx,
+                business,
+                session,
+              );
               if (!current || !sameCubeAccess(access, current))
                 throw Error("GEA_INVENTORY_SOURCE_CHANGED");
             }
             return JSON.stringify(
-              currentShortageResult(result, locations ? "locations" : detail, page),
+              currentShortageResult(
+                result,
+                locations ? "locations" : detail,
+                page,
+              ),
             );
           } finally {
             unwatch();
