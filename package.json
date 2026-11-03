@@ -126,6 +126,7 @@
     "@deepseek-ai/dsh-client-ui-primitives": "link:../../official-latest-standard/packages/client/ui-primitives",
     "@deepseek-ai/dsh-client-ui-renderer": "link:../../official-latest-standard/packages/client/ui-renderer",
     "@deepseek-ai/dsh-client-ui-session": "link:../../official-latest-standard/packages/client/ui-session",
+    "@deepseek-ai/dsh-client-ui-settings-general": "link:../../official-latest-standard/packages/client/ui-settings-general",
     "@deepseek-ai/dsh-client-ui-settings": "link:../../official-latest-standard/packages/client/ui-settings",
     "@deepseek-ai/dsh-client-ui-sidebar": "link:../../official-latest-standard/packages/client/ui-sidebar",
     "@deepseek-ai/dsh-client-ui-slots": "link:../../official-latest-standard/packages/client/ui-slots",
