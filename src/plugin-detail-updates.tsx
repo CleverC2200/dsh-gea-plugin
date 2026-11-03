@@ -556,131 +556,128 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
 }
 
 export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
-  const fiber = ctx.inject(
-    ["slots", "locale", "modules", "settingsNavigation"],
-    (scope) => {
-      scope.effect(() => {
-        const style = document.createElement("style");
-        style.textContent = css;
-        document.head.append(style);
-        return () => style.remove();
-      });
-      const updates = createPluginDetailUpdates(scope);
-      const desktop = createDesktopUpdates();
-      const openUpdates = () => scope.settingsNavigation.open("company-updates");
-      const shared = () => ({ updates, desktop, openUpdates });
-      scope.effect(() => {
-        const release = updates.retain();
-        return () => {
-          release();
-          desktop.dispose();
-        };
-      });
-      scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
-      scope.effect(() => {
-        void updates.resume();
-        return () => updates.dispose();
-      });
-      scope.slots.inject("settings.update", () =>
-        scope.slots.register(
-          { name: "settings.update", priority: -10, locale: pluginUpdateLocale, inject: shared },
-          UpdateEntry,
-        ),
-      );
-      scope.slots.inject("sidebar.toggle.badge", () =>
-        scope.slots.register(
-          {
-            name: "sidebar.toggle.badge",
-            priority: -10,
-            locale: pluginUpdateLocale,
-            inject: shared,
-          },
-          UpdateToggleBadge,
-        ),
-      );
-      scope.slots.inject("settings.section", () =>
-        scope.slots.register(
-          {
-            name: "settings.section",
-            id: "company-updates",
-            order: 80,
-            label: () => scope.locale.bind(pluginUpdateLocale)("updates"),
-            locale: pluginUpdateLocale,
-            inject: shared,
-          },
-          UpdatesPanel,
-        ),
-      );
-      scope.slots.inject("shell.overlay", () =>
-        scope.slots.register(
-          {
-            name: "shell.overlay",
-            id: "gea.plugin-updates.notice",
-            locale: pluginUpdateLocale,
-            inject: () => ({
-              updates,
-              openStatus: openUpdates,
-            }),
-          },
-          UpdateNotice,
-        ),
-      );
-      scope.slots.inject("plugins.list.badge", () =>
-        scope.slots.register(
-          {
-            name: "plugins.list.badge",
-            id: "gea.plugins.list.badge",
-            locale: pluginUpdateLocale,
-            inject: () => ({ updates, openUpdates }),
-          },
-          ListBadge,
-        ),
-      );
-      scope.slots.inject("plugins.list.tools", () =>
-        scope.slots.register(
-          {
-            name: "plugins.list.tools",
-            id: "gea.plugins.list.tools",
-            locale: pluginUpdateLocale,
-            inject: () => ({ updates, openUpdates }),
-          },
-          ListTools,
-        ),
-      );
-      scope.slots.inject("plugins.detail.actions", () =>
-        scope.slots.register(
-          {
-            name: "plugins.detail.actions",
-            id: "gea.plugin-updates.actions",
-            locale: pluginUpdateLocale,
-            inject: () => ({ updates, openUpdates }),
-          },
-          UpdateActions,
-        ),
-      );
-      scope.slots.inject("plugins.detail.badge", () =>
-        scope.slots.register(
-          {
-            name: "plugins.detail.badge",
-            id: "gea.plugin-updates.badge",
-            locale: pluginUpdateLocale,
-            inject: () => ({ updates, openUpdates }),
-          },
-          UpdateBadge,
-        ),
-      );
-      scope.slots.inject("plugins.detail.section", () =>
-        scope.slots.register(
-          {
-            name: "plugins.detail.section",
-            id: "gea.plugin-updates.section",
-            locale: pluginUpdateLocale,
-            inject: () => ({ updates, openUpdates }),
-          },
-          UpdateSection,
-        ),
-      );
-    },
-  );
+  const fiber = ctx.inject(["slots", "locale", "modules", "settingsNavigation"], (scope) => {
+    scope.effect(() => {
+      const style = document.createElement("style");
+      style.textContent = css;
+      document.head.append(style);
+      return () => style.remove();
+    });
+    const updates = createPluginDetailUpdates(scope);
+    const desktop = createDesktopUpdates();
+    const openUpdates = () => scope.settingsNavigation.open("company-updates");
+    const shared = () => ({ updates, desktop, openUpdates });
+    scope.effect(() => {
+      const release = updates.retain();
+      return () => {
+        release();
+        desktop.dispose();
+      };
+    });
+    scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
+    scope.effect(() => {
+      void updates.resume();
+      return () => updates.dispose();
+    });
+    scope.slots.inject("settings.update", () =>
+      scope.slots.register(
+        { name: "settings.update", priority: -10, locale: pluginUpdateLocale, inject: shared },
+        UpdateEntry,
+      ),
+    );
+    scope.slots.inject("sidebar.toggle.badge", () =>
+      scope.slots.register(
+        {
+          name: "sidebar.toggle.badge",
+          priority: -10,
+          locale: pluginUpdateLocale,
+          inject: shared,
+        },
+        UpdateToggleBadge,
+      ),
+    );
+    scope.slots.inject("settings.section", () =>
+      scope.slots.register(
+        {
+          name: "settings.section",
+          id: "company-updates",
+          order: 80,
+          label: () => scope.locale.bind(pluginUpdateLocale)("updates"),
+          locale: pluginUpdateLocale,
+          inject: shared,
+        },
+        UpdatesPanel,
+      ),
+    );
+    scope.slots.inject("shell.overlay", () =>
+      scope.slots.register(
+        {
+          name: "shell.overlay",
+          id: "gea.plugin-updates.notice",
+          locale: pluginUpdateLocale,
+          inject: () => ({
+            updates,
+            openStatus: openUpdates,
+          }),
+        },
+        UpdateNotice,
+      ),
+    );
+    scope.slots.inject("plugins.list.badge", () =>
+      scope.slots.register(
+        {
+          name: "plugins.list.badge",
+          id: "gea.plugins.list.badge",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates, openUpdates }),
+        },
+        ListBadge,
+      ),
+    );
+    scope.slots.inject("plugins.list.tools", () =>
+      scope.slots.register(
+        {
+          name: "plugins.list.tools",
+          id: "gea.plugins.list.tools",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates, openUpdates }),
+        },
+        ListTools,
+      ),
+    );
+    scope.slots.inject("plugins.detail.actions", () =>
+      scope.slots.register(
+        {
+          name: "plugins.detail.actions",
+          id: "gea.plugin-updates.actions",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates, openUpdates }),
+        },
+        UpdateActions,
+      ),
+    );
+    scope.slots.inject("plugins.detail.badge", () =>
+      scope.slots.register(
+        {
+          name: "plugins.detail.badge",
+          id: "gea.plugin-updates.badge",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates, openUpdates }),
+        },
+        UpdateBadge,
+      ),
+    );
+    scope.slots.inject("plugins.detail.section", () =>
+      scope.slots.register(
+        {
+          name: "plugins.detail.section",
+          id: "gea.plugin-updates.section",
+          locale: pluginUpdateLocale,
+          inject: () => ({ updates, openUpdates }),
+        },
+        UpdateSection,
+      ),
+    );
+  });
   return () => fiber.dispose();
 }
