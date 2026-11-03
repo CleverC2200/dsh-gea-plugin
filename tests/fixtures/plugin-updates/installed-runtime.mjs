@@ -9,6 +9,7 @@ import { build } from "esbuild";
 import { parse as parseYaml } from "yaml";
 import { projectPluginRelease, companyPackageNames } from "../../../src/shared/plugin-release.mjs";
 import { preservedSession } from "./preserved-session.mjs";
+import { refreshCompanyStartup } from "../../../desktop/company-bootstrap.mjs";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const repository = fileURLToPath(new URL("../../../", import.meta.url));
 const ownFile = fileURLToPath(import.meta.url);
@@ -200,6 +201,11 @@ async function observeFresh(input) {
   let client;
   try {
     const before = await host.route("status", { pageIdentity: "fresh-page" });
+    if (input.startupRecovery)
+      assert.deepEqual(
+        before.items.map((row) => row.state),
+        Array(3).fill("pending-restart"),
+      );
     const observed = await clientObservations(input, host);
     client = observed.client;
     await host.route("observed", {
@@ -211,8 +217,8 @@ async function observeFresh(input) {
     const after = await host.route("status", { pageIdentity: "fresh-page" });
     const row = after.items.find((item) => item.packageName === companyPackageNames[2]);
     assert.equal(row.state, "completed", JSON.stringify(after));
-    assert.equal(row.runningHostVersion, "3.1.0");
-    assert.equal(row.runningClientVersion, "3.1.0");
+    assert.equal(row.runningHostVersion, input.expectedVersions[2]);
+    assert.equal(row.runningClientVersion, input.expectedVersions[2]);
     if (input.allUpdates) {
       assert.deepEqual(
         after.items.map((item) => item.state),
@@ -220,11 +226,11 @@ async function observeFresh(input) {
       );
       assert.deepEqual(
         after.items.map((item) => item.runningHostVersion),
-        ["1.1.0", "2.1.0", "3.1.0"],
+        input.expectedVersions,
       );
       assert.deepEqual(
         after.items.map((item) => item.runningClientVersion),
-        ["1.1.0", "2.1.0", "3.1.0"],
+        input.expectedVersions,
       );
     }
     return {
@@ -244,7 +250,12 @@ export async function installedScenario(
   t,
   proof,
   sdk,
-  { customStore = false, allUpdates = false, strictSuitePeers = false } = {},
+  {
+    customStore = false,
+    allUpdates = false,
+    strictSuitePeers = false,
+    startupRecovery = false,
+  } = {},
 ) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
   const root = await mkdtemp(join(repository, ".runtime/actual-install-"));
@@ -265,7 +276,9 @@ export async function installedScenario(
           skills: [
             {
               name: "personal",
-              directory: { root: join(personalData, "user-agents.json.skills/personal/tree") },
+              directory: {
+                root: join(personalData, "user-agents.json.skills/personal/tree"),
+              },
             },
           ],
         },
@@ -274,7 +287,9 @@ export async function installedScenario(
     "selected-resources.json": JSON.stringify({
       version: 1,
       selected: ["gea-readonly"],
-      customizations: { "gea-readonly": { prompt: "Keep my plugin customization" } },
+      customizations: {
+        "gea-readonly": { prompt: "Keep my plugin customization" },
+      },
     }),
     "user-agents.json.skills/personal/tree/SKILL.md":
       "# Personal skill\nRead [rules](references/rules.md).\n",
@@ -284,10 +299,12 @@ export async function installedScenario(
   for (const [name, value] of Object.entries(personalFiles))
     await writeFile(join(personalData, name), value);
   t.after(() => rm(root, { recursive: true, force: true }));
-  const dir = join(root, "profile"),
+  const dir = startupRecovery ? join(root, "profiles/desktop") : join(root, "profile"),
     pnpm = join(repository, "node_modules/pnpm/bin/pnpm.cjs");
-  await mkdir(dir);
-  const oldVersions = ["1.0.0", "2.0.0", "3.0.0"],
+  await mkdir(dir, { recursive: true });
+  const oldVersions = startupRecovery
+      ? ["0.1.50", "0.6.3-company.46", "0.0.216"]
+      : ["1.0.0", "2.0.0", "3.0.0"],
     old = await Promise.all(
       companyPackageNames.map((name, index) => makeArchive(root, name, oldVersions[index])),
     );
@@ -296,12 +313,26 @@ export async function installedScenario(
         companyPackageNames.map((name, index) => [name, ["1.1.0", "2.1.0", "3.1.0"][index]]),
       )
     : {};
-  const target = await makeArchive(root, companyPackageNames[2], "3.1.0", peers, true),
+  const expectedVersions = startupRecovery
+    ? ["0.1.51", "0.6.3-company.47", "0.0.219"]
+    : ["1.1.0", "2.1.0", "3.1.0"];
+  if (startupRecovery) {
+    const archive = join(
+      root,
+      "old/company-seed/archives/cleverc2200-gea-dsh-prototype-0.0.216.tgz",
+    );
+    await mkdir(dirname(archive), { recursive: true });
+    await writeFile(archive, old[2].bytes);
+    old[2].path = archive;
+  }
+  const target = startupRecovery
+      ? old[2]
+      : await makeArchive(root, companyPackageNames[2], "3.1.0", peers, true),
     location = runtimeLocation(proof, sdk);
   const targets = allUpdates
     ? [
-        await makeArchive(root, companyPackageNames[0], "1.1.0", peers),
-        await makeArchive(root, companyPackageNames[1], "2.1.0", peers),
+        await makeArchive(root, companyPackageNames[0], expectedVersions[0], peers),
+        await makeArchive(root, companyPackageNames[1], expectedVersions[1], peers),
         target,
       ]
     : [old[0], old[1], target];
@@ -344,7 +375,11 @@ export async function installedScenario(
       retained: { draft: "keep", selection: "sales" },
     }),
   );
-  await writeFile(join(dir, "pnpm-workspace.yaml"), "packages: []\nautoInstallPeers: false\n");
+  await writeFile(
+    join(dir, "pnpm-workspace.yaml"),
+    "packages: []\nautoInstallPeers: false\n" + (startupRecovery ? "nodeLinker: hoisted\n" : ""),
+  );
+  if (startupRecovery) await writeFile(join(dir, "cordis.patch.yml"), "# User configuration\n[]\n");
   await writeFile(
     join(dir, ".npmrc"),
     "auto-install-peers=false\nstrict-peer-dependencies=false\noffline=true\n",
@@ -493,23 +528,31 @@ export async function installedScenario(
     deployment: { runtimeDir: join(root, "runtime"), requestTimeoutMs: 120000 },
     objects,
     allUpdates,
+    expectedVersions,
+    startupRecovery,
   };
+  if (startupRecovery) input.deployment.runtimeDir = join(dir, "gea");
   const restoreFetch = controlledSource(input),
     host = await createHost(input);
   let oldProcess, pending;
   try {
     await host.route("check", {});
     const checked = await host.route("status", { pageIdentity: "old-page" }),
-      row = checked.items.find((item) => item.packageName === companyPackageNames[2]);
+      row = checked.items.find(
+        (item) => item.packageName === companyPackageNames[startupRecovery ? 0 : 2],
+      );
     assert.equal(row.state, "available", JSON.stringify(checked));
     oldProcess = checked.hostProcessIdentity;
     if (allUpdates) {
       assert.ok(
-        checked.items.every((item) => item.state === "available"),
+        checked.items.filter((item) => item.state === "available").length ===
+          (startupRecovery ? 2 : 3),
         JSON.stringify(checked),
       );
       await host.route("update-all", {
-        plans: checked.items.map(({ packageName, planId }) => ({ packageName, planId })),
+        plans: checked.items
+          .filter((item) => item.state === "available")
+          .map(({ packageName, planId }) => ({ packageName, planId })),
       });
     } else
       await host.route("update", {
@@ -520,24 +563,95 @@ export async function installedScenario(
     do {
       pending = await host.route("status", { pageIdentity: "old-page" });
       if (
-        pending.items.find((item) => item.packageName === companyPackageNames[2]).state ===
+        pending.items.find((item) => item.packageName === row.packageName).state ===
           "pending-restart" ||
         ["restored", "failed", "unknown"].includes(pending.operation?.stage)
       )
         break;
       await new Promise((resolve) => setTimeout(resolve, 50));
     } while (Date.now() < deadline);
-    const installed = pending.items.find((item) => item.packageName === companyPackageNames[2]);
+    const installed = pending.items.find((item) => item.packageName === row.packageName);
     assert.equal(installed.state, "pending-restart", JSON.stringify(pending));
-    assert.equal(installed.installedVersion, "3.1.0");
+    assert.equal(installed.installedVersion, startupRecovery ? "0.1.51" : "3.1.0");
     assert.equal(
       parseYaml(await readFile(join(dir, "node_modules/.modules.yaml"), "utf8")).storeDir,
       initializedStore,
     );
-    assert.equal(installed.runningHostVersion, "3.0.0");
+    assert.equal(installed.runningHostVersion, startupRecovery ? "0.1.50" : "3.0.0");
   } finally {
     await host.ctx.fiber.dispose();
     restoreFetch();
+  }
+  let startup;
+  if (startupRecovery) {
+    const pointer = JSON.parse(
+      await readFile(join(input.deployment.runtimeDir, "plugin-updates/latest.json")),
+    );
+    const operationDirectory = join(
+      input.deployment.runtimeDir,
+      "plugin-updates/operations",
+      pointer.id,
+    );
+    const original = await readFile(join(operationDirectory, "receipt.json"));
+    assert.equal(JSON.parse(original).targets.length, 2);
+    const seed = join(root, "replacement/company-seed");
+    await mkdir(join(seed, "archives"), { recursive: true });
+    const gea = await makeArchive(
+      root,
+      companyPackageNames[2],
+      "0.0.219",
+      Object.fromEntries(
+        companyPackageNames.slice(0, 2).map((name, index) => [name, expectedVersions[index]]),
+      ),
+      true,
+    );
+    const packages = [];
+    for (const artifact of [targets[0], targets[1], gea]) {
+      const file =
+        artifact.manifest.name.replace(/^@/, "").replace("/", "-") +
+        "-" +
+        artifact.manifest.version +
+        ".tgz";
+      await writeFile(join(seed, "archives", file), artifact.bytes);
+      packages.push({
+        name: artifact.manifest.name,
+        version: artifact.manifest.version,
+        sha256: sha(artifact.bytes),
+        file,
+      });
+    }
+    await writeFile(join(seed, "manifest.json"), JSON.stringify({ schema: 1, packages }));
+    await mkdir(join(root, "dsh"));
+    await symlink(join(root, "node_modules"), join(root, "dsh/node_modules"), "dir");
+    await symlink(join(repository, "node_modules/yaml"), join(root, "node_modules/yaml"), "dir");
+    const support = join(root, "support");
+    await mkdir(join(support, "pnpm/bin"), { recursive: true });
+    await writeFile(
+      join(support, "pnpm/bin/pnpm.mjs"),
+      `import ${JSON.stringify(pathToFileURL(pnpm).href)};`,
+    );
+    startup = await refreshCompanyStartup({
+      root,
+      support,
+      seed,
+      home: root,
+      manifest: { packages },
+    });
+    assert.equal(startup.refresh.changed, true, JSON.stringify(startup));
+    assert.equal(startup.refresh.status, "pending-restart-preserved");
+    const recovered = JSON.parse(await readFile(join(operationDirectory, "receipt.json")));
+    assert.equal(recovered.stage, "pending-restart");
+    assert.equal(recovered.completionProof, null);
+    assert.equal(recovered.targets.length, 3);
+    assert.deepEqual(
+      await readFile(
+        join(
+          root,
+          "profiles/desktop/gea/bootstrap/gea-refresh/before-0.0.216-to-0.0.219/pending-update-receipt.json",
+        ),
+      ),
+      original,
+    );
   }
   const inputFile = join(root, "input.json");
   await writeFile(inputFile, JSON.stringify(input));
@@ -550,11 +664,11 @@ export async function installedScenario(
   assert.notEqual(fresh.processIdentity, oldProcess);
   assert.equal(fresh.row.state, "completed");
   const pointer = JSON.parse(
-    await readFile(join(root, "runtime/plugin-updates/latest.json"), "utf8"),
+    await readFile(join(input.deployment.runtimeDir, "plugin-updates/latest.json"), "utf8"),
   );
   const operation = JSON.parse(
     await readFile(
-      join(root, "runtime/plugin-updates/operations", pointer.id, "receipt.json"),
+      join(input.deployment.runtimeDir, "plugin-updates/operations", pointer.id, "receipt.json"),
       "utf8",
     ),
   );
@@ -604,6 +718,7 @@ export async function installedScenario(
     pluginCustomizationPreserved: true,
     completeSkillAssetsPreserved: true,
     sessionPreserved: true,
+    ...(startup ? { startup } : {}),
   };
 }
 if (process.argv[1] === ownFile && process.argv[2] === "observe") {

@@ -18,15 +18,15 @@ CI Core 的阻断与兼容范围由 `scripts/ci-core-policy.json` 维护；调�
 
 ## 规则与执行机制
 
-| 规则                                                                              | 执行机制                                                                                                                                                                         |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 已登记的 Core 仍须具备本次用途所需的当前运行依赖；源码检查不强制准备运行环境      | `check:environment`；三包 reception 与直接 install/observe 强制调用；`test:environment` 接入现有 source-only 快检与 CI                                                           |
-| 当前兼容范围只在包声明中维护，历史升级案例使用固定输入                            | 包烟测核产物与锁保留声明；`test:release-contract` 验证声明的升级边界并接入 source-only 快检与 CI                                                                                 |
-| 完整桌面包的 Core 跟随当前 required 策略，复用底包须匹配该 Core                   | 双端 workflow 从 `ciCores("required")` 选择 checkout 与构建标识；`readDesktopInput` 拒绝旧 Core，Mac 预检拒绝旧底包；`input.test.mjs`、`delivery-events.test.mjs` 随影响选择运行 |
-| 覆盖安装按内置完整三包刷新，完成前核三项实际版本及用户配置保全                    | `refreshBundledCompanySuite`；`scripts/desktop-gea-upgrade.test.mjs` 接入现有 source-quality 选择                                                                                |
-| 等待重启的更新由新 Host/client 确认，启动前保持安装图和回执并暂缓刷新及旧目录清理 | `refreshCompanyStartup`、`refreshBundledCompanySuite`；严格写入仍调用 `assertProfileIdle`；`scripts/desktop-gea-upgrade.test.mjs`                                                |
-| 修复 PR 统一以 main 为目标，冻结交付使用固定提交                                  | `source-quality.mjs --phase plan` 拒绝非 main 的 PR；工作流覆盖目标分支变更，`source-quality.test.mjs` 验证真实错误目标                                                          |
-| 网关服务的日常选测覆盖直接合同和真实恢复入口，完整集成仍追踪公共消费者            | `ci-test-policy.json` 的 gateway service 规则、`ci-policy-impact.test.mjs`                                                                                                       |
-| 小集合共用一次准备，所有入选文件仍须完整执行                                      | `sourceCheckMatrix`、`source-check-shards.test.mjs`                                                                                                                              |
-| 失败项重跑消费实际 producer 的产物和原始回执                                      | dependency-policy 的 job outputs、latest hosted jobs 与分片/正式回执核验；`dependency-policy.test.mjs`、`source-check-shards.test.mjs`、`source-formal-receipt.test.mjs`         |
-| CI 失败后先读取恢复判断；准备失败或同阶段再次失败进入诊断                         | [按需 CI 恢复](docs/ci-core-policy.md#按需-ci-恢复)，`quality-hosted-budget.mjs --retry-plan`；直接 GitHub 操作仍由执行者遵守判断                                                |
+| 规则                                                                         | 执行机制                                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 已登记的 Core 仍须具备本次用途所需的当前运行依赖；源码检查不强制准备运行环境 | `check:environment`；三包 reception 与直接 install/observe 强制调用；`test:environment` 接入现有 source-only 快检与 CI                                                           |
+| 当前兼容范围只在包声明中维护，历史升级案例使用固定输入                       | 包烟测核产物与锁保留声明；`test:release-contract` 验证声明的升级边界并接入 source-only 快检与 CI                                                                                 |
+| 完整桌面包的 Core 跟随当前 required 策略，复用底包须匹配该 Core              | 双端 workflow 从 `ciCores("required")` 选择 checkout 与构建标识；`readDesktopInput` 拒绝旧 Core，Mac 预检拒绝旧底包；`input.test.mjs`、`delivery-events.test.mjs` 随影响选择运行 |
+| 覆盖安装按内置完整三包刷新，完成前核三项实际版本及用户配置保全               | `refreshBundledCompanySuite`；`scripts/desktop-gea-upgrade.test.mjs` 接入现有 source-quality 选择                                                                                |
+| 等待重启的更新由新 Host/client 确认，启动恢复保留原回执并暂缓旧目录清理      | `refreshCompanyStartup`、`refreshBundledCompanySuite`；恢复条件见 [安装协议](docs/install.md#公司客户端的内置三包刷新)；`scripts/desktop-gea-upgrade.test.mjs`                   |
+| 修复 PR 统一以 main 为目标，冻结交付使用固定提交                             | `source-quality.mjs --phase plan` 拒绝非 main 的 PR；工作流覆盖目标分支变更，`source-quality.test.mjs` 验证真实错误目标                                                          |
+| 网关服务的日常选测覆盖直接合同和真实恢复入口，完整集成仍追踪公共消费者       | `ci-test-policy.json` 的 gateway service 规则、`ci-policy-impact.test.mjs`                                                                                                       |
+| 小集合共用一次准备，所有入选文件仍须完整执行                                 | `sourceCheckMatrix`、`source-check-shards.test.mjs`                                                                                                                              |
+| 失败项重跑消费实际 producer 的产物和原始回执                                 | dependency-policy 的 job outputs、latest hosted jobs 与分片/正式回执核验；`dependency-policy.test.mjs`、`source-check-shards.test.mjs`、`source-formal-receipt.test.mjs`         |
+| CI 失败后先读取恢复判断；准备失败或同阶段再次失败进入诊断                    | [按需 CI 恢复](docs/ci-core-policy.md#按需-ci-恢复)，`quality-hosted-budget.mjs --retry-plan`；直接 GitHub 操作仍由执行者遵守判断                                                |

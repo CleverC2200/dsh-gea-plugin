@@ -38,13 +38,16 @@ test(
       { customStore: false },
       { customStore: true },
       { customStore: true, allUpdates: true, strictSuitePeers: true },
+      { customStore: true, allUpdates: true, startupRecovery: true },
     ]) {
       await t.test(
-        options.allUpdates
-          ? "three packages install and reconcile in a fresh Host/client process"
-          : options.customStore
-            ? "company-seeded custom store survives online update"
-            : "default store survives online update",
+        options.startupRecovery
+          ? "companion-only pending restart recovers GEA216 through the real startup installer and fresh Host/client"
+          : options.allUpdates
+            ? "three packages install and reconcile in a fresh Host/client process"
+            : options.customStore
+              ? "company-seeded custom store survives online update"
+              : "default store survives online update",
         async (t) => {
           const result = await installedScenario(t, proof, sdk, options);
           assert.deepEqual(result.profileRetained, {
