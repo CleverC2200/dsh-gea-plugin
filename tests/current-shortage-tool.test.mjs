@@ -215,6 +215,8 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   );
   const ranking = JSON.parse(await f.call({ view: "locations" }));
   assert.equal(f.calls[0].request.sql, config.queries["current-shortage.locations"].request.sql);
+  assert.equal(f.calls[0].request.parameters.gea_p49901, 50);
+  assert.equal(f.calls[0].request.parameters.gea_p49902, 0);
   assert.equal(ranking.coverage, "complete-location-ranking");
   assert.deepEqual(
     ranking.rows.map((r) => r.location_code),
@@ -229,6 +231,19 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   assert.equal(detail.rows[0].sku, "S1");
   assert.equal(f.calls[1].request.parameters.gea_p2, "W1");
   assert.ok(f.calls.every((c) => c.request.consumerCode === "branch-inventory"));
+});
+test("location ranking uses the installed pagination contract for each profile", async () => {
+  for (const [agent] of definitions) {
+    const f = fixture(agent, async () => ({
+      rows: [],
+      returnedColumns: [...columns, "location_code", "location_name", "base", "warehouse_code"],
+      rejectedColumns: [],
+    }));
+    const result = JSON.parse(await f.call({ view: "locations" }));
+    assert.equal(result.coverage, "complete-location-ranking");
+    assert.equal(f.calls[0].request.parameters.gea_p49901, agent === "apsplan" ? undefined : 50);
+    assert.equal(f.calls[0].request.parameters.gea_p49902, agent === "apsplan" ? undefined : 0);
+  }
 });
 test("a truncated location collection cannot claim a complete ranking", () => {
   assert.throws(
