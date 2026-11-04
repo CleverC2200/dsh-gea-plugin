@@ -66,29 +66,55 @@ export function planBundledCompanyRefresh(current, installed, bundled) {
   };
 }
 
-function stoppedUpdateProcesses(processes) {
-  return (
-    Array.isArray(processes) &&
-    processes.length > 0 &&
-    processes.every((row) => {
-      if (
-        !Number.isSafeInteger(row?.pid) ||
-        row.pid < 1 ||
-        row.grouped !== (process.platform !== "win32") ||
-        row.sawAlive !== true ||
-        typeof row.startIdentity !== "string" ||
-        !row.startIdentity
-      )
+async function stoppedUpdateProcesses(profile, receipt) {
+  const processes = receipt.processes;
+  if (
+    !Array.isArray(processes) ||
+    processes.length === 0 ||
+    !processes.every(
+      (row) =>
+        Number.isSafeInteger(row?.pid) &&
+        row.pid > 0 &&
+        row.grouped === (process.platform !== "win32") &&
+        row.sawAlive === true &&
+        typeof row.startIdentity === "string" &&
+        row.startIdentity.length > 0,
+    )
+  )
+    return false;
+  if (process.platform === "win32") {
+    const runtime = join(profile, "gea/plugin-updates");
+    const operation = join(runtime, "operations", receipt.id);
+    if (receipt.directory !== operation || processes.length !== 1) return false;
+    try {
+      for (const path of [join(profile, "gea"), runtime, join(runtime, "operations"), operation]) {
+        const entry = await lstat(path);
+        if (!entry.isDirectory() || entry.isSymbolicLink()) return false;
+      }
+      const proofPath = join(operation, "windows-job.json");
+      const entry = await lstat(proofPath);
+      if (!entry.isFile() || entry.isSymbolicLink()) return false;
+      const proof = JSON.parse(await readFile(proofPath));
+      const [row] = processes;
+      return (
+        proof?.nonce === row.startIdentity &&
+        proof?.pid === row.pid &&
+        proof?.stage === "empty" &&
+        Number.isInteger(proof?.exitCode)
+      );
+    } catch {
+      return false;
+    }
+  }
+  return processes.every((row) =>
+    [row.pid, -row.pid].every((pid) => {
+      try {
+        process.kill(pid, 0);
         return false;
-      return [row.pid, ...(row.grouped ? [-row.pid] : [])].every((pid) => {
-        try {
-          process.kill(pid, 0);
-          return false;
-        } catch (error) {
-          return error.code === "ESRCH";
-        }
-      });
-    })
+      } catch (error) {
+        return error.code === "ESRCH";
+      }
+    }),
   );
 }
 
@@ -126,7 +152,7 @@ async function readProfileUpdateState(
   if (
     allowStoppedUpdate &&
     ["installing", "verifying", "unknown"].includes(receipt.stage) &&
-    stoppedUpdateProcesses(receipt.processes)
+    (await stoppedUpdateProcesses(profile, receipt))
   )
     return receipt;
   if (!["pending-restart", "completed", "restored", "failed"].includes(receipt.stage))
@@ -277,7 +303,7 @@ async function completeInterruptedUpdate({
       });
       if (
         latest?.id !== receipt.id ||
-        !stoppedUpdateProcesses(latest.processes) ||
+        !(await stoppedUpdateProcesses(profile, latest)) ||
         !(await readFile(journal)).equals(original) ||
         !(await readFile(join(profile, "package.json"))).equals(currentBytes)
       )
@@ -485,7 +511,7 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
           if (
             latest?.id !== update.id ||
             latest.stage !== "pending-restart" ||
-            !stoppedUpdateProcesses(latest.processes) ||
+            !(await stoppedUpdateProcesses(profile, latest)) ||
             !(await readFile(join(pendingRecovery.operation, "receipt.json"))).equals(
               pendingRecovery.original,
             )

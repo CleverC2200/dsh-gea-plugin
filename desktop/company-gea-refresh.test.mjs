@@ -79,7 +79,7 @@ test("disabled, linked, missing and differently named plugins are preserved", ()
   );
 });
 
-import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, access, rename, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { refreshBundledCompanySuite, assertProfileIdle } from "./company-gea-refresh.mjs";
@@ -277,6 +277,7 @@ async function pendingCompanions(t, bundledVersions = ["0.1.51", "0.6.3-company.
   };
   const original = JSON.stringify(receipt) + "\n";
   await writeFile(join(operation, "receipt.json"), original);
+  if (process.platform === "win32") await writeWindowsJob(operation, receipt.processes[0]);
   await writeFile(
     join(f.profile, "gea/plugin-updates/latest.json"),
     JSON.stringify({ schema: 1, id }),
@@ -301,6 +302,38 @@ async function pendingCompanions(t, bundledVersions = ["0.1.51", "0.6.3-company.
   };
 }
 
+async function writeWindowsJob(operation, observation, overrides = {}) {
+  await writeFile(
+    join(operation, "windows-job.json"),
+    JSON.stringify({
+      nonce: observation.startIdentity,
+      pid: observation.pid,
+      stage: "empty",
+      exitCode: 0,
+      ...overrides,
+    }),
+  );
+}
+
+async function windowsPendingCompanions(t, versions) {
+  const f = await pendingCompanions(t, versions);
+  windowsPlatform(t);
+  const nonce = "00000000-1111-4222-8333-444444444444";
+  f.receipt.processes = [
+    { pid: process.pid, grouped: false, startIdentity: nonce, sawAlive: true },
+  ];
+  f.original = JSON.stringify(f.receipt) + "\n";
+  await writeFile(join(f.operation, "receipt.json"), f.original);
+  await writeWindowsJob(f.operation, f.receipt.processes[0]);
+  return f;
+}
+
+function windowsPlatform(t) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", descriptor));
+}
+
 for (const scenario of [
   {
     title: "matching bundled companions",
@@ -322,13 +355,27 @@ for (const scenario of [
     ],
     backup: "before-0.0.216-to-0.0.221",
   },
+  {
+    title: "a completed Windows Job whose PID has been reused",
+    windows: true,
+    versions: ["0.1.56", "0.6.3-company.50", "0.0.224"],
+    expectedTargets: [
+      [companions[0].name, "0.1.56"],
+      [companions[1].name, "0.6.3-company.50"],
+      [name, "0.0.224"],
+    ],
+    backup: "before-0.0.216-to-0.0.224",
+  },
 ])
   test(
     "startup repairs an older GEA behind a companion-only pending restart with " +
       scenario.title +
       " and leaves the complete suite awaiting actual observation",
     async (t) => {
-      const f = await pendingCompanions(t, scenario.versions);
+      const f = await (scenario.windows ? windowsPendingCompanions : pendingCompanions)(
+        t,
+        scenario.versions,
+      );
       const result = await refreshCompanyStartup({
         ...f,
         legacyData: f.home,
@@ -474,6 +521,79 @@ test("pending restart recovery preserves unsupported suites and refuses unconfir
   }
 });
 
+test("Windows startup refuses unconfirmed Jobs and rechecks writers and evidence under the install lock", async (t) => {
+  for (const variant of [
+    "missing",
+    "malformed",
+    "nonce",
+    "pid",
+    "running",
+    "exit-code",
+    "unobserved",
+    "multiple-processes",
+    "linked-operation",
+    "package-writer",
+    "changed-receipt",
+    "changed-job",
+  ])
+    await t.test(variant, async (t) => {
+      const f = await windowsPendingCompanions(t);
+      const proof = join(f.operation, "windows-job.json");
+      if (variant === "missing") await rm(proof);
+      if (variant === "malformed") await writeFile(proof, "{");
+      if (variant === "nonce")
+        await writeWindowsJob(f.operation, f.receipt.processes[0], { nonce: "different" });
+      if (variant === "pid")
+        await writeWindowsJob(f.operation, f.receipt.processes[0], { pid: process.pid + 1 });
+      if (variant === "running")
+        await writeWindowsJob(f.operation, f.receipt.processes[0], { stage: "running" });
+      if (variant === "exit-code")
+        await writeWindowsJob(f.operation, f.receipt.processes[0], { exitCode: null });
+      if (variant === "unobserved") f.receipt.processes[0].sawAlive = false;
+      if (variant === "multiple-processes")
+        f.receipt.processes.push({ ...f.receipt.processes[0], pid: process.pid + 1 });
+      const original = JSON.stringify(f.receipt) + "\n";
+      await writeFile(join(f.operation, "receipt.json"), original);
+      if (variant === "linked-operation") {
+        const outside = join(f.home, "outside-operation");
+        await rename(f.operation, outside);
+        await symlink(outside, f.operation, "junction");
+      }
+      let writes = 0;
+      await assert.rejects(
+        refreshCompanyStartup({
+          ...f,
+          legacyData: f.home,
+          install: async (options) => {
+            if (variant === "package-writer") {
+              await mkdir(join(f.profile, ".plugin-manager"));
+              await writeFile(
+                join(f.profile, ".plugin-manager/run.json"),
+                JSON.stringify({ pid: process.pid, grouped: false }),
+              );
+            }
+            if (variant === "changed-receipt")
+              await writeFile(
+                join(f.operation, "receipt.json"),
+                JSON.stringify({ ...f.receipt, diagnostic: "changed under lock" }),
+              );
+            if (variant === "changed-job")
+              await writeWindowsJob(f.operation, f.receipt.processes[0], { stage: "running" });
+            await options.beforeInstall();
+            writes++;
+          },
+        }),
+        variant === "package-writer" ? /GEA_REFRESH_PROFILE_BUSY/ : /GEA_REFRESH_UPDATE_PENDING/,
+      );
+      assert.equal(writes, 0);
+      if (variant !== "changed-receipt")
+        assert.equal(await readFile(join(f.operation, "receipt.json"), "utf8"), original);
+      await assert.rejects(access(join(f.profile, "gea/bootstrap/gea-refresh/receipt.json")), {
+        code: "ENOENT",
+      });
+    });
+});
+
 test("failed pending recovery retains the original evidence and blocks automatic retries even if receipt commit failed", async (t) => {
   for (const variant of ["install", "receipt-commit", "rebound-source"])
     await t.test(variant, async (t) => {
@@ -535,127 +655,146 @@ test("startup completes the accepted cached suite after partial installation and
   });
   const pid = child.pid;
   await once(child, "exit");
-  for (const variant of ["success", "failure", "partial", "tampered", "active", "unobserved"]) {
-    const f = await fixture(t);
-    const id = "00000000-0000-4000-8000-000000000000";
-    const operation = join(f.profile, "gea/plugin-updates/operations", id);
-    const cache = join(f.profile, "gea/plugin-updates/cache");
-    await mkdir(operation, { recursive: true });
-    await mkdir(cache, { recursive: true });
-    const targets = [];
-    for (const [index, row] of bundledSuite.entries()) {
-      const bytes = Buffer.from(row.name + " accepted " + row.version);
-      const targetSha256 = createHash("sha256").update(bytes).digest("hex");
-      const archivePath = join(cache, targetSha256 + ".tgz");
-      await writeFile(archivePath, bytes);
-      targets.push({
-        packageName: row.name,
-        targetVersion: row.version,
-        targetSha256,
-        archivePath,
-      });
-      if (index === 0)
-        await rm(join(f.profile, "node_modules", row.name), {
-          recursive: true,
+  for (const variant of [
+    "success",
+    "failure",
+    "partial",
+    "tampered",
+    "active",
+    "unobserved",
+    "windows-reused-pid",
+    "windows-job-changed",
+  ])
+    await t.test(variant, async (t) => {
+      const windows = variant.startsWith("windows-");
+      if (windows) windowsPlatform(t);
+      const f = await fixture(t);
+      const id = "00000000-0000-4000-8000-000000000000";
+      const operation = join(f.profile, "gea/plugin-updates/operations", id);
+      const cache = join(f.profile, "gea/plugin-updates/cache");
+      await mkdir(operation, { recursive: true });
+      await mkdir(cache, { recursive: true });
+      const targets = [];
+      for (const [index, row] of bundledSuite.entries()) {
+        const bytes = Buffer.from(row.name + " accepted " + row.version);
+        const targetSha256 = createHash("sha256").update(bytes).digest("hex");
+        const archivePath = join(cache, targetSha256 + ".tgz");
+        await writeFile(archivePath, bytes);
+        targets.push({
+          packageName: row.name,
+          targetVersion: row.version,
+          targetSha256,
+          archivePath,
         });
-    }
-    const profile = structuredClone(current);
-    profile.dsh.profile.bundles = [name, "my-plugin"];
-    await writeFile(join(f.profile, "package.json"), JSON.stringify(profile));
-    const patch = await readFile(join(f.profile, "cordis.patch.yml"));
-    await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
-    const receipt = {
-      schema: 2,
-      id,
-      directory: operation,
-      ...targets[0],
-      targets,
-      processIdentity: "old-host",
-      stage: "unknown",
-      diagnostic: "PACKAGE_WRITERS_UNCONFIRMED",
-      logs: ["original-pnpm.log"],
-      completionProof: null,
-      processes: [
-        {
-          pid: variant === "active" ? process.pid : pid,
-          grouped: process.platform !== "win32",
-          startIdentity: "observed",
-          sawAlive: variant !== "unobserved",
-        },
-      ],
-    };
-    const original = JSON.stringify(receipt);
-    await writeFile(join(operation, "receipt.json"), original);
-    if (variant === "tampered") await writeFile(targets[0].archivePath, "changed");
-    let installs = 0;
-    const options = {
-      ...f,
-      legacyData: f.home,
-      install: async (options) => {
-        await options.beforeInstall();
-        installs++;
-        assert.deepEqual(
-          options.packages,
-          targets.map((row) => row.archivePath),
-        );
-        assert.equal(options.seed, undefined);
-        assert.equal(options.activateNewBundles, false);
-        if (variant === "failure") throw Error("GEA_COMPANY_INSTALL_FAILED: retry-pnpm.log");
-        const after = structuredClone(profile);
-        for (const target of targets) {
-          after.dependencies[target.packageName] = "file:" + target.archivePath;
-          await mkdir(join(f.profile, "node_modules", target.packageName), {
+        if (index === 0)
+          await rm(join(f.profile, "node_modules", row.name), {
             recursive: true,
           });
-          await writeFile(
-            join(f.profile, "node_modules", target.packageName, "package.json"),
-            JSON.stringify({
-              name: target.packageName,
-              version:
-                variant === "partial" && target.packageName === name
-                  ? "0.0.130"
-                  : target.targetVersion,
-            }),
-          );
-        }
-        await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
-        await options.complete({
-          writeFileAtomic: writeFile,
-          result: { logPath: "retry-pnpm.log" },
+      }
+      const profile = structuredClone(current);
+      profile.dsh.profile.bundles = [name, "my-plugin"];
+      await writeFile(join(f.profile, "package.json"), JSON.stringify(profile));
+      const patch = await readFile(join(f.profile, "cordis.patch.yml"));
+      await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+      const receipt = {
+        schema: 2,
+        id,
+        directory: operation,
+        ...targets[0],
+        targets,
+        processIdentity: "old-host",
+        stage: "unknown",
+        diagnostic: "PACKAGE_WRITERS_UNCONFIRMED",
+        logs: ["original-pnpm.log"],
+        completionProof: null,
+        processes: [
+          {
+            pid: windows || variant === "active" ? process.pid : pid,
+            grouped: process.platform !== "win32",
+            startIdentity: "observed",
+            sawAlive: variant !== "unobserved",
+          },
+        ],
+      };
+      const original = JSON.stringify(receipt);
+      await writeFile(join(operation, "receipt.json"), original);
+      if (process.platform === "win32")
+        await writeWindowsJob(operation, receipt.processes[0], {
+          stage: variant === "active" ? "running" : "empty",
+          exitCode: windows ? 1 : 0,
         });
-      },
-    };
-    if (variant !== "success") {
-      await assert.rejects(
-        refreshCompanyStartup(options),
-        variant === "failure"
-          ? /GEA_COMPANY_INSTALL_FAILED/
-          : variant === "partial"
-            ? /GEA_REFRESH_PROFILE_NOT_PRESERVED/
-            : variant === "tampered"
-              ? /GEA_REFRESH_UPDATE_UNKNOWN/
-              : /GEA_REFRESH_UPDATE_PENDING/,
-      );
-      assert.equal(installs, ["failure", "partial"].includes(variant) ? 1 : 0);
-      assert.equal(await readFile(join(operation, "receipt.json"), "utf8"), original);
-      continue;
-    }
-    const result = await refreshCompanyStartup(options);
-    assert.equal(result.refresh.status, "pending-restart-preserved");
-    assert.equal(result.refresh.changed, true);
-    assert.equal(result.cleanup, null);
-    const saved = JSON.parse(await readFile(join(operation, "receipt.json")));
-    assert.equal(saved.stage, "pending-restart");
-    assert.equal(saved.processIdentity, "old-host");
-    assert.deepEqual(saved.targets, targets);
-    assert.deepEqual(saved.logs, ["original-pnpm.log", "retry-pnpm.log"]);
-    const after = JSON.parse(await readFile(join(f.profile, "package.json")));
-    assert.deepEqual(after.dsh, profile.dsh);
-    assert.equal(after.dependencies["my-plugin"], "1.0.0");
-    assert.deepEqual(await readFile(join(f.profile, "cordis.patch.yml")), patch);
-    assert.equal((await refreshCompanyStartup(options)).refresh.changed, false);
-    assert.equal(installs, 1);
-  }
+      if (variant === "tampered") await writeFile(targets[0].archivePath, "changed");
+      let installs = 0;
+      const options = {
+        ...f,
+        legacyData: f.home,
+        install: async (options) => {
+          if (variant === "windows-job-changed")
+            await writeWindowsJob(operation, receipt.processes[0], { stage: "running" });
+          await options.beforeInstall();
+          installs++;
+          assert.deepEqual(
+            options.packages,
+            targets.map((row) => row.archivePath),
+          );
+          assert.equal(options.seed, undefined);
+          assert.equal(options.activateNewBundles, false);
+          if (variant === "failure") throw Error("GEA_COMPANY_INSTALL_FAILED: retry-pnpm.log");
+          const after = structuredClone(profile);
+          for (const target of targets) {
+            after.dependencies[target.packageName] = "file:" + target.archivePath;
+            await mkdir(join(f.profile, "node_modules", target.packageName), {
+              recursive: true,
+            });
+            await writeFile(
+              join(f.profile, "node_modules", target.packageName, "package.json"),
+              JSON.stringify({
+                name: target.packageName,
+                version:
+                  variant === "partial" && target.packageName === name
+                    ? "0.0.130"
+                    : target.targetVersion,
+              }),
+            );
+          }
+          await writeFile(join(f.profile, "package.json"), JSON.stringify(after));
+          await options.complete({
+            writeFileAtomic: writeFile,
+            result: { logPath: "retry-pnpm.log" },
+          });
+        },
+      };
+      if (!["success", "windows-reused-pid"].includes(variant)) {
+        await assert.rejects(
+          refreshCompanyStartup(options),
+          variant === "failure"
+            ? /GEA_COMPANY_INSTALL_FAILED/
+            : variant === "partial"
+              ? /GEA_REFRESH_PROFILE_NOT_PRESERVED/
+              : variant === "tampered"
+                ? /GEA_REFRESH_UPDATE_UNKNOWN/
+                : /GEA_REFRESH_UPDATE_PENDING/,
+        );
+        assert.equal(installs, ["failure", "partial"].includes(variant) ? 1 : 0);
+        assert.equal(await readFile(join(operation, "receipt.json"), "utf8"), original);
+        return;
+      }
+      const result = await refreshCompanyStartup(options);
+      assert.equal(result.refresh.status, "pending-restart-preserved");
+      assert.equal(result.refresh.changed, true);
+      assert.equal(result.cleanup, null);
+      const saved = JSON.parse(await readFile(join(operation, "receipt.json")));
+      assert.equal(saved.stage, "pending-restart");
+      assert.equal(saved.processIdentity, "old-host");
+      assert.deepEqual(saved.targets, targets);
+      assert.deepEqual(saved.logs, ["original-pnpm.log", "retry-pnpm.log"]);
+      const after = JSON.parse(await readFile(join(f.profile, "package.json")));
+      assert.deepEqual(after.dsh, profile.dsh);
+      assert.equal(after.dependencies["my-plugin"], "1.0.0");
+      assert.deepEqual(await readFile(join(f.profile, "cordis.patch.yml")), patch);
+      assert.equal((await refreshCompanyStartup(options)).refresh.changed, false);
+      assert.equal(installs, 1);
+    });
 });
 
 test("interrupted updates, unknown receipts and active writers still block startup refresh", async (t) => {
