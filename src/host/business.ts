@@ -2839,12 +2839,14 @@ export class Business {
         };
       };
       const reportScope = await resolveScope();
-      return orderReportWithEdits(
+      const readOnly = payload.operation === "load";
+      const result = await orderReportWithEdits(
         payload,
         { ...auth, reportScope },
         async (sql, parameters, requestId) => {
           signal.throwIfAborted();
-          if ((await resolveScope()).key !== reportScope.key)
+          this.assertExecutionAllowed("order", readOnly ? "view" : "submit");
+          if (!readOnly && (await resolveScope()).key !== reportScope.key)
             throw Error("ORDER_REPORT_SCOPE_CHANGED");
           if (requestId)
             return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true, {
@@ -2853,6 +2855,12 @@ export class Business {
           return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true);
         },
       );
+      // Read results stay private until the final scope check; writes still check every statement.
+      signal.throwIfAborted();
+      if (readOnly && (await resolveScope()).key !== reportScope.key)
+        throw Error("ORDER_REPORT_SCOPE_CHANGED");
+      signal.throwIfAborted();
+      return result;
     };
     if (payload.operation === "load") return run();
     const task = this.orderReportQueue.then(run, run);

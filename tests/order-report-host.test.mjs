@@ -69,6 +69,7 @@ function gateway(
     expireFirstSave = false,
     bases = ["郑州"],
     beforeSave,
+    changeScopeOnRead = false,
   } = {},
 ) {
   const ordered = [...bases].sort();
@@ -78,7 +79,8 @@ function gateway(
       : "order:bases:" + createHash("sha256").update(JSON.stringify(ordered)).digest("base64url");
   let row,
     loads = 0,
-    sessions = 0;
+    sessions = 0,
+    scopeReads = 0;
   const writes = [],
     saveAttempts = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
@@ -96,8 +98,12 @@ function gateway(
     assert.equal(headers.get("X-Delegation-Token"), "synthetic-order");
     if (path.endsWith("/ai/gateway/sql/execute")) {
       if (body.sql.startsWith("SELECT DISTINCT belong_base")) {
+        scopeReads++;
         assert.match(body.sql, /LIMIT 200$/);
-        const available = scopeChanged && writes.length ? ["上海"] : [...bases].sort();
+        const available =
+          (scopeChanged && writes.length) || (changeScopeOnRead && loads)
+            ? ["上海"]
+            : [...bases].sort();
         const page = available
           .filter(
             (base) => body.parameters.scope_after === null || base > body.parameters.scope_after,
@@ -184,6 +190,9 @@ function gateway(
     },
     get sessions() {
       return sessions;
+    },
+    get scopeReads() {
+      return scopeReads;
     },
   };
 }
@@ -276,6 +285,21 @@ test("order report scope reads all bases with gateway-sized keyset pages", async
   );
   assert.ok(Buffer.byteLength(result.scope.key) <= 64);
 });
+test("report loads check scope at both boundaries without a scan per report row", async (t) => {
+  const remote = gateway(t);
+  await business(t).orderReport({ operation: "load", period }, new AbortController().signal);
+  assert.equal(remote.scopeReads, 2);
+  assert.equal(remote.writes.length, 0);
+});
+
+test("scope changes during a read reject the result before it is returned", async (t) => {
+  gateway(t, { changeScopeOnRead: true });
+  await assert.rejects(
+    business(t).orderReport({ operation: "load", period }, new AbortController().signal),
+    /ORDER_REPORT_SCOPE_CHANGED/,
+  );
+});
+
 test("an oversized scope is rejected instead of silently retaining the first page", async (t) => {
   gateway(t, {
     bases: Array.from({ length: 1001 }, (_, index) => "B" + String(index).padStart(4, "0")),
