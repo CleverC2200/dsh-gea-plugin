@@ -55,7 +55,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build:native-system
       - name: Check Desktop TypeScript projects
-        run: pnpm exec tsc -b apps/desktop/tsconfig.json
+        run: pnpm run typecheck
       - name: Verify checked targets and native update authorization
         run: pnpm exec vitest run apps/desktop/tests/preload-app.spec.ts apps/desktop/tests/main-startup.spec.ts apps/desktop/tests/update-coordinator.spec.ts apps/desktop/tests/update-presentation.spec.ts
       - name: Verify paired update decision

@@ -398,6 +398,15 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check", "open"]);
   assert.equal(updates, 0);
   assert.equal(await panel.getByRole("button", { name: "更新全部", exact: true }).count(), 0);
+  await mkdir(".runtime/detail-summary", { recursive: true });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 840 });
+    await page.screenshot({ path: `.runtime/detail-summary/company-update-${width}.png` });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      true,
+    );
+  }
   await panel.getByRole("button", { name: "取消已准备的更新", exact: true }).click();
   await panel.getByText(/已为客户端 .* 缓存插件/).waitFor({ state: "hidden" });
   await page.evaluate(() => window.fixture.dispose());
