@@ -538,7 +538,12 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             <Button
               size="sm"
               variant="primary"
-              disabled={Boolean(nativeBusy || coordinating || restartBusy)}
+              disabled={Boolean(
+                nativeBusy ||
+                coordinating ||
+                restartBusy ||
+                (companyActive && company?.phase !== "prepared"),
+              )}
               onClick={() => {
                 void beginDesktop();
               }}

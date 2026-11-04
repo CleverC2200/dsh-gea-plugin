@@ -1088,6 +1088,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     publish();
   }
   async function confirmDesktop() {
+    if (active || (await readCompanyUpdate(options.profile.dir))?.phase !== "verifying") return;
     await withFileLock(
       join(options.profile.dir, "package.json"),
       async () => {

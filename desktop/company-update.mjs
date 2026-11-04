@@ -95,7 +95,7 @@ export async function applyCompanyUpdate({
 }) {
   const profile = join(home, "profiles/desktop");
   const receipt = await readCompanyUpdate(profile);
-  if (receipt?.desktopVersion === desktopVersion && receipt.phase === "failed")
+  if (receipt && receipt.desktopVersion === desktopVersion && receipt.phase === "failed")
     throw Error("GEA_COMPANY_UPDATE_RECOVERY_REQUIRED");
   if (!companyUpdateActive(receipt) || receipt.desktopVersion !== desktopVersion) return null;
   if (receipt.phase === "verifying") return { status: "company-update-verifying", changed: false };
@@ -118,10 +118,17 @@ export async function applyCompanyUpdate({
         companyReleaseIndex(name, left.find((row) => row.name === name).version) >=
         companyReleaseIndex(name, right.find((row) => row.name === name).version),
     );
+  for (const target of receipt.targets) {
+    const bundled = manifest.packages.find((row) => row.name === target.name);
+    if (target.version === bundled.version && target.sha256 !== bundled.sha256)
+      throw Error("GEA_COMPANY_UPDATE_CONTENT_MISMATCH");
+  }
   const useCache = compatible && above(receipt.targets, manifest.packages);
   if (compatible && !useCache && !above(manifest.packages, receipt.targets))
     throw Error("GEA_COMPANY_UPDATE_COMBINATION_UNCONFIRMED");
-  const selected = useCache ? receipt.targets : manifest.packages;
+  const selected = companyPackageNames.map((name) =>
+    (useCache ? receipt.targets : manifest.packages).find((row) => row.name === name),
+  );
   const plan = planBundledCompanyRefresh(
     current,
     installed,
@@ -205,7 +212,7 @@ export async function applyCompanyUpdate({
         );
         started = true;
       },
-      complete: async ({ writeFileAtomic }) => {
+      complete: async ({ writeFileAtomic, archiveReplacements = [] }) => {
         const after = JSON.parse(await readFile(join(profile, "package.json")));
         const withoutCompany = (value) => {
           const copy = structuredClone(value);
@@ -213,7 +220,14 @@ export async function applyCompanyUpdate({
           return copy;
         };
         const { isDeepStrictEqual } = await import("node:util");
-        if (!isDeepStrictEqual(withoutCompany(current), withoutCompany(after)))
+        const expectedManifest = structuredClone(current);
+        for (const replacement of archiveReplacements) {
+          if (expectedManifest.dependencies[replacement.name] !== replacement.before)
+            throw Error("GEA_COMPANY_UPDATE_CONFIG_CHANGED");
+          expectedManifest.dependencies[replacement.name] =
+            "file:" + replacement.path.replaceAll("\\", "/");
+        }
+        if (!isDeepStrictEqual(withoutCompany(expectedManifest), withoutCompany(after)))
           throw Error("GEA_COMPANY_UPDATE_CONFIG_CHANGED");
         const patch = async (base) => {
           try {

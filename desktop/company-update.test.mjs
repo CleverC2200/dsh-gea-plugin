@@ -168,6 +168,11 @@ test("a newer installed suite is never downgraded, and disabled profiles are pre
 });
 
 test("changed cached bytes, cancelled consent and malformed receipts cannot install", async (t) => {
+  const same = await fixture(t, { bundled: 5, candidate: 5 });
+  same.receipt.targets[0].sha256 = "e".repeat(64);
+  await writeFile(companyUpdatePath(same.profile), JSON.stringify(same.receipt));
+  await assert.rejects(applyCompanyUpdate(same.options), /CONTENT_MISMATCH/);
+  assert.equal(same.installs(), 0);
   const f = await fixture(t);
   await writeFile(
     join(f.profile, "gea/plugin-updates/cache", f.receipt.targets[0].sha256 + ".tgz"),
@@ -198,4 +203,12 @@ test("interrupted or partial installation retains recovery evidence, never confi
     );
     await f.preserve();
   }
+});
+
+test("ordinary startup without consent or a desktop version does not install anything", async (t) => {
+  const f = await fixture(t);
+  await rm(companyUpdatePath(f.profile));
+  assert.equal(await applyCompanyUpdate({ ...f.options, desktopVersion: undefined }), null);
+  assert.equal(f.installs(), 0);
+  await f.preserve();
 });
