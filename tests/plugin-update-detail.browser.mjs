@@ -412,11 +412,13 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   await panel.getByText(/已为客户端 .* 缓存插件/).waitFor({ state: "hidden" });
   await page.evaluate(() => window.fixture.dispose());
   await page.goto(`http://127.0.0.1:${server.address().port}/?legacy`);
+  await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
   await page.evaluate(() => window.fixture.locale("en"));
   await page.getByRole("button", { name: "View update status", exact: true }).click();
-  await panel.getByRole("button", { name: "Update all", exact: true }).click();
-  await page.waitForFunction(() => document.body.textContent.includes("Company plugins"));
-  await page.waitForTimeout(200);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/update-all")),
+    panel.getByRole("button", { name: "Update all", exact: true }).click(),
+  ]);
   assert.equal(updates, 1);
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
   await page.evaluate(() => window.fixture.dispose());
