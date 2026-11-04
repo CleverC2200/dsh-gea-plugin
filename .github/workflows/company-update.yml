@@ -1,0 +1,26 @@
+name: Company update coordination
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: company-update-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  startup:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+      - name: Verify coordinated startup and completion
+        run: node --test desktop/company-update.test.mjs

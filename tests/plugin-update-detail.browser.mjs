@@ -59,13 +59,16 @@ test("official detail diagnostics navigate to the shared update panel", async (t
     checks = 0,
     updates = 0,
     sourceMissing = false,
-    problem;
+    problem,
+    companyUpdate = null,
+    prepared = 0;
   const status = () => ({
     revision: revision++,
     hostProcessIdentity: "fixture-host",
     challenge: "fixture-nonce",
     checkTimeoutMs: 30000,
     pollIntervalMs: 1000,
+    companyUpdate,
     items: names.map((packageName) => ({
       packageName,
       state: phase,
@@ -99,6 +102,12 @@ test("official detail diagnostics navigate to the shared update panel", async (t
         }
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
+      if (url.endsWith("/company-prepare")) {
+        assert.deepEqual(JSON.parse(body), { desktopVersion: "0.2.0-rc.2.20261105.1" });
+        prepared++;
+        companyUpdate = { phase: "prepared", desktopVersion: "0.2.0-rc.2.20261105.1" };
+      }
+      if (url.endsWith("/company-cancel")) companyUpdate = { ...companyUpdate, phase: "cancelled" };
       if (url.endsWith("/update-all")) {
         updates++;
         assert.deepEqual(JSON.parse(body), {
@@ -141,6 +150,24 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   page.setDefaultTimeout(5000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
+  await page.addInitScript(() => {
+    window.nativeUpdateCalls = [];
+    window.dshDesktop = {
+      protocolVersion: 1,
+      appVersion: async () => "0.2.0-rc.2.20261104.1",
+      updates: {
+        status: async () => ({ phase: "idle" }),
+        subscribe: () => () => {},
+        check: async () => {
+          window.nativeUpdateCalls.push("check");
+          return { phase: "available", version: "0.2.0-rc.2.20261105.1" };
+        },
+        open: async () => {
+          window.nativeUpdateCalls.push("open");
+        },
+      },
+    };
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
   assert.equal(
@@ -361,6 +388,18 @@ test("official detail diagnostics navigate to the shared update panel", async (t
       true,
     );
   }
+  assert.equal(prepared, 0);
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
+  sourceMissing = false;
+  phase = "available";
+  await panel.getByRole("button", { name: "检查客户端更新", exact: true }).click();
+  await panel.getByText(/已为客户端 0.2.0-rc.2.20261105.1 缓存插件/).waitFor();
+  assert.equal(prepared, 1);
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check", "open"]);
+  assert.equal(updates, 0);
+  assert.equal(await panel.getByRole("button", { name: "更新全部", exact: true }).count(), 0);
+  await panel.getByRole("button", { name: "取消已准备的更新", exact: true }).click();
+  await panel.getByText(/已为客户端 .* 缓存插件/).waitFor({ state: "hidden" });
   await page.evaluate(() => window.fixture.dispose());
   assert.deepEqual(errors, []);
 });

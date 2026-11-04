@@ -752,6 +752,7 @@
     }
   ],
   "testOwners": {
+    "desktop/company-update.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/company-bootstrap.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/company-gea-refresh.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/legacy-gea-cleanup.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",

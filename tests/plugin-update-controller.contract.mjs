@@ -1269,3 +1269,30 @@ test("same-version inactive package reports its load diagnosis before current st
   assert.equal(row.diagnostic, "UPDATE_PACKAGE_INACTIVE");
   assert.deepEqual(row.problem, { kind: "policy", code: "inactive" });
 });
+
+test("combined updates cache the approved suite without installation, serialize against plugin updates and preserve cancellation", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { companyVersions: true, releasePeers: {} });
+  const before = await readFile(join(f.dir, "package.json"));
+  const original = process.env.GEA_DESKTOP_VERSION;
+  process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261104.1";
+  t.after(() => {
+    if (original === undefined) delete process.env.GEA_DESKTOP_VERSION;
+    else process.env.GEA_DESKTOP_VERSION = original;
+  });
+  const controller = createPluginUpdateController({
+    ...f.options,
+    runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+  });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.prepareDesktop("0.2.0-rc.2.20261105.1");
+  assert.deepEqual(await controller.companyStatus(), {
+    phase: "prepared",
+    desktopVersion: "0.2.0-rc.2.20261105.1",
+  });
+  assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
+  await assert.rejects(controller.submitBatch([]), /UPDATE_OPERATION_BLOCKED/);
+  await controller.cancelDesktop();
+  assert.equal((await controller.companyStatus()).phase, "cancelled");
+});

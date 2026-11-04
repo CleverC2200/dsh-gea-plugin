@@ -14,6 +14,9 @@ function start(ownsLock) {
       if (name === "electron")
         return {
           app: {
+            getVersion() {
+              return "0.2.0-rc.2.20261104.1";
+            },
             requestSingleInstanceLock() {
               events.push("lock");
               return ownsLock;
@@ -80,6 +83,7 @@ test("the company desktop packages every module used by cleanup and refresh", as
     "official-main.cjs",
     "company-bootstrap.mjs",
     "company-gea-refresh.mjs",
+    "company-update.mjs",
     "company-archives.mjs",
     "legacy-gea-cleanup.mjs",
     "plugin-storage.mjs",
