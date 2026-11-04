@@ -437,24 +437,25 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const restart = desktopRestart();
   const company = plugins.companyUpdate;
   const companyActive = company && !["completed", "failed", "cancelled"].includes(company.phase);
-  const beginDesktop = async () => {
+  const beginDesktop = async (pluginRequest = false) => {
     setCoordinating(true);
     setCoordinationFailed(false);
     try {
       if (!client.supported) {
-        await updates.updateAll();
+        if (pluginRequest) await updates.updateAll();
         return;
       }
-      if (!client.canCheck && !state?.version) {
+      const hasTarget = state && ["available", "ready"].includes(state.phase);
+      if (!client.canCheck && !hasTarget) {
         await desktop.open();
         return;
       }
-      const target =
-        state && ["available", "ready"].includes(state.phase) ? state : await desktop.check();
-      if (target.phase === "idle") {
+      const target = hasTarget ? state : await desktop.check();
+      if (pluginRequest && ["idle", "error"].includes(target.phase)) {
         await updates.updateAll();
         return;
       }
+      if (!hasTarget && !pluginRequest) return;
       if (!target.version || !["available", "ready"].includes(target.phase)) return;
       await updates.prepareDesktop(target.version);
       await desktop.open(target.version);
@@ -574,7 +575,7 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
           <DetailActions
             updates={updates}
             t={t}
-            updateAll={client.canCheck ? beginDesktop : undefined}
+            updateAll={client.canCheck ? () => beginDesktop(true) : undefined}
           />
         ) : null}
         {plugins.transportError ? (

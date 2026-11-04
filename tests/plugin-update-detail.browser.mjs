@@ -160,7 +160,9 @@ test("official detail diagnostics navigate to the shared update panel", async (t
         subscribe: () => () => {},
         check: async () => {
           window.nativeUpdateCalls.push("check");
-          return { phase: "available", version: "0.2.0-rc.2.20261105.1" };
+          return location.search.includes("no-feed")
+            ? { phase: "error", failure: "check" }
+            : { phase: "available", version: "0.2.0-rc.2.20261105.1" };
         },
         open: async () => {
           window.nativeUpdateCalls.push("open");
@@ -394,6 +396,10 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   sourceMissing = false;
   phase = "available";
   await panel.getByRole("button", { name: "检查客户端更新", exact: true }).click();
+  await panel.getByRole("button", { name: "更新客户端及插件", exact: true }).waitFor();
+  assert.equal(prepared, 0);
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check"]);
+  await panel.getByRole("button", { name: "更新客户端及插件", exact: true }).click();
   await panel.getByText(/已为客户端 0.2.0-rc.2.20261105.1 缓存插件/).waitFor();
   assert.equal(prepared, 1);
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check", "open"]);
@@ -421,6 +427,17 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   ]);
   assert.equal(updates, 1);
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
+  await page.evaluate(() => window.fixture.dispose());
+  await page.goto(`http://127.0.0.1:${server.address().port}/?no-feed`);
+  await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
+  await page.getByRole("button", { name: "View update status", exact: true }).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/update-all")),
+    panel.getByRole("button", { name: "Update all", exact: true }).click(),
+  ]);
+  assert.equal(updates, 2);
+  assert.equal(prepared, 1);
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check"]);
   await page.evaluate(() => window.fixture.dispose());
   assert.deepEqual(errors, []);
 });
