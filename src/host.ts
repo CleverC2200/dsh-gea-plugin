@@ -244,6 +244,8 @@ export async function apply(
     "logout",
     "login/start",
     "login/poll",
+    "login/password/prepare",
+    "login/password",
   ]);
 
   // 只装载 Workbench 已登记的 v2 HTML 包；缺少分离声明由装载校验拒绝。
@@ -856,10 +858,16 @@ export async function apply(
                   value = business.selectEnvironment(payload);
                   break;
                 case "logout":
-                  value = business.logout(payload);
+                  value = await business.logout(payload, request.signal);
                   break;
                 case "login/start":
                   value = await business.loginStart(request.signal, payload);
+                  break;
+                case "login/password/prepare":
+                  value = await business.passwordLoginPrepare(request.signal, payload);
+                  break;
+                case "login/password":
+                  value = await business.passwordLogin(payload, request.signal);
                   break;
                 case "login/poll":
                   value = await business.loginPoll(payload, request.signal);
