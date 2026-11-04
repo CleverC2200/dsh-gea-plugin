@@ -12,6 +12,7 @@ import {
   parseCompanyUpdate,
 } from "./company-update.mjs";
 import { companyPackageNames } from "./company-archives.mjs";
+import { refreshCompanyStartup } from "./company-bootstrap.mjs";
 const core = { head: "a".repeat(40), version: "0.2.0-rc.2" };
 const desktopVersion = "0.2.0-rc.2.20261105.1";
 const versions = (n) => ["0.1." + n, "0.6.3-company." + n, "0.0." + n];
@@ -140,7 +141,11 @@ test("client and a newer compatible cached suite are installed before Host start
       ),
       false,
     );
-  await applyCompanyUpdate(f.options);
+  const startup = await refreshCompanyStartup({
+    ...f.options,
+    legacyData: join(f.options.home, "legacy"),
+  });
+  assert.equal(startup.cleanup, null);
   assert.equal(f.installs(), 1);
   await f.preserve();
 });
