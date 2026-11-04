@@ -6,7 +6,10 @@ import type {
 type Carrier = {
   protocolVersion: number;
   appVersion?: () => Promise<string>;
-  updates?: DesktopUpdateBridge;
+  updates?: DesktopUpdateBridge & {
+    check?: () => Promise<DesktopUpdatePresentation>;
+    open(version?: string): Promise<void>;
+  };
 };
 
 export function createDesktopUpdates() {
@@ -14,6 +17,7 @@ export function createDesktopUpdates() {
   const bridge = carrier?.protocolVersion === 1 ? carrier.updates : undefined;
   let snapshot: {
     supported: boolean;
+    canCheck: boolean;
     current?: string;
     versionFailed: boolean;
     presentation?: DesktopUpdatePresentation;
@@ -21,6 +25,7 @@ export function createDesktopUpdates() {
     opening: boolean;
   } = {
     supported: bridge !== undefined,
+    canCheck: typeof bridge?.check === "function",
     versionFailed: false,
     failed: false,
     opening: false,
@@ -63,7 +68,13 @@ export function createDesktopUpdates() {
         listeners.delete(listener);
       };
     },
-    open: async () => {
+    check: async () => {
+      if (!bridge?.check) throw Error("UPDATE_CHECK_UNAVAILABLE");
+      const presentation = await bridge.check();
+      publish({ presentation, failed: false });
+      return presentation;
+    },
+    open: async (version?: string) => {
       if (
         !live ||
         !bridge ||
@@ -76,7 +87,7 @@ export function createDesktopUpdates() {
         return;
       publish({ opening: true });
       try {
-        await bridge.open();
+        await bridge.open(version);
       } catch {
         publish({ failed: true });
       } finally {

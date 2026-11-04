@@ -1,0 +1,62 @@
+name: Company update coordination
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      core_sha:
+        description: "Optional full company Core SHA for the paired desktop contract checks"
+        required: false
+        default: ""
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: company-update-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  startup:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+      - name: Verify coordinated startup and completion
+        run: node --test desktop/company-update.test.mjs
+  core-contract:
+    if: github.event_name == 'workflow_dispatch' && inputs.core_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ inputs.core_sha }}
+          path: core
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: core/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+          cache: pnpm
+          cache-dependency-path: core/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:native-system
+      - name: Check Desktop TypeScript projects
+        run: pnpm run typecheck
+      - name: Verify checked targets and native update authorization
+        run: pnpm exec vitest run apps/desktop/tests/preload-app.spec.ts apps/desktop/tests/main-startup.spec.ts apps/desktop/tests/update-coordinator.spec.ts apps/desktop/tests/update-presentation.spec.ts
+      - name: Verify paired update decision
+        run: node --experimental-strip-types scripts/verify-translation-pairing.ts .agents/notes/implemented/feature/2026-11-04-desktop-update-check.md

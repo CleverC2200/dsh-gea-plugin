@@ -9,7 +9,14 @@ import { companyPackageNames, projectPluginRelease } from "../../../src/shared/p
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 export async function controllerFixture(
   t,
-  { mode = "success", sourceFailure, fileCommit, allUpdates = false, releasePeers = {} } = {},
+  {
+    mode = "success",
+    sourceFailure,
+    fileCommit,
+    allUpdates = false,
+    releasePeers = {},
+    companyVersions = false,
+  } = {},
 ) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "plugin-update-real-profile-")));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -21,7 +28,9 @@ export async function controllerFixture(
   await writeFile(join(dir, "node_modules/.modules.yaml"), JSON.stringify({ storeDir: store }));
   await mkdir(anchor);
   await writeFile(join(anchor, "package.json"), JSON.stringify({ dependencies: {} }));
-  const oldVersions = ["1.0.0", "2.0.0", "3.0.0"];
+  const oldVersions = companyVersions
+    ? ["0.1.4", "0.6.3-company.4", "0.0.4"]
+    : ["1.0.0", "2.0.0", "3.0.0"];
   const contracts = JSON.parse(
     await readFile(
       new URL("../../../scripts/fixtures/plugin-release/production-exports.json", import.meta.url),
@@ -34,11 +43,13 @@ export async function controllerFixture(
   for (const [index, name] of companyPackageNames.entries()) {
     const contract = contracts.find((row) => row.name === name),
       oldVersion = oldVersions[index],
-      version = allUpdates
-        ? ["1.1.0", "2.1.0", "3.1.0"][index]
-        : index === 2
-          ? "3.1.0"
-          : oldVersion;
+      version = companyVersions
+        ? ["0.1.5", "0.6.3-company.5", "0.0.5"][index]
+        : allUpdates
+          ? ["1.1.0", "2.1.0", "3.1.0"][index]
+          : index === 2
+            ? "3.1.0"
+            : oldVersion;
     const manifest = {
       name,
       version,

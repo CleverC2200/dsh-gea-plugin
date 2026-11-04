@@ -1,3 +1,4 @@
+import { applyCompanyUpdate } from "./company-update.mjs";
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, writeFile, lstat, rm, mkdtemp } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -780,12 +781,18 @@ export async function bootstrapCompanyProfile({
 }
 
 export async function refreshCompanyStartup({ legacyData, ...options }) {
-  const refresh = await refreshBundledCompanySuite({
-    ...options,
-    install: options.install ?? installCompanyPackages,
-  });
+  const refresh =
+    (await applyCompanyUpdate({
+      ...options,
+      install: options.install ?? installCompanyPackages,
+    })) ??
+    (await refreshBundledCompanySuite({
+      ...options,
+      install: options.install ?? installCompanyPackages,
+    }));
   const cleanup =
-    legacyData && refresh.status !== "pending-restart-preserved"
+    legacyData &&
+    !["pending-restart-preserved", "company-update-verifying"].includes(refresh.status)
       ? await cleanupLegacyGea({
           data: legacyData,
           home: options.home,

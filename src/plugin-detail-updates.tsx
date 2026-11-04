@@ -51,7 +51,10 @@ function UpdateActions({ subject, openUpdates, t }: Props): ReactNode {
 function DetailActions({
   updates,
   t,
-}: { updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
+  updateAll,
+}: { updates: Owner; updateAll?: () => Promise<void> } & PropsLocale<
+  typeof pluginUpdateLocale
+>): ReactNode {
   const state = useDetail(updates);
   const available =
     state.items.some((row) => row.state === "available" && row.planId) &&
@@ -75,7 +78,7 @@ function DetailActions({
           variant="primary"
           disabled={busy}
           onClick={() => {
-            void updates.updateAll();
+            void (updateAll ? updateAll() : updates.updateAll());
           }}
         >
           {t("updateAll")}
@@ -374,6 +377,7 @@ function UpdateEntry({
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   const attention =
     client.failed ||
+    (plugins.companyUpdate && !["completed", "cancelled"].includes(plugins.companyUpdate.phase)) ||
     (client.presentation && client.presentation.phase !== "idle") ||
     plugins.transportError ||
     plugins.items.some((row) => !["idle", "current", "completed"].includes(row.state));
@@ -402,6 +406,7 @@ function UpdateToggleBadge({
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   if (
     !client.failed &&
+    (!plugins.companyUpdate || ["completed", "cancelled"].includes(plugins.companyUpdate.phase)) &&
     (!client.presentation || client.presentation.phase === "idle") &&
     !plugins.transportError &&
     plugins.items.every((row) => ["idle", "current", "completed"].includes(row.state))
@@ -417,6 +422,8 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const plugins = useDetail(updates);
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   const [restarting, setRestarting] = useState(false);
+  const [coordinating, setCoordinating] = useState(false);
+  const [coordinationFailed, setCoordinationFailed] = useState(false);
   const [restartResult, setRestartResult] = useState<"cancelled" | "failed">();
   const state = client.presentation;
   const nativeBusy =
@@ -428,6 +435,36 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
     plugins.submitting !== null ||
     plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
   const restart = desktopRestart();
+  const company = plugins.companyUpdate;
+  const companyActive = company && !["completed", "failed", "cancelled"].includes(company.phase);
+  const beginDesktop = async (pluginRequest = false) => {
+    setCoordinating(true);
+    setCoordinationFailed(false);
+    try {
+      if (!client.supported) {
+        if (pluginRequest) await updates.updateAll();
+        return;
+      }
+      const hasTarget = state && ["available", "ready"].includes(state.phase);
+      if (!client.canCheck && !hasTarget) {
+        await desktop.open();
+        return;
+      }
+      const target = hasTarget ? state : await desktop.check();
+      if (pluginRequest && ["idle", "error"].includes(target.phase)) {
+        await updates.updateAll();
+        return;
+      }
+      if (!hasTarget && !pluginRequest) return;
+      if (!target.version || !["available", "ready"].includes(target.phase)) return;
+      await updates.prepareDesktop(target.version);
+      await desktop.open(target.version);
+    } catch {
+      setCoordinationFailed(true);
+    } finally {
+      setCoordinating(false);
+    }
+  };
   const failure = state?.failure;
   const failureText =
     failure === "check" || failure === "check-network"
@@ -441,6 +478,33 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             : t("desktopFailureInstall");
   return (
     <div className="gea-updates-panel">
+      <p>{t("unifiedPolicy")}</p>
+      {company && company.phase !== "cancelled" ? (
+        <p role="status">
+          {t(
+            company.phase === "completed"
+              ? "companyCompleted"
+              : company.phase === "failed"
+                ? "companyFailed"
+                : company.phase === "verifying"
+                  ? "companyVerifying"
+                  : "companyPrepared",
+            { version: company.desktopVersion },
+          )}
+        </p>
+      ) : null}
+      {coordinationFailed ? <p role="alert">{t("companyPreparationFailed")}</p> : null}
+      {company?.phase === "prepared" && !nativeBusy && !coordinating ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void updates.cancelDesktop().catch(() => setCoordinationFailed(true));
+          }}
+        >
+          {t("companyCancel")}
+        </Button>
+      ) : null}
       <section aria-labelledby="gea-desktop-update-title">
         <h2 id="gea-desktop-update-title">{t("desktopTitle")}</h2>
         <dl className="gea-plugin-update-versions">
@@ -479,16 +543,21 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             <Button
               size="sm"
               variant="primary"
-              disabled={Boolean(nativeBusy)}
+              disabled={Boolean(
+                nativeBusy ||
+                coordinating ||
+                restartBusy ||
+                (companyActive && company?.phase !== "prepared"),
+              )}
               onClick={() => {
-                void desktop.open();
+                void beginDesktop();
               }}
             >
               {t(
                 state?.phase === "ready"
                   ? "desktopReady"
                   : state?.phase === "available"
-                    ? "desktopDownload"
+                    ? "companyDownload"
                     : state?.phase === "error" || client.failed
                       ? "desktopRetry"
                       : "desktopCheck",
@@ -499,7 +568,16 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
       </section>
       <section aria-labelledby="gea-plugin-update-title">
         <h2 id="gea-plugin-update-title">{t("pluginsTitle")}</h2>
-        <DetailActions updates={updates} t={t} />
+        {!companyActive &&
+        !nativeBusy &&
+        !coordinating &&
+        !["available", "ready"].includes(state?.phase ?? "") ? (
+          <DetailActions
+            updates={updates}
+            t={t}
+            updateAll={client.canCheck ? () => beginDesktop(true) : undefined}
+          />
+        ) : null}
         {plugins.transportError ? (
           <p role="alert" className="gea-plugin-update-error">
             {t(

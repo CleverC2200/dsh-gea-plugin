@@ -49,6 +49,7 @@ export function readClientPluginModules(ctx: Context): UpdateClientReport["modul
 }
 
 export type PluginDetailUpdateSnapshot = {
+  companyUpdate?: UpdateClientStatus["companyUpdate"];
   items: PluginUpdateRow[];
   checking: boolean;
   submitting: string | null;
@@ -211,7 +212,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       next.revision >= status.revision
     ) {
       status = next;
-      publish({ items: next.items, transportError: null });
+      publish({ items: next.items, companyUpdate: next.companyUpdate, transportError: null });
       return true;
     }
     return false;
@@ -437,6 +438,16 @@ export function createPluginDetailUpdates(ctx: Context) {
       };
     },
     check,
+    async prepareDesktop(desktopVersion: string) {
+      if (!page) throw Error("UPDATE_PAGE_UNAVAILABLE");
+      await request("company-prepare", { desktopVersion }, signalFor(page));
+      await refresh(page);
+    },
+    async cancelDesktop() {
+      if (!page) throw Error("UPDATE_PAGE_UNAVAILABLE");
+      await request("company-cancel", {}, signalFor(page));
+      await refresh(page);
+    },
     update: (name: string) => submitRows(name),
     async updateAll() {
       if (await check()) return submitRows();

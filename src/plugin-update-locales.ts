@@ -1,4 +1,18 @@
 export const en = {
+  unifiedPolicy:
+    "Updates are checked automatically. Confirm to update the client and compatible company plugins together. Restart when your work is ready.",
+  companyDownload: "Update client and plugins",
+  companyPrepared:
+    "Plugins are cached for client {version}. Complete the client installation to apply the compatible suite on startup.",
+  companyVerifying:
+    "Client {version} has restarted. Confirming the installed, backend and page versions.",
+  companyCompleted: "Client {version} and the company plugin runtime versions are confirmed.",
+  companyFailed:
+    "The combined update could not be confirmed. Keep the recovery files and contact your maintainer.",
+  companyPreparationFailed:
+    "The combined update could not be prepared. Check your connection and retry; the client has not been installed by this action.",
+  companyCancel: "Cancel prepared update",
+
   title: "Plugin update",
   updates: "Updates",
   desktopTitle: "Client",
@@ -96,6 +110,15 @@ export const en = {
   dependencies: "The installed plugin versions are incompatible with this update.",
 } as const;
 export const zh: Record<keyof typeof en, string> = {
+  unifiedPolicy: "自动检查更新。确认后一起更新客户端及兼容的公司插件，工作准备好后再重启。",
+  companyDownload: "更新客户端及插件",
+  companyPrepared: "已为客户端 {version} 缓存插件。完成客户端安装后，将在启动时应用兼容组合。",
+  companyVerifying: "客户端 {version} 已重启，正在确认已安装、后台和界面实际版本。",
+  companyCompleted: "客户端 {version} 和公司插件的实际运行版本已确认。",
+  companyFailed: "统一更新尚未确认成功，请保留恢复材料并联系维护者。",
+  companyPreparationFailed: "统一更新准备失败，请检查网络后重试。本次操作尚未安装客户端。",
+  companyCancel: "取消已准备的更新",
+
   title: "插件更新",
   updates: "更新",
   desktopTitle: "客户端",
