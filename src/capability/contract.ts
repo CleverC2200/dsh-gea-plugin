@@ -325,7 +325,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
   const skills = Array.isArray(raw.skills)
     ? (raw.skills as unknown[])
         .filter((skill): skill is string => typeof skill === "string")
-        .slice(0, 10)
+        .slice(0, 50)
     : [];
   const routingRaw =
     typeof raw.routing === "object" && raw.routing !== null

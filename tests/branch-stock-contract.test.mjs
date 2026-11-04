@@ -23,23 +23,30 @@ test(
         expected,
       );
     const manifest = JSON.parse(await readFile(resolve(root, "plugin.json"), "utf8"));
-    const legacy = contractFromPlugin({
-      id: "inventory-fc",
-      label: "分仓库存",
-      consumerCode: "branch-inventory",
-      pageIds: ["inventory-fc"],
-      maxEffect: "view",
-      skill: await readFile(resolve(root, "skills/fc/SKILL.md"), "utf8"),
-      sources: [await readFile(resolve(root, "index.html"), "utf8")],
-    });
+    const profile = JSON.parse(await readFile(resolve(root, "prompt.json"), "utf8"));
+    const legacy = {
+      ...contractFromPlugin({
+        id: "inventory-fc",
+        label: "分仓库存",
+        consumerCode: "branch-inventory",
+        pageIds: ["inventory-fc"],
+        maxEffect: "view",
+        skill: await readFile(resolve(root, "skills/fc/SKILL.md"), "utf8"),
+        sources: [await readFile(resolve(root, "index.html"), "utf8")],
+      }),
+      skills: profile.skills,
+    };
     const joined = await readPluginContract(root, manifest.declarations, legacy);
     assert.equal(joined.id, legacy.id);
     assert.deepEqual(joined.view, legacy.view);
-    assert.deepEqual(joined.data, legacy.data);
+    const declaration = JSON.parse(await readFile(resolve(root, "capability.json"), "utf8"));
+    assert.equal(joined.data.consumerCode, legacy.data.consumerCode);
+    assert.equal(joined.data.mock, legacy.data.mock);
+    assert.deepEqual(joined.data, declaration.data);
     assert.equal(joined.maxEffect, legacy.maxEffect);
     assert.deepEqual(joined.layers, legacy.layers);
     assert.deepEqual(joined.skills, legacy.skills);
-    assert.deepEqual(joined.routing.keywords, legacy.routing.keywords);
+    assert.deepEqual(joined.routing.keywords, declaration.routing.keywords);
     assert.ok(joined.routing.summary, "the current declaration must retain a route summary");
     assert.equal(manifest.gea.readonly, true);
     // FC 906b3b... blob 80ec24ef...: only the declared v1→v2 protocol migration is allowed.
