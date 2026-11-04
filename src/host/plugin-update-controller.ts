@@ -686,13 +686,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     requests: readonly { packageName: CompanyPackageName; planId: string }[],
   ): Promise<PluginUpdateOperation> {
     if (!initialized) await initialize();
+    const company = await readCompanyUpdate(options.profile.dir);
     if (closed) fail("UPDATE_HOST_CLOSED");
-    if (
-      active ||
-      journalBroken ||
-      blocking(state.operation) ||
-      companyUpdateActive(await readCompanyUpdate(options.profile.dir))
-    )
+    if (active || journalBroken || blocking(state.operation) || companyUpdateActive(company))
       fail("UPDATE_OPERATION_BLOCKED");
     if (
       !requests.length ||
@@ -739,7 +735,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           async () => {
             lifetime.signal.throwIfAborted();
             const diskOperation = await readLatest();
-            if (blocking(diskOperation)) fail("UPDATE_OPERATION_BLOCKED");
+            if (
+              blocking(diskOperation) ||
+              companyUpdateActive(await readCompanyUpdate(options.profile.dir))
+            )
+              fail("UPDATE_OPERATION_BLOCKED");
             const baseline = await readPluginProfile(options.profile.dir);
             if (selected.some((selectedPlan) => baseline.sha256 !== selectedPlan.baseline.sha256))
               fail("UPDATE_BASELINE_CHANGED");
