@@ -1299,7 +1299,11 @@ test("combined updates cache the approved suite without installation, serialize 
 
 test("a prepared desktop update wins the profile lock over a plugin install still downloading", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
-  const f = await controllerFixture(t, { companyVersions: true });
+  const f = await controllerFixture(t, {
+    companyVersions: true,
+    allUpdates: true,
+    releasePeers: { "@cleverc2200/gea-dsh-prototype": {} },
+  });
   const before = await readFile(join(f.dir, "package.json"));
   const original = process.env.GEA_DESKTOP_VERSION;
   process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261104.1";
@@ -1339,9 +1343,14 @@ test("a prepared desktop update wins the profile lock over a plugin install stil
       .snapshot()
       .items.filter((row) => row.state === "available")
       .map((row) => ({ packageName: row.packageName, planId: row.planId }));
-    const rejected = assert.rejects(slow.submitBatch(plans), /UPDATE_OPERATION_BLOCKED/);
+    assert.equal(plans.length, 3);
+    const pending = slow.submitBatch(plans);
+    const rejected = assert.rejects(pending, /UPDATE_OPERATION_BLOCKED/);
     settled = Promise.allSettled([rejected]);
-    await reached.promise;
+    await Promise.race([
+      reached.promise,
+      pending.then(() => assert.fail("plugin installation reached acceptance before the barrier")),
+    ]);
     await preparing.prepareDesktop("0.2.0-rc.2.20261105.1");
     resume.resolve();
     await rejected;
