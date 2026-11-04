@@ -24,3 +24,28 @@ jobs:
           node-version: "24.22.0"
       - name: Verify coordinated startup and completion
         run: node --test desktop/company-update.test.mjs
+  core-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: b67d40706bb38c5ca17ecb4fde45228febaf0914
+          path: core
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: core/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+          cache: pnpm
+          cache-dependency-path: core/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:native-system
+      - name: Verify checked targets and native update authorization
+        run: pnpm exec vitest run apps/desktop/tests/preload-app.spec.ts apps/desktop/tests/main-startup.spec.ts apps/desktop/tests/update-coordinator.spec.ts apps/desktop/tests/update-presentation.spec.ts

@@ -30,6 +30,7 @@
     "desktop/client-installer.test.mjs",
     "desktop/company-bootstrap.test.mjs",
     "desktop/company-gea-refresh.test.mjs",
+    "desktop/company-update.test.mjs",
     "desktop/company-resources.test.mjs",
     "desktop/config.test.cjs",
     "desktop/copy-graph.test.mjs",
