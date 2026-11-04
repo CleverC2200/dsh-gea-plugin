@@ -1330,24 +1330,26 @@ test("a prepared desktop update wins the profile lock over a plugin install stil
     ...f.options,
     runtimeDirectory: join(f.dir, "gea/plugin-updates"),
   });
-  t.after(async () => {
+  let settled = Promise.resolve([]);
+  try {
+    await slow.initialize();
+    await preparing.initialize();
+    await slow.check();
+    const plans = slow
+      .snapshot()
+      .items.filter((row) => row.state === "available")
+      .map((row) => ({ packageName: row.packageName, planId: row.planId }));
+    const rejected = assert.rejects(slow.submitBatch(plans), /UPDATE_OPERATION_BLOCKED/);
+    settled = Promise.allSettled([rejected]);
+    await reached.promise;
+    await preparing.prepareDesktop("0.2.0-rc.2.20261105.1");
     resume.resolve();
-    await Promise.all([slow.dispose(), preparing.dispose()]);
-  });
-  await slow.initialize();
-  await preparing.initialize();
-  await slow.check();
-  const plans = slow
-    .snapshot()
-    .items.filter((row) => row.state === "available")
-    .map((row) => ({ packageName: row.packageName, planId: row.planId }));
-  const pending = slow.submitBatch(plans);
-  const rejected = assert.rejects(pending, /UPDATE_OPERATION_BLOCKED/);
-  await reached.promise;
-  await preparing.prepareDesktop("0.2.0-rc.2.20261105.1");
-  resume.resolve();
-  await rejected;
-  assert.equal((await preparing.companyStatus()).phase, "prepared");
-  assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+    await rejected;
+    assert.equal((await preparing.companyStatus()).phase, "prepared");
+    assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
+    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  } finally {
+    resume.resolve();
+    await Promise.all([settled, slow.dispose(), preparing.dispose()]);
+  }
 });
