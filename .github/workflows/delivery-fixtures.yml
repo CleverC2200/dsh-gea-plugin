@@ -757,6 +757,8 @@ jobs:
           compression-level: 0
           path: |
             ${{ runner.temp }}/windows-cache-preflight.json
+            core/.dsh-build/delivery-core-cache.json
+            core/.dsh-build/delivery-windows-runtime-cache.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
