@@ -188,7 +188,7 @@ jobs:
       max-parallel: 40
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       QUALITY_GROUP_GEA: ${{ needs.source-plan.outputs.gea-sha }}
