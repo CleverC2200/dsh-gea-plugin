@@ -445,6 +445,10 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
         await updates.updateAll();
         return;
       }
+      if (!client.canCheck && !state?.version) {
+        await desktop.open();
+        return;
+      }
       const target =
         state && ["available", "ready"].includes(state.phase) ? state : await desktop.check();
       if (target.phase === "idle") {
@@ -567,7 +571,11 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
         !nativeBusy &&
         !coordinating &&
         !["available", "ready"].includes(state?.phase ?? "") ? (
-          <DetailActions updates={updates} t={t} updateAll={beginDesktop} />
+          <DetailActions
+            updates={updates}
+            t={t}
+            updateAll={client.canCheck ? beginDesktop : undefined}
+          />
         ) : null}
         {plugins.transportError ? (
           <p role="alert" className="gea-plugin-update-error">

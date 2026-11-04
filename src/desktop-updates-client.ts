@@ -17,6 +17,7 @@ export function createDesktopUpdates() {
   const bridge = carrier?.protocolVersion === 1 ? carrier.updates : undefined;
   let snapshot: {
     supported: boolean;
+    canCheck: boolean;
     current?: string;
     versionFailed: boolean;
     presentation?: DesktopUpdatePresentation;
@@ -24,6 +25,7 @@ export function createDesktopUpdates() {
     opening: boolean;
   } = {
     supported: bridge !== undefined,
+    canCheck: typeof bridge?.check === "function",
     versionFailed: false,
     failed: false,
     opening: false,
