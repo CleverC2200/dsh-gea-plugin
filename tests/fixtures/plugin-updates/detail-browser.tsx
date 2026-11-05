@@ -39,6 +39,8 @@ ctx.slots.register(
     name: "root",
     children: {
       "settings.section": { kind: "list", scope: "root" },
+      "settings.update": { kind: "single", scope: "root" },
+      "sidebar.toggle.badge": { kind: "single", scope: "root" },
       "plugins.detail.actions": { kind: "list", scope: "root" },
       "plugins.detail.badge": { kind: "list", scope: "root" },
       "plugins.detail.section": { kind: "list", scope: "root" },
@@ -48,23 +50,32 @@ ctx.slots.register(
     const [updatesOpen, setUpdatesOpen] = useState(false);
     navigateUpdates = () => setUpdatesOpen(true);
     return (
-      <main>
-        {updatesOpen ? (
-          <div data-update-panel>
-            {renderSlot(
-              "settings.section",
-              { close: () => setUpdatesOpen(false) },
-              { only: "company-updates" },
-            )}
-          </div>
-        ) : (
-          <>
-            {renderSlot("plugins.detail.actions", { subject })}
-            {renderSlot("plugins.detail.badge", { subject })}
-            {renderSlot("plugins.detail.section", { subject })}
-          </>
-        )}
-      </main>
+      <>
+        <aside data-update-entry>
+          {renderSlot("settings.update", {
+            wide: !location.search.includes("narrow-entry"),
+            hidden: location.search.includes("hidden-entry"),
+          })}
+          {renderSlot("sidebar.toggle.badge")}
+        </aside>
+        <main>
+          {updatesOpen ? (
+            <div data-update-panel>
+              {renderSlot(
+                "settings.section",
+                { close: () => setUpdatesOpen(false) },
+                { only: "company-updates" },
+              )}
+            </div>
+          ) : (
+            <>
+              {renderSlot("plugins.detail.actions", { subject })}
+              {renderSlot("plugins.detail.badge", { subject })}
+              {renderSlot("plugins.detail.section", { subject })}
+            </>
+          )}
+        </main>
+      </>
     );
   },
 );
