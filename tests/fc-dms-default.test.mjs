@@ -287,6 +287,22 @@ test("production submission preserves the current form and uses current user; id
       result: { aiPreOrderCode: order.aiPreOrderCode, orderCode: "fixture-order" },
     });
   });
+  t.mock.method(business, "pluginSql", async ({ parameters }) => {
+    assert.equal(parameters.gea_p1, "selected-warehouse");
+    return {
+      rows: [
+        {
+          warehouse_code: "selected-warehouse",
+          warehouse_name: "Selected warehouse",
+          customer_code: "entered-customer",
+          address_code: "entered-address",
+          pup_code: "07",
+          address_name: "Selected address",
+        },
+      ],
+      rejectedColumns: [],
+    };
+  });
   const payload = {
     operation: "submit",
     warehouseCode: "selected-warehouse",
@@ -303,4 +319,34 @@ test("production submission preserves the current form and uses current user; id
   assert.equal(first.orderCode, "fixture-order");
   assert.equal(again.orderCode, first.orderCode);
   assert.equal(orders.length, 1);
+});
+
+test("direct DMS submission cannot send an order outside governed warehouse routing", async (t) => {
+  secret(t);
+  const business = fixture(t);
+  let dmsRequests = 0;
+  t.mock.method(business, "pluginSql", async () => ({ rows: [], rejectedColumns: [] }));
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (String(url).endsWith("/sys/user/getUserInfo")) return profile("user-a");
+    dmsRequests++;
+    throw Error("unexpected DMS transport");
+  });
+  await assert.rejects(
+    business.branchDms(
+      {
+        operation: "submit",
+        warehouseCode: "hidden-warehouse",
+        order: {
+          aiPreOrderCode: "AI1",
+          customerCode: "C1",
+          addressCode: "A1",
+          pupCode: "01",
+          itemList: [{ productCode: "SKU1", quantity: 1 }],
+        },
+      },
+      new AbortController().signal,
+    ),
+    /收货信息/,
+  );
+  assert.equal(dmsRequests, 0);
 });
