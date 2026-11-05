@@ -1,7 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { FC_DMS_DEFAULT_PICKUP_SQL } from "../src/host/fc-dms-target.ts";
+import { readFileSync } from "node:fs";
+const source = readFileSync(
+  new URL("../scripts/sql/fc-dms-target-source.sql", import.meta.url),
+  "utf8",
+);
+const start = source.indexOf("pickup_master AS (");
+const end = source.indexOf(", addresses AS (", start);
+assert.ok(start >= 0 && end > start, "daily sync must retain canonical pickup verification");
+const pickupSql =
+  "WITH customers AS (SELECT :gea_p1 AS customer_code), " +
+  source.slice(start, end) +
+  " SELECT p.pup_code AS pup_code FROM customers c LEFT JOIN pickups p ON c.customer_code=p.customer_code";
 
 function resolve(
   links,
@@ -22,7 +33,7 @@ function resolve(
     const pickup = db.prepare("INSERT INTO agents_dim_pickup_point_data_d VALUES (?,?)");
     for (const link of links) dealer.run("C1", ...link);
     for (const row of master) pickup.run(...row);
-    return db.prepare(FC_DMS_DEFAULT_PICKUP_SQL).get({ gea_p1: "C1" }).pup_code;
+    return db.prepare(pickupSql).get({ gea_p1: "C1" }).pup_code;
   } finally {
     db.close();
   }
