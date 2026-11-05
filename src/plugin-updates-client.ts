@@ -90,6 +90,13 @@ export const pluginSuiteReady = (items: PluginUpdateRow[]) =>
   items.length === companyPackageNames.length &&
   items.every((row) => row.state === "available" || row.state === "current");
 
+export class PluginUpdateRequestError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "PluginUpdateRequestError";
+  }
+}
+
 export function createPluginDetailUpdates(ctx: Context) {
   const listeners = new Set<() => void>();
   let snapshot: PluginDetailUpdateSnapshot = {
@@ -144,7 +151,18 @@ export function createPluginDetailUpdates(ctx: Context) {
     });
     const result = updateObject(await response.json());
     signal.throwIfAborted();
-    if (!response.ok || result.ok !== true) throw Error("UPDATE_TRANSPORT_FAILED");
+    if (!response.ok || result.ok !== true) {
+      const failure = result.error;
+      const code =
+        failure !== null &&
+        typeof failure === "object" &&
+        "code" in failure &&
+        typeof failure.code === "string" &&
+        /^[A-Z][A-Z0-9_]{0,79}$/.test(failure.code)
+          ? failure.code
+          : "UPDATE_TRANSPORT_FAILED";
+      throw new PluginUpdateRequestError(code);
+    }
     return result.value;
   };
   const signalFor = (owner: NonNullable<typeof page>) =>

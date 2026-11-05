@@ -21,6 +21,7 @@ import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts"
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 import {
   createPluginDetailUpdates,
+  PluginUpdateRequestError,
   pluginUpdateBusy,
   pluginSuiteReady,
   pluginUpdateObservationMs,
@@ -418,12 +419,38 @@ function UpdateToggleBadge({
     </Tooltip>
   );
 }
+function companyPreparationFailure(error: unknown): keyof typeof en {
+  if (error instanceof Error && error.message === "UPDATE_NATIVE_OPEN_FAILED")
+    return "companyNativeOpenFailed";
+  if (!(error instanceof PluginUpdateRequestError)) return "companyPreparationFailed";
+  switch (error.code) {
+    case "UPDATE_OPERATION_BLOCKED":
+      return "companyOperationBlocked";
+    case "UPDATE_SUITE_UNAVAILABLE":
+      return "companySuiteUnavailable";
+    case "UPDATE_SOURCE_NOT_CONFIGURED":
+      return "source-not-configured";
+    case "UPDATE_CORE_OR_SOURCE_UNVERIFIED":
+      return "companySourceUnverified";
+    case "SOURCE_HTTP_FAILED":
+      return "companySourceDownloadFailed";
+    case "SOURCE_ARTIFACT_HASH_MISMATCH":
+    case "SOURCE_ARCHIVE_RELEASE_MISMATCH":
+    case "SOURCE_RELEASE_NOT_VERIFIED":
+    case "SOURCE_APPROVAL_EXPIRED":
+      return "companySourceUnverified";
+    default:
+      return "companyPreparationFailed";
+  }
+}
+
 function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const plugins = useDetail(updates);
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   const [restarting, setRestarting] = useState(false);
   const [coordinating, setCoordinating] = useState(false);
-  const [coordinationFailed, setCoordinationFailed] = useState(false);
+  const [coordinationFailure, setCoordinationFailure] = useState<keyof typeof en>();
+  const [legacyClient, setLegacyClient] = useState(false);
   const [restartResult, setRestartResult] = useState<"cancelled" | "failed">();
   const state = client.presentation;
   const nativeBusy =
@@ -439,7 +466,8 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const companyActive = company && !["completed", "failed", "cancelled"].includes(company.phase);
   const beginDesktop = async (pluginRequest = false) => {
     setCoordinating(true);
-    setCoordinationFailed(false);
+    setCoordinationFailure(undefined);
+    setLegacyClient(false);
     try {
       if (!client.supported) {
         if (pluginRequest) await updates.updateAll();
@@ -457,10 +485,21 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
       }
       if (!hasTarget && !pluginRequest) return;
       if (!target.version || !["available", "ready"].includes(target.phase)) return;
-      await updates.prepareDesktop(target.version);
+      let legacy = false;
+      try {
+        await updates.prepareDesktop(target.version);
+      } catch (error) {
+        if (
+          !(error instanceof PluginUpdateRequestError) ||
+          error.code !== "UPDATE_DESKTOP_UNAVAILABLE"
+        )
+          throw error;
+        legacy = true;
+      }
       await desktop.open(target.version);
-    } catch {
-      setCoordinationFailed(true);
+      setLegacyClient(legacy);
+    } catch (error) {
+      setCoordinationFailure(companyPreparationFailure(error));
     } finally {
       setCoordinating(false);
     }
@@ -493,13 +532,16 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
           )}
         </p>
       ) : null}
-      {coordinationFailed ? <p role="alert">{t("companyPreparationFailed")}</p> : null}
+      {legacyClient ? <p role="status">{t("companyLegacyClient")}</p> : null}
+      {coordinationFailure ? <p role="alert">{t(coordinationFailure)}</p> : null}
       {company?.phase === "prepared" && !nativeBusy && !coordinating ? (
         <Button
           size="sm"
           variant="outline"
           onClick={() => {
-            void updates.cancelDesktop().catch(() => setCoordinationFailed(true));
+            void updates.cancelDesktop().catch((error: unknown) => {
+              setCoordinationFailure(companyPreparationFailure(error));
+            });
           }}
         >
           {t("companyCancel")}
@@ -557,7 +599,9 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
                 state?.phase === "ready"
                   ? "desktopReady"
                   : state?.phase === "available"
-                    ? "companyDownload"
+                    ? legacyClient
+                      ? "companyLegacyDownload"
+                      : "companyDownload"
                     : state?.phase === "error" || client.failed
                       ? "desktopRetry"
                       : "desktopCheck",

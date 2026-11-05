@@ -1,9 +1,10 @@
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import { readFile } from "node:fs/promises";
 import ts from "typescript";
 
 export function sourceTools(sdk) {
+  sdk = resolve(sdk);
   const donor = process.env.GEA_PLUGIN_UPDATE_TOOLS;
   const coreTools = process.env.GEA_PLUGIN_UPDATE_CORE_TOOLS;
   if (!donor || !coreTools) return [];
@@ -36,7 +37,7 @@ export function sourceTools(sdk) {
             }
           }
           if (path.startsWith("@deepseek-ai/")) return;
-          const locations = importer.startsWith(sdk)
+          const locations = importer.startsWith(sdk + sep)
             ? [
                 resolve(coreTools, importer.slice(sdk.length + 1)),
                 resolve(coreTools, "package.json"),

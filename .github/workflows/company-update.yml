@@ -30,6 +30,58 @@ jobs:
           node-version: "24.22.0"
       - name: Verify coordinated startup and completion
         run: node --test desktop/company-update.test.mjs
+  legacy-client:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: integration/dsh-gea-plugin
+    env:
+      GEA_PLUGIN_UPDATE_SDK: ${{ github.workspace }}/official-latest-standard
+      GEA_PLUGIN_UPDATE_TOOLS: ${{ github.workspace }}/integration/dsh-gea-plugin
+      GEA_PLUGIN_UPDATE_CORE_TOOLS: ${{ github.workspace }}/official-latest-standard
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: integration/dsh-gea-plugin
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: 863cda8787cd97dfef0f2b438a705b155299e74f
+          path: official-latest-standard
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+      - name: Prepare fixed browser source dependencies
+        working-directory: official-latest-standard
+        run: |
+          corepack enable
+          corepack pnpm --filter @deepseek-ai/dsh-client-ui-primitives... --filter @deepseek-ai/dsh-client-ui-renderer... --filter @deepseek-ai/dsh-client-locale... --filter @deepseek-ai/dsh-client-store... install --frozen-lockfile --ignore-scripts
+      - name: Prepare plugin browser fixture
+        run: |
+          corepack pnpm install --frozen-lockfile --ignore-scripts
+          corepack pnpm exec playwright install chromium
+      - name: Build the fixed public Cordis runtime for the browser fixture
+        run: |
+          @'
+          import { build } from 'esbuild';
+          import { join } from 'node:path';
+          import { sourceTools } from './tests/fixtures/plugin-updates/source-tools.mjs';
+          const sdk=process.env.GEA_PLUGIN_UPDATE_SDK;
+          await build({entryPoints:[join(sdk,'vendor/cordis/src/index.ts')],bundle:true,platform:'neutral',format:'esm',outfile:join(sdk,'vendor/cordis/lib/index.js'),plugins:sourceTools(sdk)});
+          '@ | node --input-type=module
+      - name: Verify legacy native fallback and specific preparation failures
+        run: node --test tests/plugin-update-detail.browser.mjs tests/plugin-update-list.browser.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-legacy-client-${{ github.sha }}
+          path: integration/dsh-gea-plugin/.runtime/detail-summary/
+          if-no-files-found: warn
   core-contract:
     if: github.event_name == 'workflow_dispatch' && inputs.core_sha != ''
     runs-on: ubuntu-latest
