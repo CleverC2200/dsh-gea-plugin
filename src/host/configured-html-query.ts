@@ -104,6 +104,21 @@ export async function readConfiguredHtmlQuery(
   signal.throwIfAborted();
   try {
     const definition = config.queries[queryId];
+    if (queryId === "current-shortage.sku-ranking" && config.agentId === "inventory-aqkc") {
+      const { readBaseShortageSkuRanking } =
+        await import("@cleverc2200/dsh-agent-workbench/configured-facts");
+      return await readBaseShortageSkuRanking(config, parameters, {
+        signal,
+        execute: (_request, call): Promise<unknown> =>
+          readConfiguredHtmlQuery(
+            resource,
+            { queryId: call.queryId, parameters: call.values },
+            business,
+            signal,
+            consumerCode,
+          ),
+      });
+    }
     if (completeCollection && definition?.pagination?.countQuery) {
       const client = queryContract.createQueryClient(config, (_request, call) =>
         readConfiguredHtmlQuery(

@@ -55,12 +55,35 @@ const ranked = (sku, shortage) => ({
   page_scope_total: 2,
   page_row_present: 1,
 });
+const summarySnapshot = {
+  rows: [
+    {
+      batch_id: "B1",
+      business_date: "2026-10-22",
+      stock_date: "2026-10-22",
+      target_month: "2026-10-01",
+      default_inventory_version: "月初",
+    },
+  ],
+  returnedColumns: [
+    "batch_id",
+    "business_date",
+    "stock_date",
+    "target_month",
+    "default_inventory_version",
+  ],
+  rejectedColumns: [],
+};
 test("SKU ranking returns distinct positive SKU counts and same-scope page shares", async () => {
-  const f = fixture("aqkc", async () => ({
-    rows: [ranked("S1", 12), ranked("S2", 8)],
-    returnedColumns: rankingColumns,
-    rejectedColumns: [],
-  }));
+  const f = fixture("aqkc", async (request) =>
+    request.sql.includes("AS batch_id")
+      ? summarySnapshot
+      : {
+          rows: [ranked("S1", 12), ranked("S2", 8)],
+          returnedColumns: rankingColumns,
+          rejectedColumns: [],
+        },
+  );
   const result = JSON.parse(await f.call({ view: "sku-ranking", base: "郑州" }));
   assert.equal(result.shortageSkuCount, 2);
   assert.equal(result.totalShortage, "20");
@@ -71,10 +94,30 @@ test("SKU ranking returns distinct positive SKU counts and same-scope page share
     [1, 2],
   );
   assert.equal(result.coverage, "cross-base-sku-ranking-page");
-  assert.equal(f.calls[0].request.parameters.gea_p1, "郑州");
-  assert.equal(f.calls[0].request.parameters.gea_p4, 10);
-  assert.match(f.calls[0].request.sql, /GROUP BY f\.sku/);
-  assert.ok(!f.calls[0].request.sql.includes("GROUP BY f.base"));
+  assert.equal(f.calls.length, 2);
+  const request = f.calls.at(-1).request;
+  assert.equal(request.parameters.gea_p1, "郑州");
+  assert.equal(request.parameters.gea_p4, 10);
+  assert.equal(request.parameters.gea_p90001, "B1");
+  assert.match(request.sql, /GROUP BY f\.sku/);
+  assert.match(request.sql, /agents_inv_order_summary_day/);
+  assert.ok(!request.sql.includes("GROUP BY f.base"));
+});
+test("SKU ranking never falls back to raw orders after missing or denied snapshot", async () => {
+  for (const response of [
+    { rows: [], returnedColumns: summarySnapshot.returnedColumns, rejectedColumns: [] },
+    {
+      success: false,
+      errorCode: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+      message: "denied",
+      failure: { reasonCode: "ROW_SCOPE_DENIED" },
+    },
+  ]) {
+    const f = fixture("aqkc", async () => response);
+    const result = JSON.parse(await f.call({ view: "sku-ranking" }));
+    assert.equal(result.success, false);
+    assert.equal(f.calls.length, 1);
+  }
 });
 test("SKU ranking rejects duplicates, zero rows, missing permissions and mixed scope totals", () => {
   const good = [ranked("S1", 12), ranked("S2", 8)];
