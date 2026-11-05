@@ -90,6 +90,7 @@ export function createDesktopUpdates() {
         await bridge.open(version);
       } catch {
         publish({ failed: true });
+        throw Error("UPDATE_NATIVE_OPEN_FAILED");
       } finally {
         publish({ opening: false });
       }
