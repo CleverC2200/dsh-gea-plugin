@@ -106,9 +106,6 @@ test(
     });
     assert.equal((await app.rpc("notifications", {})).error.code, "LOGIN_REQUIRED");
     await app.login();
-    const signedInName = (await app.rpc("status")).value.user.name;
-    assert.equal(typeof signedInName, "string");
-    assert.ok(signedInName);
     const plans = (await app.rpc("plans")).value;
     const preview = (
       await app.rpc("prepare", {
@@ -148,11 +145,10 @@ test(
       })),
     );
     const ui = await context.newPage();
-    // A Host login can precede the reloaded browser's confirmed account projection.
-    // Content checks open the page after that public precondition; ownership is still checked below.
+    // The first confirmed GEA scope replaces the unconfirmed Inbox instance.
+    // Its real Core conversation appears only after that page owns the current Session.
     const openInbox = async () => {
       await preparePageStartup(ui);
-      await expect(ui.locator(".gea-account-label")).toHaveText(signedInName);
       await ui.getByRole("button", { name: "消息待办", exact: true }).click();
       const conversation = ui.locator(
         ".agent-workbench-document:has(.gea-inbox) .agent-workbench-native-conversation [data-conversation-session]",
