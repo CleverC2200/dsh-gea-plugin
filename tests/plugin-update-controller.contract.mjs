@@ -1252,6 +1252,36 @@ test("an inactive companion blocks all plans and disabling a companion after che
   });
 });
 
+test("an already running current suite does not require installation readiness again", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const name = f.proofs[2].name;
+  const path = join(f.dir, "node_modules", name, "package.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  manifest.version = "3.1.0";
+  await writeFile(path, JSON.stringify(manifest));
+  const profilePath = join(f.dir, "package.json");
+  const profile = JSON.parse(await readFile(profilePath, "utf8"));
+  profile.dependencies[name] = "3.1.0";
+  await writeFile(profilePath, JSON.stringify(profile));
+  f.proofs[2].host.stamp.version = "3.1.0";
+  f.proofs[2].client.stamp.version = "3.1.0";
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  f.proofs[2].host = { kind: "unverified", reason: "HOST_MODULE_PROOF_UNAVAILABLE" };
+  await controller.check();
+  assert.ok(
+    controller
+      .snapshot()
+      .items.every(
+        (row) => row.state === "current" && row.planId === null && row.diagnostic === null,
+      ),
+    JSON.stringify(controller.snapshot()),
+  );
+  assert.equal(controller.snapshot().operation, null);
+});
+
 test("same-version inactive package reports its load diagnosis before current status", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t);

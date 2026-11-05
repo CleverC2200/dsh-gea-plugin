@@ -581,6 +581,27 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           });
       }
       const installed = profile.packages;
+      const plan = planPluginSuiteVersions({ releases, core: options.core, installed });
+      if (
+        plan.kind === "current" &&
+        state.items.every((item) => {
+          const release = releases.find((release) => release.name === item.packageName);
+          return (
+            release &&
+            item.installedVersion === release.version &&
+            item.runningHostVersion === release.version &&
+            item.runningClientVersion === release.version
+          );
+        })
+      ) {
+        for (const release of releases)
+          row(release.name, {
+            candidateVersion: release.version,
+            state: "current",
+            diagnostic: null,
+          });
+        return snapshot();
+      }
       if (generation !== checking || closed) return snapshot();
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
@@ -625,7 +646,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             });
         return snapshot();
       }
-      const plan = planPluginSuiteVersions({ releases, core: options.core, installed });
       if (plan.kind === "blocked") {
         const release =
           releases.find((release) => release.name === plan.packageName) ?? releases[0];
