@@ -2,104 +2,78 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveFcDmsTarget, FC_DMS_WAREHOUSE_TARGET_SQL } from "../src/host/fc-dms-target.ts";
 const signal = new AbortController().signal;
-test("unmatched warehouse leaves manual fields and never guesses a code", async () => {
-  let calls = 0;
-  const r = await resolveFcDmsTarget(
-    "A160",
-    "",
-    async (q) => {
-      calls++;
-      assert.equal(q.parameters.gea_p1, "A160");
-      return { rows: [] };
-    },
-    signal,
-  );
-  assert.deepEqual(r.fields, { addressCode: "", customerCode: "", pupCode: "" });
-  assert.equal(calls, 1);
-});
-test("unique exact warehouse/customer name and one coded ship-to fill only known fields", async () => {
-  const row = {
-    warehouse_code: "A160",
-    warehouse_name: "南京分仓",
-    customer_code: "49001039",
-    customer_name: "南京分仓",
-    receive_addresses: JSON.stringify([{ cust_code: "49001039", cust_name: "南京分仓" }]),
-  };
-  const r = await resolveFcDmsTarget("A160", "", async () => ({ rows: [row] }), signal);
-  assert.deepEqual(r.fields, { addressCode: "49001039", customerCode: "49001039", pupCode: "" });
-  assert.match(r.message, /按分仓名称/);
-  const multiple = await resolveFcDmsTarget(
-    "A160",
-    "",
-    async () => ({
-      rows: [
-        { ...row, receive_addresses: JSON.stringify([{ cust_code: "A1" }, { cust_code: "A2" }]) },
-      ],
-    }),
-    signal,
-  );
-  assert.equal(multiple.fields.addressCode, "");
-  assert.equal(multiple.fields.customerCode, "49001039");
-  const conflict = await resolveFcDmsTarget("A160", "", async () => ({ rows: [row, row] }), signal);
-  assert.deepEqual(conflict.fields, { addressCode: "", customerCode: "", pupCode: "" });
-});
-const warehouse = {
-  warehouse_code: "A160",
-  warehouse_name: "南京分仓",
-  customer_name: "南京分仓",
-  customer_code: "49001039",
-  receive_addresses: '[{"cust_code":"A1"},{"cust_code":"A2"}]',
+const source = {
+  warehouse_code: "A110",
+  warehouse_name: "沈阳分仓",
+  customer_code: "C1",
+  address_code: "A1",
+  pup_code: "01",
+  address_name: "收货地址一",
 };
-test("explicit address is checked within the selected warehouse and preserves pickup leading zeros", async () => {
+const resolve = (rows, selected = "") =>
+  resolveFcDmsTarget("A110", selected, async () => ({ rows }), signal);
+test("one authorized address fills all three codes, preserving pickup leading zeros", async () => {
   let calls = 0;
   const r = await resolveFcDmsTarget(
-    "A160",
-    " A2 ",
+    "A110",
+    "",
     async (q) => {
       calls++;
-      if (calls === 1) {
-        assert.equal(q.sql, FC_DMS_WAREHOUSE_TARGET_SQL);
-        assert.equal(q.parameters.gea_p1, "A160");
-        return { rows: [warehouse] };
-      }
-      assert.equal(q.parameters.gea_p1, "49001039");
-      return { rows: [{ pup_code: "02" }] };
+      assert.equal(q.sql, FC_DMS_WAREHOUSE_TARGET_SQL);
+      assert.deepEqual(q.parameters, { gea_p1: "A110" });
+      return { rows: [source] };
     },
     signal,
   );
-  assert.deepEqual(r.fields, { addressCode: "A2", customerCode: "49001039", pupCode: "02" });
+  assert.equal(calls, 1);
+  assert.deepEqual(r.fields, { customerCode: "C1", addressCode: "A1", pupCode: "01" });
+  assert.deepEqual(r.addresses, [{ code: "A1", name: "收货地址一" }]);
 });
-test("unknown address or ambiguous customer cannot autofill a pickup", async () => {
-  for (const rows of [[warehouse], [warehouse, { ...warehouse, customer_code: "C2" }]]) {
-    let calls = 0;
-    const r = await resolveFcDmsTarget(
-      "A160",
-      "OTHER",
-      async () => {
-        calls++;
-        return { rows };
-      },
-      signal,
-    );
-    assert.equal(calls, 1);
+test("multiple addresses require a named choice and do not guess the first address", async () => {
+  const rows = [source, { ...source, address_code: "A2", address_name: "收货地址二" }];
+  const r = await resolve(rows);
+  assert.equal(r.fields.addressCode, "");
+  assert.equal(r.addresses.length, 2);
+  assert.match(r.message, /请选择收货地址/);
+  const chosen = await resolve(rows, "A2");
+  assert.deepEqual(chosen.fields, { customerCode: "C1", addressCode: "A2", pupCode: "01" });
+});
+test("an address belonging to another warehouse cannot be injected", async () => {
+  const r = await resolve([source], "OTHER");
+  assert.equal(r.fields.addressCode, "");
+  assert.equal(r.addresses.length, 0);
+  assert.match(r.message, /不属于当前分仓/);
+});
+test("warehouse routing is based on explicit summary codes, not equal customer names", async () => {
+  const r = await resolve([{ ...source, customer_name: "不同名称的分仓客户" }]);
+  assert.equal(r.fields.customerCode, "C1");
+  await assert.rejects(resolve([{ ...source, warehouse_code: "OTHER" }]), /范围不一致/);
+});
+test("duplicate identical address rows collapse to one choice", async () => {
+  const r = await resolve([source, { ...source }]);
+  assert.equal(r.addresses.length, 1);
+  assert.equal(r.fields.addressCode, "A1");
+});
+test("conflicting customer or pickup relations cannot be used for an order", async () => {
+  for (const row of [
+    { ...source, customer_code: "C2" },
+    { ...source, pup_code: "02" },
+    { ...source, pup_code: null },
+  ]) {
+    const r = await resolve([source, row]);
     assert.deepEqual(r.fields, { addressCode: "", customerCode: "", pupCode: "" });
   }
 });
-test("a missing canonical pickup preserves the verified customer and address", async () => {
-  let calls = 0;
-  const r = await resolveFcDmsTarget(
-    "A160",
-    "A1",
-    async () => (++calls === 1 ? { rows: [warehouse] } : { rows: [{ pup_code: null }] }),
-    signal,
-  );
-  assert.deepEqual(r.fields, { addressCode: "A1", customerCode: "49001039", pupCode: "" });
+test("inconsistent names for one address fail closed", async () => {
+  const r = await resolve([source, { ...source, address_name: "冲突地址" }]);
+  assert.equal(r.fields.addressCode, "");
+  assert.match(r.message, /冲突/);
 });
-test("permission rejection is attempted once and becomes explicit manual fallback; cancellation stays cancelled", async () => {
+test("permission rejection is not retried and no alternate customer query is used", async () => {
   let calls = 0;
   const r = await resolveFcDmsTarget(
-    "W1",
-    "A1",
+    "A110",
+    "",
     async () => {
       calls++;
       throw Error("RESOURCE_NOT_IN_DATASET");
@@ -107,92 +81,40 @@ test("permission rejection is attempted once and becomes explicit manual fallbac
     signal,
   );
   assert.equal(calls, 1);
-  assert.match(r.message, /RESOURCE_NOT_IN_DATASET/);
   assert.equal(r.fields.customerCode, "");
-  const c = new AbortController();
-  c.abort();
-  await assert.rejects(
-    resolveFcDmsTarget("W1", "A1", async () => ({ rows: [] }), c.signal),
-    (e) => e.name === "AbortError",
-  );
-});
-test("out-of-scope or rejected returned fields never autofill", async () => {
-  await assert.rejects(
-    resolveFcDmsTarget(
-      "W1",
-      "A1",
-      async () => ({ rows: [{ address_code: "OTHER", customer_code: "C1" }] }),
-      signal,
-    ),
-    /范围不一致/,
-  );
-  const r = await resolveFcDmsTarget(
-    "W1",
-    "A1",
-    async () => ({
-      rows: [{ address_code: "A1", customer_code: "C1" }],
-      rejectedColumns: ["pup_code"],
-    }),
-    signal,
-  );
-  assert.equal(r.fields.customerCode, "");
-});
-
-test("a denied canonical-pickup lookup preserves the already matched customer and address", async () => {
-  let calls = 0;
-  const r = await resolveFcDmsTarget(
-    "A160",
-    "",
-    async () => {
-      calls++;
-      if (calls === 1)
-        return {
-          rows: [
-            {
-              warehouse_code: "A160",
-              warehouse_name: "南京分仓",
-              customer_name: "南京分仓",
-              customer_code: "49001039",
-              receive_addresses: '[{"cust_code":"49001039"}]',
-            },
-          ],
-        };
-      throw Error("RESOURCE_NOT_IN_DATASET");
-    },
-    signal,
-  );
-  assert.equal(calls, 2);
-  assert.deepEqual(r.fields, { addressCode: "49001039", customerCode: "49001039", pupCode: "" });
   assert.match(r.message, /RESOURCE_NOT_IN_DATASET/);
 });
-test("only a unique canonical relation fills the pickup automatically", async () => {
-  for (const points of [[{ pup_code: "02" }], [{ pup_code: "02" }, { pup_code: "01" }]]) {
-    let calls = 0;
-    const r = await resolveFcDmsTarget(
-      "W1",
-      "",
-      async () =>
-        ++calls === 1
-          ? {
-              rows: [
-                {
-                  warehouse_code: "W1",
-                  warehouse_name: "分仓",
-                  customer_name: "分仓",
-                  customer_code: "C1",
-                  receive_addresses: '[{"cust_code":"A1"}]',
-                },
-              ],
-            }
-          : { rows: points },
-      signal,
-    );
-    assert.equal(r.fields.pupCode, points.length === 1 ? "02" : "");
+test("rejected return columns and missing records never become editable fallback codes", async () => {
+  for (const result of [
+    { rows: [] },
+    { rows: [source], rejectedColumns: ["customer_code"] },
+    { rows: [source], failure: { reasonCode: "NO_RETURN_COLUMN_ALLOWED" } },
+  ]) {
+    const r = await resolveFcDmsTarget("A110", "", async () => result, signal);
+    assert.equal(r.fields.addressCode, "");
+    assert.equal(r.addresses.length, 0);
   }
 });
-
-test("warehouse lookup uses the published warehouseid field and keeps the output alias", () => {
-  assert.match(FC_DMS_WAREHOUSE_TARGET_SQL, /t\.warehouseid AS warehouse_code/);
-  assert.match(FC_DMS_WAREHOUSE_TARGET_SQL, /WHERE t\.warehouseid=:gea_p1 GROUP BY t\.warehouseid/);
-  assert.doesNotMatch(FC_DMS_WAREHOUSE_TARGET_SQL, /t\.warehouse_code/);
+test("cancellation remains cancellation", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    resolveFcDmsTarget("A110", "", async () => ({ rows: [] }), controller.signal),
+    { name: "AbortError" },
+  );
+});
+test("an incomplete address page is never offered as a complete set", async () => {
+  const r = await resolve(
+    Array.from({ length: 200 }, (_, i) => ({ ...source, address_code: String(i) })),
+  );
+  assert.equal(r.addresses.length, 0);
+});
+test("the governed read uses warehouseid and the enabled summary batch", () => {
+  assert.match(FC_DMS_WAREHOUSE_TARGET_SQL, /t\.warehouseid=:gea_p1/);
+  assert.match(FC_DMS_WAREHOUSE_TARGET_SQL, /__BRANCH_READY__/);
+  assert.match(FC_DMS_WAREHOUSE_TARGET_SQL, /DMS_TARGET/);
+  assert.doesNotMatch(
+    FC_DMS_WAREHOUSE_TARGET_SQL,
+    /agents_dim_dealer|warehouse_transfer_plan|OVER\s*\(/i,
+  );
 });
