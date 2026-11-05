@@ -19,6 +19,9 @@ export interface DmsConfig {
 export type DmsEnvironments = Partial<Record<"production" | "test", DmsConfig>>;
 type Order = Record<string, unknown> & {
   aiPreOrderCode: string;
+  customerCode: string;
+  addressCode: string;
+  pupCode: string;
   itemList: { productCode: string; quantity: number }[];
 };
 const required = (value: unknown, field: string): string => {
