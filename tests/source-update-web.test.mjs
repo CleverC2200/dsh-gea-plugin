@@ -11,6 +11,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { openWorkbenchPage, htmlFrameElement } from "./fixtures/business-page.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
+import { configuredBranchStockFixture } from "./fixtures/configured-branch-stock.mjs";
 import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import {
@@ -157,6 +158,7 @@ test(
       );
     }
     const state = stockState();
+    state.configuredSql = await configuredBranchStockFixture();
     installStockRoutes(app, state, (body) => {
       const index = body.messages.findLastIndex((message) => message.role === "user"),
         tools = body.messages.slice(index + 1).filter((message) => message.role === "tool");
