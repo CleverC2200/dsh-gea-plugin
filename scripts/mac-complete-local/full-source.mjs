@@ -2,28 +2,18 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import {
-  mkdir,
-  open,
-  readFile,
-  writeFile,
-  symlink,
-  copyFile,
-  stat,
-} from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, symlink, copyFile, stat } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
 const core = resolve(process.argv[2]);
 const gea = resolve(process.argv[3]);
-const git = (cwd, ...args) =>
-  execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const geaSha = git(gea, "rev-parse", "HEAD");
-const { readDesktopInput, readDesktopPluginSource, coreArtifactPaths } =
-  await import(
-    pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs"))
-  );
+const { readDesktopInput, readDesktopPluginSource, coreArtifactPaths } = await import(
+  pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs"))
+);
 const input = await readDesktopInput(process.argv[4], geaSha);
 const plugin = readDesktopPluginSource(input, gea);
 assert.equal(git(core, "rev-parse", "HEAD"), input.seed.core.head);
@@ -52,10 +42,7 @@ const identities = (packages) =>
   packages
     .map(({ name, version, sha256 }) => ({ name, version, sha256 }))
     .sort((a, b) => a.name.localeCompare(b.name));
-assert.deepEqual(
-  identities(reservation.packages),
-  identities(input.seed.packages),
-);
+assert.deepEqual(identities(reservation.packages), identities(input.seed.packages));
 if (process.argv.includes("--plan")) {
   console.log(
     JSON.stringify({
@@ -106,10 +93,7 @@ async function run(name, file, args, cwd = core, overrides = {}) {
   console.log(name + " passed");
 }
 const pnpm = (name, args, cwd) => run(name, "corepack", ["pnpm", ...args], cwd);
-await writeFile(
-  join(output, "fixed-input.json"),
-  JSON.stringify(input, null, 2),
-);
+await writeFile(join(output, "fixed-input.json"), JSON.stringify(input, null, 2));
 await pnpm("build-official", ["run", "build:official"]);
 await pnpm("pack-dsh", [
   "run",
@@ -148,9 +132,7 @@ const artifacts = [];
 for (const path of coreArtifactPaths)
   artifacts.push({
     path,
-    sha256: await fileHash(
-      path.startsWith("dsh/") ? join(target, path) : join(desktop, path),
-    ),
+    sha256: await fileHash(path.startsWith("dsh/") ? join(target, path) : join(desktop, path)),
   });
 const seed = {
   ...input.seed,
@@ -173,11 +155,7 @@ for (const row of input.seed.packages) {
   }
   const bytes = Buffer.concat(chunks);
   assert.equal(hash(bytes), row.sha256);
-  const path = join(
-    output,
-    "packages",
-    new URL(row.url).pathname.split("/").at(-1),
-  );
+  const path = join(output, "packages", new URL(row.url).pathname.split("/").at(-1));
   await writeFile(path, bytes, { flag: "wx" });
   const manifest = JSON.parse(
     execFileSync("tar", ["-xOf", path, "package/package.json"], {
@@ -214,18 +192,12 @@ function relocate(source, original) {
       (_, prefix, quote, specifier) =>
         `${prefix}${quote}${pathToFileURL(resolve(dirname(original), specifier)).href}${quote}`,
     )
-    .replaceAll(
-      "import.meta.url",
-      JSON.stringify(pathToFileURL(original).href),
-    );
+    .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(original).href));
 }
 const factoryPath = join(desktop, "scripts/electron-builder-config.mjs");
 let factory = relocate(await readFile(factoryPath, "utf8"), factoryPath);
 for (const [before, after] of [
-  [
-    "const policy = resolveDesktopPolicyEnvironment(env)",
-    "const policy = undefined",
-  ],
+  ["const policy = resolveDesktopPolicyEnvironment(env)", "const policy = undefined"],
   [
     "const macOSSigning = packagesMacOS ? resolveMacOSSigningEnvironment(env) : undefined",
     "const macOSSigning = undefined",
@@ -273,9 +245,7 @@ const resources = join(app, "Contents/Resources");
 const archive = join(resources, "app.asar");
 const executable = join(app, "Contents/MacOS/GEA Desktop");
 const require = createRequire(join(desktop, "package.json"));
-const asar = createRequire(require.resolve("app-builder-lib/package.json"))(
-  "@electron/asar",
-);
+const asar = createRequire(require.resolve("app-builder-lib/package.json"))("@electron/asar");
 const metadata = JSON.parse(asar.extractFile(archive, "package.json"));
 assert.equal(metadata.version, input.desktopVersion);
 assert.equal(metadata.dshBuildCommit, input.seed.core.head);
@@ -297,17 +267,8 @@ await writeFile(
     smokePath,
   ),
 );
-await pnpm(
-  "runtime-smoke",
-  ["exec", "tsx", join(output, "smoke-gea.mts")],
-  desktop,
-);
-await run("signature-verify", "/usr/bin/codesign", [
-  "--verify",
-  "--deep",
-  "--strict",
-  app,
-]);
+await pnpm("runtime-smoke", ["exec", "tsx", join(output, "smoke-gea.mts")], desktop);
+await run("signature-verify", "/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
 const home = join(output, "fresh-install");
 await run(
   "first-install",
@@ -326,20 +287,14 @@ await run(
   { ELECTRON_RUN_AS_NODE: "1", DSH_HOME: home },
 );
 const receipt = JSON.parse(
-  await readFile(
-    join(home, "profiles/desktop/gea/bootstrap/receipt.json"),
-    "utf8",
-  ),
+  await readFile(join(home, "profiles/desktop/gea/bootstrap/receipt.json"), "utf8"),
 );
 assert.equal(receipt.status, "installed");
 assert.deepEqual(
   receipt.packages.map(({ name, version }) => ({ name, version })),
   input.seed.packages.map(({ name, version }) => ({ name, version })),
 );
-await writeFile(
-  join(output, "first-install-receipt.json"),
-  JSON.stringify(receipt, null, 2),
-);
+await writeFile(join(output, "first-install-receipt.json"), JSON.stringify(receipt, null, 2));
 const name = "GEA-Desktop-" + input.desktopVersion + "-mac-arm64-local.dmg";
 const artifact = join(output, name);
 await copyFile(join(target, "artifacts", name), artifact);
@@ -372,6 +327,4 @@ await writeFile(
     2,
   ),
 );
-console.log(
-  JSON.stringify({ status: "packaged-and-runtime-smoke-passed", artifact }),
-);
+console.log(JSON.stringify({ status: "packaged-and-runtime-smoke-passed", artifact }));
