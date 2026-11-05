@@ -7,6 +7,7 @@ import {
   currentShortageResult,
 } from "../src/host/current-shortage-tool.ts";
 import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
+import { currentShortageRankingResult } from "../src/host/current-shortage-ranking.ts";
 const definitions = [
   ["aqkc", "base-safety-stock"],
   ["fc", "branch-inventory"],
@@ -33,6 +34,97 @@ const row = {
   shortage: "5",
   invalid: 0,
 };
+const rankingColumns = [
+  ...columns,
+  "sku",
+  "material_name",
+  "scope_invalid",
+  "scope_shortage",
+  "snapshot_count",
+  "page_scope_total",
+  "page_row_present",
+];
+const ranked = (sku, shortage) => ({
+  ...row,
+  sku,
+  material_name: sku,
+  shortage,
+  scope_invalid: 0,
+  scope_shortage: 20,
+  snapshot_count: 1,
+  page_scope_total: 2,
+  page_row_present: 1,
+});
+test("SKU ranking returns distinct positive SKU counts and same-scope page shares", async () => {
+  const f = fixture("aqkc", async () => ({
+    rows: [ranked("S1", 12), ranked("S2", 8)],
+    returnedColumns: rankingColumns,
+    rejectedColumns: [],
+  }));
+  const result = JSON.parse(await f.call({ view: "sku-ranking", base: "郑州" }));
+  assert.equal(result.shortageSkuCount, 2);
+  assert.equal(result.totalShortage, "20");
+  assert.equal(result.pageShortage, "20");
+  assert.equal(result.pageSharePercent, "100.00");
+  assert.deepEqual(
+    result.rows.map((r) => r.rank),
+    [1, 2],
+  );
+  assert.equal(result.coverage, "cross-base-sku-ranking-page");
+  assert.equal(f.calls[0].request.parameters.gea_p1, "郑州");
+  assert.equal(f.calls[0].request.parameters.gea_p4, 10);
+  assert.match(f.calls[0].request.sql, /GROUP BY f\.sku/);
+  assert.ok(!f.calls[0].request.sql.includes("GROUP BY f.base"));
+});
+test("SKU ranking rejects duplicates, zero rows, missing permissions and mixed scope totals", () => {
+  const good = [ranked("S1", 12), ranked("S2", 8)];
+  for (const rows of [
+    [good[0], { ...good[1], sku: "S1" }],
+    [good[0]],
+    [good[0], { ...good[1], shortage: 0 }],
+    [good[0], { ...good[1], scope_shortage: 21 }],
+    good.map((r) => ({ ...r, scope_invalid: 1 })),
+    good.map((r) => ({ ...r, snapshot_count: 2 })),
+    [...good].reverse(),
+  ])
+    assert.throws(
+      () => currentShortageRankingResult({ rows, returnedColumns: rankingColumns }, 1),
+      /CURRENT_SHORTAGE_/,
+    );
+  assert.throws(
+    () => currentShortageRankingResult({ rows: good, returnedColumns: rankingColumns.slice(1) }, 1),
+    /INCOMPLETE/,
+  );
+  assert.throws(
+    () =>
+      currentShortageRankingResult(
+        { rows: good, returnedColumns: rankingColumns, rejectedColumns: ["material_name"] },
+        1,
+      ),
+    /INCOMPLETE/,
+  );
+  const denied = { success: false, failure: { reasonCode: "ROW_SCOPE_DENIED" } };
+  assert.deepEqual(currentShortageRankingResult(denied, 1), denied);
+});
+test("SKU ranking supports a verified empty scope and never borrows another Agent resource", async () => {
+  const empty = {
+    ...ranked("S1", 0),
+    sku: null,
+    page_scope_total: 0,
+    scope_shortage: 0,
+    page_row_present: null,
+  };
+  const result = currentShortageRankingResult(
+    { rows: [empty], returnedColumns: rankingColumns },
+    1,
+  );
+  assert.equal(result.shortageSkuCount, 0);
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.pageSharePercent, null);
+  const f = fixture("fc");
+  await assert.rejects(f.call({ view: "sku-ranking" }), /BASE_ONLY/);
+  assert.equal(f.calls.length, 0);
+});
 function fixture(
   agent = "aqkc",
   execute = async () => ({
