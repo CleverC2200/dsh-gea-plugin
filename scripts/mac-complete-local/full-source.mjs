@@ -1,0 +1,330 @@
+import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { mkdir, open, readFile, writeFile, symlink, copyFile, stat } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
+
+const core = resolve(process.argv[2]);
+const gea = resolve(process.argv[3]);
+const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+const geaSha = git(gea, "rev-parse", "HEAD");
+const { readDesktopInput, readDesktopPluginSource, coreArtifactPaths } = await import(
+  pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs"))
+);
+const input = await readDesktopInput(process.argv[4], geaSha);
+const plugin = readDesktopPluginSource(input, gea);
+assert.equal(git(core, "rev-parse", "HEAD"), input.seed.core.head);
+assert.equal(git(core, "status", "--porcelain"), "");
+assert.equal(git(gea, "status", "--porcelain"), "");
+const main = git(
+  gea,
+  "ls-remote",
+  "https://github.com/CleverC2200/dsh-gea-plugin.git",
+  "refs/heads/main",
+).split(/\s+/)[0];
+git(gea, "merge-base", "--is-ancestor", geaSha, main);
+const tag = "desktop-v" + input.desktopVersion;
+assert.equal(git(gea, "cat-file", "-t", tag), "tag");
+assert.equal(git(gea, "rev-parse", tag + "^{commit}"), geaSha);
+const reservation = JSON.parse(
+  git(gea, "for-each-ref", "--format=%(contents)", "refs/tags/" + tag),
+);
+assert.equal(reservation.releaseSourceSha, geaSha);
+assert.equal(reservation.desktopVersion, input.desktopVersion);
+assert.deepEqual(reservation.core, {
+  head: input.seed.core.head,
+  version: input.seed.core.version,
+});
+const identities = (packages) =>
+  packages
+    .map(({ name, version, sha256 }) => ({ name, version, sha256 }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+assert.deepEqual(identities(reservation.packages), identities(input.seed.packages));
+if (process.argv.includes("--plan")) {
+  console.log(
+    JSON.stringify({
+      status: "reserved-input-validated",
+      tag,
+      core: input.seed.core.head,
+      gea: geaSha,
+    }),
+  );
+  process.exit(0);
+}
+assert.equal(process.platform, "darwin");
+assert.equal(process.arch, "arm64");
+const output = join(process.env.RUNNER_TEMP, "gea-mac-source");
+await mkdir(output);
+const desktop = join(core, "apps/desktop");
+const target = join(desktop, ".desktop-build/targets/mac-arm64");
+const env = {
+  ...process.env,
+  DSH_DESKTOP_BUILD_VERSION: input.desktopVersion,
+  DSH_DESKTOP_BUILD_COMMIT: input.seed.core.head,
+};
+const stages = [];
+const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
+async function fileHash(path) {
+  const digest = createHash("sha256");
+  for await (const chunk of createReadStream(path)) digest.update(chunk);
+  return digest.digest("hex");
+}
+async function run(name, file, args, cwd = core, overrides = {}) {
+  const log = join(output, name + ".log");
+  const fd = await open(log, "wx", 0o600);
+  const started = Date.now();
+  console.log(name + " started");
+  const code = await new Promise((done, reject) => {
+    const child = spawn(file, args, {
+      cwd,
+      env: { ...env, ...overrides },
+      stdio: ["ignore", fd.fd, fd.fd],
+    });
+    child.once("error", reject);
+    child.once("close", done);
+  });
+  await fd.close();
+  stages.push({ name, code, seconds: (Date.now() - started) / 1000 });
+  await writeFile(join(output, "stages.json"), JSON.stringify(stages, null, 2));
+  assert.equal(code, 0, name + " failed; see " + log);
+  console.log(name + " passed");
+}
+const pnpm = (name, args, cwd) => run(name, "corepack", ["pnpm", ...args], cwd);
+await writeFile(join(output, "fixed-input.json"), JSON.stringify(input, null, 2));
+await pnpm("build-official", ["run", "build:official"]);
+await pnpm("pack-dsh", [
+  "run",
+  "release:pack",
+  "--family",
+  "dsh",
+  "--out",
+  join(target, "packed/dsh"),
+]);
+await pnpm("pack-host", [
+  "--dir",
+  "apps/desktop-host",
+  "pack",
+  "--pack-destination",
+  join(target, "packed/dsh"),
+]);
+await pnpm("pack-vendor", [
+  "run",
+  "release:pack",
+  "--family",
+  "vendor",
+  "--out",
+  join(target, "packed/vendor"),
+]);
+await pnpm("build-native-ts", ["--dir", "native/system", "run", "build:ts"]);
+await pnpm("pack-native", [
+  "--dir",
+  "native/system/packages/entry",
+  "pack",
+  "--pack-destination",
+  join(target, "packed/landlock"),
+]);
+for (const step of ["runtime", "packages", "dsh"])
+  await pnpm("prepare-" + step, ["run", "prepare:" + step], desktop);
+const artifacts = [];
+for (const path of coreArtifactPaths)
+  artifacts.push({
+    path,
+    sha256: await fileHash(path.startsWith("dsh/") ? join(target, path) : join(desktop, path)),
+  });
+const seed = {
+  ...input.seed,
+  core: { ...input.seed.core, artifacts },
+  packages: [],
+};
+await mkdir(join(output, "packages"));
+for (const row of input.seed.packages) {
+  const response = await fetch(row.url, {
+    redirect: "error",
+    signal: AbortSignal.timeout(180000),
+  });
+  assert.equal(response.status, 200);
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.body) {
+    size += chunk.length;
+    assert(size <= 32 * 1024 * 1024);
+    chunks.push(chunk);
+  }
+  const bytes = Buffer.concat(chunks);
+  assert.equal(hash(bytes), row.sha256);
+  const path = join(output, "packages", new URL(row.url).pathname.split("/").at(-1));
+  await writeFile(path, bytes, { flag: "wx" });
+  const manifest = JSON.parse(
+    execFileSync("tar", ["-xOf", path, "package/package.json"], {
+      encoding: "utf8",
+    }),
+  );
+  assert.equal(manifest.name, row.name);
+  assert.equal(manifest.version, row.version);
+  seed.packages.push({ ...row, path });
+}
+const seedInput = join(output, "seed-input.json");
+await writeFile(seedInput, JSON.stringify(seed));
+const seedRoot = join(output, "seed-root");
+await mkdir(seedRoot);
+await symlink(join(target, "dsh"), join(seedRoot, "dsh"));
+const companySeed = join(output, "company-seed");
+await run(
+  "prepare-company-seed",
+  process.execPath,
+  [
+    join(gea, "desktop/prepare-company-seed.mjs"),
+    seedRoot,
+    join(target, "runtime"),
+    companySeed,
+    join(output, "seed-home"),
+    seedInput,
+  ],
+  desktop,
+);
+function relocate(source, original) {
+  return source
+    .replace(
+      /\b(from\s+|import\s*\()(['"])(\.{1,2}\/[^'"\n]+)\2/g,
+      (_, prefix, quote, specifier) =>
+        `${prefix}${quote}${pathToFileURL(resolve(dirname(original), specifier)).href}${quote}`,
+    )
+    .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(original).href));
+}
+const factoryPath = join(desktop, "scripts/electron-builder-config.mjs");
+let factory = relocate(await readFile(factoryPath, "utf8"), factoryPath);
+for (const [before, after] of [
+  ["const policy = resolveDesktopPolicyEnvironment(env)", "const policy = undefined"],
+  [
+    "const macOSSigning = packagesMacOS ? resolveMacOSSigningEnvironment(env) : undefined",
+    "const macOSSigning = undefined",
+  ],
+  ["if (packagesMacOS) resolveMacOSNotarizationEnvironment(env)", ""],
+  [
+    "const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",
+    "const update = undefined",
+  ],
+]) {
+  assert.equal(factory.split(before).length, 2, "MAC_CONFIG_ADAPTER_DRIFT");
+  factory = factory.replace(before, after);
+}
+await writeFile(join(output, "builder-factory.mjs"), factory);
+const config = `import {createElectronBuilderConfig} from './builder-factory.mjs';
+import {officialGeaBranding} from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
+import {execFileSync} from 'node:child_process';
+const config=officialGeaBranding(createElectronBuilderConfig(process.env),{companySeed:${JSON.stringify(companySeed)}});
+config.extraMetadata={...config.extraMetadata,geaBrandingCommit:${JSON.stringify(geaSha)},dshLocalTestBuild:true,dshLocalPackaging:'company-core-full-three-plugin-ad-hoc'};
+config.mac={...config.mac,identity:'-',forceCodeSigning:false,hardenedRuntime:false,notarize:false,target:['dmg']};
+config.dmg={...config.dmg,sign:false};config.publish=null;
+config.afterSign=context=>execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',context.appOutDir+'/'+context.packager.appInfo.productFilename+'.app']);
+delete config.artifactBuildCompleted;
+export default config;
+`;
+const configPath = join(output, "builder.mjs");
+await writeFile(configPath, config);
+await pnpm(
+  "package-dmg",
+  [
+    "exec",
+    "electron-builder",
+    "--config",
+    configPath,
+    "--mac",
+    "dmg",
+    "--arm64",
+    "--publish",
+    "never",
+  ],
+  desktop,
+);
+const app = join(target, "artifacts/mac-arm64/GEA Desktop.app");
+const resources = join(app, "Contents/Resources");
+const archive = join(resources, "app.asar");
+const executable = join(app, "Contents/MacOS/GEA Desktop");
+const require = createRequire(join(desktop, "package.json"));
+const asar = createRequire(require.resolve("app-builder-lib/package.json"))("@electron/asar");
+const metadata = JSON.parse(asar.extractFile(archive, "package.json"));
+assert.equal(metadata.version, input.desktopVersion);
+assert.equal(metadata.dshBuildCommit, input.seed.core.head);
+assert.equal(metadata.geaBrandingCommit, geaSha);
+assert.equal(metadata.dshBuildDirty, false);
+const packagedSeed = JSON.parse(
+  await readFile(join(resources, "company-seed/manifest.json"), "utf8"),
+);
+assert.equal(packagedSeed.core.head, input.seed.core.head);
+for (const row of packagedSeed.core.artifacts)
+  assert.equal(hash(asar.extractFile(archive, row.path)), row.sha256);
+const smokePath = join(desktop, "scripts/smoke-packaged-runtime.ts");
+await writeFile(
+  join(output, "smoke-gea.mts"),
+  relocate(
+    (await readFile(smokePath, "utf8"))
+      .replaceAll("DeepSeek Harness.app", "GEA Desktop.app")
+      .replaceAll("'DeepSeek Harness'", "'GEA Desktop'"),
+    smokePath,
+  ),
+);
+await pnpm("runtime-smoke", ["exec", "tsx", join(output, "smoke-gea.mts")], desktop);
+await run("signature-verify", "/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
+const home = join(output, "fresh-install");
+await run(
+  "first-install",
+  "/usr/bin/sandbox-exec",
+  [
+    "-p",
+    "(version 1)(allow default)(deny network*)",
+    executable,
+    "--expose-internals",
+    join(archive, "company-bootstrap.mjs"),
+    archive,
+    join(resources, "runtime"),
+    join(resources, "company-seed"),
+  ],
+  desktop,
+  { ELECTRON_RUN_AS_NODE: "1", DSH_HOME: home },
+);
+const receipt = JSON.parse(
+  await readFile(join(home, "profiles/desktop/gea/bootstrap/receipt.json"), "utf8"),
+);
+assert.equal(receipt.status, "installed");
+assert.deepEqual(
+  receipt.packages.map(({ name, version }) => ({ name, version })),
+  input.seed.packages.map(({ name, version }) => ({ name, version })),
+);
+await writeFile(join(output, "first-install-receipt.json"), JSON.stringify(receipt, null, 2));
+const name = "GEA-Desktop-" + input.desktopVersion + "-mac-arm64-local.dmg";
+const artifact = join(output, name);
+await copyFile(join(target, "artifacts", name), artifact);
+await run("dmg-verify", "/usr/bin/hdiutil", ["verify", artifact]);
+assert.equal(git(core, "status", "--porcelain"), "");
+assert.equal(git(gea, "status", "--porcelain"), "");
+await writeFile(
+  join(output, "result.json"),
+  JSON.stringify(
+    {
+      status: "packaged-and-runtime-smoke-passed",
+      platform: "darwin-arm64",
+      desktopVersion: input.desktopVersion,
+      coreSha: input.seed.core.head,
+      geaSha,
+      geaPluginSourceSha: plugin.head,
+      toolSha: process.env.GITHUB_SHA,
+      inputSha256: hash(JSON.stringify(input)),
+      artifact: name,
+      size: (await stat(artifact)).size,
+      sha256: await fileHash(artifact),
+      signing: "ad-hoc; not Apple notarized",
+      coreProof: packagedSeed.core,
+      packages: input.seed.packages,
+      firstInstall: receipt,
+      stages,
+      published: false,
+    },
+    null,
+    2,
+  ),
+);
+console.log(JSON.stringify({ status: "packaged-and-runtime-smoke-passed", artifact }));
