@@ -31,7 +31,10 @@ import css from "./plugin-detail-updates.css";
 
 type Owner = ReturnType<typeof createPluginDetailUpdates>;
 type Props = PluginDetailProps &
-  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openUpdates: () => void };
+  PropsLocale<typeof pluginUpdateLocale> & {
+    updates: Owner;
+    openUpdates: () => void;
+  };
 function targetName(subject: PluginDetailProps["subject"]) {
   return subject.kind === "bundle"
     ? companyPackageNames.find((name) => name === subject.pkg.name)
@@ -162,9 +165,12 @@ function DetailSection({
   showTitle = true,
   updates,
   t,
-}: { name: string; installedVersion?: string; showTitle?: boolean; updates: Owner } & PropsLocale<
-  typeof pluginUpdateLocale
->): ReactNode {
+}: {
+  name: string;
+  installedVersion?: string;
+  showTitle?: boolean;
+  updates: Owner;
+} & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
   const problem = problemText(row?.problem, t);
@@ -271,7 +277,10 @@ function ListTools({
   openUpdates,
   t,
 }: PropsRuntime<"plugins.list.tools"> &
-  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openUpdates: () => void }): ReactNode {
+  PropsLocale<typeof pluginUpdateLocale> & {
+    updates: Owner;
+    openUpdates: () => void;
+  }): ReactNode {
   const state = useDetail(updates);
   useEffect(
     () =>
@@ -369,6 +378,7 @@ type SharedProps = PropsLocale<typeof pluginUpdateLocale> & {
 };
 function UpdateEntry({
   wide,
+  hidden,
   updates,
   desktop,
   openUpdates,
@@ -382,6 +392,7 @@ function UpdateEntry({
     (client.presentation && client.presentation.phase !== "idle") ||
     plugins.transportError ||
     plugins.items.some((row) => !["idle", "current", "completed"].includes(row.state));
+  if (!wide || hidden || !attention) return null;
   return (
     <Tooltip label={t("updates")} side="top">
       <button
@@ -453,6 +464,15 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const [legacyClient, setLegacyClient] = useState(false);
   const [restartResult, setRestartResult] = useState<"cancelled" | "failed">();
   const state = client.presentation;
+  useEffect(() => {
+    const initial = desktop.getSnapshot();
+    if (
+      initial.canCheck &&
+      !initial.checked &&
+      (!initial.presentation || initial.presentation.phase === "idle")
+    )
+      void desktop.check().catch(() => undefined);
+  }, [desktop]);
   const nativeBusy =
     client.opening ||
     (state && ["checking", "downloading", "verifying", "installing"].includes(state.phase));
@@ -552,8 +572,12 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
         <dl className="gea-plugin-update-versions">
           <dt>{t("currentVersion")}</dt>
           <dd>{client.current ?? t(client.versionFailed ? "unavailable" : "versionLoading")}</dd>
-          <dt>{t("targetVersion")}</dt>
-          <dd>{state?.version ?? t("unavailable")}</dd>
+          {state?.version ? (
+            <>
+              <dt>{t("targetVersion")}</dt>
+              <dd>{state.version}</dd>
+            </>
+          ) : null}
         </dl>
         {!client.supported ? (
           <p>{t("desktopUnavailable")}</p>
@@ -563,9 +587,11 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
               {state?.phase === "ready"
                 ? t("desktopRestart")
                 : state?.phase === "idle"
-                  ? t("desktopIdle")
+                  ? t(client.checked ? "desktopIdle" : "idle")
                   : state?.phase === "downloading" && state.percent !== undefined
-                    ? t("desktopProgress", { percent: String(Math.round(state.percent)) })
+                    ? t("desktopProgress", {
+                        percent: String(Math.round(state.percent)),
+                      })
                     : state && state.phase !== "error"
                       ? t(state.phase)
                       : ""}
@@ -703,7 +729,12 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
     });
     scope.slots.inject("settings.update", () =>
       scope.slots.register(
-        { name: "settings.update", priority: -10, locale: pluginUpdateLocale, inject: shared },
+        {
+          name: "settings.update",
+          priority: -10,
+          locale: pluginUpdateLocale,
+          inject: shared,
+        },
         UpdateEntry,
       ),
     );

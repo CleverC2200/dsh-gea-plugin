@@ -23,12 +23,14 @@ export function createDesktopUpdates() {
     presentation?: DesktopUpdatePresentation;
     failed: boolean;
     opening: boolean;
+    checked: boolean;
   } = {
     supported: bridge !== undefined,
     canCheck: typeof bridge?.check === "function",
     versionFailed: false,
     failed: false,
     opening: false,
+    checked: false,
   };
   const listeners = new Set<() => void>();
   let live = true,
@@ -70,9 +72,18 @@ export function createDesktopUpdates() {
     },
     check: async () => {
       if (!bridge?.check) throw Error("UPDATE_CHECK_UNAVAILABLE");
-      const presentation = await bridge.check();
-      publish({ presentation, failed: false });
-      return presentation;
+      try {
+        const presentation = await bridge.check();
+        publish({
+          presentation,
+          failed: false,
+          checked: presentation.phase !== "error",
+        });
+        return presentation;
+      } catch (error) {
+        publish({ failed: true, checked: false });
+        throw error;
+      }
     },
     open: async (version?: string) => {
       if (
