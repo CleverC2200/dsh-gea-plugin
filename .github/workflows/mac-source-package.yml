@@ -64,6 +64,7 @@ jobs:
           mkdir gea/node_modules
           ln -s "$RUNNER_TEMP/input-dependencies/node_modules/semver" gea/node_modules/semver
           node tools/scripts/mac-complete-local/full-source.mjs core gea "$DESKTOP_INPUT_PATH" --plan
+          node --test tools/scripts/mac-complete-local/ad-hoc.test.mjs
       - name: Prepare declared Core dependencies
         working-directory: core
         run: |

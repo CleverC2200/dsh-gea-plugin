@@ -6,6 +6,7 @@ import { mkdir, open, readFile, writeFile, symlink, copyFile, stat } from "node:
 import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
+import { createAdHocPreparation } from "./ad-hoc.mjs";
 
 const core = resolve(process.argv[2]);
 const gea = resolve(process.argv[3]);
@@ -43,6 +44,7 @@ const identities = (packages) =>
     .map(({ name, version, sha256 }) => ({ name, version, sha256 }))
     .sort((a, b) => a.name.localeCompare(b.name));
 assert.deepEqual(identities(reservation.packages), identities(input.seed.packages));
+const preparation = await createAdHocPreparation(core);
 if (process.argv.includes("--plan")) {
   console.log(
     JSON.stringify({
@@ -126,8 +128,24 @@ await pnpm("pack-native", [
   "--pack-destination",
   join(target, "packed/landlock"),
 ]);
-for (const step of ["runtime", "packages", "dsh"])
+for (const step of ["runtime", "packages"])
   await pnpm("prepare-" + step, ["run", "prepare:" + step], desktop);
+const preparationPath = join(output, "prepare-dsh.mts");
+await writeFile(preparationPath, preparation);
+await writeFile(
+  join(output, "preparation.json"),
+  JSON.stringify(
+    {
+      core: input.seed.core.head,
+      sourceSha256: hash(await readFile(join(desktop, "scripts/prepare-dsh.ts"))),
+      derivedSha256: hash(preparation),
+      signing: "ad-hoc native runtime; Core verification and smoke retained",
+    },
+    null,
+    2,
+  ),
+);
+await pnpm("prepare-dsh", ["exec", "tsx", preparationPath], desktop);
 const artifacts = [];
 for (const path of coreArtifactPaths)
   artifacts.push({
