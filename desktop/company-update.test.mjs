@@ -93,7 +93,13 @@ async function fixture(
     }
     await writeFile(join(profile, "package.json"), JSON.stringify(after));
     if (fail) throw Error("INSTALL_INTERRUPTED");
-    await options.complete({ writeFileAtomic: writeFile });
+    await options.complete({
+      writeFileAtomic: async (path, bytes, { mode, dirMode }) => {
+        assert.equal(mode, 0o600);
+        assert.equal(dirMode, 0o700);
+        await writeFile(path, bytes, { mode });
+      },
+    });
   };
   const options = { root: home, support: home, seed, home, manifest, install, desktopVersion };
   return {

@@ -254,6 +254,7 @@ export async function applyCompanyUpdate({
         await writeFileAtomic(
           companyUpdatePath(profile),
           JSON.stringify({ ...receipt, phase: "verifying", expected }),
+          { mode: 0o600, dirMode: 0o700 },
         );
       },
     });
