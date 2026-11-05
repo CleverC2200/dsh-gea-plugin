@@ -13,8 +13,13 @@ import {
 } from "./sales-plan-wire.ts";
 import { InventoryReadCache, recoverInventorySnapshot } from "./inventory-read-cache.ts";
 import { fcStorage, type FcStorageEnvironments } from "./fc-storage.ts";
-import { checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
-import { DmsClient, submitOwnedDmsOrder, type DmsEnvironments } from "./dms-orders.ts";
+import { checkFcDmsOrderTarget, checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
+import {
+  DmsClient,
+  parseDmsOrder,
+  submitOwnedDmsOrder,
+  type DmsEnvironments,
+} from "./dms-orders.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
@@ -1699,12 +1704,22 @@ export class Business {
       if (payload.operation === "preflight") {
         result = checkFcSubmissionReadiness(
           config,
-          this.config.fcStorage?.[this.environment],
           { tenantId: auth.tenantId, userId: auth.id },
           payload.warehouseCode.trim(),
           payload.order,
         );
       } else {
+        const order = parseDmsOrder(payload.order);
+        const target = await resolveFcDmsTarget(
+          payload.warehouseCode.trim(),
+          order.addressCode,
+          (query) => this.pluginSql({ consumerCode: "branch-inventory", ...query }, signal),
+          signal,
+        );
+        signal.throwIfAborted();
+        if (this.auth !== auth) throw Error("STALE_LOGIN");
+        this.assertExecutionAllowed("branch-inventory");
+        checkFcDmsOrderTarget(payload.warehouseCode.trim(), order, target);
         const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
         result = await submitOwnedDmsOrder(
           resolve(this.config.runtimeDir, "dms-orders"),
