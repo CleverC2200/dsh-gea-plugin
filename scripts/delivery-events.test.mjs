@@ -60,13 +60,19 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "source_types_input",
     "windows_certificate_test",
     "windows_complete_input",
+    "windows_online_update",
     "windows_overwrite_artifact_run",
     "windows_signed",
     "windows_update_acceptance",
   ]);
   for (const [name, input] of Object.entries(inputs)) {
     if (
-      ["windows_signed", "windows_certificate_test", "windows_update_acceptance"].includes(name)
+      [
+        "windows_signed",
+        "windows_certificate_test",
+        "windows_update_acceptance",
+        "windows_online_update",
+      ].includes(name)
     ) {
       assert.equal(input.type, "boolean");
       assert.equal(input.default, name === "windows_signed");
