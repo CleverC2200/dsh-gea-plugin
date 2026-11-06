@@ -485,3 +485,29 @@ for (const consumerCode of ["base-safety-stock", "branch-inventory", "full-chain
     ]);
     assert.equal(reads, 1, "completed data must still use the twenty-minute cache");
   });
+
+test("actual branch Consumer expires cached SQL at five minutes; base and chain keep twenty", async (t) => {
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  for (const consumerCode of ["branch-inventory", "base-safety-stock", "full-chain-inventory"]) {
+    const business = fixture(t, consumerCode);
+    let physicalReads = 0;
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      if (url.endsWith("/execute")) physicalReads++;
+      return success(url, init);
+    });
+    const payload = {
+      consumerCode,
+      sql: "SELECT t.sku AS sku FROM inventory AS t",
+      parameters: {},
+    };
+    const read = () => business.pluginSql(payload, new AbortController().signal, true);
+    await read();
+    now += 5 * 60 * 1000 - 1;
+    await read();
+    assert.equal(physicalReads, 1);
+    now++;
+    await read();
+    assert.equal(physicalReads, consumerCode === "branch-inventory" ? 2 : 1);
+  }
+});

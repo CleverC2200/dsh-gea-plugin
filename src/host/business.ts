@@ -11,7 +11,11 @@ import {
   salesPlanQueryValue,
   salesPlanWireKey,
 } from "./sales-plan-wire.ts";
-import { InventoryReadCache, recoverInventorySnapshot } from "./inventory-read-cache.ts";
+import {
+  InventoryReadCache,
+  inventoryReadCacheTtl,
+  recoverInventorySnapshot,
+} from "./inventory-read-cache.ts";
 import { fcStorage, type FcStorageEnvironments } from "./fc-storage.ts";
 import { checkFcDmsOrderTarget, checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
 import {
@@ -2944,7 +2948,12 @@ export class Business {
       configured ? [query.sql, query.parameters] : pagedQuery,
     ]);
     if (cacheable) {
-      const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
+      const cached = this.inventoryReads.get(
+        identity,
+        cacheKey,
+        freshAfter,
+        inventoryReadCacheTtl(consumerCode),
+      );
       if (cached !== undefined) return cached;
     }
     const getDelegation = async () => {
