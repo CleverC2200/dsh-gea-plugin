@@ -8,6 +8,12 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readDesktopInput, readDesktopPluginSource } from "../windows-complete-local/input.mjs";
 import { macBaseline as baseline, assertMacBaseline } from "./baseline.mjs";
+import { runSignedMacBuild } from "./signing.mjs";
+
+if (process.env.GEA_MAC_SIGNED === "1") {
+  await runSignedMacBuild(...process.argv.slice(2, 5), process.argv.slice(5));
+  process.exit(0);
+}
 
 assert.equal(process.platform, "darwin");
 assert.equal(process.arch, "arm64");

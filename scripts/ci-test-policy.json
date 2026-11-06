@@ -62,7 +62,8 @@
     "desktop/verify-client-artifacts.test.cjs",
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/windows-complete-local/core-cache.test.mjs",
-    "scripts/windows-complete-local/signing.test.mjs"
+    "scripts/windows-complete-local/signing.test.mjs",
+    "scripts/mac-complete-local/signing.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -73,6 +74,9 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/mac-complete-local/signing.test.mjs": {
+      "dependencies": false
+    },
     "scripts/source-preparation.test.mjs": {
       "dependencies": false
     },
@@ -740,6 +744,12 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^tests/plugin-update-windows\\.native\\.mjs$",
       "tests": ["scripts/ci-windows-update.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/mac-complete-local/(?:build|full-source|signing(?:\\.test)?)\\.mjs$",
+      "tests": ["scripts/mac-complete-local/signing.test.mjs"],
+      "sourceTests": ["scripts/mac-complete-local/signing.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
