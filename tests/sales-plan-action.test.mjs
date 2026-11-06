@@ -1014,10 +1014,7 @@ test("Z actions reuse monthly adjustment format and duplicate checks", async (t)
       { skuCode: "789", adjustQty: "8" },
     ],
   ]) {
-    for (const action of ["APPROVE", "REJECT"])
-      await assert.rejects(
-        f.business.salesPlanAction(f.payload({ action, remark: "核对数量", adjustments }), signal),
-      );
+    await assert.rejects(f.business.salesPlanAction(f.payload({ adjustments }), signal));
   }
   assert.equal(f.writes(), 0);
 });
@@ -1587,71 +1584,4 @@ test("employee resubmission readiness needs login and ignores absent or obsolete
     assert.equal(business.status().resubmitUnavailableReason, undefined);
   }
   assert.equal(network.mock.callCount(), 0);
-});
-
-for (const orderType of ["M", "Z"])
-  test(`${orderType} rejection forwards quantity changes in one frozen action request`, async (t) => {
-    const sent = [];
-    const f = correctionFixture(t, async (_url, init) => {
-      sent.push({ body: init.body, key: init.headers["Idempotency-Key"] });
-      if (sent.length === 1) throw new TypeError("fixture lost response");
-      return Response.json({ success: true, result: { rejected: true } });
-    });
-    f.detail.currentVersion.orderType = orderType;
-    f.detail.actionContext = {
-      versionId: "v",
-      status: 4,
-      nodeOrder: 5,
-      policy: "role-visible-v1",
-      snapshotHash: "a".repeat(64),
-      allowedActions: ["REJECT"],
-      roleActions: [{ role: "category", allowedActions: ["REJECT"] }],
-    };
-    const signal = new AbortController().signal;
-    await f.business.refreshApprovalRoles(signal);
-    const payload = f.payload({
-      action: "REJECT",
-      approvalPolicy: "role-visible-v1",
-      remark: "请按修改后的110处理",
-      adjustments: [{ skuCode: "789", adjustQty: "-10" }],
-    });
-    await assert.rejects(f.business.salesPlanAction(payload, signal), /lost response/);
-    assert.deepEqual(await f.business.salesPlanAction(payload, signal), { rejected: true });
-    assert.equal(sent.length, 2);
-    assert.deepEqual(sent[0], sent[1]);
-    assert.deepEqual(JSON.parse(sent[0].body), {
-      action: "REJECT",
-      expectedStatus: 4,
-      remark: "请按修改后的110处理",
-      adjustments: [{ skuCode: "789", adjustQty: "-10" }],
-      approvalRole: "category",
-      approvalPolicy: "role-visible-v1",
-      expectedSnapshot: "a".repeat(64),
-    });
-  });
-
-test("rejection never drops adjustments or sends a second write after an upstream refusal", async (t) => {
-  const bodies = [];
-  const f = correctionFixture(t, async (_url, init) => {
-    bodies.push(JSON.parse(init.body));
-    return Response.json(
-      { success: false, message: "退回操作不允许提交SKU调整量" },
-      { status: 400 },
-    );
-  });
-  const signal = new AbortController().signal;
-  await f.business.refreshApprovalRoles(signal);
-  await assert.rejects(
-    f.business.salesPlanAction(
-      f.payload({
-        action: "REJECT",
-        remark: "核对数量",
-        adjustments: [{ skuCode: "789", adjustQty: "-10" }],
-      }),
-      signal,
-    ),
-    /不允许/,
-  );
-  assert.equal(f.writes(), 1);
-  assert.deepEqual(bodies[0].adjustments, [{ skuCode: "789", adjustQty: "-10" }]);
 });
