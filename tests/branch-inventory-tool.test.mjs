@@ -51,7 +51,8 @@ const fixture = (execute, readySummary = false) => {
       if (id === config.dailySummary?.snapshotQueryId)
         return { rows: [], returnedColumns: config.queries[id].resultColumns, rejectedColumns: [] };
       calls.push({ id, request, configured });
-      if (readySummary && id === snapshotId) return summaryData();
+      if (readySummary && (id === snapshotId || id === config.dailySummary?.bundle?.queryId))
+        return summaryData(id);
       return execute(id, request, signal);
     },
     moduleMcp: async () => {
@@ -141,7 +142,7 @@ function data(id) {
     rejectedColumns: [],
   };
 }
-function summaryData() {
+function summaryData(queryId = snapshotId) {
   const parts = new Map();
   for (const member of config.dailySummary.bundle.members) {
     const row = parts.get(member.part) ?? {
@@ -159,7 +160,7 @@ function summaryData() {
   }
   return {
     rows: [...parts.values()].map((row) => ({ ...row, bundle_scope_total: parts.size })),
-    returnedColumns: config.queries[snapshotId].resultColumns,
+    returnedColumns: config.queries[queryId].resultColumns,
     rejectedColumns: [],
   };
 }
@@ -261,10 +262,19 @@ test("branch summary and follow-up suggestions use installed page calculations a
     f.calls.filter((c) => c.id !== snapshotId).map((c) => c.id),
     [
       "snapshot.replenishment.overview",
-      "snapshot.source.branch-stock-date",
+      config.dailySummary.bundle.queryId,
       "snapshot.replenishment-suggestions.detail.atomic",
     ],
   );
+  const bundleCall = f.calls.find((call) => call.id === config.dailySummary.bundle.queryId);
+  assert.ok(bundleCall, "stock-date read uses the selected-warehouse bundle");
+  for (const member of config.dailySummary.bundle.members) {
+    for (const [parameter, name] of Object.entries(member.bindings)) {
+      if (name === "warehouse_code") assert.equal(bundleCall.request.parameters[parameter], "W1");
+      if (name === "warehouse_code_mode")
+        assert.equal(bundleCall.request.parameters[parameter], "equal");
+    }
+  }
   const last = f.calls.at(-1).request.parameters;
   assert.equal(last.gea_p2, "W1");
   assert.equal(last.gea_p2200, "2026-10-22");

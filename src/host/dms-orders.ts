@@ -89,6 +89,8 @@ export function parseDmsOrder(input: unknown): Order {
   });
   return order;
 }
+class DmsRequestRejection extends Error {}
+
 function baseUrl(raw: string) {
   const url = new URL(raw);
   if (
@@ -127,8 +129,14 @@ export class DmsClient {
     if (!response.ok) throw Error(`DMS 请求失败（HTTP ${response.status}）`);
     const body = await response.json();
     signal.throwIfAborted();
-    if (body?.success !== true || body?.code !== 200)
-      throw Error("DMS 拒绝请求，请在DMS核查账号、订单字段及业务配置");
+    if (body?.success !== true || body?.code !== 200) {
+      const reason = body?.message ?? body?.msg;
+      throw new DmsRequestRejection(
+        reason === "当前登录人不是客户对接人"
+          ? "DMS 拒绝暂存：当前登录人不是客户对接人，请在DMS核对账号与客户关联"
+          : "DMS 拒绝请求，请在DMS核查账号、订单字段及业务配置",
+      );
+    }
     return body.result;
   }
   assertConfigured() {
@@ -373,7 +381,10 @@ export async function submitDmsOrder(
     await rename(temp, file);
     signal.throwIfAborted();
     return receipt;
-  } catch {
-    throw Error(`DMS订单 ${order.aiPreOrderCode} 未取得可确认回执，请在DMS核查；禁止重复提交`);
+  } catch (error) {
+    const reason = error instanceof DmsRequestRejection ? `${error.message}。` : "";
+    throw Error(
+      `${reason}DMS订单 ${order.aiPreOrderCode} 未取得可确认回执，请在DMS核查；禁止重复提交`,
+    );
   }
 }
