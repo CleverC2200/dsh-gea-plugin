@@ -74,6 +74,55 @@ const summarySnapshot = {
   ],
   rejectedColumns: [],
 };
+test("base summary, locations, detail and SKU ranking use one authorized daily batch", async () => {
+  const config = JSON.parse(
+    await readFile("../dsh-agent-workbench/business/inventory-aqkc/sql.config.json", "utf8"),
+  );
+  for (const view of ["summary", "locations", "detail", "sku-ranking"]) {
+    const id = "current-shortage." + view;
+    const fields = config.queries[id].resultColumns;
+    const f = fixture("aqkc", async (request) =>
+      request.sql.includes("AS batch_id")
+        ? summarySnapshot
+        : {
+            rows: [
+              {
+                ...row,
+                sku: "S1",
+                material_name: "商品",
+                category: "汤圆",
+                material_group: "商品组",
+                location_code: "郑州",
+                location_name: "郑州",
+                base: "郑州",
+                warehouse_code: null,
+                page_scope_total: 1,
+                page_row_present: 1,
+                scope_invalid: 0,
+                scope_shortage: 5,
+                snapshot_count: 1,
+              },
+            ],
+            returnedColumns: fields,
+            rejectedColumns: [],
+          },
+    );
+    const result = JSON.parse(await f.call({ view, base: "郑州" }));
+    assert.equal(result.success, undefined, JSON.stringify(result));
+    assert.equal(result.rows[0].shortage, "5");
+    assert.ok(
+      f.calls[0].request.sql ===
+        config.queries[config.dailySummary.bundle.bootstrapQueryId].request.sql,
+      "daily batch must be selected first",
+    );
+    assert.ok(
+      f.calls.at(-1).request.sql === config.queries["snapshot." + id].request.sql,
+      view + " must read the selected daily batch",
+    );
+    assert.equal(f.calls.at(-1).request.parameters.gea_p90001, "B1");
+    assert.ok(f.calls.every((c) => !c.request.sql.includes("FROM agents_scm_execute_detail_d")));
+  }
+});
 test("SKU ranking returns distinct positive SKU counts and same-scope page shares", async () => {
   const f = fixture("aqkc", async (request) =>
     request.sql.includes("AS batch_id")
@@ -103,20 +152,26 @@ test("SKU ranking returns distinct positive SKU counts and same-scope page share
   assert.match(request.sql, /agents_inv_order_summary_day/);
   assert.ok(!request.sql.includes("GROUP BY f.base"));
 });
-test("SKU ranking never falls back to raw orders after missing or denied snapshot", async () => {
-  for (const response of [
-    { rows: [], returnedColumns: summarySnapshot.returnedColumns, rejectedColumns: [] },
-    {
-      success: false,
-      errorCode: "AI_GATEWAY_DATA_PERMISSION_DENIED",
-      message: "denied",
-      failure: { reasonCode: "ROW_SCOPE_DENIED" },
-    },
-  ]) {
-    const f = fixture("aqkc", async () => response);
-    const result = JSON.parse(await f.call({ view: "sku-ranking" }));
-    assert.equal(result.success, false);
-    assert.equal(f.calls.length, 1);
+test("base shortage views never fall back to raw orders after missing or denied snapshot", async () => {
+  for (const view of ["summary", "locations", "detail", "sku-ranking"]) {
+    for (const response of [
+      {
+        rows: [],
+        returnedColumns: summarySnapshot.returnedColumns,
+        rejectedColumns: [],
+      },
+      {
+        success: false,
+        errorCode: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+        message: "denied",
+        failure: { reasonCode: "ROW_SCOPE_DENIED" },
+      },
+    ]) {
+      const f = fixture("aqkc", async () => response);
+      const result = JSON.parse(await f.call({ view }));
+      assert.equal(result.success, false);
+      assert.equal(f.calls.length, 1);
+    }
   }
 });
 test("SKU ranking rejects duplicates, zero rows, missing permissions and mixed scope totals", () => {
@@ -141,12 +196,19 @@ test("SKU ranking rejects duplicates, zero rows, missing permissions and mixed s
   assert.throws(
     () =>
       currentShortageRankingResult(
-        { rows: good, returnedColumns: rankingColumns, rejectedColumns: ["material_name"] },
+        {
+          rows: good,
+          returnedColumns: rankingColumns,
+          rejectedColumns: ["material_name"],
+        },
         1,
       ),
     /INCOMPLETE/,
   );
-  const denied = { success: false, failure: { reasonCode: "ROW_SCOPE_DENIED" } };
+  const denied = {
+    success: false,
+    failure: { reasonCode: "ROW_SCOPE_DENIED" },
+  };
   assert.deepEqual(currentShortageRankingResult(denied, 1), denied);
 });
 test("SKU ranking supports a verified empty scope and never borrows another Agent resource", async () => {
@@ -170,11 +232,14 @@ test("SKU ranking supports a verified empty scope and never borrows another Agen
 });
 function fixture(
   agent = "aqkc",
-  execute = async () => ({
-    rows: [row],
-    returnedColumns: columns,
-    rejectedColumns: [],
-  }),
+  execute = async (request) =>
+    request.sql.includes("AS batch_id")
+      ? summarySnapshot
+      : {
+          rows: [row],
+          returnedColumns: columns,
+          rejectedColumns: [],
+        },
 ) {
   let tool,
     preset = "gea-html-inventory-" + agent,
@@ -269,7 +334,8 @@ test("orchestration selects the explicit fixed location scope without borrowing 
     assert.equal(f.calls.at(-1).request.consumerCode, "workbench");
     assert.equal(
       f.calls.at(-1).request.sql,
-      config.queries["current-shortage.summary"].request.sql,
+      config.queries[(agent === "aqkc" ? "snapshot." : "") + "current-shortage.summary"].request
+        .sql,
     );
   }
   await assert.rejects(f.call({}), /LOCATION_TYPE_REQUIRED/);
@@ -285,17 +351,21 @@ test("four Session profiles reuse their installed page SQL without a page or Cub
     assert.equal(result.rows[0].shortage, "5");
     assert.equal(result.unit, "箱");
     assert.equal(result.coverage, "complete-scope-summary");
-    assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0].request.consumerCode, consumer);
-    assert.equal(f.calls[0].request.parameters.gea_p1, "郑州");
-    assert.equal(f.calls[0].configured, true);
+    assert.equal(f.calls.length, agent === "aqkc" ? 2 : 1);
+    assert.equal(f.calls.at(-1).request.consumerCode, consumer);
+    assert.equal(f.calls.at(-1).request.parameters.gea_p1, "郑州");
+    assert.equal(f.calls.at(-1).configured, true);
     const config = JSON.parse(
       await readFile(
         "../dsh-agent-workbench/business/inventory-" + agent + "/sql.config.json",
         "utf8",
       ),
     );
-    assert.equal(f.calls[0].request.sql, config.queries["current-shortage.summary"].request.sql);
+    assert.equal(
+      f.calls.at(-1).request.sql,
+      config.queries[(agent === "aqkc" ? "snapshot." : "") + "current-shortage.summary"].request
+        .sql,
+    );
     assert.ok(allowedTools(PROFILES["gea-html-inventory-" + agent]).has("gea_current_shortage"));
   }
   assert.equal(allowedTools(PROFILES["gea-readonly"]).has("gea_current_shortage"), false);
@@ -355,8 +425,8 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   const ranking = JSON.parse(await f.call({ view: "locations" }));
   assert.ok(f.calls.length, JSON.stringify(ranking));
   assert.equal(f.calls[0].request.sql, config.queries["current-shortage.locations"].request.sql);
-  assert.equal(f.calls[0].request.parameters.gea_p49901, 50);
-  assert.equal(f.calls[0].request.parameters.gea_p49902, 0);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p49901, 50);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p49902, 0);
   assert.equal(ranking.coverage, "complete-location-ranking");
   assert.deepEqual(
     ranking.rows.map((r) => r.location_code),
@@ -420,27 +490,39 @@ test("location ranking uses the installed pagination contract for each profile",
       await readFile(`../dsh-agent-workbench/business/inventory-${agent}/sql.config.json`, "utf8"),
     );
     const query = config.queries["current-shortage.locations"];
-    const f = fixture(agent, async () => ({
-      rows: query.pagination?.atomicQuery
-        ? [
-            {
-              ...Object.fromEntries(query.resultColumns.map((key) => [key, null])),
-              page_scope_total: 0,
-              page_row_present: null,
-            },
-          ]
-        : [],
-      returnedColumns: query.resultColumns,
-      rejectedColumns: [],
-    }));
-    const result = JSON.parse(await f.call({ view: "locations" }));
+    const f = fixture(agent, async (request) =>
+      request.sql.includes("AS batch_id")
+        ? summarySnapshot
+        : {
+            rows: query.pagination?.atomicQuery
+              ? [
+                  {
+                    ...Object.fromEntries(query.resultColumns.map((key) => [key, null])),
+                    page_scope_total: 0,
+                    page_row_present: null,
+                  },
+                ]
+              : [],
+            returnedColumns: query.resultColumns,
+            rejectedColumns: [],
+          },
+    );
+    const result = JSON.parse(
+      await f.call({
+        view: "locations",
+        ...(agent === "aqkc" ? { base: "郑州" } : {}),
+      }),
+    );
     assert.equal(
       result.coverage,
       "complete-location-ranking",
       JSON.stringify({ agent, result, pagination: query.pagination }),
     );
-    assert.equal(f.calls[0].request.parameters.gea_p49901, agent === "apsplan" ? undefined : 50);
-    assert.equal(f.calls[0].request.parameters.gea_p49902, agent === "apsplan" ? undefined : 0);
+    assert.equal(
+      f.calls.at(-1).request.parameters.gea_p49901,
+      agent === "apsplan" ? undefined : 50,
+    );
+    assert.equal(f.calls.at(-1).request.parameters.gea_p49902, agent === "apsplan" ? undefined : 0);
   }
 });
 test("a truncated location collection cannot claim a complete ranking", () => {
@@ -502,7 +584,9 @@ for (const change of ["disable and re-enable", "replace with the same ID"]) {
         started.resolve();
         await held.promise;
       }
-      return { rows: [row], returnedColumns: columns };
+      return _request.sql.includes("AS batch_id")
+        ? summarySnapshot
+        : { rows: [row], returnedColumns: columns };
     });
     const pending = assert.rejects(f.call({}), { name: "AbortError" });
     await started.promise;
