@@ -370,3 +370,23 @@ test("login failure retains the batch slot and permits only that same batch to r
   );
   assert.equal(sends, 2);
 });
+
+test("DMS customer-contact rejection is actionable and retains the no-replay intent", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-contact-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let writes = 0;
+  const client = new DmsClient(config, { workcode: "W1" }, async (url) => {
+    if (String(url).endsWith("ssoLogin")) return ok(login);
+    writes++;
+    return Response.json({ success: false, code: 500, message: "当前登录人不是客户对接人" });
+  });
+  await assert.rejects(
+    submitOwnedDmsOrder(directory, "owner", input, client, signal(), "W1"),
+    /当前登录人不是客户对接人.*未取得/,
+  );
+  await assert.rejects(
+    submitOwnedDmsOrder(directory, "owner", input, client, signal(), "W1"),
+    /结果未知/,
+  );
+  assert.equal(writes, 1);
+});

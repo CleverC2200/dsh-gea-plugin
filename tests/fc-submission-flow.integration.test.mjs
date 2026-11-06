@@ -248,3 +248,85 @@ test("real calculation, page persistence and Host adapters complete two batches 
     "dms-received",
   ]);
 });
+
+test("identical confirmed quantities produce distinct new DMS orders and unresolved attempts cannot be bypassed", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "fc-distinct-rounds-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const order = {
+    customerCode: "C1",
+    addressCode: "A1",
+    pupCode: "01",
+    itemList: [{ productCode: "SKU1", quantity: 1 }],
+  };
+  const input = {
+    warehouseCode: "W1",
+    month: "2026-11",
+    snapshotVersion: "unchanged",
+    planRevision: "1",
+    cycleRevision: "1",
+    consumptionReviewed: true,
+    rows: [{ sku: "SKU1", productName: "产品", recommendedQty: 1, actualQty: 1, reason: "" }],
+    order,
+  };
+  let sends = 0;
+  const client = {
+    login: async () => ({ accessToken: "fixture" }),
+    submit: async (submitted) => ({
+      orderCode: "DMS" + ++sends,
+      aiPreOrderCode: submitted.aiPreOrderCode,
+    }),
+  };
+  const signal = () => new AbortController().signal;
+  const payload = async (confirmationId) => ({
+    ...order,
+    aiPreOrderCode: (await flow.fcSubmissionIdentity({ ...input, confirmationId })).aiPreOrderCode,
+  });
+  const firstPayload = await payload("confirmation-1");
+  const first = await submitOwnedDmsOrder(directory, "owner", firstPayload, client, signal(), "W1");
+  assert.deepEqual(
+    await submitOwnedDmsOrder(directory, "owner", firstPayload, client, signal(), "W1"),
+    first,
+  );
+  assert.equal(sends, 1);
+  const second = await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    await payload("confirmation-2"),
+    client,
+    signal(),
+    "W1",
+  );
+  assert.notEqual(second.aiPreOrderCode, first.aiPreOrderCode);
+  assert.notEqual(second.orderCode, first.orderCode);
+  assert.equal(sends, 2);
+  const unknownClient = {
+    ...client,
+    submit: async () => {
+      sends++;
+      throw Error("response lost");
+    },
+  };
+  await assert.rejects(
+    submitOwnedDmsOrder(
+      directory,
+      "owner",
+      await payload("confirmation-3"),
+      unknownClient,
+      signal(),
+      "W1",
+    ),
+    /未取得/,
+  );
+  await assert.rejects(
+    submitOwnedDmsOrder(
+      directory,
+      "owner",
+      await payload("confirmation-4"),
+      client,
+      signal(),
+      "W1",
+    ),
+    /禁止新批次/,
+  );
+  assert.equal(sends, 3);
+});
