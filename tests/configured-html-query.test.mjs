@@ -351,14 +351,25 @@ for (const id of ["fc", "aqkc", "qll", "apsplan"])
             assert.equal(reportWrite, undefined);
             called = true;
             assert.equal(configured, true);
-            assert.equal(recovery, queryId !== detail);
+            assert.equal(
+              recovery,
+              queryId !== detail && !(id === "aqkc" && queryId === "current-shortage.summary"),
+            );
             assert.equal(request.consumerCode, r.manifest.gea.consumerCode);
-            return { rows: [] };
+            return {
+              rows: [],
+              returnedColumns:
+                queryId === "current-shortage.summary" && id === "aqkc"
+                  ? r.config.queries[r.config.dailySummary.snapshotQueryId].resultColumns
+                  : undefined,
+            };
           },
         },
         signal(),
       );
-      assert.equal(result.success, undefined, JSON.stringify(result));
+      if (id === "aqkc" && queryId === "current-shortage.summary") {
+        assert.equal(result.errorCode, "SUMMARY_NOT_AVAILABLE");
+      } else assert.equal(result.success, undefined, JSON.stringify(result));
       assert.ok(called);
     }
   });
@@ -377,7 +388,10 @@ test("expired page Cube reads discard only the rejected cached connection and ne
   const cleared = [];
   const result = await readConfiguredHtmlQuery(
     r,
-    { queryId: "facts.history", parameters: { month: "2026-06-01", page_size: 200, offset: 0 } },
+    {
+      queryId: "facts.history",
+      parameters: { month: "2026-06-01", page_size: 200, offset: 0 },
+    },
     {
       moduleMcp: async () => expired,
       invalidateModuleMcp: (...args) => cleared.push(args),

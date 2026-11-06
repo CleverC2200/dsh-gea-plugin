@@ -34,7 +34,12 @@ export type UpdateClientReport = {
     desiredArtifactRevision: string;
   }[];
 };
+export type CompanyUpdateStatus = {
+  phase: "prepared" | "installing" | "verifying" | "completed" | "failed" | "cancelled";
+  desktopVersion: string;
+};
 export type UpdateClientStatus = {
+  companyUpdate?: CompanyUpdateStatus | null;
   revision: number;
   items: PluginUpdateRow[];
   hostProcessIdentity: string;
@@ -151,7 +156,23 @@ export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
     };
   });
   if (new Set(items.map((row) => row.packageName)).size !== 3) throw Error("UPDATE_STATUS_INVALID");
+  let companyUpdate: CompanyUpdateStatus | null = null;
+  if (value.companyUpdate !== undefined && value.companyUpdate !== null) {
+    const company = updateObject(value.companyUpdate);
+    const phase = (
+      ["prepared", "installing", "verifying", "completed", "failed", "cancelled"] as const
+    ).find((phase) => phase === company.phase);
+    if (
+      !phase ||
+      typeof company.desktopVersion !== "string" ||
+      !company.desktopVersion ||
+      company.desktopVersion.length > 100
+    )
+      throw Error("UPDATE_STATUS_INVALID");
+    companyUpdate = { phase, desktopVersion: company.desktopVersion };
+  }
   return {
+    companyUpdate,
     revision: Number(value.revision),
     items,
     hostProcessIdentity: value.hostProcessIdentity,

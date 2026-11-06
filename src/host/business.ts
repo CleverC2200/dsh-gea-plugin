@@ -11,10 +11,19 @@ import {
   salesPlanQueryValue,
   salesPlanWireKey,
 } from "./sales-plan-wire.ts";
-import { InventoryReadCache, recoverInventorySnapshot } from "./inventory-read-cache.ts";
+import {
+  InventoryReadCache,
+  inventoryReadCacheTtl,
+  recoverInventorySnapshot,
+} from "./inventory-read-cache.ts";
 import { fcStorage, type FcStorageEnvironments } from "./fc-storage.ts";
-import { checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
-import { DmsClient, submitOwnedDmsOrder, type DmsEnvironments } from "./dms-orders.ts";
+import { checkFcDmsOrderTarget, checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
+import {
+  DmsClient,
+  parseDmsOrder,
+  submitOwnedDmsOrder,
+  type DmsEnvironments,
+} from "./dms-orders.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
@@ -1699,12 +1708,22 @@ export class Business {
       if (payload.operation === "preflight") {
         result = checkFcSubmissionReadiness(
           config,
-          this.config.fcStorage?.[this.environment],
           { tenantId: auth.tenantId, userId: auth.id },
           payload.warehouseCode.trim(),
           payload.order,
         );
       } else {
+        const order = parseDmsOrder(payload.order);
+        const target = await resolveFcDmsTarget(
+          payload.warehouseCode.trim(),
+          order.addressCode,
+          (query) => this.pluginSql({ consumerCode: "branch-inventory", ...query }, signal),
+          signal,
+        );
+        signal.throwIfAborted();
+        if (this.auth !== auth) throw Error("STALE_LOGIN");
+        this.assertExecutionAllowed("branch-inventory");
+        checkFcDmsOrderTarget(payload.warehouseCode.trim(), order, target);
         const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
         result = await submitOwnedDmsOrder(
           resolve(this.config.runtimeDir, "dms-orders"),
@@ -2839,12 +2858,14 @@ export class Business {
         };
       };
       const reportScope = await resolveScope();
-      return orderReportWithEdits(
+      const readOnly = payload.operation === "load";
+      const result = await orderReportWithEdits(
         payload,
         { ...auth, reportScope },
         async (sql, parameters, requestId) => {
           signal.throwIfAborted();
-          if ((await resolveScope()).key !== reportScope.key)
+          this.assertExecutionAllowed("order", readOnly ? "view" : "submit");
+          if (!readOnly && (await resolveScope()).key !== reportScope.key)
             throw Error("ORDER_REPORT_SCOPE_CHANGED");
           if (requestId)
             return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true, {
@@ -2853,6 +2874,12 @@ export class Business {
           return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true);
         },
       );
+      // Read results stay private until the final scope check; writes still check every statement.
+      signal.throwIfAborted();
+      if (readOnly && (await resolveScope()).key !== reportScope.key)
+        throw Error("ORDER_REPORT_SCOPE_CHANGED");
+      signal.throwIfAborted();
+      return result;
     };
     if (payload.operation === "load") return run();
     const task = this.orderReportQueue.then(run, run);
@@ -2921,7 +2948,12 @@ export class Business {
       configured ? [query.sql, query.parameters] : pagedQuery,
     ]);
     if (cacheable) {
-      const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
+      const cached = this.inventoryReads.get(
+        identity,
+        cacheKey,
+        freshAfter,
+        inventoryReadCacheTtl(consumerCode),
+      );
       if (cached !== undefined) return cached;
     }
     const getDelegation = async () => {

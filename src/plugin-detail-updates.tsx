@@ -21,6 +21,7 @@ import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts"
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 import {
   createPluginDetailUpdates,
+  PluginUpdateRequestError,
   pluginUpdateBusy,
   pluginSuiteReady,
   pluginUpdateObservationMs,
@@ -30,7 +31,10 @@ import css from "./plugin-detail-updates.css";
 
 type Owner = ReturnType<typeof createPluginDetailUpdates>;
 type Props = PluginDetailProps &
-  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openUpdates: () => void };
+  PropsLocale<typeof pluginUpdateLocale> & {
+    updates: Owner;
+    openUpdates: () => void;
+  };
 function targetName(subject: PluginDetailProps["subject"]) {
   return subject.kind === "bundle"
     ? companyPackageNames.find((name) => name === subject.pkg.name)
@@ -51,7 +55,10 @@ function UpdateActions({ subject, openUpdates, t }: Props): ReactNode {
 function DetailActions({
   updates,
   t,
-}: { updates: Owner } & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
+  updateAll,
+}: { updates: Owner; updateAll?: () => Promise<void> } & PropsLocale<
+  typeof pluginUpdateLocale
+>): ReactNode {
   const state = useDetail(updates);
   const available =
     state.items.some((row) => row.state === "available" && row.planId) &&
@@ -75,7 +82,7 @@ function DetailActions({
           variant="primary"
           disabled={busy}
           onClick={() => {
-            void updates.updateAll();
+            void (updateAll ? updateAll() : updates.updateAll());
           }}
         >
           {t("updateAll")}
@@ -158,9 +165,12 @@ function DetailSection({
   showTitle = true,
   updates,
   t,
-}: { name: string; installedVersion?: string; showTitle?: boolean; updates: Owner } & PropsLocale<
-  typeof pluginUpdateLocale
->): ReactNode {
+}: {
+  name: string;
+  installedVersion?: string;
+  showTitle?: boolean;
+  updates: Owner;
+} & PropsLocale<typeof pluginUpdateLocale>): ReactNode {
   const state = useDetail(updates),
     row = state.items.find((row) => row.packageName === name);
   const problem = problemText(row?.problem, t);
@@ -267,7 +277,10 @@ function ListTools({
   openUpdates,
   t,
 }: PropsRuntime<"plugins.list.tools"> &
-  PropsLocale<typeof pluginUpdateLocale> & { updates: Owner; openUpdates: () => void }): ReactNode {
+  PropsLocale<typeof pluginUpdateLocale> & {
+    updates: Owner;
+    openUpdates: () => void;
+  }): ReactNode {
   const state = useDetail(updates);
   useEffect(
     () =>
@@ -365,6 +378,7 @@ type SharedProps = PropsLocale<typeof pluginUpdateLocale> & {
 };
 function UpdateEntry({
   wide,
+  hidden,
   updates,
   desktop,
   openUpdates,
@@ -374,9 +388,11 @@ function UpdateEntry({
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   const attention =
     client.failed ||
+    (plugins.companyUpdate && !["completed", "cancelled"].includes(plugins.companyUpdate.phase)) ||
     (client.presentation && client.presentation.phase !== "idle") ||
     plugins.transportError ||
     plugins.items.some((row) => !["idle", "current", "completed"].includes(row.state));
+  if (!wide || hidden || !attention) return null;
   return (
     <Tooltip label={t("updates")} side="top">
       <button
@@ -402,6 +418,7 @@ function UpdateToggleBadge({
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   if (
     !client.failed &&
+    (!plugins.companyUpdate || ["completed", "cancelled"].includes(plugins.companyUpdate.phase)) &&
     (!client.presentation || client.presentation.phase === "idle") &&
     !plugins.transportError &&
     plugins.items.every((row) => ["idle", "current", "completed"].includes(row.state))
@@ -413,12 +430,49 @@ function UpdateToggleBadge({
     </Tooltip>
   );
 }
+function companyPreparationFailure(error: unknown): keyof typeof en {
+  if (error instanceof Error && error.message === "UPDATE_NATIVE_OPEN_FAILED")
+    return "companyNativeOpenFailed";
+  if (!(error instanceof PluginUpdateRequestError)) return "companyPreparationFailed";
+  switch (error.code) {
+    case "UPDATE_OPERATION_BLOCKED":
+      return "companyOperationBlocked";
+    case "UPDATE_SUITE_UNAVAILABLE":
+      return "companySuiteUnavailable";
+    case "UPDATE_SOURCE_NOT_CONFIGURED":
+      return "source-not-configured";
+    case "UPDATE_CORE_OR_SOURCE_UNVERIFIED":
+      return "companySourceUnverified";
+    case "SOURCE_HTTP_FAILED":
+      return "companySourceDownloadFailed";
+    case "SOURCE_ARTIFACT_HASH_MISMATCH":
+    case "SOURCE_ARCHIVE_RELEASE_MISMATCH":
+    case "SOURCE_RELEASE_NOT_VERIFIED":
+    case "SOURCE_APPROVAL_EXPIRED":
+      return "companySourceUnverified";
+    default:
+      return "companyPreparationFailed";
+  }
+}
+
 function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const plugins = useDetail(updates);
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   const [restarting, setRestarting] = useState(false);
+  const [coordinating, setCoordinating] = useState(false);
+  const [coordinationFailure, setCoordinationFailure] = useState<keyof typeof en>();
+  const [legacyClient, setLegacyClient] = useState(false);
   const [restartResult, setRestartResult] = useState<"cancelled" | "failed">();
   const state = client.presentation;
+  useEffect(() => {
+    const initial = desktop.getSnapshot();
+    if (
+      initial.canCheck &&
+      !initial.checked &&
+      (!initial.presentation || initial.presentation.phase === "idle")
+    )
+      void desktop.check().catch(() => undefined);
+  }, [desktop]);
   const nativeBusy =
     client.opening ||
     (state && ["checking", "downloading", "verifying", "installing"].includes(state.phase));
@@ -428,6 +482,48 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
     plugins.submitting !== null ||
     plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
   const restart = desktopRestart();
+  const company = plugins.companyUpdate;
+  const companyActive = company && !["completed", "failed", "cancelled"].includes(company.phase);
+  const beginDesktop = async (pluginRequest = false) => {
+    setCoordinating(true);
+    setCoordinationFailure(undefined);
+    setLegacyClient(false);
+    try {
+      if (!client.supported) {
+        if (pluginRequest) await updates.updateAll();
+        return;
+      }
+      const hasTarget = state && ["available", "ready"].includes(state.phase);
+      if (!client.canCheck && !hasTarget) {
+        await desktop.open();
+        return;
+      }
+      const target = hasTarget ? state : await desktop.check();
+      if (pluginRequest && ["idle", "error"].includes(target.phase)) {
+        await updates.updateAll();
+        return;
+      }
+      if (!hasTarget && !pluginRequest) return;
+      if (!target.version || !["available", "ready"].includes(target.phase)) return;
+      let legacy = false;
+      try {
+        await updates.prepareDesktop(target.version);
+      } catch (error) {
+        if (
+          !(error instanceof PluginUpdateRequestError) ||
+          error.code !== "UPDATE_DESKTOP_UNAVAILABLE"
+        )
+          throw error;
+        legacy = true;
+      }
+      await desktop.open(target.version);
+      setLegacyClient(legacy);
+    } catch (error) {
+      setCoordinationFailure(companyPreparationFailure(error));
+    } finally {
+      setCoordinating(false);
+    }
+  };
   const failure = state?.failure;
   const failureText =
     failure === "check" || failure === "check-network"
@@ -441,13 +537,47 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             : t("desktopFailureInstall");
   return (
     <div className="gea-updates-panel">
+      <p>{t("unifiedPolicy")}</p>
+      {company && company.phase !== "cancelled" ? (
+        <p role="status">
+          {t(
+            company.phase === "completed"
+              ? "companyCompleted"
+              : company.phase === "failed"
+                ? "companyFailed"
+                : company.phase === "verifying"
+                  ? "companyVerifying"
+                  : "companyPrepared",
+            { version: company.desktopVersion },
+          )}
+        </p>
+      ) : null}
+      {legacyClient ? <p role="status">{t("companyLegacyClient")}</p> : null}
+      {coordinationFailure ? <p role="alert">{t(coordinationFailure)}</p> : null}
+      {company?.phase === "prepared" && !nativeBusy && !coordinating ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void updates.cancelDesktop().catch((error: unknown) => {
+              setCoordinationFailure(companyPreparationFailure(error));
+            });
+          }}
+        >
+          {t("companyCancel")}
+        </Button>
+      ) : null}
       <section aria-labelledby="gea-desktop-update-title">
         <h2 id="gea-desktop-update-title">{t("desktopTitle")}</h2>
         <dl className="gea-plugin-update-versions">
           <dt>{t("currentVersion")}</dt>
           <dd>{client.current ?? t(client.versionFailed ? "unavailable" : "versionLoading")}</dd>
-          <dt>{t("targetVersion")}</dt>
-          <dd>{state?.version ?? t("unavailable")}</dd>
+          {state?.version ? (
+            <>
+              <dt>{t("targetVersion")}</dt>
+              <dd>{state.version}</dd>
+            </>
+          ) : null}
         </dl>
         {!client.supported ? (
           <p>{t("desktopUnavailable")}</p>
@@ -457,9 +587,11 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
               {state?.phase === "ready"
                 ? t("desktopRestart")
                 : state?.phase === "idle"
-                  ? t("desktopIdle")
+                  ? t(client.checked ? "desktopIdle" : "idle")
                   : state?.phase === "downloading" && state.percent !== undefined
-                    ? t("desktopProgress", { percent: String(Math.round(state.percent)) })
+                    ? t("desktopProgress", {
+                        percent: String(Math.round(state.percent)),
+                      })
                     : state && state.phase !== "error"
                       ? t(state.phase)
                       : ""}
@@ -479,16 +611,23 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             <Button
               size="sm"
               variant="primary"
-              disabled={Boolean(nativeBusy)}
+              disabled={Boolean(
+                nativeBusy ||
+                coordinating ||
+                restartBusy ||
+                (companyActive && company?.phase !== "prepared"),
+              )}
               onClick={() => {
-                void desktop.open();
+                void beginDesktop();
               }}
             >
               {t(
                 state?.phase === "ready"
                   ? "desktopReady"
                   : state?.phase === "available"
-                    ? "desktopDownload"
+                    ? legacyClient
+                      ? "companyLegacyDownload"
+                      : "companyDownload"
                     : state?.phase === "error" || client.failed
                       ? "desktopRetry"
                       : "desktopCheck",
@@ -499,7 +638,16 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
       </section>
       <section aria-labelledby="gea-plugin-update-title">
         <h2 id="gea-plugin-update-title">{t("pluginsTitle")}</h2>
-        <DetailActions updates={updates} t={t} />
+        {!companyActive &&
+        !nativeBusy &&
+        !coordinating &&
+        !["available", "ready"].includes(state?.phase ?? "") ? (
+          <DetailActions
+            updates={updates}
+            t={t}
+            updateAll={client.canCheck ? () => beginDesktop(true) : undefined}
+          />
+        ) : null}
         {plugins.transportError ? (
           <p role="alert" className="gea-plugin-update-error">
             {t(
@@ -581,7 +729,12 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
     });
     scope.slots.inject("settings.update", () =>
       scope.slots.register(
-        { name: "settings.update", priority: -10, locale: pluginUpdateLocale, inject: shared },
+        {
+          name: "settings.update",
+          priority: -10,
+          locale: pluginUpdateLocale,
+          inject: shared,
+        },
         UpdateEntry,
       ),
     );

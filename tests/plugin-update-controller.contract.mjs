@@ -1252,6 +1252,36 @@ test("an inactive companion blocks all plans and disabling a companion after che
   });
 });
 
+test("an already running current suite does not require installation readiness again", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const name = f.proofs[2].name;
+  const path = join(f.dir, "node_modules", name, "package.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  manifest.version = "3.1.0";
+  await writeFile(path, JSON.stringify(manifest));
+  const profilePath = join(f.dir, "package.json");
+  const profile = JSON.parse(await readFile(profilePath, "utf8"));
+  profile.dependencies[name] = "3.1.0";
+  await writeFile(profilePath, JSON.stringify(profile));
+  f.proofs[2].host.stamp.version = "3.1.0";
+  f.proofs[2].client.stamp.version = "3.1.0";
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  f.proofs[2].host = { kind: "unverified", reason: "HOST_MODULE_PROOF_UNAVAILABLE" };
+  await controller.check();
+  assert.ok(
+    controller
+      .snapshot()
+      .items.every(
+        (row) => row.state === "current" && row.planId === null && row.diagnostic === null,
+      ),
+    JSON.stringify(controller.snapshot()),
+  );
+  assert.equal(controller.snapshot().operation, null);
+});
+
 test("same-version inactive package reports its load diagnosis before current status", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t);
@@ -1268,4 +1298,97 @@ test("same-version inactive package reports its load diagnosis before current st
   assert.equal(row.planId, null);
   assert.equal(row.diagnostic, "UPDATE_PACKAGE_INACTIVE");
   assert.deepEqual(row.problem, { kind: "policy", code: "inactive" });
+});
+
+test("combined updates cache the approved suite without installation, serialize against plugin updates and preserve cancellation", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { companyVersions: true, releasePeers: {} });
+  const before = await readFile(join(f.dir, "package.json"));
+  const original = process.env.GEA_DESKTOP_VERSION;
+  process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261104.1";
+  t.after(() => {
+    if (original === undefined) delete process.env.GEA_DESKTOP_VERSION;
+    else process.env.GEA_DESKTOP_VERSION = original;
+  });
+  const controller = createPluginUpdateController({
+    ...f.options,
+    runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+  });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.prepareDesktop("0.2.0-rc.2.20261105.1");
+  assert.deepEqual(await controller.companyStatus(), {
+    phase: "prepared",
+    desktopVersion: "0.2.0-rc.2.20261105.1",
+  });
+  assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
+  await assert.rejects(controller.submitBatch([]), /UPDATE_OPERATION_BLOCKED/);
+  await controller.cancelDesktop();
+  assert.equal((await controller.companyStatus()).phase, "cancelled");
+});
+
+test("a prepared desktop update wins the profile lock over a plugin install still downloading", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, {
+    companyVersions: true,
+    allUpdates: true,
+    releasePeers: { "@cleverc2200/gea-dsh-prototype": {} },
+  });
+  const before = await readFile(join(f.dir, "package.json"));
+  const original = process.env.GEA_DESKTOP_VERSION;
+  process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261104.1";
+  t.after(() => {
+    if (original === undefined) delete process.env.GEA_DESKTOP_VERSION;
+    else process.env.GEA_DESKTOP_VERSION = original;
+  });
+  const reached = Promise.withResolvers(),
+    resume = Promise.withResolvers();
+  let held = false;
+  const slow = createPluginUpdateController({
+    ...f.options,
+    runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+    source: {
+      ...f.source,
+      download: async (...args) => {
+        const archive = await f.source.download(...args);
+        if (!held) {
+          held = true;
+          reached.resolve();
+          await resume.promise;
+        }
+        return archive;
+      },
+    },
+  });
+  const preparing = createPluginUpdateController({
+    ...f.options,
+    runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+  });
+  let settled = Promise.resolve([]);
+  try {
+    await slow.initialize();
+    await preparing.initialize();
+    await slow.check();
+    const plans = slow
+      .snapshot()
+      .items.filter((row) => row.state === "available")
+      .map((row) => ({ packageName: row.packageName, planId: row.planId }));
+    assert.equal(plans.length, 3);
+    const pending = slow.submitBatch(plans);
+    const rejected = assert.rejects(pending, /UPDATE_OPERATION_BLOCKED/);
+    settled = Promise.allSettled([rejected]);
+    await Promise.race([
+      reached.promise,
+      pending.then(() => assert.fail("plugin installation reached acceptance before the barrier")),
+    ]);
+    await preparing.prepareDesktop("0.2.0-rc.2.20261105.1");
+    resume.resolve();
+    await rejected;
+    assert.equal((await preparing.companyStatus()).phase, "prepared");
+    assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
+    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  } finally {
+    resume.resolve();
+    await Promise.all([settled, slow.dispose(), preparing.dispose()]);
+  }
 });

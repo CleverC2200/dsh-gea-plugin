@@ -104,6 +104,32 @@ export async function readConfiguredHtmlQuery(
   signal.throwIfAborted();
   try {
     const definition = config.queries[queryId];
+    if (
+      config.agentId === "inventory-aqkc" &&
+      ["summary", "locations", "detail", "sku-ranking"].some(
+        (view) => queryId === "current-shortage." + view,
+      )
+    ) {
+      const { readBaseCurrentShortage } =
+        await import("@cleverc2200/dsh-agent-workbench/configured-facts");
+      if (typeof readBaseCurrentShortage !== "function")
+        return {
+          success: false,
+          errorCode: "GEA_WORKBENCH_UPDATE_REQUIRED",
+          message: "请完成 Workbench 更新后读取基地缺货数据",
+        };
+      return await readBaseCurrentShortage(config, queryId, parameters, {
+        signal,
+        execute: (_request, call): Promise<unknown> =>
+          readConfiguredHtmlQuery(
+            resource,
+            { queryId: call.queryId, parameters: call.values },
+            business,
+            signal,
+            consumerCode,
+          ),
+      });
+    }
     if (completeCollection && definition?.pagination?.countQuery) {
       const client = queryContract.createQueryClient(config, (_request, call) =>
         readConfiguredHtmlQuery(

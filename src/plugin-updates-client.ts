@@ -49,6 +49,7 @@ export function readClientPluginModules(ctx: Context): UpdateClientReport["modul
 }
 
 export type PluginDetailUpdateSnapshot = {
+  companyUpdate?: UpdateClientStatus["companyUpdate"];
   items: PluginUpdateRow[];
   checking: boolean;
   submitting: string | null;
@@ -88,6 +89,13 @@ export const pluginUpdateBusy = (items: PluginUpdateRow[]) =>
 export const pluginSuiteReady = (items: PluginUpdateRow[]) =>
   items.length === companyPackageNames.length &&
   items.every((row) => row.state === "available" || row.state === "current");
+
+export class PluginUpdateRequestError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "PluginUpdateRequestError";
+  }
+}
 
 export function createPluginDetailUpdates(ctx: Context) {
   const listeners = new Set<() => void>();
@@ -143,7 +151,18 @@ export function createPluginDetailUpdates(ctx: Context) {
     });
     const result = updateObject(await response.json());
     signal.throwIfAborted();
-    if (!response.ok || result.ok !== true) throw Error("UPDATE_TRANSPORT_FAILED");
+    if (!response.ok || result.ok !== true) {
+      const failure = result.error;
+      const code =
+        failure !== null &&
+        typeof failure === "object" &&
+        "code" in failure &&
+        typeof failure.code === "string" &&
+        /^[A-Z][A-Z0-9_]{0,79}$/.test(failure.code)
+          ? failure.code
+          : "UPDATE_TRANSPORT_FAILED";
+      throw new PluginUpdateRequestError(code);
+    }
     return result.value;
   };
   const signalFor = (owner: NonNullable<typeof page>) =>
@@ -211,7 +230,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       next.revision >= status.revision
     ) {
       status = next;
-      publish({ items: next.items, transportError: null });
+      publish({ items: next.items, companyUpdate: next.companyUpdate, transportError: null });
       return true;
     }
     return false;
@@ -437,6 +456,16 @@ export function createPluginDetailUpdates(ctx: Context) {
       };
     },
     check,
+    async prepareDesktop(desktopVersion: string) {
+      if (!page) throw Error("UPDATE_PAGE_UNAVAILABLE");
+      await request("company-prepare", { desktopVersion }, signalFor(page));
+      await refresh(page);
+    },
+    async cancelDesktop() {
+      if (!page) throw Error("UPDATE_PAGE_UNAVAILABLE");
+      await request("company-cancel", {}, signalFor(page));
+      await refresh(page);
+    },
     update: (name: string) => submitRows(name),
     async updateAll() {
       if (await check()) return submitRows();

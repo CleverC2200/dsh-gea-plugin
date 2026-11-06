@@ -1,0 +1,114 @@
+name: Company update coordination
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      core_sha:
+        description: "Optional full company Core SHA for the paired desktop contract checks"
+        required: false
+        default: ""
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: company-update-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  startup:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+      - name: Verify coordinated startup and completion
+        run: node --test desktop/company-update.test.mjs
+  legacy-client:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: integration/dsh-gea-plugin
+    env:
+      GEA_PLUGIN_UPDATE_SDK: ${{ github.workspace }}/official-latest-standard
+      GEA_PLUGIN_UPDATE_TOOLS: ${{ github.workspace }}/integration/dsh-gea-plugin
+      GEA_PLUGIN_UPDATE_CORE_TOOLS: ${{ github.workspace }}/official-latest-standard
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: integration/dsh-gea-plugin
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: 863cda8787cd97dfef0f2b438a705b155299e74f
+          path: official-latest-standard
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+      - name: Prepare fixed browser source dependencies
+        working-directory: official-latest-standard
+        run: |
+          corepack enable
+          corepack pnpm --filter @deepseek-ai/dsh-client-ui-primitives... --filter @deepseek-ai/dsh-client-ui-renderer... --filter @deepseek-ai/dsh-client-locale... --filter @deepseek-ai/dsh-client-store... install --frozen-lockfile --ignore-scripts
+      - name: Prepare plugin browser fixture
+        run: |
+          corepack pnpm install --frozen-lockfile --ignore-scripts
+          corepack pnpm exec playwright install chromium
+      - name: Build the fixed public Cordis runtime for the browser fixture
+        run: |
+          @'
+          import { build } from 'esbuild';
+          import { join } from 'node:path';
+          import { sourceTools } from './tests/fixtures/plugin-updates/source-tools.mjs';
+          const sdk=process.env.GEA_PLUGIN_UPDATE_SDK;
+          await build({entryPoints:[join(sdk,'vendor/cordis/src/index.ts')],bundle:true,platform:'neutral',format:'esm',outfile:join(sdk,'vendor/cordis/lib/index.js'),plugins:sourceTools(sdk)});
+          '@ | node --input-type=module
+      - name: Verify legacy native fallback and specific preparation failures
+        run: node --test tests/plugin-update-detail.browser.mjs tests/plugin-update-list.browser.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-legacy-client-${{ github.sha }}
+          path: integration/dsh-gea-plugin/.runtime/detail-summary/
+          if-no-files-found: warn
+  core-contract:
+    if: github.event_name == 'workflow_dispatch' && inputs.core_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ inputs.core_sha }}
+          path: core
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: core/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+          cache: pnpm
+          cache-dependency-path: core/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:native-system
+      - name: Check Desktop TypeScript projects
+        run: pnpm run typecheck
+      - name: Verify checked targets and native update authorization
+        run: pnpm exec vitest run apps/desktop/tests/preload-app.spec.ts apps/desktop/tests/main-startup.spec.ts apps/desktop/tests/update-coordinator.spec.ts apps/desktop/tests/update-presentation.spec.ts
+      - name: Verify paired update decision
+        run: node --experimental-strip-types scripts/verify-translation-pairing.ts .agents/notes/implemented/feature/2026-11-04-desktop-update-check.md

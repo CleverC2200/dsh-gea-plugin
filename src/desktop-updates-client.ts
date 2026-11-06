@@ -6,7 +6,10 @@ import type {
 type Carrier = {
   protocolVersion: number;
   appVersion?: () => Promise<string>;
-  updates?: DesktopUpdateBridge;
+  updates?: DesktopUpdateBridge & {
+    check?: () => Promise<DesktopUpdatePresentation>;
+    open(version?: string): Promise<void>;
+  };
 };
 
 export function createDesktopUpdates() {
@@ -14,16 +17,20 @@ export function createDesktopUpdates() {
   const bridge = carrier?.protocolVersion === 1 ? carrier.updates : undefined;
   let snapshot: {
     supported: boolean;
+    canCheck: boolean;
     current?: string;
     versionFailed: boolean;
     presentation?: DesktopUpdatePresentation;
     failed: boolean;
     opening: boolean;
+    checked: boolean;
   } = {
     supported: bridge !== undefined,
+    canCheck: typeof bridge?.check === "function",
     versionFailed: false,
     failed: false,
     opening: false,
+    checked: false,
   };
   const listeners = new Set<() => void>();
   let live = true,
@@ -63,7 +70,22 @@ export function createDesktopUpdates() {
         listeners.delete(listener);
       };
     },
-    open: async () => {
+    check: async () => {
+      if (!bridge?.check) throw Error("UPDATE_CHECK_UNAVAILABLE");
+      try {
+        const presentation = await bridge.check();
+        publish({
+          presentation,
+          failed: false,
+          checked: presentation.phase !== "error",
+        });
+        return presentation;
+      } catch (error) {
+        publish({ failed: true, checked: false });
+        throw error;
+      }
+    },
+    open: async (version?: string) => {
       if (
         !live ||
         !bridge ||
@@ -76,9 +98,10 @@ export function createDesktopUpdates() {
         return;
       publish({ opening: true });
       try {
-        await bridge.open();
+        await bridge.open(version);
       } catch {
         publish({ failed: true });
+        throw Error("UPDATE_NATIVE_OPEN_FAILED");
       } finally {
         publish({ opening: false });
       }

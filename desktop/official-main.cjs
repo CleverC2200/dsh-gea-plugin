@@ -3,6 +3,7 @@ const { join } = require("node:path");
 const { app, dialog } = require("electron");
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
+  process.env.GEA_DESKTOP_VERSION = app.getVersion();
   const result = spawnSync(
     process.execPath,
     [

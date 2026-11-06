@@ -1,5 +1,9 @@
 import { setTimeout as delay } from "node:timers/promises";
 
+export function inventoryReadCacheTtl(consumerCode: string): number {
+  return (consumerCode === "branch-inventory" ? 5 : 20) * 60 * 1000;
+}
+
 function successfulRows(value: unknown): value is { rows: Record<string, unknown>[] } {
   return (
     !!value &&
@@ -160,11 +164,11 @@ export class InventoryReadCache {
     });
   }
 
-  get(scope: AbortSignal, key: string, freshAfter: number) {
+  get(scope: AbortSignal, key: string, freshAfter: number, maxAgeMs = 20 * 60 * 1000) {
     this.activate(scope);
     const entry = this.entries.get(key);
     if (!entry) return undefined;
-    if (entry.startedAt < freshAfter || this.now() - entry.at >= 20 * 60 * 1000) {
+    if (entry.startedAt < freshAfter || this.now() - entry.at >= maxAgeMs) {
       this.entries.delete(key);
       return undefined;
     }

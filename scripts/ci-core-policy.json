@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "required": [
     {
-      "head": "e00863fb9a48745b292a1f61beb547cc79dfbf8f",
+      "head": "863cda8787cd97dfef0f2b438a705b155299e74f",
       "version": "0.2.0-rc.2"
     }
   ],
