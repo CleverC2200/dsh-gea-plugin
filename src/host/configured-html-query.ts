@@ -104,10 +104,21 @@ export async function readConfiguredHtmlQuery(
   signal.throwIfAborted();
   try {
     const definition = config.queries[queryId];
-    if (queryId === "current-shortage.sku-ranking" && config.agentId === "inventory-aqkc") {
-      const { readBaseShortageSkuRanking } =
+    if (
+      config.agentId === "inventory-aqkc" &&
+      ["summary", "locations", "detail", "sku-ranking"].some(
+        (view) => queryId === "current-shortage." + view,
+      )
+    ) {
+      const { readBaseCurrentShortage } =
         await import("@cleverc2200/dsh-agent-workbench/configured-facts");
-      return await readBaseShortageSkuRanking(config, parameters, {
+      if (typeof readBaseCurrentShortage !== "function")
+        return {
+          success: false,
+          errorCode: "GEA_WORKBENCH_UPDATE_REQUIRED",
+          message: "请完成 Workbench 更新后读取基地缺货数据",
+        };
+      return await readBaseCurrentShortage(config, queryId, parameters, {
         signal,
         execute: (_request, call): Promise<unknown> =>
           readConfiguredHtmlQuery(
