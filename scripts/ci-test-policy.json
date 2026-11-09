@@ -26,6 +26,7 @@
     "scripts/*.test.mjs",
     "tests/*.contract.mjs",
     "tests/*.browser.mjs",
+    "scripts/mac-complete-local/ad-hoc.test.mjs",
     "desktop/boot-watch.test.cjs",
     "desktop/client-installer.test.mjs",
     "desktop/company-bootstrap.test.mjs",
