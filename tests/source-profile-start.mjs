@@ -7,6 +7,7 @@ const [configPath, runtime, mode, windowRequestPath] = process.argv.slice(2);
 const { readFile } = await import("node:fs/promises");
 if (!windowRequestPath) throw Error("WINDOW_DECLARATION_REQUIRED");
 const window = JSON.parse(await readFile(windowRequestPath, "utf8"));
+const candidate = JSON.parse(await readFile(process.env.GEA_TEST_CANDIDATE, "utf8"));
 const deployment =
   mode === "native-only"
     ? undefined
@@ -23,7 +24,7 @@ for (const endpoint of [
     throw Error("SOURCE_TEST_REQUIRES_LOOPBACK_SERVICES");
 }
 await runSourceProfile(
-  resolve(import.meta.dirname, "../../../official-latest-standard"),
+  candidate.corePath ?? resolve(import.meta.dirname, "../../../official-latest-standard"),
   resolve(runtime),
   mode !== "native-only",
   deployment,
