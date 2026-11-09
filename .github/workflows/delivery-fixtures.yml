@@ -90,7 +90,7 @@ jobs:
           run-id: 41837806833
           name: GEA-Desktop-0.2.0-rc.2.20261104.4-win-x64-complete
           path: .runtime/candidate
-      - run: node scripts/windows-complete-local/published-startup-diagnostic.mjs
+      - run: node scripts/windows-complete-local/published-startup-diagnostic.mjs signature
       - uses: actions/upload-artifact@v4
         if: always()
         with:

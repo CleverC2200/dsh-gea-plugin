@@ -68,6 +68,14 @@ if (mode === "binding") {
   assert.ok(payload);
   execFileSync(seven, ["x", payload, "-o" + app, "-y"], { stdio: "ignore" });
   const executable = join(app, "GEA Desktop.exe");
+  if (mode === "signature") {
+    const file = join(root + ".unpacked", "dsh/node_modules/node-addon-require-builtin-win32-x64-msvc/prebuilt/win32-x64-msvc-napi-v9.node");
+    const command = '$ErrorActionPreference="Stop"; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $f=$env:GEA_NATIVE_AUDIT_FILE; $s=Get-AuthenticodeSignature -LiteralPath $f; [pscustomobject]@{file=$f;sha256=(Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash;status=[string]$s.Status;message=$s.StatusMessage;subject=$s.SignerCertificate.Subject;issuer=$s.SignerCertificate.Issuer;thumbprint=$s.SignerCertificate.Thumbprint;timestampSubject=$s.TimeStamperCertificate.Subject}|ConvertTo-Json -Depth 4';
+    const value = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { encoding: "utf8", env: { ...process.env, GEA_NATIVE_AUDIT_FILE: file } });
+    await writeFile(join(output, "native-signature.json"), value);
+    console.log(value);
+    process.exit(0);
+  }
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1", DSH_HOME: home, LOCALAPPDATA: join(output, "local-app-data") };
   function run(args) { execFileSync(executable, ["--expose-internals", ...args], { env, stdio: "inherit", timeout: 180000 }); }
   const script = resolve(process.argv[1]);
