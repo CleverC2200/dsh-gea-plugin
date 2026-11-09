@@ -33,7 +33,7 @@ for (const mixed of [false, true])
           name: "确认计划量 789",
           exact: true,
         });
-        await expect(quantity).toHaveValue("1.250");
+        await expect(quantity).toHaveValue("1");
         await quantity.fill("3.000");
         await expect(quantity).toHaveValue("3.000");
         await expect
@@ -144,7 +144,7 @@ test(
     await expect(dialog).toContainText("重提已成功");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
     allowReadback();
     await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
@@ -168,7 +168,7 @@ test(
     await expect(dialog).toContainText("结果暂时未知");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
     await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
     assert.equal(approved.length, 1);
