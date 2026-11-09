@@ -5,6 +5,7 @@ import {
   salesPlanVersionEvidenceStale,
   salesPlanWorkflow,
   validateSalesPlanActionInput,
+  verifyReturnedSalesPlan,
   prepareSalesPlanResubmit,
   type SalesPlanApprovalRole,
   type SalesPlanWorkflowRow,
@@ -38,6 +39,11 @@ type WriteIntent = {
   body?: string;
   flight?: Promise<unknown>;
   receipt?: unknown;
+  returnEvidence?: {
+    detail: GeaSalesPlanDetail;
+    request: GeaSalesPlanActionRequest;
+    planId: string;
+  };
 };
 type SalesPlanHost = {
   scope(effect: "submit" | "approve"): SalesPlanWriteScope;
@@ -380,6 +386,7 @@ export class SalesPlanTransactions {
       "expectedStatus",
       "remark",
       "adjustments",
+      "expectedReturnTargetStage",
       "adjustmentMode",
       "approvalRole",
       "approvalPolicy",
@@ -465,6 +472,21 @@ export class SalesPlanTransactions {
         throw new GeaResponseError(409, {
           message: "GEA 尚未支持本次角色审批契约，请升级服务端后重试",
         });
+      if (request.expectedReturnTargetStage !== undefined) {
+        if (request.action !== "REJECT") throw new Error("INVALID_PAYLOAD");
+        const context = object(
+          await this.host.query({ kind: "returnContext", query: { versionId } }, signal),
+        );
+        if (
+          context.versionId !== versionId ||
+          context.status !== request.expectedStatus ||
+          context.currentStage !==
+            ["customer", "region", "province", "area", "category"].indexOf(role) + 1 ||
+          context.targetStage !== request.expectedReturnTargetStage
+        )
+          throw new GeaResponseError(409, { message: "退回节点已变化，请刷新后重试" });
+        intent.returnEvidence = { detail, request: request as GeaSalesPlanActionRequest, planId };
+      }
       validateSalesPlanActionInput(
         {
           planId,
@@ -506,6 +528,34 @@ export class SalesPlanTransactions {
     if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
     if (scope.signal.aborted) throw new Error("STALE_LOGIN");
     signal.throwIfAborted();
+    if (intent.returnEvidence) {
+      const evidence = intent.returnEvidence;
+      const receipt = object(data.result);
+      try {
+        const after = (await this.host.query(
+          { kind: "detail", query: { planId: evidence.planId } },
+          signal,
+        )) as GeaSalesPlanDetail;
+        if (
+          typeof receipt.fromStatus !== "number" ||
+          typeof receipt.toStatus !== "number" ||
+          !verifyReturnedSalesPlan(evidence.detail, after, evidence.request, {
+            planId: text(receipt.planId),
+            versionId: text(receipt.versionId),
+            fromStatus: receipt.fromStatus,
+            toStatus: receipt.toStatus,
+          })
+        )
+          throw new Error("RETURN_READBACK_MISMATCH");
+      } catch {
+        if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+        const error = new GeaResponseError(502, {
+          message: "退回结果尚未核对，请刷新或使用原操作重试",
+        });
+        error.details.retrySameIntent = true;
+        throw error;
+      }
+    }
     return data.result;
   }
 }
