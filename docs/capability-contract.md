@@ -12,6 +12,8 @@ GEA 在模型步骤按实际 Core 会话预设限制受控业务工具。普通�
 
 ## HTML 声明输入
 
+订单工作台的 `gea_order_amendment` 固定读取仅向实际 Consumer 为 `order` 的会话开放，并复核 Manage 资源、身份及取消代际。参数限 OMS 新增日期范围、基地、汇总/明细和页码；Host 仅执行已安装页面的 `workbench.amendment.summary`、`workbench.amendment.details`，不接收模型 SQL、Consumer 或网关地址。查询声明须携带 `quantity-nonnegative-no-lock-v1` 合同；旧包拒绝计算。分子仅客户要求改单量≥0时合计绝对数量差，分母为完整有效商品数量；不按订单张数，不加锁定期或改单时间条件。分页明细不代替全量汇总，失败不回退 Cube；执行中身份、资源或配置变化时拒绝迟到结果。
+
 默认智能编排 `auto-negotiation` 的已启用受管 `workbench` 来源可读取已安装的固定库存查询：分仓库存、目标及补货沿 `gea_branch_inventory`；当前缺口沿 `gea_current_shortage` 并明确基地或分仓范围。只复用 SQL 定义，实际委托始终使用该会话的 `workbench` Consumer，不借用页面 Consumer，不扩大服务器行/字段权限，也不回退 Cube 重算。来源撤销、替换或身份变化会取消在途读取；普通会话与个人 Cube 引用不因此获得固定库存工具。
 
 当前 [HTML 装载入口](../src/html-plugins.ts) 要求安装包明确提供 page/capability 分离声明，以及 Manage 的 Agent 资源贡献。`plugin.json` 声明如下引用，文件必须位于该安装目录内：
@@ -82,3 +84,5 @@ Manage 的当前安装与启用状态在模型步骤和工具派发前重新核�
 分仓DMS暂存的 `dms-direct` 预检不依赖上述业务写库grant；订单经现有专用DMS能力直接发送，当前账号身份、分仓收货关联与Host持久防重保护保留，通用HTML工具仍只读。
 
 库存只读 SQL 的成功缓存按当前身份代际和完整查询参数隔离：`branch-inventory` 为5分钟，基地及全链保持20分钟，命中不续期。普通页面连接更新不等于显式刷新；页面取消仍终止最后一个订阅者的在途请求，身份变化、Consumer 撤销、显式刷新及字段裁剪继续按原合同处理，空快照和失败不作为完整结果缓存。
+
+订单工作台准交率的独立回源使用只读 `gea_order_ontime`，仅对已启用的订单工作台资源和 `order` Consumer 开放。查询读取已安装 Workbench 的固定汇总或分页明细 SQL，与看板共用执行单到货及18/12小时时限判定；完整分母包含待判定单，直接返回分子、分母、已判定、待判定和已确认逾期计数。模型仅提供日期、基地、视图和页码，不能传入 SQL 或改换 Consumer；身份、资源撤销及查询合同变化会终止结果，不以旧 Cube 或样本率替代。
