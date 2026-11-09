@@ -6,49 +6,66 @@ import { mkdir, open, readFile, writeFile, symlink, copyFile, stat } from "node:
 import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
-import { createAdHocPreparation } from "./ad-hoc.mjs";
+import { companyPackageNames } from "../../src/shared/plugin-release.mjs";
+import {
+  adaptCompanyMacFactory,
+  companyMacDownloadPrefix,
+  companyMacUpdateUrl,
+  finalizeCompanyMacUpdateManifest,
+} from "./signing.mjs";
 
 const core = resolve(process.argv[2]);
 const gea = resolve(process.argv[3]);
+const candidate = process.argv.includes("--candidate");
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const geaSha = git(gea, "rev-parse", "HEAD");
 const { readDesktopInput, readDesktopPluginSource, coreArtifactPaths } = await import(
   pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs"))
 );
 const input = await readDesktopInput(process.argv[4], geaSha);
+input.seed.packages.sort(
+  (a, b) => companyPackageNames.indexOf(a.name) - companyPackageNames.indexOf(b.name),
+);
 const plugin = readDesktopPluginSource(input, gea);
 assert.equal(git(core, "rev-parse", "HEAD"), input.seed.core.head);
 assert.equal(git(core, "status", "--porcelain"), "");
 assert.equal(git(gea, "status", "--porcelain"), "");
-const main = git(
-  gea,
-  "ls-remote",
-  "https://github.com/CleverC2200/dsh-gea-plugin.git",
-  "refs/heads/main",
-).split(/\s+/)[0];
-git(gea, "merge-base", "--is-ancestor", geaSha, main);
 const tag = "desktop-v" + input.desktopVersion;
-assert.equal(git(gea, "cat-file", "-t", tag), "tag");
-assert.equal(git(gea, "rev-parse", tag + "^{commit}"), geaSha);
-const reservation = JSON.parse(
-  git(gea, "for-each-ref", "--format=%(contents)", "refs/tags/" + tag),
-);
-assert.equal(reservation.releaseSourceSha, geaSha);
-assert.equal(reservation.desktopVersion, input.desktopVersion);
-assert.deepEqual(reservation.core, {
-  head: input.seed.core.head,
-  version: input.seed.core.version,
-});
-const identities = (packages) =>
-  packages
-    .map(({ name, version, sha256 }) => ({ name, version, sha256 }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-assert.deepEqual(identities(reservation.packages), identities(input.seed.packages));
-const preparation = await createAdHocPreparation(core);
+if (candidate) {
+  assert.equal(
+    git(gea, "ls-remote", "https://github.com/CleverC2200/dsh-gea-plugin.git", "refs/tags/" + tag),
+    "",
+    "CANDIDATE_VERSION_ALREADY_PUBLISHED",
+  );
+} else {
+  const main = git(
+    gea,
+    "ls-remote",
+    "https://github.com/CleverC2200/dsh-gea-plugin.git",
+    "refs/heads/main",
+  ).split(/\s+/)[0];
+  git(gea, "merge-base", "--is-ancestor", geaSha, main);
+  assert.equal(git(gea, "cat-file", "-t", tag), "tag");
+  assert.equal(git(gea, "rev-parse", tag + "^{commit}"), geaSha);
+  const reservation = JSON.parse(
+    git(gea, "for-each-ref", "--format=%(contents)", "refs/tags/" + tag),
+  );
+  assert.equal(reservation.releaseSourceSha, geaSha);
+  assert.equal(reservation.desktopVersion, input.desktopVersion);
+  assert.deepEqual(reservation.core, {
+    head: input.seed.core.head,
+    version: input.seed.core.version,
+  });
+  const identities = (packages) =>
+    packages
+      .map(({ name, version, sha256 }) => ({ name, version, sha256 }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(identities(reservation.packages), identities(input.seed.packages));
+}
 if (process.argv.includes("--plan")) {
   console.log(
     JSON.stringify({
-      status: "reserved-input-validated",
+      status: candidate ? "local-candidate-input-validated" : "reserved-input-validated",
       tag,
       core: input.seed.core.head,
       gea: geaSha,
@@ -56,6 +73,7 @@ if (process.argv.includes("--plan")) {
   );
   process.exit(0);
 }
+assert.ok(process.env.CSC_KEYCHAIN, "USE_COMPANY_MAC_SIGNING_ENTRY");
 assert.equal(process.platform, "darwin");
 assert.equal(process.arch, "arm64");
 const output = join(process.env.RUNNER_TEMP, "gea-mac-source");
@@ -66,13 +84,16 @@ const env = {
   ...process.env,
   DSH_DESKTOP_BUILD_VERSION: input.desktopVersion,
   DSH_DESKTOP_BUILD_COMMIT: input.seed.core.head,
+  DSH_DESKTOP_APP_ID: "com.cleverc2200.gea.desktop",
+  DSH_DESKTOP_TARGET_PLATFORM: "darwin",
+  DSH_DESKTOP_TARGET_ARCH: "arm64",
 };
 const stages = [];
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-async function fileHash(path) {
-  const digest = createHash("sha256");
+async function fileHash(path, algorithm = "sha256", encoding = "hex") {
+  const digest = createHash(algorithm);
   for await (const chunk of createReadStream(path)) digest.update(chunk);
-  return digest.digest("hex");
+  return digest.digest(encoding);
 }
 async function run(name, file, args, cwd = core, overrides = {}) {
   const log = join(output, name + ".log");
@@ -130,16 +151,14 @@ await pnpm("pack-native", [
 ]);
 for (const step of ["runtime", "packages"])
   await pnpm("prepare-" + step, ["run", "prepare:" + step], desktop);
-const preparationPath = join(output, "prepare-dsh.mts");
-await writeFile(preparationPath, preparation);
+const preparationPath = join(desktop, "scripts/prepare-dsh.ts");
 await writeFile(
   join(output, "preparation.json"),
   JSON.stringify(
     {
       core: input.seed.core.head,
-      sourceSha256: hash(await readFile(join(desktop, "scripts/prepare-dsh.ts"))),
-      derivedSha256: hash(preparation),
-      signing: "ad-hoc native runtime; Core verification and smoke retained",
+      sourceSha256: hash(await readFile(preparationPath)),
+      signing: "Developer ID native runtime before integrity sealing; original Core preparation",
     },
     null,
     2,
@@ -214,37 +233,19 @@ function relocate(source, original) {
 }
 const factoryPath = join(desktop, "scripts/electron-builder-config.mjs");
 let factory = relocate(await readFile(factoryPath, "utf8"), factoryPath);
-for (const [before, after] of [
-  ["const policy = resolveDesktopPolicyEnvironment(env)", "const policy = undefined"],
-  [
-    "const macOSSigning = packagesMacOS ? resolveMacOSSigningEnvironment(env) : undefined",
-    "const macOSSigning = undefined",
-  ],
-  ["if (packagesMacOS) resolveMacOSNotarizationEnvironment(env)", ""],
-  [
-    "const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",
-    "const update = undefined",
-  ],
-]) {
-  assert.equal(factory.split(before).length, 2, "MAC_CONFIG_ADAPTER_DRIFT");
-  factory = factory.replace(before, after);
-}
+factory = adaptCompanyMacFactory(factory);
 await writeFile(join(output, "builder-factory.mjs"), factory);
 const config = `import {createElectronBuilderConfig} from './builder-factory.mjs';
 import {officialGeaBranding} from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
-import {execFileSync} from 'node:child_process';
-const config=officialGeaBranding(createElectronBuilderConfig(process.env),{companySeed:${JSON.stringify(companySeed)}});
-config.extraMetadata={...config.extraMetadata,geaBrandingCommit:${JSON.stringify(geaSha)},dshLocalTestBuild:true,dshLocalPackaging:'company-core-full-three-plugin-ad-hoc'};
-config.mac={...config.mac,identity:'-',forceCodeSigning:false,hardenedRuntime:false,notarize:false,target:['dmg']};
-config.dmg={...config.dmg,sign:false};config.publish=null;
-config.afterSign=context=>execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',context.appOutDir+'/'+context.packager.appInfo.productFilename+'.app']);
-delete config.artifactBuildCompleted;
+import {configureSignedCompanyMac} from ${JSON.stringify(new URL("./signing.mjs", import.meta.url).href)};
+let config=officialGeaBranding(createElectronBuilderConfig(process.env),{companySeed:${JSON.stringify(companySeed)}});
+config=configureSignedCompanyMac(config,${JSON.stringify(geaSha)});
 export default config;
 `;
 const configPath = join(output, "builder.mjs");
 await writeFile(configPath, config);
 await pnpm(
-  "package-dmg",
+  "package-dmg-zip",
   [
     "exec",
     "electron-builder",
@@ -252,6 +253,7 @@ await pnpm(
     configPath,
     "--mac",
     "dmg",
+    "zip",
     "--arm64",
     "--publish",
     "never",
@@ -287,6 +289,11 @@ await writeFile(
 );
 await pnpm("runtime-smoke", ["exec", "tsx", join(output, "smoke-gea.mts")], desktop);
 await run("signature-verify", "/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
+assert.equal(metadata.dshMandatoryUpdatePolicy, undefined);
+const { verifyMacOSAppUpdateConfig } = await import(
+  pathToFileURL(join(desktop, "scripts/macos-app-update-config.mjs"))
+);
+await verifyMacOSAppUpdateConfig(app, { publicUrl: companyMacUpdateUrl });
 const home = join(output, "fresh-install");
 await run(
   "first-install",
@@ -313,12 +320,51 @@ assert.deepEqual(
   input.seed.packages.map(({ name, version }) => ({ name, version })),
 );
 await writeFile(join(output, "first-install-receipt.json"), JSON.stringify(receipt, null, 2));
-const name = "GEA-Desktop-" + input.desktopVersion + "-mac-arm64-local.dmg";
-const artifact = join(output, name);
-await copyFile(join(target, "artifacts", name), artifact);
-await run("dmg-verify", "/usr/bin/hdiutil", ["verify", artifact]);
+const name = "GEA-Desktop-" + input.desktopVersion + "-mac-arm64-signed.dmg";
+const sourceArtifact = join(target, "artifacts", name);
+await run("dmg-verify", "/usr/bin/hdiutil", ["verify", sourceArtifact]);
+const { resolveMacOSSigningEnvironment } = await import(
+  pathToFileURL(join(desktop, "scripts/desktop-release-environment.mjs"))
+);
+const { verifyMacOSNotarizedApplication, verifyMacOSDiskImage } = await import(
+  pathToFileURL(join(desktop, "scripts/verify-macos-signature.mjs"))
+);
+const expected = resolveMacOSSigningEnvironment(env);
+verifyMacOSNotarizedApplication(app, expected);
+verifyMacOSDiskImage(sourceArtifact, expected);
+const zipName = `GEA-Desktop-${input.desktopVersion}-mac-arm64-signed.zip`;
+const updatePath = join(target, "artifacts/nightly-mac.yml");
+const yaml = require("js-yaml");
+const manifest = yaml.load(await readFile(updatePath, "utf8"));
+const updates = [];
+for (const filename of [zipName, name]) {
+  const path = join(target, "artifacts", filename);
+  updates.push({
+    name: filename,
+    size: (await stat(path)).size,
+    sha512: await fileHash(path, "sha512", "base64"),
+  });
+}
+const finalManifest = finalizeCompanyMacUpdateManifest(
+  manifest,
+  input.desktopVersion,
+  updates[0],
+  updates[1],
+);
+await writeFile(join(output, "builder-update-info.json"), JSON.stringify(manifest, null, 2));
+await writeFile(updatePath, yaml.dump(finalManifest));
+const files = [];
+for (const filename of [name, zipName, zipName + ".blockmap", "nightly-mac.yml"]) {
+  const path = join(target, "artifacts", filename);
+  const size = (await stat(path)).size;
+  assert.ok(size > 0);
+  files.push({ name: filename, size, sha256: await fileHash(path) });
+}
 assert.equal(git(core, "status", "--porcelain"), "");
 assert.equal(git(gea, "status", "--porcelain"), "");
+for (const file of files)
+  await copyFile(join(target, "artifacts", file.name), join(output, file.name));
+const artifact = join(output, name);
 await writeFile(
   join(output, "result.json"),
   JSON.stringify(
@@ -334,11 +380,19 @@ await writeFile(
       artifact: name,
       size: (await stat(artifact)).size,
       sha256: await fileHash(artifact),
-      signing: "ad-hoc; not Apple notarized",
+      signing: "Developer ID; Apple notarized and stapled App and DMG",
+      files,
+      distribution: {
+        mode: "dmg-and-online-update",
+        downloadPrefix: companyMacDownloadPrefix,
+        automaticUpdates: true,
+        updateUrl: companyMacUpdateUrl,
+      },
       coreProof: packagedSeed.core,
       packages: input.seed.packages,
       firstInstall: receipt,
       stages,
+      localCandidate: candidate,
       published: false,
     },
     null,

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SHELL_FILES, stagedManifest, validateDesktopPackage } from "./package-desktop.mjs";
+import { SHELL_FILES, stagedManifest, validateDesktopPackage, main } from "./package-desktop.mjs";
 
 const desktop = join(import.meta.dirname, "..", "desktop");
 
@@ -20,21 +20,35 @@ test("every module the Electron main process requires ships in app.asar", async 
   assert.deepEqual(missing, [], "add these files to SHELL_FILES in scripts/package-desktop.mjs");
 });
 
-test("desktop package validation requires a platform payload", async t => {
+test("desktop package validation requires a platform payload", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "gea-package-desktop-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "mac", "payload"), { recursive: true });
   await assert.doesNotReject(() => validateDesktopPackage({ target: "mac", payloadRoot: root }));
-  await assert.rejects(() => validateDesktopPackage({ target: "win", payloadRoot: root }), /payload for win/);
+  await assert.rejects(
+    () => validateDesktopPackage({ target: "win", payloadRoot: root }),
+    /payload for win/,
+  );
 });
 
 test("desktop package validation rejects unknown targets", async () => {
-  await assert.rejects(() => validateDesktopPackage({ target: "linux", payloadRoot: tmpdir() }), /INVALID_DESKTOP_TARGET/);
+  await assert.rejects(
+    () => validateDesktopPackage({ target: "linux", payloadRoot: tmpdir() }),
+    /INVALID_DESKTOP_TARGET/,
+  );
 });
 
 test("the packaged manifest keeps the data schema the shell validates against", async () => {
   const manifest = JSON.parse(await readFile(join(desktop, "package.json"), "utf8"));
-  assert.equal(manifest.desktopDataSchema, 2, "desktop/package.json must declare desktopDataSchema");
+  assert.equal(
+    manifest.desktopDataSchema,
+    2,
+    "desktop/package.json must declare desktopDataSchema",
+  );
   assert.equal(stagedManifest(manifest).desktopDataSchema, manifest.desktopDataSchema);
   assert.equal(stagedManifest(manifest).main, manifest.main);
+});
+
+test("legacy Mac packaging cannot bypass signing and notarization", async () => {
+  await assert.rejects(main(["--target", "mac"]), /MAC_RELEASE_REQUIRES_SIGNED_ENTRY/);
 });
