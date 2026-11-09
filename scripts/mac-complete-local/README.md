@@ -2,6 +2,8 @@
 
 Mac 默认入口是 `package:desktop:mac`，`package:desktop:mac:signed` 和 `build.mjs` 调用同一流程。它从固定 Core 完整构建，签署内嵌原生文件及 App，完成 App 和 DMG 的 Apple 公证、票据装订、严格验签、Gatekeeper、运行时冒烟与离线首次安装检查。检查全部通过后才整理可交付 DMG、在线更新 ZIP、blockmap、Nightly 清单和成功回执。缺少凭据、公证拒绝或验收失败均停止，不回退临时签名。旧 `package-desktop.mjs --target mac` 拒绝出包。
 
+DMG 装订公证票据后会改变文件大小和摘要，交付前使用最终文件更新清单中的 DMG 大小与 SHA-512；ZIP 的大小和摘要必须与原清单一致，否则停止交付。electron-builder 原清单另存 `builder-update-info.json`，成功回执记录最终交付文件的大小与 SHA-256。
+
 ## 本机入口
 
 默认复用 `~/Library/Application Support/GEA/signing/.env.macos`，也可用 `GEA_MAC_SIGNING_CONFIG_DIR` 指定独立私有目录。配置沿用固定 Core 的 `.env.macos` 字段，应用 ID 为 `com.cleverc2200.gea.desktop`；证书、p12 密码及公证密钥保存在源码树外。每个新版本都重新执行签名与公证。

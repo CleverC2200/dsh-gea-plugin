@@ -50,6 +50,26 @@ export function configureSignedCompanyMac(config, geaSha) {
   };
 }
 
+export function finalizeCompanyMacUpdateManifest(manifest, version, zip, dmg) {
+  assert.equal(manifest.version, version, "MAC_UPDATE_VERSION_MISMATCH");
+  assert.equal(manifest.path, zip.name, "MAC_UPDATE_ZIP_REQUIRED");
+  assert.deepEqual(
+    manifest.files.map(({ url }) => url).sort(),
+    [zip.name, dmg.name].sort(),
+    "MAC_UPDATE_FILES_MISMATCH",
+  );
+  const archived = manifest.files.find(({ url }) => url === zip.name);
+  assert.equal(archived.size, zip.size, "MAC_UPDATE_ZIP_SIZE_MISMATCH");
+  assert.equal(archived.sha512, zip.sha512, "MAC_UPDATE_ZIP_HASH_MISMATCH");
+  assert.equal(manifest.sha512, zip.sha512, "MAC_UPDATE_ZIP_HASH_MISMATCH");
+  return {
+    ...manifest,
+    files: manifest.files.map((file) =>
+      file.url === dmg.name ? { ...file, size: dmg.size, sha512: dmg.sha512 } : file,
+    ),
+  };
+}
+
 export function companyMacSigningDirectory(environment = process.env) {
   return environment.GEA_MAC_SIGNING_CONFIG_DIR
     ? resolve(environment.GEA_MAC_SIGNING_CONFIG_DIR)

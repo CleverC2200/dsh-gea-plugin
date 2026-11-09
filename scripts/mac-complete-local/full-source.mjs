@@ -11,6 +11,7 @@ import {
   adaptCompanyMacFactory,
   companyMacDownloadPrefix,
   companyMacUpdateUrl,
+  finalizeCompanyMacUpdateManifest,
 } from "./signing.mjs";
 
 const core = resolve(process.argv[2]);
@@ -89,10 +90,10 @@ const env = {
 };
 const stages = [];
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-async function fileHash(path) {
-  const digest = createHash("sha256");
+async function fileHash(path, algorithm = "sha256", encoding = "hex") {
+  const digest = createHash(algorithm);
   for await (const chunk of createReadStream(path)) digest.update(chunk);
-  return digest.digest("hex");
+  return digest.digest(encoding);
 }
 async function run(name, file, args, cwd = core, overrides = {}) {
   const log = join(output, name + ".log");
@@ -331,13 +332,29 @@ const { verifyMacOSNotarizedApplication, verifyMacOSDiskImage } = await import(
 const expected = resolveMacOSSigningEnvironment(env);
 verifyMacOSNotarizedApplication(app, expected);
 verifyMacOSDiskImage(sourceArtifact, expected);
+const zipName = `GEA-Desktop-${input.desktopVersion}-mac-arm64-signed.zip`;
+const updatePath = join(target, "artifacts/nightly-mac.yml");
+const yaml = require("js-yaml");
+const manifest = yaml.load(await readFile(updatePath, "utf8"));
+const updates = [];
+for (const filename of [zipName, name]) {
+  const path = join(target, "artifacts", filename);
+  updates.push({
+    name: filename,
+    size: (await stat(path)).size,
+    sha512: await fileHash(path, "sha512", "base64"),
+  });
+}
+const finalManifest = finalizeCompanyMacUpdateManifest(
+  manifest,
+  input.desktopVersion,
+  updates[0],
+  updates[1],
+);
+await writeFile(join(output, "builder-update-info.json"), JSON.stringify(manifest, null, 2));
+await writeFile(updatePath, yaml.dump(finalManifest));
 const files = [];
-for (const filename of [
-  name,
-  `GEA-Desktop-${input.desktopVersion}-mac-arm64-signed.zip`,
-  `GEA-Desktop-${input.desktopVersion}-mac-arm64-signed.zip.blockmap`,
-  "nightly-mac.yml",
-]) {
+for (const filename of [name, zipName, zipName + ".blockmap", "nightly-mac.yml"]) {
   const path = join(target, "artifacts", filename);
   const size = (await stat(path)).size;
   assert.ok(size > 0);

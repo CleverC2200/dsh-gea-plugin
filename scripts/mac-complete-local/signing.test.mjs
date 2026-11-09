@@ -11,6 +11,7 @@ import {
   companyMacUpdateUrl,
   runSignedMacBuild,
   companyMacSigningDirectory,
+  finalizeCompanyMacUpdateManifest,
 } from "./signing.mjs";
 
 test("unknown options cannot turn a requested plan into an actual build", async () => {
@@ -142,6 +143,42 @@ export function create(env) {
   assert.equal(config.afterPack, afterPack);
   assert.equal(config.afterSign, afterSign);
   assert.equal(config.artifactBuildCompleted, artifactBuildCompleted);
+});
+
+test("update metadata describes the notarized DMG and refuses a changed ZIP", () => {
+  const zip = { name: "client.zip", size: 200, sha512: "signed-zip" };
+  const dmg = { name: "client.dmg", size: 105, sha512: "stapled-dmg" };
+  const manifest = {
+    version: "1.0.0",
+    path: zip.name,
+    sha512: zip.sha512,
+    releaseDate: "2026-11-09T00:00:00Z",
+    files: [
+      { url: zip.name, size: zip.size, sha512: zip.sha512 },
+      { url: dmg.name, size: 100, sha512: "before-stapling" },
+    ],
+  };
+  const updated = finalizeCompanyMacUpdateManifest(manifest, "1.0.0", zip, dmg);
+  assert.deepEqual(updated.files[1], { url: dmg.name, size: dmg.size, sha512: dmg.sha512 });
+  assert.deepEqual(updated.files[0], manifest.files[0]);
+  assert.equal(updated.releaseDate, manifest.releaseDate);
+  assert.equal(manifest.files[1].size, 100);
+  assert.throws(
+    () => finalizeCompanyMacUpdateManifest(manifest, "1.0.0", { ...zip, size: 201 }, dmg),
+    /ZIP_SIZE_MISMATCH/,
+  );
+  assert.throws(
+    () => finalizeCompanyMacUpdateManifest(manifest, "1.0.0", { ...zip, sha512: "changed" }, dmg),
+    /ZIP_HASH_MISMATCH/,
+  );
+  assert.throws(
+    () => finalizeCompanyMacUpdateManifest(manifest, "2.0.0", zip, dmg),
+    /VERSION_MISMATCH/,
+  );
+  assert.throws(
+    () => finalizeCompanyMacUpdateManifest(manifest, "1.0.0", zip, { ...dmg, name: "foreign.dmg" }),
+    /FILES_MISMATCH/,
+  );
 });
 
 test("default package commands use the retained private signing directory", async () => {
