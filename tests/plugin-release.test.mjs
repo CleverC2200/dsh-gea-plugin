@@ -50,6 +50,7 @@ test("the production declaration accepts inventory Workbench 79 and retains expl
   assert.deepEqual(issues("0.1.73"), []);
   assert.deepEqual(issues("0.1.76"), []);
   assert.deepEqual(issues("0.1.77"), []);
+  assert.deepEqual(issues("0.1.78"), []);
   assert.deepEqual(issues("0.1.79"), []);
   assert.ok(issues("0.1.80").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
   assert.ok(issues("0.999.0").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
