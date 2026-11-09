@@ -269,8 +269,10 @@ test(
       frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),
     ).toContainText("22");
     await expect(
-      frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),
-    ).toContainText("¥220");
+      frame
+        .getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001")
+        .getByText("¥220", { exact: true }),
+    ).toBeVisible();
     await expect(frame.getByRole("status").filter({ hasText: "正在暂存" })).toContainText(
       "正在暂存",
       { timeout: 10000 },
