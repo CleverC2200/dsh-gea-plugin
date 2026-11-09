@@ -496,9 +496,34 @@ export class SalesPlanTransactions {
         workflowRows,
       );
       if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+      const body = upstreamActionBody(request);
+      if (request.action !== "SAVE") {
+        const planKind =
+          detail.currentVersion.orderType === "Z"
+            ? "纠偏"
+            : detail.currentVersion.orderType === "M"
+              ? "月初"
+              : "";
+        const roleName = {
+          region: "区域审批",
+          province: "省区审批",
+          area: "大区审批",
+          category: "品类审批",
+        }[role];
+        body.notification =
+          request.action === "APPROVE"
+            ? {
+                title: "需求预测审批待处理",
+                content: `一份${planKind}需求预测已通过${roleName}，请查看并按最新内容处理。`,
+              }
+            : {
+                title: "需求预测退回待处理",
+                content: `一份${planKind}需求预测已退回，请查看退回原因并修改后重新提报。`,
+              };
+      }
+      intent.body = JSON.stringify(body);
     }
     signal.throwIfAborted();
-    intent.body ??= JSON.stringify(upstreamActionBody(request));
     const response = await this.host.fetch(
       scope.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions",
       {

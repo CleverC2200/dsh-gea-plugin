@@ -806,6 +806,38 @@ function correctionFixture(t, actionReply) {
   };
 }
 
+for (const orderType of ["M", "Z"])
+  for (const action of ["APPROVE", "REJECT"])
+    test(`${orderType} ${action} sends business notification text through the actual action request`, async (t) => {
+      const sent = [];
+      const f = correctionFixture(t, async (_url, init) => {
+        sent.push(JSON.parse(init.body));
+        return Response.json({ success: true, result: { accepted: true } });
+      });
+      f.detail.currentVersion.orderType = orderType;
+      f.detail.actionContext = undefined;
+      const signal = new AbortController().signal;
+      await f.business.refreshApprovalRoles(signal);
+      const command = f.payload({ action, expectedSnapshot: undefined, remark: "开发验收" });
+      await f.business.salesPlanAction(command, signal);
+      await f.business.salesPlanAction(command, signal);
+      assert.equal(sent.length, 1);
+      const kind = orderType === "Z" ? "纠偏" : "月初";
+      assert.deepEqual(
+        sent[0].notification,
+        action === "APPROVE"
+          ? {
+              title: "需求预测审批待处理",
+              content: `一份${kind}需求预测已通过品类审批，请查看并按最新内容处理。`,
+            }
+          : {
+              title: "需求预测退回待处理",
+              content: `一份${kind}需求预测已退回，请查看退回原因并修改后重新提报。`,
+            },
+      );
+      assert.doesNotMatch(JSON.stringify(sent[0].notification), /sales-plan:|版本|p-jxs-/);
+    });
+
 test("Z approval uses the current environment workflow for a newly configured skipped-node type", async (t) => {
   let body;
   const f = fixture(
@@ -849,7 +881,14 @@ test("Z approval uses the current environment workflow for a newly configured sk
     ),
     { approved: true },
   );
-  assert.deepEqual(body, { action: "APPROVE", expectedStatus: 4 });
+  assert.deepEqual(body, {
+    action: "APPROVE",
+    expectedStatus: 4,
+    notification: {
+      title: "需求预测审批待处理",
+      content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+    },
+  });
 });
 
 test("Z adjustments stay local and cannot SAVE through the remote action endpoint", async (t) => {
@@ -886,6 +925,10 @@ test("Z approval reuses monthly action authority and original body without corre
       action: "APPROVE",
       expectedStatus: 4,
       adjustments: [{ skuCode: "789", adjustQty: "8" }],
+      notification: {
+        title: "需求预测审批待处理",
+        content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+      },
     },
   });
 });
@@ -907,7 +950,15 @@ test("Z rejection uses the original monthly action body and requires its reason"
     await f.business.salesPlanAction(f.payload({ ...request, remark: "请核对调整数量" }), signal),
     { rejected: true },
   );
-  assert.deepEqual(body, { action: "REJECT", expectedStatus: 4, remark: "请核对调整数量" });
+  assert.deepEqual(body, {
+    action: "REJECT",
+    expectedStatus: 4,
+    remark: "请核对调整数量",
+    notification: {
+      title: "需求预测退回待处理",
+      content: "一份纠偏需求预测已退回，请查看退回原因并修改后重新提报。",
+    },
+  });
 });
 
 test("Z approval keeps monthly role and snapshot checks without correction metadata", async (t) => {
@@ -926,6 +977,10 @@ test("Z approval keeps monthly role and snapshot checks without correction metad
       action: "APPROVE",
       expectedStatus: 4,
       adjustments: [{ skuCode: "789", adjustQty: "8" }],
+      notification: {
+        title: "需求预测审批待处理",
+        content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+      },
     },
   });
   await assert.rejects(
@@ -998,6 +1053,10 @@ test("unknown correction write retries its frozen body and key without revalidat
     action: "APPROVE",
     expectedStatus: 4,
     adjustments: [{ skuCode: "789", adjustQty: "8" }],
+    notification: {
+      title: "需求预测审批待处理",
+      content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+    },
   });
 });
 
