@@ -85,6 +85,8 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
     await expect(resume).toBeVisible();
   } catch (error) {
     await captureEvidence(page, app, "hidden-pending-before-logout");
+    error.message +=
+      "\n恢复入口缺失时的页面：" + (await frame.locator("body").innerText()).slice(0, 6000);
     throw error;
   }
   await app.rpc("logout");

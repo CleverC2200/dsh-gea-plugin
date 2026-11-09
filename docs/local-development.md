@@ -32,6 +32,8 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 ## Window fixture 的固定输入
 
+Profile fixture 使用 `GEA_TEST_CANDIDATE` 中已声明的绝对 `corePath`，缺省保留原 SDK 路径；窗口准入继续核对已登记 Core 与固定提交。用于复用本票已准备的运行环境，不修改共享 SDK。
+
 `tests/fixtures/source-window.mjs` 在创建临时目录前读取 `GEA_TEST_CANDIDATE_INPUTS`，也接受显式 `inputFile` 参数。输入文件使用三仓候选检查已有的 `core` 提交与 `repositories` 记录，并声明绝对 `corePath` 和 `historicalFailure: { file, sha256 }`。每个仓的 `path` 为绝对路径，`head` 为已冻结的提交；历史失败文件保持原字节，摘要不匹配即拒绝。
 
 fixture 调用声明的 Workbench `verify-candidate-input.mjs`，检查干净三仓、包身份、锁和固定 Core。Core 包从声明路径内的真实 package manifest 定位，Cordis 的公开 types 导出必须与 Workbench 官方 SDK 输入相同。当前 G fixture 仅复制本 checkout 的启动脚本用于离线行为回归，不从目录层数寻找邻仓或重新选择源组合。

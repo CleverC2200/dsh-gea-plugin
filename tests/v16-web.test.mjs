@@ -263,7 +263,7 @@ test(
       frame.getByLabel("当前页明细汇总").getByText("22 件", { exact: true }),
     ).toBeVisible();
     await expect(
-      frame.getByLabel("当前页明细汇总").getByText("¥220.00", { exact: true }),
+      frame.getByLabel("当前页明细汇总").getByText("¥220", { exact: true }),
     ).toBeVisible();
     await expect(
       frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),

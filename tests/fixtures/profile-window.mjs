@@ -1,6 +1,6 @@
 /** Freeze only an explicitly prepared, disposable loopback engineering profile. */
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve, basename } from "node:path";
+import { resolve, basename, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 import {
   prepareSourcePlugins,
@@ -23,10 +23,15 @@ export async function freezeProfileWindow({
   recordLifecycle = () => {},
 }) {
   signal?.throwIfAborted();
-  const core = resolve(import.meta.dirname, "../../../../official-latest-standard");
   const candidateFile = process.env.GEA_TEST_CANDIDATE;
   if (!candidateFile) throw Error("PROFILE_CANDIDATE_REQUIRED");
-  const candidate = { file: candidateFile, sha256: digest(await readFile(candidateFile)) };
+  const candidateBytes = await readFile(candidateFile);
+  const candidateInput = JSON.parse(candidateBytes);
+  if (candidateInput.corePath !== undefined && !isAbsolute(candidateInput.corePath))
+    throw Error("PROFILE_CORE_PATH_REQUIRED");
+  const core =
+    candidateInput.corePath ?? resolve(import.meta.dirname, "../../../../official-latest-standard");
+  const candidate = { file: candidateFile, sha256: digest(candidateBytes) };
   let combination = { kind: "core" };
   if (!coreOnly) {
     let selected = await readSourceSelection(runtime);
