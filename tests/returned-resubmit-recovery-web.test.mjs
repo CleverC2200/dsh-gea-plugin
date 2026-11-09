@@ -73,7 +73,7 @@ test(
     await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("2.000 件");
     await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
-    await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
+    await dialog.getByRole("button", { name: "重试并核对结果", exact: true }).click();
     await expect(dialog).toContainText("提交成功");
     assert.equal(submitted.length, 2);
     assert.deepEqual(submitted[1], submitted[0]);

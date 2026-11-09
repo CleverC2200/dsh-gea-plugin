@@ -169,7 +169,7 @@ test(
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
-    await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
+    await dialog.getByRole("button", { name: "重试并核对结果", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
     assert.equal(approved.length, 1);
     assert.equal(submitted.length, 2);
