@@ -78,6 +78,11 @@ test("amendment tool executes only installed quantity SQL, retaining bound picku
     value = JSON.parse(await f.call(args));
   assert.equal(value.queryId, "workbench.amendment.summary");
   assert.equal(value.contract.lockPeriod, false);
+  assert.equal(value.contract.dateField, "lastshipmenttime");
+  assert.equal(value.contract.dateSource, "agents_scm_order_trace_final_di");
+  assert.match(value.contract.countFields.invalid, /不是被剔除/);
+  assert.match(f.calls[0].request.sql, /shipment.shipped_at>=:gea_p1/);
+  assert.doesNotMatch(f.calls[0].request.sql, /d.header_addtime>=/);
   assert.equal(value.result.rows[0].numerator, 10);
   assert.match(f.calls[0].request.sql, /requested_qty>=0/);
   assert.match(f.calls[0].request.sql, /pickup_point='01'/);
