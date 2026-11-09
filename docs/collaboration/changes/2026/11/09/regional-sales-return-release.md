@@ -1,20 +1,15 @@
 <!-- collaboration-record
-{"kind":"change","id":"CHANGE-20261109-regional-sales-return-release","date":"2026-11-09","title":"区域大类SKU提报、退回数据及启动恢复修复","module":"销售计划与会话","status":"待发布"}
+{"kind":"change","id":"CHANGE-20261109-regional-sales-return-release","date":"2026-11-09","title":"区域大类SKU提报、退回数据及启动恢复修复","module":"销售计划与会话","status":"已发布"}
 -->
 # 区域销售计划与会话恢复
 
-- 汇总当前权限范围全部客户的大类及SKU提报，展示同期和前两个月实际发货量、SKU明细金额汇总，月初确认量四舍五入为整数。
-- 单笔和批量退回传递当前节点修改后的全部SKU数量，回读接收数量、金额及原节点字段清空，保留幂等和失败证据。
-- 复用原详情、日志和actions接口；已退回状态7/8/9使用同计划同版本的审批记录还原上一实际节点，写入后核验toStatus与SKU结果。按用户要求撤销新增后端接口和字段的方案，后端源码保持原合同。
-- 等待Core会话和工作区列表就绪；现有身份投影补充页面能力就绪状态，重启后自动恢复销售页面、原会话和草稿。
-- 已整合最新主线，保留订单指标、欢迎页等独立修复。无文件或原有业务能力删除；接口删除由用户明确指令覆盖。
-- 拟发布Workbench 0.1.84及GEA 0.0.257，避开并发库存发行占用的Workbench 0.1.83；Manage复用已发布版本，完整组合另经预检。
-- 定向回归及开发客户端验收已通过。正式单笔1笔和批量2笔已获授权并完成79条SKU回读；两次重启无需刷新，不新增业务写入或模型发送。
-- 当前为发布准备，实际PR、CI、标签、构建、频道及接收结果见本轮发行回执及GitHub Release，未以准备状态声明已发布。
-- 发布技能为本机dsh-plugin-release 1.3.1，维护源未登记，状态local_draft；未同步技能或上传客户数据。
-
-- 发布前检查同步月初整数断言及原REJECT调整合同的测试服务；配套Workbench补修取消退回时的草稿误判，使用0.1.84，保留0.1.80的既有标签及证据。私有仓库读取令牌曾过期，已更新为无到期时间并恢复真实Git读取。
-
-- 已同步主线0.0.254的库存组合声明；本票新产物使用GEA 0.0.257，接纳Workbench 0.1.84。CI只读令牌已更新为无到期时间，保持原只读权限，三仓实际Git读取通过。
-
-- 最新主线已接纳库存0.1.83及Manage 59组合；本票保持这些兼容声明并追加Workbench 0.1.84，GEA使用0.0.257。失败日志确认待处理提交入口实际存在，仅旧测试名称未同步，按现有“查看并核对提交结果”入口验证，不改身份或恢复逻辑。
+- 已发布 [GEA 0.0.257](https://github.com/CleverC2200/dsh-gea-plugin/releases/tag/v0.0.257)，固定源码为 [1a3ed85f](https://github.com/CleverC2200/dsh-gea-plugin/commit/1a3ed85fa0ae93c4993dcd89ee8210a9a10bbda6)，功能合并为 #344。
+- 配套 [Workbench 0.1.84](https://github.com/CleverC2200/dsh-agent-workbench/releases/tag/v0.1.84) 和原包复用的 [Manage 0.6.3-company.59](https://github.com/CleverC2200/dsh-agent-manage/releases/tag/v0.6.3-company.59)。
+- 按当前权限读取历史实际发货量，支持区域大类及SKU汇总中的同期、近两月实绩与实际明细金额。
+- 单笔和批量退回按原 actions 合同传递当前节点修改后的完整 SKU 数量，核验接收数量、金额和原节点字段清空结果；继续退回复用现有详情及同版本审批记录，不新增后端接口或字段，后端源码保持原合同。
+- 会话、工作区及页面能力等待就绪后再打开业务页；末轮开发客户端经原欢迎页进入后，首次打开销售计划正常，未手动刷新，也未新增业务写入或模型消息。末次文档自动打开和原会话自动关联未在末轮确认。
+- 先前授权的单笔1笔、批量2笔已完成79条SKU真实回读；状态7/8/9继续退回通过回归，尚无新增正式样本验收。
+- 两仓合并后主线 CI、固定源码构建、三包交付、发行预检、官方安装与 Host 接收通过。test/stable 频道修订为99/91，完整三包经生产来源读取器下载校验。Manage 原归档及原 release JSON 保持原字节。
+- MPS 页面与配套计算改动已包含在实际下载归档中，来源为 [Workbench #272](https://github.com/CleverC2200/dsh-agent-workbench/pull/272)、[Manage #141](https://github.com/CleverC2200/dsh-agent-manage/pull/141)。
+- 发布前 Workbench 主线新增 [订单 KPI #275](https://github.com/CleverC2200/dsh-agent-workbench/pull/275)；用户明确选择按已验收固定版本发布，该项留待下一版。标签、归档和历史失败证据均保留。
+- 本轮只发布插件，没有升级 Core 或发布桌面安装包。
