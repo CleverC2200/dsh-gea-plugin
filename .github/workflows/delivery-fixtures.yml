@@ -72,7 +72,7 @@ permissions:
 jobs:
   windows-published-startup:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_published_startup_diagnostic
-    runs-on: windows-2025
+    runs-on: windows-2022
     timeout-minutes: 15
     permissions:
       contents: read
