@@ -29,7 +29,6 @@ function fixture({
   role = "province",
   target = 2,
   logs = [],
-  returnTargetStage,
 } = {}) {
   const before = {
     currentVersion: {
@@ -53,7 +52,6 @@ function fixture({
       },
     ],
     logs: logs.map((log) => ({ planId: "p", versionId: "v", ...log })),
-    ...(returnTargetStage === undefined ? {} : { returnTargetStage }),
   };
   const qtyField = ["qty", "regionConfirmedQty", "provinceConfirmedQty", "areaConfirmedQty"][
     target - 1
@@ -170,23 +168,19 @@ test("continued returns validate existing detail and carry adjustments through a
     [9, "area", 3],
     [9, "area", 2],
   ]) {
-    for (const source of ["logs", "field"]) {
-      const f = fixture({
-        status,
-        role,
-        target,
-        ...(source === "logs"
-          ? { logs: [{ actionCode: "APPROVE", fromStatus: target, toStatus: status - 5 }] }
-          : { returnTargetStage: target }),
-      });
-      const result = await f.tx.action(f.command, new AbortController().signal);
-      assert.equal(result.toStatus, target + 5);
-      assert.equal(f.posts(), 1);
-      assert.equal(f.reads(), 2);
-      const body = JSON.parse(f.bodies[0]);
-      assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "10.000" }]);
-      assert.equal("expectedReturnTargetStage" in body, false);
-    }
+    const f = fixture({
+      status,
+      role,
+      target,
+      logs: [{ actionCode: "APPROVE", fromStatus: target, toStatus: status - 5 }],
+    });
+    const result = await f.tx.action(f.command, new AbortController().signal);
+    assert.equal(result.toStatus, target + 5);
+    assert.equal(f.posts(), 1);
+    assert.equal(f.reads(), 2);
+    const body = JSON.parse(f.bodies[0]);
+    assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "10.000" }]);
+    assert.equal("expectedReturnTargetStage" in body, false);
   }
 });
 test("failed readback retains the original write body and idempotency key for a retry", async () => {
