@@ -9,8 +9,9 @@ import { readConfiguredHtmlQuery } from "./configured-html-query.ts";
 
 export const ORDER_AMENDMENT_ROUTING =
   "订单工作台改单率及明细回源统一使用gea_order_amendment，复用已安装看板的日表固定查询。" +
-  "start含、endExclusive不含，按header_addtime归属；base郑州仅pickup_point=01。" +
+  "start含、endExclusive不含，按物流追踪表lastshipmenttime装车完成时间归属实际发货周期；与日表按执行单号＋客户关联，同一最新批次多条取最后装车完成，缺时间不以OMS新增或WMS关单替代；base郑州仅pickup_point=01。" +
   "分子仅客户要求改单量≥0时合计绝对数量差，完整有效量为分母；按商品数量，不按订单张数，不加锁定期或改单时间条件。" +
+  "invalid是保留集合内待判定明细条数，不是剔除数；本查询不返回剔除数量，不得据invalid=0写剔除0。" +
   "view=summary取完整汇总，view=details按page分页；明细单页不代替全量分母，不回退旧Cube度量或小时表。";
 
 export function registerOrderAmendmentTool(
@@ -31,11 +32,15 @@ export function registerOrderAmendmentTool(
         name: "gea_order_amendment",
         description: ORDER_AMENDMENT_ROUTING,
         parameters: {
-          start: { type: "string", required: true, description: "OMS新增日期，YYYY-MM-DD，包含。" },
+          start: {
+            type: "string",
+            required: true,
+            description: "装车完成日期，YYYY-MM-DD，包含。",
+          },
           endExclusive: {
             type: "string",
             required: true,
-            description: "OMS新增日期，YYYY-MM-DD，不包含。",
+            description: "装车完成日期，YYYY-MM-DD，不包含。",
           },
           base: { type: "string", description: "提货点范围；郑州仅提货点01；留空取授权全国。" },
           view: {
@@ -100,7 +105,9 @@ export function registerOrderAmendmentTool(
             const contract = config.queries?.[queryId]?.metricContract;
             if (
               config.agentId !== "inventory-orderworkbench" ||
-              contract?.version !== "quantity-nonnegative-no-lock-v1" ||
+              contract?.version !== "quantity-shipment-nonnegative-no-lock-v2" ||
+              contract.dateField !== "lastshipmenttime" ||
+              contract.dateSource !== "agents_scm_order_trace_final_di" ||
               contract.lockPeriod !== false ||
               contract.changeTimeRequired !== false
             )
