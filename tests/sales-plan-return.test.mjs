@@ -23,12 +23,19 @@ new Function("require", "module", "exports", bundled.outputFiles[0].text)(
   module,
   module.exports,
 );
-function fixture({ wrongReadback = false } = {}) {
+function fixture({
+  wrongReadback = false,
+  status = 2,
+  role = "province",
+  target = 2,
+  logs = [],
+  returnTargetStage,
+} = {}) {
   const before = {
     currentVersion: {
       id: "v",
       planId: "p",
-      status: 2,
+      status,
       effective: true,
       planTypeCode: "Y",
       orderType: "M",
@@ -45,17 +52,30 @@ function fixture({ wrongReadback = false } = {}) {
         provinceConfirmedAmount: "240",
       },
     ],
+    logs: logs.map((log) => ({ planId: "p", versionId: "v", ...log })),
+    ...(returnTargetStage === undefined ? {} : { returnTargetStage }),
   };
+  const qtyField = ["qty", "regionConfirmedQty", "provinceConfirmedQty", "areaConfirmedQty"][
+    target - 1
+  ];
+  const amountField = [
+    "amt",
+    "regionConfirmedAmount",
+    "provinceConfirmedAmount",
+    "areaConfirmedAmount",
+  ][target - 1];
+  const sender = { region: "region", province: "province", area: "area" }[role];
+  const received = String(Number(before.skus[0][qtyField]) + 10);
   const after = {
     ...before,
-    currentVersion: { ...before.currentVersion, status: 7 },
+    currentVersion: { ...before.currentVersion, status: target + 5 },
     skus: [
       {
         ...before.skus[0],
-        regionConfirmedQty: wrongReadback ? "90" : "110",
-        regionConfirmedAmount: "220",
-        provinceConfirmedQty: null,
-        provinceConfirmedAmount: null,
+        [qtyField]: wrongReadback ? "90" : received,
+        [amountField]: String(Number(received) * 2),
+        [sender + "ConfirmedQty"]: null,
+        [sender + "ConfirmedAmount"]: null,
       },
     ],
   };
@@ -70,7 +90,7 @@ function fixture({ wrongReadback = false } = {}) {
         id: "u",
         name: "Test",
         username: "test",
-        roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
+        roles: [{ code: "sales_plan_" + role + "_approver", name: "审批" }],
       },
       base: "https://fixture.test",
       signal: new AbortController().signal,
@@ -95,8 +115,8 @@ function fixture({ wrongReadback = false } = {}) {
         result: {
           planId: "p",
           versionId: "v",
-          fromStatus: 2,
-          toStatus: 7,
+          fromStatus: status,
+          toStatus: target + 5,
           requestId: "req",
           traceId: "trace",
           replayed: posts > 1,
@@ -116,9 +136,9 @@ function fixture({ wrongReadback = false } = {}) {
     idempotencyKey: "same-return",
     request: {
       action: "REJECT",
-      approvalRole: "province",
-      expectedStatus: 2,
-      expectedReturnTargetStage: 2,
+      approvalRole: role,
+      expectedStatus: status,
+      expectedReturnTargetStage: target,
       remark: "核对",
       adjustments: [{ skuCode: "1001", adjustQty: "10.000" }],
     },
@@ -142,6 +162,32 @@ test("a different actual target rejects before any business write", async () => 
   f.command.request.expectedReturnTargetStage = 1;
   await assert.rejects(f.tx.action(f.command, new AbortController().signal));
   assert.equal(f.posts(), 0);
+});
+test("continued returns validate existing detail and carry adjustments through actual target readback", async () => {
+  for (const [status, role, target] of [
+    [7, "region", 1],
+    [8, "province", 2],
+    [9, "area", 3],
+    [9, "area", 2],
+  ]) {
+    for (const source of ["logs", "field"]) {
+      const f = fixture({
+        status,
+        role,
+        target,
+        ...(source === "logs"
+          ? { logs: [{ actionCode: "APPROVE", fromStatus: target, toStatus: status - 5 }] }
+          : { returnTargetStage: target }),
+      });
+      const result = await f.tx.action(f.command, new AbortController().signal);
+      assert.equal(result.toStatus, target + 5);
+      assert.equal(f.posts(), 1);
+      assert.equal(f.reads(), 2);
+      const body = JSON.parse(f.bodies[0]);
+      assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "10.000" }]);
+      assert.equal("expectedReturnTargetStage" in body, false);
+    }
+  }
 });
 test("failed readback retains the original write body and idempotency key for a retry", async () => {
   const f = fixture({ wrongReadback: true });
