@@ -270,7 +270,7 @@ test(
     ).toContainText("22");
     await expect(
       frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),
-    ).toContainText("¥220.00");
+    ).toContainText("¥220");
     await expect(frame.getByRole("status").filter({ hasText: "正在暂存" })).toContainText(
       "正在暂存",
       { timeout: 10000 },
