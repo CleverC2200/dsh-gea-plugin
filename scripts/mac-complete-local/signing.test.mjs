@@ -8,6 +8,7 @@ import {
   adaptCompanyMacFactory,
   configureSignedCompanyMac,
   companyMacDownloadPrefix,
+  companyMacUpdateUrl,
   runSignedMacBuild,
 } from "./signing.mjs";
 
@@ -87,4 +88,43 @@ test("signed DMG retains Core identity verification and Apple notarization hooks
   await assert.rejects(config.artifactBuildCompleted({ file: "company.dmg" }), /Apple rejected/);
   assert.deepEqual(calls, ["runtime-integrity", "identity-verification", "notarize:company.dmg"]);
   assert.deepEqual(base.mac.target, ["dmg", "zip"]);
+});
+
+test("online company packages retain sealed updater configuration and signed ZIP delivery", async (t) => {
+  const source = `
+export function create(env) {
+  const policy = resolveDesktopPolicyEnvironment(env)
+  const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
+  return {policy, update};
+}`;
+  const root = await mkdtemp(join(tmpdir(), "gea-mac-online-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "factory.mjs");
+  await writeFile(path, adaptCompanyMacFactory(source, true));
+  const { create } = await import(pathToFileURL(path).href);
+  assert.deepEqual(create({}), { policy: undefined, update: { publicUrl: companyMacUpdateUrl } });
+  const afterPack = () => {};
+  const afterSign = () => {};
+  const artifactBuildCompleted = () => {};
+  const config = configureSignedCompanyMac(
+    {
+      mac: { identity: "company", hardenedRuntime: true, notarize: true },
+      dmg: {},
+      afterPack,
+      afterSign,
+      artifactBuildCompleted,
+    },
+    "gea",
+    true,
+  );
+  assert.deepEqual(config.mac.target, ["dmg", "zip"]);
+  assert.equal(config.mac.notarize, true);
+  assert.equal(config.mac.hardenedRuntime, true);
+  assert.deepEqual(config.publish, [
+    { provider: "generic", url: companyMacUpdateUrl, channel: "nightly" },
+  ]);
+  assert.equal(config.dmg.writeUpdateInfo, true);
+  assert.equal(config.afterPack, afterPack);
+  assert.equal(config.afterSign, afterSign);
+  assert.equal(config.artifactBuildCompleted, artifactBuildCompleted);
 });

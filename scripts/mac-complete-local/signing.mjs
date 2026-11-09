@@ -8,18 +8,27 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const companyMacDownloadPrefix =
   "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/";
 
-export function adaptCompanyMacFactory(source) {
+export const companyMacUpdateUrl =
+  "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/mac-arm64/";
+
+export function adaptCompanyMacFactory(source, online = false) {
   for (const before of [
     "const policy = resolveDesktopPolicyEnvironment(env)",
     "const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",
   ]) {
     assert.equal(source.split(before).length, 2, "SIGNED_MAC_CONFIG_ADAPTER_DRIFT");
-    source = source.replace(before, before.slice(0, before.indexOf("=")) + "= undefined");
+    source = source.replace(
+      before,
+      before.slice(0, before.indexOf("=")) +
+        (online && before.startsWith("const update")
+          ? "= " + JSON.stringify({ publicUrl: companyMacUpdateUrl })
+          : "= undefined"),
+    );
   }
   return source;
 }
 
-export function configureSignedCompanyMac(config, geaSha) {
+export function configureSignedCompanyMac(config, geaSha, online = false) {
   return {
     ...config,
     artifactName: "GEA-Desktop-${version}-mac-${arch}-signed.${ext}",
@@ -29,9 +38,11 @@ export function configureSignedCompanyMac(config, geaSha) {
       dshLocalTestBuild: false,
       dshLocalPackaging: "company-core-full-three-plugin-developer-id",
     },
-    mac: { ...config.mac, target: ["dmg"] },
-    dmg: { ...config.dmg, sign: true, writeUpdateInfo: false },
-    publish: null,
+    mac: { ...config.mac, target: online ? ["dmg", "zip"] : ["dmg"] },
+    dmg: { ...config.dmg, sign: true, writeUpdateInfo: online },
+    publish: online
+      ? [{ provider: "generic", url: companyMacUpdateUrl, channel: "nightly" }]
+      : null,
   };
 }
 
@@ -80,7 +91,7 @@ export async function withCompanyMacSigning(core, environment, action) {
 
 export async function runSignedMacBuild(core, gea, input, flags = [], environment = process.env) {
   assert.ok(
-    flags.every((flag) => flag === "--plan"),
+    flags.every((flag) => ["--plan", "--candidate", "--online-update"].includes(flag)),
     "UNSUPPORTED_SIGNED_MAC_OPTION",
   );
   await withCompanyMacSigning(
@@ -99,7 +110,11 @@ export async function runSignedMacBuild(core, gea, input, flags = [], environmen
           ],
           {
             cwd: resolve(core),
-            env: { ...child, GEA_MAC_SIGNED: "1" },
+            env: {
+              ...child,
+              GEA_MAC_SIGNED: "1",
+              GEA_MAC_ONLINE_UPDATE: flags.includes("--online-update") ? "1" : "0",
+            },
             stdio: "inherit",
           },
         );
@@ -127,7 +142,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   } else {
     assert.ok(
       core && gea && input,
-      "Usage: node signing.mjs <core> --check | <core> <gea> <input> [--plan]",
+      "Usage: node signing.mjs <core> --check | <core> <gea> <input> [--plan] [--candidate] [--online-update]",
     );
     await runSignedMacBuild(core, gea, input, flags);
   }
