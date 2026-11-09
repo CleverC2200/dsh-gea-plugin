@@ -16,7 +16,7 @@ node scripts/mac-complete-local/signing.mjs /absolute/company-core --check
 node scripts/mac-complete-local/full-source.mjs /absolute/company-core /absolute/gea /absolute/input.json --plan
 
 # 默认签名、公证和在线更新构建
-corepack pnpm run package:desktop:mac -- /absolute/company-core /absolute/gea /absolute/input.json
+corepack pnpm run package:desktop:mac /absolute/company-core /absolute/gea /absolute/input.json
 ```
 
 `input.json` 使用 `windows-complete-local/input.mjs` 的三包及 required Core 合同，正式构建仍要求已合并的发行源码和绑定 Core、三包摘要的 annotated 桌面标签。输出在 `$RUNNER_TEMP/gea-mac-source`。成功回执列出交付文件大小和 SHA-256；失败保留原诊断，不输出可交付安装包。
