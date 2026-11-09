@@ -23,7 +23,7 @@ new Function("require", "module", "exports", bundled.outputFiles[0].text)(
   module,
   module.exports,
 );
-function fixture({ wrongTarget = false, wrongReadback = false } = {}) {
+function fixture({ wrongReadback = false } = {}) {
   const before = {
     currentVersion: {
       id: "v",
@@ -77,17 +77,8 @@ function fixture({ wrongTarget = false, wrongReadback = false } = {}) {
     }),
     query: async ({ kind }) => {
       reads++;
-      return kind === "returnContext"
-        ? {
-            versionId: "v",
-            status: 2,
-            currentStage: 3,
-            targetStage: wrongTarget ? 1 : 2,
-            targetStatus: wrongTarget ? 6 : 7,
-          }
-        : posts
-          ? after
-          : before;
+      if (kind === "returnContext") throw Error("normal return must use existing detail");
+      return posts ? after : before;
     },
     permissions: async () => {},
     workflow: async () =>
@@ -139,7 +130,7 @@ test("REJECT forwards exact adjustments, strips target metadata and reads back t
   const result = await f.tx.action(f.command, new AbortController().signal);
   assert.equal(result.toStatus, 7);
   assert.equal(f.posts(), 1);
-  assert.equal(f.reads(), 3);
+  assert.equal(f.reads(), 2);
   const body = JSON.parse(f.bodies[0]);
   assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "10.000" }]);
   assert.equal("expectedReturnTargetStage" in body, false);
@@ -147,7 +138,8 @@ test("REJECT forwards exact adjustments, strips target metadata and reads back t
   assert.equal(f.posts(), 1);
 });
 test("a different actual target rejects before any business write", async () => {
-  const f = fixture({ wrongTarget: true });
+  const f = fixture();
+  f.command.request.expectedReturnTargetStage = 1;
   await assert.rejects(f.tx.action(f.command, new AbortController().signal));
   assert.equal(f.posts(), 0);
 });
