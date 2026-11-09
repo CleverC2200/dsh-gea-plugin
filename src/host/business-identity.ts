@@ -92,6 +92,7 @@ export function toolConsumer(
 export function mountBusinessIdentity(
   ctx: Pick<Context, "effect" | "connection">,
   business: Business,
+  pagesReady: () => boolean = () => true,
 ): void {
   ctx.effect(() =>
     ctx.connection.fetch.register({
@@ -103,6 +104,7 @@ export function mountBusinessIdentity(
         return Response.json(
           {
             scope: business.pageSessionScope() ?? null,
+            pagesReady: pagesReady(),
             subject: businessIdentityKey(business) ?? null,
             status: { environment, environments, authenticated, loginState, user },
             // A projection of the gateway-verified receipt. It is intentionally
