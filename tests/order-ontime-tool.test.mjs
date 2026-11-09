@@ -6,9 +6,7 @@ import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
 
 function fixture(
   execute = async () => ({
-    rows: [
-      { numerator: 10, denominator: 100, known: 90, pending: 10, late: 80 },
-    ],
+    rows: [{ numerator: 10, denominator: 100, known: 90, pending: 10, late: 80 }],
     returnedColumns: ["numerator", "denominator", "known", "pending", "late"],
     rejectedColumns: [],
   }),
@@ -31,9 +29,7 @@ function fixture(
     agents: { get: () => agent },
     sessionProjections: { stateOf: () => preset },
     agentResources: {
-      list: async () => [
-        { id: preset, kind: "prompt", installed: true, enabled },
-      ],
+      list: async () => [{ id: preset, kind: "prompt", installed: true, enabled }],
       watch: (listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -53,9 +49,7 @@ function fixture(
   };
   registerOrderOntimeTool(ctx, business, [
     {
-      directory: resolve(
-        "../dsh-agent-workbench/lib/business/inventory-orderworkbench",
-      ),
+      directory: resolve("../dsh-agent-workbench/lib/business/inventory-orderworkbench"),
       manifest: {
         id: "inventory-orderworkbench",
         sqlConfig: "sql.config.json",
@@ -67,8 +61,7 @@ function fixture(
     calls,
     identity,
     listeners,
-    call: (args) =>
-      tool.execute(args, { agent, signal: new AbortController().signal }),
+    call: (args) => tool.execute(args, { agent, signal: new AbortController().signal }),
     switchTo: (value) => {
       preset = value;
     },
@@ -90,10 +83,7 @@ test("ontime tool executes installed execution SQL with bound base and arrival m
   assert.equal(value.result.rows[0].numerator, 10);
   assert.match(f.calls[0].request.sql, /ontime_executions/);
   assert.match(f.calls[0].request.sql, /GROUP BY h.executeorderno/);
-  assert.doesNotMatch(
-    f.calls[0].request.sql,
-    /SUM\(is_ontime\)|COUNT\(is_ontime\)/,
-  );
+  assert.doesNotMatch(f.calls[0].request.sql, /SUM\(is_ontime\)|COUNT\(is_ontime\)/);
   assert.equal(f.calls[0].request.consumerCode, "order");
   assert.equal(f.calls[0].request.parameters.gea_p900, "郑州");
   assert.equal(f.calls[0].request.parameters.gea_p1, "2026-10-01");
@@ -113,14 +103,8 @@ test("wrong consumer, disabled source and invalid date/page cannot execute", asy
   f.switchTo("gea-html-inventory-orderfulfillment");
   await assert.rejects(() => f.call(args), /NOT_AVAILABLE/);
   f.switchTo("gea-html-inventory-orderworkbench");
-  await assert.rejects(
-    () => f.call({ ...args, start: "2026-02-30" }),
-    /INVALID_ONTIME_PERIOD/,
-  );
-  await assert.rejects(
-    () => f.call({ ...args, page: 0 }),
-    /INVALID_ONTIME_PAGE/,
-  );
+  await assert.rejects(() => f.call({ ...args, start: "2026-02-30" }), /INVALID_ONTIME_PERIOD/);
+  await assert.rejects(() => f.call({ ...args, page: 0 }), /INVALID_ONTIME_PAGE/);
   f.disable();
   await assert.rejects(() => f.call(args), /RESOURCE_DISABLED/);
   assert.equal(f.calls.length, 0);
@@ -140,15 +124,9 @@ test("identity and resource cancellation reject late results and release the wat
   assert.equal(g.listeners.size, 0);
 });
 test("fixed ontime read is visible only to the order profile", () => {
-  assert.ok(
-    allowedTools(PROFILES["gea-html-inventory-orderworkbench"]).has(
-      "gea_order_ontime",
-    ),
-  );
+  assert.ok(allowedTools(PROFILES["gea-html-inventory-orderworkbench"]).has("gea_order_ontime"));
   assert.equal(
-    allowedTools(PROFILES["gea-html-inventory-orderfulfillment"]).has(
-      "gea_order_ontime",
-    ),
+    allowedTools(PROFILES["gea-html-inventory-orderfulfillment"]).has("gea_order_ontime"),
     false,
   );
 });
