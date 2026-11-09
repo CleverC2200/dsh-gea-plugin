@@ -433,7 +433,6 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
-  returnContext: ["versionId"],
   skuReview: ["planId", "versionId"],
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
@@ -4119,7 +4118,6 @@ export class Business {
       versions: () => "/sales-plan/plans/" + id("planId") + "/versions",
       logs: () => "/sales-plan/plans/" + id("planId") + "/logs",
       versionSkus: () => "/sales-plan/plans/versions/" + id("versionId") + "/skus",
-      returnContext: () => "/sales-plan/plans/versions/" + id("versionId") + "/return-context",
       compare: () => "/sales-plan/plans/" + id("planId") + "/compare",
     };
     if (kind === "compare") {
@@ -4167,33 +4165,6 @@ export class Business {
       true,
       kind,
     );
-    if (kind === "returnContext") {
-      const value = object(result);
-      const currentStage = value.currentStage,
-        targetStage = value.targetStage;
-      if (
-        value.versionId !== query.versionId ||
-        typeof value.status !== "number" ||
-        ![1, 2, 3, 4, 7, 8, 9].includes(value.status) ||
-        typeof currentStage !== "number" ||
-        !Number.isInteger(currentStage) ||
-        currentStage < 2 ||
-        currentStage > 5 ||
-        typeof targetStage !== "number" ||
-        !Number.isInteger(targetStage) ||
-        targetStage < 1 ||
-        targetStage >= currentStage ||
-        value.targetStatus !== targetStage + 5
-      )
-        throw new Error("GEA_IDENTITY_MISMATCH");
-      return {
-        versionId: value.versionId,
-        status: value.status,
-        currentStage,
-        targetStage,
-        targetStatus: value.targetStatus,
-      };
-    }
     // AionUi 工作台消费完整数组；分页得到的 SKU 子集不能声称数据完整。
     const records = (value: unknown): Record<string, unknown>[] => {
       if (Array.isArray(value)) return value.map(object);

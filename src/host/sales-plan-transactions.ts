@@ -6,13 +6,12 @@ import {
   salesPlanWorkflow,
   validateSalesPlanActionInput,
   verifyReturnedSalesPlan,
-  resolveSalesPlanReturnContext,
+  salesPlanReturnDestination,
   prepareSalesPlanResubmit,
   type SalesPlanApprovalRole,
   type SalesPlanWorkflowRow,
   type GeaSalesPlanActionRequest,
   type GeaSalesPlanDetail,
-  type GeaSalesPlanReturnContext,
   type GeaSalesPlanPeriod,
   type GeaSalesPlanSku,
 } from "@cleverc2200/dsh-agent-workbench/sales-plan";
@@ -476,15 +475,7 @@ export class SalesPlanTransactions {
         });
       if (request.expectedReturnTargetStage !== undefined) {
         if (request.action !== "REJECT") throw new Error("INVALID_PAYLOAD");
-        const context = await resolveSalesPlanReturnContext(
-          detail,
-          role,
-          async () =>
-            this.host.query(
-              { kind: "returnContext", query: { versionId } },
-              signal,
-            ) as Promise<GeaSalesPlanReturnContext>,
-        );
+        const context = salesPlanReturnDestination(detail, role);
         if (
           context.versionId !== versionId ||
           context.status !== request.expectedStatus ||

@@ -77,7 +77,7 @@ function fixture({ wrongReadback = false } = {}) {
     }),
     query: async ({ kind }) => {
       reads++;
-      if (kind === "returnContext") throw Error("normal return must use existing detail");
+      assert.equal(kind, "detail");
       return posts ? after : before;
     },
     permissions: async () => {},
@@ -153,68 +153,4 @@ test("failed readback retains the original write body and idempotency key for a 
   await f.tx.action(f.command, new AbortController().signal);
   assert.equal(f.bodies.length, 2);
   assert.equal(f.bodies[0], f.bodies[1]);
-});
-
-test("public return preview uses the version endpoint and rejects a mismatched destination", async (t) => {
-  const output = await build({
-    entryPoints: ["src/host/business.ts"],
-    alias: {
-      "@cleverc2200/dsh-agent-workbench/sales-plan": resolve(
-        process.env.DSH_TEST_WORKBENCH ?? "../dsh-agent-workbench",
-        "src/sales-plan.ts",
-      ),
-    },
-    bundle: true,
-    write: false,
-    platform: "node",
-    format: "cjs",
-    packages: "external",
-  });
-  const loaded = { exports: {} };
-  new Function("require", "module", "exports", output.outputFiles[0].text)(
-    createRequire(import.meta.url),
-    loaded,
-    loaded.exports,
-  );
-  const business = new loaded.exports.Business({
-    geaBaseUrl: "https://fixture.test",
-    analysisAgentCode: "sales_forecast",
-    requestTimeoutMs: 2000,
-  });
-  t.after(() => business.dispose());
-  business.restoreDesktopLogin({
-    schema: 1,
-    environment: "production",
-    base: "https://fixture.test",
-    auth: {
-      token: "fixture",
-      tenantId: "1",
-      id: "u",
-      username: "test",
-      name: "Test",
-      roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
-    },
-  });
-  let value = { versionId: "v", status: 2, currentStage: 3, targetStage: 2, targetStatus: 7 };
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    assert.equal(new URL(url).pathname, "/sales-plan/plans/versions/v/return-context");
-    assert.equal(init.method, "GET");
-    return Response.json({ success: true, result: value });
-  });
-  const query = { kind: "returnContext", query: { versionId: "v" } };
-  assert.deepEqual(await business.workbenchQuery(query, new AbortController().signal), value);
-  for (const patch of [{ versionId: "other" }, { targetStage: 3 }, { targetStatus: 8 }]) {
-    value = {
-      versionId: "v",
-      status: 2,
-      currentStage: 3,
-      targetStage: 2,
-      targetStatus: 7,
-      ...patch,
-    };
-    await assert.rejects(
-      business.workbenchQuery(query, new AbortController().signal),
-      /GEA_IDENTITY_MISMATCH/,
-    );
-  }
 });
