@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readDesktopInput, desktopCoreHead } from "./input.mjs";
+import { readDesktopInput, desktopCoreHead, resolveDesktopAcceptanceSource } from "./input.mjs";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -51,13 +51,18 @@ if (values["validate-only"]) {
     throw Error("DESKTOP_NATIVE_OWN_OUTPUT_REQUIRED");
   const buildBytes = await readFile(buildPath),
     build = JSON.parse(buildBytes);
+  const sourceSha = resolveDesktopAcceptanceSource(
+    process.env.GITHUB_SHA,
+    process.env.GEA_QUALIFICATION_SOURCE_SHA,
+    resolve(import.meta.dirname, "../.."),
+  );
   if (
     build.status !== "packaged-and-runtime-smoke-passed" ||
-    build.geaSha !== process.env.GITHUB_SHA ||
+    build.geaSha !== sourceSha ||
     build.coreSha !== desktopCoreHead
   )
     throw Error("DESKTOP_NATIVE_BUILD_REQUIRED");
-  const fixed = await readDesktopInput(inputPath, process.env.GITHUB_SHA);
+  const fixed = await readDesktopInput(inputPath, sourceSha);
   if (digest(JSON.stringify(fixed)) !== build.inputSha256)
     throw Error("DESKTOP_NATIVE_INPUT_CHANGED");
   const work = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), "gea-native-bundle-"));
