@@ -16,6 +16,13 @@ const home = join(output, "home");
 const profile = join(home, "profiles/desktop");
 const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
 const mode = process.argv[2];
+async function find(directory, name) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.name === name) return path;
+    if (entry.isDirectory()) { const result = await find(path, name); if (result) return result; }
+  }
+}
 const packages = [
   ["cleverc2200-dsh-agent-workbench-0.1.84.tgz", "5941b11b756dcfa771d0f1f5af1dbb2e71ce124aac134bea452644317c0b43e9"],
   ["dsh-agent-manage-0.6.3-company.59.tgz", "1e20b1429e007317c3b55e5359887f9347f7e3650152664a637d420ffd179ff4"],
@@ -52,17 +59,11 @@ if (mode === "binding") {
     assert.equal(createHash("sha256").update(bytes).digest("hex"), sha);
     await writeFile(target, bytes);
   }
-  const installer = join(output, "published.exe");
-  await download("https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/21af44e96508971a93a3ba8dccdacc1ba535b648/desktop/GEA-Desktop-0.2.0-rc.2.20261104.1-win-x64-signed.exe", "40f632b7a988207242930fc02586858d390d1c291c8007ad6e20e45eb6dea288", installer);
+  const installer = await find(resolve(".runtime/candidate"), "GEA-Desktop-0.2.0-rc.2.20261104.4-win-x64-signed.exe");
+  assert.ok(installer);
+  assert.equal(createHash("sha256").update(await readFile(installer)).digest("hex"), "c540cab3e49b523544b3a0b6440a2e8221ac5ddfa057e66ae7d49a1ecc95d1c2");
   const seven = "C:/Program Files/7-Zip/7z.exe";
   execFileSync(seven, ["x", installer, "-o" + join(output, "outer"), "-y"], { stdio: "ignore" });
-  async function find(directory, name) {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.name === name) return path;
-      if (entry.isDirectory()) { const result = await find(path, name); if (result) return result; }
-    }
-  }
   const payload = await find(join(output, "outer"), "app-64.7z");
   assert.ok(payload);
   execFileSync(seven, ["x", payload, "-o" + app, "-y"], { stdio: "ignore" });
