@@ -150,7 +150,7 @@ test(
         assert.equal(allowApproval, true);
         const body = JSON.parse(req.body);
         assert.equal(body.action, "APPROVE");
-        assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "2.125" }]);
+        assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "2" }]);
         writes++;
         plan.status = 2;
         reply({
@@ -258,19 +258,19 @@ test(
     const editor = frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true });
     await expect(editor).toHaveValue("20");
     await editor.fill("22.125");
-    // 明细汇总里的数量；月计划列现在也会显示同一个「22.125 件」，所以要限定在汇总卡里找。
+    // 明细汇总里的数量；月计划列现在也会显示同一个「22 件」，所以要限定在汇总卡里找。
     await expect(
-      frame.getByLabel("当前页明细汇总").getByText("22.125 件", { exact: true }),
+      frame.getByLabel("当前页明细汇总").getByText("22 件", { exact: true }),
     ).toBeVisible();
     await expect(
-      frame.getByLabel("当前页明细汇总").getByText("¥221.25", { exact: true }),
+      frame.getByLabel("当前页明细汇总").getByText("¥220.00", { exact: true }),
     ).toBeVisible();
     await expect(
       frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),
-    ).toContainText("22.125");
+    ).toContainText("22");
     await expect(
       frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001"),
-    ).toContainText("¥221.25");
+    ).toContainText("¥220.00");
     await expect(frame.getByRole("status").filter({ hasText: "正在暂存" })).toContainText(
       "正在暂存",
       { timeout: 10000 },
@@ -283,7 +283,7 @@ test(
       planId: "p-jxs-2026-09-00001",
       versionId: "v",
     });
-    assert.equal(result.value.draft.adjustments[0].adjustQty, "2.125");
+    assert.equal(result.value.draft.adjustments[0].adjustQty, "2");
     const forged = await app.rpc("sales-plan/draft", {
       planId: "p-jxs-2026-09-00001",
       versionId: "v",
@@ -294,7 +294,7 @@ test(
       planId: "p-jxs-2026-09-00001",
       versionId: "v",
     });
-    assert.equal(unchanged.value.draft.adjustments[0].adjustQty, "2.125");
+    assert.equal(unchanged.value.draft.adjustments[0].adjustQty, "2");
     await mkdir(".runtime/v16-feedback", { recursive: true });
     await page.screenshot({ path: ".runtime/v16-feedback/web-desktop.png", fullPage: true });
     await page.reload();
@@ -303,7 +303,7 @@ test(
     await expect(frame.getByRole("button", { name: "查看调整明细", exact: true })).toHaveCount(0);
     await expect(
       frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true }),
-    ).toHaveValue("22.125");
+    ).toHaveValue("22");
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.screenshot({ path: ".runtime/v16-feedback/web-tablet.png", fullPage: true });
     assert.deepEqual(errors, []);

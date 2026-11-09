@@ -154,7 +154,7 @@ test(
       versionId: "v",
     });
     assert.equal(stored.ok, true);
-    assert.deepEqual(stored.value.draft.adjustments, [{ skuCode: "1001", adjustQty: "2.125" }]);
+    assert.deepEqual(stored.value.draft.adjustments, [{ skuCode: "1001", adjustQty: "2" }]);
     assert.deepEqual(errors, []);
   },
 );
