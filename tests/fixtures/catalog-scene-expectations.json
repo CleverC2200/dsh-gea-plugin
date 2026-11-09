@@ -97,10 +97,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-qll/skills/qll/SKILL.md",
-        "sha256": "33ebd8f82d7820faf74b16fda0eeb961dc8fdcac39b634ae108e61291ae949f8",
+        "sha256": "32058771c354557494f50081810924ce13f5c16af84832faa56f493139582c3c",
         "name": "inventory-qll",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "1afe4b2d2a9259335895cc84df2ec1437804e5a2",
+        "sourceHead": "03dcfdb7ac8ecea61760fd151722f4e347086a5d",
         "sourceFile": "business-resources/inventory-qll/skills/qll/SKILL.md"
       },
       {

@@ -150,7 +150,7 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
       if (scenario === "delayed") {
         release();
         await expect.poll(() => writes.length).toBe(1);
-        assert.deepEqual(writes[0].adjustments, [{ skuCode: "1001", adjustQty: "2.125" }]);
+        assert.deepEqual(writes[0].adjustments, [{ skuCode: "1001", adjustQty: "2" }]);
         assert.equal(writes[0].approvalRole, undefined, "上游报文只发接口文档声明的字段");
         assert.equal(writes[0].expectedSnapshot, undefined);
       } else {

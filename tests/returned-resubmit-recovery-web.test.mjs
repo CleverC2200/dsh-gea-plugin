@@ -45,7 +45,7 @@ test(
     await expect(frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" })).toHaveCount(0);
     await captureEvidence(page, app, "pending-receipt-recovery");
     allowReadback();
-    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("乌鲁木齐退回区域");
     await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
     await expect(dialog).toContainText("提交成功");
@@ -70,10 +70,10 @@ test(
     await expect(dialog).toContainText("结果暂时未知");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("2.000 件");
     await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
-    await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
+    await dialog.getByRole("button", { name: "重试并核对结果", exact: true }).click();
     await expect(dialog).toContainText("提交成功");
     assert.equal(submitted.length, 2);
     assert.deepEqual(submitted[1], submitted[0]);
@@ -104,7 +104,7 @@ test(
     await rowBox(PLAN_B).click();
     await expect(rowBox(PLAN_B).locator("input")).toBeChecked();
     allowReadback();
-    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
     await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();

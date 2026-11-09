@@ -237,7 +237,8 @@ export async function apply(
     await webLogin.dispose();
     business.dispose();
   });
-  mountBusinessIdentity(ctx, business);
+  let pagesReady = false;
+  mountBusinessIdentity(ctx, business, () => pagesReady);
   registerEndpoints([
     "navigation/catalog",
     "environment/select",
@@ -579,6 +580,7 @@ export async function apply(
     // 只在显式打开调试开关时注册：逐个模块真跑一遍 MCP，并把原始报文带回来。
     ...(process.env.GEA_DEBUG_PROBE === "1" ? ["debug/mcp-probe"] : []),
   ]);
+  pagesReady = true;
   function registerEndpoints(endpoints: readonly string[]): void {
     for (const endpoint of endpoints)
       ctx.effect(() =>

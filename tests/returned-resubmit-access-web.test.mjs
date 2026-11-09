@@ -76,11 +76,13 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
   await expect(dialog).toContainText("结果暂时未知");
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
   const resume = frame.getByRole("button", {
-    name: "恢复待处理重提",
+    name: "查看并核对提交结果",
     exact: true,
   });
   await expect(resume).toBeVisible();
+  await captureEvidence(page, app, "hidden-pending-before-logout");
   await app.rpc("logout");
   await expect(resume).not.toBeVisible();
   await expect(frame.getByRole("button", { name: "刷新二维码", exact: true })).toBeVisible();

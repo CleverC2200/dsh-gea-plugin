@@ -60,6 +60,7 @@ import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./pag
 import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.ts";
 import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
 import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
+import { readSalesPlanSkuReview } from "./sales-plan-sku-review.js";
 import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
@@ -432,6 +433,7 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
+  skuReview: ["planId", "versionId"],
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
 
@@ -4090,6 +4092,19 @@ export class Business {
     )
       throw new Error("INVALID_QUERY");
     if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
+    if (kind === "skuReview") {
+      if (options.forModel) throw new Error("INVALID_QUERY");
+      const active = AbortSignal.any([signal, this.epoch.signal]);
+      return readSalesPlanSkuReview(
+        { planId: text(query.planId), versionId: text(query.versionId) },
+        (planId, current) =>
+          this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current),
+        (input, current) =>
+          this.pluginSql({ ...input, consumerCode: this.config.analysisAgentCode }, current),
+        salesPlan.salesPlanPeriodMonthForPlanId,
+        active,
+      );
+    }
     if (kind === "aggregate")
       return aggregateSalesPlans(
         (input, active) => this.readWorkbenchQuery(input, active),

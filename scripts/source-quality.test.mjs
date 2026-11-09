@@ -834,6 +834,7 @@ test("workflow source plans retain behavior contracts alongside semantic preflig
   for (const pattern of JSON.parse(policy).tests)
     for (const file of globSync(pattern, { cwd: new URL("../", import.meta.url) }))
       files[file] = "export const fixture = true;";
+  files["scripts/mac-complete-local/ad-hoc.test.mjs"] = "export const fixture = true;";
   for (const [workflow, consumers] of [
     ["quality", ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"]],
     [
