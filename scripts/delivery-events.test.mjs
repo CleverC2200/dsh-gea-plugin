@@ -93,29 +93,74 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
   }
 });
 
-test("macOS complete packaging requires explicit manual input and a fixed company Core", () => {
+test("macOS complete delivery uses the main-only signed reusable workflow", () => {
   const job = workflow.jobs["mac-complete-package"];
   assert.equal(
     job.if,
-    "github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && inputs.mac_complete_input != ''",
+    "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.prepare_windows_cache && inputs.mac_complete_input != ''",
   );
-  assert.equal(job.env.DSH_DESKTOP_TARGET_PLATFORM, "darwin");
-  assert.equal(job.env.DSH_DESKTOP_TARGET_ARCH, "arm64");
-  const checkout = job.steps.find(
-    (step) => step.with?.repository === "CleverC2200/deepseek-harness",
-  );
-  assert.equal(checkout.with.ref, "${{ steps.desktop-core.outputs.head }}");
-  assert.equal(job.env.DSH_DESKTOP_BUILD_COMMIT, undefined);
-  assert.equal(checkout.with["persist-credentials"], false);
-  assert.ok(
-    job.steps.some(
-      (step) =>
-        step.run === 'node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"',
-    ),
-  );
+  assert.equal(job.uses, "./.github/workflows/mac-source-package.yml");
+  assert.deepEqual(job.with, { desktop_input: "${{ inputs.mac_complete_input }}" });
+  assert.equal(job.steps, undefined);
 });
 
-test("both desktop jobs select checkout and build metadata from the required Core policy", (t) => {
+const macWorkflow = parse(readFileSync(".github/workflows/mac-source-package.yml", "utf8"));
+
+test("Mac installers are exposed only after the signed notarized build succeeds", () => {
+  const job = macWorkflow.jobs["mac-source-package"];
+  assert.equal(
+    job.if,
+    "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
+  );
+  assert.equal(job.environment, "macos-release");
+  assert.equal(job.env.DSH_DESKTOP_UNSIGNED, "0");
+  assert.doesNotMatch(JSON.stringify(job.env), /\$\{\{\s*runner\./);
+  const prepare = job.steps.findIndex(
+    (step) => step.name === "Prepare private signing configuration",
+  );
+  const build = job.steps.findIndex(
+    (step) => step.name === "Build sign notarize and verify the complete macOS client",
+  );
+  const upload = job.steps.findIndex(
+    (step) => step.name === "Keep verified installers and updater files",
+  );
+  assert.ok(prepare >= 0 && build > prepare && upload > build);
+  assert.equal(
+    job.steps[build].run,
+    'node tools/scripts/mac-complete-local/signing.mjs core gea "$DESKTOP_INPUT_PATH"',
+  );
+  assert.equal(job.steps[build]["continue-on-error"], undefined);
+  assert.equal(job.steps[upload].if, "success() && !inputs.signing_check_only");
+  assert.equal(job.steps[upload].with["if-no-files-found"], "error");
+  assert.match(job.steps[upload].with.path, /\*\.dmg/);
+  assert.match(job.steps[upload].with.path, /\*\.zip/);
+  const diagnostics = job.steps.find((step) => step.name === "Keep build diagnostics");
+  assert.equal(diagnostics.if, "always()");
+  assert.doesNotMatch(diagnostics.with.path, /\.dmg|\.zip|\.p12|\.p8|\.env/);
+  const cleanup = job.steps.find((step) => step.name === "Remove private signing configuration");
+  assert.equal(cleanup.if, "always()");
+  assert.match(cleanup.run, /ci-signing\.mjs cleanup/);
+  assert.ok(job.steps.indexOf(cleanup) > build && job.steps.indexOf(cleanup) < upload);
+  assert.doesNotMatch(JSON.stringify(job), /mac-baseline|ad-hoc/);
+});
+
+test("credential-only checks never package or upload an installer", () => {
+  const job = macWorkflow.jobs["mac-source-package"];
+  assert.equal(macWorkflow.on.workflow_dispatch.inputs.signing_check_only.default, false);
+  assert.equal(macWorkflow.on.workflow_call.inputs.signing_check_only.default, false);
+  const probe = job.steps.find((step) => step.name === "Verify the retained signing identity");
+  assert.equal(probe.if, "inputs.signing_check_only");
+  assert.match(probe.run, /signing\.mjs core --check$/);
+  assert.equal(
+    job.steps.find((step) => step.name === "Validate the reserved product input").if,
+    "${{ !inputs.signing_check_only }}",
+  );
+  const auth = job.steps.find((step) => step.name === "Verify notarization credentials");
+  assert.match(auth.run, /'notarytool', 'history'/);
+  assert.doesNotMatch(auth.run, /'submit'/);
+});
+
+test("Windows delivery selects checkout and build metadata from the required Core policy", (t) => {
   const root = mkdtempSync(join(tmpdir(), "desktop-core-policy-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const scripts = join(root, "gea/scripts");
@@ -131,7 +176,7 @@ test("both desktop jobs select checkout and build metadata from the required Cor
       core.version === policy.required[0].version,
   );
   assert.ok(alternate);
-  for (const name of ["mac-complete-package", "windows-complete-package"]) {
+  for (const name of ["windows-complete-package"]) {
     const job = workflow.jobs[name];
     const selection = job.steps.findIndex((step) => step.id === "desktop-core");
     const checkout = job.steps.findIndex(
@@ -159,11 +204,6 @@ test("both desktop jobs select checkout and build metadata from the required Cor
       assert.equal(readFileSync(output, "utf8"), `head=${core.head}\n`);
       assert.equal(readFileSync(env, "utf8"), `DSH_DESKTOP_BUILD_COMMIT=${core.head}\n`);
     }
-    if (name === "mac-complete-package")
-      assert.match(
-        job.steps.find((step) => step.name === "Validate fixed input before preparing Core").run,
-        /input\.mjs .*--mac-baseline/,
-      );
   }
 });
 
@@ -220,10 +260,7 @@ test("standalone delivery retains package Prompt and source checks while candida
 });
 
 test("complete delivery verifies exact Core outputs and cold tools before compiling", () => {
-  for (const [name, profile] of [
-    ["mac-complete-package", "host"],
-    ["windows-complete-package", "official"],
-  ]) {
+  for (const [name, profile] of [["windows-complete-package", "official"]]) {
     const job = workflow.jobs[name];
     const steps = job.steps;
     const restore = steps.findIndex((step) => step.id === "delivery-core-restore");
@@ -268,7 +305,7 @@ test("Windows packaging selects GNU tar with literal names and local drive paths
 });
 
 test("verified Core can be saved after wrapper failure without hiding the failed delivery", () => {
-  for (const name of ["mac-complete-package", "windows-complete-package"]) {
+  for (const name of ["windows-complete-package"]) {
     const steps = workflow.jobs[name].steps;
     const verify = steps.find((step) => step.name === "Verify Core output after packaging");
     const save = steps.find((step) => step.name === "Save verified compiled Core");
@@ -340,10 +377,7 @@ test("manual delivery runs dependency-free Core cache fixtures on Windows and ma
 });
 
 test("desktop jobs restore exact prepared inputs and save only after verifying unchanged bytes", () => {
-  for (const [name, id, profile] of [
-    ["windows-complete-package", "runtime", "windows-runtime"],
-    ["mac-complete-package", "baseline", "mac-baseline"],
-  ]) {
+  for (const [name, id, profile] of [["windows-complete-package", "runtime", "windows-runtime"]]) {
     const job = workflow.jobs[name];
     assert.equal(job.needs, undefined, name);
     const steps = job.steps;
@@ -523,7 +557,7 @@ test("delivery job environment excludes contexts unavailable at job initializati
 test("delivery initializes isolated download paths after Node setup through the runtime environment", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "delivery-runtime-env-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
-  for (const name of ["mac-complete-package", "windows-complete-package"]) {
+  for (const name of ["windows-complete-package"]) {
     const steps = workflow.jobs[name].steps;
     const initialized = steps.findIndex(
       (step) => step.name === "Initialize isolated delivery download paths",

@@ -4,6 +4,7 @@ import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { homedir } from "node:os";
 
 export const companyMacDownloadPrefix =
   "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/";
@@ -11,7 +12,7 @@ export const companyMacDownloadPrefix =
 export const companyMacUpdateUrl =
   "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/mac-arm64/";
 
-export function adaptCompanyMacFactory(source, online = false) {
+export function adaptCompanyMacFactory(source) {
   for (const before of [
     "const policy = resolveDesktopPolicyEnvironment(env)",
     "const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",
@@ -20,7 +21,7 @@ export function adaptCompanyMacFactory(source, online = false) {
     source = source.replace(
       before,
       before.slice(0, before.indexOf("=")) +
-        (online && before.startsWith("const update")
+        (before.startsWith("const update")
           ? "= " + JSON.stringify({ publicUrl: companyMacUpdateUrl })
           : "= undefined"),
     );
@@ -28,7 +29,12 @@ export function adaptCompanyMacFactory(source, online = false) {
   return source;
 }
 
-export function configureSignedCompanyMac(config, geaSha, online = false) {
+export function configureSignedCompanyMac(config, geaSha) {
+  assert.ok(config.mac?.identity && config.mac.identity !== "-", "MAC_RELEASE_IDENTITY_REQUIRED");
+  for (const name of ["hardenedRuntime", "forceCodeSigning", "notarize"])
+    assert.equal(config.mac[name], true, "MAC_RELEASE_SECURITY_REQUIRED: " + name);
+  for (const name of ["afterPack", "afterSign", "artifactBuildCompleted"])
+    assert.equal(typeof config[name], "function", "MAC_RELEASE_VERIFIER_REQUIRED: " + name);
   return {
     ...config,
     artifactName: "GEA-Desktop-${version}-mac-${arch}-signed.${ext}",
@@ -38,12 +44,16 @@ export function configureSignedCompanyMac(config, geaSha, online = false) {
       dshLocalTestBuild: false,
       dshLocalPackaging: "company-core-full-three-plugin-developer-id",
     },
-    mac: { ...config.mac, target: online ? ["dmg", "zip"] : ["dmg"] },
-    dmg: { ...config.dmg, sign: true, writeUpdateInfo: online },
-    publish: online
-      ? [{ provider: "generic", url: companyMacUpdateUrl, channel: "nightly" }]
-      : null,
+    mac: { ...config.mac, target: ["dmg", "zip"] },
+    dmg: { ...config.dmg, sign: true, writeUpdateInfo: true },
+    publish: [{ provider: "generic", url: companyMacUpdateUrl, channel: "nightly" }],
   };
+}
+
+export function companyMacSigningDirectory(environment = process.env) {
+  return environment.GEA_MAC_SIGNING_CONFIG_DIR
+    ? resolve(environment.GEA_MAC_SIGNING_CONFIG_DIR)
+    : join(homedir(), "Library/Application Support/GEA/signing");
 }
 
 export async function withCompanyMacSigning(core, environment, action) {
@@ -59,9 +69,7 @@ export async function withCompanyMacSigning(core, environment, action) {
   const settings = loadDesktopPackageEnvironment(
     "darwin",
     environment,
-    environment.GEA_MAC_SIGNING_CONFIG_DIR
-      ? resolve(environment.GEA_MAC_SIGNING_CONFIG_DIR)
-      : desktop,
+    companyMacSigningDirectory(environment),
   );
   assert.equal(
     resolveDesktopAppId(settings),
@@ -113,7 +121,7 @@ export async function runSignedMacBuild(core, gea, input, flags = [], environmen
             env: {
               ...child,
               GEA_MAC_SIGNED: "1",
-              GEA_MAC_ONLINE_UPDATE: flags.includes("--online-update") ? "1" : "0",
+              GEA_MAC_ONLINE_UPDATE: "1",
             },
             stdio: "inherit",
           },
@@ -134,7 +142,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         JSON.stringify({
           status: "signing-probe-passed",
           ...expected,
-          distribution: "manual-dmg",
+          distribution: "dmg-and-online-update",
           downloadPrefix: companyMacDownloadPrefix,
         }),
       );

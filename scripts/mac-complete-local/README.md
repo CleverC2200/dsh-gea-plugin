@@ -1,32 +1,42 @@
-# 公司 Mac 签名与 DMG 交付
+# 公司 Mac 签名与公证发版
 
-默认保留 DMG 手动安装和升级，安装包继续放在 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/`。默认不生成 ZIP、自动更新清单或 `app-update.yml`。显式传入 `--online-update` 时增加 ZIP、blockmap 和 `nightly-mac.yml`，App 在签名前写入公司 OSS 更新地址 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/mac-arm64/`。不接入上游 Core 的更新或强制更新服务。构建不上传文件，不修改公司频道。
+Mac 默认入口是 `package:desktop:mac`，`package:desktop:mac:signed` 和 `build.mjs` 调用同一流程。它从固定 Core 完整构建，签署内嵌原生文件及 App，完成 App 和 DMG 的 Apple 公证、票据装订、严格验签、Gatekeeper、运行时冒烟与离线首次安装检查。检查全部通过后才整理可交付 DMG、在线更新 ZIP、blockmap、Nightly 清单和成功回执。缺少凭据、公证拒绝或验收失败均停止，不回退临时签名。旧 `package-desktop.mjs --target mac` 拒绝出包。
 
-正式签名使用本目录 `signing.mjs`，或者为既有 `build.mjs` 显式设置 `GEA_MAC_SIGNED=1`。它转入完整源码构建，不使用临时签名底包重封装。Core 原有流程先签内嵌原生运行时，再生成完整性清单；electron-builder 签署 App 并完成 App 公证，DMG 完成后继续公证、装订票据和 Gatekeeper 校验。任一步失败不会写成功回执，凭据缺失不会回退临时签名。
+## 本机入口
 
-凭据由目标 Core 的 `apps/desktop/.env.macos` 读取。也可设置 `GEA_MAC_SIGNING_CONFIG_DIR`，从独立私有目录中的 `.env.macos` 读取，供后续 Core checkout 复用。沿用 Core 模板中的应用标识、签名身份、Team ID、`CSC_LINK`、`CSC_KEY_PASSWORD` 和一组完整公证凭据；应用标识为 `com.cleverc2200.gea.desktop`。证书、密码和 API 私钥保存在源码树外，配置文件仅限本人读写。
-
-先运行配置和真实签名探针，不构建客户端、不上传公证材料：
+默认复用 `~/Library/Application Support/GEA/signing/.env.macos`，也可用 `GEA_MAC_SIGNING_CONFIG_DIR` 指定独立私有目录。配置沿用固定 Core 的 `.env.macos` 字段，应用 ID 为 `com.cleverc2200.gea.desktop`；证书、p12 密码及公证密钥保存在源码树外。每个新版本都重新执行签名与公证。
 
 ```sh
+# 检查配置及真实证书签名，不构建客户端、不提交公证材料
 node scripts/mac-complete-local/signing.mjs /absolute/company-core --check
+
+# 校验既有固定输入及桌面版本标签，不读取签名凭据
+node scripts/mac-complete-local/full-source.mjs /absolute/company-core /absolute/gea /absolute/input.json --plan
+
+# 默认签名、公证和在线更新构建
+corepack pnpm run package:desktop:mac -- /absolute/company-core /absolute/gea /absolute/input.json
 ```
 
-完整出包沿用 `full-source.mjs` 的固定输入、干净源码、主线来源及版本标签约束。`input.json` 使用 `windows-complete-local/input.mjs` 的三包和 required Core 合同；不更改原票或共享主环境的输入。准备目标 Core 的既有依赖后运行：
+`input.json` 使用 `windows-complete-local/input.mjs` 的三包及 required Core 合同，正式构建仍要求已合并的发行源码和绑定 Core、三包摘要的 annotated 桌面标签。输出在 `$RUNNER_TEMP/gea-mac-source`。成功回执列出交付文件大小和 SHA-256；失败保留原诊断，不输出可交付安装包。
 
-```sh
-node scripts/mac-complete-local/signing.mjs /absolute/company-core /absolute/gea /absolute/input.json --plan
-node scripts/mac-complete-local/signing.mjs /absolute/company-core /absolute/gea /absolute/input.json
-```
+显式 `--candidate` 允许本地未合入源码，先核版本尚未发布，不创建远端标签、不上传包、不修改频道。候选仍必须签名、公证及通过全部验收。旧调用中的 `--online-update` 继续接受，在线更新现在默认开启。
 
-`--plan` 检查输入和版本占用，仍会执行签名配置及探针，不上传安装包。实际出包会将 App 和 DMG 提交 Apple 公证。输出在 `$RUNNER_TEMP/gea-mac-source`，安装包名称以 `-mac-arm64-signed.dmg` 结尾；成功回执包含签名、公证、三包身份和手动升级方式。上传和对外分发继续作为单独阶段执行。
+## GitHub Actions
 
-未选择正式签名模式的候选构建仍保留临时签名标识，其结果不能作为 Apple 公证或正式签名验收。
+`delivery-fixtures.yml` 的 Mac 完整交付与 `mac-source-package.yml` 共用同一流程，只接收主线手动发版。正常发版提供既有固定 `desktop_input`；签名及公证凭据只在 `macos-release` environment 中配置，该环境的部署分支必须限制为 `main`。
 
-本地候选打包显式增加 `--candidate`，核版本尚未发布后允许未合入的工具源码，不创建远端标签、不上传包、不修改频道。候选必须使用新的桌面版本，正式发布仍要求主线来源和绑定三包组合的版本标签。在线更新候选示例：
+| Environment Secret             | 内容                                                                                                                                                  |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEA_MACOS_SIGNING_P12_BASE64` | 含私钥的 p12 原件 Base64                                                                                                                              |
+| `GEA_MACOS_NOTARY_KEY_BASE64`  | App Store Connect API 私钥 p8 原件 Base64                                                                                                             |
+| `GEA_MACOS_SIGNING_ENV`        | 完整 `.env.macos` 配置，包含 p12 密码、签名身份、Team ID、Key ID、Issuer ID；其中 `CSC_LINK=developer-id-application.p12`、`APPLE_API_KEY=AuthKey.p8` |
 
-```sh
-node scripts/mac-complete-local/signing.mjs /absolute/company-core /absolute/gea /absolute/input.json --candidate --online-update
-```
+工作流在独立 runner 临时目录以私有权限生成三个凭据文件，先验证 Apple 公证服务认证，再进入签名构建；结束或失败均移除这三个文件。PR 和非主线运行不进入签名 job。凭据不进入源码、构建回执或产物上传。`signing_check_only=true` 只验证凭据与真实签名身份，不构建或提交 App，也不交付安装包。
 
-旧版 App 缺少 `app-update.yml` 时需要先手动安装签名 DMG，后续才可通过 ZIP 下载、验签、替换与重启。构建通过与实际更新分别验收。
+签名工作流最多等待 120 分钟。Apple 未完成公证时仍保持等待，超时或失败只上传 JSON、日志等诊断。DMG、ZIP 和更新清单仅在成功后作为独立产物上传；该步骤不上传 OSS、不发布 GitHub Release，也不推进正式频道。
+
+## 分发与更新验收
+
+App 在签名前写入公司更新地址 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/mac-arm64/`；DMG 下载继续使用公司 `client-release/raw/`。不接入上游 Core 的更新或强制更新服务。下载源发布与从实际 HTTPS 来源安装更新是后续独立验收。
+
+旧 App 缺少 `app-update.yml` 时需要先手动安装新签名、公证 DMG，后续才可应用内下载、验签、替换和重启。代码合并、签名检查、Apple 公证、Gatekeeper、真实设备升级及正式分发分别记录，公证排队和本机隔离源测试均不代表已完成公网交付。

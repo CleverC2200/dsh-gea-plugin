@@ -747,7 +747,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/mac-complete-local/(?:build|full-source|signing(?:\\.test)?)\\.mjs$",
+      "pattern": "^scripts/mac-complete-local/(?:build|full-source|signing(?:\\.test)?|ci-signing)\\.mjs$",
       "tests": ["scripts/mac-complete-local/signing.test.mjs"],
       "sourceTests": ["scripts/mac-complete-local/signing.test.mjs"]
     },
