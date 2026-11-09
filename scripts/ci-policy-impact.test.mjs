@@ -335,7 +335,7 @@ function resourceImpactFixture(
     ...Object.keys(policy.sourceFixtures ?? {}),
     ...(policy.versionTests ?? []),
     ...(policy.companionPeerTests ?? []),
-    ...policy.tests.filter((file) => file.startsWith("desktop/")),
+    ...policy.tests.filter((file) => !file.includes("*")),
     ...policy.rules.flatMap((rule) => rule.tests),
     ...policy.browserFixtures,
     "scripts/ci-policy-impact.test.mjs",
