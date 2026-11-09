@@ -594,7 +594,7 @@
       "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
       "tests": [
         "scripts/delivery-events.test.mjs",
-        "scripts/mac-complete-local/ad-hoc.test.mjs",
+        "scripts/mac-complete-local/signing.test.mjs",
         "scripts/windows-complete-local/core-cache.test.mjs",
         "scripts/windows-complete-local/input.test.mjs"
       ]
