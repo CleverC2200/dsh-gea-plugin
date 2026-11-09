@@ -26,7 +26,7 @@ const graph = [
     peerDependencies: { [W]: "1.0.0", [M]: "2.0.0" },
   },
 ];
-test("the production declaration accepts inventory Workbench 77 and retains explicit version boundaries", async () => {
+test("the production declaration accepts inventory Workbench 79 and retains explicit version boundaries", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const manifest = productionManifest(source, {
     [W]: "0.1.73",
@@ -50,7 +50,9 @@ test("the production declaration accepts inventory Workbench 77 and retains expl
   assert.deepEqual(issues("0.1.73"), []);
   assert.deepEqual(issues("0.1.76"), []);
   assert.deepEqual(issues("0.1.77"), []);
-  assert.ok(issues("0.1.78").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+  assert.deepEqual(issues("0.1.78"), []);
+  assert.deepEqual(issues("0.1.79"), []);
+  assert.ok(issues("0.1.80").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
   assert.ok(issues("0.999.0").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
 });
 test("single-package update validates existing consumers and permits independently compatible versions", () => {
