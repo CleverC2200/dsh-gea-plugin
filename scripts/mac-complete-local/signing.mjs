@@ -37,7 +37,7 @@ export function configureSignedCompanyMac(config, geaSha) {
     assert.equal(typeof config[name], "function", "MAC_RELEASE_VERIFIER_REQUIRED: " + name);
   return {
     ...config,
-    artifactName: "GEA-Desktop-${version}-mac-${arch}-signed.${ext}",
+    artifactName: "Synear-GEA-${version}-mac-${arch}-signed.${ext}",
     extraMetadata: {
       ...config.extraMetadata,
       geaBrandingCommit: geaSha,

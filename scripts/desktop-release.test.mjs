@@ -15,7 +15,7 @@ const hash = (bytes, algorithm = "sha256", encoding = "hex") =>
 async function fixture(t, mac = true) {
   const directory = await mkdtemp(join(tmpdir(), "gea-desktop-release-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const stem = `GEA-Desktop-${version}-${mac ? "mac-arm64" : "win-x64"}-signed`;
+  const stem = `Synear-GEA-${version}-${mac ? "mac-arm64" : "win-x64"}-signed`;
   const primary = stem + (mac ? ".zip" : ".exe");
   const installer = stem + (mac ? ".dmg" : ".exe");
   const contents = new Map(

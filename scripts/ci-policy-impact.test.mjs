@@ -63,6 +63,17 @@ test("desktop wrapper children have one execution owner instead of a second inde
   assert.equal(plan.executedBy[child], owner);
 });
 
+test("desktop development launch changes select the existing runtime parity regression", (t) => {
+  const regression = "scripts/desktop-dev.test.mjs";
+  const fixture = resourceImpactFixture(t, [regression]);
+  fixture.change(
+    fixture.own,
+    "scripts/desktop-dev.mjs",
+    readFileSync(new URL("./desktop-dev.mjs", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(fixture.plan({ sourceOnly: true }).files, [regression]);
+});
+
 test("bundled suite source changes select their complete upgrade owner once and keep full window admission in integration checks", (t) => {
   const owner = "scripts/desktop-gea-upgrade.test.mjs";
   const fixture = resourceImpactFixture(t, [owner], { desktop: true });

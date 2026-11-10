@@ -47,7 +47,7 @@ export async function prepareDesktopRelease(directory, sourceSha, receiptPath) {
   const version = receipt.desktopVersion ?? receipt.packaged?.version;
   assert.ok(semver.valid(version), "DESKTOP_RELEASE_VERSION_INVALID");
   const platform = mac ? "mac-arm64" : "win-x64";
-  const stem = `GEA-Desktop-${version}-${platform}-signed`;
+  const stem = `Synear-GEA-${version}-${platform}-signed`;
   const feed = mac ? "nightly-mac.yml" : "nightly.yml";
   const names = mac
     ? [stem + ".dmg", stem + ".zip", stem + ".zip.blockmap", feed]
