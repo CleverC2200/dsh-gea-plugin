@@ -1,6 +1,7 @@
 import { afterEach, onTestFinished, expect, it, vi } from "vitest";
 import {
   presetHarness,
+  official,
   agentOn,
   history,
   turn,
@@ -8,13 +9,15 @@ import {
 import { GeaModelAdapter } from "../../src/host/gea-model.ts";
 import { Business } from "../../src/host/business.ts";
 const event = (delta, finish_reason = null) =>
-  "data: " + JSON.stringify({ choices: [{ index: 0, delta, finish_reason }] }) + "\n\n";
+  "data: " +
+  JSON.stringify({ choices: [{ index: 0, delta, finish_reason }] }) +
+  "\n\n";
 const answer = (text) =>
   new Response(event({ content: text }, "stop") + "data: [DONE]\n\n", {
     headers: { "Content-Type": "text/event-stream" },
   });
 afterEach(() => vi.unstubAllGlobals());
-async function model(treatment, capacity = 262144) {
+async function model(treatment, capacity = 1000000) {
   const f = await presetHarness();
   const business = new Business({
     geaBaseUrl: "https://fixture.invalid/gea-boot",
@@ -56,8 +59,11 @@ async function model(treatment, capacity = 262144) {
         },
       });
     if (url.endsWith("/models"))
-      return Response.json({ data: [{ id: "test", name: "Fixture", contextWindow: capacity }] });
-    if (url.endsWith("/chat/completions")) return treatment(JSON.parse(String(init?.body)));
+      return Response.json({
+        data: [{ id: "test", name: "Fixture", contextWindow: capacity }],
+      });
+    if (url.endsWith("/chat/completions"))
+      return treatment(JSON.parse(String(init?.body)));
     throw new Error("Unexpected fixture request: " + url);
   });
   f.ctx.llm.registerAdapter(["local"], new GeaModelAdapter(business));
@@ -89,20 +95,119 @@ it("real Core Session compacts route pressure before continuing with its checkpo
       );
     return answer("continued");
   });
-  const agent = await agentOn(f.ctx, "gea-pressure", "standard", await history(2e4));
+  const agent = await agentOn(
+    f.ctx,
+    "gea-pressure",
+    "auto-negotiation",
+    await history(2e4),
+  );
   await turn(f.ctx, agent, "Continue original task");
   expect(
     agent.session.snapshotEvents().map((row) => row.type),
     JSON.stringify(
       agent.session
         .snapshotEvents()
-        .filter((row) => row.type === "turn/end" || row.type === "assistant/attempt"),
+        .filter(
+          (row) => row.type === "turn/end" || row.type === "assistant/attempt",
+        ),
     ) +
       " requests=" +
       requests.length,
   ).toContain("compaction/summary");
-  expect(JSON.stringify(requests.at(-1)?.messages)).toContain("CHECKPOINT: preserve original task");
+  expect(agent.session.requestContext()).toMatchObject({
+    contextWindow: 1000000,
+  });
+  expect(JSON.stringify(requests.at(-1)?.messages)).toContain(
+    "CHECKPOINT: preserve original task",
+  );
   expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
+    type: "turn/end",
+    data: { reason: { kind: "completed" } },
+  });
+});
+it("GEA capacity lets auto-negotiation prune an oversized tool result before continuing", async () => {
+  const requests = [];
+  const f = await model((body) => {
+    requests.push(body);
+    return answer("continued after pruning");
+  });
+  const { Session, SessionId } = await official("@deepseek-ai/dsh-session");
+  const { createToolResultMessage, createMessage, ToolCallId } = await official(
+    "@deepseek-ai/dsh-llm",
+  );
+  const seed = Session.create(SessionId("inventory-seed"), await history(20));
+  const callId = ToolCallId("oversized-inventory");
+  seed.append("turn/start", { turn: 4 });
+  seed.append("step/start", { turn: 4, step: 1 });
+  seed.append("request/header", {
+    header: { config: { provider: "local", model: "test" } },
+    reason: "initial",
+  });
+  seed.append(
+    "assistant/message",
+    {
+      turn: 4,
+      step: 1,
+      stream: [],
+      message: createMessage({
+        role: "assistant",
+        content: [
+          { type: "tool-call", id: callId, name: "read", arguments: "{}" },
+        ],
+        source: { kind: "model", provider: "local", model: "test" },
+      }),
+    },
+    { surfaceOp: "append" },
+  );
+  seed.append("tool/call", {
+    turn: 4,
+    step: 1,
+    callId,
+    name: "read",
+    arguments: "{}",
+  });
+  const original =
+    "INVENTORY HEAD " + "inventory-detail ".repeat(240000) + " INVENTORY TAIL";
+  seed.append(
+    "tool/result",
+    {
+      turn: 4,
+      step: 1,
+      message: createToolResultMessage({
+        callId,
+        content: [{ type: "text", text: original }],
+        isError: false,
+      }),
+    },
+    { surfaceOp: "append" },
+  );
+  seed.append("step/end", { turn: 4, step: 1 });
+  seed.append("turn/end", { turn: 4, reason: { kind: "completed" } });
+  const agent = await agentOn(
+    f.ctx,
+    "gea-prune",
+    "auto-negotiation",
+    seed.snapshotEvents(),
+  );
+  await turn(f.ctx, agent, "Continue inventory analysis");
+  const events = agent.session.snapshotEvents();
+  expect(agent.session.requestContext()).toMatchObject({
+    contextWindow: 1000000,
+  });
+  expect(events.some((row) => row.type === "compaction/prune")).toBe(true);
+  expect(events.some((row) => row.type === "compaction/summary")).toBe(false);
+  const output = requests
+    .at(-1)
+    .messages.find((row) => row.role === "tool").content;
+  expect(output).toContain("INVENTORY HEAD");
+  expect(output).toContain("INVENTORY TAIL");
+  expect(output).toContain("tool result middle pruned");
+  expect(output.length).toBeLessThan(8192);
+  expect(
+    events.filter((row) => row.type === "tool/result")[0].data.message
+      .content[0].text,
+  ).toBe(original);
+  expect(events.at(-1)).toMatchObject({
     type: "turn/end",
     data: { reason: { kind: "completed" } },
   });
@@ -111,23 +216,37 @@ it("real Core Session recovers once from HTTP context overflow using a replaceme
   const conversation = [];
   const summaries = [];
   const f = await model((body) => {
-    if (JSON.stringify(body.messages).includes("acting as a compaction engine")) {
+    if (
+      JSON.stringify(body.messages).includes("acting as a compaction engine")
+    ) {
       summaries.push(body);
       return answer("RECOVERY CHECKPOINT");
     }
     conversation.push(body);
     return conversation.length === 1
       ? Response.json(
-          { error: { code: "context_length_exceeded", message: "maximum context length" } },
+          {
+            error: {
+              code: "context_length_exceeded",
+              message: "maximum context length",
+            },
+          },
           { status: 400 },
         )
       : answer("recovered");
   });
-  const agent = await agentOn(f.ctx, "gea-overflow", "standard", await history(20));
+  const agent = await agentOn(
+    f.ctx,
+    "gea-overflow",
+    "standard",
+    await history(20),
+  );
   await turn(f.ctx, agent, "Continue original task");
   expect(conversation).toHaveLength(2);
   expect(summaries).toHaveLength(1);
-  expect(JSON.stringify(conversation[1].messages)).toContain("RECOVERY CHECKPOINT");
+  expect(JSON.stringify(conversation[1].messages)).toContain(
+    "RECOVERY CHECKPOINT",
+  );
   expect(
     agent.session
       .snapshotEvents()
@@ -188,7 +307,8 @@ it("real Core saves a reasoning-only stop as a completed ordinary generation", a
   const f = await model(
     () =>
       new Response(
-        event({ reasoning_content: "reasoning without answer" }, "stop") + "data: [DONE]\n\n",
+        event({ reasoning_content: "reasoning without answer" }, "stop") +
+          "data: [DONE]\n\n",
         { headers: { "Content-Type": "text/event-stream" } },
       ),
   );
@@ -200,14 +320,17 @@ it("real Core saves a reasoning-only stop as a completed ordinary generation", a
     data: { reason: { kind: "completed" } },
   });
   expect(
-    events.find((row) => row.type === "assistant/message")?.data.message.content,
+    events.find((row) => row.type === "assistant/message")?.data.message
+      .content,
   ).toContainEqual({ type: "reasoning", text: "reasoning without answer" });
 });
 it("Core applies its single overflow recovery budget to repeated SSE rejections", async () => {
   const conversation = [];
   const summaries = [];
   const f = await model((body) => {
-    if (JSON.stringify(body.messages).includes("acting as a compaction engine")) {
+    if (
+      JSON.stringify(body.messages).includes("acting as a compaction engine")
+    ) {
       summaries.push(body);
       return answer("RECOVERY CHECKPOINT");
     }
@@ -217,14 +340,23 @@ it("Core applies its single overflow recovery budget to repeated SSE rejections"
       { headers: { "Content-Type": "text/event-stream" } },
     );
   });
-  const agent = await agentOn(f.ctx, "gea-overflow-budget", "standard", await history(20));
+  const agent = await agentOn(
+    f.ctx,
+    "gea-overflow-budget",
+    "standard",
+    await history(20),
+  );
   await turn(f.ctx, agent, "Continue original task");
   expect(conversation).toHaveLength(2);
   expect(summaries).toHaveLength(1);
-  expect(JSON.stringify(conversation[1].messages)).toContain("RECOVERY CHECKPOINT");
+  expect(JSON.stringify(conversation[1].messages)).toContain(
+    "RECOVERY CHECKPOINT",
+  );
   expect(
     JSON.stringify(
-      agent.session.snapshotEvents().filter((row) => row.type === "assistant/attempt"),
+      agent.session
+        .snapshotEvents()
+        .filter((row) => row.type === "assistant/attempt"),
     ),
   ).toContain("CONTEXT_WINDOW_EXCEEDED");
   expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
@@ -243,11 +375,18 @@ it.each([401, 429, 503])(
         { status },
       );
     });
-    const agent = await agentOn(f.ctx, "gea-http-" + status, "standard", await history(20));
+    const agent = await agentOn(
+      f.ctx,
+      "gea-http-" + status,
+      "standard",
+      await history(20),
+    );
     await turn(f.ctx, agent, "Continue original task");
     expect(requests).toHaveLength(1);
     expect(
-      agent.session.snapshotEvents().filter((row) => row.type.startsWith("compaction/")),
+      agent.session
+        .snapshotEvents()
+        .filter((row) => row.type.startsWith("compaction/")),
     ).toHaveLength(0);
     expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
       type: "turn/end",
@@ -270,7 +409,9 @@ it("Core executes a valid tool call larger than the snapshot budget and then con
                   type: "function",
                   function: {
                     name: "todo_write",
-                    arguments: JSON.stringify({ todos: [{ content, status: "in_progress" }] }),
+                    arguments: JSON.stringify({
+                      todos: [{ content, status: "in_progress" }],
+                    }),
                   },
                 },
               ],
@@ -284,7 +425,8 @@ it("Core executes a valid tool call larger than the snapshot budget and then con
   const agent = await agentOn(f.ctx, "gea-large-tool", "standard");
   await turn(f.ctx, agent, "Record the task");
   expect(
-    agent.session.snapshotEvents().find((row) => row.type === "todo/write")?.data.todos[0].content,
+    agent.session.snapshotEvents().find((row) => row.type === "todo/write")
+      ?.data.todos[0].content,
   ).toBe(content);
   expect(requests).toBe(2);
   expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
@@ -301,7 +443,11 @@ it("cancelling Core during overflow compaction closes the summary stream without
       return new Response(
         new ReadableStream({
           start(controller) {
-            controller.enqueue(new TextEncoder().encode(event({ content: "partial checkpoint" })));
+            controller.enqueue(
+              new TextEncoder().encode(
+                event({ content: "partial checkpoint" }),
+              ),
+            );
             entered.resolve();
           },
           cancel() {
@@ -311,9 +457,17 @@ it("cancelling Core during overflow compaction closes the summary stream without
         { headers: { "Content-Type": "text/event-stream" } },
       );
     conversationRequests++;
-    return Response.json({ error: { code: "context_length_exceeded" } }, { status: 400 });
+    return Response.json(
+      { error: { code: "context_length_exceeded" } },
+      { status: 400 },
+    );
   });
-  const agent = await agentOn(f.ctx, "gea-cancel-recovery", "standard", await history(20));
+  const agent = await agentOn(
+    f.ctx,
+    "gea-cancel-recovery",
+    "standard",
+    await history(20),
+  );
   const running = turn(f.ctx, agent, "Continue original task");
   await entered.promise;
   agent.cancel({ kind: "user" });
@@ -321,7 +475,9 @@ it("cancelling Core during overflow compaction closes the summary stream without
   expect(conversationRequests).toBe(1);
   expect(cancelled).toBe(1);
   expect(
-    agent.session.snapshotEvents().filter((row) => row.type === "compaction/summary"),
+    agent.session
+      .snapshotEvents()
+      .filter((row) => row.type === "compaction/summary"),
   ).toHaveLength(0);
   expect(agent.session.snapshotEvents().at(-1)).toMatchObject({
     type: "turn/end",
