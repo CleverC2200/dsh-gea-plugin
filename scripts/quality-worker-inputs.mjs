@@ -852,7 +852,7 @@ export async function prepareWorkerInputs(values) {
       mkdirSync(inputs, { recursive: true });
       if (realpathSync(inputs) !== inputs) reject("upstream inputs redirected");
       for (const [name, target] of [
-        ["genui", join(p.upstream, "upstream-assets/genui-0.11.3")],
+        ["genui", join(p.upstream, "upstream-assets/genui-0.16.0")],
         ["sidebar", join(p.upstream, "upstream-reference/dsh-better-sidebar")],
       ]) {
         const link = join(inputs, name);

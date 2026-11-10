@@ -246,7 +246,7 @@ async function requestFixture(
   const input = join(work, "request.json"),
     destination = join(work, "delivery");
   // Optional peers still need exact publication metadata, not installed tgz inputs.
-  versions["@changfenhuang/dsh-genui"] = "0.11.3";
+  versions["@changfenhuang/dsh-genui"] = "0.16.0";
   versions["dsh-better-sidebar"] = "0.24.1";
   await writeFile(
     input,

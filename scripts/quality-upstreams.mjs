@@ -113,7 +113,7 @@ export async function verifyQualityUpstreamSources(root) {
 export async function verifyQualityUpstreams(root) {
   if (!root) throw Error("QUALITY_UPSTREAM_REQUIRED");
   root = resolve(root);
-  const genui = join(root, "upstream-assets/genui-0.11.3"),
+  const genui = join(root, "upstream-assets/genui-0.16.0"),
     sidebar = join(root, "upstream-reference/dsh-better-sidebar");
   if (!(await exists(genui)) || !(await exists(sidebar)))
     throw Error("QUALITY_UPSTREAM_MATERIAL_REQUIRED");
@@ -212,14 +212,14 @@ export async function prepareQualityUpstreamSources(root) {
 
 export async function prepareQualityUpstreams(root) {
   ({ root } = await prepareQualityUpstreamSources(root));
-  const genui = join(root, "upstream-assets/genui-0.11.3"),
+  const genui = join(root, "upstream-assets/genui-0.16.0"),
     sidebar = join(root, "upstream-reference/dsh-better-sidebar");
   if (!(await exists(genui))) {
     const response = await fetch(fixed.genui.url);
     if (!response.ok) throw Error("QUALITY_UPSTREAM_DOWNLOAD: " + response.status);
     const bytes = Buffer.from(await response.arrayBuffer());
     if (hash(bytes) !== fixed.genui.sha256) throw Error("QUALITY_UPSTREAM_ARCHIVE_HASH");
-    const archive = join(root, "genui-0.11.3.tgz"),
+    const archive = join(root, "genui-0.16.0.tgz"),
       staging = join(root, "genui-unpack");
     await writeFile(archive, bytes);
     await mkdir(staging);
@@ -256,7 +256,7 @@ export async function bindQualityUpstreamInputs(
   if ((await realpath(inputs)) !== inputs || !(await lstat(inputs)).isDirectory())
     throw Error("QUALITY_UPSTREAM_INPUT_PRIVATE_ROOT_REQUIRED: " + inputs);
   for (const [name, material] of [
-    ["genui", sourceOnly ? "upstream-reference/dsh-genui" : "upstream-assets/genui-0.11.3"],
+    ["genui", sourceOnly ? "upstream-reference/dsh-genui" : "upstream-assets/genui-0.16.0"],
     ["sidebar", "upstream-reference/dsh-better-sidebar"],
   ]) {
     const input = join(inputs, name),

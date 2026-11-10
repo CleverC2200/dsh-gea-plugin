@@ -7,7 +7,7 @@ const source = JSON.parse(await readFile(new URL("../package.json", import.meta.
 const versions = {
   "@cleverc2200/dsh-agent-workbench": "0.1.10",
   "dsh-agent-manage": source.peerDependencies["dsh-agent-manage"],
-  "@changfenhuang/dsh-genui": "0.11.3",
+  "@changfenhuang/dsh-genui": "0.16.0",
   "dsh-better-sidebar": "0.24.1",
 };
 test("ordinary three-package manifest keeps required companions and exact optional enhancement peers", () => {

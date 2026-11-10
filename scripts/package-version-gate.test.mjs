@@ -8,7 +8,7 @@ test("production curation cannot relabel already compiled code as a different pa
     [source.name]: "0.0.136",
     "@cleverc2200/dsh-agent-workbench": "0.1.1",
     "dsh-agent-manage": "0.6.3-company.6",
-    "@changfenhuang/dsh-genui": "0.11.3",
+    "@changfenhuang/dsh-genui": "0.16.0",
     "dsh-better-sidebar": "0.24.1",
   };
   assert.throws(() => productionManifest(source, versions), /COMPILED_PACKAGE_VERSION_MISMATCH/);

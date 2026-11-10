@@ -32,9 +32,9 @@ test("the public verifier rejects missing material and a changed original asset"
         encoding: "utf8",
       });
     assert.match(run().stderr, /QUALITY_UPSTREAM_MATERIAL_REQUIRED/);
-    mkdirSync(join(directory, "upstream-assets/genui-0.11.3"), { recursive: true });
+    mkdirSync(join(directory, "upstream-assets/genui-0.16.0"), { recursive: true });
     mkdirSync(join(directory, "upstream-reference/dsh-better-sidebar"), { recursive: true });
-    writeFileSync(join(directory, "upstream-assets/genui-0.11.3/package.json"), "{}");
+    writeFileSync(join(directory, "upstream-assets/genui-0.16.0/package.json"), "{}");
     assert.match(run().stderr, /QUALITY_UPSTREAM_HASH/);
     assert.deepEqual(readdirSync(join(directory, "upstream-reference/dsh-better-sidebar")), []);
   } finally {
@@ -101,7 +101,7 @@ test("the public verifier rejects substituted sources and binds only fixed upstr
       if (name === "dsh-better-sidebar")
         declaration.lockSha256 = hash(readFileSync(join(source, "pnpm-lock.yaml")));
     }
-    const asset = join(directory, "upstream-assets/genui-0.11.3/package.json");
+    const asset = join(directory, "upstream-assets/genui-0.16.0/package.json");
     mkdirSync(dirname(asset), { recursive: true });
     writeFileSync(asset, "{}\n");
     fixed.genui.files = { "package.json": hash(readFileSync(asset)) };

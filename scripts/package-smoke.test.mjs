@@ -20,7 +20,7 @@ test(
       "@cleverc2200/gea-dsh-prototype": source.version,
       "@cleverc2200/dsh-agent-workbench": "0.1.10",
       "dsh-agent-manage": "0.6.3-company.6",
-      "@changfenhuang/dsh-genui": "0.11.3",
+      "@changfenhuang/dsh-genui": "0.16.0",
       "dsh-better-sidebar": "0.24.1",
     };
     const input = join(work, "input"),

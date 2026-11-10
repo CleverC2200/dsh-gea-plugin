@@ -31,7 +31,7 @@ test("the production declaration accepts Workbench 86 and retains explicit versi
   const manifest = productionManifest(source, {
     [W]: "0.1.73",
     [M]: "0.6.3-company.54",
-    "@changfenhuang/dsh-genui": "0.11.3",
+    "@changfenhuang/dsh-genui": "0.16.0",
     "dsh-better-sidebar": "0.24.1",
   });
   const issues = (version) =>
@@ -365,7 +365,7 @@ test("historical companion upgrades require an explicit declaration and preserve
         {
           [W]: "0.1.10",
           [M]: "0.6.3-company.19",
-          "@changfenhuang/dsh-genui": "0.11.3",
+          "@changfenhuang/dsh-genui": "0.16.0",
           "dsh-better-sidebar": "0.24.1",
         },
       );
@@ -405,7 +405,7 @@ test("company-peer update plans allow GEA first to bridge Workbench .9 to .10 an
     {
       [W]: "0.1.10",
       [M]: "0.6.3-company.19",
-      "@changfenhuang/dsh-genui": "0.11.3",
+      "@changfenhuang/dsh-genui": "0.16.0",
       "dsh-better-sidebar": "0.24.1",
     },
   );
