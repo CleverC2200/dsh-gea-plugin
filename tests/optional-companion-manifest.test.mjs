@@ -4,9 +4,7 @@ import semver from "semver";
 import { readFile } from "node:fs/promises";
 import { validatePluginCombination } from "../src/shared/plugin-release.mjs";
 import { productionManifest } from "../scripts/production-manifest.mjs";
-const source = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
-);
+const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const versions = {
   "@cleverc2200/dsh-agent-workbench": "0.1.10",
   "dsh-agent-manage": source.peerDependencies["dsh-agent-manage"],
@@ -16,10 +14,7 @@ const versions = {
 test("ordinary three-package manifest keeps required companions and exact optional enhancement peers", () => {
   const manifest = productionManifest(source, versions);
   for (const name of ["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage"]) {
-    assert.equal(
-      manifest.peerDependencies[name],
-      source.peerDependencies[name] ?? versions[name],
-    );
+    assert.equal(manifest.peerDependencies[name], source.peerDependencies[name] ?? versions[name]);
     assert.notEqual(manifest.peerDependenciesMeta?.[name]?.optional, true);
   }
   for (const name of ["@changfenhuang/dsh-genui", "dsh-better-sidebar"]) {
@@ -30,10 +25,7 @@ test("ordinary three-package manifest keeps required companions and exact option
     assert.equal(manifest.peerDependenciesMeta?.[name]?.optional, true);
     assert.equal(manifest.dependencies[name], undefined);
   }
-  assert.equal(
-    manifest.peerDependencies["@deepseek-ai/cordis"],
-    "4.0.4 || 4.0.5-alpha.1",
-  );
+  assert.equal(manifest.peerDependencies["@deepseek-ai/cordis"], "4.0.4 || 4.0.5-alpha.1");
 });
 test("production manifest preserves an existing exact peer when another package gets an independent version", () => {
   const manifest = productionManifest(source, {
@@ -44,10 +36,7 @@ test("production manifest preserves an existing exact peer when another package 
     manifest.peerDependencies["dsh-agent-manage"],
     source.peerDependencies["dsh-agent-manage"],
   );
-  assert.notEqual(
-    manifest.peerDependencies["dsh-agent-manage"],
-    "0.6.3-company.7",
-  );
+  assert.notEqual(manifest.peerDependencies["dsh-agent-manage"], "0.6.3-company.7");
   const ranged = productionManifest(
     {
       ...source,
@@ -97,17 +86,11 @@ test("GenUI source update preserves installed optional companion compatibility",
     );
   }
   assert.equal(
-    semver.satisfies(
-      "0.15.0",
-      manifest.peerDependencies["@changfenhuang/dsh-genui"],
-    ),
+    semver.satisfies("0.15.0", manifest.peerDependencies["@changfenhuang/dsh-genui"]),
     false,
   );
   assert.equal(
-    semver.satisfies(
-      "0.17.0",
-      manifest.peerDependencies["@changfenhuang/dsh-genui"],
-    ),
+    semver.satisfies("0.17.0", manifest.peerDependencies["@changfenhuang/dsh-genui"]),
     false,
   );
   assert.equal(manifest.dependencies["@changfenhuang/dsh-genui"], undefined);
