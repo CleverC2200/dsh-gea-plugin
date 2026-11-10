@@ -52,6 +52,14 @@ export async function prepareDesktopRelease(directory, sourceSha, receiptPath) {
   const names = mac
     ? [stem + ".dmg", stem + ".zip", stem + ".zip.blockmap", feed]
     : [stem + ".exe", stem + ".exe.blockmap", feed];
+  assert.ok(
+    receipt.artifact === names[0] &&
+      Number.isSafeInteger(receipt.size) &&
+      receipt.size > 0 &&
+      typeof receipt.sha256 === "string" &&
+      /^[a-f0-9]{64}$/.test(receipt.sha256),
+    "DESKTOP_RELEASE_INSTALLER_IDENTITY_REQUIRED",
+  );
   const files = [];
   for (const name of names) {
     const candidates = entries.filter((path) => basename(path) === name);

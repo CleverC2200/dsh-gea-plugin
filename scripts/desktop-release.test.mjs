@@ -77,6 +77,17 @@ async function fixture(t, mac = true) {
   };
 }
 
+test("a successful receipt must bind the expected installer name, size and digest", async (t) => {
+  for (const mac of [true, false]) {
+    for (const field of ["artifact", "size", "sha256"]) {
+      const f = await fixture(t, mac);
+      delete f.receipt[field];
+      await writeFile(join(f.directory, "result.json"), JSON.stringify(f.receipt));
+      await assert.rejects(f.plan(), /INSTALLER_IDENTITY_REQUIRED/);
+    }
+  }
+});
+
 for (const mac of [true, false])
   test(`${mac ? "Mac missing feed" : "Windows stale feed"} publishes the complete updater and verifies anonymous bytes before the feed`, async (t) => {
     const f = await fixture(t, mac),

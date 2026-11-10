@@ -4,7 +4,6 @@ import {
   readDesktopInput,
   readDesktopPluginSource,
   desktopCoreHead,
-  desktopPackageNames,
   personalMemoryPackage,
   verifyPersonalMemoryArchive,
 } from "./input.mjs";
@@ -36,9 +35,6 @@ const packagedDsh = signed ? join(target, "gea-signed-dsh") : join(target, "dsh"
 const coreSha = desktopCoreHead;
 const geaSha = process.env.GITHUB_SHA;
 const input = await readDesktopInput(process.argv[4], geaSha);
-input.seed.packages.sort(
-  (a, b) => desktopPackageNames.indexOf(a.name) - desktopPackageNames.indexOf(b.name),
-);
 if (
   process.env.DSH_DESKTOP_BUILD_VERSION !== input.desktopVersion ||
   process.env.DSH_DESKTOP_BUILD_COMMIT !== coreSha ||

@@ -137,13 +137,15 @@ export async function readDesktopInput(file, sourceSha) {
     ...(input.pluginSourceSha === undefined ? {} : { pluginSourceSha: input.pluginSourceSha }),
     desktopVersion: input.desktopVersion,
     seed: {
-      packages: packages.map(({ name, version, url, sha256, sourceSha }) => ({
-        name,
-        version,
-        url,
-        sha256,
-        ...(name === personalMemoryPackage ? { sourceSha } : {}),
-      })),
+      packages: packages
+        .map(({ name, version, url, sha256, sourceSha }) => ({
+          name,
+          version,
+          url,
+          sha256,
+          ...(name === personalMemoryPackage ? { sourceSha } : {}),
+        }))
+        .sort((a, b) => desktopPackageNames.indexOf(a.name) - desktopPackageNames.indexOf(b.name)),
       core: {
         head: core.head,
         version: core.version,

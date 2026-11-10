@@ -23,13 +23,9 @@ const {
   readDesktopInput,
   readDesktopPluginSource,
   coreArtifactPaths,
-  desktopPackageNames,
   verifyPersonalMemoryArchive,
 } = await import(pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs")));
 const input = await readDesktopInput(process.argv[4], geaSha);
-input.seed.packages.sort(
-  (a, b) => desktopPackageNames.indexOf(a.name) - desktopPackageNames.indexOf(b.name),
-);
 const plugin = readDesktopPluginSource(input, gea);
 assert.equal(git(core, "rev-parse", "HEAD"), input.seed.core.head);
 assert.equal(git(core, "status", "--porcelain"), "");

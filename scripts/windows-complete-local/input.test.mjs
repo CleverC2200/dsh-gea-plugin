@@ -41,6 +41,22 @@ test("desktop inputs require the independently pinned personal memory plugin", a
   );
 });
 
+test("build and native acceptance normalize the same package order before hashing", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-desktop-input-order-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, "input.json");
+  await writeFile(path, JSON.stringify(baseline));
+  const ordered = await readDesktopInput(path, baseline.geaSourceSha);
+  await writeFile(
+    path,
+    JSON.stringify({
+      ...baseline,
+      seed: { ...baseline.seed, packages: [...baseline.seed.packages].reverse() },
+    }),
+  );
+  assert.deepEqual(await readDesktopInput(path, baseline.geaSourceSha), ordered);
+});
+
 test("personal memory must contain its settings client and match the installed GEA peer", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-memory-archive-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
