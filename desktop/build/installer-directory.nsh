@@ -68,7 +68,7 @@ Function geaValidateInstallDirectory
   Goto valid
   invalid:
     !insertmacro GEA_INSTALL_TIMING_LOG "directory-preflight-rejected"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "请选择空文件夹，或已安装的 GEA Desktop 目录。" /SD IDOK
+    MessageBox MB_OK|MB_ICONEXCLAMATION "请选择空文件夹，或已安装的 Synear GEA 目录。" /SD IDOK
     SetErrorLevel 2
     Quit
   valid:

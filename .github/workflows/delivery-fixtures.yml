@@ -111,7 +111,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.windows_overwrite_artifact_run }}
-          pattern: GEA-Desktop-*-win-x64-complete
+          pattern: "{GEA-Desktop,Synear-GEA}-*-win-x64-complete"
           path: ${{ runner.temp }}/signed-overwrite-package
       - name: Recheck installed package version and preserved user files
         shell: bash
@@ -617,7 +617,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GEA-Desktop-${{ inputs.prepare_windows_cache && 'cache-preparation' || env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
+          name: Synear-GEA-${{ inputs.prepare_windows_cache && 'cache-preparation' || env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
           if-no-files-found: warn
           compression-level: 0
           path: |

@@ -64,6 +64,9 @@ for (const [cwd, sha] of [
     throw Error("SOURCE_DIRTY");
 }
 const pluginSource = readDesktopPluginSource(input, gea);
+const { prepareOfficialGeaMain } = await import(
+  pathToFileURL(join(gea, "desktop/official-branding.mjs"))
+);
 await mkdir(output, { recursive: true });
 await writeFile(join(output, "fixed-input.json"), JSON.stringify(input, null, 2));
 const require = createRequire(join(desktop, "package.json"));
@@ -105,7 +108,7 @@ for (const asset of ["brand", "brand-2x", "brand-dark", "brand-dark-2x", "uninst
   const foreground = asset.includes("dark") ? "#ffffff" : "#151517";
   const height = Math.floor(Math.min(original.height * 0.42, original.width * 0.2));
   const logo = await sharp(iconPath).resize(height, height).png().toBuffer();
-  const svg = `<svg width="${original.width}" height="${original.height}"><rect width="100%" height="100%" fill="${background}"/><text x="50%" y="70%" text-anchor="middle" font-family="Segoe UI,Arial" font-size="${Math.floor(height * 0.3)}" fill="${foreground}">GEA Desktop</text></svg>`;
+  const svg = `<svg width="${original.width}" height="${original.height}"><rect width="100%" height="100%" fill="${background}"/><text x="50%" y="70%" text-anchor="middle" font-family="Segoe UI,Arial" font-size="${Math.floor(height * 0.3)}" fill="${foreground}">Synear GEA</text></svg>`;
   await sharp(Buffer.from(svg))
     .composite([
       {
@@ -119,7 +122,7 @@ for (const asset of ["brand", "brand-2x", "brand-dark", "brand-dark-2x", "uninst
 }
 const strings = (await readFile(join(desktop, "installer/strings.nsh"), "utf8")).replaceAll(
   "DeepSeek Harness",
-  "GEA Desktop",
+  "Synear GEA",
 );
 await writeFile(join(output, "gea-strings.nsh"), strings);
 if (signed)
@@ -137,9 +140,9 @@ await writeFile(
 const config = `import { createElectronBuilderConfig } from './builder-factory.mjs';
 import { officialGeaBranding } from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
 import { execFileSync } from 'node:child_process';
-const config = officialGeaBranding(createElectronBuilderConfig(process.env, undefined, undefined, ${JSON.stringify(packagedDsh)}), { companySeed: ${JSON.stringify(join(target, "company-seed"))} });
+const config = officialGeaBranding(createElectronBuilderConfig(process.env, undefined, undefined, ${JSON.stringify(packagedDsh)}), { companySeed: ${JSON.stringify(join(target, "company-seed"))}, brandedMain: ${JSON.stringify(join(output, "company-main.js"))} });
 if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || ${signed ? "config.publish?.[0]?.url !== " + JSON.stringify(companyWindowsUpdateUrl) : "config.publish !== null"}) throw Error('COMPANY_DESKTOP_ADAPTER_DRIFT');
-config.artifactName = 'GEA-Desktop-\${version}-win-\${arch}-${signed ? "signed" : "complete-local-unsigned"}.\${ext}';
+config.artifactName = 'Synear-GEA-\${version}-win-\${arch}-${signed ? "signed" : "complete-local-unsigned"}.\${ext}';
 config.extraMetadata = { ...config.extraMetadata, dshLocalTestBuild: ${!signed}, geaBrandingCommit: process.env.GEA_COMPLETE_SOURCE_SHA, dshLocalPackaging: '${signed ? "official-layout-gea-windows-signed-no-publish" : "official-layout-gea-windows-unsigned-no-publish"}' };
 config.win = { ...config.win, icon: ${JSON.stringify(iconPath)}, target: [{ target: 'nsis', arch: ['x64'] }] };
 config.extraResources = config.extraResources.map(item => item.to === 'tray.ico' ? { ...item, from: ${JSON.stringify(join(output, "gea.ico"))} } : item);
@@ -173,7 +176,7 @@ foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninst
 const smokePath = join(desktop, "scripts/smoke-packaged-runtime.ts");
 const smoke = relocate(
   (await readFile(smokePath, "utf8"))
-    .replaceAll("'DeepSeek Harness.exe'", "'GEA Desktop.exe'")
+    .replaceAll("'DeepSeek Harness.exe'", "'Synear GEA.exe'")
     .replaceAll("paths.dsh", JSON.stringify(packagedDsh)),
   smokePath,
 );
@@ -262,6 +265,7 @@ execFileSync(
 );
 stages.push({ name: "prepare-company-seed", code: 0, seconds: (Date.now() - seedStarted) / 1000 });
 if (signed) process.env.DSH_DESKTOP_UNSIGNED = "0";
+await prepareOfficialGeaMain(desktop, output);
 await run(
   "package-windows",
   [
@@ -284,7 +288,7 @@ await run(
 const appRoot = join(artifactDirectory, "win-unpacked/resources/app.asar");
 const supportRoot = join(artifactDirectory, "win-unpacked/resources/runtime");
 const seed = join(artifactDirectory, "win-unpacked/resources/company-seed");
-const executable = join(artifactDirectory, "win-unpacked/GEA Desktop.exe");
+const executable = join(artifactDirectory, "win-unpacked/Synear GEA.exe");
 const cleanHome = join(target, "offline-new-install");
 const firstInstallStarted = Date.now();
 execFileSync(

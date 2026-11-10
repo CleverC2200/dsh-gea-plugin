@@ -76,7 +76,7 @@ try {
     label=$Label; startedUtc=$started.ToString('o'); elapsedMs=$timer.ElapsedMilliseconds
     installerSha256=(Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash.ToLower()
     exitCode=$(if ($process.HasExited) {$process.ExitCode} else {$null}); timedOut=$timedOut
-    executablePresent=(Test-Path -LiteralPath (Join-Path $Destination 'GEA Desktop.exe'))
+    executablePresent=(Test-Path -LiteralPath (Join-Path $Destination 'Synear GEA.exe'))
     installedFileCount=$fileCount; installedBytes=$installedBytes; peakInstallerProcesses=$peakProcesses
     installerTimingLogPresent=$installerTimingLogPresent
     telemetryErrors=@($sampleErrors | Select-Object -Unique)

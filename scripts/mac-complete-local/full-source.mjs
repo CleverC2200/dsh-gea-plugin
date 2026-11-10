@@ -233,13 +233,17 @@ function relocate(source, original) {
     .replaceAll("import.meta.url", JSON.stringify(pathToFileURL(original).href));
 }
 const factoryPath = join(desktop, "scripts/electron-builder-config.mjs");
+const { prepareOfficialGeaMain } = await import(
+  pathToFileURL(join(gea, "desktop/official-branding.mjs"))
+);
+const brandedMain = await prepareOfficialGeaMain(desktop, output);
 let factory = relocate(await readFile(factoryPath, "utf8"), factoryPath);
 factory = adaptCompanyMacFactory(factory);
 await writeFile(join(output, "builder-factory.mjs"), factory);
 const config = `import {createElectronBuilderConfig} from './builder-factory.mjs';
 import {officialGeaBranding} from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
 import {configureSignedCompanyMac} from ${JSON.stringify(new URL("./signing.mjs", import.meta.url).href)};
-let config=officialGeaBranding(createElectronBuilderConfig(process.env),{companySeed:${JSON.stringify(companySeed)}});
+let config=officialGeaBranding(createElectronBuilderConfig(process.env),{companySeed:${JSON.stringify(companySeed)},brandedMain:${JSON.stringify(brandedMain)}});
 config=configureSignedCompanyMac(config,${JSON.stringify(geaSha)});
 export default config;
 `;
@@ -261,10 +265,10 @@ await pnpm(
   ],
   desktop,
 );
-const app = join(target, "artifacts/mac-arm64/GEA Desktop.app");
+const app = join(target, "artifacts/mac-arm64/Synear GEA.app");
 const resources = join(app, "Contents/Resources");
 const archive = join(resources, "app.asar");
-const executable = join(app, "Contents/MacOS/GEA Desktop");
+const executable = join(app, "Contents/MacOS/Synear GEA");
 const require = createRequire(join(desktop, "package.json"));
 const asar = createRequire(require.resolve("app-builder-lib/package.json"))("@electron/asar");
 const metadata = JSON.parse(asar.extractFile(archive, "package.json"));
@@ -283,8 +287,8 @@ await writeFile(
   join(output, "smoke-gea.mts"),
   relocate(
     (await readFile(smokePath, "utf8"))
-      .replaceAll("DeepSeek Harness.app", "GEA Desktop.app")
-      .replaceAll("'DeepSeek Harness'", "'GEA Desktop'"),
+      .replaceAll("DeepSeek Harness.app", "Synear GEA.app")
+      .replaceAll("'DeepSeek Harness'", "'Synear GEA'"),
     smokePath,
   ),
 );
@@ -321,7 +325,7 @@ assert.deepEqual(
   input.seed.packages.map(({ name, version }) => ({ name, version })),
 );
 await writeFile(join(output, "first-install-receipt.json"), JSON.stringify(receipt, null, 2));
-const name = "GEA-Desktop-" + input.desktopVersion + "-mac-arm64-signed.dmg";
+const name = "Synear-GEA-" + input.desktopVersion + "-mac-arm64-signed.dmg";
 const sourceArtifact = join(target, "artifacts", name);
 await run("dmg-verify", "/usr/bin/hdiutil", ["verify", sourceArtifact]);
 const { resolveMacOSSigningEnvironment } = await import(
@@ -333,7 +337,7 @@ const { verifyMacOSNotarizedApplication, verifyMacOSDiskImage } = await import(
 const expected = resolveMacOSSigningEnvironment(env);
 verifyMacOSNotarizedApplication(app, expected);
 verifyMacOSDiskImage(sourceArtifact, expected);
-const zipName = `GEA-Desktop-${input.desktopVersion}-mac-arm64-signed.zip`;
+const zipName = `Synear-GEA-${input.desktopVersion}-mac-arm64-signed.zip`;
 const updatePath = join(target, "artifacts/nightly-mac.yml");
 const yaml = require("js-yaml");
 const manifest = yaml.load(await readFile(updatePath, "utf8"));
