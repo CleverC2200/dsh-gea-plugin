@@ -6,3 +6,5 @@
 GEA准备版本0.0.260，保留既有精确兼容范围并增加Workbench0.1.86。Manage继续使用已发布company.60；本轮不改变业务身份、数据权限、Core或桌面构建输入。Workbench默认最新日期和手动日期的具体行为及回归见其CHANGE-20261110-aps-default-date记录。
 
 发布前核主线、不可变版本及固定三包预检。正式频道、GitHub Release、来源下载和业务验收分别留证。
+
+配套 Manage 使用 0.6.3-company.61 的新归档；其业务源码不变，隔离构建路径产生不同 CSS 模块标识时不替换原 0.6.3-company.60 字节。
