@@ -174,14 +174,7 @@ export async function catalogSceneProfile(t, options, scene = "model") {
     "APS capability build mode",
   );
   await assertCatalogSceneSources((source) =>
-    readFile(
-      join(
-        combination,
-        "node_modules",
-        packages[source.owner],
-        source.file.replace(/^published@0\.11\.3\//, ""),
-      ),
-    ),
+    readFile(join(combination, "node_modules", packages[source.owner], source.file)),
   );
   // With no inherited override, the existing launcher derives precisely these roots
   // from this selected combination, retaining Workbench's other built-in providers.

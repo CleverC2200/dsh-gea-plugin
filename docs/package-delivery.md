@@ -26,7 +26,7 @@ request.json 的所有输入路径须为绝对路径，destination 必须是不�
     "@cleverc2200/dsh-agent-workbench": "REQUESTED_WORKBENCH_VERSION",
     "dsh-agent-manage": "REQUESTED_MANAGE_VERSION",
     "@cleverc2200/gea-dsh-prototype": "REQUESTED_GEA_VERSION",
-    "@changfenhuang/dsh-genui": "0.11.3",
+    "@changfenhuang/dsh-genui": "0.16.0-company.1",
     "dsh-better-sidebar": "0.24.1"
   },
   "repositories": [

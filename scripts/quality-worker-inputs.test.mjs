@@ -268,7 +268,7 @@ function fixture(
     const original = "original/" + name;
     json(original + "/package.json", {
       name: name === "dsh-genui" ? "@changfenhuang/dsh-genui" : name,
-      version: "0.11.3",
+      version: "0.16.0-company.1",
       packageManager: "pnpm@11.8.0",
       main: "lib/index.js",
       types: "lib/types/index.d.ts",
@@ -277,6 +277,9 @@ function fixture(
     for (const file of [
       "cordis.patch.yml",
       "SKILL.md",
+      "ICON-NAMES.md",
+      "THIRD_PARTY_NOTICES.md",
+      "assets/genui-icon.svg",
       "locale/en.json",
       "locale/zh.json",
       "icon.svg",
@@ -338,10 +341,13 @@ function fixture(
       "lib/client.js": "fixed client",
       "cordis.patch.yml": "fixed patch",
       "SKILL.md": "fixed skill",
+      "ICON-NAMES.md": "fixed tracked resource",
+      "THIRD_PARTY_NOTICES.md": "fixed tracked resource",
+      "assets/genui-icon.svg": "fixed tracked resource",
     };
     fixed.genui.files = {};
     for (const [file, bytes] of Object.entries(genui)) {
-      put("quality-upstreams/upstream-assets/genui-0.11.3/" + file, bytes);
+      put("quality-upstreams/upstream-assets/genui-0.16.0-company.1/" + file, bytes);
       fixed.genui.files[file] = hash(bytes);
     }
     json("candidate/dsh-gea-plugin/scripts/quality-upstreams.json", fixed);
@@ -464,7 +470,8 @@ function fixture(
       artifact: { path: native, sha256: hash("fixed native") },
     });
   }
-  if (!publicQuality) put("quality-upstreams/upstream-assets/genui-0.11.3/package.json", "{}\n");
+  if (!publicQuality)
+    put("quality-upstreams/upstream-assets/genui-0.16.0-company.1/package.json", "{}\n");
   put("quality-upstreams/upstream-reference/dsh-better-sidebar/lib/index.js", "fixed sidebar");
   if (browser) {
     const directories = ["chromium", "headless", "ffmpeg"].map((name) =>

@@ -968,7 +968,7 @@ try {
           repo: "dsh-genui",
           source: resolve(upstream, "upstream-reference/dsh-genui"),
           commit: upstreamRecord.genui.head,
-          assets: resolve(upstream, "upstream-assets/genui-0.11.3"),
+          assets: resolve(upstream, "upstream-assets/genui-0.16.0-company.1"),
           files: upstreamRecord.genui.files,
           dependencies: resolve(process.cwd(), "node_modules"),
         },

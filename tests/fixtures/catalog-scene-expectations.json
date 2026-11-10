@@ -159,9 +159,16 @@
       },
       {
         "owner": "genui",
-        "head": "0cc64c97b426ff5afe54154e74ead31dd8739265",
-        "file": "published@0.11.3/src/plugin/index.ts",
-        "sha256": "a099dd4700ac18b259334ac981d5e4be346ad530a0d1f88b4b8bf76ec6e31810",
+        "head": "d321a1cb268563288eefbc057f6aa0766eac7559",
+        "file": "src/plugin/index.ts",
+        "sha256": "65557caceeb4c53384695316ade22b1f8b6eb7517506766803842523a9bfe20e",
+        "name": "genui"
+      },
+      {
+        "owner": "genui",
+        "head": "d321a1cb268563288eefbc057f6aa0766eac7559",
+        "file": "SKILL.md",
+        "sha256": "844f8a305eb82bc46891b6926381bc65f124155f0f08e19d86546699173ede18",
         "name": "genui"
       }
     ],
@@ -201,7 +208,7 @@
   "requiredPeers": {
     "dsh-agent-workbench": "c5a5bc64fade154bf5b468f0d848974ac308823a",
     "dsh-agent-manage": "cdd2d6520a7790ca1a1c658d1fa71e07c651cd3f",
-    "dsh-genui": "382db5575ad3068efeff0322eec9cc499f79ae01",
+    "dsh-genui": "d321a1cb268563288eefbc057f6aa0766eac7559",
     "dsh-better-sidebar": "a2751cfbde2dd425b8150737574bc6d1d57f73b8"
   },
   "completeNativeTools": {

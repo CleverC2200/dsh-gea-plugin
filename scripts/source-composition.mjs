@@ -55,8 +55,16 @@ export const sourcePlugins = [
     name: "@changfenhuang/dsh-genui",
     configs: ["tsconfig.json"],
     build: "build",
-    resources: [...resources, "SKILL.md", "docs", "src"],
-    digests: ["SKILL.md"],
+    resources: [
+      ...resources,
+      "SKILL.md",
+      "ICON-NAMES.md",
+      "THIRD_PARTY_NOTICES.md",
+      "assets",
+      "docs",
+      "src",
+    ],
+    digests: ["SKILL.md", "ICON-NAMES.md", "THIRD_PARTY_NOTICES.md", "assets/genui-icon.svg"],
     bundleOrder: 2,
   },
   {
