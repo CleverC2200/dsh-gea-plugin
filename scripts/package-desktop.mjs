@@ -176,7 +176,7 @@ export async function main(argv = process.argv.slice(2)) {
         buildRoot,
         "final",
         values.target,
-        `GEA-Desktop-${manifest.version}-${values.target === "win" ? "win-x64.exe" : "mac-arm64.dmg"}`,
+        `Synear-GEA-${manifest.version}-${values.target === "win" ? "win-x64.exe" : "mac-arm64.dmg"}`,
       );
       const { writeFile } = await import("node:fs/promises");
       await writeFile(

@@ -131,7 +131,7 @@ jobs:
         if: success() && !inputs.signing_check_only
         uses: actions/upload-artifact@v4
         with:
-          name: GEA-Desktop-mac-arm64-signed-${{ github.run_id }}
+          name: Synear-GEA-mac-arm64-signed-${{ github.run_id }}
           if-no-files-found: error
           compression-level: 0
           path: |
@@ -145,7 +145,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GEA-Desktop-mac-arm64-diagnostics-${{ github.run_id }}
+          name: Synear-GEA-mac-arm64-diagnostics-${{ github.run_id }}
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/gea-mac-source/*.json

@@ -11,9 +11,12 @@ function start(ownsLock) {
     process: { execPath: "/app/GEA", resourcesPath: "/resources", env },
     require(name) {
       if (name === "node:path") return require(name);
+      if (name === "node:fs") return { mkdirSync() {} };
       if (name === "electron")
         return {
           app: {
+            setPath() {},
+            on() {},
             getVersion() {
               return "0.2.0-rc.2.20261104.1";
             },
