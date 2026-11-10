@@ -652,6 +652,12 @@
     },
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/desktop-dev\\.mjs$",
+      "tests": ["scripts/desktop-dev.test.mjs"],
+      "sourceTests": ["scripts/desktop-dev.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:plugin-release-preflight|release-preflight|package-source-integrity|deliver-packages)\\.mjs$",
       "tests": ["scripts/deliver-packages.test.mjs", "tests/plugin-release-preflight.test.mjs"]
     },
