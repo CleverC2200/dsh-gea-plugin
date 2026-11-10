@@ -63,7 +63,8 @@
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/windows-complete-local/core-cache.test.mjs",
     "scripts/windows-complete-local/signing.test.mjs",
-    "scripts/mac-complete-local/signing.test.mjs"
+    "scripts/mac-complete-local/signing.test.mjs",
+    "scripts/desktop-release.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -74,6 +75,9 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/desktop-release.test.mjs": {
+      "dependencies": true
+    },
     "scripts/mac-complete-local/signing.test.mjs": {
       "dependencies": false
     },
@@ -762,6 +766,12 @@
         "scripts/windows-complete-local/signing.test.mjs",
         "scripts/delivery-events.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/desktop-release(?:\\.test)?\\.mjs$|^scripts/(?:mac-complete-local/full-source|windows-complete-local/build)\\.mjs$",
+      "tests": ["scripts/desktop-release.test.mjs"],
+      "sourceTests": ["scripts/desktop-release.test.mjs"]
     }
   ],
   "testOwners": {
@@ -777,6 +787,7 @@
     "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
+    "scripts/desktop-release.test.mjs": ["semver", "yaml"],
     "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
     "scripts/run-quality-ci.test.mjs": ["yaml"]

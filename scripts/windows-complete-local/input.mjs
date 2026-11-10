@@ -5,8 +5,43 @@ import { pathToFileURL } from "node:url";
 import { companyPackageNames, comparePluginVersions } from "../../src/shared/plugin-release.mjs";
 import { ciCores } from "../ci-core-policy.mjs";
 import { assertMacBaseline } from "../mac-complete-local/baseline.mjs";
+import semver from "semver";
 
 const desktopCore = ciCores("required")[0];
+export const personalMemoryPackage = "@cleverc2200/dsh-personal-memory";
+export const desktopPackageNames = [...companyPackageNames, personalMemoryPackage];
+
+export function verifyPersonalMemoryArchive(path, row, input) {
+  if (row.name !== personalMemoryPackage) return;
+  const options = { encoding: "utf8", timeout: 30000, maxBuffer: 16 * 1024 * 1024 };
+  const entries = execFileSync("tar", ["-tzf", path], options).trim().split(/\r?\n/);
+  const listing = execFileSync("tar", ["-tvzf", path], options).trim().split(/\r?\n/);
+  if (
+    new Set(entries).size !== entries.length ||
+    entries.some(
+      (name) =>
+        !name.startsWith("package/") ||
+        /[\\\r\t]/.test(name) ||
+        name.split("/").some((part) => part === "." || part === "..") ||
+        name.includes("/node_modules/"),
+    ) ||
+    listing.length !== entries.length ||
+    listing.some((line) => !["-", "d"].includes(line[0])) ||
+    !["package.json", "index.mjs", "settings.mjs", "lib/client.js", "cordis.patch.yml"].every(
+      (file) => entries.includes("package/" + file),
+    )
+  )
+    throw Error("DESKTOP_PERSONAL_MEMORY_ARCHIVE_INVALID");
+  const manifest = JSON.parse(execFileSync("tar", ["-xOf", path, "package/package.json"], options));
+  const gea = input.seed.packages.find((item) => item.name === "@cleverc2200/gea-dsh-prototype");
+  if (
+    manifest.name !== row.name ||
+    manifest.version !== row.version ||
+    manifest.exports?.["./client"] !== "./lib/client.js" ||
+    !semver.satisfies(gea.version, manifest.peerDependencies?.[gea.name] ?? "<0.0.0")
+  )
+    throw Error("DESKTOP_PERSONAL_MEMORY_ARCHIVE_INVALID");
+}
 export const desktopCoreHead = desktopCore.head;
 export const coreArtifactPaths = [
   "package.json",
@@ -34,8 +69,10 @@ export async function readDesktopInput(file, sourceSha) {
   const packages = input?.seed?.packages;
   if (
     !Array.isArray(packages) ||
-    packages.length !== 3 ||
-    new Set(packages.map((row) => row?.name)).size !== 3 ||
+    packages.length < 3 ||
+    packages.length > 4 ||
+    new Set(packages.map((row) => row?.name)).size !== packages.length ||
+    packages.some((row) => !desktopPackageNames.includes(row?.name)) ||
     !companyPackageNames.every((name) => packages.some((row) => row?.name === name))
   )
     throw Error("DESKTOP_THREE_PACKAGES_REQUIRED");
@@ -69,6 +106,9 @@ export async function readDesktopInput(file, sourceSha) {
     )
   )
     throw Error("DESKTOP_CORE_INVALID");
+  const memory = packages.find((row) => row.name === personalMemoryPackage);
+  if (!memory || !/^[a-f0-9]{40}$/.test(memory.sourceSha ?? ""))
+    throw Error("DESKTOP_PERSONAL_MEMORY_REQUIRED");
   for (const row of packages) {
     const file = `${row.name.replace(/^@/, "").replace("/", "-")}-${row.version}.tgz`;
     try {
@@ -97,11 +137,12 @@ export async function readDesktopInput(file, sourceSha) {
     ...(input.pluginSourceSha === undefined ? {} : { pluginSourceSha: input.pluginSourceSha }),
     desktopVersion: input.desktopVersion,
     seed: {
-      packages: packages.map(({ name, version, url, sha256 }) => ({
+      packages: packages.map(({ name, version, url, sha256, sourceSha }) => ({
         name,
         version,
         url,
         sha256,
+        ...(name === personalMemoryPackage ? { sourceSha } : {}),
       })),
       core: {
         head: core.head,

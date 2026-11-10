@@ -1,11 +1,19 @@
 import { execFileSync } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
-import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
+import {
+  readDesktopInput,
+  readDesktopPluginSource,
+  desktopCoreHead,
+  desktopPackageNames,
+  personalMemoryPackage,
+  verifyPersonalMemoryArchive,
+} from "./input.mjs";
 import { inspectPluginArchive } from "../../src/host/plugin-release-source.ts";
 import { cp, readFile, writeFile, mkdir, readdir, stat, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { prepareDesktopRelease } from "../desktop-release.mjs";
 
 import { prepareWindows, stageRunner } from "./prepare.mjs";
 import {
@@ -28,6 +36,9 @@ const packagedDsh = signed ? join(target, "gea-signed-dsh") : join(target, "dsh"
 const coreSha = desktopCoreHead;
 const geaSha = process.env.GITHUB_SHA;
 const input = await readDesktopInput(process.argv[4], geaSha);
+input.seed.packages.sort(
+  (a, b) => desktopPackageNames.indexOf(a.name) - desktopPackageNames.indexOf(b.name),
+);
 if (
   process.env.DSH_DESKTOP_BUILD_VERSION !== input.desktopVersion ||
   process.env.DSH_DESKTOP_BUILD_COMMIT !== coreSha ||
@@ -201,6 +212,10 @@ for (const row of seedInput.packages) {
     throw Error("PACKAGE_DOWNLOAD_HASH_MISMATCH");
   row.path = join(output, "packages", new URL(row.url).pathname.split("/").at(-1));
   await writeFile(row.path, bytes, { flag: "wx" });
+  if (row.name === personalMemoryPackage) {
+    verifyPersonalMemoryArchive(row.path, row, input);
+    continue;
+  }
   const manifest = await inspectPluginArchive(row.path);
   if (manifest.name !== row.name || manifest.version !== row.version)
     throw Error("PACKAGE_DOWNLOAD_IDENTITY_MISMATCH");
@@ -287,8 +302,12 @@ execFileSync(
 const receipt = JSON.parse(
   await readFile(join(cleanHome, "profiles/desktop/gea/bootstrap/receipt.json"), "utf8"),
 );
-if (receipt.status !== "installed" || receipt.packages.length !== 3)
-  throw Error("THREE_PLUGIN_NEW_INSTALL_FAILED");
+if (
+  receipt.status !== "installed" ||
+  JSON.stringify(receipt.packages) !==
+    JSON.stringify(input.seed.packages.map(({ name, version }) => ({ name, version })))
+)
+  throw Error("DESKTOP_BUNDLED_NEW_INSTALL_FAILED");
 stages.push({
   name: "isolated-first-install",
   code: 0,
@@ -459,3 +478,12 @@ await writeFile(
 );
 
 await writeFile(join(output, "stages.json"), JSON.stringify(stages, null, 2));
+if (signed)
+  await writeFile(
+    join(output, "release-plan.json"),
+    JSON.stringify(
+      await prepareDesktopRelease(artifactDirectory, geaSha, join(output, "result.json")),
+      null,
+      2,
+    ),
+  );

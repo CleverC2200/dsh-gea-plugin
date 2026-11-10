@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       desktop_input:
-        description: "Existing annotated desktop tag input; product source and three packages stay frozen"
+        description: "Existing annotated desktop tag input; product source, company suite and personal memory stay frozen"
         required: false
         default: ""
         type: string
@@ -83,11 +83,13 @@ jobs:
       - name: Validate the reserved product input
         if: ${{ !inputs.signing_check_only }}
         run: |
-          npm install --prefix "$RUNNER_TEMP/input-dependencies" --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
+          npm install --prefix "$RUNNER_TEMP/input-dependencies" --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0
           mkdir gea/node_modules
           ln -s "$RUNNER_TEMP/input-dependencies/node_modules/semver" gea/node_modules/semver
           mkdir tools/node_modules
           ln -s "$RUNNER_TEMP/input-dependencies/node_modules/semver" tools/node_modules/semver
+          ln -s "$RUNNER_TEMP/input-dependencies/node_modules/yaml" tools/node_modules/yaml
+          ln -s "$RUNNER_TEMP/input-dependencies/node_modules/yaml" gea/node_modules/yaml
           node tools/scripts/mac-complete-local/full-source.mjs core gea "$DESKTOP_INPUT_PATH" --plan
       - name: Prepare declared Core dependencies
         working-directory: core
@@ -138,6 +140,7 @@ jobs:
             ${{ runner.temp }}/gea-mac-source/*.blockmap
             ${{ runner.temp }}/gea-mac-source/*.yml
             ${{ runner.temp }}/gea-mac-source/result.json
+            ${{ runner.temp }}/gea-mac-source/release-plan.json
       - name: Keep build diagnostics
         if: always()
         uses: actions/upload-artifact@v4

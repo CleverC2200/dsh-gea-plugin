@@ -1,9 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
-import { readDesktopInput, readDesktopPluginSource, desktopCoreHead } from "./input.mjs";
+import {
+  readDesktopInput,
+  readDesktopPluginSource,
+  desktopCoreHead,
+  verifyPersonalMemoryArchive,
+} from "./input.mjs";
 import { assertMacBaseline, macBaseline } from "../mac-complete-local/baseline.mjs";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { readFile, mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +18,62 @@ const released = JSON.parse(
 );
 const baseline = structuredClone(released);
 baseline.seed.core.head = desktopCoreHead;
+const memory = "@cleverc2200/dsh-personal-memory";
+baseline.seed.packages.push({
+  name: memory,
+  version: "0.1.0",
+  sha256: "1".repeat(64),
+  sourceSha: "2".repeat(40),
+  url: `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/${"1".repeat(64)}/cleverc2200-dsh-personal-memory-0.1.0.tgz`,
+});
+
+test("desktop inputs require the independently pinned personal memory plugin", async (t) => {
+  const input = structuredClone(baseline);
+  input.seed.packages.pop();
+  assert.match((await check(t, input)).stderr, /DESKTOP_PERSONAL_MEMORY_REQUIRED/);
+  const dir = await mkdtemp(join(tmpdir(), "gea-memory-input-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, "input.json");
+  await writeFile(path, JSON.stringify(baseline));
+  assert.deepEqual(
+    (await readDesktopInput(path, baseline.geaSourceSha)).seed.packages.at(-1),
+    baseline.seed.packages.at(-1),
+  );
+});
+
+test("personal memory must contain its settings client and match the installed GEA peer", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-memory-archive-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const row = baseline.seed.packages.at(-1);
+  const gea = baseline.seed.packages.find((item) => item.name === "@cleverc2200/gea-dsh-prototype");
+  const manifest = {
+    name: row.name,
+    version: row.version,
+    exports: { "./client": "./lib/client.js" },
+    peerDependencies: { [gea.name]: gea.version },
+  };
+  await mkdir(join(dir, "package/lib"), { recursive: true });
+  for (const file of ["index.mjs", "settings.mjs", "cordis.patch.yml"])
+    await writeFile(join(dir, "package", file), "memory fixture");
+  await writeFile(join(dir, "package/package.json"), JSON.stringify(manifest));
+  const archive = join(dir, "memory.tgz");
+  const pack = () => execFileSync("tar", ["-czf", archive, "-C", dir, "package"]);
+  pack();
+  assert.throws(
+    () => verifyPersonalMemoryArchive(archive, row, baseline),
+    /MEMORY_ARCHIVE_INVALID/,
+  );
+  await writeFile(join(dir, "package/lib/client.js"), "compiled settings client");
+  pack();
+  assert.doesNotThrow(() => verifyPersonalMemoryArchive(archive, row, baseline));
+  manifest.peerDependencies[gea.name] = "0.0.1";
+  await writeFile(join(dir, "package/package.json"), JSON.stringify(manifest));
+  pack();
+  assert.throws(
+    () => verifyPersonalMemoryArchive(archive, row, baseline),
+    /MEMORY_ARCHIVE_INVALID/,
+  );
+});
 
 async function check(t, input, source = baseline.geaSourceSha) {
   const directory = await mkdtemp(join(tmpdir(), "gea-desktop-input-"));
@@ -26,7 +87,7 @@ async function check(t, input, source = baseline.geaSourceSha) {
 
 test("complete Windows input refuses missing company archives before building", async (t) => {
   const input = structuredClone(baseline);
-  input.seed.packages.pop();
+  input.seed.packages.splice(0, 1);
   const result = await check(t, input);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /DESKTOP_THREE_PACKAGES_REQUIRED/);
