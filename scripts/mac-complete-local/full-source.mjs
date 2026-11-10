@@ -6,7 +6,7 @@ import { mkdir, open, readFile, writeFile, symlink, copyFile, stat } from "node:
 import { join, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
-import { companyPackageNames } from "../../src/shared/plugin-release.mjs";
+import { prepareDesktopRelease } from "../desktop-release.mjs";
 import {
   adaptCompanyMacFactory,
   companyMacDownloadPrefix,
@@ -19,13 +19,13 @@ const gea = resolve(process.argv[3]);
 const candidate = process.argv.includes("--candidate");
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const geaSha = git(gea, "rev-parse", "HEAD");
-const { readDesktopInput, readDesktopPluginSource, coreArtifactPaths } = await import(
-  pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs"))
-);
+const {
+  readDesktopInput,
+  readDesktopPluginSource,
+  coreArtifactPaths,
+  verifyPersonalMemoryArchive,
+} = await import(pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs")));
 const input = await readDesktopInput(process.argv[4], geaSha);
-input.seed.packages.sort(
-  (a, b) => companyPackageNames.indexOf(a.name) - companyPackageNames.indexOf(b.name),
-);
 const plugin = readDesktopPluginSource(input, gea);
 assert.equal(git(core, "rev-parse", "HEAD"), input.seed.core.head);
 assert.equal(git(core, "status", "--porcelain"), "");
@@ -201,6 +201,7 @@ for (const row of input.seed.packages) {
   );
   assert.equal(manifest.name, row.name);
   assert.equal(manifest.version, row.version);
+  verifyPersonalMemoryArchive(path, row, input);
   seed.packages.push({ ...row, path });
 }
 const seedInput = join(output, "seed-input.json");
@@ -400,3 +401,7 @@ await writeFile(
   ),
 );
 console.log(JSON.stringify({ status: "packaged-and-runtime-smoke-passed", artifact }));
+await writeFile(
+  join(output, "release-plan.json"),
+  JSON.stringify(await prepareDesktopRelease(output, geaSha), null, 2),
+);

@@ -94,7 +94,9 @@ assert.deepEqual(
   ),
   failed,
 );
-for (const row of manifest.packages) {
+for (const row of manifest.packages.filter(
+  (row) => row.name !== "@cleverc2200/dsh-personal-memory",
+)) {
   const actual = JSON.parse(
     await readFile(join(profile, "node_modules", row.name, "package.json"), "utf8"),
   );
@@ -141,7 +143,13 @@ assert.equal(sameVersion.from, sameVersion.to);
 const plain = await readFile(join(profile, "package.json"));
 const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), plain]);
 await writeFile(join(profile, "package.json"), bom);
-const normalized = await bootstrapCompanyProfile({ root, support, seed, home });
+const normalized = await bootstrapCompanyProfile({
+  root,
+  support,
+  seed,
+  home,
+  includePersonalMemory: false,
+});
 assert.equal(normalized.changed, true);
 assert.deepEqual(await readFile(normalized.backup), bom);
 assert.deepEqual(await readFile(join(profile, "package.json")), plain);

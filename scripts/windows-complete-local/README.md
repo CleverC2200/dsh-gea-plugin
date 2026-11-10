@@ -1,6 +1,6 @@
 # 官方布局 Windows 公司包
 
-`Delivery fixture checks` 的 `workflow_dispatch` 接受 `windows_complete_input` JSON。双端完整包的 Core 由 `scripts/ci-core-policy.json` 的 required 项统一选择，采用当前 workflow GEA HEAD 和已发布三包。GEA `package:desktop:win` 是旧壳入口，不产生此完整客户端。
+`Delivery fixture checks` 的 `workflow_dispatch` 接受 `windows_complete_input` JSON。双端完整包的 Core 由 `scripts/ci-core-policy.json` 的 required 项统一选择，采用当前 workflow GEA HEAD、已发布三包和固定来源的 `@cleverc2200/dsh-personal-memory` 归档。个人记忆是桌面必需输入，不改变公司三包更新组合。GEA `package:desktop:win` 是旧壳入口，不产生此完整客户端。
 
 先用公开输入检查，不执行构建：
 
@@ -26,7 +26,7 @@ bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativ
 
 GitHub 构建从仓库 secrets `GEA_WINDOWS_SIGNING_PFX_BASE64`、`GEA_WINDOWS_SIGNING_PASSWORD` 读取私钥材料，写入 runner 临时目录，结束后删除。仓库不包含这些 secret；配置这些值和正式发布由发行负责人办理。手工 Windows 构建可直接设置本地路径，无需上传私钥。
 
-公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启，更新地址固定为 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/`。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`；后续发布先上传 EXE 与 blockmap，再更新 `nightly.yml`，并保留旧版本供差分下载。现有桌面 JSON 频道仍服务旧客户端，本次不改它。更新源通过独立发布步骤维护，构建始终使用 `--publish never`。
+公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启，更新地址固定为 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/`。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`，签名构建另核完整交付 `release-plan.json`。正式分发必须使用[统一交付入口](../desktop-release.md)，同时发布安装包和更新文件，保留旧版本供差分下载。现有桌面 JSON 频道仍服务旧客户端，本次不改它。构建始终使用 `--publish never`。
 
 已有客户端需要先安装一次包含新证书的引导版本，之后才能使用该证书验签更新。首次安装仍可能出现 Windows 安全提示。换证前必须提前部署新证书并核发布者兼容性，不能直接覆盖现有私钥。
 

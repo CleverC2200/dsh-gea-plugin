@@ -19,7 +19,7 @@ node scripts/mac-complete-local/full-source.mjs /absolute/company-core /absolute
 corepack pnpm run package:desktop:mac /absolute/company-core /absolute/gea /absolute/input.json
 ```
 
-`input.json` 使用 `windows-complete-local/input.mjs` 的三包及 required Core 合同，正式构建仍要求已合并的发行源码和绑定 Core、三包摘要的 annotated 桌面标签。输出在 `$RUNNER_TEMP/gea-mac-source`。成功回执列出交付文件大小和 SHA-256；失败保留原诊断，不输出可交付安装包。
+`input.json` 使用 `windows-complete-local/input.mjs` 的公司三包、独立个人记忆插件及 required Core 合同，正式构建仍要求已合并的发行源码和绑定 Core、全部包摘要的 annotated 桌面标签。个人记忆归档须包含编译后的设置客户端及独立来源提交。输出在 `$RUNNER_TEMP/gea-mac-source`。成功回执列出交付文件大小和 SHA-256；`release-plan.json` 核完整更新载荷，失败保留原诊断，不输出可交付安装包。
 
 显式 `--candidate` 允许本地未合入源码，先核版本尚未发布，不创建远端标签、不上传包、不修改频道。候选仍必须签名、公证及通过全部验收。旧调用中的 `--online-update` 继续接受，在线更新现在默认开启。
 
@@ -39,6 +39,6 @@ corepack pnpm run package:desktop:mac /absolute/company-core /absolute/gea /abso
 
 ## 分发与更新验收
 
-App 在签名前写入公司更新地址 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/mac-arm64/`；DMG 下载继续使用公司 `client-release/raw/`。不接入上游 Core 的更新或强制更新服务。下载源发布与从实际 HTTPS 来源安装更新是后续独立验收。
+App 在签名前写入公司更新地址 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/mac-arm64/`；DMG 下载继续使用公司 `client-release/raw/`。不接入上游 Core 的更新或强制更新服务。正式分发必须使用[统一交付入口](../desktop-release.md)，同时发布安装包和完整更新载荷，不能只上传 DMG。公网发布与实际客户端安装更新分别验收。
 
 旧 App 缺少 `app-update.yml` 时需要先手动安装新签名、公证 DMG，后续才可应用内下载、验签、替换和重启。代码合并、签名检查、Apple 公证、Gatekeeper、真实设备升级及正式分发分别记录，公证排队和本机隔离源测试均不代表已完成公网交付。

@@ -419,7 +419,11 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
   });
   const current = JSON.parse(currentBytes);
   const installed = [...installedFiles.values()].map((bytes) => JSON.parse(bytes));
-  const plan = planBundledCompanyRefresh(current, installed, manifest.packages);
+  const plan = planBundledCompanyRefresh(
+    current,
+    installed,
+    manifest.packages.filter((row) => companyPackageNames.includes(row.name)),
+  );
   if (plan.status !== "ready") return pending ? preservedPending : plan;
   for (const name of companyPackageNames) {
     const entry = await lstat(join(profile, "node_modules", name));
@@ -645,7 +649,9 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
           throw Error("GEA_REFRESH_CONFIG_NOT_PRESERVED");
         if (pendingRecovery) {
           const targets = [];
-          for (const row of manifest.packages) {
+          for (const row of manifest.packages.filter((item) =>
+            companyPackageNames.includes(item.name),
+          )) {
             if (
               after.dependencies[row.name].replaceAll("\\", "/") !==
               "file:" +

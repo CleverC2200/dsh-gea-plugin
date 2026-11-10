@@ -20,7 +20,7 @@ on:
         required: false
         type: boolean
       windows_complete_input:
-        description: "Desktop version, required policy Core, merged GEA SHA and three immutable published packages as JSON"
+        description: "Desktop version, required Core, merged GEA SHA, company suite and pinned personal memory as JSON"
         required: false
         type: string
       windows_certificate_test:
@@ -44,7 +44,7 @@ on:
         required: false
         type: string
       mac_complete_input:
-        description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
+        description: "Fixed macOS arm64 input with the same Core, company suite and pinned personal memory"
         required: false
         type: string
       source_types_input:
