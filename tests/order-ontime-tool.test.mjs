@@ -1,3 +1,10 @@
+import { readFileSync } from "node:fs";
+const config = JSON.parse(
+  readFileSync(
+    "../dsh-agent-workbench/lib/business/inventory-orderworkbench/sql.config.json",
+    "utf8",
+  ),
+);
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -5,15 +12,18 @@ import { registerOrderOntimeTool } from "../src/host/order-ontime-tool.ts";
 import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
 
 function fixture(
-  execute = async () => ({
-    rows: [{ numerator: 10, denominator: 100, known: 90, pending: 10, late: 80 }],
-    returnedColumns: ["numerator", "denominator", "known", "pending", "late"],
-    rejectedColumns: [],
-  }),
+  execute = async () => {
+    const tuple = ["E1", "C", "2026-10-15", "郑州", "A", "B", "S"]
+      .map((v) => Buffer.byteLength(v) + ":" + v)
+      .join("");
+    const rows = [{ base: "郑州", invalid: 0, ontime: 1, packed_orders: [tuple] }];
+    return { rows, returnedColumns: Object.keys(rows[0]), rejectedColumns: [] };
+  },
 ) {
   let tool,
     preset = "gea-html-inventory-orderworkbench",
-    enabled = true;
+    enabled = true,
+    currentView;
   const identity = new AbortController(),
     listeners = new Set(),
     calls = [],
@@ -41,6 +51,10 @@ function fixture(
     identitySignal: () => identity.signal,
     pluginSql: async (request, signal, configured) => {
       calls.push({ request, configured });
+      if (currentView === "details" && calls.length > 1) {
+        const columns = config.queries["workbench.ontime.agent.details"].resultColumns;
+        return { rows: [], returnedColumns: columns, rejectedColumns: [] };
+      }
       return execute(request, signal);
     },
     moduleMcp: () => {
@@ -61,7 +75,10 @@ function fixture(
     calls,
     identity,
     listeners,
-    call: (args) => tool.execute(args, { agent, signal: new AbortController().signal }),
+    call: (args) => {
+      currentView = args.view;
+      return tool.execute(args, { agent, signal: new AbortController().signal });
+    },
     switchTo: (value) => {
       preset = value;
     },
@@ -73,38 +90,36 @@ function fixture(
 }
 
 const args = { start: "2026-10-01", endExclusive: "2026-11-01", base: "郑州" };
-test("ontime tool executes installed execution SQL with bound base and arrival month", async () => {
+test("on-time alias uses shared execution counts and current code contract", async () => {
   const f = fixture(),
     value = JSON.parse(await f.call(args));
-  assert.equal(value.queryId, "workbench.ontime.agent.summary");
+  assert.equal(value.current.numerator, 1);
+  assert.equal(value.current.denominator, 1);
+  assert.equal(value.current.pending, 0);
+  assert.equal(value.current.known, 1);
+  assert.equal(value.current.late, 0);
+  assert.equal(value.contract.queryId, "workbench.ontime.summary");
   assert.equal(value.contract.graceHours.kamd, 18);
-  assert.equal(value.metrics.pending, 10);
-  assert.equal(value.metrics.value, 10);
-  assert.equal(value.result.rows[0].numerator, 10);
-  assert.match(f.calls[0].request.sql, /ontime_executions/);
-  assert.match(f.calls[0].request.sql, /GROUP BY h.executeorderno/);
-  assert.doesNotMatch(f.calls[0].request.sql, /SUM\(is_ontime\)|COUNT\(is_ontime\)/);
-  assert.equal(f.calls[0].request.consumerCode, "order");
-  assert.equal(f.calls[0].request.parameters.gea_p900, "郑州");
-  assert.equal(f.calls[0].request.parameters.gea_p1, "2026-10-01");
-  assert.equal(f.calls[0].request.parameters.gea_p2, "2026-11-01");
-  assert.equal(f.calls[0].configured, true);
+  assert.ok(f.calls.every((c) => c.configured));
   assert.equal(f.listeners.size, 0);
 });
 test("detail pagination uses the same execution scope", async () => {
   const f = fixture();
   await f.call({ ...args, view: "details", page: 2 });
-  assert.match(f.calls[0].request.sql, /ontime_executions/);
-  assert.equal(f.calls[0].request.parameters.gea_p1001, 200);
-  assert.equal(f.calls[0].request.parameters.gea_p1002, 200);
+  assert.match(f.calls.at(-1).request.sql, /ontime_executions/);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p1001, 200);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p1002, 200);
 });
 test("wrong consumer, disabled source and invalid date/page cannot execute", async () => {
   const f = fixture();
   f.switchTo("gea-html-inventory-orderfulfillment");
   await assert.rejects(() => f.call(args), /NOT_AVAILABLE/);
   f.switchTo("gea-html-inventory-orderworkbench");
-  await assert.rejects(() => f.call({ ...args, start: "2026-02-30" }), /INVALID_ONTIME_PERIOD/);
-  await assert.rejects(() => f.call({ ...args, page: 0 }), /INVALID_ONTIME_PAGE/);
+  await assert.rejects(
+    () => f.call({ ...args, start: "2026-02-30" }),
+    /INVALID_ORDER_METRIC_PERIOD/,
+  );
+  await assert.rejects(() => f.call({ ...args, page: 0 }), /INVALID_ORDER_METRIC_PAGE/);
   f.disable();
   await assert.rejects(() => f.call(args), /RESOURCE_DISABLED/);
   assert.equal(f.calls.length, 0);
@@ -131,18 +146,19 @@ test("fixed ontime read is visible only to the order profile", () => {
   );
 });
 
-test("zero denominator remains unknown and inconsistent counters are rejected", async () => {
-  const empty = fixture(async () => ({
-    rows: [{ numerator: 0, denominator: 0, known: 0, pending: 0, late: 0 }],
+test("empty source remains unknown and invalid packets cannot publish counts", async () => {
+  const f = fixture(async () => ({
+    rows: [],
+    returnedColumns: ["base", "invalid", "ontime", "packed_orders"],
+    rejectedColumns: [],
   }));
-  assert.equal(JSON.parse(await empty.call(args)).metrics.value, null);
-  for (const row of [
-    { numerator: 10, denominator: 100, known: 90, pending: 9, late: 80 },
-    { numerator: 10, denominator: 100, known: 90, pending: 10, late: 79 },
-    { numerator: null, denominator: 100, known: 90, pending: 10, late: 90 },
-  ]) {
-    const f = fixture(async () => ({ rows: [row] }));
-    await assert.rejects(() => f.call(args), /INVALID_ONTIME_COUNTS/);
-    assert.equal(f.listeners.size, 0);
-  }
+  assert.equal(JSON.parse(await f.call(args)).current.value, null);
+  const g = fixture(async () => ({
+    rows: [{ base: "郑州", invalid: 0, ontime: 1, packed_orders: ["bad"] }],
+    returnedColumns: ["base", "invalid", "ontime", "packed_orders"],
+    rejectedColumns: [],
+  }));
+  const v = JSON.parse(await g.call(args));
+  assert.equal(v.current.value, null);
+  assert.equal(v.sources[0].status, "error");
 });

@@ -1,5 +1,6 @@
 import { CURRENT_SHORTAGE_ROUTING, currentShortageResource } from "./current-shortage-contract.ts";
 import { ORDER_AMENDMENT_ROUTING } from "./order-amendment-tool.ts";
+import { ORDER_KPI_ROUTING } from "./order-kpi-tool.ts";
 import { ORDER_ONTIME_ROUTING } from "./order-ontime-tool.ts";
 import { BASE_INVENTORY_ROUTING } from "./base-inventory-tool.ts";
 import { BRANCH_INVENTORY_ROUTING } from "./branch-inventory-tool.ts";
@@ -495,6 +496,7 @@ export function mountBusinessPrompts(
         profile.consumerCode === "order"
           ? [
               ...baseSections,
+              { name: "gea-order-kpi", text: ORDER_KPI_ROUTING },
               { name: "gea-order-amendment", text: ORDER_AMENDMENT_ROUTING },
               { name: "gea-order-ontime", text: ORDER_ONTIME_ROUTING },
             ]
