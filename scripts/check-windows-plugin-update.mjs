@@ -77,7 +77,7 @@ await build({
     },
   ],
 });
-const executable = join(app, "GEA Desktop.exe");
+const executable = join(app, "Synear GEA.exe");
 let exitCode = 0;
 try {
   execFileSync(
