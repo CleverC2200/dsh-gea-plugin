@@ -1,3 +1,10 @@
+import { readFileSync } from "node:fs";
+const config = JSON.parse(
+  readFileSync(
+    "../dsh-agent-workbench/lib/business/inventory-orderworkbench/sql.config.json",
+    "utf8",
+  ),
+);
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -5,15 +12,29 @@ import { registerOrderAmendmentTool } from "../src/host/order-amendment-tool.ts"
 import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
 
 function fixture(
-  execute = async () => ({
-    rows: [{ numerator: 10, denominator: 100, records: 3, invalid: 0 }],
-    returnedColumns: ["numerator", "denominator", "records", "invalid"],
-    rejectedColumns: [],
-  }),
+  execute = async () => {
+    const rows = [
+      {
+        kind: "2",
+        region: "全国",
+        province: "省区",
+        numerator: 10,
+        denominator: 100,
+        records: 3,
+        invalid: 0,
+        sample_numerator: 10,
+        sample_denominator: 100,
+        sample_records: 3,
+        unknown_quantity: 0,
+      },
+    ];
+    return { rows, returnedColumns: Object.keys(rows[0]), rejectedColumns: [] };
+  },
 ) {
   let tool,
     preset = "gea-html-inventory-orderworkbench",
-    enabled = true;
+    enabled = true,
+    currentView;
   const identity = new AbortController(),
     listeners = new Set(),
     calls = [],
@@ -41,6 +62,10 @@ function fixture(
     identitySignal: () => identity.signal,
     pluginSql: async (request, signal, configured) => {
       calls.push({ request, configured });
+      if (currentView === "details" && calls.length > 1) {
+        const columns = config.queries["workbench.amendment.details"].resultColumns;
+        return { rows: [], returnedColumns: columns, rejectedColumns: [] };
+      }
       return execute(request, signal);
     },
     moduleMcp: () => {
@@ -61,7 +86,10 @@ function fixture(
     calls,
     identity,
     listeners,
-    call: (args) => tool.execute(args, { agent, signal: new AbortController().signal }),
+    call: (args) => {
+      currentView = args.view;
+      return tool.execute(args, { agent, signal: new AbortController().signal });
+    },
     switchTo: (value) => {
       preset = value;
     },
@@ -76,17 +104,20 @@ const args = { start: "2026-10-01", endExclusive: "2026-11-01", base: "郑州" }
 test("amendment tool executes only installed quantity SQL, retaining bound pickup and month", async () => {
   const f = fixture(),
     value = JSON.parse(await f.call(args));
-  assert.equal(value.queryId, "workbench.amendment.summary");
+  assert.equal(value.contract.queryId, "workbench.changes");
   assert.equal(value.contract.lockPeriod, false);
   assert.equal(value.contract.dateField, "lastshipmenttime");
   assert.equal(value.contract.dateSource, "agents_scm_order_trace_final_di");
   assert.match(value.contract.countFields.invalid, /不是被剔除/);
   assert.match(f.calls[0].request.sql, /shipment.shipped_at>=:gea_p1/);
   assert.doesNotMatch(f.calls[0].request.sql, /d.header_addtime>=/);
-  assert.equal(value.result.rows[0].numerator, 10);
+  assert.equal(value.current.numerator, 10);
   assert.match(f.calls[0].request.sql, /requested_qty>=0/);
   assert.match(f.calls[0].request.sql, /pickup_point='01'/);
-  assert.doesNotMatch(f.calls[0].request.sql, /custchangetime|requireddeliverytime|hourly/);
+  assert.doesNotMatch(
+    f.calls[0].request.sql.split("SELECT '2' AS kind")[1],
+    /custchangetime|requireddeliverytime|hourly/,
+  );
   assert.equal(f.calls[0].request.consumerCode, "order");
   assert.equal(f.calls[0].request.parameters.gea_p900, "郑州");
   assert.equal(f.calls[0].request.parameters.gea_p1, "2026-10-01");
@@ -98,16 +129,19 @@ test("detail pagination uses the same scope and quantity expression", async () =
   const f = fixture();
   await f.call({ ...args, view: "details", page: 2 });
   assert.match(f.calls[0].request.sql, /requested_qty>=0/);
-  assert.equal(f.calls[0].request.parameters.gea_p1001, 200);
-  assert.equal(f.calls[0].request.parameters.gea_p1002, 200);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p1001, 200);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p1002, 200);
 });
 test("wrong consumer, disabled source and invalid date/page cannot execute", async () => {
   const f = fixture();
   f.switchTo("gea-html-inventory-orderfulfillment");
   await assert.rejects(() => f.call(args), /NOT_AVAILABLE/);
   f.switchTo("gea-html-inventory-orderworkbench");
-  await assert.rejects(() => f.call({ ...args, start: "2026-02-30" }), /INVALID_AMENDMENT_PERIOD/);
-  await assert.rejects(() => f.call({ ...args, page: 0 }), /INVALID_AMENDMENT_PAGE/);
+  await assert.rejects(
+    () => f.call({ ...args, start: "2026-02-30" }),
+    /INVALID_ORDER_METRIC_PERIOD/,
+  );
+  await assert.rejects(() => f.call({ ...args, page: 0 }), /INVALID_ORDER_METRIC_PAGE/);
   f.disable();
   await assert.rejects(() => f.call(args), /RESOURCE_DISABLED/);
   assert.equal(f.calls.length, 0);

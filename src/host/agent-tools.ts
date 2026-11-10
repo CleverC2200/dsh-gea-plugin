@@ -1,5 +1,6 @@
 import { registerCurrentShortageTool } from "./current-shortage-tool.ts";
 import { registerOrderAmendmentTool } from "./order-amendment-tool.ts";
+import { registerOrderKpiTool } from "./order-kpi-tool.ts";
 import { registerOrderOntimeTool } from "./order-ontime-tool.ts";
 import { registerBaseInventoryTool } from "./base-inventory-tool.ts";
 import { registerBranchInventoryTool } from "./branch-inventory-tool.ts";
@@ -103,6 +104,7 @@ export function registerGeaTools(
   registerBranchInventoryTool(ctx, business, htmlPackages);
   registerBaseInventoryTool(ctx, business, htmlPackages);
   registerOrderAmendmentTool(ctx, business, htmlPackages);
+  registerOrderKpiTool(ctx, business, htmlPackages);
   registerOrderOntimeTool(ctx, business, htmlPackages);
   /**
    * 宿主替模型算好的通道顺序：当前页是谁、命中哪个模块、该先用哪条道。

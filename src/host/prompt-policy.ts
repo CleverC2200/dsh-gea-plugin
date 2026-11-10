@@ -62,6 +62,7 @@ export function allowedTools(profile: PromptProfile, pageTool?: string): Set<str
   if (profile.consumerCode === "base-safety-stock") names.add("gea_base_inventory");
   if (profile.consumerCode === "branch-inventory") names.add("gea_branch_inventory");
   if (profile.consumerCode === "order") {
+    names.add("gea_order_kpi");
     names.add("gea_order_amendment");
     names.add("gea_order_ontime");
   }
