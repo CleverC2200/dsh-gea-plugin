@@ -74,6 +74,7 @@ test("official detail diagnostics navigate to the shared update panel", async (t
     preparationError;
   const status = () => ({
     revision: revision++,
+    restartReady: phase === "pending-restart",
     hostProcessIdentity: "fixture-host",
     challenge: "fixture-nonce",
     checkTimeoutMs: 30000,

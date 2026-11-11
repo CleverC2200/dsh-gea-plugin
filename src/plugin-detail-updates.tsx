@@ -322,11 +322,11 @@ function UpdateNotice({
   openStatus: (packageName: string) => void;
 }): ReactNode {
   const state = useSyncExternalStore(updates.subscribe, updates.getSnapshot);
-  const [restarting, setRestarting] = useState(false);
-  const [restartFailed, setRestartFailed] = useState(false);
   const notice = state.notice;
   const bridge = desktopRestart();
+  const restarting = ["restarting", "requested"].includes(state.restart);
   const restartBusy =
+    state.restartReady === false ||
     state.checking ||
     state.submitting !== null ||
     state.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
@@ -339,11 +339,7 @@ function UpdateNotice({
     actions.unshift({
       label: t("restartNow"),
       onClick: () => {
-        setRestarting(true);
-        setRestartFailed(false);
-        void bridge()
-          .catch(() => setRestartFailed(true))
-          .finally(() => setRestarting(false));
+        void updates.restart();
       },
     });
   }
@@ -362,7 +358,15 @@ function UpdateNotice({
   return (
     <Toast
       key={notice.sequence}
-      text={restartFailed ? t("restartError") : text}
+      text={
+        state.restart === "failed"
+          ? t("restartError")
+          : state.restart === "cancelled"
+            ? t("pluginRestartCancelled")
+            : restarting
+              ? t("pluginRestarting")
+              : text
+      }
       actions={actions}
       holdMs={notice.kind === "progress" ? pluginUpdateObservationMs : 15000}
       onDone={updates.dismissNotice}
@@ -458,11 +462,10 @@ function companyPreparationFailure(error: unknown): keyof typeof en {
 function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const plugins = useDetail(updates);
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
-  const [restarting, setRestarting] = useState(false);
   const [coordinating, setCoordinating] = useState(false);
   const [coordinationFailure, setCoordinationFailure] = useState<keyof typeof en>();
   const [legacyClient, setLegacyClient] = useState(false);
-  const [restartResult, setRestartResult] = useState<"cancelled" | "failed">();
+  const restarting = ["restarting", "requested"].includes(plugins.restart);
   const state = client.presentation;
   useEffect(() => {
     const initial = desktop.getSnapshot();
@@ -478,6 +481,7 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
     (state && ["checking", "downloading", "verifying", "installing"].includes(state.phase));
   const pending = plugins.items.some((row) => row.state === "pending-restart");
   const restartBusy =
+    (pending && plugins.restartReady === false) ||
     plugins.checking ||
     plugins.submitting !== null ||
     plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
@@ -666,24 +670,15 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             variant="outline"
             disabled={restartBusy || restarting}
             onClick={() => {
-              setRestarting(true);
-              setRestartResult(undefined);
-              void restart()
-                .then(
-                  (result) => {
-                    if (result !== true) setRestartResult("cancelled");
-                  },
-                  () => setRestartResult("failed"),
-                )
-                .finally(() => setRestarting(false));
+              void updates.restart();
             }}
           >
             {t("pluginRestart")}
           </Button>
         ) : null}
-        {restartResult ? (
-          <p role={restartResult === "failed" ? "alert" : "status"}>
-            {t(restartResult === "failed" ? "restartError" : "pluginRestartCancelled")}
+        {plugins.restart === "failed" || plugins.restart === "cancelled" ? (
+          <p role={plugins.restart === "failed" ? "alert" : "status"}>
+            {t(plugins.restart === "failed" ? "restartError" : "pluginRestartCancelled")}
           </p>
         ) : null}
         {plugins.items.map((row) => (
@@ -711,8 +706,20 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
       document.head.append(style);
       return () => style.remove();
     });
-    const updates = createPluginDetailUpdates(scope);
     const desktop = createDesktopUpdates();
+    const updates = createPluginDetailUpdates(scope, {
+      restart: desktopRestart(),
+      nativeUpdateActive: () => {
+        const client = desktop.getSnapshot();
+        return Boolean(
+          client.opening ||
+          (client.presentation &&
+            ["checking", "downloading", "verifying", "installing", "ready"].includes(
+              client.presentation.phase,
+            )),
+        );
+      },
+    });
     const openUpdates = () => scope.settingsNavigation.open("company-updates");
     const shared = () => ({ updates, desktop, openUpdates });
     scope.effect(() => {

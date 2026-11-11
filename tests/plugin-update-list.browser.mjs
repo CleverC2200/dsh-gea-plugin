@@ -65,6 +65,7 @@ test("official installed list opens the shared update panel for suite actions an
     revision = 0;
   const status = () => ({
     revision: ++revision,
+    restartReady: phase === "pending-restart",
     hostProcessIdentity: "list-host",
     challenge: "list-nonce",
     checkTimeoutMs: 30000,
@@ -172,14 +173,15 @@ test("official installed list opens the shared update panel for suite actions an
   phase = "pending-restart";
   const pending = page
     .getByRole("alert")
-    .filter({ hasText: "插件更新已安装，需要重启应用后生效。" });
+    .filter({ hasText: "重启已取消或当前无法重启，已安装的插件更新仍在等待重启。" });
   await pending.waitFor();
   await pending.getByRole("button", { name: "查看更新状态", exact: true }).click();
-  await panel.getByRole("button", { name: "重启应用以启用插件", exact: true }).click();
   assert.equal(await page.evaluate(() => window.restartCalls), 1);
   await panel
     .getByText("重启已取消或当前无法重启，已安装的插件更新仍在等待重启。", { exact: true })
     .waitFor();
+  await panel.getByRole("button", { name: "重启应用以启用插件", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.restartCalls), 2);
   assert.equal(batches, 1);
   assert.equal(singles, 0);
   await page.evaluate(() => window.fixture.locale("en"));

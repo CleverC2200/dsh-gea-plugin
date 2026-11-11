@@ -211,6 +211,7 @@ export function mountPluginUpdates(
                   };
                 }) ?? blocked();
               const value: UpdateClientStatus = {
+                restartReady: controllerReady && controller?.restartReady() === true,
                 revision: Math.max(state?.revision ?? 0, revision),
                 companyUpdate: controllerReady
                   ? ((await controller?.companyStatus()) ?? null)

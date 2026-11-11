@@ -1347,12 +1347,28 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
       .snapshot()
       .items.map(({ packageName, planId }) => ({ packageName, planId }));
     assert.equal(requests.length, 3);
-    assert.ok(requests.every((row) => row.planId));
+    assert.ok(
+      requests.every((row) => row.planId),
+      JSON.stringify(controller.snapshot()),
+    );
     const accepted = await controller.submitBatch(requests);
     assert.equal(accepted.targets.length, 3);
+    assert.equal(controller.restartReady(), false);
+    const pendingDuringWrite = [];
+    const stopObserving = controller.subscribe((snapshot) => {
+      if (snapshot.operation?.stage === "pending-restart")
+        pendingDuringWrite.push(controller.restartReady());
+    });
+    t.after(stopObserving);
     await assert.rejects(controller.submitBatch(requests), /UPDATE_OPERATION_BLOCKED/);
     const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
     assert.equal(operation.stage, mode === "success" ? "pending-restart" : "failed");
+    await new Promise(setImmediate);
+    assert.equal(controller.restartReady(), mode === "success");
+    if (mode === "success") {
+      assert.ok(pendingDuringWrite.includes(false));
+      assert.equal(pendingDuringWrite.at(-1), true);
+    }
     const calls = (await readFile(join(f.dir, "invocations.ndjson"), "utf8"))
       .trim()
       .split("\n")

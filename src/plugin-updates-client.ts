@@ -54,6 +54,8 @@ export type PluginDetailUpdateSnapshot = {
   checking: boolean;
   submitting: string | null;
   transportError: "check" | "status" | "unknown" | null;
+  restart: "idle" | "restarting" | "requested" | "cancelled" | "failed";
+  restartReady?: boolean;
   notice: {
     kind: "progress" | "pending-restart" | "completed" | "restored" | "failed" | "unconfirmed";
     sequence: number;
@@ -98,13 +100,20 @@ export class PluginUpdateRequestError extends Error {
   }
 }
 
-export function createPluginDetailUpdates(ctx: Context) {
+export function createPluginDetailUpdates(
+  ctx: Context,
+  desktop?: {
+    restart?: () => Promise<unknown>;
+    nativeUpdateActive: () => boolean;
+  },
+) {
   const listeners = new Set<() => void>();
   let snapshot: PluginDetailUpdateSnapshot = {
     items: [],
     checking: false,
     submitting: null,
     transportError: null,
+    restart: "idle",
     notice: null,
   };
   let status: UpdateClientStatus | undefined;
@@ -132,6 +141,13 @@ export function createPluginDetailUpdates(ctx: Context) {
     | Pick<NonNullable<PluginDetailUpdateSnapshot["notice"]>, "kind" | "packageName">
     | undefined;
   let noticeSequence = 0;
+  let automaticRestart:
+    | {
+        host: string;
+        targets: { packageName: string; version: string | null }[];
+        accepted: boolean;
+      }
+    | undefined;
   const publish = (patch: Partial<PluginDetailUpdateSnapshot>) => {
     if (disposed) return;
     snapshot = { ...snapshot, ...patch };
@@ -180,7 +196,7 @@ export function createPluginDetailUpdates(ctx: Context) {
   const endObservation = (owner: NonNullable<typeof page>) => {
     clearTimeout(owner.observation?.timer);
     owner.observation = undefined;
-    if (!owner.refs && !owner.recovering) close(owner);
+    if (!owner.refs && !owner.recovering && !automaticRestart) close(owner);
   };
   const observe = (owner: NonNullable<typeof page>, names: readonly string[]) => {
     if (owner.observation || disposed) return;
@@ -192,6 +208,62 @@ export function createPluginDetailUpdates(ctx: Context) {
         endObservation(owner);
       }, pluginUpdateObservationMs),
     };
+  };
+  const nativeUpdateActive = () =>
+    desktop?.nativeUpdateActive() ||
+    (snapshot.companyUpdate &&
+      ["prepared", "installing", "verifying"].includes(snapshot.companyUpdate.phase));
+  const restart = async () => {
+    if (
+      disposed ||
+      !desktop?.restart ||
+      nativeUpdateActive() ||
+      snapshot.restart === "restarting" ||
+      snapshot.restart === "requested" ||
+      snapshot.checking ||
+      snapshot.submitting ||
+      status?.restartReady === false ||
+      !snapshot.items.some((row) => row.state === "pending-restart") ||
+      snapshot.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]))
+    )
+      return;
+    automaticRestart = undefined;
+    publish({ restart: "restarting" });
+    try {
+      publish({ restart: (await desktop.restart()) === true ? "requested" : "cancelled" });
+    } catch {
+      publish({ restart: "failed" });
+    }
+  };
+  const reflectAutomaticRestart = (owner: NonNullable<typeof page>) => {
+    if (!automaticRestart || page !== owner) return;
+    const rows = automaticRestart.targets.map((target) =>
+      snapshot.items.find((row) => row.packageName === target.packageName),
+    );
+    if (
+      status?.hostProcessIdentity !== automaticRestart.host ||
+      nativeUpdateActive() ||
+      rows.some((row) => row && ["unknown", "failed", "restored"].includes(row.state))
+    )
+      automaticRestart = undefined;
+    else if (
+      automaticRestart.targets.every((target) =>
+        rows.some(
+          (row) =>
+            row?.packageName === target.packageName &&
+            row.candidateVersion === target.version &&
+            ["pending-restart", "completed"].includes(row.state),
+        ),
+      ) &&
+      rows.some((row) => row?.state === "pending-restart")
+    ) {
+      if (status?.restartReady === undefined) {
+        automaticRestart = undefined;
+        return;
+      }
+      if (!automaticRestart.accepted || !status.restartReady || snapshot.submitting) return;
+      void restart();
+    }
   };
   const reflectObservation = (owner: NonNullable<typeof page>) => {
     if (!owner.observation || page !== owner) return;
@@ -231,7 +303,12 @@ export function createPluginDetailUpdates(ctx: Context) {
       next.revision >= status.revision
     ) {
       status = next;
-      publish({ items: next.items, companyUpdate: next.companyUpdate, transportError: null });
+      publish({
+        items: next.items,
+        companyUpdate: next.companyUpdate,
+        restartReady: next.restartReady,
+        transportError: null,
+      });
       return true;
     }
     return false;
@@ -297,6 +374,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       if (page !== owner) return;
       if (publishStatus(confirmed)) owner.awaitingClient = false;
     }
+    reflectAutomaticRestart(owner);
     reflectObservation(owner);
   };
   const tick = async (owner: NonNullable<typeof page>) => {
@@ -309,7 +387,7 @@ export function createPluginDetailUpdates(ctx: Context) {
         if (owner.observation) notify(owner, "unconfirmed");
       }
     }
-    if (!owner.refs && !owner.observation && !owner.recovering) close(owner);
+    if (!owner.refs && !owner.observation && !owner.recovering && !automaticRestart) close(owner);
     if (page === owner && !owner.lifetime.signal.aborted)
       owner.timer = setTimeout(() => {
         owner.poll = tick(owner);
@@ -347,7 +425,17 @@ export function createPluginDetailUpdates(ctx: Context) {
           Number(right.packageName === requestedName) - Number(left.packageName === requestedName),
       );
     const names = selected.map((row) => row.packageName);
-    publish({ submitting: names.join(","), transportError: null });
+    automaticRestart = desktop?.restart
+      ? {
+          host: status?.hostProcessIdentity ?? "",
+          targets: selected.map((row) => ({
+            packageName: row.packageName,
+            version: row.candidateVersion,
+          })),
+          accepted: false,
+        }
+      : undefined;
+    publish({ submitting: names.join(","), transportError: null, restart: "idle" });
     observe(page, names);
     notify(page, "progress");
     const run = async () => {
@@ -357,7 +445,9 @@ export function createPluginDetailUpdates(ctx: Context) {
           { plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })) },
           AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
         );
+        if (automaticRestart) automaticRestart.accepted = true;
       } catch {
+        automaticRestart = undefined;
         if (page?.observation) notify(page, "unconfirmed");
         publish({
           transportError: "unknown",
@@ -431,7 +521,7 @@ export function createPluginDetailUpdates(ctx: Context) {
       const owner = page;
       owner.recoveryTimer = setTimeout(() => {
         owner.recovering = false;
-        if (!owner.refs && !owner.observation) close(owner);
+        if (!owner.refs && !owner.observation && !automaticRestart) close(owner);
       }, pluginUpdateObservationMs);
       page.poll = tick(page);
       return page.poll;
@@ -452,11 +542,12 @@ export function createPluginDetailUpdates(ctx: Context) {
       return () => {
         if (--owner.refs === 0) {
           owner.check?.abort();
-          if (!owner.observation && !owner.recovering) close(owner);
+          if (!owner.observation && !owner.recovering && !automaticRestart) close(owner);
         }
       };
     },
     check,
+    restart,
     async prepareDesktop(desktopVersion: string) {
       if (!page) throw Error("UPDATE_PAGE_UNAVAILABLE");
       await request("company-prepare", { desktopVersion }, signalFor(page));

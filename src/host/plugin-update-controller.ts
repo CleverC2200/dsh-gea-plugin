@@ -1188,6 +1188,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     submitBatch,
     reconcileRuntime,
     snapshot,
+    restartReady: () =>
+      !active && !closed && !journalBroken && state.operation?.stage === "pending-restart",
     subscribe(listener: (snapshot: PluginUpdateSnapshot) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
