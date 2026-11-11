@@ -74,6 +74,8 @@
 
 ## 日期证据、研究与交付记录
 
+- [2026-11-12 原生接管更新与客户端发行](collaboration/changes/2026/11/12/client-update-takeover-release.md)
+
 - [2026-09-10 验收记录](acceptance-2026-09-10.md)
 - [三栏工作台验收记录](acceptance-2026-09-11.md)
 - [通用 Agent 工作台验收（2026-09-14）](acceptance-workbench-2026-09-14.md)
