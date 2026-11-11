@@ -178,9 +178,11 @@ test("official detail diagnostics navigate to the shared update panel", async (t
       appVersion: async () => "0.2.0-rc.2.20261104.1",
       updates: {
         status: async () =>
-          location.search.includes("old-client")
-            ? { phase: "available", version: "0.2.0-rc.2.20261105.1" }
-            : { phase: "idle" },
+          location.search.includes("retry-install")
+            ? { phase: "error", failure: "install", version: "0.2.0-rc.2.20261105.1" }
+            : location.search.includes("old-client")
+              ? { phase: "available", version: "0.2.0-rc.2.20261105.1" }
+              : { phase: "idle" },
         subscribe: () => () => {},
         check: async () => {
           window.nativeUpdateCalls.push("check");
@@ -482,6 +484,24 @@ test("official detail diagnostics navigate to the shared update panel", async (t
     true,
   );
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
+  assert.equal(prepared, 0);
+  assert.equal(updates, 0);
+  await page.evaluate(() => window.fixture.dispose());
+  phase = "current";
+  await page.goto(base + "/?retry-install");
+  await page
+    .locator("[data-update-entry]")
+    .getByRole("button", { name: "Restart and update", exact: true })
+    .click();
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
+    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
+  ]);
+  await page.getByRole("button", { name: "View update status", exact: true }).click();
+  await panel.getByRole("button", { name: "Restart and update", exact: true }).click();
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
+    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
+    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
+  ]);
   assert.equal(prepared, 0);
   assert.equal(updates, 0);
   await page.evaluate(() => window.fixture.dispose());

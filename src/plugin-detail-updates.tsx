@@ -5,7 +5,7 @@ import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import { createDesktopUpdates } from "./desktop-updates-client.ts";
+import { createDesktopUpdates, desktopRestartTarget } from "./desktop-updates-client.ts";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
 import { Button, Tag, Toast, Tooltip, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
@@ -361,9 +361,9 @@ type SharedProps = PropsLocale<typeof pluginUpdateLocale> & {
 };
 async function restartUpdates(updates: Owner, desktop: DesktopOwner) {
   const client = desktop.getSnapshot();
-  const target = client.presentation;
-  if (target?.version && ["available", "ready"].includes(target.phase)) {
-    await desktop.restartUpdate({ kind: "desktop", version: target.version });
+  const target = desktopRestartTarget(client.presentation);
+  if (target) {
+    await desktop.restartUpdate({ kind: "desktop", version: target });
   } else if (updates.getSnapshot().items.some((row) => row.state === "pending-restart")) {
     await updates.restart();
   } else {
@@ -380,9 +380,7 @@ function UpdateEntry({
 }: PropsRuntime<"settings.update"> & SharedProps): ReactNode {
   const plugins = useDetail(updates);
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
-  const desktopVersion = ["available", "ready"].includes(client.presentation?.phase ?? "")
-    ? client.presentation?.version
-    : undefined;
+  const desktopVersion = desktopRestartTarget(client.presentation);
   const version =
     desktopVersion ??
     plugins.items.find(
@@ -461,6 +459,7 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   const [coordinationFailure, setCoordinationFailure] = useState(false);
   const state = client.presentation;
+  const target = desktopRestartTarget(state);
   useEffect(() => {
     const initial = desktop.getSnapshot();
     if (
@@ -562,23 +561,18 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
               variant="primary"
               disabled={nativeBusy || !client.canRestartUpdate}
               onClick={() => {
-                if (state?.version && ["available", "ready"].includes(state.phase))
-                  void beginUpdate();
+                if (target) void beginUpdate();
                 else void desktop.check().catch(() => setCoordinationFailure(true));
               }}
             >
-              {t(
-                state?.version && ["available", "ready"].includes(state.phase)
-                  ? "restartUpdate"
-                  : "desktopCheck",
-              )}
+              {t(target ? "restartUpdate" : "desktopCheck")}
             </Button>
           </>
         )}
       </section>
       <section aria-labelledby="gea-plugin-update-title">
         <h2 id="gea-plugin-update-title">{t("pluginsTitle")}</h2>
-        {!nativeBusy && !["available", "ready"].includes(state?.phase ?? "") ? (
+        {!nativeBusy && !target ? (
           <DetailActions updates={updates} t={t} updateAll={beginUpdate} />
         ) : null}
         {plugins.transportError ? (

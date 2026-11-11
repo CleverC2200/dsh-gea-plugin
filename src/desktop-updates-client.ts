@@ -8,6 +8,18 @@ export type RestartUpdateRequest =
   | { kind: "plugins"; plans: { packageName: string; planId: string }[] }
   | { kind: "plugins-restart" };
 
+export function desktopRestartTarget(presentation?: DesktopUpdatePresentation): string | undefined {
+  if (!presentation?.version) return;
+  if (presentation.phase === "available" || presentation.phase === "ready")
+    return presentation.version;
+  if (
+    presentation.phase === "error" &&
+    presentation.failure &&
+    !["check", "check-network"].includes(presentation.failure)
+  )
+    return presentation.version;
+}
+
 type Carrier = {
   protocolVersion: number;
   appVersion?: () => Promise<string>;
