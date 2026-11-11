@@ -171,7 +171,7 @@
       "@deepseek-ai/schemastery": "3.18.4",
       "@deepseek-ai/cordis-plugin-include": "1.0.9"
     },
-    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "lockSha256": "cef48bd72840116ef59b29202f62a72e12feb3e1648061bc5eff7957297ea4ee",
     "packageManager": "pnpm@11.7.0",
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
