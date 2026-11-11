@@ -4,6 +4,8 @@ import { dirname, basename, join } from "node:path";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 
+export const companyWindowsExecutableName = "GEA Desktop";
+
 export async function prepareOfficialGeaMain(desktop, output) {
   const source = await readFile(join(desktop, "lib/main.js"), "utf8");
   if (!source.includes("DeepSeek Harness")) throw Error("COMPANY_DESKTOP_BRANDING_DRIFT");
@@ -37,6 +39,7 @@ export function officialGeaBranding(config, { companySeed, brandedMain } = {}) {
           "Synear GEA uses your microphone to transcribe speech into message drafts.",
       },
     },
+    win: { ...config.win, executableName: companyWindowsExecutableName },
     protocols: config.protocols?.map((protocol) => ({
       ...protocol,
       name: protocol.name === "DeepSeek Harness" ? "Synear GEA" : protocol.name,

@@ -13,7 +13,7 @@ function Stop-InstalledApplication {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
     }
 }
-function Install-Client([string]$Installer,[string]$ExecutableName) {
+function Install-Client([string]$Installer,[string]$ExecutableName,[string]$Stage) {
     $script:executable = Join-Path $installation $ExecutableName
     $info = New-Object System.Diagnostics.ProcessStartInfo
     $info.FileName = $Installer
@@ -26,7 +26,7 @@ function Install-Client([string]$Installer,[string]$ExecutableName) {
         & "$env:SystemRoot\System32\taskkill.exe" /PID $process.Id /T /F | Out-Null
         throw 'INSTALLER_TIMEOUT'
     }
-    if ($process.ExitCode -ne 0) { throw ('INSTALLER_EXIT_' + $process.ExitCode) }
+    if ($process.ExitCode -ne 0) { throw ($Stage + '_INSTALLER_EXIT_' + $process.ExitCode) }
     Start-Sleep -Seconds 2
     Stop-InstalledApplication
     if (!(Test-Path -LiteralPath $executable)) { throw 'INSTALLED_EXECUTABLE_MISSING' }
@@ -50,11 +50,11 @@ function Installed-Version {
     return $value.Trim()
 }
 try {
-    Install-Client $OldInstaller 'GEA Desktop.exe'
+    Install-Client $OldInstaller 'GEA Desktop.exe' 'baseline'
     if ((Installed-Version) -ne '0.2.0-rc.2.20261102.2') { throw 'BASELINE_VERSION_MISMATCH' }
     $state = '{"session":"existing-session","configuration":"preserve","draft":"existing-draft"}'
     [IO.File]::WriteAllText($marker,$state,[Text.UTF8Encoding]::new($false))
-    Install-Client $NewInstaller $NewExecutableName
+    Install-Client $NewInstaller $NewExecutableName 'upgrade'
     if ((Installed-Version) -ne $NewVersion) { throw 'UPGRADE_VERSION_MISMATCH' }
     if ([IO.File]::ReadAllText($marker) -ne $state) { throw 'USER_FILES_CHANGED' }
     $signature = Get-AuthenticodeSignature -LiteralPath $executable
