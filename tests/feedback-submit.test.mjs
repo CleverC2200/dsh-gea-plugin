@@ -7,7 +7,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unzipSync, strFromU8 } from "fflate";
-import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
+import { GeaRequestCapture, GeaApiLogCenter } from "./helpers/feedback-capture.mjs";
 const { outputFiles } = await build({
   entryPoints: ["src/host/feedback-submit.ts"],
   bundle: true,
@@ -57,6 +57,7 @@ async function bench(t) {
           files: { "gea-requests.jsonl": new Uint8Array() },
           missing: [{ file: "gea-diagnostics.jsonl", reason: "off" }],
           requestIds: new Set(),
+          apiLogIds: new Set(),
         };
       },
     },
@@ -135,6 +136,54 @@ test("missing official log prevents upload even when optional evidence exists", 
   assert.equal(b.snapshots(), 0);
 });
 
+test("reused business IDs cannot pull another Session's API record into a feedback archive", async (t) => {
+  const b = await bench(t);
+  const identity = b.business.feedbackOwner().identity;
+  const capture = new GeaRequestCapture(
+    join(b.business.config.runtimeDir, "capture"),
+    () => identity,
+    () => identity.base,
+  );
+  capture.session = (id) => ({ sessionId: id, rootSessionId: id });
+  t.after(() => capture.dispose());
+  const traces = [];
+  const apiLog = new GeaApiLogCenter(
+    () => "test",
+    undefined,
+    async (_url, init) => {
+      const headers = new Headers(init.headers);
+      assert.equal(headers.get("X-Request-Id"), "same-business-command");
+      traces.push(headers.get("X-Trace-Id"));
+      return Response.json({ success: true });
+    },
+    undefined,
+    undefined,
+    undefined,
+    capture,
+  );
+  b.business.capture = capture;
+  b.business.apiLogSnapshot = () => apiLog.snapshot();
+  for (const session of ["session-one", "session-two"]) {
+    await capture.run(session, "approval", async () => {
+      const response = await apiLog.fetch(identity.base + "/sales-plan/plans/versions/v1/actions", {
+        method: "POST",
+        headers: { "X-Request-Id": "same-business-command", "Content-Type": "application/json" },
+        body: '{"action":"SAVE"}',
+      });
+      await response.text();
+    });
+  }
+  assert.equal(new Set(traces).size, 2);
+  b.succeed();
+  assert.equal(
+    (await b.submitter.submit({ sessionId: "session-one", description: "capture" })).ok,
+    true,
+  );
+  const files = unzipSync(b.sent[0].bytes);
+  const records = strFromU8(files["gea-api-logs.jsonl"]).trim().split("\n").map(JSON.parse);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].request.headers["x-trace-id"], traces[0]);
+});
 test("current login uploads historical official logs with only its own captured materials", async (t) => {
   const b = await bench(t);
   const currentIdentity = () => b.business.feedbackOwner().identity;
@@ -158,6 +207,7 @@ test("current login uploads historical official logs with only its own captured 
         "POST",
         new Headers(),
       );
+      request.row.apiLogId = request.row.requestId;
       capture.diagnostic(request, "received", text);
       capture.finish(request, "completed");
       return request.row.requestId;
@@ -168,6 +218,7 @@ test("current login uploads historical official logs with only its own captured 
   const currentRequest = modelRequest("current-owner-diagnostic");
   b.business.apiLogSnapshot = () => ({
     records: [oldRequest, currentRequest].map((id) => ({
+      id,
       request: { headers: { "x-request-id": id } },
     })),
   });

@@ -104,7 +104,7 @@ const args = { start: "2026-10-01", endExclusive: "2026-11-01", base: "郑州" }
 test("amendment tool executes only installed quantity SQL, retaining bound pickup and month", async () => {
   const f = fixture(),
     value = JSON.parse(await f.call(args));
-  assert.equal(value.contract.queryId, "workbench.changes");
+  assert.equal(value.contract.queryId, "workbench.amendments");
   assert.equal(value.contract.lockPeriod, false);
   assert.equal(value.contract.dateField, "lastshipmenttime");
   assert.equal(value.contract.dateSource, "agents_scm_order_trace_final_di");

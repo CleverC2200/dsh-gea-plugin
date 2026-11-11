@@ -121,9 +121,15 @@ async function fixture(
   // A pre-existing Session's persisted preset projection survives resource changes.
   const agent = {
     id: "session-11111111-1111-4111-8111-111111111111",
-    session: { preset, header: { cwd: root }, snapshotEvents: () => [] },
+    session: {
+      id: "session-11111111-1111-4111-8111-111111111111",
+      preset,
+      header: { cwd: root },
+      snapshotEvents: () => [],
+    },
   };
   const ctx = {
+    sessionFeedback: { registerSubmit: () => () => {} },
     profileContext: { dir: root },
     sessionController: {
       inspect: async (id) => ({
@@ -178,7 +184,7 @@ async function fixture(
       register: async () => async () => {},
       resolve: async (id) => ({ id }),
     },
-    agents: { get: () => agent, list: () => [agent] },
+    agents: { get: () => agent, list: () => [agent], currentInitiator: () => undefined },
     sessionProjections: { stateOf: (session) => session.preset },
     workbenchPages: {
       packages: () => [{ directory, manifest, htmlPath: join(directory, "index.html") }],

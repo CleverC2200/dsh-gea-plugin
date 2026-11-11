@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -22,7 +23,11 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
 );
 const { Business, createCapabilityRegistry } = module.exports;
 function setup(t) {
-  const business = new Business({ geaBaseUrl: "https://fixture-gea.test", requestTimeoutMs: 1000 });
+  const business = new Business({
+    runtimeDir: tmpdir(),
+    geaBaseUrl: "https://fixture-gea.test",
+    requestTimeoutMs: 1000,
+  });
   business.restoreDesktopLogin({
     schema: 1,
     environment: "production",
@@ -59,8 +64,8 @@ test("parallel inventory sections share one delegation; expiry renews without lo
         result: { accessDecision: { allowed: true }, delegationToken: "d" + sessions },
       });
     }
-    tokens.push(init.headers["X-Delegation-Token"]);
-    if (expire && init.headers["X-Delegation-Token"] === "d1")
+    tokens.push(new Headers(init.headers).get("X-Delegation-Token"));
+    if (expire && new Headers(init.headers).get("X-Delegation-Token") === "d1")
       return Response.json(
         { success: false, errorCode: "AI_GATEWAY_SESSION_EXPIRED" },
         { status: 401 },

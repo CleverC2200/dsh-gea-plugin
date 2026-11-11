@@ -1,3 +1,4 @@
+import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -270,6 +271,11 @@ function serviceFixture() {
     },
   };
   const business = {
+    capture: new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => "https://fixture.invalid",
+    ),
     config: { analysisAgentCode: "sales_forecast" },
     status: () => ({ authenticated: true }),
     identitySignal: () => identity.signal,

@@ -104,7 +104,7 @@ export async function currentMcp(t, options = {}) {
   await tools;
   const runtime = options.prompts ? await mkdtemp(join(tmpdir(), "knowledge-runtime-")) : undefined;
   const business = new Business({
-    ...(runtime ? { runtimeDir: runtime } : {}),
+    runtimeDir: runtime ?? tmpdir(),
     geaBaseUrl: "https://mcp.fixture.invalid",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,

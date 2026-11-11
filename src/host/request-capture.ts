@@ -21,6 +21,7 @@ export type RequestRow = {
   sessionId: string;
   requestId: string;
   requestType: RequestType;
+  traceId?: string;
   method: string;
   path: string;
   purpose?: string;
@@ -247,9 +248,16 @@ export class GeaRequestCapture {
       attempt?.retryOfRequestId ??
       (operationKey ? context.retries?.previous.get(operationKey) : undefined) ??
       context.retryOfRequestId;
-    const id = randomUUID();
+    const physicalId = randomUUID();
+    const businessId =
+      method === "POST" && /\/sales-plan\/plans\/(?:resubmit|versions\/[^/]+\/actions)$/.test(path)
+        ? headers.get("X-Request-Id")
+        : null;
+    const id = businessId ?? physicalId;
+    if (businessId) headers.set("X-Trace-Id", physicalId);
     if (operationKey) context.retries?.current.set(operationKey, id);
     headers.set("X-Request-Id", id);
+    if (requestType === "MODEL" && !headers.has("X-Trace-Id")) headers.set("X-Trace-Id", id);
     const now = new Date().toISOString();
     const request: CapturedRequest = {
       row: {
@@ -259,6 +267,7 @@ export class GeaRequestCapture {
         sessionId: "",
         requestId: id,
         requestType,
+        ...(businessId ? { traceId: physicalId } : {}),
         method,
         path,
         purpose: safe(purpose ?? context.purpose ?? requestType, 1000),
@@ -713,6 +722,7 @@ export class GeaRequestCapture {
     files: Record<string, Uint8Array>;
     missing: CaptureMissing[];
     requestIds: Set<string>;
+    apiLogIds: Set<string>;
   }> {
     const identity = this.identity();
     if (!identity) throw Error("GEA_FEEDBACK_LOGIN_REQUIRED");
@@ -734,6 +744,7 @@ export class GeaRequestCapture {
     await state.pending;
     const files: Record<string, Uint8Array> = {};
     const requestIds = new Set<string>();
+    const apiLogIds = new Set<string>();
     for (const [source, target] of [
       ["requests.jsonl", "gea-requests.jsonl"],
       ["diagnostics.jsonl", "gea-diagnostics.jsonl"],
@@ -763,7 +774,10 @@ export class GeaRequestCapture {
                 row.type === "request" &&
                 typeof row.requestId === "string" &&
                 typeof row.seq === "number";
-              if (valid && typeof row.requestId === "string") requestIds.add(row.requestId);
+              if (valid && typeof row.requestId === "string") {
+                requestIds.add(row.requestId);
+                if (typeof row.apiLogId === "string") apiLogIds.add(row.apiLogId);
+              }
               return valid;
             } catch {
               this.missing(state, target, "请求清单坏行已省略，覆盖可能不完整");
@@ -801,6 +815,7 @@ export class GeaRequestCapture {
         reason: [...reasons].join("；").slice(0, 1000),
       })),
       requestIds,
+      apiLogIds,
     };
   }
 

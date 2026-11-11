@@ -59,7 +59,7 @@ test("both entries accept the same Consumer and keep login credentials in the Ho
     );
     const created = JSON.parse(calls[0].init.body);
     assert.equal(created.consumerCode, "test-agent");
-    assert.equal(calls[0].init.headers["X-Access-Token"], "login-secret");
+    assert.equal(new Headers(calls[0].init.headers).get("X-Access-Token"), "login-secret");
     assert.ok(!JSON.stringify(created).includes("secret"));
     if (entry === prepareGatewayLaunch)
       assert.deepEqual(result, {

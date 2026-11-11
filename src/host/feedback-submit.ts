@@ -105,15 +105,14 @@ export class FeedbackSubmitter {
       "session.v4.jsonl": Buffer.from(official),
     };
     const missing: CaptureMissing[] = [...snapshot.missing];
-    const records = this.business.apiLogSnapshot({}).records.filter((entry) => {
-      const value = entry.request.headers["x-request-id"];
-      return typeof value === "string" && snapshot.requestIds.has(value);
-    });
+    const records = this.business
+      .apiLogSnapshot({})
+      .records.filter((entry) => snapshot.apiLogIds.has(entry.id));
     if (records.length) {
       files["gea-api-logs.jsonl"] = Buffer.from(
         records.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
       );
-      if (records.length < snapshot.requestIds.size)
+      if (records.length < Math.max(snapshot.requestIds.size, snapshot.apiLogIds.size))
         missing.push({
           file: "gea-api-logs.jsonl",
           reason: "部分 API 日志已淘汰、未记录正文或无法取得；完整请求记录以独立清单为准",

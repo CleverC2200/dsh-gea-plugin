@@ -196,7 +196,7 @@ test("creates authorized session and isolates trusted meta from business argumen
     1000,
     fake,
   );
-  assert.equal(calls[0].init.headers["X-Access-Token"], "login-secret");
+  assert.equal(new Headers(calls[0].init.headers).get("X-Access-Token"), "login-secret");
   const create = JSON.parse(calls[0].init.body);
   assert.equal(create.consumerCode, "test-agent");
   assert.equal(create.tenantId, undefined);

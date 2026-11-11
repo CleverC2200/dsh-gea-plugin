@@ -55,7 +55,12 @@ async function start(home, config = {}) {
           return dispose;
         },
       });
-      ctx.provide("agents", { get: () => undefined, list: () => [] });
+      ctx.provide("agents", {
+        get: () => undefined,
+        list: () => [],
+        currentInitiator: () => undefined,
+      });
+      ctx.provide("sessionFeedback", { registerSubmit: () => dispose });
       ctx.plugin((scope) => {
         scope.provide("userAgents", {
           watch: (listener) => {

@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -26,6 +27,7 @@ const { Business, registerGeaTools, createCapabilityRegistry } = module.exports;
 
 function fixture(t) {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://localhost",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,

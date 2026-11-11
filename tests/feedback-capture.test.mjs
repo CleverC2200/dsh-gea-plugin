@@ -43,6 +43,8 @@ async function bench(t, config) {
     const headers = new Headers({ "X-Access-Token": "sensitive-secret" });
     const ref = capture.begin(base + path, "POST", headers);
     assert.equal(headers.get("X-Request-Id"), ref.row.requestId);
+    if (path.endsWith("/chat/completions"))
+      assert.equal(headers.get("X-Trace-Id"), ref.row.requestId);
     return ref;
   };
   const rows = (s) =>
@@ -88,6 +90,33 @@ test("independent ledger survives API ring limits, includes unknown paths and ge
     one.every((r, i) => r.seq === i + 1 && r.sessionId === "session-one" && !r.path.includes("?")),
   );
   assert.equal(JSON.stringify(one).includes("sensitive-secret"), false);
+});
+test("sales plan writes retain business request IDs and use a fresh trace for each physical send", async (t) => {
+  const { capture, rows } = await bench(t);
+  for (const path of ["/sales-plan/plans/resubmit", "/sales-plan/plans/versions/v1/actions"]) {
+    const traces = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const headers = new Headers({ "X-Request-Id": "fixed-command", "X-Trace-Id": "old-trace" });
+      const request = capture.run("session-one", "business write", () =>
+        capture.begin(base + path, "POST", headers),
+      );
+      assert.equal(headers.get("X-Request-Id"), "fixed-command");
+      assert.equal(request.row.requestId, "fixed-command");
+      assert.equal(headers.get("X-Trace-Id"), request.row.traceId);
+      assert.match(request.row.traceId, /^[a-f0-9-]{36}$/);
+      traces.push(request.row.traceId);
+      capture.finish(request, "completed");
+    }
+    assert.equal(new Set(traces).size, 2);
+  }
+  const headers = new Headers({ "X-Request-Id": "fixed-command" });
+  const read = capture.run("session-one", "business read", () =>
+    capture.begin(base + "/api/v1/list", "POST", headers),
+  );
+  assert.notEqual(headers.get("X-Request-Id"), "fixed-command");
+  capture.finish(read, "completed");
+  const ledger = rows(await capture.snapshot("session-one"));
+  assert.equal(new Set(ledger.filter((row) => row.traceId).map((row) => row.traceId)).size, 4);
 });
 test("model terminal follows consumer and preserves raw SSE ids with independent D", async (t) => {
   const { capture, begin, rows } = await bench(t);
