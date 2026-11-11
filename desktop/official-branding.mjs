@@ -1,13 +1,15 @@
 import { fileURLToPath } from "node:url";
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { dirname, basename, join } from "node:path";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 
 export async function prepareOfficialGeaMain(desktop, output) {
   const source = await readFile(join(desktop, "lib/main.js"), "utf8");
   if (!source.includes("DeepSeek Harness")) throw Error("COMPANY_DESKTOP_BRANDING_DRIFT");
-  const main = join(output, "company-main.js");
+  const directory = join(output, "company-main");
+  await mkdir(directory, { recursive: true });
+  const main = join(directory, "main.js");
   await writeFile(main, source.replaceAll("DeepSeek Harness", "Synear GEA"));
   return main;
 }
@@ -41,7 +43,9 @@ export function officialGeaBranding(config, { companySeed, brandedMain } = {}) {
     })),
     files: [
       ...config.files.filter((file) => !brandedMain || file !== "lib/main.js"),
-      ...(brandedMain ? [{ from: brandedMain, to: "lib/main.js" }] : []),
+      ...(brandedMain
+        ? [{ from: dirname(brandedMain), to: "lib", filter: [basename(brandedMain)] }]
+        : []),
       "!renderer/welcome.html",
       { from: welcome, to: "renderer", filter: ["**/*"] },
       {

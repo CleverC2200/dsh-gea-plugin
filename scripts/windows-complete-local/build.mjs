@@ -140,7 +140,7 @@ await writeFile(
 const config = `import { createElectronBuilderConfig } from './builder-factory.mjs';
 import { officialGeaBranding } from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
 import { execFileSync } from 'node:child_process';
-const config = officialGeaBranding(createElectronBuilderConfig(process.env, undefined, undefined, ${JSON.stringify(packagedDsh)}), { companySeed: ${JSON.stringify(join(target, "company-seed"))}, brandedMain: ${JSON.stringify(join(output, "company-main.js"))} });
+const config = officialGeaBranding(createElectronBuilderConfig(process.env, undefined, undefined, ${JSON.stringify(packagedDsh)}), { companySeed: ${JSON.stringify(join(target, "company-seed"))}, brandedMain: ${JSON.stringify(join(output, "company-main/main.js"))} });
 if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || ${signed ? "config.publish?.[0]?.url !== " + JSON.stringify(companyWindowsUpdateUrl) : "config.publish !== null"}) throw Error('COMPANY_DESKTOP_ADAPTER_DRIFT');
 config.artifactName = 'Synear-GEA-\${version}-win-\${arch}-${signed ? "signed" : "complete-local-unsigned"}.\${ext}';
 config.extraMetadata = { ...config.extraMetadata, dshLocalTestBuild: ${!signed}, geaBrandingCommit: process.env.GEA_COMPLETE_SOURCE_SHA, dshLocalPackaging: '${signed ? "official-layout-gea-windows-signed-no-publish" : "official-layout-gea-windows-unsigned-no-publish"}' };

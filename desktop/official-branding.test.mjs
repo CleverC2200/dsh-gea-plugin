@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, basename, join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { officialGeaBranding, prepareOfficialGeaMain } from "./official-branding.mjs";
 import { planOfficialUpdateConfiguration } from "./configure-official-updates.mjs";
@@ -45,6 +45,8 @@ test("company packaging brands native copy without changing the Core build or ru
     'globalThis.copy = { about: "About DeepSeek Harness", quit: "退出 DeepSeek Harness", id: "@deepseek-ai/dsh-desktop", scheme: "dsh" };';
   await writeFile(join(desktop, "lib/main.js"), source);
   const brandedMain = await prepareOfficialGeaMain(desktop, desktop);
+  assert.equal(basename(brandedMain), "main.js");
+  assert.equal(dirname(brandedMain), join(desktop, "company-main"));
   const runtime = {};
   runInNewContext(await readFile(brandedMain, "utf8"), runtime);
   assert.equal(runtime.copy.about, "About Synear GEA");
@@ -63,10 +65,11 @@ test("company packaging brands native copy without changing the Core build or ru
   assert.equal(config.files.includes("lib/main.js"), false);
   assert.ok(config.files.includes("lib/preload-app.cjs"));
   assert.deepEqual(
-    config.files.find((file) => file.to === "lib/main.js"),
+    config.files.find((file) => file.to === "lib"),
     {
-      from: brandedMain,
-      to: "lib/main.js",
+      from: dirname(brandedMain),
+      to: "lib",
+      filter: ["main.js"],
     },
   );
   assert.deepEqual(config.protocols, [{ name: "Synear GEA", schemes: ["dsh"] }]);
