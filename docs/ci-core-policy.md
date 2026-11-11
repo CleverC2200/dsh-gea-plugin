@@ -8,7 +8,7 @@ PR 与 main push 由 `.github/workflows/source-quality.yml` 按实际 Git 差异
 
 ## 按需 CI 恢复
 
-Ubuntu source workers 在浏览器依赖安装前，将镜像列表固定为 Ubuntu 官方 HTTPS archive 与 security 源并刷新索引，避免 runner 默认 Azure 镜像不可解析时仍使用旧的软件包下载地址。Playwright 的系统依赖安装和原测试集合保持必需。
+Ubuntu source workers 在浏览器依赖安装前，使用 Linux Kernel Archives 与 MIT 的 Ubuntu HTTPS 镜像，保留 Ubuntu 的索引签名校验；索引刷新遇到任何来源错误均失败，并受五分钟步骤预算限制。DNS 解析记录随步骤保存。Playwright 的系统依赖安装和原测试集合保持必需。
 
 失败后使用现有预算 CLI 读取同一 run/head 的完整 attempt 历史，显式请求恢复判断。先在环境中提供只读 `GITHUB_TOKEN`：
 
