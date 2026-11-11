@@ -67,7 +67,7 @@ class ModelConnectHTTPTests(GenerationHTTPFixture):
         with self.refused_connections(server.server_port, 10) as attempts:
             result = self.capture()[1]['result']
         self.assertEqual((result['status'], result['errorCode']), ('failed', 'MEMORY_BACKEND_UNAVAILABLE'))
-        self.assertEqual(len(attempts), 2)
+        self.assertEqual(len(attempts), 3)
         self.assertLess(time.monotonic() - started, 2)
         self.assertEqual((model.received, len(GenerationUpstream.writes)), (0, 0))
         self.assertEqual(self.request('list')[1]['result']['items'], [])
@@ -76,6 +76,30 @@ class ModelConnectHTTPTests(GenerationHTTPFixture):
         self.assertEqual((model.received, len(GenerationUpstream.writes)), (1, 1))
         self.assertEqual(self.capture()[1]['result']['status'], 'failed')
         self.assertEqual((model.received, len(GenerationUpstream.writes)), (1, 1))
+
+    def test_two_refused_connections_recover_before_the_only_model_request_and_retain(self):
+        server, model = self.model_endpoint()
+        self.enabled()
+        with self.refused_connections(server.server_port, 2) as attempts:
+            result = self.capture()[1]['result']
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual((model.received, len(GenerationUpstream.writes)), (1, 1))
+
+    def test_failed_generation_logs_stage_and_error_type_without_private_payloads(self):
+        _, model = self.model_endpoint()
+        self.enabled()
+        model.failure = 'http'
+        with self.assertLogs('personal_memory', level='WARNING') as captured:
+            result = self.capture()[1]['result']
+        self.assertEqual(result['status'], 'failed')
+        log = '\n'.join(captured.output)
+        self.assertIn('extract', log)
+        self.assertIn('HTTPError', log)
+        self.assertIn('503', log)
+        self.assertIn('capture-message-001', log)
+        for private in ('我喜欢简短中文回复', 'model-only-secret', 'backend-secret', 'session-a', 'message-a'):
+            self.assertNotIn(private, log)
 
     def test_http_failure_accepted_request_disconnect_and_non_model_refusal_are_not_retried(self):
         server, model = self.model_endpoint()
