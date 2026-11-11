@@ -761,7 +761,8 @@ test("the registered GEA model adapter translates connection and stream failures
           }
         },
         (error) => {
-          assert.equal(error.code, "GEA_NETWORK_FAILED");
+          assert.equal(error.code, "TRANSPORT");
+          assert.equal(error.cause.code, "GEA_NETWORK_FAILED");
           assert.match(error.message, /ECONNRESET/);
           if (stage === "stream") assert.match(error.message, /流式读取/);
           return true;
