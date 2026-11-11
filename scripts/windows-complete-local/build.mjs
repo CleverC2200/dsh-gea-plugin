@@ -64,7 +64,7 @@ for (const [cwd, sha] of [
     throw Error("SOURCE_DIRTY");
 }
 const pluginSource = readDesktopPluginSource(input, gea);
-const { prepareOfficialGeaMain } = await import(
+const { prepareOfficialGeaMain, companyWindowsExecutableName } = await import(
   pathToFileURL(join(gea, "desktop/official-branding.mjs"))
 );
 await mkdir(output, { recursive: true });
@@ -176,7 +176,7 @@ foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninst
 const smokePath = join(desktop, "scripts/smoke-packaged-runtime.ts");
 const smoke = relocate(
   (await readFile(smokePath, "utf8"))
-    .replaceAll("'DeepSeek Harness.exe'", "'Synear GEA.exe'")
+    .replaceAll("'DeepSeek Harness.exe'", JSON.stringify(companyWindowsExecutableName + ".exe"))
     .replaceAll("paths.dsh", JSON.stringify(packagedDsh)),
   smokePath,
 );
@@ -288,7 +288,7 @@ await run(
 const appRoot = join(artifactDirectory, "win-unpacked/resources/app.asar");
 const supportRoot = join(artifactDirectory, "win-unpacked/resources/runtime");
 const seed = join(artifactDirectory, "win-unpacked/resources/company-seed");
-const executable = join(artifactDirectory, "win-unpacked/Synear GEA.exe");
+const executable = join(artifactDirectory, "win-unpacked", companyWindowsExecutableName + ".exe");
 const cleanHome = join(target, "offline-new-install");
 const firstInstallStarted = Date.now();
 execFileSync(

@@ -24,6 +24,7 @@ test("GEA branding changes bundle identity and both icon locations while retaini
   };
   const result = officialGeaBranding(original);
   assert.equal(result.productName, "Synear GEA");
+  assert.equal(result.win?.executableName ?? result.productName, "GEA Desktop");
   assert.equal(result.extraMetadata.productName, "Synear GEA");
   assert.equal(result.appId, "com.cleverc2200.gea.desktop");
   assert.match(result.mac.icon, /desktop\/build\/icon.png$/);
