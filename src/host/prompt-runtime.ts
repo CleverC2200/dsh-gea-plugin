@@ -1,4 +1,7 @@
 import { CURRENT_SHORTAGE_ROUTING, currentShortageResource } from "./current-shortage-contract.ts";
+import { ORDER_AMENDMENT_ROUTING } from "./order-amendment-tool.ts";
+import { ORDER_KPI_ROUTING } from "./order-kpi-tool.ts";
+import { ORDER_ONTIME_ROUTING } from "./order-ontime-tool.ts";
 import { BASE_INVENTORY_ROUTING } from "./base-inventory-tool.ts";
 import { BRANCH_INVENTORY_ROUTING } from "./branch-inventory-tool.ts";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
@@ -489,10 +492,19 @@ export function mountBusinessPrompts(
             },
           ]
         : assembled.sections;
+      const metricSections =
+        profile.consumerCode === "order"
+          ? [
+              ...baseSections,
+              { name: "gea-order-kpi", text: ORDER_KPI_ROUTING },
+              { name: "gea-order-amendment", text: ORDER_AMENDMENT_ROUTING },
+              { name: "gea-order-ontime", text: ORDER_ONTIME_ROUTING },
+            ]
+          : baseSections;
       const answerPolicy = moduleAnswerPolicy(presetOf(agent) ?? undefined);
       const sections = answerPolicy
-        ? [...baseSections, { name: "module-answer-evidence", text: answerPolicy }]
-        : baseSections;
+        ? [...metricSections, { name: "module-answer-evidence", text: answerPolicy }]
+        : metricSections;
       const measurement = promptMeasurement(
         sections.map((section) => section.text).join("\n\n"),
         tools,

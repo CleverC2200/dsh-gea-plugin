@@ -162,7 +162,15 @@ export function mountPluginUpdates(
             : "UPDATE_CORE_OR_SOURCE_UNVERIFIED";
       }
     })());
-  for (const action of ["status", "check", "update", "update-all", "observed"] as const) {
+  for (const action of [
+    "status",
+    "check",
+    "update",
+    "update-all",
+    "observed",
+    "company-prepare",
+    "company-cancel",
+  ] as const) {
     routes.push(
       ctx.connection.fetch.register({
         path: `/api/gea/plugin-updates/${action}`,
@@ -204,6 +212,9 @@ export function mountPluginUpdates(
                 }) ?? blocked();
               const value: UpdateClientStatus = {
                 revision: Math.max(state?.revision ?? 0, revision),
+                companyUpdate: controllerReady
+                  ? ((await controller?.companyStatus()) ?? null)
+                  : null,
                 items,
                 hostProcessIdentity: pluginUpdateProcessIdentity,
                 challenge: page.nonce,
@@ -216,7 +227,14 @@ export function mountPluginUpdates(
               );
             }
             if (!controller || !controllerReady) throw Error(diagnostic);
-            if (action === "check") {
+            if (action === "company-prepare") {
+              if (Object.keys(payload).length !== 1 || typeof payload.desktopVersion !== "string")
+                throw Error("UPDATE_REQUEST_INVALID");
+              await controller.prepareDesktop(payload.desktopVersion);
+            } else if (action === "company-cancel") {
+              if (Object.keys(payload).length) throw Error("UPDATE_REQUEST_INVALID");
+              await controller.cancelDesktop();
+            } else if (action === "check") {
               if (Object.keys(payload).length) throw Error("UPDATE_REQUEST_INVALID");
               await controller.check(
                 AbortSignal.any([request.signal, lifetime.signal, AbortSignal.timeout(timeout)]),
@@ -294,6 +312,7 @@ export function mountPluginUpdates(
                   },
                 });
               await controller.reconcileRuntime();
+              await controller.confirmDesktop();
             }
             revision++;
             return Response.json({ ok: true, value: null });

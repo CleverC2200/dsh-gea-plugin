@@ -1,10 +1,9 @@
 import { DmsClient, parseDmsOrder, type DmsConfig } from "./dms-orders.ts";
-import type { FcStorageConfig } from "./fc-storage.ts";
+import type { FcDmsTarget } from "./fc-dms-target.ts";
 
 /** Local checks only: no SQL, login, order or intent write occurs here. */
 export function checkFcSubmissionReadiness(
   dms: DmsConfig | undefined,
-  storage: FcStorageConfig | undefined,
   identity: { tenantId: string; userId: string },
   warehouseCode: string,
   order: unknown,
@@ -14,21 +13,23 @@ export function checkFcSubmissionReadiness(
   );
   if (!dms || matches?.length !== 1) throw Error("DMS 当前环境或用户映射未配置，请联系管理员");
   new DmsClient(dms, matches[0]).assertConfigured();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(warehouseCode)) throw Error("DMS 提交缺少有效分仓编码");
   parseDmsOrder(order);
-  const grants = storage?.users?.filter(
-    (u) => u.tenantId === identity.tenantId && u.userId === identity.userId,
-  );
+  return { ready: true, scope: "dms-direct" as const };
+}
+
+/** A submitted order must still match the current account's governed warehouse routing. */
+export function checkFcDmsOrderTarget(warehouseCode: string, order: unknown, target: FcDmsTarget) {
+  const parsed = parseDmsOrder(order);
   if (
-    !storage?.published ||
-    !/^[A-Za-z0-9_-]{1,100}$/.test(storage.dataSourceCode) ||
-    grants?.length !== 1
+    target.warehouseCode !== warehouseCode ||
+    !target.fields.customerCode ||
+    !target.fields.addressCode ||
+    !target.fields.pupCode ||
+    parsed.customerCode !== target.fields.customerCode ||
+    parsed.addressCode !== target.fields.addressCode ||
+    parsed.pupCode !== target.fields.pupCode
   )
-    throw Error("分仓业务入库配置未完成，请配置数据源及发布授权后再提交");
-  if (!grants[0].warehouses?.includes(warehouseCode)) throw Error("当前用户未配置该分仓的入库授权");
-  if (storage.planningLayout === "legacy") {
-    const warehouseId = storage.warehouseIds?.[warehouseCode];
-    if (typeof warehouseId !== "string" || !warehouseId || warehouseId.length > 64)
-      throw Error("当前分仓与原库 warehouse_id 的映射未配置");
-  }
-  return { ready: true, scope: "local-configuration" as const };
+    throw Error("收货信息已变化或当前账号不可读取，请重新选择分仓并读取收货信息");
+  return parsed;
 }

@@ -65,6 +65,7 @@ export const fixture = async (
   const logs = [];
   let readbackBlocked = readbackFailure;
   const submittedQuantities = new Map();
+  const returnedSkus = new Map();
   const submitReceipts = new Map();
   if (normalBatch) state.get(PLAN_B).status = 1;
   const approved = [];
@@ -104,6 +105,7 @@ export const fixture = async (
     price: "12.3400",
     amt: submittedQuantities.get(planId) === "3.000" ? "37.02" : "24.68",
     amtBase: "12.34",
+    ...returnedSkus.get(planId),
   });
   const rowVersions = (planId, current) =>
     current.seq === 1
@@ -281,6 +283,38 @@ export const fixture = async (
       }
       const fromStatus = row.status;
       const rejectTarget = { region: 6, province: 7, area: 8, category: 9 }[role];
+      if (body.action === "REJECT") {
+        const current = sku(planId);
+        const quantityFields = [
+          "qty",
+          "regionConfirmedQty",
+          "provinceConfirmedQty",
+          "areaConfirmedQty",
+        ];
+        const amountFields = [
+          "amt",
+          "regionConfirmedAmount",
+          "provinceConfirmedAmount",
+          "areaConfirmedAmount",
+        ];
+        const target = rejectTarget - 6;
+        const values = { ...returnedSkus.get(planId) };
+        for (const adjustment of body.adjustments ?? []) {
+          assert.equal(adjustment.skuCode, current.skuCode);
+          const baseline = quantityFields
+            .slice(0, target + 1)
+            .reverse()
+            .map((field) => current[field])
+            .find((value) => value != null);
+          const quantity = Number(baseline) + Number(adjustment.adjustQty);
+          assert.ok(Number.isFinite(quantity) && quantity >= 0);
+          values[quantityFields[target]] = String(quantity);
+          values[amountFields[target]] = (quantity * Number(current.price)).toFixed(2);
+        }
+        for (const suffix of ["ConfirmedQty", "ConfirmedAmount", "AdjAddQty", "AdjCutQty"])
+          values[role + suffix] = null;
+        returnedSkus.set(planId, values);
+      }
       row.status = body.action === "REJECT" ? rejectTarget : 2;
       (body.action === "REJECT" ? rejected : approved).push({ planId, body });
       return send({

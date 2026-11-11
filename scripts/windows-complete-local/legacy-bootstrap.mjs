@@ -75,7 +75,9 @@ const journal = join(profile, "gea/bootstrap/gea-refresh/receipt.json");
 const failed = JSON.parse(await readFile(journal, "utf8"));
 assert.equal(failed.status, "failed");
 const log = await readFile(failed.diagnostic.slice("GEA_COMPANY_INSTALL_FAILED: ".length), "utf8");
-assert.match(log, /\[ENOENT\].*dsh-genui-0\.11\.3\.tgz/);
+const missingArchive = log.match(/\[ENOENT\][^\r\n]*open '([^']+)'/);
+assert.ok(missingArchive, log);
+assert.ok(packages.includes(missingArchive[1]), missingArchive[1]);
 await writeFile(join(output, "failure-pnpm.log"), log);
 await writeFile(join(output, "failed-receipt.json"), JSON.stringify(failed, null, 2));
 const recovered = await refreshBundledCompanySuite(options);
@@ -92,7 +94,9 @@ assert.deepEqual(
   ),
   failed,
 );
-for (const row of manifest.packages) {
+for (const row of manifest.packages.filter(
+  (row) => row.name !== "@cleverc2200/dsh-personal-memory",
+)) {
   const actual = JSON.parse(
     await readFile(join(profile, "node_modules", row.name, "package.json"), "utf8"),
   );
@@ -139,7 +143,13 @@ assert.equal(sameVersion.from, sameVersion.to);
 const plain = await readFile(join(profile, "package.json"));
 const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), plain]);
 await writeFile(join(profile, "package.json"), bom);
-const normalized = await bootstrapCompanyProfile({ root, support, seed, home });
+const normalized = await bootstrapCompanyProfile({
+  root,
+  support,
+  seed,
+  home,
+  includePersonalMemory: false,
+});
 assert.equal(normalized.changed, true);
 assert.deepEqual(await readFile(normalized.backup), bom);
 assert.deepEqual(await readFile(join(profile, "package.json")), plain);

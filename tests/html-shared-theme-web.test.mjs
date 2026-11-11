@@ -109,7 +109,7 @@ test(
         .evaluate((el) => Math.round(el.getBoundingClientRect().width));
       assert.equal(
         htmlResponse.headers()["content-security-policy"],
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; worker-src 'none'",
       );
       await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-downloads");
       const sandbox = await iframe.getAttribute("sandbox");

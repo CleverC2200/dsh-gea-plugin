@@ -132,6 +132,11 @@ test("restored identity and account routes are ready while cold business resourc
   );
   assert.equal(reader.getSnapshot().error, undefined);
   assert.equal(reader.getSnapshot().status?.authenticated, true);
+  assert.equal(
+    reader.getSnapshot().pagesReady,
+    false,
+    "identity is restored while page grants and routes are still initializing",
+  );
   assert.equal(reader.getSnapshot().status?.user?.name, "Restored user");
   for (const endpoint of [
     "navigation/catalog",

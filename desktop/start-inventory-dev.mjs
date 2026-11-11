@@ -15,8 +15,7 @@ const electron =
     "Desktop/GEAUI/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
   );
 const installed =
-  process.env.GEA_DESKTOP_BASE_PAYLOAD ||
-  "/Applications/GEA Desktop.app/Contents/Resources/payload";
+  process.env.GEA_DESKTOP_BASE_PAYLOAD || "/Applications/Synear GEA.app/Contents/Resources/payload";
 if (!existsSync(electron) || !existsSync(join(installed, "node/bin/node")))
   throw Error("请设置 GEA_ELECTRON_EXECUTABLE 和 GEA_DESKTOP_BASE_PAYLOAD");
 await mkdir(payload, { recursive: true, mode: 0o700 });

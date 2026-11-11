@@ -7,7 +7,9 @@ import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
 
 const directory = resolve("../dsh-agent-workbench/business/inventory-fc");
 const config = JSON.parse(await readFile(resolve(directory, "sql.config.json"), "utf8"));
-const fixture = (execute) => {
+const snapshotId =
+  config.dailySummary?.bundle?.bootstrapQueryId ?? config.dailySummary?.snapshotQueryId;
+const fixture = (execute, readySummary = false) => {
   let tool,
     preset = "gea-html-inventory-fc",
     enabled = true;
@@ -49,6 +51,8 @@ const fixture = (execute) => {
       if (id === config.dailySummary?.snapshotQueryId)
         return { rows: [], returnedColumns: config.queries[id].resultColumns, rejectedColumns: [] };
       calls.push({ id, request, configured });
+      if (readySummary && (id === snapshotId || id === config.dailySummary?.bundle?.queryId))
+        return summaryData(id);
       return execute(id, request, signal);
     },
     moduleMcp: async () => {
@@ -81,9 +85,10 @@ const fixture = (execute) => {
   };
 };
 test("managed orchestration reads page targets using its own Workbench authorization", async () => {
-  const f = fixture(async (id) => data(id));
+  const f = fixture(async (id) => data(id), true);
   f.switchTo("auto-negotiation");
   const result = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23" }));
+  assert.ok(result.summary, JSON.stringify(result));
   assert.equal(result.summary.recommended_qty, 35);
   assert.equal(result.summary.available_qty, 85);
   assert.equal(result.summary.target_inventory_qty, 150);
@@ -96,6 +101,9 @@ test("managed orchestration reads page targets using its own Workbench authoriza
 });
 function data(id) {
   const q = config.queries[id];
+  id = id.replace(/^snapshot(?:-default)?\./, "");
+  if (id === "summary.snapshot" || id === "summary.bootstrap")
+    return { rows: [], returnedColumns: q.resultColumns, rejectedColumns: [] };
   const values =
     id === "source.branch-stock-date" || id === "source.health-date"
       ? { day: "2026-10-22" }
@@ -134,6 +142,28 @@ function data(id) {
     rejectedColumns: [],
   };
 }
+function summaryData(queryId = snapshotId) {
+  const parts = new Map();
+  for (const member of config.dailySummary.bundle.members) {
+    const row = parts.get(member.part) ?? {
+      bundle_part: member.part,
+      bundle_total: 1,
+      bundle_present: 1,
+      batch_id: "20261023080000000000",
+      business_date: "2026-10-23",
+      stock_date: "2026-10-22",
+      target_month: "2026-10-01",
+    };
+    const values = data(member.queryId).rows[0];
+    for (const [name, column] of Object.entries(member.columns)) row[column] = values[name];
+    parts.set(member.part, row);
+  }
+  return {
+    rows: [...parts.values()].map((row) => ({ ...row, bundle_scope_total: parts.size })),
+    returnedColumns: config.queries[queryId].resultColumns,
+    rejectedColumns: [],
+  };
+}
 test("base supply questions use receiving-branch executions, full-scope metrics and ten-row pages", async () => {
   const f = fixture(async (id, request) => {
     const result = data(id);
@@ -165,9 +195,11 @@ test("base supply questions use receiving-branch executions, full-scope metrics 
     assert.equal(result.unit, "件");
     assert.match(result.metricDefinitions.countGrain, /执行单/);
   }
-  assert.equal(f.calls.length, 2);
-  assert.ok(f.calls.every((c) => c.id.startsWith("branch-supply.")));
-  assert.ok(f.calls.every((c) => c.request.parameters.gea_p3 === "A230"));
+  assert.ok(f.calls.filter((c) => c.id === snapshotId).length <= 1);
+  const supplyCalls = f.calls.filter((c) => c.id !== snapshotId);
+  assert.equal(supplyCalls.length, 2);
+  assert.ok(supplyCalls.every((c) => c.id.startsWith("branch-supply.")));
+  assert.ok(supplyCalls.every((c) => c.request.parameters.gea_p3 === "A230"));
   assert.ok(
     f.calls.filter((c) => c.id.endsWith("atomic")).every((c) => c.request.parameters.gea_p8 === 10),
   );
@@ -183,7 +215,7 @@ test("denied base supply returns its authorization failure without a zero or cus
   assert.equal(result.failure.reasonCode, "ROW_SCOPE_DENIED");
   assert.equal(result.summary, undefined);
   assert.ok(f.calls.length <= 2);
-  assert.ok(f.calls.every((c) => c.id.startsWith("orders.")));
+  assert.ok(f.calls.every((c) => c.id.startsWith("upstream-orders.")));
 });
 test("orchestration denied SQL is not retried under the branch identity or Cube", async () => {
   const f = fixture(async () => ({
@@ -211,7 +243,7 @@ test("withdrawn orchestration source cancels pending inventory results", async (
   assert.equal(f.listenerCount(), 0);
 });
 test("branch summary and follow-up suggestions use installed page calculations and fresh scoped parameters", async () => {
-  const f = fixture(async (id) => data(id));
+  const f = fixture(async (id) => data(id), true);
   const summary = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23", cycleDays: 10 }));
   assert.equal(summary.summary.recommended_qty, 35);
   assert.equal(summary.summary.frozen_qty, 0);
@@ -227,14 +259,22 @@ test("branch summary and follow-up suggestions use installed page calculations a
   assert.equal(list.total, 1);
   assert.equal(list.readonly, true);
   assert.deepEqual(
-    f.calls.map((c) => c.id),
+    f.calls.filter((c) => c.id !== snapshotId).map((c) => c.id),
     [
-      "source.branch-stock-date",
-      "replenishment.overview",
-      "source.branch-stock-date",
-      "replenishment-suggestions.detail.atomic",
+      "snapshot.replenishment.overview",
+      config.dailySummary.bundle.queryId,
+      "snapshot.replenishment-suggestions.detail.atomic",
     ],
   );
+  const bundleCall = f.calls.find((call) => call.id === config.dailySummary.bundle.queryId);
+  assert.ok(bundleCall, "stock-date read uses the selected-warehouse bundle");
+  for (const member of config.dailySummary.bundle.members) {
+    for (const [parameter, name] of Object.entries(member.bindings)) {
+      if (name === "warehouse_code") assert.equal(bundleCall.request.parameters[parameter], "W1");
+      if (name === "warehouse_code_mode")
+        assert.equal(bundleCall.request.parameters[parameter], "equal");
+    }
+  }
   const last = f.calls.at(-1).request.parameters;
   assert.equal(last.gea_p2, "W1");
   assert.equal(last.gea_p2200, "2026-10-22");
@@ -245,6 +285,17 @@ test("branch summary and follow-up suggestions use installed page calculations a
   );
   assert.ok(allowedTools(PROFILES["gea-html-inventory-fc"]).has("gea_branch_inventory"));
   assert.ok(!allowedTools(PROFILES["gea-html-inventory-aqkc"]).has("gea_branch_inventory"));
+});
+test("missing daily summary never substitutes live replenishment facts", async () => {
+  const f = fixture(async (id) => data(id));
+  const result = JSON.parse(await f.call({ view: "summary", asOf: "2026-10-23" }));
+  assert.equal(result.success, false);
+  assert.equal(result.errorCode, "SUMMARY_NOT_AVAILABLE");
+  assert.equal(result.summary, undefined);
+  assert.deepEqual(
+    f.calls.map((call) => call.id),
+    [snapshotId],
+  );
 });
 test("denied snapshots stop once; unrelated or disabled Sessions cannot use the inventory tool", async () => {
   const f = fixture(async () => {
@@ -271,7 +322,7 @@ test("branch age and risk questions use the same scoped page health summary", as
   assert.equal(result.summary.max_age, 360);
   assert.equal(result.summary.total_qty, 130);
   assert.deepEqual(
-    f.calls.map((call) => call.id),
+    f.calls.filter((call) => call.id !== snapshotId).map((call) => call.id),
     ["source.health-date", "health.cards"],
   );
 });
@@ -307,7 +358,7 @@ test("resource changes abort an in-flight branch query and release the watcher",
 test("current supply questions use pending ASN orders, excluding execution and customer-order substitutes", async () => {
   const f = fixture(async (id) => {
     const response = data(id);
-    if (id === "orders.summary")
+    if (id === "upstream-orders.summary")
       Object.assign(response.rows[0], {
         row_count: 3,
         demand: 17068,
@@ -321,7 +372,7 @@ test("current supply questions use pending ASN orders, excluding execution and c
   );
   assert.equal(result.summary.demand, 17068);
   assert.match(result.metricDefinitions.countGrain, /ASN/);
-  assert.ok(f.calls.every((call) => call.id.startsWith("orders.")));
+  assert.ok(f.calls.every((call) => call.id.startsWith("upstream-orders.")));
   for (const call of f.calls) {
     const [key] = Object.entries(config.queries[call.id].parameterSpec).find(
       ([, spec]) => spec.name === "warehouse_code",
@@ -362,4 +413,27 @@ test("operations share WMS movement dates and exact warehouse scope with the pag
   const unsupported = JSON.parse(await f.call({ view: "operations", sku: "SKU1" }));
   assert.equal(unsupported.success, false);
   assert.match(unsupported.message, /OPERATIONS_SKU_SCOPE/);
+});
+
+test("customer orders use downstream quantities and never ASN supply", async () => {
+  const f = fixture(async (id) => {
+    const response = data(id);
+    if (id === "orders.summary")
+      Object.assign(response.rows[0], {
+        row_count: 181,
+        order_quantity: 19665,
+        fulfillment_shipped_quantity: 19079,
+        fulfillment_order_quantity: 19405,
+        fulfillment_rate: 19079 / 19405,
+      });
+    return response;
+  });
+  const result = JSON.parse(
+    await f.call({ view: "orders", warehouseCode: "A230", asOf: "2026-11-03" }),
+  );
+  assert.equal(result.summary.fulfillment_order_quantity, 19405);
+  assert.equal(result.summary.fulfillment_shipped_quantity, 19079);
+  assert.ok(f.calls.some((call) => call.id === "orders.summary"));
+  assert.ok(f.calls.every((call) => call.id === snapshotId || call.id.startsWith("orders.")));
+  assert.match(result.metricDefinitions.countGrain, /下游/);
 });

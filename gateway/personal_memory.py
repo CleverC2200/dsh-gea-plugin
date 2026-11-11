@@ -1,6 +1,7 @@
 import hashlib
 import fcntl
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -269,7 +270,7 @@ class Gateway:
         if not self.model_url or not self.model_key or not self.model_name:
             raise MemoryError('MEMORY_MODEL_NOT_CONFIGURED', 503)
         with self.model_lock:
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
                     response = self.upstream(self.model_url.rstrip('/') + '/chat/completions',
                         {'Authorization': 'Bearer ' + self.model_key, 'Content-Type': 'application/json'},
@@ -278,8 +279,9 @@ class Gateway:
                     break
                 except MemoryError as error:
                     cause = error.__cause__
-                    if attempt or not isinstance(cause, urllib.error.URLError) or not isinstance(cause.reason, ConnectionRefusedError):
+                    if attempt == 2 or not isinstance(cause, urllib.error.URLError) or not isinstance(cause.reason, ConnectionRefusedError):
                         raise
+                    time.sleep(0.25 * (attempt + 1))
         try:
             return json.loads(response['choices'][0]['message']['content'])
         except (KeyError, TypeError, IndexError, ValueError):
@@ -347,22 +349,27 @@ class Gateway:
             db.execute('INSERT INTO operations VALUES (?,?,?,?,?)', (key, op, 'generate', encoded, json.dumps(pending)))
             rows = db.execute('SELECT * FROM documents WHERE scope=? AND generation=? AND deleted=0', (key, state['bankGeneration'])).fetchall()
         submitted = False
+        stage, started = 'read_existing', time.monotonic()
         try:
             candidates = []
             if eligible_text(text):
                 existing = [dict(self.document(scope, state['bankGeneration'], row), key=row['topic_key']) for row in rows]
+                stage = 'extract'
                 response = self.model(EXTRACTION_PROMPT, {'input': text, 'existing': existing})
                 candidates = validate_candidates(response, text)
                 protected = [item for item in existing if item['manuallyEdited']]
                 if protected and candidates:
+                    stage = 'protect_manual'
                     guard = self.model(PROTECTION_PROMPT, {'candidates': candidates, 'protected': protected})
                     safe = guard.get('safeKeys') if isinstance(guard, dict) else None
                     if not isinstance(safe, list) or any(not isinstance(item, str) for item in safe):
                         raise MemoryError('MEMORY_INVALID_MODEL_RESPONSE', 503)
                     candidates = [item for item in candidates if item['key'] in safe]
             if candidates:
+                stage = 'configure_bank'
                 self.backend(scope, state['bankGeneration'], '', {'retain_extraction_mode': 'chunks', 'retain_chunk_size': 4000, 'enable_observations': False}, 'PUT')
             for candidate in candidates:
+                stage = 'prepare_retain'
                 doc_id = hashlib.sha256((candidate['category'] + ':' + candidate['key']).encode()).hexdigest()
                 with self.metadata.scope_lock(scope), self.metadata.transaction() as db:
                     current = self.metadata.state(db, scope)
@@ -380,12 +387,14 @@ class Gateway:
                 metadata = {'category': candidate['category'], 'title': candidate['title'], 'version': str(version), 'manuallyEdited': 'false',
                             'topicKey': candidate['key'], 'sourceSessionId': source['sessionId'], 'sourceMessageId': source['messageId'], 'sourceTime': source['time']}
                 submitted = True
+                stage = 'retain'
                 receipt = self.backend(scope, state['bankGeneration'], '/memories', {'async': True, 'operation_id': backend_op,
                     'items': [{'document_id': physical_id, 'content': candidate['content'], 'timestamp': source['time'],
                                'metadata': metadata, 'tags': ['category:' + candidate['category']], 'update_mode': 'replace'}]})
                 if receipt.get('success') is not True or receipt.get('operation_id') != backend_op:
                     raise MemoryError('MEMORY_BACKEND_UNAVAILABLE', 503)
                 deadline = time.monotonic() + self.timeout
+                stage = 'poll_retain'
                 while True:
                     operation = self.backend(scope, state['bankGeneration'], '/operations/' + backend_op)
                     if operation.get('status') == 'completed':
@@ -393,6 +402,7 @@ class Gateway:
                     if operation.get('status') in ('failed', 'cancelled') or time.monotonic() >= deadline:
                         raise MemoryError('MEMORY_BACKEND_UNAVAILABLE', 503)
                     time.sleep(0.05)
+                stage = 'commit_retain'
                 with self.metadata.scope_lock(scope), self.metadata.transaction() as db:
                     current = self.metadata.state(db, scope)
                     active = db.execute('SELECT version,backend_id FROM documents WHERE scope=? AND generation=? AND id=? AND deleted=0', (key, state['bankGeneration'], doc_id)).fetchone()
@@ -411,12 +421,20 @@ class Gateway:
                         db.execute('INSERT OR REPLACE INTO cleanups VALUES (?,?,?)', (key, op, json.dumps(targets)))
                     db.execute('DELETE FROM pending_retains WHERE scope=? AND operation_id=? AND document_id=?', (key, op, doc_id))
                 submitted = False
+            stage = 'finish'
             self.finish_generation(scope, op, 'completed')
             return self.operation_result(scope, op)
-        except MemoryError as error:
-            return self.finish_generation(scope, op, 'unknown' if submitted and error.code != 'MEMORY_VERSION_CONFLICT' else 'failed', error.code)
-        except Exception:
-            return self.finish_generation(scope, op, 'unknown' if submitted else 'failed', 'MEMORY_BACKEND_UNAVAILABLE')
+        except Exception as error:
+            code = error.code if isinstance(error, MemoryError) else 'MEMORY_BACKEND_UNAVAILABLE'
+            cause = error.__cause__ or error.__context__ or error
+            reason = cause.reason if isinstance(cause, urllib.error.URLError) else cause
+            logging.getLogger(__name__).warning(json.dumps({
+                'event': 'personal_memory_generation_failed', 'operationId': op, 'stage': stage,
+                'errorCode': code, 'errorType': type(cause).__name__, 'reasonType': type(reason).__name__,
+                'httpStatus': cause.code if isinstance(cause, urllib.error.HTTPError) else None,
+                'elapsedMs': round((time.monotonic() - started) * 1000), 'submitted': submitted,
+            }))
+            return self.finish_generation(scope, op, 'unknown' if submitted and code != 'MEMORY_VERSION_CONFLICT' else 'failed', code)
 
     def cleanup_pending(self, db, key):
         return db.execute('SELECT 1 FROM cleanups WHERE scope=? LIMIT 1', (key,)).fetchone() is not None

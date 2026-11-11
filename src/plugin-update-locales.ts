@@ -1,11 +1,59 @@
 export const en = {
+  unifiedPolicy:
+    "Updates are checked automatically. Confirm to update the client and compatible company plugins together. Restart when your work is ready.",
+  companyDownload: "Update client and plugins",
+  companyPrepared:
+    "Plugins are cached for client {version}. Complete the client installation to apply the compatible suite on startup.",
+  companyVerifying:
+    "Client {version} has restarted. Confirming the installed, backend and page versions.",
+  companyCompleted: "Client {version} and the company plugin runtime versions are confirmed.",
+  companyFailed:
+    "The combined update could not be confirmed. Keep the recovery files and contact your maintainer.",
+  companyPreparationFailed:
+    "The combined update could not be prepared. Check the update status and contact your maintainer if it continues. The client has not been installed by this action.",
+  companyLegacyClient:
+    "This client needs a client-only upgrade first. Continue in the native update window, then reopen Updates after restarting. The combined update has not been confirmed.",
+  companyLegacyDownload: "Update client first",
+  companyOperationBlocked:
+    "Another update is active or its result is not confirmed. Check its status or restart before trying again. (UPDATE_OPERATION_BLOCKED)",
+  companySuiteUnavailable:
+    "This channel does not provide a complete compatible plugin suite. Keep the installed versions and contact your maintainer. (UPDATE_SUITE_UNAVAILABLE)",
+  companySourceDownloadFailed:
+    "The plugin update source could not be downloaded. Check your connection and retry. (SOURCE_HTTP_FAILED)",
+  companySourceUnverified:
+    "The plugin update source or package could not be verified. Keep the installed versions and contact your maintainer.",
+  companyNativeOpenFailed:
+    "Could not open the native client update window. Retry or use the installer from the installation guide.",
+  companyCancel: "Cancel prepared update",
+
   title: "Plugin update",
+  updates: "Updates",
+  desktopTitle: "Client",
+  pluginsTitle: "Company plugins",
+  currentVersion: "Current version",
+  targetVersion: "Target version",
+  versionLoading: "Reading installed version",
+  desktopUnavailable: "Client updates are unavailable in this browser.",
+  desktopStatusError: "Could not read client update status. Retry to continue.",
+  desktopCheck: "Check client updates",
+  desktopDownload: "Download client update",
+  desktopReady: "Install client update and restart",
+  desktopRetry: "Retry client update",
+  desktopIdle: "Client is up to date",
+  desktopProgress: "Downloading {percent}%",
+  desktopRestart: "The client update is ready. Install it and restart to use the new version.",
+  pluginRestart: "Restart application to apply plugins",
+  pluginRestartCancelled:
+    "Restart was cancelled or is currently unavailable. Installed plugin updates are still waiting for restart.",
+  desktopFailureCheck: "Could not check for client updates. Retry the check.",
+  desktopFailureDownload: "Could not download the client update. Retry the download.",
+  desktopFailureInstall: "Could not install the client update. Retry installation.",
+  desktopFailureStop: "Could not stop running tasks. Check the tasks before retrying.",
+  desktopFailureTasks:
+    "Running tasks changed or could not be checked. Review tasks before retrying.",
+
   newVersion: "New version {version}",
   updateAll: "Update all",
-  sidebarUpdate: "Plugin updates",
-  sidebarUpdating: "Updating plugins",
-  sidebarRestart: "Plugin restart needed",
-  sidebarStatus: "Plugin update status",
   restartNow: "Restart",
   restartError: "Could not restart. Try again.",
   viewStatus: "View update status",
@@ -75,13 +123,52 @@ export const en = {
   dependencies: "The installed plugin versions are incompatible with this update.",
 } as const;
 export const zh: Record<keyof typeof en, string> = {
+  unifiedPolicy: "自动检查更新。确认后一起更新客户端及兼容的公司插件，工作准备好后再重启。",
+  companyDownload: "更新客户端及插件",
+  companyPrepared: "已为客户端 {version} 缓存插件。完成客户端安装后，将在启动时应用兼容组合。",
+  companyVerifying: "客户端 {version} 已重启，正在确认已安装、后台和界面实际版本。",
+  companyCompleted: "客户端 {version} 和公司插件的实际运行版本已确认。",
+  companyFailed: "统一更新尚未确认成功，请保留恢复材料并联系维护者。",
+  companyPreparationFailed:
+    "统一更新准备失败。请检查更新状态，持续失败时联系维护者。本次操作尚未安装客户端。",
+  companyLegacyClient:
+    "当前客户端需先单独升级。请在原生更新窗口继续，重启后再打开更新页。统一更新尚未确认完成。",
+  companyLegacyDownload: "先升级客户端",
+  companyOperationBlocked:
+    "已有更新正在进行或结果尚未确认。请先检查更新状态，必要时重启后再试。（UPDATE_OPERATION_BLOCKED）",
+  companySuiteUnavailable:
+    "当前频道未提供完整兼容的插件组合。请保留已安装版本并联系维护者。（UPDATE_SUITE_UNAVAILABLE）",
+  companySourceDownloadFailed: "无法从插件更新源下载文件，请检查网络后重试。（SOURCE_HTTP_FAILED）",
+  companySourceUnverified: "插件更新来源或安装包未通过校验。请保留已安装版本并联系维护者。",
+  companyNativeOpenFailed: "无法打开原生客户端更新窗口。请重试，或使用安装说明中的安装包升级。",
+  companyCancel: "取消已准备的更新",
+
   title: "插件更新",
+  updates: "更新",
+  desktopTitle: "客户端",
+  pluginsTitle: "公司插件",
+  currentVersion: "当前版本",
+  targetVersion: "目标版本",
+  versionLoading: "正在读取安装版本",
+  desktopUnavailable: "当前浏览器不支持客户端更新。",
+  desktopStatusError: "无法读取客户端更新状态，请重试。",
+  desktopCheck: "检查客户端更新",
+  desktopDownload: "下载客户端更新",
+  desktopReady: "安装客户端更新并重启",
+  desktopRetry: "重试客户端更新",
+  desktopIdle: "已是最新版",
+  desktopProgress: "正在下载 {percent}%",
+  desktopRestart: "客户端更新已就绪，安装并重启后使用新版本。",
+  pluginRestart: "重启应用以启用插件",
+  pluginRestartCancelled: "重启已取消或当前无法重启，已安装的插件更新仍在等待重启。",
+  desktopFailureCheck: "检查客户端更新失败，请重新检查。",
+  desktopFailureDownload: "下载客户端更新失败，请重试下载。",
+  desktopFailureInstall: "安装客户端更新失败，请重试安装。",
+  desktopFailureStop: "未能停止运行中的任务，请核实任务后重试。",
+  desktopFailureTasks: "运行中的任务已变化或无法核实，请检查任务后重试。",
+
   newVersion: "新版本 {version}",
   updateAll: "全部更新",
-  sidebarUpdate: "插件更新",
-  sidebarUpdating: "插件更新中",
-  sidebarRestart: "插件待重启",
-  sidebarStatus: "插件更新状态",
   restartNow: "一键重启",
   restartError: "重启失败，请重试。",
   viewStatus: "查看更新状态",

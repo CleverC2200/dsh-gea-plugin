@@ -22,6 +22,7 @@ export async function orderReportStore(
     reportScope: { key: string; base: string; bases?: unknown[] };
   },
   execute: Execute,
+  options: { headerOnly?: boolean } = {},
 ) {
   if (
     !input ||
@@ -76,9 +77,11 @@ export async function orderReportStore(
   };
   if (!Number.isSafeInteger(params.tenant) || !identity.id) throw fail("GEA_IDENTITY_INCOMPLETE");
   const readParameters = { ...params };
+  if (options.headerOnly && input.operation !== "load") throw fail("ORDER_REPORT_REQUEST_INVALID");
+  const selectedFields = options.headerOnly ? "version, last_request_id, schema_version" : fields;
   const read = async () => {
     const result = await execute(
-      `SELECT ${fields} FROM ${table} WHERE ${identityWhere} LIMIT 2`,
+      `SELECT ${selectedFields} FROM ${table} WHERE ${identityWhere} LIMIT 2`,
       readParameters,
     );
     if (!Array.isArray(result.rows) || result.rows.length > 1 || result.rejectedColumns?.length)
@@ -86,9 +89,7 @@ export async function orderReportStore(
     const row = result.rows[0];
     if (!row) return null;
     if (
-      !["report_data", "version", "last_request_id", "schema_version"].every((key) =>
-        Object.hasOwn(row, key),
-      ) ||
+      !selectedFields.split(", ").every((key) => Object.hasOwn(row, key)) ||
       Number(row.schema_version) !== 1 ||
       !Number.isSafeInteger(Number(row.version))
     )
@@ -113,6 +114,13 @@ export async function orderReportStore(
     };
   };
   const existing = await read();
+  if (options.headerOnly)
+    return {
+      version: Number(existing?.version ?? 0),
+      requestId: existing?.last_request_id,
+      report: null,
+      scope: identity.reportScope,
+    };
   if (input.operation === "load")
     return { ...(await decode(existing)), scope: identity.reportScope };
   if (

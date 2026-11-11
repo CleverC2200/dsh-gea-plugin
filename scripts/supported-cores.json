@@ -120,5 +120,47 @@
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
     "scope": "company Core fork; installed company bundles precede official plugins and retain suite update controls"
+  },
+  {
+    "head": "e00863fb9a48745b292a1f61beb547cc79dfbf8f",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "company Core fork; installed desktop version and shared update settings entry"
+  },
+  {
+    "head": "863cda8787cd97dfef0f2b438a705b155299e74f",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "company Core fork; checked native update target and coordinated company suite"
+  },
+  {
+    "head": "46484a2f10acd1732d6b2d99cda7bc2797d7dfbf",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：原生欢迎页与账号订阅复用 Host 认证，启动不依赖 HTTP 首页"
   }
 ]

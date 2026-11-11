@@ -1,3 +1,9 @@
+import {
+  companyUpdatePath,
+  readCompanyUpdate,
+  companyUpdateActive,
+  companyUpdateFinished,
+} from "../../desktop/company-update.mjs";
 import { sourceUpdateProblem, planUpdateProblem } from "../shared/plugin-update-diagnostics.ts";
 import { withFileLock } from "@deepseek-ai/dsh-atomic-write";
 import { runProfilePnpm } from "@deepseek-ai/dsh-plugin-manager/operations";
@@ -575,6 +581,27 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           });
       }
       const installed = profile.packages;
+      const plan = planPluginSuiteVersions({ releases, core: options.core, installed });
+      if (
+        plan.kind === "current" &&
+        state.items.every((item) => {
+          const release = releases.find((release) => release.name === item.packageName);
+          return (
+            release &&
+            item.installedVersion === release.version &&
+            item.runningHostVersion === release.version &&
+            item.runningClientVersion === release.version
+          );
+        })
+      ) {
+        for (const release of releases)
+          row(release.name, {
+            candidateVersion: release.version,
+            state: "current",
+            diagnostic: null,
+          });
+        return snapshot();
+      }
       if (generation !== checking || closed) return snapshot();
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
@@ -619,7 +646,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             });
         return snapshot();
       }
-      const plan = planPluginSuiteVersions({ releases, core: options.core, installed });
       if (plan.kind === "blocked") {
         const release =
           releases.find((release) => release.name === plan.packageName) ?? releases[0];
@@ -680,8 +706,10 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     requests: readonly { packageName: CompanyPackageName; planId: string }[],
   ): Promise<PluginUpdateOperation> {
     if (!initialized) await initialize();
+    const company = await readCompanyUpdate(options.profile.dir);
     if (closed) fail("UPDATE_HOST_CLOSED");
-    if (active || journalBroken || blocking(state.operation)) fail("UPDATE_OPERATION_BLOCKED");
+    if (active || journalBroken || blocking(state.operation) || companyUpdateActive(company))
+      fail("UPDATE_OPERATION_BLOCKED");
     if (
       !requests.length ||
       requests.length > companyPackageNames.length ||
@@ -727,7 +755,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           async () => {
             lifetime.signal.throwIfAborted();
             const diskOperation = await readLatest();
-            if (blocking(diskOperation)) fail("UPDATE_OPERATION_BLOCKED");
+            if (
+              blocking(diskOperation) ||
+              companyUpdateActive(await readCompanyUpdate(options.profile.dir))
+            )
+              fail("UPDATE_OPERATION_BLOCKED");
             const baseline = await readPluginProfile(options.profile.dir);
             if (selected.some((selectedPlan) => baseline.sha256 !== selectedPlan.baseline.sha256))
               fail("UPDATE_BASELINE_CHANGED");
@@ -968,6 +1000,136 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     void active.catch(() => undefined);
     return accepted;
   }
+  async function prepareDesktop(desktopVersion: string) {
+    if (!initialized) await initialize();
+    if (closed || active || journalBroken || blocking(state.operation))
+      fail("UPDATE_OPERATION_BLOCKED");
+    if (!process.env.GEA_DESKTOP_VERSION || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(desktopVersion))
+      fail("UPDATE_DESKTOP_UNAVAILABLE");
+    const run = async () => {
+      const previous = await readCompanyUpdate(options.profile.dir);
+      if (companyUpdateActive(previous)) {
+        if (previous?.phase === "prepared" && previous.desktopVersion === desktopVersion) return;
+        fail("UPDATE_OPERATION_BLOCKED");
+      }
+      const releases = (await options.source.check(lifetime.signal)).map(parsePluginRelease);
+      if (
+        releases.length !== 3 ||
+        !companyPackageNames.every(
+          (name) => releases.filter((row) => row.name === name).length === 1,
+        ) ||
+        releases.some((row) => row.dataCompatibility.kind !== "preserve")
+      )
+        fail("UPDATE_SUITE_UNAVAILABLE");
+      for (const release of releases) {
+        row(release.name, { state: "downloading" });
+        await options.source.download(release, cache, lifetime.signal);
+      }
+      await withFileLock(
+        join(options.profile.dir, "package.json"),
+        async () => {
+          if (
+            blocking(await readLatest()) ||
+            companyUpdateActive(await readCompanyUpdate(options.profile.dir)) ||
+            !profilePackageRunStopped(options.profile.dir)
+          )
+            fail("UPDATE_OPERATION_BLOCKED");
+          for (const release of releases) options.source.assertCurrentRelease(release);
+          if (runtime !== join(options.profile.dir, "gea/plugin-updates"))
+            fail("UPDATE_RUNTIME_DIRECTORY_INVALID");
+          if (previous)
+            await durableJson(
+              join(runtime, "company-update-" + previous.id + ".json"),
+              previous,
+              options.fileCommit,
+            );
+          await durableJson(
+            companyUpdatePath(options.profile.dir),
+            {
+              schema: 1,
+              id: randomUUID(),
+              phase: "prepared",
+              desktopVersion,
+              processIdentity: pluginUpdateProcessIdentity,
+              expected: null,
+              targets: releases.map((release) => ({
+                name: release.name,
+                version: release.version,
+                sha256: release.artifact.sha256,
+                supportedCores: release.supportedCores,
+              })),
+            },
+            options.fileCommit,
+          );
+        },
+        { waitMs: options.lockWaitMs ?? 30_000 },
+      );
+    };
+    const previousItems = state.items;
+    active = run();
+    try {
+      await active;
+    } finally {
+      active = null;
+      state = { ...state, items: previousItems };
+      publish();
+    }
+  }
+  async function companyStatus() {
+    const receipt = await readCompanyUpdate(options.profile.dir);
+    if (
+      receipt?.phase === "completed" &&
+      !companyUpdateFinished(
+        { ...receipt, phase: "verifying" },
+        process.env.GEA_DESKTOP_VERSION,
+        pluginUpdateProcessIdentity,
+        state.items,
+      )
+    )
+      return null;
+    return receipt ? { phase: receipt.phase, desktopVersion: receipt.desktopVersion } : null;
+  }
+  async function cancelDesktop() {
+    if (active) fail("UPDATE_OPERATION_BLOCKED");
+    await withFileLock(
+      join(options.profile.dir, "package.json"),
+      async () => {
+        const receipt = await readCompanyUpdate(options.profile.dir);
+        if (!receipt || !["prepared", "failed"].includes(receipt.phase))
+          fail("UPDATE_OPERATION_BLOCKED");
+        await durableJson(
+          companyUpdatePath(options.profile.dir),
+          { ...receipt, phase: "cancelled" },
+          options.fileCommit,
+        );
+      },
+      { waitMs: options.lockWaitMs ?? 30_000 },
+    );
+    publish();
+  }
+  async function confirmDesktop() {
+    if (active || (await readCompanyUpdate(options.profile.dir))?.phase !== "verifying") return;
+    await withFileLock(
+      join(options.profile.dir, "package.json"),
+      async () => {
+        const receipt = await readCompanyUpdate(options.profile.dir);
+        if (
+          companyUpdateFinished(
+            receipt,
+            process.env.GEA_DESKTOP_VERSION,
+            pluginUpdateProcessIdentity,
+            state.items,
+          )
+        )
+          await durableJson(
+            companyUpdatePath(options.profile.dir),
+            { ...receipt, phase: "completed" },
+            options.fileCommit,
+          );
+      },
+      { waitMs: options.lockWaitMs ?? 30_000 },
+    );
+  }
   async function dispose() {
     if (closed)
       return {
@@ -992,6 +1154,10 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   }
   return {
     initialize,
+    prepareDesktop,
+    cancelDesktop,
+    companyStatus,
+    confirmDesktop,
     check,
     submit,
     submitBatch,

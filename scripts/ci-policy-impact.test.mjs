@@ -63,6 +63,17 @@ test("desktop wrapper children have one execution owner instead of a second inde
   assert.equal(plan.executedBy[child], owner);
 });
 
+test("desktop development launch changes select the existing runtime parity regression", (t) => {
+  const regression = "scripts/desktop-dev.test.mjs";
+  const fixture = resourceImpactFixture(t, [regression]);
+  fixture.change(
+    fixture.own,
+    "scripts/desktop-dev.mjs",
+    readFileSync(new URL("./desktop-dev.mjs", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(fixture.plan({ sourceOnly: true }).files, [regression]);
+});
+
 test("bundled suite source changes select their complete upgrade owner once and keep full window admission in integration checks", (t) => {
   const owner = "scripts/desktop-gea-upgrade.test.mjs";
   const fixture = resourceImpactFixture(t, [owner], { desktop: true });
@@ -335,7 +346,7 @@ function resourceImpactFixture(
     ...Object.keys(policy.sourceFixtures ?? {}),
     ...(policy.versionTests ?? []),
     ...(policy.companionPeerTests ?? []),
-    ...policy.tests.filter((file) => file.startsWith("desktop/")),
+    ...policy.tests.filter((file) => !file.includes("*")),
     ...policy.rules.flatMap((rule) => rule.tests),
     ...policy.browserFixtures,
     "scripts/ci-policy-impact.test.mjs",
@@ -1079,6 +1090,9 @@ test("complete package inputs select existing release and platform contracts", a
   ];
   for (const source of [
     "scripts/mac-complete-local/build.mjs",
+    "scripts/mac-complete-local/full-source.mjs",
+    "scripts/mac-complete-local/ad-hoc.mjs",
+    "scripts/mac-complete-local/ad-hoc.test.mjs",
     "scripts/windows-complete-local/build.mjs",
     "scripts/windows-complete-local/compile.mjs",
     "scripts/windows-complete-local/prepare.mjs",

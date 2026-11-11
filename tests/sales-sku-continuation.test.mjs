@@ -47,6 +47,7 @@ function fixture(t, values = rows, intercept) {
   });
   t.after(() => business.dispose());
   t.mock.method(globalThis, "fetch", async (url, init) => {
+    if (new URL(url).pathname === "/sys/logout") return Response.json({ success: true, code: 200 });
     assert.equal(new URL(url).pathname, `/sales-plan/plans/versions/${versionId}/skus`);
     await intercept?.(business, init);
     return Response.json({ success: true, result: values });
@@ -120,7 +121,7 @@ test("cancellation and identity revocation discard late SKU pages", async (t) =>
     const controller = new AbortController();
     const f = fixture(t, rows, async (business) => {
       if (revoke === "cancel") controller.abort(new Error("cancelled paging"));
-      else business.logout();
+      else await business.logout({});
     });
     await assert.rejects(f.read({ versionId, pageSize: 50 }, controller.signal));
   }

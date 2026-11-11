@@ -1777,9 +1777,7 @@
       "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget": [
         "../dsh-agent-workbench/lib/types/page-interaction/shared/payload-budget.d.ts"
       ],
-      "@cleverc2200/dsh-agent-workbench/sales-plan": [
-        "../dsh-agent-workbench/lib/types/sales-plan.d.ts"
-      ],
+      "@cleverc2200/dsh-agent-workbench/sales-plan": ["../dsh-agent-workbench/src/sales-plan.ts"],
       "@cleverc2200/dsh-agent-workbench/notifications": [
         "../dsh-agent-workbench/lib/types/shared/notifications.d.ts"
       ],

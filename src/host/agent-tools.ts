@@ -1,4 +1,7 @@
 import { registerCurrentShortageTool } from "./current-shortage-tool.ts";
+import { registerOrderAmendmentTool } from "./order-amendment-tool.ts";
+import { registerOrderKpiTool } from "./order-kpi-tool.ts";
+import { registerOrderOntimeTool } from "./order-ontime-tool.ts";
 import { registerBaseInventoryTool } from "./base-inventory-tool.ts";
 import { registerBranchInventoryTool } from "./branch-inventory-tool.ts";
 import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
@@ -100,6 +103,9 @@ export function registerGeaTools(
   registerCurrentShortageTool(ctx, business, htmlPackages);
   registerBranchInventoryTool(ctx, business, htmlPackages);
   registerBaseInventoryTool(ctx, business, htmlPackages);
+  registerOrderAmendmentTool(ctx, business, htmlPackages);
+  registerOrderKpiTool(ctx, business, htmlPackages);
+  registerOrderOntimeTool(ctx, business, htmlPackages);
   /**
    * 宿主替模型算好的通道顺序：当前页是谁、命中哪个模块、该先用哪条道。
    * 线上实测"选通道"这一步最容易翻车，所以不由模型自己猜（见 capability/channel.ts）。

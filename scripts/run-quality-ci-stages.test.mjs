@@ -186,7 +186,10 @@ function fixture(
         write(join(root, "lib", file), "fixture output\n");
     }
   }
-  const upstreamPackage = join(job, "quality-upstreams/upstream-assets/genui-0.11.3/package.json");
+  const upstreamPackage = join(
+    job,
+    "quality-upstreams/upstream-assets/genui-0.16.0-company.1/package.json",
+  );
   write(upstreamPackage, "{}\n");
   fixed.genui.files = { "package.json": hash(readFileSync(upstreamPackage)) };
   json(join(gea, "scripts/quality-upstreams.json"), fixed);

@@ -7,3 +7,4 @@ import "../desktop/plugin-storage.test.mjs";
 import "../desktop/plugin-store.test.mjs";
 import "../desktop/recovery.test.mjs";
 import "../desktop/runtime-resolution.test.mjs";
+import "../desktop/company-update.test.mjs";

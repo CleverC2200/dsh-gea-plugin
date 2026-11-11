@@ -126,7 +126,8 @@
         "operations-kpi-performance-analysis",
         "operations-order-kpi-details",
         "operations-exception-root-cause",
-        "improvement-action-closure"
+        "improvement-action-closure",
+        "operations-workbook-exception-import"
       ],
       "description": "指标达成、异常归因和改善闭环分析，使用当前页面或已授权证据，执行能力以实际安装为准。"
     }

@@ -47,40 +47,47 @@ export async function readReportParts(manifest: Manifest, scope: Scope, execute:
     partIdentity(scope, manifest.requestId, index),
   );
   const parts = new Map<string, string>();
-  for (let offset = 0; offset < identities.length; offset += 8) {
-    const batch = identities.slice(offset, offset + 8);
-    const result = await execute(
-      `SELECT scope_key, report_data, version, last_request_id, schema_version FROM ${table} WHERE tenant_id=:tenant AND consumer_code=:consumer AND period_type=:kind AND period_start=CAST(:start AS DATE) AND period_end_exclusive=CAST(:end AS DATE) AND scope_key IN (:partScopes) LIMIT 8`,
-      {
-        tenant: scope.tenant,
-        consumer: scope.consumer,
-        kind: scope.kind,
-        start: scope.start,
-        end: scope.end,
-        partScopes: batch.map((part) => part.key),
-      },
-    );
-    if (
-      !Array.isArray(result.rows) ||
-      result.rows.length !== batch.length ||
-      result.rejectedColumns?.length
-    )
-      throw invalid();
-    for (const row of result.rows) {
-      const expected = batch.find((part) => part.key === row.scope_key);
-      if (
-        !expected ||
-        parts.has(row.scope_key) ||
-        row.last_request_id !== expected.requestId ||
-        Number(row.version) !== 1 ||
-        Number(row.schema_version) !== 1 ||
-        typeof row.report_data !== "string" ||
-        row.report_data.length > 60_000
-      )
-        throw invalid();
-      parts.set(row.scope_key, row.report_data);
-    }
-  }
+  let nextBatch = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(4, Math.ceil(identities.length / 8)) }, async () => {
+      while (nextBatch < identities.length) {
+        const offset = nextBatch;
+        nextBatch += 8;
+        const batch = identities.slice(offset, offset + 8);
+        const result = await execute(
+          `SELECT scope_key, report_data, version, last_request_id, schema_version FROM ${table} WHERE tenant_id=:tenant AND consumer_code=:consumer AND period_type=:kind AND period_start=CAST(:start AS DATE) AND period_end_exclusive=CAST(:end AS DATE) AND scope_key IN (:partScopes) LIMIT 8`,
+          {
+            tenant: scope.tenant,
+            consumer: scope.consumer,
+            kind: scope.kind,
+            start: scope.start,
+            end: scope.end,
+            partScopes: batch.map((part) => part.key),
+          },
+        );
+        if (
+          !Array.isArray(result.rows) ||
+          result.rows.length !== batch.length ||
+          result.rejectedColumns?.length
+        )
+          throw invalid();
+        for (const row of result.rows) {
+          const expected = batch.find((part) => part.key === row.scope_key);
+          if (
+            !expected ||
+            parts.has(row.scope_key) ||
+            row.last_request_id !== expected.requestId ||
+            Number(row.version) !== 1 ||
+            Number(row.schema_version) !== 1 ||
+            typeof row.report_data !== "string" ||
+            row.report_data.length > 60_000
+          )
+            throw invalid();
+          parts.set(row.scope_key, row.report_data);
+        }
+      }
+    }),
+  );
   const encoded = identities.map((part) => parts.get(part.key)).join("");
   if (encoded.length !== manifest.size || hash(encoded) !== manifest.sha256) throw invalid();
   return encoded;

@@ -36,11 +36,13 @@ async function cacheArchive(home, file, bytes) {
 
 export function companyReleaseIndex(name, version) {
   const expression =
-    name === "dsh-agent-manage"
-      ? /^0\.6\.3-company\.(\d+)$/
-      : name.endsWith("dsh-agent-workbench")
-        ? /^0\.1\.(\d+)$/
-        : /^0\.0\.(\d+)$/;
+    name === "@cleverc2200/dsh-personal-memory"
+      ? /^0\.1\.(\d+)$/
+      : name === "dsh-agent-manage"
+        ? /^0\.6\.3-company\.(\d+)$/
+        : name.endsWith("dsh-agent-workbench")
+          ? /^0\.1\.(\d+)$/
+          : /^0\.0\.(\d+)$/;
   const match = expression.exec(version);
   if (!match) throw Error("GEA_LEGACY_ARCHIVE_VERSION_UNSUPPORTED");
   return BigInt(match[1]);

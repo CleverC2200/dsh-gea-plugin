@@ -141,6 +141,7 @@ async function createProfile(t, options) {
         const path = request.url.pathname;
         if (path.endsWith("/getLoginQrcode"))
           reply({ success: true, result: { qrcodeId: "fixture-qr" } });
+        else if (path.endsWith("/sys/logout")) reply({ success: true, code: 200, result: null });
         else if (path.endsWith("/getQrcodeToken"))
           reply({
             success: true,

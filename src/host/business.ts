@@ -11,10 +11,19 @@ import {
   salesPlanQueryValue,
   salesPlanWireKey,
 } from "./sales-plan-wire.ts";
-import { InventoryReadCache, recoverInventorySnapshot } from "./inventory-read-cache.ts";
+import {
+  InventoryReadCache,
+  inventoryReadCacheTtl,
+  recoverInventorySnapshot,
+} from "./inventory-read-cache.ts";
 import { fcStorage, type FcStorageEnvironments } from "./fc-storage.ts";
-import { checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
-import { DmsClient, submitOwnedDmsOrder, type DmsEnvironments } from "./dms-orders.ts";
+import { checkFcDmsOrderTarget, checkFcSubmissionReadiness } from "./fc-submission-readiness.ts";
+import {
+  DmsClient,
+  parseDmsOrder,
+  submitOwnedDmsOrder,
+  type DmsEnvironments,
+} from "./dms-orders.ts";
 import { createGeaSqlDatabase, type ConfiguredSqlRequest } from "../html-sql.ts";
 import {
   salesPlanDraftMatches,
@@ -52,6 +61,7 @@ import { currentPageEnvelope, pageIdentityFresh, type PageIdentity } from "./pag
 import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.ts";
 import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
 import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
+import { readSalesPlanSkuReview } from "./sales-plan-sku-review.js";
 import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 
 /** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
@@ -425,6 +435,7 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   versions: ["planId"],
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
+  skuReview: ["planId", "versionId"],
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
 
@@ -714,6 +725,7 @@ export class Business {
     roles?: SalesPlanApprovalRole[];
   };
   private qr?: { id: string; loginId: string; createdAt: number };
+  private passwordChallenge?: { id: string; createdAt: number; submitting: boolean };
   private epoch = new AbortController();
   private pageIdentityGeneration = randomUUID();
   private queryEpoch = new AbortController();
@@ -801,10 +813,27 @@ export class Business {
   }
 
   /** 结束当前 GEA 登录，并使所有绑定旧身份的进行中任务失效。 */
-  logout(payload: Record<string, unknown>) {
+  async logout(payload: Record<string, unknown>, signal = new AbortController().signal) {
     keys(payload, []);
+    const auth = this.auth;
+    const base = this.base;
     this.clearLogin();
-    return this.status();
+    let remoteLogout: "confirmed" | "unconfirmed" | "not-needed" = "not-needed";
+    if (auth) {
+      try {
+        await this.authenticationRequest(
+          "/sys/logout",
+          AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+          {},
+          auth.token,
+          base,
+        );
+        remoteLogout = "confirmed";
+      } catch {
+        remoteLogout = "unconfirmed";
+      }
+    }
+    return { ...this.status(), remoteLogout };
   }
 
   private readonly sqlReadLimit: ReturnType<typeof createSqlReadLimit>;
@@ -1018,6 +1047,7 @@ export class Business {
     this.turnStops.clear();
     this.salesTransactions.clear();
     this.qr = undefined;
+    this.passwordChallenge = undefined;
     this.loginExpired = expired;
     // 身份变化后，之前的可见页快照一律作废。
     this.visibleWorkbenchContexts.clear();
@@ -1684,12 +1714,22 @@ export class Business {
       if (payload.operation === "preflight") {
         result = checkFcSubmissionReadiness(
           config,
-          this.config.fcStorage?.[this.environment],
           { tenantId: auth.tenantId, userId: auth.id },
           payload.warehouseCode.trim(),
           payload.order,
         );
       } else {
+        const order = parseDmsOrder(payload.order);
+        const target = await resolveFcDmsTarget(
+          payload.warehouseCode.trim(),
+          order.addressCode,
+          (query) => this.pluginSql({ consumerCode: "branch-inventory", ...query }, signal),
+          signal,
+        );
+        signal.throwIfAborted();
+        if (this.auth !== auth) throw Error("STALE_LOGIN");
+        this.assertExecutionAllowed("branch-inventory");
+        checkFcDmsOrderTarget(payload.warehouseCode.trim(), order, target);
         const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
         result = await submitOwnedDmsOrder(
           resolve(this.config.runtimeDir, "dms-orders"),
@@ -2215,24 +2255,149 @@ export class Business {
       await this.gatewayRequests.read("/sys/user/getUserInfo", { token }, combined),
     );
     const user = object(identity.userInfo);
+    if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
+    return this.completeLogin(token, user, combined);
+  }
+
+  private async completeLogin(token: string, user: Record<string, unknown>, signal: AbortSignal) {
+    signal.throwIfAborted();
     const tenantId = String(user.loginTenantId ?? user.tenantId ?? "");
     if (!user.id || !/^\d+$/.test(tenantId)) throw new Error("GEA_IDENTITY_INCOMPLETE");
-    const name = text(user.realname || user.username);
-    if (epoch.aborted || this.qr !== qr) throw new Error("STALE_LOGIN");
-    this.auth = {
+    const auth = {
       token,
       tenantId,
-      name,
+      name: text(user.realname || user.username),
       id: text(user.id),
       username: text(user.username || user.realname),
       avatar: avatarUrl(user.avatar, this.base),
     };
+    this.auth = auth;
     this.qr = undefined;
-    await this.refreshPermissions(combined);
-    await this.refreshApprovalRoles(combined);
-    combined.throwIfAborted();
+    this.passwordChallenge = undefined;
+    try {
+      await this.refreshPermissions(signal);
+      await this.refreshApprovalRoles(signal);
+      signal.throwIfAborted();
+    } catch (error) {
+      if (this.auth === auth) this.clearLogin();
+      throw error;
+    }
     this.notifyIdentity();
     return { status: "authenticated", ...this.status() };
+  }
+
+  private async authenticationRequest(
+    path: string,
+    signal: AbortSignal,
+    body?: Record<string, unknown>,
+    token?: string,
+    base = this.base,
+  ): Promise<Record<string, unknown>> {
+    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
+    const combined = AbortSignal.any([signal, timeout]);
+    const active = () => {
+      signal.throwIfAborted();
+      if (timeout.aborted) throw Error("GEA_REQUEST_TIMEOUT");
+    };
+    active();
+    let response: Response;
+    let data: Record<string, unknown>;
+    try {
+      response = await this.apiLog.fetch(base + path, {
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Version": "v3",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(token ? { "X-Access-Token": token } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        redirect: "error",
+        signal: combined,
+      });
+    } catch {
+      active();
+      throw Error("GEA_NETWORK_ERROR");
+    }
+    active();
+    try {
+      data = object(JSON.parse(await response.text()));
+    } catch {
+      active();
+      if (response.ok) throw Error("GEA_INVALID_JSON");
+      data = {};
+    }
+    active();
+    if (!response.ok || data.success !== true || (path === "/sys/login" && data.code !== 200)) {
+      const code = !response.ok ? response.status : data.code;
+      switch (code) {
+        case 412:
+          throw Error("GEA_LOGIN_CAPTCHA_INVALID");
+        case 429:
+          throw Error("GEA_LOGIN_RATE_LIMITED");
+        case 503:
+          throw Error("GEA_LOGIN_UNAVAILABLE");
+        case 500:
+          throw Error("GEA_LOGIN_REJECTED");
+        default:
+          throw Error(!response.ok ? "GEA_HTTP_" + response.status : "GEA_INVALID_LOGIN");
+      }
+    }
+    return data;
+  }
+
+  async passwordLoginPrepare(signal: AbortSignal, payload: Record<string, unknown>) {
+    keys(payload, ["environment"]);
+    this.selectEnvironment(payload);
+    const combined = AbortSignal.any([signal, this.epoch.signal]);
+    const id = randomUUID();
+    const data = await this.authenticationRequest("/sys/randomImage/" + id, combined);
+    const image = data.result;
+    if (typeof image !== "string" || !/^data:image\/jpe?g;base64,[A-Za-z0-9+/=\r\n]+$/.test(image))
+      throw Error("GEA_INVALID_CAPTCHA");
+    combined.throwIfAborted();
+    this.passwordChallenge = { id, createdAt: Date.now(), submitting: false };
+    return { challengeId: id, image, expiresIn: 60 };
+  }
+
+  async passwordLogin(payload: Record<string, unknown>, signal: AbortSignal) {
+    keys(payload, ["challengeId", "username", "password", "captcha"]);
+    const challenge = this.passwordChallenge;
+    if (!challenge || payload.challengeId !== challenge.id) throw Error("STALE_LOGIN");
+    if (Date.now() - challenge.createdAt >= 60000) throw Error("GEA_LOGIN_CAPTCHA_INVALID");
+    if (challenge.submitting) throw Error("GEA_LOGIN_IN_PROGRESS");
+    if (
+      typeof payload.username !== "string" ||
+      !payload.username.trim() ||
+      payload.username.length > 256 ||
+      typeof payload.password !== "string" ||
+      !payload.password ||
+      payload.password.length > 4096 ||
+      typeof payload.captcha !== "string" ||
+      !/^[A-Za-z0-9]{4}$/.test(payload.captcha.trim())
+    )
+      throw Error("GEA_INVALID_LOGIN_INPUT");
+    const combined = AbortSignal.any([signal, this.epoch.signal]);
+    challenge.submitting = true;
+    try {
+      const data = await this.authenticationRequest("/sys/login", combined, {
+        username: payload.username.trim(),
+        password: payload.password,
+        captcha: payload.captcha.trim(),
+        checkKey: challenge.id,
+      });
+      const result = object(data.result);
+      if (typeof result.token !== "string" || !result.token.trim() || result.token.length > 16384)
+        throw Error("GEA_INVALID_LOGIN");
+      const identity = object(
+        await this.gatewayRequests.read("/sys/user/getUserInfo", { token: result.token }, combined),
+      );
+      combined.throwIfAborted();
+      if (this.passwordChallenge !== challenge) throw Error("STALE_LOGIN");
+      return await this.completeLogin(result.token, object(identity.userInfo), combined);
+    } finally {
+      if (this.passwordChallenge === challenge) this.passwordChallenge = undefined;
+    }
   }
 
   /** 只使用当前进程登录准备 Gateway 传输能力。 */
@@ -2739,12 +2904,14 @@ export class Business {
         };
       };
       const reportScope = await resolveScope();
-      return orderReportWithEdits(
+      const readOnly = payload.operation === "load";
+      const result = await orderReportWithEdits(
         payload,
         { ...auth, reportScope },
         async (sql, parameters, requestId) => {
           signal.throwIfAborted();
-          if ((await resolveScope()).key !== reportScope.key)
+          this.assertExecutionAllowed("order", readOnly ? "view" : "submit");
+          if (!readOnly && (await resolveScope()).key !== reportScope.key)
             throw Error("ORDER_REPORT_SCOPE_CHANGED");
           if (requestId)
             return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true, {
@@ -2753,7 +2920,14 @@ export class Business {
           return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true);
         },
       );
+      // Read results stay private until the final scope check; writes still check every statement.
+      signal.throwIfAborted();
+      if (readOnly && (await resolveScope()).key !== reportScope.key)
+        throw Error("ORDER_REPORT_SCOPE_CHANGED");
+      signal.throwIfAborted();
+      return result;
     };
+    if (payload.operation === "load") return run();
     const task = this.orderReportQueue.then(run, run);
     this.orderReportQueue = task.catch(() => {});
     return task;
@@ -2820,7 +2994,12 @@ export class Business {
       configured ? [query.sql, query.parameters] : pagedQuery,
     ]);
     if (cacheable) {
-      const cached = this.inventoryReads.get(identity, cacheKey, freshAfter);
+      const cached = this.inventoryReads.get(
+        identity,
+        cacheKey,
+        freshAfter,
+        inventoryReadCacheTtl(consumerCode),
+      );
       if (cached !== undefined) return cached;
     }
     const getDelegation = async () => {
@@ -3957,6 +4136,19 @@ export class Business {
     )
       throw new Error("INVALID_QUERY");
     if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
+    if (kind === "skuReview") {
+      if (options.forModel) throw new Error("INVALID_QUERY");
+      const active = AbortSignal.any([signal, this.epoch.signal]);
+      return readSalesPlanSkuReview(
+        { planId: text(query.planId), versionId: text(query.versionId) },
+        (planId, current) =>
+          this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current),
+        (input, current) =>
+          this.pluginSql({ ...input, consumerCode: this.config.analysisAgentCode }, current),
+        salesPlan.salesPlanPeriodMonthForPlanId,
+        active,
+      );
+    }
     if (kind === "aggregate")
       return aggregateSalesPlans(
         (input, active) => this.readWorkbenchQuery(input, active),

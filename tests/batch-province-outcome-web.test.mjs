@@ -211,7 +211,18 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
   const bodies = new Set(writes.map((item) => JSON.stringify(item.body)));
   assert.equal(bodies.size, 1, `客户端报文应完全一致，实际: ${[...bodies].join(" | ")}`);
   const [body] = bodies;
-  assert.equal(body, JSON.stringify({ action: "APPROVE", expectedStatus: 1, remark: "456" }));
+  assert.equal(
+    body,
+    JSON.stringify({
+      action: "APPROVE",
+      expectedStatus: 1,
+      remark: "456",
+      notification: {
+        title: "需求预测审批待处理",
+        content: "一份月初需求预测已通过区域审批，请查看并按最新内容处理。",
+      },
+    }),
+  );
 
   // 上游的技术文案不进界面。
   const text = await result.innerText();

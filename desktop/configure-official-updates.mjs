@@ -39,7 +39,7 @@ export async function configureOfficialUpdates({ profile, deployment }) {
       return (
         match &&
         Number(match[1]) !== process.pid &&
-        /\/(?:DeepSeek Harness|GEA Desktop)\.app\/Contents\/MacOS\/(?:DeepSeek Harness|GEA Desktop)$/.test(
+        /\/(?:DeepSeek Harness|GEA Desktop|Synear GEA)\.app\/Contents\/MacOS\/(?:DeepSeek Harness|GEA Desktop|Synear GEA)$/.test(
           match[2],
         )
       );

@@ -134,13 +134,13 @@ test(
 
     // 改完不等自动暂存（500ms 防抖）就直接通过。
     await input.fill("22.125");
-    await expect(input.locator("xpath=ancestor::td[1]").locator("small")).toHaveText("¥221.25");
+    await expect(input.locator("xpath=ancestor::td[1]").locator("small")).toHaveText("¥220.00");
     await frame.getByRole("button", { name: "通过", exact: true }).click();
     await expect.poll(() => writes.length, { timeout: 15000 }).toBe(1);
     assert.equal(writes[0].action, "APPROVE");
     assert.deepEqual(
       writes[0].adjustments,
-      [{ skuCode: "1001", adjustQty: "2.125" }],
+      [{ skuCode: "1001", adjustQty: "2" }],
       "通过必须带上刚改的调整量",
     );
 
@@ -161,7 +161,7 @@ test(
     const input = frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true });
     await expect(input).toBeVisible();
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
-    // 先改成 22.125 并等它真正落盘（本地草稿里会留下 +2.125）。
+    // 先改成 22.125 并等它真正落盘（本地草稿里会留下 +2）。
     await input.fill("22.125");
     await expect(frame.getByText("正在暂存…", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });

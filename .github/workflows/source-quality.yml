@@ -94,7 +94,6 @@ jobs:
           ref: ${{ steps.plan.outputs.workbench-sha }}
           path: source/dsh-agent-workbench
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/checkout@v7
         if: steps.plan.outputs.engineering == 'true'
@@ -103,7 +102,6 @@ jobs:
           ref: ${{ steps.plan.outputs.manage-sha }}
           path: candidate/dsh-agent-manage
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - name: Plan independent source-check workers
         if: steps.plan.outputs.engineering == 'true'
@@ -188,7 +186,7 @@ jobs:
       max-parallel: 40
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       QUALITY_GROUP_GEA: ${{ needs.source-plan.outputs.gea-sha }}
@@ -222,7 +220,6 @@ jobs:
           ref: ${{ needs.source-plan.outputs.workbench-sha }}
           path: source/dsh-agent-workbench
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/checkout@v7
         if: needs.source-plan.outputs.engineering == 'true'
@@ -231,7 +228,6 @@ jobs:
           ref: ${{ needs.source-plan.outputs.manage-sha }}
           path: candidate/dsh-agent-manage
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - name: Select affected behavior and type checks before preparation
         if: needs.source-plan.outputs.engineering == 'true'

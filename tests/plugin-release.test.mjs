@@ -26,6 +26,46 @@ const graph = [
     peerDependencies: { [W]: "1.0.0", [M]: "2.0.0" },
   },
 ];
+test("the production declaration accepts Workbench 90 and retains explicit version boundaries", async () => {
+  const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const manifest = productionManifest(source, {
+    [W]: "0.1.73",
+    [M]: "0.6.3-company.54",
+    "@changfenhuang/dsh-genui": "0.11.3",
+    "dsh-better-sidebar": "0.24.1",
+  });
+  const issues = (version) =>
+    validatePluginCombination({
+      core,
+      manifests: [
+        { name: W, version },
+        {
+          name: G,
+          version: manifest.version,
+          peerDependencies: { [W]: manifest.peerDependencies[W] },
+        },
+      ],
+    });
+  assert.deepEqual(issues("0.1.72"), []);
+  assert.deepEqual(issues("0.1.73"), []);
+  assert.deepEqual(issues("0.1.76"), []);
+  assert.deepEqual(issues("0.1.77"), []);
+  assert.deepEqual(issues("0.1.78"), []);
+  assert.deepEqual(issues("0.1.79"), []);
+  assert.deepEqual(issues("0.1.80"), []);
+  assert.deepEqual(issues("0.1.81"), []);
+  assert.deepEqual(issues("0.1.82"), []);
+  assert.deepEqual(issues("0.1.83"), []);
+  assert.deepEqual(issues("0.1.84"), []);
+  assert.deepEqual(issues("0.1.85"), []);
+  assert.deepEqual(issues("0.1.86"), []);
+  assert.deepEqual(issues("0.1.87"), []);
+  assert.deepEqual(issues("0.1.88"), []);
+  assert.deepEqual(issues("0.1.89"), []);
+  assert.deepEqual(issues("0.1.91"), []);
+  assert.ok(issues("0.1.92").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+  assert.ok(issues("0.999.0").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+});
 test("single-package update validates existing consumers and permits independently compatible versions", () => {
   assert.deepEqual(validatePluginCombination({ core, manifests: graph }), []);
   assert.equal(

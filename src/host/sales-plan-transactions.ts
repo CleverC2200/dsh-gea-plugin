@@ -5,6 +5,8 @@ import {
   salesPlanVersionEvidenceStale,
   salesPlanWorkflow,
   validateSalesPlanActionInput,
+  verifyReturnedSalesPlan,
+  salesPlanReturnDestination,
   prepareSalesPlanResubmit,
   type SalesPlanApprovalRole,
   type SalesPlanWorkflowRow,
@@ -38,6 +40,11 @@ type WriteIntent = {
   body?: string;
   flight?: Promise<unknown>;
   receipt?: unknown;
+  returnEvidence?: {
+    detail: GeaSalesPlanDetail;
+    request: GeaSalesPlanActionRequest;
+    planId: string;
+  };
 };
 type SalesPlanHost = {
   scope(effect: "submit" | "approve"): SalesPlanWriteScope;
@@ -202,7 +209,16 @@ export class SalesPlanTransactions {
           });
         if (scope.signal.aborted) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
-        const submission = { ...prepared.request, submitterCode: text(version.submitter) };
+        const [year, month] = prepared.request.periodMonth.split("-");
+        const planKind = prepared.request.orderType === "Z" ? "纠偏" : "月初";
+        const submission = {
+          ...prepared.request,
+          submitterCode: text(version.submitter),
+          notification: {
+            title: "需求预测重新提报待审批",
+            content: `一份${year}年${Number(month)}月${planKind}需求预测已修改并重新提报，请查看并按最新内容处理。`,
+          },
+        };
         delete submission.submitterName;
         attempt.body = serializeSalesPlanSubmission(submission);
       }
@@ -371,6 +387,7 @@ export class SalesPlanTransactions {
       "expectedStatus",
       "remark",
       "adjustments",
+      "expectedReturnTargetStage",
       "adjustmentMode",
       "approvalRole",
       "approvalPolicy",
@@ -456,6 +473,19 @@ export class SalesPlanTransactions {
         throw new GeaResponseError(409, {
           message: "GEA 尚未支持本次角色审批契约，请升级服务端后重试",
         });
+      if (request.expectedReturnTargetStage !== undefined) {
+        if (request.action !== "REJECT") throw new Error("INVALID_PAYLOAD");
+        const context = salesPlanReturnDestination(detail, role);
+        if (
+          context.versionId !== versionId ||
+          context.status !== request.expectedStatus ||
+          context.currentStage !==
+            ["customer", "region", "province", "area", "category"].indexOf(role) + 1 ||
+          context.targetStage !== request.expectedReturnTargetStage
+        )
+          throw new GeaResponseError(409, { message: "退回节点已变化，请刷新后重试" });
+        intent.returnEvidence = { detail, request: request as GeaSalesPlanActionRequest, planId };
+      }
       validateSalesPlanActionInput(
         {
           planId,
@@ -466,9 +496,34 @@ export class SalesPlanTransactions {
         workflowRows,
       );
       if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+      const body = upstreamActionBody(request);
+      if (request.action !== "SAVE") {
+        const planKind =
+          detail.currentVersion.orderType === "Z"
+            ? "纠偏"
+            : detail.currentVersion.orderType === "M"
+              ? "月初"
+              : "";
+        const roleName = {
+          region: "区域审批",
+          province: "省区审批",
+          area: "大区审批",
+          category: "品类审批",
+        }[role];
+        body.notification =
+          request.action === "APPROVE"
+            ? {
+                title: "需求预测审批待处理",
+                content: `一份${planKind}需求预测已通过${roleName}，请查看并按最新内容处理。`,
+              }
+            : {
+                title: "需求预测退回待处理",
+                content: `一份${planKind}需求预测已退回，请查看退回原因并修改后重新提报。`,
+              };
+      }
+      intent.body = JSON.stringify(body);
     }
     signal.throwIfAborted();
-    intent.body ??= JSON.stringify(upstreamActionBody(request));
     const response = await this.host.fetch(
       scope.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions",
       {
@@ -497,6 +552,34 @@ export class SalesPlanTransactions {
     if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
     if (scope.signal.aborted) throw new Error("STALE_LOGIN");
     signal.throwIfAborted();
+    if (intent.returnEvidence) {
+      const evidence = intent.returnEvidence;
+      const receipt = object(data.result);
+      try {
+        const after = (await this.host.query(
+          { kind: "detail", query: { planId: evidence.planId } },
+          signal,
+        )) as GeaSalesPlanDetail;
+        if (
+          typeof receipt.fromStatus !== "number" ||
+          typeof receipt.toStatus !== "number" ||
+          !verifyReturnedSalesPlan(evidence.detail, after, evidence.request, {
+            planId: text(receipt.planId),
+            versionId: text(receipt.versionId),
+            fromStatus: receipt.fromStatus,
+            toStatus: receipt.toStatus,
+          })
+        )
+          throw new Error("RETURN_READBACK_MISMATCH");
+      } catch {
+        if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+        const error = new GeaResponseError(502, {
+          message: "退回结果尚未核对，请刷新或使用原操作重试",
+        });
+        error.details.retrySameIntent = true;
+        throw error;
+      }
+    }
     return data.result;
   }
 }

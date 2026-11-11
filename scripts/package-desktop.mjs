@@ -145,6 +145,8 @@ export async function validateDesktopPackage({ target, payloadRoot }) {
 export async function main(argv = process.argv.slice(2)) {
   const values = parseArgs(argv);
   if (!values) return;
+  if (values.target === "mac")
+    throw Error("MAC_RELEASE_REQUIRES_SIGNED_ENTRY: use package:desktop:mac <core> <gea> <input>");
   let payloadRoot = resolve(process.env.GEA_DESKTOP_PAYLOAD_ROOT || join(buildRoot, "payload"));
   await validateDesktopPackage({ target: values.target, payloadRoot });
   holdBuildAdmission({ operation: "desktop", output: buildRoot });
@@ -174,7 +176,7 @@ export async function main(argv = process.argv.slice(2)) {
         buildRoot,
         "final",
         values.target,
-        `GEA-Desktop-${manifest.version}-${values.target === "win" ? "win-x64.exe" : "mac-arm64.dmg"}`,
+        `Synear-GEA-${manifest.version}-${values.target === "win" ? "win-x64.exe" : "mac-arm64.dmg"}`,
       );
       const { writeFile } = await import("node:fs/promises");
       await writeFile(

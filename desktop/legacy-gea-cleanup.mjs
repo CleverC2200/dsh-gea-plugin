@@ -32,7 +32,7 @@ export async function legacyGeaInUse(data) {
     }
     if (process.platform === "win32") {
       const command =
-        "$ErrorActionPreference='Stop'; $root=$env:GEA_LEGACY_ROOT; $current=$env:GEA_CURRENT_EXE; $items=@(Get-CimInstance Win32_Process); if (!$items.Count) {throw 'No process inventory'}; $busy=@($items | Where-Object {(($_.Name -in @('node.exe','electron.exe')) -and (!$_.CommandLine -or !$_.ExecutablePath)) -or ($_.CommandLine -and $_.CommandLine.IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or ($_.Name -eq 'GEA Desktop.exe' -and (!$_.ExecutablePath -or $_.ExecutablePath -ne $current))}); Write-Output ($busy.Count -gt 0)";
+        "$ErrorActionPreference='Stop'; $root=$env:GEA_LEGACY_ROOT; $current=$env:GEA_CURRENT_EXE; $items=@(Get-CimInstance Win32_Process); if (!$items.Count) {throw 'No process inventory'}; $busy=@($items | Where-Object {(($_.Name -in @('node.exe','electron.exe')) -and (!$_.CommandLine -or !$_.ExecutablePath)) -or ($_.CommandLine -and $_.CommandLine.IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or ($_.Name -in @('GEA Desktop.exe','Synear GEA.exe') -and (!$_.ExecutablePath -or $_.ExecutablePath -ne $current))}); Write-Output ($busy.Count -gt 0)";
       const { stdout } = await execute(
         win32.join(
           process.env.SystemRoot || "C:\\Windows",
