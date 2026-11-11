@@ -10,6 +10,10 @@ Host 使用 [createPluginReleaseSource](../src/host/plugin-release-source.ts) �
 
 schema 1 可附带 `companionReleases`，此时 `releases` 只包含 GEA，companions 包含 Workbench/Manage 引用，两数组合计仍不超过三个包且不得重复。旧 GEA 忽略此字段，仅获得可独立安装的 GEA 更新；支持此字段的 GEA 解析后合并检查同一 payload 的全部引用，保持完整图与各包的来源、摘要和版本高水位保护。频道无需临时切换或修改客户端 URL。原 GEA 引用和 companion 引用保留分区，不能把 companions 平铺回旧 reader 的 `releases`。
 
+个人记忆使用独立的可选 `optionalReleases` 引用，只允许 `@cleverc2200/dsh-personal-memory`，不改变原三包组合。旧 reader 忽略该字段，先沿原通道升级 GEA 并重启；新版 GEA 才会检查已安装且启用的个人记忆。未安装或停用时不阻断三包升级。完整客户端与三包联动的回执保持原合同，记忆插件走同一个插件下载、安装和重启确认流程，无需更换桌面安装器。
+
+`mergePluginChannelRelease` 可更新个人记忆的可选引用；后续 `createPluginSuiteChannel` 保留它，防止三包发版将其丢弃。个人记忆的 release JSON 仍由最终生产归档投影，并沿用摘要、Core、安装图、版本高水位及保留数据的校验。0.1.0/0.1.1 没有运行版本标识，只允许真实 Loader 中已激活的旧模块进入首次升级；运行版本仍显示未知，直到新进程与新页面均确认目标包的编译版本。新包需提供 Host/client 的 `pluginPackageVersion`，并从生产归档排除开发依赖和脚本。
+
 trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替换。它保存频道 revision/payload 摘要和各包已批准版本/摘要，暂时从频道省略的包仍保留历史准入，不能借此重置回退或同版换内容保护，不含凭据。重建 source 后继续拒绝旧 revision、相同 revision 的不同 payload、包版本回退与同版换内容。损坏回执报错，不重置为首次检查。单 Host 持有该目录，调用者应保持这个归属。缓存目录为 0700，tgz 为 0600；下载失败移除本次 partial，已验证 tgz 保留供官方安装器的 file 引用和恢复使用。
 
 [planPluginSuiteUpdate](../src/shared/plugin-release.mjs) 将同一频道修订中的三包视为一个更新目标。三个引用必须齐全且唯一；已经匹配的包保留。规划器检查实际 Core、禁止降级、同版内容冲突及数据迁移边界，再检查替换后的完整图，包括未更新的消费者与可选 peer。当前版本不能逐个替换，不代表最终组合不能整组升级。`planPluginUpdate` 保留给旧更新器升级路径验证。
@@ -22,7 +26,7 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 列表只提供统一“全部更新”，三个详情页也提交相同整组操作。每次点击先重新检查频道，再提交本次验证所得的计划；来源检查失败不使用缓存计划安装。
 
-`update-all` 接收一至三个唯一包的固定 planId。旧 client 的 `update` 请求和子集请求在 Host 校验计划后扩展为本次检查的全部待更新包。任何一个三包成员缺发布、未安装或未装载，整组均不可受理。Host 下载所有变化包后取得原 profile 锁，重新核基线、全部三包的装载与安装位置、整组条件及同一次来源批准，只调用一次原包管理器。它使用一份完整备份和一份操作回执。明确失败且确认写者停止时恢复完整原包图；用户设置归属、写者或结果不明时保持 unknown，保留原证据并阻止再次更新，不覆盖用户修改。
+`update-all` 接收一至四个唯一包的固定 planId。旧 client 的 `update` 请求和子集请求在 Host 校验计划后扩展为本次检查的全部待更新包。任何一个三包成员缺发布、未安装或未装载，整组均不可受理。Host 下载所有变化包后取得原 profile 锁，重新核基线、三包及本次个人记忆插件的装载与安装位置、整组条件及同一次来源批准，只调用一次原包管理器。它使用一份完整备份和一份操作回执。明确失败且确认写者停止时恢复完整原包图；用户设置归属、写者或结果不明时保持 unknown，保留原证据并阻止再次更新，不覆盖用户修改。
 
 批量回执在原单包字段之外保存 `targets`，每项包含包名、目标版本、摘要与归档路径。重建 Host 时恢复全部行的待重启状态。只有新进程中的每个目标 Host/client 都有对应版本和实际装载归属，且安装图仍匹配，整组才 completed，并保存各自 completionProofs。安装成功和原进程内重建控制器均不算加载完成。
 

@@ -16,6 +16,8 @@ export async function controllerFixture(
     allUpdates = false,
     releasePeers = {},
     companyVersions = false,
+    memory = false,
+    memoryBootstrap = false,
   } = {},
 ) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "plugin-update-real-profile-")));
@@ -31,25 +33,40 @@ export async function controllerFixture(
   const oldVersions = companyVersions
     ? ["0.1.4", "0.6.3-company.4", "0.0.4"]
     : ["1.0.0", "2.0.0", "3.0.0"];
+  const names = memory
+    ? [...companyPackageNames, "@cleverc2200/dsh-personal-memory"]
+    : companyPackageNames;
+  if (memory) oldVersions.push("0.1.1");
   const contracts = JSON.parse(
     await readFile(
       new URL("../../../scripts/fixtures/plugin-release/production-exports.json", import.meta.url),
       "utf8",
     ),
   );
+  if (memory)
+    contracts.push({
+      name: "@cleverc2200/dsh-personal-memory",
+      exports: { ".": "./lib/host.js", "./client": "./lib/client.js" },
+      dsh: { bundle: { patch: "./cordis.patch.yml" }, client: { platform: "web" } },
+    });
   const files = new Map(),
     references = [],
     releases = [];
-  for (const [index, name] of companyPackageNames.entries()) {
+  for (const [index, name] of names.entries()) {
     const contract = contracts.find((row) => row.name === name),
       oldVersion = oldVersions[index],
-      version = companyVersions
-        ? ["0.1.5", "0.6.3-company.5", "0.0.5"][index]
-        : allUpdates
-          ? ["1.1.0", "2.1.0", "3.1.0"][index]
-          : index === 2
-            ? "3.1.0"
-            : oldVersion;
+      version =
+        index === 3
+          ? "0.1.2"
+          : memory && !memoryBootstrap && index === 2
+            ? oldVersion
+            : companyVersions
+              ? ["0.1.5", "0.6.3-company.5", "0.0.5"][index]
+              : allUpdates
+                ? ["1.1.0", "2.1.0", "3.1.0"][index]
+                : index === 2
+                  ? "3.1.0"
+                  : oldVersion;
     const manifest = {
       name,
       version,
@@ -101,7 +118,7 @@ export async function controllerFixture(
     const target = join(dir, "node_modules", name);
     await mkdir(target, { recursive: true });
     execFileSync("tar", ["-xzf", archive, "--strip-components=1", "-C", target]);
-    if (allUpdates || index === 2) {
+    if (allUpdates || index >= 2) {
       await writeFile(
         join(target, "package.json"),
         JSON.stringify({ ...manifest, version: oldVersion }),
@@ -117,10 +134,8 @@ export async function controllerFixture(
     }
   }
   const profileManifest = {
-    dependencies: Object.fromEntries(
-      companyPackageNames.map((name, index) => [name, oldVersions[index]]),
-    ),
-    dsh: { profile: { bundles: [...companyPackageNames] } },
+    dependencies: Object.fromEntries(names.map((name, index) => [name, oldVersions[index]])),
+    dsh: { profile: { bundles: [...names] } },
     retained: { draft: "keep", selection: "sales" },
   };
   await writeFile(join(dir, "package.json"), JSON.stringify(profileManifest));
@@ -133,7 +148,10 @@ export async function controllerFixture(
       revision: 1,
       issuedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 3600000).toISOString(),
-      releases: references,
+      releases: references.filter((row) => companyPackageNames.includes(row.name)),
+      ...(memory
+        ? { optionalReleases: references.filter((row) => !companyPackageNames.includes(row.name)) }
+        : {}),
     }),
   );
   const channel = "https://fixture.invalid/channels/test.json";
@@ -190,7 +208,7 @@ export async function controllerFixture(
       },
     },
   };
-  const proofs = companyPackageNames.map((name, index) => ({
+  const proofs = names.map((name, index) => ({
     name,
     resolvedDir: join(dir, "node_modules", name),
     host: {

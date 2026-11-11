@@ -16,7 +16,7 @@ import {
   IconDownloadOutlineRegular,
   type TagTone,
 } from "@deepseek-ai/dsh-client-ui-primitives";
-import { companyPackageNames } from "./shared/plugin-release.mjs";
+import { updatablePackageNames } from "./shared/plugin-release.mjs";
 import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 import {
@@ -37,7 +37,7 @@ type Props = PluginDetailProps &
   };
 function targetName(subject: PluginDetailProps["subject"]) {
   return subject.kind === "bundle"
-    ? companyPackageNames.find((name) => name === subject.pkg.name)
+    ? updatablePackageNames.find((name) => name === subject.pkg.name)
     : undefined;
 }
 function useDetail(updates: Owner) {

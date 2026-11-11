@@ -8,6 +8,7 @@ import {
   planPluginSuiteVersions,
   planPluginSuiteUpdate,
   projectPluginRelease,
+  parsePluginChannel,
 } from "../src/shared/plugin-release.mjs";
 const W = "@cleverc2200/dsh-agent-workbench",
   M = "dsh-agent-manage",
@@ -26,6 +27,61 @@ const graph = [
     peerDependencies: { [W]: "1.0.0", [M]: "2.0.0" },
   },
 ];
+test("personal memory is an optional update alongside the unchanged three-package suite", () => {
+  const memory = projectPluginRelease({
+    manifest: { name: "@cleverc2200/dsh-personal-memory", version: "0.1.2" },
+    artifact: {
+      url: `https://fixture.invalid/${"b".repeat(64)}/memory.tgz`,
+      size: 1,
+      sha256: "b".repeat(64),
+    },
+    supportedCores: [core],
+    dataCompatibility: { kind: "preserve" },
+    notes: "memory",
+  });
+  const releases = graph.map((manifest) =>
+    projectPluginRelease({
+      manifest,
+      artifact: memory.artifact,
+      supportedCores: [core],
+      dataCompatibility: { kind: "preserve" },
+      notes: "suite",
+    }),
+  );
+  const installed = [...graph, { name: memory.name, version: "0.1.1" }];
+  assert.equal(planPluginSuiteVersions({ releases, core, installed }).kind, "current");
+  const plan = planPluginSuiteVersions({ releases: [...releases, memory], core, installed });
+  assert.equal(plan.kind, "ready");
+  assert.deepEqual(
+    plan.releases.map((row) => row.name),
+    [memory.name],
+  );
+  assert.equal(planPluginSuiteVersions({ releases: [memory], core, installed }).kind, "blocked");
+  const ref = (name) => ({
+    name,
+    url: `https://fixture.invalid/${"b".repeat(64)}/release.json`,
+    sha256: "b".repeat(64),
+  });
+  const old = {
+    schema: 1,
+    suite: true,
+    channel: "test",
+    revision: 1,
+    issuedAt: "2026-11-11T00:00:00.000Z",
+    expiresAt: "2026-11-12T00:00:00.000Z",
+    releases: [ref(G)],
+    companionReleases: [ref(W), ref(M)],
+  };
+  assert.equal(parsePluginChannel(old).optionalReleases, undefined);
+  assert.deepEqual(
+    parsePluginChannel({ ...old, optionalReleases: [ref(memory.name)] }).optionalReleases,
+    [ref(memory.name)],
+  );
+  assert.throws(() => parsePluginChannel({ ...old, optionalReleases: [ref(W)] }));
+  assert.throws(() =>
+    parsePluginChannel({ ...old, optionalReleases: [ref(memory.name), ref(memory.name)] }),
+  );
+});
 test("the production declaration accepts Workbench 90 and retains explicit version boundaries", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const manifest = productionManifest(source, {

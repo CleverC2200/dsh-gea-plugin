@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
-  companyPackageNames,
+  updatablePackageNames,
   parsePluginRelease,
   parsePluginManifest,
   comparePluginVersions,
@@ -163,7 +163,7 @@ export async function inspectPluginArchive(
     JSON.parse((await run("tar", ["-xOf", path, "package/package.json"], options)).stdout),
   );
   const name = text(value.name);
-  if (!companyPackageNames.some((company) => company === name))
+  if (!updatablePackageNames.some((company) => company === name))
     return fail("SOURCE_ARCHIVE_IDENTITY_INVALID");
   const exports = object(value.exports),
     dsh = object(value.dsh),
@@ -257,7 +257,7 @@ export function createPluginReleaseSource(
         receipt.channel !== config.channel ||
         !Array.isArray(receipt.releases) ||
         receipt.releases.length === 0 ||
-        receipt.releases.length > companyPackageNames.length
+        receipt.releases.length > updatablePackageNames.length
       )
         return fail("SOURCE_TRUST_INVALID");
       sha(receipt.payloadSha256);
@@ -356,12 +356,16 @@ export function createPluginReleaseSource(
       )
         return fail("SOURCE_CHANNEL_REPLAY");
       const releases: PluginRelease[] = [];
-      for (const row of [...channel.releases, ...(channel.companionReleases ?? [])]) {
+      for (const row of [
+        ...channel.releases,
+        ...(channel.companionReleases ?? []),
+        ...(channel.optionalReleases ?? []),
+      ]) {
         const reference = object(row),
           name = text(reference.name),
           releaseHash = sha(reference.sha256);
         if (
-          !companyPackageNames.some((company) => company === name) ||
+          !updatablePackageNames.some((company) => company === name) ||
           releases.some((release) => release.name === name)
         )
           return fail("SOURCE_CHANNEL_INVALID");
