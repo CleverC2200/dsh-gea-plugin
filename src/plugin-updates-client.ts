@@ -1,3 +1,4 @@
+import type { RestartUpdateRequest } from "./desktop-updates-client.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-client-modules/client";
@@ -54,6 +55,8 @@ export type PluginDetailUpdateSnapshot = {
   checking: boolean;
   submitting: string | null;
   transportError: "check" | "status" | "unknown" | null;
+  restart: "idle" | "restarting" | "requested" | "failed" | "unsupported";
+  restartReady?: boolean;
   notice: {
     kind: "progress" | "pending-restart" | "completed" | "restored" | "failed" | "unconfirmed";
     sequence: number;
@@ -98,13 +101,19 @@ export class PluginUpdateRequestError extends Error {
   }
 }
 
-export function createPluginDetailUpdates(ctx: Context) {
+export function createPluginDetailUpdates(
+  ctx: Context,
+  desktop?: {
+    restartUpdate?: (request: RestartUpdateRequest) => Promise<unknown>;
+  },
+) {
   const listeners = new Set<() => void>();
   let snapshot: PluginDetailUpdateSnapshot = {
     items: [],
     checking: false,
     submitting: null,
     transportError: null,
+    restart: "idle",
     notice: null,
   };
   let status: UpdateClientStatus | undefined;
@@ -193,6 +202,20 @@ export function createPluginDetailUpdates(ctx: Context) {
       }, pluginUpdateObservationMs),
     };
   };
+  const restart = async () => {
+    if (disposed || snapshot.restart === "restarting" || snapshot.restart === "requested") return;
+    if (!desktop?.restartUpdate) {
+      publish({ restart: "unsupported" });
+      return;
+    }
+    publish({ restart: "restarting" });
+    try {
+      await desktop.restartUpdate({ kind: "plugins-restart" });
+      publish({ restart: "requested" });
+    } catch {
+      publish({ restart: "failed" });
+    }
+  };
   const reflectObservation = (owner: NonNullable<typeof page>) => {
     if (!owner.observation || page !== owner) return;
     const rows = owner.observation.names.map((name) =>
@@ -231,7 +254,12 @@ export function createPluginDetailUpdates(ctx: Context) {
       next.revision >= status.revision
     ) {
       status = next;
-      publish({ items: next.items, companyUpdate: next.companyUpdate, transportError: null });
+      publish({
+        items: next.items,
+        companyUpdate: next.companyUpdate,
+        restartReady: next.restartReady,
+        transportError: null,
+      });
       return true;
     }
     return false;
@@ -347,17 +375,23 @@ export function createPluginDetailUpdates(ctx: Context) {
           Number(right.packageName === requestedName) - Number(left.packageName === requestedName),
       );
     const names = selected.map((row) => row.packageName);
-    publish({ submitting: names.join(","), transportError: null });
+    const restartUpdate = desktop?.restartUpdate;
+    if (!restartUpdate) {
+      publish({ restart: "unsupported" });
+      return Promise.resolve();
+    }
+    publish({ submitting: names.join(","), transportError: null, restart: "idle" });
     observe(page, names);
     notify(page, "progress");
     const run = async () => {
       try {
-        await request(
-          "update-all",
-          { plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })) },
-          AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
-        );
+        await restartUpdate({
+          kind: "plugins",
+          plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })),
+        });
+        publish({ restart: "requested" });
       } catch {
+        publish({ restart: "failed" });
         if (page?.observation) notify(page, "unconfirmed");
         publish({
           transportError: "unknown",
@@ -457,20 +491,9 @@ export function createPluginDetailUpdates(ctx: Context) {
       };
     },
     check,
-    async prepareDesktop(desktopVersion: string) {
-      if (!page) throw Error("UPDATE_PAGE_UNAVAILABLE");
-      await request("company-prepare", { desktopVersion }, signalFor(page));
-      await refresh(page);
-    },
-    async cancelDesktop() {
-      if (!page) throw Error("UPDATE_PAGE_UNAVAILABLE");
-      await request("company-cancel", {}, signalFor(page));
-      await refresh(page);
-    },
+    restart,
     update: (name: string) => submitRows(name),
-    async updateAll() {
-      if (await check()) return submitRows();
-    },
+    updateAll: () => submitRows(),
     async dispose() {
       disposed = true;
       listeners.clear();

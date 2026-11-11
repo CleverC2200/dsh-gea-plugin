@@ -46,6 +46,7 @@ export type CompanyUpdateStatus = {
   desktopVersion: string;
 };
 export type UpdateClientStatus = {
+  restartReady?: boolean;
   companyUpdate?: CompanyUpdateStatus | null;
   revision: number;
   items: PluginUpdateRow[];
@@ -130,6 +131,7 @@ const nullableText = (value: unknown): string | null => {
 export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
   const value = updateObject(raw);
   if (
+    (value.restartReady !== undefined && typeof value.restartReady !== "boolean") ||
     !Number.isSafeInteger(value.revision) ||
     Number(value.revision) < 0 ||
     typeof value.hostProcessIdentity !== "string" ||
@@ -185,6 +187,7 @@ export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
   }
   return {
     companyUpdate,
+    restartReady: value.restartReady === undefined ? undefined : value.restartReady === true,
     revision: Number(value.revision),
     items,
     hostProcessIdentity: value.hostProcessIdentity,

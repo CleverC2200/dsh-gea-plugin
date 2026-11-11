@@ -190,5 +190,61 @@
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
     "scope": "公司 Core：产品 Session 反馈接口及冷环境稳定依赖锁"
+  },
+  {
+    "head": "447f4c9244face209cce4b770a3a23acfaa3a374",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：由原生 main 接管插件与客户端更新、阻断普通操作并等待写者结束后重启"
+  },
+  {
+    "head": "6b4d3154ceb92494b77b4ae95b132525a298b629",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：原生更新重查等待故障 Host 清理、恢复请求锁并核对原操作，未知写者保持阻断"
+  },
+  {
+    "head": "9111f88ddafc1a2a7b8a373ecb44de54b16895a1",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "c96d468dd0aa7b857e93b02c062cc5bb3adbe1240decab0980b889aba74a637d",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：整合反馈日志、稳定依赖锁与原生更新接管恢复"
+  },
+  {
+    "head": "0accab310546c1bc8d3ad46b8803dcbcfaa02477",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "c96d468dd0aa7b857e93b02c062cc5bb3adbe1240decab0980b889aba74a637d",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：安装失败保留接管、原生恢复锁住替换 Host，以及完整客户端构建"
   }
 ]

@@ -1,3 +1,4 @@
+import { mountDesktopUpdateOperations } from "./plugin-update-desktop.ts";
 import { prepareWindowsFileCommit } from "./plugin-update-windows.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-connection";
@@ -162,6 +163,15 @@ export function mountPluginUpdates(
             : "UPDATE_CORE_OR_SOURCE_UNVERIFIED";
       }
     })());
+  routes.push(
+    mountDesktopUpdateOperations(ctx, async () => {
+      if (!bootReady) throw Error("UPDATE_HOST_STARTING");
+      await ready();
+      if (stopped) throw Error("UPDATE_HOST_CLOSED");
+      if (!controller || !controllerReady) throw Error(diagnostic);
+      return controller;
+    }),
+  );
   for (const action of [
     "status",
     "check",
@@ -211,6 +221,7 @@ export function mountPluginUpdates(
                   };
                 }) ?? blocked();
               const value: UpdateClientStatus = {
+                restartReady: controllerReady && controller?.restartReady() === true,
                 revision: Math.max(state?.revision ?? 0, revision),
                 companyUpdate: controllerReady
                   ? ((await controller?.companyStatus()) ?? null)
@@ -318,7 +329,7 @@ export function mountPluginUpdates(
             return Response.json({ ok: true, value: null });
           } catch (error) {
             const code =
-              error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message)
+              error instanceof Error && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.message)
                 ? error.message
                 : "UPDATE_REQUEST_FAILED";
             return Response.json({ ok: false, error: { code } }, { status: 409 });

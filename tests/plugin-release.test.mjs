@@ -82,7 +82,7 @@ test("personal memory is an optional update alongside the unchanged three-packag
     parsePluginChannel({ ...old, optionalReleases: [ref(memory.name), ref(memory.name)] }),
   );
 });
-test("the production declaration accepts Workbench 90 and retains explicit version boundaries", async () => {
+test("the production declaration accepts Workbench 92 and retains explicit version boundaries", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const manifest = productionManifest(source, {
     [W]: "0.1.73",
@@ -119,7 +119,8 @@ test("the production declaration accepts Workbench 90 and retains explicit versi
   assert.deepEqual(issues("0.1.88"), []);
   assert.deepEqual(issues("0.1.89"), []);
   assert.deepEqual(issues("0.1.91"), []);
-  assert.ok(issues("0.1.92").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+  assert.deepEqual(issues("0.1.92"), []);
+  assert.ok(issues("0.1.93").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
   assert.ok(issues("0.999.0").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
 });
 test("single-package update validates existing consumers and permits independently compatible versions", () => {

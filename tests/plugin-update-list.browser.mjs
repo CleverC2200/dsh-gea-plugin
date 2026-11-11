@@ -65,6 +65,7 @@ test("official installed list opens the shared update panel for suite actions an
     revision = 0;
   const status = () => ({
     revision: ++revision,
+    restartReady: phase === "pending-restart",
     hostProcessIdentity: "list-host",
     challenge: "list-nonce",
     checkTimeoutMs: 30000,
@@ -123,7 +124,7 @@ test("official installed list opens the shared update panel for suite actions an
     }
     res.setHeader("content-type", "text/html");
     res.end(
-      '<style>body{margin:0;font-family:var(--dsw-font-family);background:var(--dsw-alias-bg-layer-1)}</style><div id="root"><div id="app"></div></div><link rel="stylesheet" href="/app.css"><script>window.restartCalls=0;window.dshDesktop={restart:async()=>{window.restartCalls++;return false}};window.__ModuleLoader__={load(entry){window.geaFactory=entry.factory}}</script><script src="/gea-client.js"></script><script type="module" src="/app.js"></script>',
+      '<style>body{margin:0;font-family:var(--dsw-font-family);background:var(--dsw-alias-bg-layer-1)}</style><div id="root"><div id="app"></div></div><link rel="stylesheet" href="/app.css"><script>window.nativeRequests=[];window.dshDesktop={protocolVersion:1,appVersion:async()=>"1.0.0",updates:{status:async()=>({phase:"idle"}),subscribe:()=>()=>{},restartUpdate:async request=>{window.nativeRequests.push(request)}}};window.__ModuleLoader__={load(entry){window.geaFactory=entry.factory}}</script><script src="/gea-client.js"></script><script type="module" src="/app.js"></script>',
     );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -163,34 +164,33 @@ test("official installed list opens the shared update panel for suite actions an
   await panel.getByRole("heading", { name: "公司插件", exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.fixture.openedSections), ["company-updates"]);
   await panel.getByRole("button", { name: "检查更新", exact: true }).dblclick();
-  await panel.getByRole("button", { name: "全部更新", exact: true }).waitFor();
+  await panel.getByRole("button", { name: "重启更新", exact: true }).waitFor();
   assert.equal(checks, 1);
-  await panel.getByRole("button", { name: "全部更新", exact: true }).click();
-  await page.getByRole("alert").filter({ hasText: "插件正在更新，可查看更新状态。" }).waitFor();
+  await panel.getByRole("button", { name: "重启更新", exact: true }).click();
   await page.evaluate(() => window.fixture.closeSettings());
-  assert.equal(batches, 1);
-  phase = "pending-restart";
-  const pending = page
-    .getByRole("alert")
-    .filter({ hasText: "插件更新已安装，需要重启应用后生效。" });
-  await pending.waitFor();
-  await pending.getByRole("button", { name: "查看更新状态", exact: true }).click();
-  await panel.getByRole("button", { name: "重启应用以启用插件", exact: true }).click();
-  assert.equal(await page.evaluate(() => window.restartCalls), 1);
-  await panel
-    .getByText("重启已取消或当前无法重启，已安装的插件更新仍在等待重启。", { exact: true })
-    .waitFor();
-  assert.equal(batches, 1);
+  assert.equal(batches, 0);
   assert.equal(singles, 0);
+  assert.deepEqual(await page.evaluate(() => window.nativeRequests), [
+    {
+      kind: "plugins",
+      plans: names.map((packageName) => ({ packageName, planId: "plan-" + packageName })),
+    },
+  ]);
+  phase = "pending-restart";
+  await page.getByRole("alert").filter({ hasText: "正在接管" }).waitFor();
+  assert.equal((await page.evaluate(() => window.nativeRequests)).length, 1);
+  await page.getByRole("button", { name: "查看更新状态", exact: true }).click();
   await page.evaluate(() => window.fixture.locale("en"));
   await panel.getByRole("heading", { name: "Company plugins", exact: true }).waitFor();
   await page.goto(url + "?sidebar");
   const footer = page.locator("footer");
-  await footer.getByRole("button", { name: "更新", exact: true }).waitFor();
+  await footer.getByRole("button", { name: "重启更新", exact: true }).waitFor();
   assert.equal(await footer.locator(".gea-sidebar-update").count(), 0);
   const previous = batches;
-  await footer.getByRole("button", { name: "更新", exact: true }).click();
-  await page.locator(".gea-updates-panel").waitFor();
+  await mkdir(".runtime/takeover-visual", { recursive: true });
+  await page.screenshot({ path: ".runtime/takeover-visual/entry.png" });
+  await footer.getByRole("button", { name: "重启更新", exact: true }).click();
+  assert.deepEqual(await page.evaluate(() => window.nativeRequests), [{ kind: "plugins-restart" }]);
   assert.equal(batches, previous);
   assert.deepEqual(errors, []);
   await page.evaluate(() => window.fixture.dispose());

@@ -802,28 +802,36 @@ test("a package-only change retains affected tool and configuration contracts", 
   assert.deepEqual(plan.files, [...fixture.policy.required, ...expected].sort());
 });
 
-test("detail contributions select the built browser and actual installer contracts", (t) => {
-  const fixture = resourceImpactFixture(t);
-  for (const file of [
-    "tests/plugin-update-controller.contract.mjs",
-    "tests/plugin-update-integration.contract.mjs",
-    "tests/plugin-update-install.contract.mjs",
-    "tests/plugin-update-detail.browser.mjs",
-    "tests/plugin-release-source.test.mjs",
-    "tests/plugin-release.test.mjs",
-  ])
-    writeFileSync(
-      join(fixture.own.path, file),
-      file.endsWith(".browser.mjs")
-        ? "import { chromium } from '@playwright/test'; await chromium.launch();"
-        : "export const fixture = true;\n",
+for (const changed of [
+  "src/plugin-detail-updates.tsx",
+  "src/desktop-updates-client.ts",
+  "src/host/plugin-update-desktop.ts",
+])
+  test(`${changed} selects the built browser and actual installer contracts`, (t) => {
+    const fixture = resourceImpactFixture(t);
+    for (const file of [
+      "tests/plugin-update-controller.contract.mjs",
+      "tests/plugin-update-integration.contract.mjs",
+      "tests/plugin-update-install.contract.mjs",
+      "tests/plugin-update-detail.browser.mjs",
+      "tests/plugin-release-source.test.mjs",
+      "tests/plugin-release.test.mjs",
+    ])
+      writeFileSync(
+        join(fixture.own.path, file),
+        file.endsWith(".browser.mjs")
+          ? "import { chromium } from '@playwright/test'; await chromium.launch();"
+          : "export const fixture = true;\n",
+      );
+    fixture.change(fixture.own, changed, "export const changed = true;\n");
+    const plan = fixture.plan();
+    assert.ok(
+      plan.files.includes("tests/plugin-update-install.contract.mjs"),
+      JSON.stringify(plan),
     );
-  fixture.change(fixture.own, "src/plugin-detail-updates.tsx", "export const changed = true;\n");
-  const plan = fixture.plan();
-  assert.ok(plan.files.includes("tests/plugin-update-install.contract.mjs"), JSON.stringify(plan));
-  assert.ok(plan.files.includes("tests/plugin-update-detail.browser.mjs"), JSON.stringify(plan));
-  assert.equal(plan.browser, true);
-});
+    assert.ok(plan.files.includes("tests/plugin-update-detail.browser.mjs"), JSON.stringify(plan));
+    assert.equal(plan.browser, true);
+  });
 
 test("the package-manager subprocess fixture selects its update controller consumer", (t) => {
   const fixture = resourceImpactFixture(t);
