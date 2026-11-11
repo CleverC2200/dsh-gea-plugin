@@ -67,7 +67,6 @@ async function fixture(
   });
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(resolve(".runtime/disabled-resource-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
   const compiled = await build({
     stdin: {
       contents:
@@ -272,6 +271,7 @@ async function fixture(
     for (const off of cleanups.reverse()) await off();
     await ctx.agentResources.dispose();
   });
+  t.after(() => rm(root, { recursive: true, force: true }));
   await apply(ctx, {
     workbenchCapability: { enabled: workbenchEnabled },
     geaBaseUrl: "https://fixture.invalid",
