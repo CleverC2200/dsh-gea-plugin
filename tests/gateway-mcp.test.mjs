@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -75,13 +76,19 @@ test("MCP HTTP sends carry distinct request IDs through handshake, reconnect and
       }),
   );
   const signal = new AbortController().signal;
-  const connection = await prepareGatewayMcp(
-    `http://127.0.0.1:${server.address().port}`,
-    auth,
-    consumer,
-    signal,
-    3000,
+  const { GeaRequestCapture } = await import("./helpers/feedback-capture.mjs");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const capture = new GeaRequestCapture(
+    "/unused",
+    () => ({ environment: "test", userId: "u", tenantId: "0", base }),
+    () => base,
   );
+  const sender = (input, init) => {
+    const headers = new Headers(init.headers);
+    capture.begin(String(input), init.method, headers);
+    return fetch(input, { ...init, headers });
+  };
+  const connection = await prepareGatewayMcp(base, auth, consumer, signal, 3000, sender);
   const rpc = async (id, method, params) => {
     const response = await connection.fetch(connection.url, {
       method: "POST",
@@ -317,6 +324,7 @@ test("Business login notifications and transport capabilities follow logout and 
   )(createRequire(import.meta.url), module, module.exports);
   const { Business } = module.exports;
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: {
       production: "https://gea.test",
       test: "https://test.gea.test",

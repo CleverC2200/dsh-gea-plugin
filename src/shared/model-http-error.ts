@@ -8,10 +8,15 @@ export async function modelHttpError(
   consumer: string,
   operation: "模型列表读取" | "模型推理",
   secrets: string[],
+  received?: (raw: unknown) => void,
 ): Promise<Error> {
   let raw: unknown;
   try {
-    raw = await response.json();
+    const text = await response.text();
+    try {
+      received?.(text);
+    } catch {}
+    raw = JSON.parse(text);
   } catch {
     // A proxy's HTML error is not a gateway business message.
   }

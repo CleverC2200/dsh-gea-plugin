@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -30,8 +33,9 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module,
   module.exports,
 );
-function fixture(t, consumerCode = "base-safety-stock") {
+function fixture(t, consumerCode = "base-safety-stock", config = {}) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.example.test",
     geaEnvironments: {
       production: "https://gea.example.test",
@@ -39,6 +43,7 @@ function fixture(t, consumerCode = "base-safety-stock") {
     },
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,
+    ...config,
   });
   business.restoreDesktopLogin({
     schema: 1,
@@ -67,6 +72,17 @@ function fixture(t, consumerCode = "base-safety-stock") {
   t.after(() => business.dispose());
   return business;
 }
+async function capturedFixture(t, consumerCode, config = {}) {
+  const runtimeDir = await mkdtemp(join(tmpdir(), "sql-feedback-"));
+  const business = fixture(t, consumerCode, { ...config, runtimeDir });
+  business.capture.session = (id) =>
+    id ? { sessionId: id, rootSessionId: id, createdAt: Date.now() + 100 } : undefined;
+  t.after(async () => {
+    await business.capture.dispose();
+    await rm(runtimeDir, { recursive: true, force: true });
+  });
+  return business;
+}
 const query = {
   consumerCode: "base-safety-stock",
   sql: "SELECT sku FROM inventory ORDER BY sku",
@@ -84,6 +100,144 @@ function success(url, init) {
       : { success: true, result: { rows: [{ sku: "A" }], total: 1 } },
   );
 }
+for (const source of ["branchStorage", "pluginSql"])
+  test(`branch authorization created by ${source} follows its real request across sessions`, async (t) => {
+    const business = await capturedFixture(t, "branch-inventory", {
+      fcStorage: {
+        production: {
+          published: true,
+          dataSourceCode: "fixture-db",
+          users: [{ tenantId: "1", userId: "user-1", warehouses: ["001"] }],
+        },
+      },
+    });
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      calls.push({
+        path: new URL(url).pathname,
+        requestId: new Headers(init.headers).get("X-Request-Id"),
+      });
+      return url.endsWith("/ai/sql/execute")
+        ? Response.json({ success: true, code: 200, result: { records: [] } })
+        : success(url, init);
+    });
+    const signal = new AbortController().signal;
+    const storage = () =>
+      business.branchStorage({ operation: "load", kind: "plans", warehouseCode: "001" }, signal);
+    const sql = (session) =>
+      business.pluginSql(
+        {
+          consumerCode: "branch-inventory",
+          sql: "SELECT t.sku AS sku FROM inventory AS t WHERE t.warehouse = :warehouse",
+          parameters: { warehouse: session },
+        },
+        signal,
+        true,
+      );
+    await business.capture.run(
+      "session-a",
+      "prepare",
+      source === "branchStorage" ? storage : () => sql("A"),
+    );
+    assert.equal((await business.capture.run("session-b", "storage", storage)).status, "loaded");
+    assert.deepEqual((await business.capture.run("session-c", "sql", () => sql("C"))).rows, [
+      { sku: "A" },
+    ]);
+    const authorization = calls.filter((call) => call.path === "/ai/gateway/agent/session");
+    assert.equal(
+      authorization.length,
+      1,
+      "cached authorization must not create another HTTP request",
+    );
+    assert.equal(new Set(calls.map((call) => call.requestId)).size, calls.length);
+    for (const session of ["session-a", "session-b", "session-c"]) {
+      const snapshot = await business.capture.snapshot(session);
+      const rows = snapshot.files["gea-requests.jsonl"]
+        .toString()
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      const shared = rows.filter((row) => row.path === "/ai/gateway/agent/session");
+      assert.ok(shared.length > 0, session + " must reference the original authorization request");
+      assert.deepEqual(
+        [...new Set(shared.map((row) => row.requestId))],
+        [authorization[0].requestId],
+      );
+      assert.ok(shared.every((row) => row.sessionId === session));
+      assert.equal(shared.at(-1).state, "completed");
+      assert.equal(
+        snapshot.missing.some((item) => item.file === "gea-requests.jsonl"),
+        false,
+      );
+    }
+  });
+for (const [consumerCode, concurrent] of [
+  ["aps", false],
+  ["branch-inventory", true],
+])
+  test(`SQL result cache preserves cross-session request references and caller isolation for ${consumerCode}`, async (t) => {
+    const business = await capturedFixture(t, consumerCode);
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (url, init) => {
+      calls.push({
+        path: new URL(url).pathname,
+        requestId: new Headers(init.headers).get("X-Request-Id"),
+      });
+      await new Promise(setImmediate);
+      return success(url, init);
+    });
+    const signal = new AbortController().signal;
+    const read = (session) =>
+      business.capture.run(session, "configured SQL", () =>
+        business.pluginSql(
+          { consumerCode, sql: "SELECT t.sku AS sku FROM inventory AS t", parameters: {} },
+          signal,
+          true,
+        ),
+      );
+    const [first, second] = concurrent
+      ? await Promise.all([read("session-a"), read("session-b")])
+      : [await read("session-a"), await read("session-b")];
+    assert.notEqual(first, second);
+    first.rows[0].sku = "changed-a";
+    assert.deepEqual(second.rows, [{ sku: "A" }]);
+    const cached = await read("session-c");
+    assert.deepEqual(cached.rows, [{ sku: "A" }]);
+    cached.rows[0].sku = "changed-c";
+    assert.deepEqual((await read("session-d")).rows, [{ sku: "A" }]);
+    assert.equal(
+      calls.length,
+      2,
+      "shared and cached reads must not send another authorization or SQL request",
+    );
+    assert.deepEqual(
+      calls.map((call) => call.path),
+      ["/ai/gateway/agent/session", "/ai/gateway/sql/execute"],
+    );
+    const requestIds = new Set(calls.map((call) => call.requestId));
+    assert.equal(requestIds.size, 2);
+    for (const session of ["session-a", "session-b", "session-c", "session-d"]) {
+      const snapshot = await business.capture.snapshot(session);
+      assert.deepEqual(
+        snapshot.requestIds,
+        requestIds,
+        session + " must reference both original HTTP requests",
+      );
+      const rows = snapshot.files["gea-requests.jsonl"]
+        .toString()
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      const latest = new Map(rows.map((row) => [row.requestId, row]));
+      assert.ok(
+        [...latest.values()].every((row) => row.sessionId === session && row.state === "completed"),
+      );
+      assert.equal(
+        snapshot.missing.some((item) => item.file === "gea-requests.jsonl"),
+        false,
+      );
+    }
+  });
 for (const consumerCode of ["customer_inventory", "order", "order01"])
   test(`expired SQL session renews despite a generic authentication reason for ${consumerCode}`, async (t) => {
     const business = fixture(t, consumerCode);
@@ -98,7 +252,7 @@ for (const consumerCode of ["customer_inventory", "order", "order01"])
           result: { accessDecision: { allowed: true }, delegationToken: `delegation-${sessions}` },
         });
       }
-      tokens.push(init.headers["X-Delegation-Token"]);
+      tokens.push(new Headers(init.headers).get("X-Delegation-Token"));
       if (tokens.length === 1)
         return Response.json({
           success: false,
@@ -301,7 +455,7 @@ test("configured SQL uses the authenticated Consumer delegation and forwards one
   assert.equal(requests.length, 2);
   assert.match(requests[0].url, /\/agent\/session$/);
   assert.equal(requests[0].body.agentCode, "base-safety-stock");
-  assert.equal(requests[1].headers["X-Delegation-Token"], "fixture-delegation");
+  assert.equal(new Headers(requests[1].headers).get("X-Delegation-Token"), "fixture-delegation");
   const { consumerCode: _consumerCode, ...expected } = configured;
   assert.deepEqual(requests[1].body, expected);
   await business.logout({});

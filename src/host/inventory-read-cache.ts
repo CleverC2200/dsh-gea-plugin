@@ -79,8 +79,10 @@ export class InventoryReadCache {
   private scope?: AbortSignal;
   private readonly entries = new Map<string, { at: number; startedAt: number; value: unknown }>();
   private readonly now: () => number;
-  constructor(now = Date.now) {
+  private readonly clone: typeof structuredClone;
+  constructor(now = Date.now, clone: typeof structuredClone = structuredClone) {
     this.now = now;
+    this.clone = clone;
   }
 
   private activate(scope: AbortSignal) {
@@ -155,7 +157,7 @@ export class InventoryReadCache {
       subscription.addEventListener("abort", abort, { once: true });
       entry.promise.then(
         (value) => {
-          if (detach()) resolve(structuredClone(value));
+          if (detach()) resolve(this.clone(value));
         },
         (error) => {
           if (detach()) reject(error);
@@ -172,7 +174,7 @@ export class InventoryReadCache {
       this.entries.delete(key);
       return undefined;
     }
-    return structuredClone(entry.value);
+    return this.clone(entry.value);
   }
 
   set(
@@ -188,6 +190,6 @@ export class InventoryReadCache {
     if ((this.entries.get(key)?.startedAt ?? -Infinity) > startedAt) return;
     this.entries.delete(key);
     while (this.entries.size >= 256) this.entries.delete(this.entries.keys().next().value!);
-    this.entries.set(key, { at: this.now(), startedAt, value: structuredClone(value) });
+    this.entries.set(key, { at: this.now(), startedAt, value: this.clone(value) });
   }
 }

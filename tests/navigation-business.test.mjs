@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -18,6 +19,7 @@ new Function("require", "module", "exports", output.outputFiles[0].text)(
 );
 const fixture = () => {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.example.test",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,
@@ -53,8 +55,8 @@ test("实际 Business 导航沿用当前用户，Reference 不进入日志中心
   const requests = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
     requests.push([url, init]);
-    assert.equal(init.headers["X-Access-Token"], "fixture-private-token");
-    assert.equal(init.headers["X-Tenant-Id"], "1");
+    assert.equal(new Headers(init.headers).get("X-Access-Token"), "fixture-private-token");
+    assert.equal(new Headers(init.headers).get("X-Tenant-Id"), "1");
     return url.endsWith("/ack") ? Response.json({ success: true, result: null }) : response();
   });
   const target = await business.resolveClientNavigation(

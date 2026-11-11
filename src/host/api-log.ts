@@ -1,3 +1,5 @@
+import { httpAttempt, type AttemptInit } from "./http-attempt.ts";
+import type { GeaRequestCapture } from "./request-capture.ts";
 import type {
   ApiCatalogEntry,
   ApiLogRecord,
@@ -687,10 +689,23 @@ export class GeaApiLogCenter {
       signal: AbortSignal | undefined,
     ) => (response: Response) => void,
     private readonly currentScope: () => string | undefined = () => undefined,
+    private readonly capture?: GeaRequestCapture,
   ) {}
 
   readonly fetch = (input: RequestInfo | URL, init?: RequestInit, purpose?: string) =>
     this.fetchRequest(input, init, undefined, undefined, purpose);
+
+  metadataFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return this.fetchRequest(
+      input,
+      init,
+      undefined,
+      undefined,
+      undefined,
+      { source: "daily" },
+      true,
+    );
+  }
 
   scopedFetch(context: ApiLogContext, onRecord?: (id: string) => void): typeof fetch {
     return (input, init) => this.fetchRequest(input, init, undefined, onRecord, undefined, context);
@@ -703,6 +718,7 @@ export class GeaApiLogCenter {
     onRecord?: (id: string) => void,
     purpose?: string,
     context: ApiLogContext = { source: "daily" },
+    forceMetadata = false,
   ): Promise<Response> {
     const ownerScope = this.currentScope();
     const acceptRequest = this.beforeRequest
@@ -722,10 +738,28 @@ export class GeaApiLogCenter {
         ? this.observeReplay?.(rawUrl, requestHeaders, init?.signal ?? undefined)
         : undefined;
     const requestBody = init?.body;
+    let operation: string | undefined;
+    if (this.capture && typeof requestBody === "string" && /\/mcp\//.test(rawUrl)) {
+      try {
+        const rpc = JSON.parse(requestBody);
+        if (rpc?.method === "tools/call" && typeof rpc.params?.name === "string")
+          operation = "tools/call:" + rpc.params.name;
+      } catch {}
+    }
+    const captured = this.capture?.begin(
+      rawUrl,
+      method,
+      requestHeaders,
+      purpose,
+      (init as AttemptInit | undefined)?.[httpAttempt],
+      operation,
+    );
     const safeUrl = sanitizeUrl(rawUrl);
     const catalog = CATALOG.find((entry) => entry.matches(method, safeUrl.path));
-    const metadataOnly = catalog && METADATA_ONLY.has(catalog.id);
-    const loggedUrl = metadataOnly ? { url: catalog.path, path: catalog.path, query: {} } : safeUrl;
+    const metadataOnly = forceMetadata || !!(catalog && METADATA_ONLY.has(catalog.id));
+    const loggedUrl = metadataOnly
+      ? { url: catalog?.path ?? safeUrl.path, path: catalog?.path ?? safeUrl.path, query: {} }
+      : safeUrl;
     const started = Date.now();
     const record: PrivateRecord = {
       ...context,
@@ -788,26 +822,50 @@ export class GeaApiLogCenter {
     acceptRequest?.();
     this.prepend(record);
     onRecord?.(record.id);
+    if (captured) captured.row.apiLogId = record.id;
     try {
       // 未注入实现时在调用时读取全局 fetch，保留测试、代理和运行时替换能力。
-      const response = await (this.fetchImpl ?? globalThis.fetch)(input, init);
+      const originalResponse = await (this.fetchImpl ?? globalThis.fetch)(
+        input,
+        captured ? { ...init, headers: requestHeaders } : init,
+      );
+      const response = captured
+        ? (this.capture?.response(
+            originalResponse,
+            captured,
+            init?.signal ?? (input instanceof Request ? input.signal : undefined),
+          ) ?? originalResponse)
+        : originalResponse;
       record.response = {
         status: response.status,
         statusText: response.statusText,
         headers: metadataOnly ? auditHeaders(response.headers) : sanitizeHeaders(response.headers),
         body: metadataOnly
-          ? auditMetadata(await responsePreview(response), catalog.group === "登录与身份")
+          ? auditMetadata(await responsePreview(response), catalog?.group === "登录与身份")
           : catalog?.id === "model.chat"
             ? response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")
               ? STREAM_OMITTED
               : "[模型响应正文未保存]"
             : await responsePreview(response),
       };
+      const preview = record.response.body;
+      if (captured && preview && typeof preview === "object") {
+        const body = preview as Record<string, unknown>;
+        const code = body.errorCode ?? (body.success === false ? body.code : undefined);
+        if (
+          (typeof code === "string" || typeof code === "number") &&
+          /^[A-Za-z0-9._:-]{1,100}$/.test(String(code))
+        ) {
+          captured.row.errorCode = String(code);
+          this.capture?.update(captured);
+        }
+      }
       record.outcome = response.ok ? "success" : "error";
       this.finish(record, started);
       observeResponse?.(response);
       return response;
     } catch (error) {
+      this.capture?.fail(captured, error, init?.signal);
       record.outcome = "error";
       record.error = {
         name: error instanceof Error ? error.name : "Error",

@@ -312,240 +312,257 @@ export async function registerHtmlPlugins(
             },
           },
           async (session: string, resourceId: string, signal: AbortSignal) => {
-            lifetime.signal.throwIfAborted();
-            if (!item.mock && !business.status().authenticated)
-              throw Error("PAGE_REFERENCE_LOGIN_REQUIRED");
-            const started = item.mock ? lifetime.signal : business.identitySignal();
-            const scope = business.pageSessionScope();
-            const request = { signal };
-            if (typeof session !== "string" || !/^session-[a-z0-9-]{20,80}$/.test(session))
-              throw Error("INVALID_CONVERSATION");
-            const principal = businessIdentityKey(business);
-            const principalKey = principal && `${principal}:${business.pageSessionScope()}`;
-            if (!item.mock && !principalKey) throw Error("GEA_IDENTITY_INCOMPLETE");
-            if (
-              !item.mock &&
-              sessionPrincipals.has(session) &&
-              sessionPrincipals.get(session) !== principalKey
-            )
-              throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
-            if (!item.mock && scope !== business.pageSessionScope())
-              throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
-            let authorizedAgent: Awaited<ReturnType<typeof pageAgent>> | undefined;
-            if (!item.mock) {
-              const agent = ctx.agents?.get(session);
-              if (!agent) throw Error("PAGE_AGENT_MISSING");
-              const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset");
-              if (typeof preset !== "string" || !preset) throw Error("PAGE_AGENT_SESSION_MISMATCH");
-              authorizedAgent = await pageAgent(
-                item,
-                preset,
-                AbortSignal.any([request.signal, business.identitySignal(), lifetime.signal]),
-                session.slice(8),
-              );
-            }
-            let credentials: any;
-            let access: any;
-            if (item.mock) {
-              // Static demo pages deliberately have no GEA identity, gateway or data source.
-              credentials = { sessionId: "mock-" + session.slice(8) };
-              access = {
-                principalId: "mock-browser",
-                trusted: false,
-                mode: "mock",
-              };
-            } else if (local?.pluginId === item.id) {
-              const user = business.status().user;
-              if (!user?.id) throw Error("GEA_IDENTITY_INCOMPLETE");
-              credentials = { sessionId: "local-" + session.slice(8) };
-              access = {
-                principalId: user.id,
-                trusted: true,
-                mode: "local-database",
-                workspaceQuery: !!local.workspace,
-              };
-            } else {
-              const identity = business.identitySignal();
-              credentials =
-                authorizedAgent && authorizedAgent.consumerCode === item.gea.consumerCode
-                  ? authorizedAgent.credentials
-                  : await business.htmlLaunch(
-                      item.gea.consumerCode,
-                      AbortSignal.any([identity, request.signal, lifetime.signal]),
-                      session.slice(8),
-                    );
-              identity.throwIfAborted();
-              const user = business.status().user;
-              if (!user?.id) throw Error("GEA_IDENTITY_INCOMPLETE");
-              access = {
-                principalId: user.id,
-                trusted: true,
-                gatewayScopeRef: credentials.sessionId,
-                ...credentials.roleProfile,
-              };
-            }
-            started?.throwIfAborted();
-            lifetime.signal.throwIfAborted();
-            if (!item.mock && scope !== business.pageSessionScope())
-              throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
-            signal.throwIfAborted();
-            const surface = business.setSurface(session, {
-              menu: page.id,
-              title: page.name,
-            });
-            const pageIdentity = {
-              pluginId: item.id,
-              consumerCode: item.gea.consumerCode,
-              label: item.name,
-              pageTool: PAGE_TOOL,
-              mock: item.mock === true,
-            };
-            business.touchPageIdentity(session, pageIdentity);
-            let projection = business.currentPageIdentity(session);
-            if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
-            const grantSignal = AbortSignal.any([started!, lifetime.signal]);
-            const modulePage = bindModulePage(business, session, item.id, grantSignal);
-            return {
-              signal: grantSignal,
-              referenceScope: item.mock ? "mock-browser" : principal!,
-              access,
-              observe: (context: Record<string, unknown>) => {
-                grantSignal.throwIfAborted();
-                if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
-                business.touchPageIdentity(session, pageIdentity);
-                projection = business.currentPageIdentity(session);
-                modulePage.observe(context);
-              },
-              allowsEffect: (
-                effect: import("@cleverc2200/dsh-agent-workbench").PageBusinessGrant extends {
-                  allowsEffect(effect: infer E): boolean;
-                }
-                  ? E
-                  : never,
-              ) => capability.allows("gea-html-" + item.id, effect),
-              ...(item.id === "inventory-fc" && !item.mock
-                ? {
-                    branchStorage: (parameters: any, requestSignal: AbortSignal) => {
-                      if (business.surfaceFor(session) !== surface)
-                        throw Error("PAGE_OWNER_RELEASED");
-                      return business.branchStorage(
-                        parameters,
-                        AbortSignal.any([requestSignal, grantSignal]),
-                      );
-                    },
-                    branchDms: (parameters: any, requestSignal: AbortSignal) => {
-                      if (business.surfaceFor(session) !== surface)
-                        throw Error("PAGE_OWNER_RELEASED");
-                      return business.branchDms(
-                        parameters,
-                        AbortSignal.any([requestSignal, grantSignal]),
-                      );
-                    },
-                  }
-                : {}),
-              readSql: async (parameters: any, requestSignal: AbortSignal) => {
-                if (item.mock) throw Error("MOCK_DATA_ONLY");
-                const activeSignal = AbortSignal.any([requestSignal, grantSignal]);
-                activeSignal.throwIfAborted();
-                if (item.sqlConfig !== undefined)
-                  return readConfiguredHtmlQuery(
-                    { directory: item.htmlDirectory, manifest: item },
-                    parameters,
-                    business,
-                    activeSignal,
-                    item.gea.consumerCode,
-                    true,
-                  );
-                if (parameters?.queries !== undefined)
-                  return readHtmlBatch(
-                    parameters.queries,
-                    (query: any) =>
-                      local?.pluginId === item.id
-                        ? local.read(query, access, activeSignal)
-                        : business.pluginSql(
-                            { ...query, consumerCode: item.gea.consumerCode },
-                            activeSignal,
-                            false,
-                            undefined,
-                            false,
-                            true,
-                          ),
-                    { compactRows: parameters.responseFormat === "rows" },
-                  );
-                if (local?.pluginId === item.id)
-                  return local.read(parameters, access, activeSignal);
-                return business.pluginSql(
-                  { ...parameters, consumerCode: item.gea.consumerCode },
-                  activeSignal,
-                  false,
-                  undefined,
-                  false,
-                  true,
+            return business.capture.run(session, "页面授权", async () => {
+              lifetime.signal.throwIfAborted();
+              if (!item.mock && !business.status().authenticated)
+                throw Error("PAGE_REFERENCE_LOGIN_REQUIRED");
+              const started = item.mock ? lifetime.signal : business.identitySignal();
+              const scope = business.pageSessionScope();
+              const request = { signal };
+              if (typeof session !== "string" || !/^session-[a-z0-9-]{20,80}$/.test(session))
+                throw Error("INVALID_CONVERSATION");
+              const principal = businessIdentityKey(business);
+              const principalKey = principal && `${principal}:${business.pageSessionScope()}`;
+              if (!item.mock && !principalKey) throw Error("GEA_IDENTITY_INCOMPLETE");
+              if (
+                !item.mock &&
+                sessionPrincipals.has(session) &&
+                sessionPrincipals.get(session) !== principalKey
+              )
+                throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+              if (!item.mock && scope !== business.pageSessionScope())
+                throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+              let authorizedAgent: Awaited<ReturnType<typeof pageAgent>> | undefined;
+              if (!item.mock) {
+                const agent = ctx.agents?.get(session);
+                if (!agent) throw Error("PAGE_AGENT_MISSING");
+                const preset = ctx.sessionProjections.stateOf(agent.session, "agentPreset");
+                if (typeof preset !== "string" || !preset)
+                  throw Error("PAGE_AGENT_SESSION_MISMATCH");
+                authorizedAgent = await pageAgent(
+                  item,
+                  preset,
+                  AbortSignal.any([request.signal, business.identitySignal(), lifetime.signal]),
+                  session.slice(8),
                 );
-              },
-              ...(["inventory-aqkc", "inventory-fc", "inventory-qll"].includes(item.id) &&
-              !item.mock
-                ? {
-                    insight: (parameters: unknown, requestSignal: AbortSignal) => {
-                      if (business.surfaceFor(session) !== surface)
-                        throw Error("PAGE_OWNER_RELEASED");
-                      return generateInsight(
-                        {
-                          session,
-                          principal: principalKey!,
-                          consumer: item.gea.consumerCode,
-                          promptPath: resolve(item.htmlDirectory, "insight-prompt.md"),
-                        },
-                        parameters,
-                        AbortSignal.any([requestSignal, grantSignal]),
+              }
+              let credentials: any;
+              let access: any;
+              if (item.mock) {
+                // Static demo pages deliberately have no GEA identity, gateway or data source.
+                credentials = { sessionId: "mock-" + session.slice(8) };
+                access = {
+                  principalId: "mock-browser",
+                  trusted: false,
+                  mode: "mock",
+                };
+              } else if (local?.pluginId === item.id) {
+                const user = business.status().user;
+                if (!user?.id) throw Error("GEA_IDENTITY_INCOMPLETE");
+                credentials = { sessionId: "local-" + session.slice(8) };
+                access = {
+                  principalId: user.id,
+                  trusted: true,
+                  mode: "local-database",
+                  workspaceQuery: !!local.workspace,
+                };
+              } else {
+                const identity = business.identitySignal();
+                credentials =
+                  authorizedAgent && authorizedAgent.consumerCode === item.gea.consumerCode
+                    ? authorizedAgent.credentials
+                    : await business.htmlLaunch(
+                        item.gea.consumerCode,
+                        AbortSignal.any([identity, request.signal, lifetime.signal]),
+                        session.slice(8),
                       );
-                    },
+                identity.throwIfAborted();
+                const user = business.status().user;
+                if (!user?.id) throw Error("GEA_IDENTITY_INCOMPLETE");
+                access = {
+                  principalId: user.id,
+                  trusted: true,
+                  gatewayScopeRef: credentials.sessionId,
+                  ...credentials.roleProfile,
+                };
+              }
+              started?.throwIfAborted();
+              lifetime.signal.throwIfAborted();
+              if (!item.mock && scope !== business.pageSessionScope())
+                throw Error("PAGE_SESSION_IDENTITY_MISMATCH");
+              signal.throwIfAborted();
+              const surface = business.setSurface(session, {
+                menu: page.id,
+                title: page.name,
+              });
+              const pageIdentity = {
+                pluginId: item.id,
+                consumerCode: item.gea.consumerCode,
+                label: item.name,
+                pageTool: PAGE_TOOL,
+                mock: item.mock === true,
+              };
+              business.touchPageIdentity(session, pageIdentity);
+              let projection = business.currentPageIdentity(session);
+              if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
+              const grantSignal = AbortSignal.any([started!, lifetime.signal]);
+              const modulePage = bindModulePage(business, session, item.id, grantSignal);
+              return {
+                signal: grantSignal,
+                referenceScope: item.mock ? "mock-browser" : principal!,
+                access,
+                observe: (context: Record<string, unknown>) => {
+                  grantSignal.throwIfAborted();
+                  if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
+                  business.touchPageIdentity(session, pageIdentity);
+                  projection = business.currentPageIdentity(session);
+                  modulePage.observe(context);
+                },
+                allowsEffect: (
+                  effect: import("@cleverc2200/dsh-agent-workbench").PageBusinessGrant extends {
+                    allowsEffect(effect: infer E): boolean;
                   }
-                : {}),
-              ...(item.id === "inventory-orderfulfillment" &&
-              item.gea.consumerCode === "order01" &&
-              !item.mock
-                ? {
-                    workspace: (parameters: unknown, requestSignal: AbortSignal) => {
-                      if (business.surfaceFor(session) !== surface)
-                        throw Error("PAGE_OWNER_RELEASED");
-                      return business.orderSalesConfirmation(
+                    ? E
+                    : never,
+                ) => capability.allows("gea-html-" + item.id, effect),
+                ...(item.id === "inventory-fc" && !item.mock
+                  ? {
+                      branchStorage: (parameters: any, requestSignal: AbortSignal) => {
+                        return business.capture.run(session, "页面请求", () => {
+                          if (business.surfaceFor(session) !== surface)
+                            throw Error("PAGE_OWNER_RELEASED");
+                          return business.branchStorage(
+                            parameters,
+                            AbortSignal.any([requestSignal, grantSignal]),
+                          );
+                        });
+                      },
+                      branchDms: (parameters: any, requestSignal: AbortSignal) => {
+                        return business.capture.run(session, "页面请求", () => {
+                          if (business.surfaceFor(session) !== surface)
+                            throw Error("PAGE_OWNER_RELEASED");
+                          return business.branchDms(
+                            parameters,
+                            AbortSignal.any([requestSignal, grantSignal]),
+                          );
+                        });
+                      },
+                    }
+                  : {}),
+                readSql: async (parameters: any, requestSignal: AbortSignal) => {
+                  return business.capture.run(session, "页面请求", async () => {
+                    if (item.mock) throw Error("MOCK_DATA_ONLY");
+                    const activeSignal = AbortSignal.any([requestSignal, grantSignal]);
+                    activeSignal.throwIfAborted();
+                    if (item.sqlConfig !== undefined)
+                      return readConfiguredHtmlQuery(
+                        { directory: item.htmlDirectory, manifest: item },
                         parameters,
-                        AbortSignal.any([requestSignal, grantSignal]),
+                        business,
+                        activeSignal,
+                        item.gea.consumerCode,
+                        true,
                       );
-                    },
-                  }
-                : {}),
-              ...(item.id === "inventory-orderworkbench" &&
-              item.gea.consumerCode === "order" &&
-              item.reportStore === "order" &&
-              !item.mock
-                ? {
-                    workspace: (parameters: any, requestSignal: AbortSignal) =>
-                      business.orderReport(
-                        parameters,
-                        AbortSignal.any([requestSignal, grantSignal]),
-                      ),
-                  }
-                : {}),
-              ...(local?.pluginId === item.id && local.workspace
-                ? {
-                    workspace: (parameters: any, requestSignal: AbortSignal) =>
-                      local.workspace(
-                        parameters,
-                        access,
-                        AbortSignal.any([requestSignal, grantSignal]),
-                      ),
-                  }
-                : {}),
-              release: () => {
-                modulePage.release();
-                if (business.currentPageIdentity(session) === projection)
-                  business.clearPageIdentity(session, item.id);
-                if (business.surfaceFor(session) === surface)
-                  business.clearSurface(session, surface.menu);
-              },
-            };
+                    if (parameters?.queries !== undefined)
+                      return readHtmlBatch(
+                        parameters.queries,
+                        (query: any) =>
+                          local?.pluginId === item.id
+                            ? local.read(query, access, activeSignal)
+                            : business.pluginSql(
+                                { ...query, consumerCode: item.gea.consumerCode },
+                                activeSignal,
+                                false,
+                                undefined,
+                                false,
+                                true,
+                              ),
+                        { compactRows: parameters.responseFormat === "rows" },
+                      );
+                    if (local?.pluginId === item.id)
+                      return local.read(parameters, access, activeSignal);
+                    return business.pluginSql(
+                      { ...parameters, consumerCode: item.gea.consumerCode },
+                      activeSignal,
+                      false,
+                      undefined,
+                      false,
+                      true,
+                    );
+                  });
+                },
+                ...(["inventory-aqkc", "inventory-fc", "inventory-qll"].includes(item.id) &&
+                !item.mock
+                  ? {
+                      insight: (parameters: unknown, requestSignal: AbortSignal) => {
+                        return business.capture.run(session, "页面请求", () => {
+                          if (business.surfaceFor(session) !== surface)
+                            throw Error("PAGE_OWNER_RELEASED");
+                          return generateInsight(
+                            {
+                              session,
+                              principal: principalKey!,
+                              consumer: item.gea.consumerCode,
+                              promptPath: resolve(item.htmlDirectory, "insight-prompt.md"),
+                            },
+                            parameters,
+                            AbortSignal.any([requestSignal, grantSignal]),
+                          );
+                        });
+                      },
+                    }
+                  : {}),
+                ...(item.id === "inventory-orderfulfillment" &&
+                item.gea.consumerCode === "order01" &&
+                !item.mock
+                  ? {
+                      workspace: (parameters: unknown, requestSignal: AbortSignal) => {
+                        return business.capture.run(session, "页面请求", () => {
+                          if (business.surfaceFor(session) !== surface)
+                            throw Error("PAGE_OWNER_RELEASED");
+                          return business.orderSalesConfirmation(
+                            parameters,
+                            AbortSignal.any([requestSignal, grantSignal]),
+                          );
+                        });
+                      },
+                    }
+                  : {}),
+                ...(item.id === "inventory-orderworkbench" &&
+                item.gea.consumerCode === "order" &&
+                item.reportStore === "order" &&
+                !item.mock
+                  ? {
+                      workspace: (parameters: any, requestSignal: AbortSignal) =>
+                        business.capture.run(session, "页面请求", () =>
+                          business.orderReport(
+                            parameters,
+                            AbortSignal.any([requestSignal, grantSignal]),
+                          ),
+                        ),
+                    }
+                  : {}),
+                ...(local?.pluginId === item.id && local.workspace
+                  ? {
+                      workspace: (parameters: any, requestSignal: AbortSignal) =>
+                        business.capture.run(session, "页面请求", () =>
+                          local.workspace(
+                            parameters,
+                            access,
+                            AbortSignal.any([requestSignal, grantSignal]),
+                          ),
+                        ),
+                    }
+                  : {}),
+                release: () => {
+                  modulePage.release();
+                  if (business.currentPageIdentity(session) === projection)
+                    business.clearPageIdentity(session, item.id);
+                  if (business.surfaceFor(session) === surface)
+                    business.clearSurface(session, surface.menu);
+                },
+              };
+            });
           },
         ),
       );

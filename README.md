@@ -18,6 +18,8 @@ GEA Host 管唯一业务身份、凭据、Consumer 授权、执行额度与受�
 | 普通三包打包、安装与 Host 接收                          | [三包交付](docs/package-delivery.md) 和 [安装协议](docs/install.md)                                     |
 | 回执一致性、预算、完整目标与接续                        | [交付核对](docs/delivery-check.md)                                                                      |
 
+会话反馈接线、材料边界及维护入口见[会话反馈与请求材料](docs/feedback-capture.md)。
+
 ## 完成边界
 
 登录、退出、过期、切用户/租户/环境由 GEA Host 统一处理。页面、Skill 与界面登录展示均不授予服务端权限。凭据留在 Host；身份变化撤销旧执行条件，Core Session、历史与草稿保留。真实读取、缺字段、拒权、不完整结果、取消与 unknown 不能补成零或成功。
