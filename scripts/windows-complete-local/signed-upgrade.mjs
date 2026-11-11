@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
@@ -110,6 +110,8 @@ await execute("overwrite", "powershell.exe", [
   output,
   "-NewVersion",
   build.packaged.version,
+  "-NewExecutableName",
+  basename(build.executable.path),
   "-CertificatePath",
   certificate,
 ]);
