@@ -2,7 +2,7 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
-import { openSalesPlan } from "./fixtures/business-page.mjs";
+import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 
 test(
   "one month merges Y and DC plans and synchronises the combined page with the conversation",
@@ -209,7 +209,7 @@ test(
       .getByRole("dialog", { name: /内测声明|预览版说明/, exact: true })
       .getByRole("button", { name: "继续", exact: true })
       .click();
-    const frame = await openSalesPlan(page);
+    const frame = await openReadySalesPlan(page);
     const month = frame.getByRole("combobox", { name: "销售计划周期" });
     await expect(month).toHaveText("2026年10月");
     await month.click();
