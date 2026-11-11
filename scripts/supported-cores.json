@@ -176,5 +176,19 @@
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
     "scope": "公司 Core：由原生 main 接管插件与客户端更新、阻断普通操作并等待写者结束后重启"
+  },
+  {
+    "head": "6b4d3154ceb92494b77b4ae95b132525a298b629",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "96965d7c48025372a873b29707e05ece50c2a0fb4942be7dc45a8bd83a01b19e",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：原生更新重查等待故障 Host 清理、恢复请求锁并核对原操作，未知写者保持阻断"
   }
 ]
