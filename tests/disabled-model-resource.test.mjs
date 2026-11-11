@@ -67,7 +67,6 @@ async function fixture(
   });
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(resolve(".runtime/disabled-resource-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
   const compiled = await build({
     stdin: {
       contents:
@@ -121,9 +120,15 @@ async function fixture(
   // A pre-existing Session's persisted preset projection survives resource changes.
   const agent = {
     id: "session-11111111-1111-4111-8111-111111111111",
-    session: { preset, header: { cwd: root }, snapshotEvents: () => [] },
+    session: {
+      id: "session-11111111-1111-4111-8111-111111111111",
+      preset,
+      header: { cwd: root },
+      snapshotEvents: () => [],
+    },
   };
   const ctx = {
+    sessionFeedback: { registerSubmit: () => () => {} },
     profileContext: { dir: root },
     sessionController: {
       inspect: async (id) => ({
@@ -178,7 +183,7 @@ async function fixture(
       register: async () => async () => {},
       resolve: async (id) => ({ id }),
     },
-    agents: { get: () => agent, list: () => [agent] },
+    agents: { get: () => agent, list: () => [agent], currentInitiator: () => undefined },
     sessionProjections: { stateOf: (session) => session.preset },
     workbenchPages: {
       packages: () => [{ directory, manifest, htmlPath: join(directory, "index.html") }],
@@ -266,6 +271,7 @@ async function fixture(
     for (const off of cleanups.reverse()) await off();
     await ctx.agentResources.dispose();
   });
+  t.after(() => rm(root, { recursive: true, force: true }));
   await apply(ctx, {
     workbenchCapability: { enabled: workbenchEnabled },
     geaBaseUrl: "https://fixture.invalid",

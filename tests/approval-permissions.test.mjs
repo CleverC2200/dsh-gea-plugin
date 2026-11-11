@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile } from "./profile.mjs";
@@ -52,6 +53,7 @@ test("restored login reloads current grants instead of trusting persisted permis
     module.exports,
   );
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.example.test",
     requestTimeoutMs: 1000,
   });
@@ -71,7 +73,7 @@ test("restored login reloads current grants instead of trusting persisted permis
   assert.equal(business.status().permissionCodes, undefined);
   t.mock.method(globalThis, "fetch", async (url, init) => {
     assert.equal(url, "https://gea.example.test/sys/permission/getPermCode");
-    assert.equal(init.headers["X-Access-Token"], "saved-secret");
+    assert.equal(new Headers(init.headers).get("X-Access-Token"), "saved-secret");
     return Response.json({
       success: true,
       result: { codeList: ["sales-plan:plan:region-approve"] },

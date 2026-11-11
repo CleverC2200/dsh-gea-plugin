@@ -33,6 +33,7 @@ function fixture(t, config = {}, { signedIn = true } = {}) {
     throw Error("OFFLINE_CAPTURE: external request forbidden");
   });
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://fixture.invalid",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,

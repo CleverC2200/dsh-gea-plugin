@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -21,6 +22,7 @@ new Function("require", "module", "exports", output.outputFiles[0].text)(
 
 function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflowRows) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://localhost",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,
@@ -85,7 +87,7 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
         versionId: "v",
         fromStatus: status,
         toStatus: status,
-        requestId: init.headers["X-Request-Id"],
+        requestId: new Headers(init.headers).get("X-Request-Id"),
         traceId: "trace",
         auditId: "audit",
         replayed: false,
@@ -112,7 +114,7 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
           node_num: node,
         }));
       result = {
-        requestId: init.headers["X-Request-Id"],
+        requestId: new Headers(init.headers).get("X-Request-Id"),
         operation: "SELECT",
         tables: ["agents_scm_plan_workflow_config"],
         total: rows.length,
@@ -150,7 +152,10 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
 }
 
 test("signed-out employee resubmission refuses before any network", async (t) => {
-  const business = new module.exports.Business({ geaBaseUrl: "https://localhost" });
+  const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
+    geaBaseUrl: "https://localhost",
+  });
   t.after(() => business.dispose());
   const f = { business };
   t.mock.method(globalThis, "fetch", async () => {
@@ -307,8 +312,8 @@ test("concurrent approval retries preserve one validated body and share the rece
   const f = fixture(t, async (_url, init) => {
     sent.push({
       body: init.body,
-      key: init.headers["Idempotency-Key"],
-      request: init.headers["X-Request-Id"],
+      key: new Headers(init.headers).get("Idempotency-Key"),
+      request: new Headers(init.headers).get("X-Request-Id"),
     });
     entered();
     await new Promise((done) => {
@@ -377,8 +382,8 @@ test("approval intent snapshots caller payload before awaiting source validation
     async (_url, init) => {
       bodies.push({
         body: init.body,
-        requestId: init.headers["X-Request-Id"],
-        key: init.headers["Idempotency-Key"],
+        requestId: new Headers(init.headers).get("X-Request-Id"),
+        key: new Headers(init.headers).get("Idempotency-Key"),
       });
       return Response.json({
         success: true,
@@ -418,7 +423,7 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
     entered = done;
   });
   const f = fixture(t, async (_url, init) => {
-    const old = init.headers["X-Access-Token"] === "fixture-token";
+    const old = new Headers(init.headers).get("X-Access-Token") === "fixture-token";
     if (old) {
       entered();
       await new Promise((done) => {
@@ -472,6 +477,7 @@ for (const [customerCode, returnedStatus, orderType] of [
   test(`public Business resubmits returned ${orderType} status ${returnedStatus} with exact customer ${customerCode}, employee login without service configuration and nullable audit receipt`, async (t) => {
     const role = { 7: "region", 8: "province", 9: "area" }[returnedStatus];
     const business = new module.exports.Business({
+      runtimeDir: tmpdir(),
       geaBaseUrl: "https://localhost",
       analysisAgentCode: "sales_forecast",
       requestTimeoutMs: 2000,
@@ -567,15 +573,15 @@ for (const [customerCode, returnedStatus, orderType] of [
       }
       if (path.endsWith("/sales-plan/plans/resubmit")) {
         writes++;
-        assert.equal(init.headers.Authorization, undefined);
-        assert.equal(init.headers["X-Access-Token"], "employee-token");
-        assert.equal(init.headers["X-Tenant-Id"], "1");
-        assert.equal(init.headers["X-Source-Version-Id"], undefined);
+        assert.equal(new Headers(init.headers).get("Authorization"), null);
+        assert.equal(new Headers(init.headers).get("X-Access-Token"), "employee-token");
+        assert.equal(new Headers(init.headers).get("X-Tenant-Id"), "1");
+        assert.equal(new Headers(init.headers).get("X-Source-Version-Id"), null);
         assert.deepEqual(JSON.parse(init.body).items, request.items);
         assert.equal(JSON.parse(init.body).submitterCode, version.submitter);
         assert.equal(JSON.parse(init.body).submitterName, undefined);
         assert.equal(JSON.parse(init.body).cust_code, Number(request.dealerCode));
-        const key = init.headers["Idempotency-Key"];
+        const key = new Headers(init.headers).get("Idempotency-Key");
         if (sentBodies.has(key)) assert.equal(init.body, sentBodies.get(key));
         else sentBodies.set(key, init.body);
         if (replyMode === "timeout") {
@@ -600,15 +606,15 @@ for (const [customerCode, returnedStatus, orderType] of [
             seq: 2,
             status: request.status,
             replayed: false,
-            requestId: init.headers["X-Request-Id"],
+            requestId: new Headers(init.headers).get("X-Request-Id"),
             traceId: "trace",
             auditId: null,
           },
         });
       }
       if (!path.endsWith("/sql/execute"))
-        assert.equal(init.headers["X-Access-Token"], "employee-token");
-      assert.equal(init.headers.Authorization, undefined);
+        assert.equal(new Headers(init.headers).get("X-Access-Token"), "employee-token");
+      assert.equal(new Headers(init.headers).get("Authorization"), null);
       let result;
       if (path.endsWith("/getPermCode"))
         result = { codeList: role ? [`sales-plan:plan:${role}-approve`] : [] };
@@ -645,7 +651,7 @@ for (const [customerCode, returnedStatus, orderType] of [
           node_num: node,
         }));
         result = {
-          requestId: init.headers["X-Request-Id"],
+          requestId: new Headers(init.headers).get("X-Request-Id"),
           operation: "SELECT",
           tables: ["agents_scm_plan_workflow_config"],
           total: rows.length,
@@ -1037,7 +1043,7 @@ test("correction readback preserves frozen amounts, all six node fields and serv
 test("unknown correction write retries its frozen body and key without revalidating changed source", async (t) => {
   const bodies = [];
   const f = correctionFixture(t, async (_url, init) => {
-    bodies.push({ key: init.headers["Idempotency-Key"], body: init.body });
+    bodies.push({ key: new Headers(init.headers).get("Idempotency-Key"), body: init.body });
     if (bodies.length === 1) throw new TypeError("isolated response lost");
     return Response.json({ success: true, result: { replayed: true } });
   });
@@ -1617,6 +1623,7 @@ test("employee resubmission readiness needs login and ignores absent or obsolete
   ]) {
     if (serviceAccounts) serviceAccounts.production.tenantId = "2";
     const business = new module.exports.Business({
+      runtimeDir: tmpdir(),
       geaBaseUrl: "https://localhost",
       serviceAccounts,
     });

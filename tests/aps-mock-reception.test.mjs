@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
@@ -197,6 +198,7 @@ test("actual APS mock registration and Manage route select its original resource
   ctx.agents = real.agents;
   ctx.sessionProjections = real.sessionProjections;
   business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://fixture.invalid",
     workbenchCapability: { enabled: false },
     requestTimeoutMs: 1000,

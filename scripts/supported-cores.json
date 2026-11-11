@@ -162,5 +162,33 @@
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
     "scope": "公司 Core：原生欢迎页与账号订阅复用 Host 认证，启动不依赖 HTTP 首页"
+  },
+  {
+    "head": "691896b52ad9fa7b8b75fa1ba2079223e422df79",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "cef48bd72840116ef59b29202f62a72e12feb3e1648061bc5eff7957297ea4ee",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：产品 Session 反馈提交接口、服务端回执与草稿失败保留"
+  },
+  {
+    "head": "56437408c8b4ef60413f537e1124cebc41906fd4",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "c96d468dd0aa7b857e93b02c062cc5bb3adbe1240decab0980b889aba74a637d",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：产品 Session 反馈接口及冷环境稳定依赖锁"
   }
 ]

@@ -33,6 +33,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
 const { Business, createCapabilityRegistry } = module.exports;
 function fixture(t, dms) {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://formal-gea.fixture",
     requestTimeoutMs: 1000,
     ...(dms ? { dms } : {}),
@@ -88,7 +89,7 @@ test("production uses the current verified GEA employee for every login", async 
     requests = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
     if (String(url).endsWith("/sys/user/getUserInfo")) {
-      assert.equal(init.headers["X-Tenant-Id"], "0");
+      assert.equal(new Headers(init.headers).get("X-Tenant-Id"), "0");
       return profile(business.auth.id);
     }
     requests.push({

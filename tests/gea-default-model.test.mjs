@@ -72,7 +72,7 @@ function fixture(
         },
       });
     if (url.endsWith("/models")) {
-      assert.equal(init.headers["X-GEA-Agent-Code"], "workbench");
+      assert.equal(new Headers(init.headers).get("X-GEA-Agent-Code"), "workbench");
       return modelResponse
         ? modelResponse()
         : Response.json({ data: models.map((id) => ({ id, name: id })) });

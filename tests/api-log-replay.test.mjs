@@ -75,6 +75,7 @@ async function fixture(t) {
   });
   const origin = "https://127.0.0.1:" + server.address().port;
   const business = new mod.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: origin,
     environment: "test",
     analysisAgentCode: "fixture",

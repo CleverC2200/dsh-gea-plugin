@@ -1,4 +1,5 @@
 import test from "node:test";
+import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -230,6 +231,11 @@ async function fixture(t, options = {}) {
     },
   };
   const business = {
+    capture: new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => "https://fixture.invalid",
+    ),
     config: { analysisAgentCode: "aps", runtimeDir: directory },
     status: () => ({
       environment: "test",

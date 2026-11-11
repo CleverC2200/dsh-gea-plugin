@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import type { CapturedRequest } from "./request-capture.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
@@ -221,7 +221,8 @@ export class GeaModelAdapter extends LlmAdapter {
     if (options.signal) this.requestOwners.set(options.signal, identity);
     identity.throwIfAborted();
     const startedAt = Date.now();
-    const requestId = randomUUID();
+    let requestId: string | undefined;
+    let captured: CapturedRequest | undefined;
     let responseReceivedMs: number | null = null;
     let textChars = 0;
     let responseDetails: ModelFailureDetails = {};
@@ -265,38 +266,44 @@ export class GeaModelAdapter extends LlmAdapter {
         );
       const requestBody = toGeaRequest(options);
       modelSecret = route.secret;
-      console.info(
-        JSON.stringify({
-          event: "GEA_MODEL_REQUEST",
-          requestId,
-          purpose: options.purpose ?? "conversation",
-          sessionId: options.sessionId,
-          consumerCode: route.agentCode,
-          model: options.model,
-          messageChars: JSON.stringify(requestBody.messages).length,
-          toolSchemaChars: JSON.stringify(requestBody.tools ?? []).length,
-          messageBreakdown: ["system", "user", "assistant", "tool"].map((role) => ({
-            role,
-            count: requestBody.messages.filter((m) => m.role === role).length,
-            chars: JSON.stringify(requestBody.messages.filter((m) => m.role === role)).length,
-          })),
-        }),
-      );
-      const response = await business.fetchExternal(route.baseUrl + "/chat/completions", {
-        method: "POST",
-        headers: {
-          Accept: "text/event-stream",
-          "Content-Type": "application/json",
-          ...attributionHeaders(),
-          Authorization: "Bearer " + route.secret,
-          "X-GEA-Agent-Code": route.agentCode,
-          "X-Request-Id": requestId,
-          "X-Trace-Id": requestId,
+      const response = await business.capture.observe(
+        () =>
+          business.fetchExternal(route.baseUrl + "/chat/completions", {
+            method: "POST",
+            headers: {
+              Accept: "text/event-stream",
+              "Content-Type": "application/json",
+              ...attributionHeaders(),
+              Authorization: "Bearer " + route.secret,
+              "X-GEA-Agent-Code": route.agentCode,
+            },
+            body: JSON.stringify(requestBody),
+            redirect: "error",
+            signal,
+          }),
+        (request) => {
+          if (request.row.requestType !== "MODEL") return;
+          captured = request;
+          requestId = request.row.requestId;
+          console.info(
+            JSON.stringify({
+              event: "GEA_MODEL_REQUEST",
+              requestId,
+              purpose: options.purpose ?? "conversation",
+              sessionId: options.sessionId,
+              consumerCode: route.agentCode,
+              model: options.model,
+              messageChars: JSON.stringify(requestBody.messages).length,
+              toolSchemaChars: JSON.stringify(requestBody.tools ?? []).length,
+              messageBreakdown: ["system", "user", "assistant", "tool"].map((role) => ({
+                role,
+                count: requestBody.messages.filter((m) => m.role === role).length,
+                chars: JSON.stringify(requestBody.messages.filter((m) => m.role === role)).length,
+              })),
+            }),
+          );
         },
-        body: JSON.stringify(requestBody),
-        redirect: "error",
-        signal,
-      });
+      );
       responseReceivedMs = Date.now() - startedAt;
       responseDetails = {
         httpStatus: response.status,
@@ -304,7 +311,9 @@ export class GeaModelAdapter extends LlmAdapter {
       };
       if (!response.ok) {
         if (response.status === 401) business.expireModelLogin();
-        throw await modelHttpError(response, route.agentCode, "模型推理", [route.secret]);
+        throw await modelHttpError(response, route.agentCode, "模型推理", [route.secret], (value) =>
+          business.capture.diagnostic(captured, "received", value),
+        );
       }
       if (!response.body) throw new Error("GEA_MODEL_HTTP_NO_BODY");
       stage = "流式读取";
@@ -318,6 +327,18 @@ export class GeaModelAdapter extends LlmAdapter {
           names: options.tools?.map((tool) => tool.name) ?? [],
         },
         () => watchdog.pulse(),
+        {
+          received: (text) => business.capture.diagnostic(captured, "received", text),
+          assembled: (value) => business.capture.diagnostic(captured, "assembled", value),
+          terminal: (state, error) => {
+            if (error) business.capture.fail(captured, error, signal);
+            else business.capture.finish(captured, state);
+            business.capture.diagnostic(captured, "terminal", {
+              state: captured?.row.state,
+              errorCode: captured?.row.errorCode,
+            });
+          },
+        },
       )) {
         if (chunk.type === "text-delta") textChars += chunk.text.length;
         if (chunk.type === "usage") {
@@ -347,7 +368,11 @@ export class GeaModelAdapter extends LlmAdapter {
           }),
         );
     };
-    const iterator = request();
+    const iterator = business.capture.iterate(
+      options.sessionId,
+      options.purpose ?? "模型推理",
+      request(),
+    );
     try {
       while (true) {
         const next = await watchdog.next(iterator);
@@ -356,6 +381,11 @@ export class GeaModelAdapter extends LlmAdapter {
         yield next.value;
       }
     } catch (error) {
+      business.capture.fail(captured, error, signal);
+      business.capture.diagnostic(captured, "terminal", {
+        state: captured?.row.state,
+        errorCode: captured?.row.errorCode,
+      });
       // 线上实测：模型请求断线时界面只有 `fetch failed` + UNKNOWN（undici 的真实原因在 cause 里）。
       // 统一翻成可读、带 code 的错误：连哪个 host、断在连接还是流式阶段、原因码是什么。
       const idle = timeoutOf(watchdog.signal, "GEA_MODEL_IDLE");
@@ -376,6 +406,7 @@ export class GeaModelAdapter extends LlmAdapter {
       const details = { ...failure.details, ...responseDetails };
       const serverRequestId = modelCorrelationId(details.requestId, [modelSecret]);
       const traceId = modelCorrelationId(details.traceId, [modelSecret]) ?? requestId;
+      const correlation = serverRequestId ?? requestId;
       console.info(
         JSON.stringify({
           event: "GEA_MODEL_FAILURE",
@@ -400,7 +431,7 @@ export class GeaModelAdapter extends LlmAdapter {
         `${converted.message} requestId=${serverRequestId ?? requestId} clientRequestId=${requestId} traceId=${traceId}`,
         failure.code,
         {
-          requestId: ProviderRequestId(serverRequestId ?? requestId),
+          ...(correlation ? { requestId: ProviderRequestId(correlation) } : {}),
           status: details.httpStatus,
           providerRetryAfterMs: details.providerRetryAfterMs,
           cause: converted,

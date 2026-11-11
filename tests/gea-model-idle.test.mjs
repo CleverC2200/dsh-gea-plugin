@@ -1,3 +1,4 @@
+import { GeaRequestCapture, GeaApiLogCenter } from "./helpers/feedback-capture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -31,7 +32,22 @@ function fixture(t, fetch, { mockTimers = true, access } = {}) {
   if (mockTimers) t.mock.timers.enable({ apis: ["setTimeout"] });
   t.mock.method(console, "info", () => {});
   const identity = new AbortController();
+  const capture = new GeaRequestCapture(
+    "",
+    () => undefined,
+    () => "https://fixture.invalid",
+  );
+  const apiLog = new GeaApiLogCenter(
+    () => "test",
+    undefined,
+    fetch,
+    undefined,
+    undefined,
+    undefined,
+    capture,
+  );
   const business = {
+    capture,
     config: {
       modelRequestTimeoutMs: 1000,
       maxSnapshotBytes: 100000,
@@ -45,7 +61,7 @@ function fixture(t, fetch, { mockTimers = true, access } = {}) {
       secret: "fixture-secret",
       agentCode: "fixture",
     }),
-    fetchExternal: fetch,
+    fetchExternal: apiLog.fetch,
   };
   return { adapter: new GeaModelAdapter(business, access), identity };
 }

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
@@ -22,7 +23,11 @@ new Function("require", "module", "exports", outputFiles[0].text)(
   compiled.exports,
 );
 const { Business, attachDesktopLogin } = compiled.exports;
-const config = { geaBaseUrl: "https://gea.example.test/gea-boot", requestTimeoutMs: 1000 };
+const config = {
+  runtimeDir: tmpdir(),
+  geaBaseUrl: "https://gea.example.test/gea-boot",
+  requestTimeoutMs: 1000,
+};
 const saved = {
   schema: 1,
   environment: "production",

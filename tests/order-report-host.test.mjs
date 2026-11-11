@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -37,6 +38,7 @@ const report = {
 };
 function business(t) {
   const value = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.example.test/gea-boot",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,

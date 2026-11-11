@@ -207,9 +207,25 @@ export async function* geaTextStream(
   signal?: AbortSignal,
   offered?: { names: readonly string[] },
   activity?: () => void,
+  capture?: {
+    received(text: string): void;
+    assembled(value: {
+      text: string;
+      reasoning: string;
+      tools: { id: string; name: string; arguments: string }[];
+      complete: boolean;
+    }): void;
+    terminal(state: "completed" | "failed" | "cancelled", error?: unknown): void;
+  },
 ): AsyncGenerator<StreamChunk> {
+  const observe = (action: () => void) => {
+    try {
+      action();
+    } catch {}
+  };
   const reader = body.getReader();
   let cancellation: Promise<void> | undefined;
+  let completed = false;
   const cancel = () => {
     cancellation ??= reader.cancel().catch(() => {
       // 已报错或已中止的响应可能拒绝取消；其读取过程已经报告了失败。
@@ -246,10 +262,14 @@ export async function* geaTextStream(
       signal?.throwIfAborted();
       const read = await reader.read();
       signal?.throwIfAborted();
-      parser.feed(read.done ? decoder.decode() : decoder.decode(read.value, { stream: true }));
+      const received = read.done ? decoder.decode() : decoder.decode(read.value, { stream: true });
+      if (received) observe(() => capture?.received(received));
+      parser.feed(received);
       for (const data of events.splice(0)) {
         signal?.throwIfAborted();
         if (data.trim() === "[DONE]" && terminal) {
+          completed = true;
+          observe(() => capture?.terminal("completed"));
           if (usage) yield { type: "usage", usage };
           yield finishChunk(terminal);
           return;
@@ -369,12 +389,21 @@ export async function* geaTextStream(
       }
       if (read.done) {
         if (!terminal) invalid("GEA_MODEL_INCOMPLETE_STREAM");
+        completed = true;
+        observe(() => capture?.terminal("completed"));
         if (usage) yield { type: "usage", usage };
         yield finishChunk(terminal);
         return;
       }
     }
+  } catch (error) {
+    observe(() => capture?.terminal(signal?.aborted ? "cancelled" : "failed", error));
+    throw error;
   } finally {
+    observe(() =>
+      capture?.assembled({ text, reasoning, tools: [...calls.values()], complete: completed }),
+    );
+    if (!completed) observe(() => capture?.terminal("cancelled", signal?.reason));
     signal?.removeEventListener("abort", onAbort);
     await cancel();
     reader.releaseLock();

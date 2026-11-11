@@ -127,7 +127,7 @@ test("only configured order01 actions use the current Host identity and fixed ba
     "https://gea.example/gea-boot/ai/order-fulfillment/confirmation/requests",
   );
   assert.deepEqual(JSON.parse(calls[1].init.body), selection);
-  assert.equal(calls[1].init.headers["X-Delegation-Token"], "delegated-token");
+  assert.equal(new Headers(calls[1].init.headers).get("X-Delegation-Token"), "delegated-token");
   assert.equal("X-Access-Token" in calls[1].init.headers, false);
   await orderSalesConfirmation({ operation: "lookup", selection }, owner, fetchImpl);
   assert.equal(calls.length, 3, "lookup reuses the same current-identity delegation");

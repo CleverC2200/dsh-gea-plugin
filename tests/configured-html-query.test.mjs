@@ -170,7 +170,7 @@ test("configured gateway transport preserves SQL-owned pagination without confli
     signal: s,
     fetch: async (url, init) => {
       requests.push(JSON.parse(init.body));
-      assert.equal(init.headers["X-Delegation-Token"], "private-fixture-token");
+      assert.equal(new Headers(init.headers).get("X-Delegation-Token"), "private-fixture-token");
       return Response.json({
         success: true,
         result: {

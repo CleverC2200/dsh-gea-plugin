@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -22,6 +23,7 @@ const image = "data:image/jpg;base64,c3ludGhldGlj";
 const user = { id: "user-1", username: "employee", realname: "测试用户", loginTenantId: 7 };
 function fixture(t, override = () => undefined) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: {
       production: "https://production.example/gea-boot",
       test: "https://test.example/gea-boot",
@@ -68,8 +70,8 @@ test("both login methods publish the same identity and revoke the token on logou
     captcha: "a1B2",
     checkKey: JSON.parse(request.init.body).checkKey,
   });
-  assert.equal(request.init.headers["X-Version"], "v3");
-  assert.equal(request.init.headers["X-Access-Token"], undefined);
+  assert.equal(new Headers(request.init.headers).get("X-Version"), "v3");
+  assert.equal(new Headers(request.init.headers).get("X-Access-Token"), null);
   assert.equal(passwordIdentity.user.tenantId, "7");
   assert.equal(f.business.desktopLoginSnapshot().auth.token, "fixture-login-token");
   assert.equal(JSON.stringify(passwordIdentity).includes("fixture-login-token"), false);
@@ -78,7 +80,7 @@ test("both login methods publish the same identity and revoke the token on logou
   assert.equal(f.business.desktopLoginSnapshot(), null);
   const logout = f.calls.find((call) => call.url.pathname.endsWith("/sys/logout"));
   assert.equal(logout.init.method, "POST");
-  assert.equal(logout.init.headers["X-Access-Token"], "fixture-login-token");
+  assert.equal(new Headers(logout.init.headers).get("X-Access-Token"), "fixture-login-token");
   const qr = await f.business.loginStart(signal(), { environment: "production" });
   await f.business.loginPoll({ loginId: qr.loginId }, signal());
   assert.deepEqual(f.business.status().user, passwordIdentity.user);

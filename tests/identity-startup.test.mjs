@@ -47,6 +47,8 @@ test("restored identity and account routes are ready while cold business resourc
       },
     },
     workbenchPages: { packages: () => [] },
+    sessionFeedback: { registerSubmit: () => () => {} },
+    agents: { get: () => undefined, currentInitiator: () => undefined },
     agentResources: {
       register: () => {
         entered.resolve();

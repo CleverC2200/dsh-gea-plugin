@@ -126,7 +126,9 @@ test("channel verifies release bytes, release hashes and durable tgz manifest be
   assert.equal((await stat(path)).mode & 0o777, 0o600);
   assert.equal(
     f.calls.every(
-      (c) => c.init.redirect === "error" && c.init.headers["X-Fixture-Read"] === "local-test",
+      (c) =>
+        c.init.redirect === "error" &&
+        new Headers(c.init.headers).get("X-Fixture-Read") === "local-test",
     ),
     true,
   );

@@ -32,7 +32,6 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
     allows: (sessionId: string) => cubeAllowed(ctx, business, sessionId),
     listTools: async (signal: AbortSignal) => {
       signal = AbortSignal.any([signal, business.identitySignal()]);
-      const attempted = new Set<string>();
       let failure: unknown;
       const discovered = new Map<string, GatewayMcpTool>();
       let available = false;
@@ -46,9 +45,9 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
             access.sourceSignal,
             ...(access.associationSignal ? [access.associationSignal] : []),
           ]);
-          if (attempted.has(consumer)) continue;
-          attempted.add(consumer);
-          const module = await business.moduleMcp(consumer, ownedSignal);
+          const module = await business.capture.run(agent.id, "MCP 工具发现", () =>
+            business.moduleMcp(consumer, ownedSignal),
+          );
           throwIfAborted(signal);
           if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, agent.id)))
             throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
@@ -74,79 +73,85 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
       name: string,
       args: Record<string, unknown>,
       signal: AbortSignal,
-    ) => {
-      const access = resolveCubeAccess(ctx, business, sessionId);
-      signal = AbortSignal.any([
-        signal,
-        access.identity,
-        access.sourceSignal,
-        ...(access.associationSignal ? [access.associationSignal] : []),
-      ]);
-      const consumer = access.consumerCode;
-      const stopped = business.turnStopped(sessionId);
-      if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
-      if (name === "inspect_cube_model") business.invalidateModuleMcp(consumer);
-      const scopedArgs =
-        name === "query_business_data" ? inheritModuleCubeScope(business, sessionId, args) : args;
-      const scopeSignature = moduleScopeSignature(business, sessionId);
-      const assertCurrent = () => {
-        throwIfAborted(signal);
-        if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
-          throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
-        const stopped = business.turnStopped(sessionId);
-        if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
-        if (
-          name === "query_business_data" &&
-          scopeSignature !== moduleScopeSignature(business, sessionId)
-        )
-          throw Error("GEA_PAGE_SCOPE_CHANGED: 查询期间页面范围已变，本次结果不用于新页面。");
-      };
-      let module = await business.moduleMcp(consumer, signal);
-      for (let attempt = 0; ; attempt++) {
-        try {
-          assertCurrent();
-          if (name === "weknora_ask") {
-            knowledgeArguments(name, args);
-            const catalog = await module.call("weknora_list_knowledge_bases", {}, signal);
-            assertCurrent();
-            knowledgeSelection(catalog, args);
+    ) =>
+      business.capture.retrying((retry) =>
+        business.capture.run(sessionId, "MCP " + name, async () => {
+          const access = resolveCubeAccess(ctx, business, sessionId);
+          signal = AbortSignal.any([
+            signal,
+            access.identity,
+            access.sourceSignal,
+            ...(access.associationSignal ? [access.associationSignal] : []),
+          ]);
+          const consumer = access.consumerCode;
+          const stopped = business.turnStopped(sessionId);
+          if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
+          if (name === "inspect_cube_model") business.invalidateModuleMcp(consumer);
+          const scopedArgs =
+            name === "query_business_data"
+              ? inheritModuleCubeScope(business, sessionId, args)
+              : args;
+          const scopeSignature = moduleScopeSignature(business, sessionId);
+          const assertCurrent = () => {
+            throwIfAborted(signal);
+            if (!sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId)))
+              throw Error("GEA_MCP_EXECUTION_OWNER_CHANGED");
+            const stopped = business.turnStopped(sessionId);
+            if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
+            if (
+              name === "query_business_data" &&
+              scopeSignature !== moduleScopeSignature(business, sessionId)
+            )
+              throw Error("GEA_PAGE_SCOPE_CHANGED: 查询期间页面范围已变，本次结果不用于新页面。");
+          };
+          let module = await business.moduleMcp(consumer, signal);
+          for (let attempt = 0; ; attempt++) {
+            try {
+              assertCurrent();
+              if (name === "weknora_ask") {
+                knowledgeArguments(name, args);
+                const catalog = await module.call("weknora_list_knowledge_bases", {}, signal);
+                assertCurrent();
+                knowledgeSelection(catalog, args);
+              }
+              const result = await module.call(name, scopedArgs, signal);
+              assertCurrent();
+              return name === "query_business_data"
+                ? moduleCubeScopeReceipt(business, sessionId, result)
+                : result;
+            } catch (error) {
+              const current =
+                !signal.aborted &&
+                cubeAllowed(ctx, business, sessionId) &&
+                sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId));
+              if (
+                attempt === 0 &&
+                current &&
+                error instanceof Error &&
+                "code" in error &&
+                (error.code === "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED" ||
+                  error.code === "AI_GATEWAY_SESSION_EXPIRED")
+              ) {
+                assertCurrent();
+                retry();
+                business.invalidateModuleMcp(consumer, module);
+                module = await business.moduleMcp(consumer, signal);
+                continue;
+              }
+              if (
+                name === "weknora_ask" &&
+                ((error instanceof Error && "code" in error && error.code === "GEA_MCP_HTTP_404") ||
+                  gatewaySessionExpired(error))
+              )
+                business.invalidateModuleMcp(consumer, module);
+              const expired = current
+                ? stopExpiredGateway(business, consumer, sessionId, error, module)
+                : undefined;
+              if (expired) throw expired;
+              throw readableError(error);
+            }
           }
-          const result = await module.call(name, scopedArgs, signal);
-          assertCurrent();
-          return name === "query_business_data"
-            ? moduleCubeScopeReceipt(business, sessionId, result)
-            : result;
-        } catch (error) {
-          const current =
-            !signal.aborted &&
-            cubeAllowed(ctx, business, sessionId) &&
-            sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId));
-          if (
-            attempt === 0 &&
-            current &&
-            error instanceof Error &&
-            "code" in error &&
-            (error.code === "AI_GATEWAY_SESSION_MAX_LIFETIME_EXCEEDED" ||
-              error.code === "AI_GATEWAY_SESSION_EXPIRED")
-          ) {
-            assertCurrent();
-            business.invalidateModuleMcp(consumer, module);
-            module = await business.moduleMcp(consumer, signal);
-            continue;
-          }
-          if (
-            name === "weknora_ask" &&
-            ((error instanceof Error && "code" in error && error.code === "GEA_MCP_HTTP_404") ||
-              gatewaySessionExpired(error))
-          )
-            business.invalidateModuleMcp(consumer, module);
-          const expired = current
-            ? stopExpiredGateway(business, consumer, sessionId, error, module)
-            : undefined;
-          if (expired) throw expired;
-          throw readableError(error);
-        }
-      }
-    },
+        }),
+      ),
   };
 }

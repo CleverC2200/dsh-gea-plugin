@@ -1,3 +1,5 @@
+import { retryingFetch } from "./http-attempt.ts";
+import { GeaRequestCapture, type CaptureConfig } from "./request-capture.ts";
 import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
 import { orderReportWithEdits } from "./order-report-edits.ts";
 import type { MemoryScope } from "../shared/memory-contract.ts";
@@ -136,6 +138,7 @@ export interface Deployment {
   modelRequestTimeoutMs: number;
   maxSnapshotBytes: number;
   runtimeDir: string;
+  feedbackCapture?: CaptureConfig;
   analysisMode: "receipt" | "model";
   analysisModel: string;
   analysisAgentCode: string;
@@ -752,7 +755,9 @@ export class Business {
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly modelMetadataRetries = new Map<string, { at: number; ids: string[] }>();
-  private readonly inventoryReads = new InventoryReadCache();
+  private readonly inventoryReads = new InventoryReadCache(Date.now, (value) =>
+    this.capture.clone(value),
+  );
   private readonly rejectedSqlLogins = new WeakMap<
     AbortSignal,
     { error: GeaResponseError; epoch: AbortController }
@@ -847,7 +852,58 @@ export class Business {
 
   readonly memory: PersonalMemoryGateway;
 
+  feedbackOwner() {
+    const auth = this.authenticated();
+    const identity = {
+      environment: this.environment,
+      base: this.base,
+      userId: auth.id,
+      tenantId: auth.tenantId,
+    };
+    if (!identity.userId) throw Error("GEA_IDENTITY_INCOMPLETE");
+    const signal = this.epoch.signal;
+    return {
+      identity: { ...identity, userId: identity.userId },
+      signal,
+      send: async (body: FormData, timeoutMs: number) => {
+        signal.throwIfAborted();
+        if (this.auth !== auth) throw Error("GEA_FEEDBACK_IDENTITY_MISMATCH");
+        const response = await this.apiLog.metadataFetch(identity.base + "/ai/feedback/reports", {
+          method: "POST",
+          headers: {
+            "X-Access-Token": auth.token,
+            "X-Tenant-Id": auth.tenantId,
+            Accept: "application/json",
+          },
+          body,
+          redirect: "error",
+          signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
+        });
+        signal.throwIfAborted();
+        return response;
+      },
+    };
+  }
+
+  readonly capture: GeaRequestCapture;
+
   constructor(readonly config: Deployment) {
+    this.capture = new GeaRequestCapture(
+      resolve(config.runtimeDir, "feedback-evidence"),
+      () => {
+        const auth = this.auth;
+        return auth?.id
+          ? {
+              environment: this.environment,
+              base: this.base,
+              userId: auth.id,
+              tenantId: auth.tenantId,
+            }
+          : undefined;
+      },
+      () => this.base,
+      config.feedbackCapture,
+    );
     this.memory = new PersonalMemoryGateway(config.memoryGatewayUrl, {
       allowPrivateHttp: config.memoryGatewayAllowPrivateHttp,
       timeoutMs: config.requestTimeoutMs,
@@ -916,6 +972,7 @@ export class Business {
         };
       },
       () => this.pageIdentityGeneration,
+      this.capture,
     );
     this.apiLogBatch = new ApiLogBatch(this.apiLog, this.debugRuns);
     this.gatewayRequests = new GatewayRequests({
@@ -1578,39 +1635,41 @@ export class Business {
     ]);
     let delegation = this.pluginDelegations.get("branch-inventory");
     if (delegation?.authToken !== auth.token) {
-      const requestId = randomUUID();
-      const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
-        method: "POST",
-        redirect: "error",
-        signal,
-        headers: {
-          "Content-Type": "application/json",
-          "X-Access-Token": auth.token,
-          "X-Tenant-Id": auth.tenantId,
-          "X-Request-Id": requestId,
-        },
-        body: JSON.stringify({
-          agentCode: "branch-inventory",
-          channel: "AI_PORTAL",
-          requestId,
-          conversationId: randomUUID(),
-        }),
+      delegation = await this.capture.prepare(async () => {
+        const requestId = randomUUID();
+        const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+          method: "POST",
+          redirect: "error",
+          signal,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Access-Token": auth.token,
+            "X-Tenant-Id": auth.tenantId,
+            "X-Request-Id": requestId,
+          },
+          body: JSON.stringify({
+            agentCode: "branch-inventory",
+            channel: "AI_PORTAL",
+            requestId,
+            conversationId: randomUUID(),
+          }),
+        });
+        const body = object(await response.json());
+        const session = object(body.result);
+        signal.throwIfAborted();
+        if (this.auth !== auth) throw Error("STALE_LOGIN");
+        if (
+          !response.ok ||
+          body.success !== true ||
+          object(session.accessDecision).allowed !== true ||
+          !text(session.delegationToken)
+        )
+          throw Error("GEA_PLUGIN_SESSION_REJECTED");
+        return { authToken: auth.token, delegationToken: text(session.delegationToken) };
       });
-      const body = object(await response.json());
-      const session = object(body.result);
-      signal.throwIfAborted();
-      if (this.auth !== auth) throw Error("STALE_LOGIN");
-      if (
-        !response.ok ||
-        body.success !== true ||
-        object(session.accessDecision).allowed !== true ||
-        !text(session.delegationToken)
-      )
-        throw Error("GEA_PLUGIN_SESSION_REJECTED");
-      delegation = { authToken: auth.token, delegationToken: text(session.delegationToken) };
       this.pluginDelegations.set("branch-inventory", delegation);
     }
-    const token = delegation!.delegationToken;
+    const token = this.capture.reuse(delegation!).delegationToken;
     const result = await fcStorage(
       config,
       { tenantId: auth.tenantId, userId: auth.id, warehouses: matches[0].warehouses },
@@ -1829,7 +1888,7 @@ export class Business {
     active.throwIfAborted();
     let response: Response;
     try {
-      response = await fetch(this.base + path, {
+      response = await this.apiLog.metadataFetch(this.base + path, {
         method: body === undefined ? "GET" : "POST",
         redirect: "error",
         signal: active,
@@ -2032,175 +2091,187 @@ export class Business {
     signal.throwIfAborted();
     const cached = this.modelRoutes.get(agentCode);
     const retry = this.modelMetadataRetries.get(agentCode);
-    if (cached && (!retry || Date.now() < retry.at)) return cached;
-    const failedMetadata: string[] = [];
-    const readMetadata = async (id: string): Promise<Record<string, unknown>> => {
-      try {
-        const metadata = object(
-          await this.gatewayRequests.read(
-            "/airag/airagModel/queryById?id=" + encodeURIComponent(id),
-            auth,
-            AbortSignal.any([signal, epoch]),
-          ),
-        );
-        return metadata.id === id ? metadata : {};
-      } catch (error) {
-        if (epoch.aborted || signal.aborted) throw error;
+    if (cached && (!retry || Date.now() < retry.at)) return this.capture.reuse(cached);
+    return this.capture.prepare(async () => {
+      if (cached) this.capture.reuse(cached);
+      const failedMetadata: string[] = [];
+      const readMetadata = async (id: string): Promise<Record<string, unknown>> => {
+        try {
+          const metadata = object(
+            await this.gatewayRequests.read(
+              "/airag/airagModel/queryById?id=" + encodeURIComponent(id),
+              auth,
+              AbortSignal.any([signal, epoch]),
+            ),
+          );
+          return metadata.id === id ? metadata : {};
+        } catch (error) {
+          if (epoch.aborted || signal.aborted) throw error;
+          if (
+            error instanceof Error &&
+            (["GEA_NETWORK_ERROR", "GEA_REQUEST_TIMEOUT"].includes(error.message) ||
+              ["SERVER", "TIMEOUT", "TRANSPORT", "RATE_LIMIT"].includes(modelFailure(error).code))
+          )
+            failedMetadata.push(id);
+          return {};
+        }
+      };
+      const cacheRoute = (route: GeaModelRoute): GeaModelRoute => {
+        epoch.throwIfAborted();
+        signal.throwIfAborted();
+        this.modelRoutes.set(agentCode, route);
+        if (failedMetadata.length)
+          this.modelMetadataRetries.set(agentCode, {
+            at: Date.now() + 30_000,
+            ids: failedMetadata,
+          });
+        else this.modelMetadataRetries.delete(agentCode);
+        return route;
+      };
+      if (cached && retry) {
+        const route = {
+          ...cached,
+          names: { ...cached.names },
+          contextWindows: { ...cached.contextWindows },
+        };
+        for (const id of retry.ids) {
+          const metadata = await readMetadata(id);
+          const capacity = modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
+          if (capacity !== undefined) route.contextWindows[id] ??= capacity;
+          const label = metadata.name || metadata.modelName;
+          if (
+            cached.names[id] === "GEA 模型（名称未提供）" &&
+            typeof label === "string" &&
+            label.trim() &&
+            label.length <= 256
+          )
+            route.names[id] = label.trim();
+        }
+        return cacheRoute(route);
+      }
+      const credentialAccessError = (error: unknown): never => {
         if (
           error instanceof Error &&
-          (["GEA_NETWORK_ERROR", "GEA_REQUEST_TIMEOUT"].includes(error.message) ||
-            ["SERVER", "TIMEOUT", "TRANSPORT", "RATE_LIMIT"].includes(modelFailure(error).code))
+          ((error instanceof GeaResponseError && error.details.httpStatus === 403) ||
+            error.message === "GEA_MODEL_HTTP_403")
         )
-          failedMetadata.push(id);
-        return {};
-      }
-    };
-    const cacheRoute = (route: GeaModelRoute): GeaModelRoute => {
-      epoch.throwIfAborted();
-      signal.throwIfAborted();
-      this.modelRoutes.set(agentCode, route);
-      if (failedMetadata.length)
-        this.modelMetadataRetries.set(agentCode, { at: Date.now() + 30_000, ids: failedMetadata });
-      else this.modelMetadataRetries.delete(agentCode);
-      return route;
-    };
-    if (cached && retry) {
-      const route = {
-        ...cached,
-        names: { ...cached.names },
-        contextWindows: { ...cached.contextWindows },
+          throw Object.assign(
+            Error(`${error.message}。当前账号无权访问 GEA 模型凭据，请联系管理员开通权限。`),
+            {
+              code: error instanceof GeaResponseError ? error.code : "GEA_MODEL_HTTP_403",
+              ...(error instanceof GeaResponseError ? { details: error.details } : {}),
+            },
+          );
+        throw error;
       };
-      for (const id of retry.ids) {
-        const metadata = await readMetadata(id);
-        const capacity = modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
-        if (capacity !== undefined) route.contextWindows[id] ??= capacity;
-        const label = metadata.name || metadata.modelName;
-        if (
-          cached.names[id] === "GEA 模型（名称未提供）" &&
-          typeof label === "string" &&
-          label.trim() &&
-          label.length <= 256
-        )
-          route.names[id] = label.trim();
-      }
-      return cacheRoute(route);
-    }
-    const credentialAccessError = (error: unknown): never => {
-      if (
-        error instanceof Error &&
-        ((error instanceof GeaResponseError && error.details.httpStatus === 403) ||
-          error.message === "GEA_MODEL_HTTP_403")
-      )
-        throw Object.assign(
-          Error(`${error.message}。当前账号无权访问 GEA 模型凭据，请联系管理员开通权限。`),
-          {
-            code: error instanceof GeaResponseError ? error.code : "GEA_MODEL_HTTP_403",
-            ...(error instanceof GeaResponseError ? { details: error.details } : {}),
-          },
-        );
-      throw error;
-    };
-    const credentialResult = object(
-      await this.gatewayRequests
-        .read(
-          "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
+      const credentialResult = object(
+        await this.gatewayRequests
+          .read(
+            "/aidata/user-agent-credential/my/list?pageNo=1&pageSize=10",
+            auth,
+            AbortSignal.any([signal, epoch]),
+            false,
+          )
+          .catch(credentialAccessError),
+      );
+      const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
+      if (records.length > 1) throw new Error("GEA_MODEL_CREDENTIAL_AMBIGUOUS");
+      const credential = records[0] ? object(records[0]) : undefined;
+      if (!credential)
+        throw Object.assign(Error("当前账号尚未开通 GEA 模型权限，请联系管理员开通。"), {
+          code: "GEA_MODEL_CREDENTIAL_MISSING",
+        });
+      const status = credential.status;
+      if (status === "DISABLED" || status === "REVOKED")
+        throw Object.assign(Error("当前账号的 GEA 模型权限已停用，请联系管理员恢复。"), {
+          code: "GEA_MODEL_CREDENTIAL_DISABLED",
+        });
+      const credentialId = text(credential.credentialId ?? credential.id);
+      const claim = await this.gatewayRequests
+        .claim(
+          "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
           auth,
           AbortSignal.any([signal, epoch]),
           false,
         )
-        .catch(credentialAccessError),
-    );
-    const records = Array.isArray(credentialResult.records) ? credentialResult.records : [];
-    if (records.length > 1) throw new Error("GEA_MODEL_CREDENTIAL_AMBIGUOUS");
-    const credential = records[0] ? object(records[0]) : undefined;
-    if (!credential)
-      throw Object.assign(Error("当前账号尚未开通 GEA 模型权限，请联系管理员开通。"), {
-        code: "GEA_MODEL_CREDENTIAL_MISSING",
-      });
-    const status = credential.status;
-    if (status === "DISABLED" || status === "REVOKED")
-      throw Object.assign(Error("当前账号的 GEA 模型权限已停用，请联系管理员恢复。"), {
-        code: "GEA_MODEL_CREDENTIAL_DISABLED",
-      });
-    const credentialId = text(credential.credentialId ?? credential.id);
-    const claim = await this.gatewayRequests
-      .claim(
-        "/aidata/user-agent-credential/my/claim?id=" + encodeURIComponent(credentialId),
-        auth,
-        AbortSignal.any([signal, epoch]),
-        false,
-      )
-      .catch(credentialAccessError);
-    const claimed = object(claim);
-    if (String(claimed.credentialId ?? "") !== credentialId)
-      throw new Error("GEA_MODEL_CREDENTIAL_MISMATCH");
-    if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
-      throw Object.assign(Error("当前账号的 GEA 模型凭据不可用，请联系管理员检查权限。"), {
-        code: "GEA_MODEL_CREDENTIAL_UNAVAILABLE",
-      });
-    const base = new URL(text(claimed.baseUrl));
-    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash)
-      throw new Error("GEA_MODEL_BASE_URL_INVALID");
-    const baseUrl = base.href.replace(/\/$/, "");
-    const secret = text(claimed.secret);
-    let response: Response;
-    try {
-      response = await this.apiLog.fetch(baseUrl + "/models", {
-        headers: {
-          Accept: "application/json",
-          Authorization: "Bearer " + secret,
-          "X-GEA-Agent-Code": agentCode,
-        },
-        redirect: "error",
-        signal: AbortSignal.any([signal, epoch, AbortSignal.timeout(this.config.requestTimeoutMs)]),
-      });
-    } catch {
-      throw new Error("GEA_MODEL_NETWORK_ERROR");
-    }
-    if (!response.ok) {
-      if (response.status === 401) this.clearLogin(true);
-      throw await modelHttpError(response, agentCode, "模型列表读取", [secret, auth.token]);
-    }
-    const modelsPayload = object(await response.json());
-    if (!Array.isArray(modelsPayload.data)) throw new Error("GEA_MODEL_INVALID_RESPONSE");
-    const models = modelsPayload.data.map((entry) =>
-      typeof entry === "string" ? entry : text(object(entry).id),
-    );
-    if (!models.length)
-      throw Object.assign(Error("当前账号没有可用的 GEA 模型，请联系管理员配置模型权限。"), {
-        code: "GEA_MODEL_EMPTY",
-      });
-    const names: Record<string, string> = {};
-    const contextWindows: Record<string, number> = {};
-    for (const id of new Set(models)) {
-      const item = modelsPayload.data.find(
-        (entry: unknown) => typeof entry === "object" && entry !== null && object(entry).id === id,
-      );
-      const entry = item && typeof item === "object" ? object(item) : {};
-      let capacity = modelContextWindow(entry);
-      let label = entry.name;
-      const hasLabel = typeof label === "string" && label.trim();
-      if (!hasLabel || capacity === undefined) {
-        const metadata = await readMetadata(id);
-        if (!hasLabel) label = metadata.name || metadata.modelName;
-        capacity ??= modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
+        .catch(credentialAccessError);
+      const claimed = object(claim);
+      if (String(claimed.credentialId ?? "") !== credentialId)
+        throw new Error("GEA_MODEL_CREDENTIAL_MISMATCH");
+      if (!["ACTIVE", "ENABLED"].includes(String(claimed.status)))
+        throw Object.assign(Error("当前账号的 GEA 模型凭据不可用，请联系管理员检查权限。"), {
+          code: "GEA_MODEL_CREDENTIAL_UNAVAILABLE",
+        });
+      const base = new URL(text(claimed.baseUrl));
+      if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash)
+        throw new Error("GEA_MODEL_BASE_URL_INVALID");
+      const baseUrl = base.href.replace(/\/$/, "");
+      this.capture.allowModelBase(baseUrl);
+      const secret = text(claimed.secret);
+      let response: Response;
+      try {
+        response = await this.apiLog.fetch(baseUrl + "/models", {
+          headers: {
+            Accept: "application/json",
+            Authorization: "Bearer " + secret,
+            "X-GEA-Agent-Code": agentCode,
+          },
+          redirect: "error",
+          signal: AbortSignal.any([
+            signal,
+            epoch,
+            AbortSignal.timeout(this.config.requestTimeoutMs),
+          ]),
+        });
+      } catch {
+        throw new Error("GEA_MODEL_NETWORK_ERROR");
       }
-      capacity ??= officialModelContextWindow(entry);
-      if (capacity !== undefined) contextWindows[id] = capacity;
-      names[id] =
-        typeof label === "string" && label.trim() && label.length <= 256
-          ? label.trim()
-          : "GEA 模型（名称未提供）";
-    }
-    const route = {
-      baseUrl,
-      secret,
-      agentCode,
-      models: [...new Set(models)],
-      names,
-      contextWindows,
-    };
-    return cacheRoute(route);
+      if (!response.ok) {
+        if (response.status === 401) this.clearLogin(true);
+        throw await modelHttpError(response, agentCode, "模型列表读取", [secret, auth.token]);
+      }
+      const modelsPayload = object(await response.json());
+      if (!Array.isArray(modelsPayload.data)) throw new Error("GEA_MODEL_INVALID_RESPONSE");
+      const models = modelsPayload.data.map((entry) =>
+        typeof entry === "string" ? entry : text(object(entry).id),
+      );
+      if (!models.length)
+        throw Object.assign(Error("当前账号没有可用的 GEA 模型，请联系管理员配置模型权限。"), {
+          code: "GEA_MODEL_EMPTY",
+        });
+      const names: Record<string, string> = {};
+      const contextWindows: Record<string, number> = {};
+      for (const id of new Set(models)) {
+        const item = modelsPayload.data.find(
+          (entry: unknown) =>
+            typeof entry === "object" && entry !== null && object(entry).id === id,
+        );
+        const entry = item && typeof item === "object" ? object(item) : {};
+        let capacity = modelContextWindow(entry);
+        let label = entry.name;
+        const hasLabel = typeof label === "string" && label.trim();
+        if (!hasLabel || capacity === undefined) {
+          const metadata = await readMetadata(id);
+          if (!hasLabel) label = metadata.name || metadata.modelName;
+          capacity ??= modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
+        }
+        capacity ??= officialModelContextWindow(entry);
+        if (capacity !== undefined) contextWindows[id] = capacity;
+        names[id] =
+          typeof label === "string" && label.trim() && label.length <= 256
+            ? label.trim()
+            : "GEA 模型（名称未提供）";
+      }
+      const route = {
+        baseUrl,
+        secret,
+        agentCode,
+        models: [...new Set(models)],
+        names,
+        contextWindows,
+      };
+      return cacheRoute(route);
+    });
   }
 
   /** 重启二维码登录，并使旧身份留下的所有选择失效。 */
@@ -2497,13 +2568,18 @@ export class Business {
     const identity = this.epoch.signal;
     signal.throwIfAborted();
     const cached = this.moduleMcpCache.get(consumerCode);
-    if (cached && cached.token === auth.token) return cached.module;
-    const transport = await this.openMcpConnection({ consumerType: "AGENT", consumerCode }, signal);
-    const module = await openGatewayMcp(transport, signal);
-    identity.throwIfAborted();
-    signal.throwIfAborted();
-    this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
-    return module;
+    if (cached && cached.token === auth.token) return this.capture.reuse(cached.module);
+    return this.capture.prepare(async () => {
+      const transport = await this.openMcpConnection(
+        { consumerType: "AGENT", consumerCode },
+        signal,
+      );
+      const module = await openGatewayMcp(transport, signal);
+      identity.throwIfAborted();
+      signal.throwIfAborted();
+      this.moduleMcpCache.set(consumerCode, { token: auth.token, module });
+      return module;
+    });
   }
 
   private readonly turnReplays = new Map<string, { text: string; at: number }>();
@@ -3000,71 +3076,74 @@ export class Business {
         freshAfter,
         inventoryReadCacheTtl(consumerCode),
       );
-      if (cached !== undefined) return cached;
+      if (cached !== undefined) return this.capture.reuse(cached);
     }
     const getDelegation = async () => {
       const cached = this.pluginDelegations.get(consumerCode);
-      if (cached?.authToken === auth.token) return cached;
+      if (cached?.authToken === auth.token) return this.capture.reuse(cached);
       await this.inventoryReads.share(
         identity,
         JSON.stringify(["sql-delegation", consumerCode]),
         caller,
-        async (requestSignal) => {
-          const requestId = randomUUID();
-          const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
-            method: "POST",
-            redirect: "error",
-            signal: requestSignal,
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-              "X-Access-Token": auth.token,
-              "X-Tenant-Id": auth.tenantId,
-              "X-Request-Id": requestId,
-            },
-            body: JSON.stringify({
-              agentCode: consumerCode,
-              channel: "AI_PORTAL",
-              requestId,
-              conversationId: randomUUID(),
-            }),
-          });
-          if (!response.ok) {
-            const error = await geaResponseError(response, [auth.token]);
-            requestSignal.throwIfAborted();
-            if (response.status === 401 && this.auth?.token === auth.token) {
-              this.clearLogin(true);
-              this.rejectedSqlLogins.set(identity, { error, epoch: this.epoch });
+        async (requestSignal) =>
+          this.capture.prepare(async () => {
+            const requestId = randomUUID();
+            const response = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+              method: "POST",
+              redirect: "error",
+              signal: requestSignal,
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                "X-Access-Token": auth.token,
+                "X-Tenant-Id": auth.tenantId,
+                "X-Request-Id": requestId,
+              },
+              body: JSON.stringify({
+                agentCode: consumerCode,
+                channel: "AI_PORTAL",
+                requestId,
+                conversationId: randomUUID(),
+              }),
+            });
+            if (!response.ok) {
+              const error = await geaResponseError(response, [auth.token]);
+              requestSignal.throwIfAborted();
+              if (response.status === 401 && this.auth?.token === auth.token) {
+                this.clearLogin(true);
+                this.rejectedSqlLogins.set(identity, { error, epoch: this.epoch });
+              }
+              throw error;
             }
-            throw error;
-          }
-          const body = object(await response.json());
-          requestSignal.throwIfAborted();
-          if (this.auth !== auth) throw Error("STALE_LOGIN");
-          const result = object(body.result);
-          if (
-            body.success !== true ||
-            object(result.accessDecision).allowed !== true ||
-            typeof result.delegationToken !== "string" ||
-            !result.delegationToken
-          )
-            throw new Error("GEA_PLUGIN_SESSION_REJECTED");
-          const delegation = {
-            authToken: auth.token,
-            delegationToken: result.delegationToken,
-          };
-          this.pluginDelegations.set(consumerCode, delegation);
-          requestSignal.throwIfAborted();
-          return true;
-        },
+            const body = object(await response.json());
+            requestSignal.throwIfAborted();
+            if (this.auth !== auth) throw Error("STALE_LOGIN");
+            const result = object(body.result);
+            if (
+              body.success !== true ||
+              object(result.accessDecision).allowed !== true ||
+              typeof result.delegationToken !== "string" ||
+              !result.delegationToken
+            )
+              throw new Error("GEA_PLUGIN_SESSION_REJECTED");
+            const delegation = {
+              authToken: auth.token,
+              delegationToken: result.delegationToken,
+            };
+            this.pluginDelegations.set(consumerCode, delegation);
+            requestSignal.throwIfAborted();
+            return delegation;
+          }),
       );
       signal.throwIfAborted();
       const delegation = this.pluginDelegations.get(consumerCode);
       if (delegation?.authToken !== auth.token) throw Error("GEA_PLUGIN_SESSION_REJECTED");
-      return delegation;
+      return this.capture.reuse(delegation);
     };
+    const http = retryingFetch(this.apiLog.fetch);
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt) http.retry();
         this.sqlReadLimit?.assertAvailable(consumerCode);
         const delegation = await getDelegation();
         try {
@@ -3072,7 +3151,7 @@ export class Business {
           const transport = {
             endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
             token: delegation.delegationToken,
-            fetch: this.apiLog.fetch,
+            fetch: http.fetch,
             signal,
             limit: this.sqlReadLimit,
           };
@@ -3132,9 +3211,17 @@ export class Business {
                 } as ConfiguredSqlRequest)
               : await readHtmlQuery(pagedQuery, { ...transport, signal: readSignal });
           const perform = (readSignal: AbortSignal) =>
-            cacheable && recoverEmptySnapshot
-              ? recoverInventorySnapshot(() => read(readSignal), readSignal)
-              : read(readSignal);
+            this.capture.prepare(() => {
+              this.capture.reuse(delegation);
+              let repeated = false;
+              return cacheable && recoverEmptySnapshot
+                ? recoverInventorySnapshot(() => {
+                    if (repeated) http.retry();
+                    repeated = true;
+                    return read(readSignal);
+                  }, readSignal)
+                : read(readSignal);
+            });
           const shareRead =
             cacheable &&
             configured &&
@@ -3158,7 +3245,7 @@ export class Business {
               recoverEmptySnapshot,
               readStartedAt,
             );
-          return result;
+          return this.capture.reuse(result);
         } catch (error) {
           if ((error as { code?: string })?.code === "GEA_GATEWAY_SESSION_REJECTED") {
             if (this.pluginDelegations.get(consumerCode) === delegation)

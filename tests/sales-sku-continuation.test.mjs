@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -27,6 +28,7 @@ const rows = Array.from({ length: 23 }, (_, i) => ({
 }));
 function fixture(t, values = rows, intercept) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.fixture",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,
