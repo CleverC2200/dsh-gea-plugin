@@ -42,3 +42,5 @@ corepack pnpm run package:desktop:mac /absolute/company-core /absolute/gea /abso
 App 在签名前写入公司更新地址 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/mac-arm64/`；DMG 下载继续使用公司 `client-release/raw/`。不接入上游 Core 的更新或强制更新服务。正式分发必须使用[统一交付入口](../desktop-release.md)，同时发布安装包和完整更新载荷，不能只上传 DMG。公网发布与实际客户端安装更新分别验收。
 
 旧 App 缺少 `app-update.yml` 时需要先手动安装新签名、公证 DMG，后续才可应用内下载、验签、替换和重启。代码合并、签名检查、Apple 公证、Gatekeeper、真实设备升级及正式分发分别记录，公证排队和本机隔离源测试均不代表已完成公网交付。
+
+公司主进程从独立目录中的 `main.js` 以目录 FileSet 写入 ASAR 的 `lib/`；正式封装后核该入口及 Core 运行时摘要，缺失即停止出包。
