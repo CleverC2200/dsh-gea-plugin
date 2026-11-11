@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { ciCores } from "../scripts/ci-core-policy.mjs";
 
-const rc2 = "9111f88ddafc1a2a7b8a373ecb44de54b16895a1";
+const rc2 = "0accab310546c1bc8d3ad46b8803dcbcfaa02477";
 const alpha = "5badb15009ae1756c3afe0ae0cef1faafc290ccc";
 
 test("required and compatibility select disjoint company and upstream Core inputs", () => {
