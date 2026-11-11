@@ -16,7 +16,7 @@ import {
 } from "./plugin-update-controller.ts";
 import { readHostPluginModules } from "./plugin-update-runtime.ts";
 import { readPluginUpdateCore } from "./plugin-update-core.ts";
-import { companyPackageNames } from "../shared/plugin-release.mjs";
+import { companyPackageNames, updatablePackageNames } from "../shared/plugin-release.mjs";
 import {
   parseUpdateClientReport,
   updateObject,
@@ -244,7 +244,7 @@ export function mountPluginUpdates(
                 Object.keys(payload).length !== 1 ||
                 !Array.isArray(payload.plans) ||
                 !payload.plans.length ||
-                payload.plans.length > companyPackageNames.length
+                payload.plans.length > updatablePackageNames.length
               )
                 throw Error("UPDATE_REQUEST_INVALID");
               const plans = payload.plans.map((rawPlan) => {

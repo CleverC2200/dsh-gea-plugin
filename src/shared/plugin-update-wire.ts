@@ -1,5 +1,9 @@
 import { parseUpdateProblem } from "./plugin-update-diagnostics.ts";
-import { companyPackageNames, type CompanyPackageName } from "./plugin-release.mjs";
+import {
+  companyPackageNames,
+  updatablePackageNames,
+  type UpdatablePackageName,
+} from "./plugin-release.mjs";
 import type { PluginPackageStamp, PluginUpdateRow } from "./plugin-update-state.ts";
 
 export function updateObject(value: unknown): Record<string, unknown> {
@@ -7,12 +11,15 @@ export function updateObject(value: unknown): Record<string, unknown> {
     throw Error("UPDATE_REQUEST_INVALID");
   return value as Record<string, unknown>;
 }
-export function updatePackageName(value: unknown): CompanyPackageName {
-  const name = companyPackageNames.find((name) => name === value);
+export function updatePackageName(value: unknown): UpdatablePackageName {
+  const name = updatablePackageNames.find((name) => name === value);
   if (!name) throw Error("UPDATE_PACKAGE_INVALID");
   return name;
 }
-export function compiledPackageStamp(value: unknown, name: CompanyPackageName): PluginPackageStamp {
+export function compiledPackageStamp(
+  value: unknown,
+  name: UpdatablePackageName,
+): PluginPackageStamp {
   const stamp = updateObject(value);
   if (
     Object.keys(stamp).length !== 2 ||
@@ -61,7 +68,7 @@ export function parseUpdateClientReport(value: unknown): UpdateClientReport {
       (value) => typeof value === "string" && value.length > 0 && value.length <= 200,
     ) ||
     !Array.isArray(report.modules) ||
-    report.modules.length > 3
+    report.modules.length > updatablePackageNames.length
   )
     throw Error("UPDATE_REQUEST_INVALID");
   const modules = report.modules.map((raw) => {
@@ -136,7 +143,8 @@ export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
     Number(value.pollIntervalMs) < 1000 ||
     Number(value.pollIntervalMs) > 30000 ||
     !Array.isArray(value.items) ||
-    value.items.length !== 3
+    value.items.length < companyPackageNames.length ||
+    value.items.length > updatablePackageNames.length
   )
     throw Error("UPDATE_STATUS_INVALID");
   const items = value.items.map((raw) => {
@@ -155,7 +163,11 @@ export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
       ...(row.problem === undefined ? {} : { problem: parseUpdateProblem(row.problem) }),
     };
   });
-  if (new Set(items.map((row) => row.packageName)).size !== 3) throw Error("UPDATE_STATUS_INVALID");
+  if (
+    new Set(items.map((row) => row.packageName)).size !== items.length ||
+    !companyPackageNames.every((name) => items.some((row) => row.packageName === name))
+  )
+    throw Error("UPDATE_STATUS_INVALID");
   let companyUpdate: CompanyUpdateStatus | null = null;
   if (value.companyUpdate !== undefined && value.companyUpdate !== null) {
     const company = updateObject(value.companyUpdate);

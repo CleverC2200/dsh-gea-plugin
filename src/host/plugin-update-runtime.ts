@@ -2,17 +2,18 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-app-boot";
 import { realpath } from "node:fs/promises";
-import { companyPackageNames } from "../shared/plugin-release.mjs";
+import { updatablePackageNames, personalMemoryPackageName } from "../shared/plugin-release.mjs";
 import { compiledPackageStamp, updateObject } from "../shared/plugin-update-wire.ts";
 import type { RuntimePackageProof } from "../shared/plugin-update-state.ts";
 
 /** Read already-mounted namespaces using their public Loader import and callback identity. */
 export async function readHostPluginModules(ctx: Context): Promise<RuntimePackageProof[]> {
   const proofs: RuntimePackageProof[] = [];
-  for (const name of companyPackageNames) {
+  for (const name of updatablePackageNames) {
     const matches = [...ctx.loader.entries()].filter(
       (entry) => entry.options.name === name && !entry.disabled,
     );
+    if (name === personalMemoryPackageName && !matches.length) continue;
     let proof: RuntimePackageProof = {
       name,
       resolvedDir: "",
@@ -44,11 +45,14 @@ export async function readHostPluginModules(ctx: Context): Promise<RuntimePackag
         proof = {
           ...proof,
           resolvedDir,
-          host: {
-            kind: "active",
-            stamp: compiledPackageStamp(namespace.pluginPackageVersion, name),
-            identity: `${entry.id}:${fiber.uid}`,
-          },
+          host:
+            name === personalMemoryPackageName && namespace.pluginPackageVersion === undefined
+              ? { kind: "unversioned", identity: `${entry.id}:${fiber.uid}` }
+              : {
+                  kind: "active",
+                  stamp: compiledPackageStamp(namespace.pluginPackageVersion, name),
+                  identity: `${entry.id}:${fiber.uid}`,
+                },
         };
       } catch {
         proof = { ...proof, host: { kind: "unverified", reason: "HOST_MODULE_PROOF_UNAVAILABLE" } };

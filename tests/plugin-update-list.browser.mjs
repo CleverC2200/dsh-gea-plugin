@@ -15,6 +15,7 @@ const names = [
   "@cleverc2200/dsh-agent-workbench",
   "dsh-agent-manage",
   "@cleverc2200/gea-dsh-prototype",
+  "@cleverc2200/dsh-personal-memory",
 ];
 
 test("official installed list opens the shared update panel for suite actions and restart", async (t) => {
@@ -153,7 +154,7 @@ test("official installed list opens the shared update panel for suite actions an
       throw error;
     });
   const cards = page.locator("[data-plugin-package]");
-  assert.equal(await cards.count(), 3);
+  assert.equal(await cards.count(), names.length);
   for (const name of ["dsh-agent-workbench", "dsh-agent-manage", "gea-dsh-prototype"])
     assert.equal(await page.getByRole("button", { name: `查看 ${name}`, exact: true }).count(), 1);
   assert.equal(await page.getByRole("button", { name: /@cleverc2200/ }).count(), 0);

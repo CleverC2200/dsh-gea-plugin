@@ -172,6 +172,33 @@ test("missing signed source and Core provenance expose blocked routes without ru
   assert.equal(handlers.size, 0);
 });
 
+test("only an actually active legacy personal memory Loader entry can bootstrap its update", async (t) => {
+  const { readHostPluginModules } = await subject(t, "src/host/plugin-update-runtime.ts");
+  const memory = "@cleverc2200/dsh-personal-memory";
+  const root = await mkdtemp(join(tmpdir(), "legacy-memory-loader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const pkg = join(root, "node_modules", memory);
+  await mkdir(pkg, { recursive: true });
+  await writeFile(join(root, "package.json"), "{}");
+  await writeFile(
+    join(pkg, "package.json"),
+    JSON.stringify({ name: memory, version: "0.1.1", type: "module", exports: "./host.js" }),
+  );
+  await writeFile(join(pkg, "host.js"), "export function apply(){}\n");
+  const ctx = new Context();
+  t.after(() => ctx.fiber.dispose());
+  await ctx.plugin(Loader, { baseUrl: pathToFileURL(join(root, "package.json")).href });
+  await ctx.plugin(PluginPackages);
+  await ctx.loader.create({ id: "memory", name: memory });
+  await ctx.loader.await();
+  const proof = (await readHostPluginModules(ctx)).find((row) => row.name === memory);
+  assert.equal(proof.host.kind, "unversioned");
+  assert.ok(proof.host.identity);
+  await ctx.loader.resolve("memory").fiber.dispose();
+  const inactive = (await readHostPluginModules(ctx)).find((row) => row.name === memory);
+  assert.ok(!inactive || inactive.host.kind === "unverified");
+});
+
 test("client observations read materialized exports rather than the newer desired graph", async (t) => {
   const { readClientPluginModules } = await subject(t, "src/plugin-updates-client.ts");
   const { ClientModuleSystem } = await import(
