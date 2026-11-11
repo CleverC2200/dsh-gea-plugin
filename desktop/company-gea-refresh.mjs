@@ -397,9 +397,9 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
     if (
       update.schema !== 2 ||
       !Array.isArray(update.targets) ||
-      update.targets.length !== 2 ||
+      ![2, companyPackageNames.length].includes(update.targets.length) ||
       !companyPackageNames
-        .filter((name) => name !== gea)
+        .filter((name) => update.targets.length === companyPackageNames.length || name !== gea)
         .every((name) => update.targets.filter((row) => row?.packageName === name).length === 1)
     )
       return preservedPending;
@@ -434,7 +434,14 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
   }
   let pendingRecovery;
   if (pending) {
-    if (companyReleaseIndex(gea, plan.from) >= companyReleaseIndex(gea, plan.to))
+    if (
+      update.targets.length === 2
+        ? companyReleaseIndex(gea, plan.from) >= companyReleaseIndex(gea, plan.to)
+        : !plan.targets.some(
+            (row) =>
+              companyReleaseIndex(row.name, row.from) < companyReleaseIndex(row.name, row.to),
+          )
+    )
       return preservedPending;
     for (const target of update.targets) {
       const bundled = manifest.packages.find((row) => row.name === target.packageName);

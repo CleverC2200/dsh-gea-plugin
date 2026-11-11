@@ -203,7 +203,11 @@ test("a pending restart defers bundled refresh while strict installation stays b
   assert.ok(next.cleanup);
 });
 
-async function pendingCompanions(t, bundledVersions = ["0.1.51", "0.6.3-company.47", "0.0.219"]) {
+async function pendingCompanions(
+  t,
+  bundledVersions = ["0.1.51", "0.6.3-company.47", "0.0.219"],
+  fullSuite = false,
+) {
   const f = await fixture(t);
   const child = spawn(process.execPath, ["-e", ""], {
     detached: process.platform !== "win32",
@@ -227,7 +231,7 @@ async function pendingCompanions(t, bundledVersions = ["0.1.51", "0.6.3-company.
       row.name.replace(/^@/, "").replace("/", "-") + "-" + bundledVersions[index] + ".tgz";
     packages.push({ name: row.name, version: bundledVersions[index], file, sha256 });
     await writeFile(join(seed, "archives", file), bytes);
-    if (index < 2) {
+    if (index < 2 || fullSuite) {
       const installedBytes = Buffer.from(row.name + "@" + versions[index]);
       const installedSha256 = createHash("sha256").update(installedBytes).digest("hex");
       const archivePath = join(cache, installedSha256 + ".tgz");
@@ -248,7 +252,7 @@ async function pendingCompanions(t, bundledVersions = ["0.1.51", "0.6.3-company.
       join(f.profile, "node_modules", row.name, "package.json"),
       JSON.stringify({
         name: row.name,
-        version: index < 2 ? versions[index] : "0.0.216",
+        version: index < 2 || fullSuite ? versions[index] : "0.0.216",
       }),
     );
   }
@@ -285,6 +289,8 @@ async function pendingCompanions(t, bundledVersions = ["0.1.51", "0.6.3-company.
   const userFiles = {
     "sessions/keep.json": "user session",
     "drafts/keep.json": "user draft",
+    "gea/web-login.json": "user credentials",
+    "resources/keep.json": "personal resource",
   };
   for (const [file, bytes] of Object.entries(userFiles)) {
     await mkdir(join(f.profile, file, ".."), { recursive: true });
@@ -315,8 +321,8 @@ async function writeWindowsJob(operation, observation, overrides = {}) {
   );
 }
 
-async function windowsPendingCompanions(t, versions) {
-  const f = await pendingCompanions(t, versions);
+async function windowsPendingCompanions(t, versions, fullSuite) {
+  const f = await pendingCompanions(t, versions, fullSuite);
   windowsPlatform(t);
   const nonce = "00000000-1111-4222-8333-444444444444";
   f.receipt.processes = [
@@ -335,6 +341,18 @@ function windowsPlatform(t) {
 }
 
 for (const scenario of [
+  {
+    title: "a newer Windows desktop bundle",
+    windows: true,
+    fullSuite: true,
+    versions: ["0.1.56", "0.6.3-company.50", "0.0.224"],
+    expectedTargets: [
+      [companions[0].name, "0.1.56"],
+      [companions[1].name, "0.6.3-company.50"],
+      [name, "0.0.224"],
+    ],
+    backup: "before-0.0.219-to-0.0.224",
+  },
   {
     title: "matching bundled companions",
     versions: ["0.1.51", "0.6.3-company.47", "0.0.219"],
@@ -368,13 +386,16 @@ for (const scenario of [
   },
 ])
   test(
-    "startup repairs an older GEA behind a companion-only pending restart with " +
+    "startup repairs an older GEA behind a " +
+      (scenario.fullSuite ? "complete-suite" : "companion-only") +
+      " pending restart with " +
       scenario.title +
       " and leaves the complete suite awaiting actual observation",
     async (t) => {
       const f = await (scenario.windows ? windowsPendingCompanions : pendingCompanions)(
         t,
         scenario.versions,
+        scenario.fullSuite,
       );
       const result = await refreshCompanyStartup({
         ...f,
@@ -404,6 +425,12 @@ for (const scenario of [
         },
       });
       assert.equal(result.refresh.status, "pending-restart-preserved");
+      for (const [packageName, version] of scenario.expectedTargets)
+        assert.equal(
+          JSON.parse(await readFile(join(f.profile, "node_modules", packageName, "package.json")))
+            .version,
+          version,
+        );
       assert.equal(result.refresh.changed, true);
       assert.equal(result.cleanup, null);
       const journal = JSON.parse(await readFile(join(f.operation, "receipt.json")));
@@ -451,6 +478,36 @@ for (const scenario of [
       );
     },
   );
+
+test("Windows replacement preserves a complete pending suite when its source or writer is unconfirmed", async (t) => {
+  for (const variant of ["running-job", "same-version-content", "changed-source"]) {
+    await t.test(variant, async (t) => {
+      const f = await windowsPendingCompanions(t, ["0.1.56", "0.6.3-company.50", "0.0.219"], true);
+      if (variant === "running-job")
+        await writeWindowsJob(f.operation, f.receipt.processes[0], {
+          stage: "running",
+        });
+      if (variant === "same-version-content")
+        f.manifest.packages.find((row) => row.name === name).sha256 = "f".repeat(64);
+      if (variant === "changed-source") {
+        f.profileManifest.dependencies[name] = "file:/custom/gea.tgz";
+        await writeFile(join(f.profile, "package.json"), JSON.stringify(f.profileManifest));
+      }
+      const task = refreshCompanyStartup({
+        ...f,
+        install: async (options) => {
+          await options.beforeInstall();
+          assert.fail("unconfirmed pending suite must not write packages");
+        },
+      });
+      if (variant === "running-job") await assert.rejects(task, /GEA_REFRESH_UPDATE_PENDING/);
+      else assert.equal((await task).refresh.changed, false);
+      assert.equal(await readFile(join(f.operation, "receipt.json"), "utf8"), f.original);
+      for (const [file, bytes] of Object.entries(f.userFiles))
+        assert.equal(await readFile(join(f.profile, file), "utf8"), bytes);
+    });
+  }
+});
 
 test("pending restart recovery preserves unsupported suites and refuses unconfirmed writers or changed receipts", async (t) => {
   for (const variant of [
