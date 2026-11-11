@@ -494,7 +494,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^(?:src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)|tests/plugin-update-archive\\.test\\.mjs$)",
+      "pattern": "^(?:src/(?:host/plugin-update|desktop-updates-client|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)|tests/plugin-update-archive\\.test\\.mjs$)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-restart.test.mjs",
@@ -548,7 +548,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "pattern": "^src/(?:client\\.tsx|host/plugin-update|desktop-updates-client|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
         "tests/plugin-update-restart.test.mjs",

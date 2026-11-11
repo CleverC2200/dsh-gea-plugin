@@ -65,13 +65,11 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   });
   let revision = 1,
     phase = "available",
-    checks = 0,
     updates = 0,
     sourceMissing = false,
     problem,
     companyUpdate = null,
-    prepared = 0,
-    preparationError;
+    prepared = 0;
   const status = () => ({
     revision: revision++,
     restartReady: phase === "pending-restart",
@@ -105,7 +103,6 @@ test("official detail diagnostics navigate to the shared update panel", async (t
         return;
       }
       if (url.endsWith("/check")) {
-        checks++;
         if (sourceMissing) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(
@@ -123,11 +120,6 @@ test("official detail diagnostics navigate to the shared update panel", async (t
           desktopVersion: "0.2.0-rc.2.20261105.1",
         });
         prepared++;
-        if (preparationError) {
-          res.writeHead(409, { "content-type": "application/json" });
-          res.end(JSON.stringify({ ok: false, error: { code: preparationError } }));
-          return;
-        }
         companyUpdate = {
           phase: "prepared",
           desktopVersion: "0.2.0-rc.2.20261105.1",
@@ -197,14 +189,14 @@ test("official detail diagnostics navigate to the shared update panel", async (t
             ? { phase: "error", failure: "check" }
             : { phase: "available", version: "0.2.0-rc.2.20261105.1" };
         },
-        open: async () => {
-          window.nativeUpdateCalls.push("open");
+        restartUpdate: async (request) => {
+          window.nativeUpdateCalls.push(request);
           if (window.failNativeUpdate) throw Error("/private/native-failure");
         },
       },
     };
     if (location.search.includes("legacy") || location.search.includes("old-client"))
-      delete window.dshDesktop.updates.check;
+      delete window.dshDesktop.updates.restartUpdate;
   });
   const base = `http://127.0.0.1:${server.address().port}`;
   phase = "current";
@@ -231,10 +223,10 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   await page.goto(base);
   await page
     .locator("[data-update-entry]")
-    .getByRole("button", { name: "Updates", exact: true })
+    .getByRole("button", { name: "Restart and update", exact: true })
     .waitFor();
   phase = "pending-restart";
-  await page.getByText("Restart required", { exact: true }).waitFor();
+  await page.locator("main").getByText("Restart required", { exact: true }).waitFor();
   assert.equal(await page.locator(".gea-update-entry").count(), 1);
   phase = "current";
   await page.locator(".gea-update-entry").waitFor({ state: "hidden" });
@@ -452,155 +444,46 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   problem = undefined;
   phase = "unknown";
   await page.getByRole("alert").filter({ hasText: "The update result is unknown." }).waitFor();
-  sourceMissing = true;
-  phase = "blocked";
-  await page
-    .getByRole("alert")
-    .filter({ hasText: "Updates are not configured for this installation." })
-    .waitFor();
-  assert.equal(await page.locator(".gea-plugin-update-versions dd").first().textContent(), "1.2.3");
-  await page.evaluate(() => window.fixture.locale("zh"));
-  await page.getByRole("button", { name: "查看更新状态", exact: true }).click();
-  const panel = page.locator("[data-update-panel]");
-  await panel.getByRole("heading", { name: "客户端", exact: true }).waitFor();
-  await panel.getByRole("heading", { name: "公司插件", exact: true }).waitFor();
-  assert.equal(checks, 0);
-  assert.equal(updates, 0);
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 840 });
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-      true,
-    );
-  }
-  assert.equal(prepared, 0);
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check"]);
-  sourceMissing = false;
+  problem = undefined;
   phase = "available";
-  await panel.getByRole("button", { name: "更新客户端及插件", exact: true }).waitFor();
+  await page.evaluate(() => window.fixture.dispose());
+  await page.goto(base);
+  await page.getByRole("button", { name: "View update status", exact: true }).click();
+  const panel = page.locator("[data-update-panel]");
+  await panel.getByRole("button", { name: "Restart and update", exact: true }).first().click();
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
+    "check",
+    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
+  ]);
   assert.equal(prepared, 0);
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check"]);
-  await panel.getByRole("button", { name: "更新客户端及插件", exact: true }).click();
-  await panel.getByText(/已为客户端 0.2.0-rc.2.20261105.1 缓存插件/).waitFor();
-  assert.equal(prepared, 1);
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check", "open"]);
   assert.equal(updates, 0);
-  assert.equal(await panel.getByRole("button", { name: "更新全部", exact: true }).count(), 0);
+  await page.evaluate(() => window.fixture.locale("zh"));
   await mkdir(".runtime/detail-summary", { recursive: true });
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 840 });
-    await page.screenshot({
-      path: `.runtime/detail-summary/company-update-${width}.png`,
-    });
+    await page.screenshot({ path: `.runtime/detail-summary/takeover-${width}.png` });
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
     );
   }
-  await panel.getByRole("button", { name: "取消已准备的更新", exact: true }).click();
-  await panel.getByText(/已为客户端 .* 缓存插件/).waitFor({ state: "hidden" });
   await page.evaluate(() => window.fixture.dispose());
-  preparationError = "UPDATE_DESKTOP_UNAVAILABLE";
-  companyUpdate = null;
-  await page.goto(`http://127.0.0.1:${server.address().port}/?old-client`);
+  await page.goto(base + "/?old-client");
   await page.getByRole("button", { name: "View update status", exact: true }).click();
-  await panel.getByRole("button", { name: "Update client and plugins", exact: true }).click();
-  await page.waitForFunction(() => window.nativeUpdateCalls.includes("open"));
-  await panel
-    .getByText(
-      "This client needs a client-only upgrade first. Continue in the native update window, then reopen Updates after restarting. The combined update has not been confirmed.",
-      { exact: true },
-    )
-    .waitFor();
-  assert.equal(await panel.getByRole("alert").count(), 0);
-  assert.equal(companyUpdate, null);
-  assert.equal(updates, 0);
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["open"]);
-  await page.evaluate(() => window.fixture.locale("zh"));
-  await panel
-    .getByText(
-      "当前客户端需先单独升级。请在原生更新窗口继续，重启后再打开更新页。统一更新尚未确认完成。",
-      { exact: true },
-    )
-    .waitFor();
-  await page.screenshot({
-    path: ".runtime/detail-summary/legacy-client-update.png",
-  });
-  await page.evaluate(() => window.fixture.dispose());
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
-  await page.getByRole("button", { name: "View update status", exact: true }).click();
-  for (const [code, english, chinese] of [
-    [
-      "UPDATE_OPERATION_BLOCKED",
-      "Another update is active or its result is not confirmed. Check its status or restart before trying again. (UPDATE_OPERATION_BLOCKED)",
-      "已有更新正在进行或结果尚未确认。请先检查更新状态，必要时重启后再试。（UPDATE_OPERATION_BLOCKED）",
-    ],
-    [
-      "UPDATE_SUITE_UNAVAILABLE",
-      "This channel does not provide a complete compatible plugin suite. Keep the installed versions and contact your maintainer. (UPDATE_SUITE_UNAVAILABLE)",
-      "当前频道未提供完整兼容的插件组合。请保留已安装版本并联系维护者。（UPDATE_SUITE_UNAVAILABLE）",
-    ],
-    [
-      "SOURCE_HTTP_FAILED",
-      "The plugin update source could not be downloaded. Check your connection and retry. (SOURCE_HTTP_FAILED)",
-      "无法从插件更新源下载文件，请检查网络后重试。（SOURCE_HTTP_FAILED）",
-    ],
-    [
-      "/private/secret-credential",
-      "The combined update could not be prepared. Check the update status and contact your maintainer if it continues. The client has not been installed by this action.",
-      "统一更新准备失败。请检查更新状态，持续失败时联系维护者。本次操作尚未安装客户端。",
-    ],
-  ]) {
-    preparationError = code;
-    await panel.getByRole("button", { name: "Update client and plugins", exact: true }).click();
-    await panel.getByRole("alert").filter({ hasText: english }).waitFor();
-    assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check"]);
-    assert.equal(companyUpdate, null);
-    assert.doesNotMatch(await panel.textContent(), /private|secret-credential/);
-    await page.evaluate(() => window.fixture.locale("zh"));
-    await panel.getByRole("alert").filter({ hasText: chinese }).waitFor();
-    await page.evaluate(() => window.fixture.locale("en"));
-  }
-  preparationError = "UPDATE_DESKTOP_UNAVAILABLE";
-  await panel.getByRole("button", { name: "Update client and plugins", exact: true }).click();
-  await page.waitForFunction(() => window.nativeUpdateCalls.includes("open"));
-  assert.equal(await panel.getByRole("alert").count(), 0);
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check", "open"]);
-  await page.evaluate(() => {
-    window.failNativeUpdate = true;
-  });
-  await panel.getByRole("button", { name: "Update client first", exact: true }).click();
   await panel
     .getByRole("alert")
-    .filter({
-      hasText:
-        "Could not open the native client update window. Retry or use the installer from the installation guide.",
-    })
+    .filter({ hasText: "Upgrade the client to use restart and update." })
     .waitFor();
-  assert.doesNotMatch(await panel.textContent(), /private|native-failure/);
-  preparationError = undefined;
-  await page.evaluate(() => window.fixture.dispose());
-  await page.goto(`http://127.0.0.1:${server.address().port}/?legacy`);
-  await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
-  await page.evaluate(() => window.fixture.locale("en"));
-  await page.getByRole("button", { name: "View update status", exact: true }).click();
-  await Promise.all([
-    page.waitForResponse((response) => response.url().endsWith("/update-all")),
-    panel.getByRole("button", { name: "Update all", exact: true }).click(),
-  ]);
-  assert.equal(updates, 1);
+  assert.equal(
+    await panel
+      .getByRole("button", { name: "Restart and update", exact: true })
+      .first()
+      .isDisabled(),
+    true,
+  );
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
-  await page.evaluate(() => window.fixture.dispose());
-  await page.goto(`http://127.0.0.1:${server.address().port}/?no-feed`);
-  await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
-  await page.getByRole("button", { name: "View update status", exact: true }).click();
-  await Promise.all([
-    page.waitForResponse((response) => response.url().endsWith("/update-all")),
-    panel.getByRole("button", { name: "Update all", exact: true }).click(),
-  ]);
-  assert.equal(updates, 2);
-  assert.equal(prepared, 8);
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), ["check", "check"]);
+  assert.equal(prepared, 0);
+  assert.equal(updates, 0);
   await page.evaluate(() => window.fixture.dispose());
   assert.deepEqual(errors, []);
 });

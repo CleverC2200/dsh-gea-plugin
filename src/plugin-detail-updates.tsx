@@ -8,20 +8,12 @@ import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { createDesktopUpdates } from "./desktop-updates-client.ts";
 import type { PluginDetailProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { PropsLocale, PropsRuntime, TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  Button,
-  Tag,
-  Toast,
-  Tooltip,
-  IconDownloadOutlineRegular,
-  type TagTone,
-} from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Tag, Toast, Tooltip, type TagTone } from "@deepseek-ai/dsh-client-ui-primitives";
 import { updatablePackageNames } from "./shared/plugin-release.mjs";
 import type { PluginUpdateProblem } from "./shared/plugin-update-diagnostics.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 import {
   createPluginDetailUpdates,
-  PluginUpdateRequestError,
   pluginUpdateBusy,
   pluginSuiteReady,
   pluginUpdateObservationMs,
@@ -85,7 +77,7 @@ function DetailActions({
             void (updateAll ? updateAll() : updates.updateAll());
           }}
         >
-          {t("updateAll")}
+          {t("restartUpdate")}
         </Button>
       ) : null}
     </div>
@@ -300,18 +292,6 @@ function ListTools({
     </div>
   );
 }
-function desktopRestart(): (() => Promise<unknown>) | undefined {
-  if (
-    !("dshDesktop" in window) ||
-    typeof window.dshDesktop !== "object" ||
-    window.dshDesktop === null
-  )
-    return;
-  const bridge = window.dshDesktop;
-  if (!("restart" in bridge) || typeof bridge.restart !== "function") return;
-  const restart = bridge.restart.bind(bridge);
-  return async () => restart();
-}
 
 function UpdateNotice({
   updates,
@@ -323,7 +303,6 @@ function UpdateNotice({
 }): ReactNode {
   const state = useSyncExternalStore(updates.subscribe, updates.getSnapshot);
   const notice = state.notice;
-  const bridge = desktopRestart();
   const restarting = ["restarting", "requested"].includes(state.restart);
   const restartBusy =
     state.restartReady === false ||
@@ -335,9 +314,9 @@ function UpdateNotice({
   const actions = packageName
     ? [{ label: t("viewStatus"), onClick: () => openStatus(packageName) }]
     : [];
-  if (notice.kind === "pending-restart" && bridge && !restartBusy && !restarting) {
+  if (notice.kind === "pending-restart" && !restartBusy && !restarting) {
     actions.unshift({
-      label: t("restartNow"),
+      label: t("restartUpdate"),
       onClick: () => {
         void updates.restart();
       },
@@ -347,7 +326,7 @@ function UpdateNotice({
     notice.kind === "progress"
       ? t("progressNotice")
       : notice.kind === "pending-restart"
-        ? t(bridge ? "pendingNotice" : "pendingWebNotice")
+        ? t("pendingNotice")
         : notice.kind === "completed"
           ? t("completed")
           : notice.kind === "restored"
@@ -361,10 +340,10 @@ function UpdateNotice({
       text={
         state.restart === "failed"
           ? t("restartError")
-          : state.restart === "cancelled"
-            ? t("pluginRestartCancelled")
+          : state.restart === "unsupported"
+            ? t("takeoverUnsupported")
             : restarting
-              ? t("pluginRestarting")
+              ? t("takeoverStarting")
               : text
       }
       actions={actions}
@@ -380,6 +359,17 @@ type SharedProps = PropsLocale<typeof pluginUpdateLocale> & {
   desktop: DesktopOwner;
   openUpdates: () => void;
 };
+async function restartUpdates(updates: Owner, desktop: DesktopOwner) {
+  const client = desktop.getSnapshot();
+  const target = client.presentation;
+  if (target?.version && ["available", "ready"].includes(target.phase)) {
+    await desktop.restartUpdate({ kind: "desktop", version: target.version });
+  } else if (updates.getSnapshot().items.some((row) => row.state === "pending-restart")) {
+    await updates.restart();
+  } else {
+    await updates.updateAll();
+  }
+}
 function UpdateEntry({
   wide,
   hidden,
@@ -390,25 +380,57 @@ function UpdateEntry({
 }: PropsRuntime<"settings.update"> & SharedProps): ReactNode {
   const plugins = useDetail(updates);
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
+  const desktopVersion = ["available", "ready"].includes(client.presentation?.phase ?? "")
+    ? client.presentation?.version
+    : undefined;
+  const version =
+    desktopVersion ??
+    plugins.items.find(
+      (row) =>
+        row.packageName === "@cleverc2200/gea-dsh-prototype" &&
+        ["available", "pending-restart"].includes(row.state),
+    )?.candidateVersion ??
+    plugins.items.find((row) => ["available", "pending-restart"].includes(row.state))
+      ?.candidateVersion;
+  const available =
+    Boolean(desktopVersion) ||
+    (pluginSuiteReady(plugins.items) &&
+      plugins.items.some((row) => row.state === "available" && row.planId));
+  const pending = plugins.items.some((row) => row.state === "pending-restart");
   const attention =
-    client.failed ||
     (plugins.companyUpdate && !["completed", "cancelled"].includes(plugins.companyUpdate.phase)) ||
-    (client.presentation && client.presentation.phase !== "idle") ||
+    available ||
+    pending ||
+    client.failed ||
     plugins.transportError ||
     plugins.items.some((row) => !["idle", "current", "completed"].includes(row.state));
   if (!wide || hidden || !attention) return null;
+  const busy =
+    client.opening ||
+    plugins.submitting !== null ||
+    plugins.restart === "restarting" ||
+    plugins.restart === "requested";
+  const supported = client.canRestartUpdate;
   return (
-    <Tooltip label={t("updates")} side="top">
+    <Tooltip label={t(supported ? "takeoverNotice" : "takeoverUnsupported")} side="top">
       <button
         type="button"
         className="gea-update-entry"
-        aria-label={t("updates")}
-        aria-haspopup="dialog"
-        onClick={openUpdates}
+        aria-label={t(available || pending ? "restartUpdate" : "updates")}
+        disabled={busy}
+        onClick={() => {
+          if (!supported || (!available && !pending)) openUpdates();
+          else void restartUpdates(updates, desktop).catch(() => openUpdates());
+        }}
       >
-        <IconDownloadOutlineRegular size={14} />
-        {wide ? <span>{t("updates")}</span> : null}
-        {attention ? <span className="gea-update-dot" aria-hidden="true" /> : null}
+        <span className="gea-update-version">
+          {version
+            ? t("newVersion", { version })
+            : t(pending ? "pending-restart" : available ? "pluginsNewVersion" : "updates")}
+        </span>
+        <span className="gea-update-action">
+          {t(busy ? "takeoverStarting" : available || pending ? "restartUpdate" : "viewStatus")}
+        </span>
       </button>
     </Tooltip>
   );
@@ -434,38 +456,10 @@ function UpdateToggleBadge({
     </Tooltip>
   );
 }
-function companyPreparationFailure(error: unknown): keyof typeof en {
-  if (error instanceof Error && error.message === "UPDATE_NATIVE_OPEN_FAILED")
-    return "companyNativeOpenFailed";
-  if (!(error instanceof PluginUpdateRequestError)) return "companyPreparationFailed";
-  switch (error.code) {
-    case "UPDATE_OPERATION_BLOCKED":
-      return "companyOperationBlocked";
-    case "UPDATE_SUITE_UNAVAILABLE":
-      return "companySuiteUnavailable";
-    case "UPDATE_SOURCE_NOT_CONFIGURED":
-      return "source-not-configured";
-    case "UPDATE_CORE_OR_SOURCE_UNVERIFIED":
-      return "companySourceUnverified";
-    case "SOURCE_HTTP_FAILED":
-      return "companySourceDownloadFailed";
-    case "SOURCE_ARTIFACT_HASH_MISMATCH":
-    case "SOURCE_ARCHIVE_RELEASE_MISMATCH":
-    case "SOURCE_RELEASE_NOT_VERIFIED":
-    case "SOURCE_APPROVAL_EXPIRED":
-      return "companySourceUnverified";
-    default:
-      return "companyPreparationFailed";
-  }
-}
-
 function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   const plugins = useDetail(updates);
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
-  const [coordinating, setCoordinating] = useState(false);
-  const [coordinationFailure, setCoordinationFailure] = useState<keyof typeof en>();
-  const [legacyClient, setLegacyClient] = useState(false);
-  const restarting = ["restarting", "requested"].includes(plugins.restart);
+  const [coordinationFailure, setCoordinationFailure] = useState(false);
   const state = client.presentation;
   useEffect(() => {
     const initial = desktop.getSnapshot();
@@ -478,54 +472,14 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   }, [desktop]);
   const nativeBusy =
     client.opening ||
-    (state && ["checking", "downloading", "verifying", "installing"].includes(state.phase));
+    Boolean(state && ["checking", "downloading", "verifying", "installing"].includes(state.phase));
   const pending = plugins.items.some((row) => row.state === "pending-restart");
-  const restartBusy =
-    (pending && plugins.restartReady === false) ||
-    plugins.checking ||
-    plugins.submitting !== null ||
-    plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
-  const restart = desktopRestart();
-  const company = plugins.companyUpdate;
-  const companyActive = company && !["completed", "failed", "cancelled"].includes(company.phase);
-  const beginDesktop = async (pluginRequest = false) => {
-    setCoordinating(true);
-    setCoordinationFailure(undefined);
-    setLegacyClient(false);
+  const beginUpdate = async () => {
+    setCoordinationFailure(false);
     try {
-      if (!client.supported) {
-        if (pluginRequest) await updates.updateAll();
-        return;
-      }
-      const hasTarget = state && ["available", "ready"].includes(state.phase);
-      if (!client.canCheck && !hasTarget) {
-        await desktop.open();
-        return;
-      }
-      const target = hasTarget ? state : await desktop.check();
-      if (pluginRequest && ["idle", "error"].includes(target.phase)) {
-        await updates.updateAll();
-        return;
-      }
-      if (!hasTarget && !pluginRequest) return;
-      if (!target.version || !["available", "ready"].includes(target.phase)) return;
-      let legacy = false;
-      try {
-        await updates.prepareDesktop(target.version);
-      } catch (error) {
-        if (
-          !(error instanceof PluginUpdateRequestError) ||
-          error.code !== "UPDATE_DESKTOP_UNAVAILABLE"
-        )
-          throw error;
-        legacy = true;
-      }
-      await desktop.open(target.version);
-      setLegacyClient(legacy);
-    } catch (error) {
-      setCoordinationFailure(companyPreparationFailure(error));
-    } finally {
-      setCoordinating(false);
+      await restartUpdates(updates, desktop);
+    } catch {
+      setCoordinationFailure(true);
     }
   };
   const failure = state?.failure;
@@ -542,34 +496,25 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
   return (
     <div className="gea-updates-panel">
       <p>{t("unifiedPolicy")}</p>
-      {company && company.phase !== "cancelled" ? (
+      {plugins.companyUpdate && plugins.companyUpdate.phase !== "cancelled" ? (
         <p role="status">
           {t(
-            company.phase === "completed"
+            plugins.companyUpdate.phase === "completed"
               ? "companyCompleted"
-              : company.phase === "failed"
+              : plugins.companyUpdate.phase === "failed"
                 ? "companyFailed"
-                : company.phase === "verifying"
+                : plugins.companyUpdate.phase === "verifying"
                   ? "companyVerifying"
                   : "companyPrepared",
-            { version: company.desktopVersion },
+            { version: plugins.companyUpdate.desktopVersion },
           )}
         </p>
       ) : null}
-      {legacyClient ? <p role="status">{t("companyLegacyClient")}</p> : null}
-      {coordinationFailure ? <p role="alert">{t(coordinationFailure)}</p> : null}
-      {company?.phase === "prepared" && !nativeBusy && !coordinating ? (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void updates.cancelDesktop().catch((error: unknown) => {
-              setCoordinationFailure(companyPreparationFailure(error));
-            });
-          }}
-        >
-          {t("companyCancel")}
-        </Button>
+      {!client.canRestartUpdate || plugins.restart === "unsupported" ? (
+        <p role="alert">{t("takeoverUnsupported")}</p>
+      ) : null}
+      {coordinationFailure || plugins.restart === "failed" ? (
+        <p role="alert">{t("restartError")}</p>
       ) : null}
       <section aria-labelledby="gea-desktop-update-title">
         <h2 id="gea-desktop-update-title">{t("desktopTitle")}</h2>
@@ -615,26 +560,17 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             <Button
               size="sm"
               variant="primary"
-              disabled={Boolean(
-                nativeBusy ||
-                coordinating ||
-                restartBusy ||
-                (companyActive && company?.phase !== "prepared"),
-              )}
+              disabled={nativeBusy || !client.canRestartUpdate}
               onClick={() => {
-                void beginDesktop();
+                if (state?.version && ["available", "ready"].includes(state.phase))
+                  void beginUpdate();
+                else void desktop.check().catch(() => setCoordinationFailure(true));
               }}
             >
               {t(
-                state?.phase === "ready"
-                  ? "desktopReady"
-                  : state?.phase === "available"
-                    ? legacyClient
-                      ? "companyLegacyDownload"
-                      : "companyDownload"
-                    : state?.phase === "error" || client.failed
-                      ? "desktopRetry"
-                      : "desktopCheck",
+                state?.version && ["available", "ready"].includes(state.phase)
+                  ? "restartUpdate"
+                  : "desktopCheck",
               )}
             </Button>
           </>
@@ -642,15 +578,8 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
       </section>
       <section aria-labelledby="gea-plugin-update-title">
         <h2 id="gea-plugin-update-title">{t("pluginsTitle")}</h2>
-        {!companyActive &&
-        !nativeBusy &&
-        !coordinating &&
-        !["available", "ready"].includes(state?.phase ?? "") ? (
-          <DetailActions
-            updates={updates}
-            t={t}
-            updateAll={client.canCheck ? () => beginDesktop(true) : undefined}
-          />
+        {!nativeBusy && !["available", "ready"].includes(state?.phase ?? "") ? (
+          <DetailActions updates={updates} t={t} updateAll={beginUpdate} />
         ) : null}
         {plugins.transportError ? (
           <p role="alert" className="gea-plugin-update-error">
@@ -663,23 +592,18 @@ function UpdatesPanel({ updates, desktop, t }: SharedProps): ReactNode {
             )}
           </p>
         ) : null}
-        {pending ? <p role="status">{t(restart ? "pendingNotice" : "pendingWebNotice")}</p> : null}
-        {pending && restart ? (
+        {pending ? <p role="status">{t("pendingNotice")}</p> : null}
+        {pending ? (
           <Button
             size="sm"
             variant="outline"
-            disabled={restartBusy || restarting}
+            disabled={nativeBusy || !client.canRestartUpdate}
             onClick={() => {
-              void updates.restart();
+              void beginUpdate();
             }}
           >
-            {t("pluginRestart")}
+            {t("restartUpdate")}
           </Button>
-        ) : null}
-        {plugins.restart === "failed" || plugins.restart === "cancelled" ? (
-          <p role={plugins.restart === "failed" ? "alert" : "status"}>
-            {t(plugins.restart === "failed" ? "restartError" : "pluginRestartCancelled")}
-          </p>
         ) : null}
         {plugins.items.map((row) => (
           <div className="gea-updates-plugin" key={row.packageName}>
@@ -708,17 +632,7 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
     });
     const desktop = createDesktopUpdates();
     const updates = createPluginDetailUpdates(scope, {
-      restart: desktopRestart(),
-      nativeUpdateActive: () => {
-        const client = desktop.getSnapshot();
-        return Boolean(
-          client.opening ||
-          (client.presentation &&
-            ["checking", "downloading", "verifying", "installing", "ready"].includes(
-              client.presentation.phase,
-            )),
-        );
-      },
+      restartUpdate: desktop.getSnapshot().canRestartUpdate ? desktop.restartUpdate : undefined,
     });
     const openUpdates = () => scope.settingsNavigation.open("company-updates");
     const shared = () => ({ updates, desktop, openUpdates });

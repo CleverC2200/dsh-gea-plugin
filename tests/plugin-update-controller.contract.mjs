@@ -37,7 +37,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileUpdates, readPluginProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export {mountDesktopUpdateOperations} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-desktop.ts", import.meta.url)))};export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileUpdates, readPluginProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -67,6 +67,7 @@ await build({
 });
 const {
   createPluginUpdateController,
+  mountDesktopUpdateOperations,
   readPluginProfile,
   parseUpdateClientStatus,
   pluginProfileStoreDirectory,
@@ -1351,9 +1352,38 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
       requests.every((row) => row.planId),
       JSON.stringify(controller.snapshot()),
     );
-    const accepted = await controller.submitBatch(requests);
+    const { Context } = await import(pathToFileURL(join(sdk, "vendor/cordis/lib/index.js")));
+    const { HostConnectionService } = await import(
+      pathToFileURL(join(sdk, "packages/client/connection/lib/index.js"))
+    );
+    const ctx = new Context();
+    t.after(() => ctx.fiber.dispose());
+    const connection = new HostConnectionService(ctx, [], {});
+    const release = mountDesktopUpdateOperations(ctx, async () => controller);
+    t.after(release);
+    const invoke = async (payload) => {
+      const response = await connection.createSharedFetchHandler("/api").fetch(
+        new Request("http://localhost/api/desktop/update", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+      );
+      return response.json();
+    };
+    assert.deepEqual(
+      await invoke({ action: "plugins-install", plans: requests, url: "http://evil" }),
+      { ok: false, error: { code: "UPDATE_REQUEST_INVALID" } },
+    );
+    const started = await invoke({ action: "plugins-install", plans: requests });
+    assert.equal(started.ok, true);
+    const accepted = controller.snapshot().operation;
+    assert.equal(started.value.operationId, accepted.id);
     assert.equal(accepted.targets.length, 3);
     assert.equal(controller.restartReady(), false);
+    assert.deepEqual(controller.operationStatus(accepted.id), {
+      operationId: accepted.id,
+      state: "running",
+    });
     const pendingDuringWrite = [];
     const stopObserving = controller.subscribe((snapshot) => {
       if (snapshot.operation?.stage === "pending-restart")
@@ -1365,6 +1395,19 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
     assert.equal(operation.stage, mode === "success" ? "pending-restart" : "failed");
     await new Promise(setImmediate);
     assert.equal(controller.restartReady(), mode === "success");
+    assert.deepEqual(await invoke({ action: "plugins-status", operationId: accepted.id }), {
+      ok: true,
+      value: { operationId: accepted.id, state: mode === "success" ? "ready" : "failed" },
+    });
+
+    assert.deepEqual(controller.operationStatus(operation.id), {
+      operationId: operation.id,
+      state: mode === "success" ? "ready" : "failed",
+    });
+    assert.deepEqual(controller.operationStatus("11111111-1111-4111-8111-111111111111"), {
+      operationId: "11111111-1111-4111-8111-111111111111",
+      state: "unknown",
+    });
     if (mode === "success") {
       assert.ok(pendingDuringWrite.includes(false));
       assert.equal(pendingDuringWrite.at(-1), true);

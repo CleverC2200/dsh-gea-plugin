@@ -1188,6 +1188,22 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     submitBatch,
     reconcileRuntime,
     snapshot,
+    operationStatus(operationId?: string): {
+      operationId: string | null;
+      state: "idle" | "running" | "ready" | "failed" | "unknown";
+    } {
+      const operation = state.operation;
+      if (operationId && operation?.id !== operationId) return { operationId, state: "unknown" };
+      const id = operation?.id ?? null;
+      if (closed || journalBroken || operation?.stage === "unknown")
+        return { operationId: id, state: "unknown" };
+      if (active) return { operationId: id, state: "running" };
+      if (!operation || operation.stage === "completed") return { operationId: id, state: "idle" };
+      if (operation.stage === "pending-restart") return { operationId: id, state: "ready" };
+      if (operation.stage === "failed" || operation.stage === "restored")
+        return { operationId: id, state: "failed" };
+      return { operationId: id, state: "unknown" };
+    },
     restartReady: () =>
       !active && !closed && !journalBroken && state.operation?.stage === "pending-restart",
     subscribe(listener: (snapshot: PluginUpdateSnapshot) => void) {

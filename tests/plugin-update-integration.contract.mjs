@@ -147,6 +147,32 @@ test("missing signed source and Core provenance expose blocked routes without ru
     runtimeDir: "/not-written",
   });
   t.after(release);
+  assert.equal(typeof handlers.get("/api/desktop/update"), "function");
+  let httpStatus;
+  await ctx.waterfall(
+    "connection/request",
+    { url: "/api/desktop/update?ignored=1" },
+    {
+      writeHead(code) {
+        httpStatus = code;
+      },
+      end() {},
+    },
+    () => {
+      throw Error("native route reached through HTTP");
+    },
+  );
+  assert.equal(httpStatus, 403);
+  const native = await handlers.get("/api/desktop/update")(
+    new Request("https://fixture.test/api/desktop/update", {
+      method: "POST",
+      body: JSON.stringify({ action: "plugins-status" }),
+    }),
+  );
+  assert.deepEqual(await native.json(), {
+    ok: false,
+    error: { code: "UPDATE_SOURCE_NOT_CONFIGURED" },
+  });
   const response = await handlers.get("/api/gea/plugin-updates/status")(
     new Request("https://fixture.test/api/gea/plugin-updates/status", {
       method: "POST",
@@ -266,51 +292,6 @@ const status = (items = rows()) => ({
   checkTimeoutMs: 1000,
   pollIntervalMs: 1000,
 });
-for (const offline of [false, true])
-  test(`suite action refreshes a cached channel and ${offline ? "refuses a failed refresh" : "submits only the newly verified plans"}`, async (t) => {
-    const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
-    const original = globalThis.fetch;
-    t.after(() => (globalThis.fetch = original));
-    let checked = false,
-      submitted = 0;
-    globalThis.fetch = async (url, options) => {
-      if (url.endsWith("/status"))
-        return Response.json({
-          ok: true,
-          value: status(
-            rows().map((row) => ({
-              ...row,
-              candidateVersion: checked ? "1.2.5" : "1.2.4",
-              planId: checked ? "new-plan" : "cached-plan",
-            })),
-          ),
-        });
-      if (url.endsWith("/check")) {
-        if (offline) throw Error("offline");
-        checked = true;
-        return Response.json({ ok: true, value: {} });
-      }
-      assert(url.endsWith("/update-all"));
-      submitted++;
-      assert.equal(checked, true);
-      assert.deepEqual(
-        JSON.parse(options.body).plans,
-        rows().map(({ packageName }) => ({ packageName, planId: "new-plan" })),
-      );
-      return Response.json({ ok: true, value: {} });
-    };
-    const ctx = new Context(),
-      owner = createPluginDetailUpdates(ctx);
-    t.after(() => ctx.fiber.dispose());
-    t.after(() => owner.dispose());
-    const close = owner.retain();
-    t.after(close);
-    await new Promise(setImmediate);
-    assert.equal(owner.getSnapshot().items[0].candidateVersion, "1.2.4");
-    await owner.updateAll();
-    assert.equal(submitted, offline ? 0 : 1);
-    if (offline) assert.equal(owner.getSnapshot().transportError, "check");
-  });
 test("wire rejects asserted active proofs and duplicate observations", async (t) => {
   const { parseUpdateClientReport } = await subject(t, "src/shared/plugin-update-wire.ts");
   const report = {
@@ -334,57 +315,6 @@ test("wire rejects asserted active proofs and duplicate observations", async (t)
     parseUpdateClientReport({ ...report, modules: [report.modules[0], report.modules[0]] }),
   );
 });
-test("detail checks deduplicate and cancel on close while an accepted submission remains alive", async (t) => {
-  const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
-  const original = globalThis.fetch;
-  t.after(() => (globalThis.fetch = original));
-  let checkSignal,
-    updateSignal,
-    releaseUpdate,
-    checks = 0;
-  globalThis.fetch = async (url, options) => {
-    if (url.endsWith("/status")) return Response.json({ ok: true, value: status() });
-    if (url.endsWith("/check")) {
-      checks++;
-      checkSignal = options.signal;
-      return new Promise((_, reject) =>
-        options.signal.addEventListener("abort", () => reject(options.signal.reason), {
-          once: true,
-        }),
-      );
-    }
-    if (url.endsWith("/update-all")) {
-      updateSignal = options.signal;
-      return new Promise((resolve) => {
-        releaseUpdate = () => resolve(Response.json({ ok: true, value: {} }));
-      });
-    }
-    throw Error("unexpected request");
-  };
-  const ctx = new Context(),
-    owner = createPluginDetailUpdates(ctx);
-  t.after(() => ctx.fiber.dispose());
-  t.after(() => owner.dispose());
-  const close = owner.retain();
-  while (!owner.getSnapshot().items.length) await new Promise((resolve) => setTimeout(resolve, 1));
-  const checking = owner.check();
-  owner.check();
-  while (!checkSignal) await new Promise((resolve) => setTimeout(resolve, 1));
-  assert.equal(checks, 1);
-  close();
-  await checking;
-  assert.equal(checkSignal.aborted, true);
-  const closeAgain = owner.retain();
-  const updating = owner.update(name);
-  owner.update(name);
-  while (!updateSignal) await new Promise((resolve) => setTimeout(resolve, 1));
-  closeAgain();
-  await owner.dispose();
-  assert.equal(updateSignal.aborted, false);
-  releaseUpdate();
-  await updating;
-});
-
 test("a remounted client recovers the actual Host operation without a detail or resubmission", async (t) => {
   const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
   const original = globalThis.fetch;
@@ -404,7 +334,12 @@ test("a remounted client recovers the actual Host operation without a detail or 
     return Response.json({ ok: true, value: {} });
   };
   const ctx = new Context(),
-    old = createPluginDetailUpdates(ctx);
+    old = createPluginDetailUpdates(ctx, {
+      restartUpdate: async () => {
+        updates++;
+        phase = "installing";
+      },
+    });
   t.after(() => ctx.fiber.dispose());
   const close = old.retain();
   await new Promise(setImmediate);
@@ -446,7 +381,11 @@ test("successive pending notices keep their own operation target after status ch
     return Response.json({ ok: true, value: {} });
   };
   const ctx = new Context(),
-    owner = createPluginDetailUpdates(ctx);
+    owner = createPluginDetailUpdates(ctx, {
+      restartUpdate: async () => {
+        phase = "pending-restart";
+      },
+    });
   t.after(() => ctx.fiber.dispose());
   t.after(() => owner.dispose());
   owner.retain();
@@ -615,7 +554,13 @@ test("submitted transport failures immediately become unconfirmed and recover on
     throw TypeError("submission disconnected");
   };
   const ctx = new Context(),
-    owner = createPluginDetailUpdates(ctx);
+    owner = createPluginDetailUpdates(ctx, {
+      restartUpdate: async () => {
+        updates++;
+        failure = "offline";
+        throw TypeError("submission disconnected");
+      },
+    });
   t.after(() => ctx.fiber.dispose());
   const close = owner.retain();
   await new Promise(setImmediate);
@@ -820,7 +765,11 @@ test("a submitted update keeps observing after detail close and releases on each
       phase = "verifying";
       return Response.json({ ok: true, value: {} });
     };
-    const owner = createPluginDetailUpdates(ctx);
+    const owner = createPluginDetailUpdates(ctx, {
+      restartUpdate: async () => {
+        phase = "verifying";
+      },
+    });
     const close = owner.retain();
     await new Promise(setImmediate);
     await owner.update(name);

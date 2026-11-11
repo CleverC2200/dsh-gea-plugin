@@ -78,17 +78,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   flex: none;
+  max-width: 170px;
   min-height: 32px;
   padding: 4px 8px;
   border: 0;
   border-radius: 6px;
-  background: transparent;
-  color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
   font: inherit;
   font-size: 12px;
-  white-space: nowrap;
+  text-align: left;
   cursor: pointer;
 }
 .gea-update-entry:hover {
@@ -150,4 +151,20 @@
   height: 6px;
   margin: 12px 0;
   accent-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+}
+
+.gea-update-version {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.gea-update-action {
+  flex: none;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-1);
+  font-size: 11px;
+  white-space: nowrap;
 }

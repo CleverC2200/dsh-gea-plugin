@@ -1,6 +1,11 @@
 export const en = {
   unifiedPolicy:
-    "Updates are checked automatically. Confirm to update the client and compatible company plugins together. Restart when your work is ready.",
+    "Restart and update will end running tasks. The application will take over installation and restart.",
+  restartUpdate: "Restart and update",
+  takeoverStarting: "Starting",
+  pluginsNewVersion: "Plugin updates",
+  takeoverNotice: "Updating will end running tasks and restart the application.",
+  takeoverUnsupported: "Upgrade the client to use restart and update.",
   companyDownload: "Update client and plugins",
   companyPrepared:
     "Plugins are cached for client {version}. Complete the client installation to apply the compatible suite on startup.",
@@ -124,7 +129,12 @@ export const en = {
   dependencies: "The installed plugin versions are incompatible with this update.",
 } as const;
 export const zh: Record<keyof typeof en, string> = {
-  unifiedPolicy: "自动检查更新。确认后一起更新客户端及兼容的公司插件，工作准备好后再重启。",
+  unifiedPolicy: "重启更新将结束正在运行的任务。应用将接管安装并自动重启。",
+  restartUpdate: "重启更新",
+  takeoverStarting: "正在接管",
+  pluginsNewVersion: "插件新版本",
+  takeoverNotice: "更新将结束正在运行的任务，并重启应用。",
+  takeoverUnsupported: "请先升级客户端，以使用重启更新。",
   companyDownload: "更新客户端及插件",
   companyPrepared: "已为客户端 {version} 缓存插件。完成客户端安装后，将在启动时应用兼容组合。",
   companyVerifying: "客户端 {version} 已重启，正在确认已安装、后台和界面实际版本。",
