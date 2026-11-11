@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 import {
@@ -7,6 +8,7 @@ import {
   ReasoningEffortId,
   ProviderRequestId,
   attributionHeaders,
+  resolveRetryPolicy,
   type GenerateOptions,
   type LlmReasoningEffortInfo,
   type StreamChunk,
@@ -16,6 +18,12 @@ import type { Business } from "./business.ts";
 import { toGeaMessages } from "./gea-messages.ts";
 import { networkError } from "../shared/net-error.ts";
 import { modelHttpError } from "../shared/model-http-error.ts";
+import {
+  modelCorrelationId,
+  modelFailure,
+  modelResponseDetails,
+  type ModelFailureDetails,
+} from "../shared/model-failure.ts";
 import { transportSignal } from "../shared/transport-signal.ts";
 import { geaTextStream } from "../shared/gea-stream.ts";
 import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
@@ -45,6 +53,10 @@ const GEA_DEFAULT_REASONING_EFFORT = ReasoningEffortId("high");
 
 /** 网关只接受非空字符串，且单次覆盖的键值有长度上限；不合法就保持改造前行为。 */
 const GEA_EFFORT_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+const GEA_MODEL_RETRY_POLICY = resolveRetryPolicy(
+  { mode: "normal", maxRetries: 2 },
+  "gea-analysis.retryPolicy",
+);
 
 /**
  * 把所选档位映射成网关契约里的 `extra_params`。取值不合法时返回 undefined，
@@ -107,6 +119,7 @@ export async function initializeGeaDefaultModel(
 
 /** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 export class GeaModelAdapter extends LlmAdapter {
+  private readonly requestOwners = new WeakMap<AbortSignal, AbortSignal>();
   constructor(
     private readonly business: Business,
     private readonly htmlAccess: (
@@ -118,6 +131,9 @@ export class GeaModelAdapter extends LlmAdapter {
   }
   override providerInfo(id: string) {
     return { id, name: "GEA personal model" };
+  }
+  override providerRetryPolicy(_provider: string) {
+    return GEA_MODEL_RETRY_POLICY;
   }
   async listModels(provider: string) {
     const route = await this.business.modelRoute(
@@ -146,18 +162,74 @@ export class GeaModelAdapter extends LlmAdapter {
     };
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    if (options.purpose !== "compaction") {
+      yield* this.streamAttempt(options);
+      return;
+    }
+    const signal = options.signal ?? new AbortController().signal;
+    const policy = this.providerRetryPolicy(options.provider);
+    for (let retry = 0; ; retry++) {
+      try {
+        const chunks: StreamChunk[] = [];
+        for await (const chunk of this.streamAttempt({ ...options, signal })) chunks.push(chunk);
+        signal.throwIfAborted();
+        this.requestOwners.get(signal)?.throwIfAborted();
+        yield* chunks;
+        return;
+      } catch (error) {
+        const active = AbortSignal.any([
+          signal,
+          this.requestOwners.get(signal) ?? this.business.identitySignal(),
+        ]);
+        active.throwIfAborted();
+        if (
+          !(error instanceof LlmError) ||
+          policy.mode !== "normal" ||
+          !policy.retryableCodes.includes(error.code) ||
+          retry >= policy.maxRetries
+        )
+          throw error;
+        const requestedDelay = error.failure.providerRetryAfterMs;
+        if (requestedDelay !== undefined && requestedDelay > policy.maxDelayMs) throw error;
+        const delayMs =
+          requestedDelay ??
+          Math.min(
+            Math.min(policy.initialDelayMs * 2 ** retry, policy.maxDelayMs) *
+              (1 - policy.jitterRatio + 2 * policy.jitterRatio * Math.random()),
+            policy.maxDelayMs,
+          );
+        console.info(
+          JSON.stringify({
+            event: "GEA_MODEL_RETRY",
+            purpose: options.purpose,
+            sessionId: options.sessionId,
+            model: options.model,
+            retry: retry + 1,
+            delayMs,
+            code: error.code,
+            requestId: error.failure.requestId,
+            httpStatus: error.failure.status,
+          }),
+        );
+        await delay(delayMs, undefined, { signal: active });
+      }
+    }
+  }
+  private async *streamAttempt(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const identity =
+      (options.signal && this.requestOwners.get(options.signal)) ?? this.business.identitySignal();
+    if (options.signal) this.requestOwners.set(options.signal, identity);
+    identity.throwIfAborted();
     const startedAt = Date.now();
     const requestId = randomUUID();
     let responseReceivedMs: number | null = null;
     let textChars = 0;
+    let responseDetails: ModelFailureDetails = {};
+    let modelSecret = "";
     const cancellation = new AbortController();
     let releaseSource: (() => void) | undefined;
     using watchdog = idleWatchdog(
-      AbortSignal.any([
-        cancellation.signal,
-        ...(options.signal ? [options.signal] : []),
-        this.business.identitySignal(),
-      ]),
+      AbortSignal.any([cancellation.signal, ...(options.signal ? [options.signal] : []), identity]),
       this.business.config.modelRequestTimeoutMs,
       "GEA_MODEL_IDLE",
     );
@@ -168,9 +240,12 @@ export class GeaModelAdapter extends LlmAdapter {
     const modelHost = "GEA 模型网关";
     const business = this.business;
     const htmlAccess = this.htmlAccess;
+    const requestOwners = this.requestOwners;
     const request = async function* (): AsyncGenerator<StreamChunk> {
       const access = await htmlAccess(options.sessionId, signal);
       if (access) {
+        if (options.signal)
+          requestOwners.set(options.signal, AbortSignal.any([identity, access.signal]));
         const abort = () => cancellation.abort(access.signal.reason);
         access.signal.addEventListener("abort", abort, { once: true });
         releaseSource = () => access.signal.removeEventListener("abort", abort);
@@ -189,10 +264,12 @@ export class GeaModelAdapter extends LlmAdapter {
           "MODEL_NOT_FOUND",
         );
       const requestBody = toGeaRequest(options);
+      modelSecret = route.secret;
       console.info(
         JSON.stringify({
           event: "GEA_MODEL_REQUEST",
           requestId,
+          purpose: options.purpose ?? "conversation",
           sessionId: options.sessionId,
           consumerCode: route.agentCode,
           model: options.model,
@@ -213,12 +290,18 @@ export class GeaModelAdapter extends LlmAdapter {
           ...attributionHeaders(),
           Authorization: "Bearer " + route.secret,
           "X-GEA-Agent-Code": route.agentCode,
+          "X-Request-Id": requestId,
+          "X-Trace-Id": requestId,
         },
         body: JSON.stringify(requestBody),
         redirect: "error",
         signal,
       });
       responseReceivedMs = Date.now() - startedAt;
+      responseDetails = {
+        httpStatus: response.status,
+        ...modelResponseDetails(response.headers, [route.secret]),
+      };
       if (!response.ok) {
         if (response.status === 401) business.expireModelLogin();
         throw await modelHttpError(response, route.agentCode, "模型推理", [route.secret]);
@@ -243,6 +326,8 @@ export class GeaModelAdapter extends LlmAdapter {
             JSON.stringify({
               event: "GEA_MODEL_USAGE",
               requestId,
+              serverRequestId: responseDetails.requestId,
+              traceId: responseDetails.traceId ?? requestId,
               sessionId: options.sessionId,
               usage: chunk.usage,
             }),
@@ -255,6 +340,8 @@ export class GeaModelAdapter extends LlmAdapter {
           JSON.stringify({
             event: "GEA_MODEL_USAGE",
             requestId,
+            serverRequestId: responseDetails.requestId,
+            traceId: responseDetails.traceId ?? requestId,
             sessionId: options.sessionId,
             usage: null,
           }),
@@ -285,14 +372,23 @@ export class GeaModelAdapter extends LlmAdapter {
         },
       );
       if (converted.name === "AbortError") throw converted;
-      const code = (converted as Error & { code?: unknown }).code;
+      const failure = modelFailure(converted);
+      const details = { ...failure.details, ...responseDetails };
+      const serverRequestId = modelCorrelationId(details.requestId, [modelSecret]);
+      const traceId = modelCorrelationId(details.traceId, [modelSecret]) ?? requestId;
       console.info(
         JSON.stringify({
           event: "GEA_MODEL_FAILURE",
           requestId,
+          purpose: options.purpose ?? "conversation",
           sessionId: options.sessionId,
           model: options.model,
-          code: typeof code === "string" ? code : "NETWORK",
+          code: failure.code,
+          geaCode: failure.originalCode,
+          serverRequestId,
+          traceId,
+          httpStatus: details.httpStatus,
+          upstreamCode: details.upstreamCode,
           stage,
           elapsedMs: Date.now() - startedAt,
           responseReceivedMs,
@@ -301,9 +397,14 @@ export class GeaModelAdapter extends LlmAdapter {
         }),
       );
       throw new LlmError(
-        `${converted.message} requestId=${requestId}`,
-        typeof code === "string" ? code : "NETWORK",
-        { requestId: ProviderRequestId(requestId) },
+        `${converted.message} requestId=${serverRequestId ?? requestId} clientRequestId=${requestId} traceId=${traceId}`,
+        failure.code,
+        {
+          requestId: ProviderRequestId(serverRequestId ?? requestId),
+          status: details.httpStatus,
+          providerRetryAfterMs: details.providerRetryAfterMs,
+          cause: converted,
+        },
       );
     } finally {
       releaseSource?.();
