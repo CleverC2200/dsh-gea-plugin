@@ -1,8 +1,9 @@
 import type { PluginUpdateProblem } from "./plugin-update-diagnostics.ts";
-import type { CompanyPackageName } from "./plugin-release.mjs";
-export type PluginPackageStamp = { name: CompanyPackageName; version: string };
+import type { UpdatablePackageName } from "./plugin-release.mjs";
+export type PluginPackageStamp = { name: UpdatablePackageName; version: string };
 export type CompiledModuleProof =
   | { kind: "active"; stamp: PluginPackageStamp; identity: string }
+  | { kind: "unversioned"; identity: string }
   | { kind: "unverified"; reason: string };
 /** Constructed by the trusted public Loader/module readers, never a raw client POST. */
 export type ClientModuleObservation =
@@ -18,7 +19,7 @@ export type ClientModuleObservation =
     }
   | { kind: "unverified"; reason: string };
 export type RuntimePackageProof = {
-  name: CompanyPackageName;
+  name: UpdatablePackageName;
   resolvedDir: string;
   host: CompiledModuleProof;
   client: ClientModuleObservation;
@@ -36,14 +37,14 @@ export type PluginUpdateStage =
 export type PluginUpdateOperation = {
   schema: 2;
   targets?: {
-    packageName: CompanyPackageName;
+    packageName: UpdatablePackageName;
     targetVersion: string;
     targetSha256: string;
     archivePath: string;
   }[];
   completionProofs?: NonNullable<PluginUpdateOperation["completionProof"]>[];
   id: string;
-  packageName: CompanyPackageName;
+  packageName: UpdatablePackageName;
   targetVersion: string;
   targetSha256: string;
   processIdentity: string;
@@ -67,7 +68,7 @@ export type PluginUpdateOperation = {
   }[];
 };
 export type PluginUpdateRow = {
-  packageName: CompanyPackageName;
+  packageName: UpdatablePackageName;
   installedVersion: string | null;
   runningHostVersion: string | null;
   runningClientVersion: string | null;

@@ -28,18 +28,21 @@ const names = [
   "@cleverc2200/dsh-agent-workbench",
   "dsh-agent-manage",
   "@cleverc2200/gea-dsh-prototype",
+  "@cleverc2200/dsh-personal-memory",
 ];
-const bundles = [workbenchMeta, manageMeta, geaMeta].map(({ meta }, i) => ({
-  name: names[i],
-  version: "1.2.3",
-  meta,
-  installed: true,
-  optional: false,
-  enabled: true,
-  removable: true,
-  rows: [],
-  overrides: [],
-}));
+const bundles = [workbenchMeta, manageMeta, geaMeta, { meta: { title: "个人记忆" } }].map(
+  ({ meta }, i) => ({
+    name: names[i],
+    version: "1.2.3",
+    meta,
+    installed: true,
+    optional: false,
+    enabled: true,
+    removable: true,
+    rows: [],
+    overrides: [],
+  }),
+);
 new TestRemote(ctx, {
   settings: {
     describe: async () => ({

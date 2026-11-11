@@ -1,5 +1,5 @@
 import semver from "semver";
-import { companyPackageNames } from "./plugin-release.mjs";
+import { updatablePackageNames } from "./plugin-release.mjs";
 import type {
   FixedCore,
   PluginManifest,
@@ -78,7 +78,7 @@ export function parseUpdateProblem(value: unknown) {
         throw Error("UPDATE_STATUS_INVALID");
       const nextStep = row.nextStep === undefined ? undefined : record(row.nextStep);
       const packageName = nextStep
-        ? companyPackageNames.find((name) => name === nextStep.packageName)
+        ? updatablePackageNames.find((name) => name === nextStep.packageName)
         : undefined;
       if (nextStep && !packageName) throw Error("UPDATE_STATUS_INVALID");
       return {

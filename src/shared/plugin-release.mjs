@@ -5,6 +5,11 @@ export const companyPackageNames = Object.freeze([
   "dsh-agent-manage",
   "@cleverc2200/gea-dsh-prototype",
 ]);
+export const personalMemoryPackageName = "@cleverc2200/dsh-personal-memory";
+export const updatablePackageNames = Object.freeze([
+  ...companyPackageNames,
+  personalMemoryPackageName,
+]);
 
 /** Validate the whole resulting graph, including consumers that are not being replaced. */
 export function validatePluginCombination({ core, manifests }) {
@@ -85,7 +90,10 @@ export function planPluginUpdate({ release, core, installed }) {
 
 export function planPluginSuiteVersions({ releases, core, installed }) {
   if (
-    releases.length !== companyPackageNames.length ||
+    releases.length < companyPackageNames.length ||
+    releases.length > updatablePackageNames.length ||
+    new Set(releases.map((release) => release.name)).size !== releases.length ||
+    releases.some((release) => !updatablePackageNames.includes(release.name)) ||
     !companyPackageNames.every(
       (name) => releases.filter((release) => release.name === name).length === 1,
     )
@@ -187,7 +195,7 @@ export function parsePluginRelease(value) {
   if (
     !record(value) ||
     value.schema !== 1 ||
-    !companyPackageNames.includes(value.name) ||
+    !updatablePackageNames.includes(value.name) ||
     !semver.valid(value.version)
   )
     fail();
@@ -274,7 +282,7 @@ function parseManifest(value, publication) {
     !record(value) ||
     typeof value.name !== "string" ||
     !value.name ||
-    (publication && !companyPackageNames.includes(value.name)) ||
+    (publication && !updatablePackageNames.includes(value.name)) ||
     !semver.valid(value.version)
   )
     fail();
@@ -344,10 +352,10 @@ export function parsePluginChannel(value) {
   }
   if (Date.parse(value.expiresAt) <= Date.parse(value.issuedAt))
     throw Error("SOURCE_CHANNEL_TIME_INVALID");
-  const parseReference = (reference) => {
+  const parseReference = (reference, names) => {
     if (
       !record(reference) ||
-      !companyPackageNames.includes(reference.name) ||
+      !names.includes(reference.name) ||
       typeof reference.url !== "string" ||
       !/^[a-f0-9]{64}$/.test(reference.sha256)
     )
@@ -369,7 +377,9 @@ export function parsePluginChannel(value) {
       sha256: reference.sha256,
     };
   };
-  const releases = value.releases.map(parseReference);
+  const releases = value.releases.map((reference) =>
+    parseReference(reference, companyPackageNames),
+  );
   let companionReleases;
   if (value.companionReleases !== undefined) {
     if (
@@ -379,7 +389,9 @@ export function parsePluginChannel(value) {
       releases[0].name !== "@cleverc2200/gea-dsh-prototype"
     )
       throw Error("SOURCE_CHANNEL_INVALID");
-    companionReleases = value.companionReleases.map(parseReference);
+    companionReleases = value.companionReleases.map((reference) =>
+      parseReference(reference, companyPackageNames),
+    );
   }
   const combined = [...releases, ...(companionReleases ?? [])];
   if (
@@ -392,6 +404,14 @@ export function parsePluginChannel(value) {
     (value.suite !== true || combined.length !== companyPackageNames.length)
   )
     throw Error("SOURCE_CHANNEL_INVALID");
+  let optionalReleases;
+  if (value.optionalReleases !== undefined) {
+    if (!Array.isArray(value.optionalReleases) || value.optionalReleases.length !== 1)
+      throw Error("SOURCE_CHANNEL_INVALID");
+    optionalReleases = value.optionalReleases.map((reference) =>
+      parseReference(reference, [personalMemoryPackageName]),
+    );
+  }
   return {
     schema: 1,
     channel: value.channel,
@@ -401,14 +421,23 @@ export function parsePluginChannel(value) {
     ...(value.suite ? { suite: true } : {}),
     releases,
     ...(companionReleases ? { companionReleases } : {}),
+    ...(optionalReleases ? { optionalReleases } : {}),
   };
 }
 /** Produce the complete next signed payload locally; publishing owns the atomic channel replacement. */
 export function mergePluginChannelRelease({ previous, release, revision, issuedAt, expiresAt }) {
   const channel = parsePluginChannel(previous);
-  if (channel.suite) throw Error("CHANNEL_SUITE_REPLACEMENT_REQUIRED");
   if (!Number.isSafeInteger(revision) || revision <= channel.revision)
     throw Error("CHANNEL_REVISION_REQUIRED");
+  if (release.name === personalMemoryPackageName)
+    return parsePluginChannel({
+      ...channel,
+      revision,
+      issuedAt,
+      expiresAt,
+      optionalReleases: [release],
+    });
+  if (channel.suite) throw Error("CHANNEL_SUITE_REPLACEMENT_REQUIRED");
   const selected =
     channel.companionReleases && release.name !== "@cleverc2200/gea-dsh-prototype"
       ? "companionReleases"

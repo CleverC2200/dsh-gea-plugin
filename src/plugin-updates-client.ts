@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-client-modules/client";
-import { companyPackageNames } from "./shared/plugin-release.mjs";
+import { companyPackageNames, updatablePackageNames } from "./shared/plugin-release.mjs";
 import {
   compiledPackageStamp,
   parseUpdateClientStatus,
@@ -16,7 +16,7 @@ export function readClientPluginModules(ctx: Context): UpdateClientReport["modul
   const modules = ctx.get("modules");
   if (!modules || modules.entries.state.getSnapshot().syncing) return [];
   const observed: UpdateClientReport["modules"] = [];
-  for (const name of companyPackageNames) {
+  for (const name of updatablePackageNames) {
     const matches = [...ctx.loader.entries()].filter(
       (entry) => entry.options.name === name && !entry.disabled,
     );
@@ -87,7 +87,8 @@ export const pluginUpdateBusy = (items: PluginUpdateRow[]) =>
   items.some((row) => activeStages.includes(row.state));
 
 export const pluginSuiteReady = (items: PluginUpdateRow[]) =>
-  items.length === companyPackageNames.length &&
+  items.length >= companyPackageNames.length &&
+  items.length <= updatablePackageNames.length &&
   items.every((row) => row.state === "available" || row.state === "current");
 
 export class PluginUpdateRequestError extends Error {
