@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { mkdir, mkdtemp, readFile, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -129,6 +129,95 @@ test("legacy personal memory updates alone and requires a new stamped Host and c
   assert.equal(result.operation.stage, "completed");
   assert.equal(await readFile(ledger, "utf8"), '{"fixture":"preserved-session-binding"}\n');
   assert.equal(result.items.find((row) => row.packageName === name).runningHostVersion, "0.1.2");
+});
+
+test("a receipt from the previous three-package updater completes after GEA first upgrades", async (t) => {
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { memory: true, memoryBootstrap: true });
+  const oldModule = join(work, "previous-controller.mjs");
+  const repository = fileURLToPath(new URL("..", import.meta.url));
+  await build({
+    entryPoints: [join(repository, "src/host/plugin-update-controller.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    packages: "external",
+    outfile: oldModule,
+    logLevel: "silent",
+    plugins: [
+      {
+        name: "previous-shipped-updater",
+        setup(b) {
+          const aliases = {
+            "@deepseek-ai/dsh-plugin-manager/operations":
+              "packages/boot/plugin-manager/lib/types/operations.js",
+            "@deepseek-ai/dsh-atomic-write": "packages/util/atomic-write/lib/index.js",
+            "@deepseek-ai/dsh-app-boot": "packages/boot/app-boot/lib/index.js",
+          };
+          b.onResolve({ filter: /^@deepseek-ai\// }, (args) =>
+            aliases[args.path]
+              ? { path: join(sdk, aliases[args.path]), external: true }
+              : undefined,
+          );
+          b.onLoad({ filter: /\.(?:ts|mjs)$/ }, (args) => ({
+            contents: execFileSync(
+              "git",
+              [
+                "show",
+                "9f3875b835a022d39bf9cf827787cad39a3dfeb9:" + relative(repository, args.path),
+              ],
+              { cwd: repository, encoding: "utf8" },
+            ),
+            loader: args.path.endsWith(".ts") ? "ts" : "js",
+            resolveDir: dirname(args.path),
+          }));
+        },
+      },
+    ],
+  });
+  const previous = await import(pathToFileURL(oldModule));
+  const controller = previous.createPluginUpdateController({
+    ...f.options,
+    source: {
+      ...f.source,
+      check: async (signal) =>
+        (await f.source.check(signal)).filter((r) => r.name !== "@cleverc2200/dsh-personal-memory"),
+    },
+  });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const target = controller.snapshot().items.find((row) => row.state === "available");
+  assert.equal(target.packageName, "@cleverc2200/gea-dsh-prototype");
+  await controller.submit({ packageName: target.packageName, planId: target.planId });
+  await waitForStage(controller, ["pending-restart"]);
+  await controller.dispose();
+  const proof = f.proofs.find((row) => row.name === target.packageName);
+  proof.host.stamp.version = proof.client.stamp.version = "3.1.0";
+  const memory = f.proofs.find((row) => row.name === "@cleverc2200/dsh-personal-memory");
+  memory.host = { kind: "unversioned", identity: "legacy-memory" };
+  memory.client = { kind: "unverified", reason: "legacy-memory" };
+  const script = join(f.root, "gea-bootstrap-restart.mjs"),
+    input = join(f.root, "gea-bootstrap.json");
+  await writeFile(
+    script,
+    `import{createPluginUpdateController}from${JSON.stringify(pathToFileURL(modulePath).href)};import{readFile}from'node:fs/promises';const o=JSON.parse(await readFile(process.argv[2],'utf8'));const proofs=o.proofs;delete o.proofs;o.source={check:async()=>[],download:async()=>{throw Error('unused')},assertCurrentRelease:()=>{}};o.readRuntimeProofs=async id=>proofs.map(p=>({...p,client:p.client.kind==='observed'?{...p.client,binding:{...p.client.binding,hostProcessIdentity:id}}:p.client}));const c=createPluginUpdateController(o);await c.initialize();console.log(JSON.stringify(c.snapshot()));await c.dispose();`,
+  );
+  await writeFile(
+    input,
+    JSON.stringify({
+      ...f.options,
+      source: undefined,
+      readRuntimeProofs: undefined,
+      proofs: f.proofs,
+    }),
+  );
+  const result = JSON.parse(execFileSync(process.execPath, [script, input], { encoding: "utf8" }));
+  assert.equal(result.operation.stage, "completed");
+  assert.equal(
+    result.items.find((row) => row.packageName === memory.name).installedVersion,
+    "0.1.1",
+  );
 });
 
 test("an absent or disabled personal memory plugin does not block the existing suite", async (t) => {

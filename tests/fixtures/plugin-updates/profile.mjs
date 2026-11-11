@@ -17,6 +17,7 @@ export async function controllerFixture(
     releasePeers = {},
     companyVersions = false,
     memory = false,
+    memoryBootstrap = false,
   } = {},
 ) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "plugin-update-real-profile-")));
@@ -57,7 +58,7 @@ export async function controllerFixture(
       version =
         index === 3
           ? "0.1.2"
-          : memory && index === 2
+          : memory && !memoryBootstrap && index === 2
             ? oldVersion
             : companyVersions
               ? ["0.1.5", "0.6.3-company.5", "0.0.5"][index]
