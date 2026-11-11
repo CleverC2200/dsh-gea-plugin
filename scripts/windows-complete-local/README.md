@@ -32,4 +32,4 @@ GitHub 构建从仓库 secrets `GEA_WINDOWS_SIGNING_PFX_BASE64`、`GEA_WINDOWS_S
 
 `windows_certificate_test=true` 单独执行 Windows 机器证书库导入、重复导入、PFX 签名与时间戳夹具，使用临时测试证书，不使用正式私钥。它不构建完整桌面、不访问业务，也不证明真实旧版到新版升级。当前用户根证书导入可能出现 Windows 系统确认，保留给员工首次安装交互。完整 NSIS 安装、真实公司证书签包及真实客户端更新仍需各自验收。
 
-`windows_update_acceptance=true` 在 Windows runner 上复用 Core 的真实下载、发布者及负向验签夹具，并从固定的 `20261102.2` 未签名版覆盖安装到本次签名版，检查实际 EXE 版本、签名及原有用户文件保留。它使用临时构建机，不代表员工设备或生产业务验收。
+`windows_update_acceptance=true` 在 Windows runner 上复用 Core 的真实下载、发布者及负向验签夹具，并从固定的 `20261102.2` 未签名版覆盖安装到本次签名版，按构建回执定位新版 EXE，覆盖产品更名后的版本、签名及原有用户文件保留检查。它使用临时构建机，不代表员工设备或生产业务验收。

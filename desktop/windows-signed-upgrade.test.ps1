@@ -1,4 +1,4 @@
-param([string]$OldInstaller,[string]$NewInstaller,[string]$WorkDirectory,[string]$NewVersion,[string]$CertificatePath)
+param([string]$OldInstaller,[string]$NewInstaller,[string]$WorkDirectory,[string]$NewVersion,[string]$CertificatePath,[Parameter(Mandatory=$true)][string]$NewExecutableName)
 $ErrorActionPreference = 'Stop'
 foreach ($module in @('Security','Utility','Management')) {
     Import-Module "$PSHOME/Modules/Microsoft.PowerShell.$module/Microsoft.PowerShell.$module.psd1" -ErrorAction Stop
@@ -13,7 +13,8 @@ function Stop-InstalledApplication {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
     }
 }
-function Install-Client([string]$Installer) {
+function Install-Client([string]$Installer,[string]$ExecutableName) {
+    $script:executable = Join-Path $installation $ExecutableName
     $info = New-Object System.Diagnostics.ProcessStartInfo
     $info.FileName = $Installer
     $info.Arguments = '/S /D=' + $installation
@@ -49,11 +50,11 @@ function Installed-Version {
     return $value.Trim()
 }
 try {
-    Install-Client $OldInstaller
+    Install-Client $OldInstaller 'GEA Desktop.exe'
     if ((Installed-Version) -ne '0.2.0-rc.2.20261102.2') { throw 'BASELINE_VERSION_MISMATCH' }
     $state = '{"session":"existing-session","configuration":"preserve","draft":"existing-draft"}'
     [IO.File]::WriteAllText($marker,$state,[Text.UTF8Encoding]::new($false))
-    Install-Client $NewInstaller
+    Install-Client $NewInstaller $NewExecutableName
     if ((Installed-Version) -ne $NewVersion) { throw 'UPGRADE_VERSION_MISMATCH' }
     if ([IO.File]::ReadAllText($marker) -ne $state) { throw 'USER_FILES_CHANGED' }
     $signature = Get-AuthenticodeSignature -LiteralPath $executable
