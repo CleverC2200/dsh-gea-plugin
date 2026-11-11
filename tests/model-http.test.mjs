@@ -6,7 +6,7 @@ import { build } from "esbuild";
 const built = await build({
   stdin: {
     contents:
-      "export {Business} from './src/host/business.ts';export {networkError} from './src/shared/net-error.ts';export {modelHttpError} from './src/shared/model-http-error.ts';",
+      "export {Business} from './src/host/business.ts';export {networkError} from './src/shared/net-error.ts';export {modelHttpError} from './src/shared/model-http-error.ts';export {modelFailure,modelResponseDetails} from './src/shared/model-failure.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -21,7 +21,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   mod,
   mod.exports,
 );
-const { Business, networkError, modelHttpError } = mod.exports;
+const { Business, networkError, modelHttpError, modelFailure, modelResponseDetails } = mod.exports;
 
 function loggedInBusiness(t) {
   const business = new Business({
@@ -226,3 +226,325 @@ test("only explicit context rejection on a model inference request receives Core
     assert.equal(error.details.requestId, "request-id");
   }
 });
+
+test("model recovery preserves permanent rejections and unknown failures", async () => {
+  for (const [status, upstreamCode, expected] of [
+    [503, "MODEL_UPSTREAM_REJECTED", "GEA_MODEL_HTTP_503"],
+    [401, "MODEL_UPSTREAM_TIMEOUT", "GEA_MODEL_HTTP_401"],
+    [403, "permission_denied", "GEA_MODEL_HTTP_403"],
+    [501, "upstream_error", "GEA_MODEL_HTTP_501"],
+    [501, "MODEL_UPSTREAM_UNAVAILABLE", "GEA_MODEL_HTTP_501"],
+    [400, "MODEL_UPSTREAM_UNAVAILABLE", "GEA_MODEL_HTTP_400"],
+    [502, "MODEL_UPSTREAM_REJECTED", "GEA_MODEL_HTTP_502"],
+    [502, "upstream_error", "SERVER"],
+  ]) {
+    const error = await modelHttpError(
+      Response.json({ error: { code: upstreamCode } }, { status }),
+      "workbench",
+      "模型推理",
+      [],
+    );
+    assert.equal(modelFailure(error).code, expected);
+  }
+  assert.equal(
+    modelFailure(
+      networkError(new Error("unexpected application error"), {
+        what: "model",
+      }),
+    ).code,
+    "GEA_NETWORK_FAILED",
+  );
+});
+
+test("model response metadata validates identifiers and provider delays", (t) => {
+  t.mock.method(Date, "now", () => Date.parse("2026-11-11T00:00:00Z"));
+  assert.deepEqual(
+    modelResponseDetails(
+      new Headers({
+        "X-Request-Id": "safe-request",
+        "X-Trace-Id": "safe-trace",
+        "Retry-After": "1.5",
+      }),
+      [],
+    ),
+    {
+      requestId: "safe-request",
+      traceId: "safe-trace",
+      providerRetryAfterMs: 1500,
+    },
+  );
+  assert.equal(
+    modelResponseDetails(new Headers({ "Retry-After": "Wed, 11 Nov 2026 00:00:02 GMT" }), [])
+      .providerRetryAfterMs,
+    2000,
+  );
+  for (const value of ["not-a-delay", "0", "-1", "Infinity"])
+    assert.equal(
+      modelResponseDetails(new Headers({ "Retry-After": value }), []).providerRetryAfterMs,
+      undefined,
+    );
+  assert.deepEqual(
+    modelResponseDetails(
+      new Headers({
+        "X-Request-Id": "fixture-secret",
+        "X-Trace-Id": "x".repeat(129),
+      }),
+      ["fixture-secret"],
+    ),
+    {},
+  );
+});
+
+const officialMetadata = {
+  id: "fixture-model",
+  provider: "DEEPSEEK",
+  modelName: "deepseek-flash",
+  baseUrl: "https://api.deepseek.com/v1",
+};
+for (const [label, declared, metadata, expected, reads] of [
+  ["catalog capacity wins", 262144, officialMetadata, 262144, 0],
+  ["official default without catalog capacity", undefined, officialMetadata, 1000000, 1],
+  [
+    "metadata capacity wins over default",
+    undefined,
+    { ...officialMetadata, contextWindow: 131072 },
+    131072,
+    1,
+  ],
+  [
+    "metadata parameters win over default",
+    undefined,
+    { ...officialMetadata, modelParams: '{"contextWindow":65536}' },
+    65536,
+    1,
+  ],
+  ["invalid catalog capacity falls back", 0, officialMetadata, 1000000, 1],
+  [
+    "other provider remains unknown",
+    undefined,
+    { ...officialMetadata, provider: "VLLM" },
+    undefined,
+    1,
+  ],
+  [
+    "proxy remains unknown",
+    undefined,
+    { ...officialMetadata, baseUrl: "https://proxy.invalid/v1" },
+    undefined,
+    1,
+  ],
+  [
+    "lookalike official hostname remains unknown",
+    undefined,
+    { ...officialMetadata, baseUrl: "https://api.deepseek.com.evil.invalid/v1" },
+    undefined,
+    1,
+  ],
+  [
+    "unknown wire model remains unknown",
+    undefined,
+    { ...officialMetadata, modelName: "unknown-model" },
+    undefined,
+    1,
+  ],
+  [
+    "mismatched model metadata remains unknown",
+    undefined,
+    { ...officialMetadata, id: "other-model" },
+    undefined,
+    1,
+  ],
+  ["metadata denial does not disable an authorized route", undefined, undefined, undefined, 1],
+]) {
+  test("model discovery capacity: " + label, async (t) => {
+    const { business } = loggedInBusiness(t);
+    let metadataReads = 0;
+    t.mock.method(globalThis, "fetch", async (input) => {
+      const url = String(input);
+      if (url.includes("/my/list")) return credentialList();
+      if (url.includes("/my/claim"))
+        return Response.json({
+          success: true,
+          result: {
+            credentialId: "fixture-credential",
+            status: "ACTIVE",
+            baseUrl: "https://fixture.invalid/ai/v1",
+            secret: "fixture-secret",
+          },
+        });
+      if (url.endsWith("/models"))
+        return Response.json({
+          data: [
+            {
+              id: "fixture-model",
+              name: "deepseek-flash",
+              ...(declared === undefined ? {} : { contextWindow: declared }),
+            },
+          ],
+        });
+      assert.match(url, /\/airag\/airagModel\/queryById\?id=fixture-model$/);
+      metadataReads++;
+      return metadata
+        ? Response.json({ success: true, result: metadata })
+        : Response.json({ success: false }, { status: 403 });
+    });
+    const route = await business.modelRoute(new AbortController().signal);
+    assert.equal(route.contextWindows["fixture-model"], expected);
+    assert.equal(metadataReads, reads);
+    assert.deepEqual(route.models, ["fixture-model"]);
+    assert.equal(business.status().authenticated, true);
+    await business.modelRoute(new AbortController().signal);
+    assert.equal(metadataReads, reads);
+  });
+}
+
+for (const failure of [503, 429, "network", "timeout"]) {
+  test("model metadata recovers in the same login after " + failure, async (t) => {
+    const { business } = loggedInBusiness(t);
+    let now = Date.now();
+    t.mock.method(Date, "now", () => now);
+    const calls = { list: 0, claim: 0, models: 0, metadata: 0 };
+    t.mock.method(globalThis, "fetch", async (input) => {
+      const url = String(input);
+      if (url.includes("/my/list")) {
+        calls.list++;
+        return credentialList();
+      }
+      if (url.includes("/my/claim")) {
+        calls.claim++;
+        return Response.json({
+          success: true,
+          result: {
+            credentialId: "fixture-credential",
+            status: "ACTIVE",
+            baseUrl: "https://fixture.invalid/ai/v1",
+            secret: "fixture-secret",
+          },
+        });
+      }
+      if (url.endsWith("/models")) {
+        calls.models++;
+        return Response.json({ data: [{ id: "fixture-model", name: "deepseek-flash" }] });
+      }
+      assert.match(url, /queryById/);
+      if (++calls.metadata === 1) {
+        if (failure === "network") throw new TypeError("fetch failed");
+        if (failure === "timeout") throw new DOMException("Timed out", "TimeoutError");
+        return Response.json({ success: false }, { status: failure });
+      }
+      return Response.json({ success: true, result: officialMetadata });
+    });
+    const first = await business.modelRoute(new AbortController().signal);
+    assert.equal(first.contextWindows["fixture-model"], undefined);
+    assert.equal(await business.modelRoute(new AbortController().signal), first);
+    assert.equal(calls.metadata, 1);
+    now += 30001;
+    const recovered = await business.modelRoute(new AbortController().signal);
+    assert.equal(recovered.contextWindows["fixture-model"], 1000000);
+    assert.deepEqual(calls, { list: 1, claim: 1, models: 1, metadata: 2 });
+    now += 30001;
+    assert.equal(await business.modelRoute(new AbortController().signal), recovered);
+    assert.equal(calls.metadata, 2);
+    assert.equal(first.contextWindows["fixture-model"], undefined);
+  });
+}
+
+for (const change of ["cancel", "login"]) {
+  test("late metadata refresh cannot publish after " + change, async (t) => {
+    const { business, login } = loggedInBusiness(t);
+    let now = Date.now();
+    t.mock.method(Date, "now", () => now);
+    let metadataReads = 0;
+    let release;
+    let entered;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    t.mock.method(globalThis, "fetch", async (input) => {
+      const url = String(input);
+      if (url.includes("/my/list")) return credentialList();
+      if (url.includes("/my/claim"))
+        return Response.json({
+          success: true,
+          result: {
+            credentialId: "fixture-credential",
+            status: "ACTIVE",
+            baseUrl: "https://fixture.invalid/ai/v1",
+            secret: "fixture-secret",
+          },
+        });
+      if (url.endsWith("/models"))
+        return Response.json({ data: [{ id: "fixture-model", name: "Fixture" }] });
+      if (++metadataReads === 1) return Response.json({ success: false }, { status: 503 });
+      if (metadataReads === 2) {
+        entered();
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      }
+      return Response.json({
+        success: true,
+        result: { ...officialMetadata, contextWindow: 65536 },
+      });
+    });
+    await business.modelRoute(new AbortController().signal);
+    now += 30001;
+    const controller = new AbortController();
+    const pending = business.modelRoute(controller.signal);
+    const rejected = assert.rejects(pending, /STALE_SELECTION|fixture-cancelled/);
+    await started;
+    if (change === "login") login("replacement-login");
+    else controller.abort(new Error("fixture-cancelled"));
+    release(Response.json({ success: true, result: officialMetadata }));
+    await rejected;
+    const route = await business.modelRoute(new AbortController().signal);
+    assert.equal(route.contextWindows["fixture-model"], 65536);
+    assert.equal(metadataReads, 3);
+  });
+}
+
+for (const [label, error, expected] of [
+  [
+    "IPv4 and IPv6 connection failures",
+    new TypeError("fetch failed", {
+      cause: new AggregateError([
+        Object.assign(new Error("v4"), { code: "ECONNREFUSED" }),
+        Object.assign(new Error("v6"), { code: "ENETUNREACH" }),
+      ]),
+    }),
+    "TRANSPORT",
+  ],
+  [
+    "all address attempts timed out",
+    new TypeError("fetch failed", {
+      cause: new AggregateError([
+        Object.assign(new Error("v4"), { code: "ETIMEDOUT" }),
+        Object.assign(new Error("v6"), { code: "UND_ERR_CONNECT_TIMEOUT" }),
+      ]),
+    }),
+    "TIMEOUT",
+  ],
+  [
+    "direct transport error",
+    Object.assign(new Error("socket reset"), { code: "ECONNRESET" }),
+    "TRANSPORT",
+  ],
+  [
+    "aggregate includes an unknown application error",
+    new TypeError("fetch failed", {
+      cause: Object.assign(
+        new AggregateError([
+          Object.assign(new Error("v4"), { code: "ECONNREFUSED" }),
+          new Error("application failed"),
+        ]),
+        { code: "ECONNREFUSED" },
+      ),
+    }),
+    "GEA_NETWORK_FAILED",
+  ],
+]) {
+  test("model transport classification: " + label, () => {
+    const converted = networkError(error, { what: "fixture model" });
+    assert.equal(modelFailure(converted).code, expected);
+  });
+}

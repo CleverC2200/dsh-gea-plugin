@@ -37,6 +37,7 @@ import {
 import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { SalesPlanTransactions } from "./sales-plan-transactions.ts";
 import { object, text, keys } from "./payload.ts";
+import { modelContextWindow, officialModelContextWindow } from "../shared/model-context.ts";
 export { object } from "./payload.ts";
 import { GatewayRequests } from "./gateway-requests.ts";
 import { navigationAgents, navigationDomains } from "./navigation-catalog.ts";
@@ -81,6 +82,7 @@ import {
 import { resolveNavigationTarget, type NavigationInput } from "./navigation-target.ts";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 import { modelHttpError } from "../shared/model-http-error.ts";
+import { modelFailure } from "../shared/model-failure.ts";
 import { ApiLogBatch, parseApiBatchRequest } from "./api-log-batch.ts";
 import { DebugRunCoordinator } from "./debug-run.ts";
 import { GeaApiLogCenter, type ApiLogSnapshot } from "./api-log.ts";
@@ -749,6 +751,7 @@ export class Business {
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
   private modelRoutes = new Map<string, GeaModelRoute>();
+  private readonly modelMetadataRetries = new Map<string, { at: number; ids: string[] }>();
   private readonly inventoryReads = new InventoryReadCache();
   private readonly rejectedSqlLogins = new WeakMap<
     AbortSignal,
@@ -1037,6 +1040,7 @@ export class Business {
     this.materialNames.clear();
     this.customerInventoryAccess = undefined;
     this.modelRoutes.clear();
+    this.modelMetadataRetries.clear();
     this.pluginDelegations.clear();
     this.moduleMcpCache.clear();
     this.clearTurnReplays();
@@ -2025,8 +2029,62 @@ export class Business {
     const auth = this.authenticated();
     const epoch = this.epoch.signal;
     if (!/^[A-Za-z0-9._:-]{1,100}$/.test(agentCode)) throw new Error("GEA_MODEL_AGENT_INVALID");
+    signal.throwIfAborted();
     const cached = this.modelRoutes.get(agentCode);
-    if (cached) return cached;
+    const retry = this.modelMetadataRetries.get(agentCode);
+    if (cached && (!retry || Date.now() < retry.at)) return cached;
+    const failedMetadata: string[] = [];
+    const readMetadata = async (id: string): Promise<Record<string, unknown>> => {
+      try {
+        const metadata = object(
+          await this.gatewayRequests.read(
+            "/airag/airagModel/queryById?id=" + encodeURIComponent(id),
+            auth,
+            AbortSignal.any([signal, epoch]),
+          ),
+        );
+        return metadata.id === id ? metadata : {};
+      } catch (error) {
+        if (epoch.aborted || signal.aborted) throw error;
+        if (
+          error instanceof Error &&
+          (["GEA_NETWORK_ERROR", "GEA_REQUEST_TIMEOUT"].includes(error.message) ||
+            ["SERVER", "TIMEOUT", "TRANSPORT", "RATE_LIMIT"].includes(modelFailure(error).code))
+        )
+          failedMetadata.push(id);
+        return {};
+      }
+    };
+    const cacheRoute = (route: GeaModelRoute): GeaModelRoute => {
+      epoch.throwIfAborted();
+      signal.throwIfAborted();
+      this.modelRoutes.set(agentCode, route);
+      if (failedMetadata.length)
+        this.modelMetadataRetries.set(agentCode, { at: Date.now() + 30_000, ids: failedMetadata });
+      else this.modelMetadataRetries.delete(agentCode);
+      return route;
+    };
+    if (cached && retry) {
+      const route = {
+        ...cached,
+        names: { ...cached.names },
+        contextWindows: { ...cached.contextWindows },
+      };
+      for (const id of retry.ids) {
+        const metadata = await readMetadata(id);
+        const capacity = modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
+        if (capacity !== undefined) route.contextWindows[id] ??= capacity;
+        const label = metadata.name || metadata.modelName;
+        if (
+          cached.names[id] === "GEA 模型（名称未提供）" &&
+          typeof label === "string" &&
+          label.trim() &&
+          label.length <= 256
+        )
+          route.names[id] = label.trim();
+      }
+      return cacheRoute(route);
+    }
     const credentialAccessError = (error: unknown): never => {
       if (
         error instanceof Error &&
@@ -2118,28 +2176,17 @@ export class Business {
       const item = modelsPayload.data.find(
         (entry: unknown) => typeof entry === "object" && entry !== null && object(entry).id === id,
       );
-      const capacity =
-        item && typeof item === "object"
-          ? (object(item).contextWindow ?? object(item).context_window)
-          : undefined;
-      if (typeof capacity === "number" && Number.isSafeInteger(capacity) && capacity > 0)
-        contextWindows[id] = capacity;
-      let label = item && typeof item === "object" ? object(item).name : undefined;
-      if (typeof label !== "string" || !label.trim()) {
-        try {
-          const metadata = object(
-            await this.gatewayRequests.read(
-              "/airag/airagModel/queryById?id=" + encodeURIComponent(id),
-              auth,
-              AbortSignal.any([signal, epoch]),
-            ),
-          );
-          if (metadata.id === id) label = metadata.name || metadata.modelName;
-        } catch (error) {
-          // 无权或不可用的显示名查询不能禁用已授权的模型路由。
-          if (epoch.aborted || signal.aborted) throw error;
-        }
+      const entry = item && typeof item === "object" ? object(item) : {};
+      let capacity = modelContextWindow(entry);
+      let label = entry.name;
+      const hasLabel = typeof label === "string" && label.trim();
+      if (!hasLabel || capacity === undefined) {
+        const metadata = await readMetadata(id);
+        if (!hasLabel) label = metadata.name || metadata.modelName;
+        capacity ??= modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
       }
+      capacity ??= officialModelContextWindow(entry);
+      if (capacity !== undefined) contextWindows[id] = capacity;
       names[id] =
         typeof label === "string" && label.trim() && label.length <= 256
           ? label.trim()
@@ -2153,10 +2200,7 @@ export class Business {
       names,
       contextWindows,
     };
-    epoch.throwIfAborted();
-    signal.throwIfAborted();
-    this.modelRoutes.set(agentCode, route);
-    return route;
+    return cacheRoute(route);
   }
 
   /** 重启二维码登录，并使旧身份留下的所有选择失效。 */

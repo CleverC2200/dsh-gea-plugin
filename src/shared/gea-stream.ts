@@ -7,6 +7,7 @@ import {
   isContextWindowExceededError,
   type StreamChunk,
 } from "@deepseek-ai/dsh-llm";
+import { modelCorrelationId, type ModelFailureDetails } from "./model-failure.ts";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("GEA_MODEL_INVALID_SSE");
@@ -26,7 +27,7 @@ const STREAM_FAILURES: Record<string, string> = {
   GEA_MODEL_UNSUPPORTED_FINISH_REASON: "模型返回了无法识别的结束原因，本轮已中止",
   GEA_MODEL_EMPTY_RESPONSE: "模型这一轮没有给出任何内容，请重发一次",
   GEA_MODEL_INVALID_SSE: "模型返回的数据格式无法解析，本轮已中止",
-  GEA_MODEL_GATEWAY_ERROR: "模型网关在流里回了错误，本轮已中止",
+  GEA_MODEL_GATEWAY_ERROR: "模型网关在流里返回了错误",
   GEA_MODEL_CONTEXT_TOO_LONG: "模型上下文超出模型上限，由 Core 按现有压缩策略决定能否恢复",
 };
 
@@ -42,7 +43,11 @@ function invalid(code: string, detail?: string): never {
 }
 
 /** Classify gateway failures without copying response text into diagnostics. */
-function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boolean } {
+function gatewayErrorDetail(value: unknown): {
+  detail: string;
+  contextLimit: boolean;
+  diagnostics: ModelFailureDetails;
+} {
   const error = record(value);
   const codes = new Set([
     "invalid_request",
@@ -73,6 +78,11 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
     "rate_limit_error",
   ]);
   return {
+    diagnostics: {
+      upstreamCode: safeCode(error.code),
+      requestId: modelCorrelationId(error.requestId),
+      traceId: modelCorrelationId(error.traceId),
+    },
     detail: [
       safeCode(error.code),
       typeof error.type === "string" && types.has(error.type) ? error.type : undefined,
@@ -80,7 +90,7 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
       .filter(Boolean)
       .join(" | "),
     contextLimit:
-      !["authentication_error", "permission_error", "rate_limit_error", "server_error"].includes(
+      !["authentication_error", "permission_error", "rate_limit_error"].includes(
         String(error.type),
       ) &&
       ![
@@ -91,6 +101,7 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
         "MODEL_UPSTREAM_RATE_LIMITED",
         "MODEL_UPSTREAM_UNAVAILABLE",
       ].includes(String(error.code)) &&
+      (error.code === "context_length_exceeded" || error.type !== "server_error") &&
       isContextWindowExceededError(
         [error.code, error.type, error.message]
           .filter((value) => typeof value === "string")
@@ -143,16 +154,19 @@ function completion(data: string): {
     );
   }
   const payload = record(parsed);
-  // 网关用 SSE 回错误对象时（上下文超限、上游模型报错、限流…），要把它的话原样带出来：
-  // 一律报"格式无法解析"等于把真因吞掉（线上就是这么被误导的）。
   if (payload.error != null) {
     const detail = gatewayErrorDetail(payload.error);
     if (detail.contextLimit) {
       const error = streamFailure("GEA_MODEL_CONTEXT_TOO_LONG", detail.detail);
-      Object.assign(error, { code: CONTEXT_WINDOW_EXCEEDED_CODE });
+      Object.assign(error, {
+        code: CONTEXT_WINDOW_EXCEEDED_CODE,
+        details: detail.diagnostics,
+      });
       throw error;
     }
-    invalid("GEA_MODEL_GATEWAY_ERROR", detail.detail);
+    throw Object.assign(streamFailure("GEA_MODEL_GATEWAY_ERROR", detail.detail), {
+      details: detail.diagnostics,
+    });
   }
   if (!Array.isArray(payload.choices)) invalid("GEA_MODEL_INVALID_SSE", "choices 不是数组");
   if (payload.choices.length > 1)
@@ -320,7 +334,11 @@ export async function* geaTextStream(
             invalid("GEA_MODEL_EMPTY_RESPONSE");
           yield { type: "block-end", index: 0, block: { type: "text", text } };
           if (reasoningStarted)
-            yield { type: "block-end", index: 1, block: { type: "reasoning", text: reasoning } };
+            yield {
+              type: "block-end",
+              index: 1,
+              block: { type: "reasoning", text: reasoning },
+            };
           let index = reasoningStarted ? 2 : 1;
           for (const call of calls.values()) {
             signal?.throwIfAborted();

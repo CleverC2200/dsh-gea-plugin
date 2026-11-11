@@ -21,6 +21,21 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
 );
 const { GeaModelAdapter } = mod.exports;
 
+test("GEA model recovery uses a bounded Core policy without retrying protocol or permanent failures", () => {
+  const policy = new GeaModelAdapter({}).providerRetryPolicy("gea-analysis");
+  assert.equal(policy.mode, "normal");
+  assert.equal(policy.maxRetries, 2);
+  for (const code of ["SERVER", "TIMEOUT", "TRANSPORT", "RATE_LIMIT"])
+    assert.ok(policy.retryableCodes.includes(code));
+  for (const code of [
+    "GEA_MODEL_GATEWAY_ERROR",
+    "GEA_MODEL_HTTP_403",
+    "GEA_MODEL_INVALID_TOOL_CALL",
+    "PROVIDER_PROTOCOL",
+  ])
+    assert.ok(!policy.retryableCodes.includes(code));
+});
+
 test("actual LlmRuntime receives route capacity and leaves unknown model capacity unknown", async (t) => {
   const ctx = new Context();
   t.after(() => ctx.fiber.dispose());
@@ -48,7 +63,10 @@ test("the default catalog, model metadata and inference use workbench while scop
   const transported = [];
   const identity = new AbortController();
   const business = {
-    config: { analysisAgentCode: "sales_forecast", modelRequestTimeoutMs: 1000 },
+    config: {
+      analysisAgentCode: "sales_forecast",
+      modelRequestTimeoutMs: 1000,
+    },
     identitySignal: () => identity.signal,
     assertExecutionAllowed: (consumer) => authorized.push(consumer),
     modelRoute: async (_signal, consumer) => {
