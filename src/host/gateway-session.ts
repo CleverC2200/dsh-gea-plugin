@@ -1,3 +1,4 @@
+import { retryingFetch } from "./http-attempt.ts";
 /** 当前登录身份的 Gateway 握手规则。页面 launch 和 MCP transport 共用。 */
 import { randomUUID } from "node:crypto";
 import { throwIfAborted } from "../shared/abort.ts";
@@ -38,10 +39,11 @@ export async function prepareGatewaySession(
       channel: "MCP_CLIENT",
     }),
   };
+  const attempt = retryingFetch(fetchImpl);
   const send = () =>
-    fetchImpl(base + "/ai/gateway/session", {
+    attempt.fetch(base + "/ai/gateway/session", {
       ...request,
-      headers: { ...request.headers, "X-Request-Id": randomUUID() },
+      headers: request.headers,
     });
   let response: Response;
   try {
@@ -57,6 +59,7 @@ export async function prepareGatewaySession(
     }
     if (consumer.consumerType !== "AGENT" || consumer.consumerCode !== "order" || !reset)
       throw error;
+    attempt.retry();
     response = await send();
   }
   if (!response.ok) throw new Error("GEA_MCP_SESSION_HTTP_" + response.status);

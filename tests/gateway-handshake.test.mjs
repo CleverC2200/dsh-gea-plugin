@@ -59,7 +59,7 @@ test("both entries accept the same Consumer and keep login credentials in the Ho
     );
     const created = JSON.parse(calls[0].init.body);
     assert.equal(created.consumerCode, "test-agent");
-    assert.equal(calls[0].init.headers["X-Access-Token"], "login-secret");
+    assert.equal(new Headers(calls[0].init.headers).get("X-Access-Token"), "login-secret");
     assert.ok(!JSON.stringify(created).includes("secret"));
     if (entry === prepareGatewayLaunch)
       assert.deepEqual(result, {
@@ -149,6 +149,14 @@ test("both entries preserve HTTP and invalid JSON failure facts", async () => {
 
 test("order handshake retries a reset once with the original request identity", async () => {
   const { prepareGatewaySession } = await import("../src/host/gateway-session.ts");
+  const { GeaRequestCapture } = await import("./helpers/feedback-capture.mjs");
+  const { httpAttempt } = await import("../src/host/http-attempt.ts");
+  const capture = new GeaRequestCapture(
+    "/unused",
+    () => ({ environment: "test", userId: "u", tenantId: "0", base: "https://gateway.invalid" }),
+    () => "https://gateway.invalid",
+  );
+  const refs = [];
   const calls = [];
   const requestIds = [];
   const response = payload();
@@ -160,6 +168,9 @@ test("order handshake retries a reset once with the original request identity", 
     new AbortController().signal,
     1000,
     async (url, init) => {
+      const headers = new Headers(init.headers);
+      refs.push(capture.begin(url, init.method, headers, undefined, init[httpAttempt]));
+      init.headers = headers;
       calls.push(init.body);
       requestIds.push(new Headers(init.headers).get("X-Request-Id"));
       if (calls.length === 1)
@@ -175,6 +186,7 @@ test("order handshake retries a reset once with the original request identity", 
   assert.equal(calls[0], calls[1]);
   for (const id of requestIds) assert.match(id, /^[0-9a-f-]{36}$/);
   assert.notEqual(requestIds[0], requestIds[1]);
+  assert.equal(refs[1].row.retryOfRequestId, requestIds[0]);
 });
 test("order handshake never retries cancellation, other Consumers or a second reset", async () => {
   const { prepareGatewaySession } = await import("../src/host/gateway-session.ts");

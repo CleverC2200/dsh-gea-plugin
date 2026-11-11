@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -21,6 +22,7 @@ test("cancelled login requests cannot publish a late QR challenge or identity", 
     module.exports,
   );
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: {
       production: "https://production.example/gea",
       test: "https://test.example/gea",

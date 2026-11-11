@@ -141,7 +141,7 @@ test("fixed workflow SQL counts pages and stops before page2 instead of returnin
       return { accessDecision: { allowed: true }, delegationToken: "fixture-delegation" };
     const body = JSON.parse(init.body);
     return {
-      requestId: init.headers["X-Request-Id"],
+      requestId: new Headers(init.headers).get("X-Request-Id"),
       operation: "SELECT",
       tables: ["agents_scm_plan_workflow_config"],
       total: 101,

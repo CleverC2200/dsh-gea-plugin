@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { SalesReadonlyError } from "../shared/sales-readonly.js";
 import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
 
@@ -76,7 +76,6 @@ export class GatewayRequests {
     }
     if (input.identity) {
       headers["X-Access-Token"] = input.identity.token;
-      headers["X-Request-Id"] = randomUUID();
       if ((input.kind === "write" || input.includeTenant) && input.identity.tenantId)
         headers["X-Tenant-Id"] = input.identity.tenantId;
     }

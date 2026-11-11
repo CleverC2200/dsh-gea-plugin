@@ -1,6 +1,6 @@
 /** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
 import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
-import { randomUUID } from "node:crypto";
+import { retryingFetch } from "./http-attempt.ts";
 import { KNOWLEDGE_METHODS, KNOWLEDGE_SOURCE } from "./knowledge-mcp.ts";
 import { prepareGatewaySession } from "./gateway-session.ts";
 import { createParser } from "eventsource-parser";
@@ -103,7 +103,6 @@ export function gatewayMcpTransport(
    */
   const send = async (init: RequestInit): Promise<Response> => {
     const headers = new Headers(init.headers);
-    headers.set("X-Request-Id", randomUUID());
     try {
       return await fetchImpl(url, {
         ...init,
@@ -208,7 +207,8 @@ export function gatewayMcpTransport(
     if (transportSession && method !== "initialize")
       headers.set("MCP-Session-Id", transportSession);
     const sentSession = headers.get("MCP-Session-Id");
-    let res = await send({ ...init, headers, body });
+    const attempt = retryingFetch((_input, options) => send(options ?? {}));
+    let res = await attempt.fetch(url, { ...init, headers, body });
     if (method === "initialize" && res.ok) {
       initializeBody = body as string;
       transportSession = res.headers.get("MCP-Session-Id") ?? undefined;
@@ -232,7 +232,8 @@ export function gatewayMcpTransport(
       throwIfAborted(identity);
       throwIfAborted(init?.signal);
       headers.set("MCP-Session-Id", transportSession!);
-      res = await send({ ...init, headers, body });
+      attempt.retry();
+      res = await attempt.fetch(url, { ...init, headers, body });
     }
     throwIfAborted(identity);
     if (!res.ok && init?.method === "POST") {
@@ -384,7 +385,6 @@ export function gatewayMcpTransport(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        "X-Request-Id": randomUUID(),
       },
       body: JSON.stringify({ ...meta, mcpCode, toolName }),
       signal: AbortSignal.any([identity, signal, AbortSignal.timeout(timeoutMs)]),

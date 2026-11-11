@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -22,6 +23,7 @@ const { Business } = module.exports;
 
 const makeBusiness = () => {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: { production: "https://gea.test", test: "https://test.gea.test" },
     requestTimeoutMs: 1000,
     inputByteBudget: 32000,

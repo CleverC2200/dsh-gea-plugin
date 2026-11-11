@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -156,6 +157,7 @@ test("workbench route derives the customer and month from authorized detail and 
     module.exports,
   );
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.test",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,

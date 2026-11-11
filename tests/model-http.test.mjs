@@ -66,7 +66,7 @@ test("the default model route and status use the workbench catalog independently
         },
       });
     assert.equal(url, "https://fixture.invalid/ai/v1/models");
-    assert.equal(init.headers["X-GEA-Agent-Code"], "workbench");
+    assert.equal(new Headers(init.headers).get("X-GEA-Agent-Code"), "workbench");
     return Response.json({ data: [{ id: "workbench-model", name: "Workbench model" }] });
   });
   const route = await business.modelRoute(new AbortController().signal);
@@ -172,7 +172,7 @@ test("an APS model-list 403 keeps its denial and identity instead of becoming a 
           secret: "fixture-secret",
         },
       });
-    assert.equal(init.headers["X-GEA-Agent-Code"], "aps");
+    assert.equal(new Headers(init.headers).get("X-GEA-Agent-Code"), "aps");
     return Response.json(
       {
         error: {

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
@@ -63,6 +64,11 @@ test("the default catalog, model metadata and inference use workbench while scop
   const transported = [];
   const identity = new AbortController();
   const business = {
+    capture: new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => "https://fixture.invalid",
+    ),
     config: {
       analysisAgentCode: "sales_forecast",
       modelRequestTimeoutMs: 1000,
@@ -80,7 +86,7 @@ test("the default catalog, model metadata and inference use workbench while scop
       };
     },
     fetchExternal: async (_url, init) => {
-      transported.push(init.headers["X-GEA-Agent-Code"]);
+      transported.push(new Headers(init.headers).get("X-GEA-Agent-Code"));
       return new Response(
         'data: {"choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
         { headers: { "Content-Type": "text/event-stream" } },
