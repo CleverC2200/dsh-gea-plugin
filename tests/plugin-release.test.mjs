@@ -62,8 +62,8 @@ test("the production declaration accepts Workbench 90 and retains explicit versi
   assert.deepEqual(issues("0.1.87"), []);
   assert.deepEqual(issues("0.1.88"), []);
   assert.deepEqual(issues("0.1.89"), []);
-  assert.deepEqual(issues("0.1.90"), []);
-  assert.ok(issues("0.1.91").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+  assert.deepEqual(issues("0.1.91"), []);
+  assert.ok(issues("0.1.92").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
   assert.ok(issues("0.999.0").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
 });
 test("single-package update validates existing consumers and permits independently compatible versions", () => {
