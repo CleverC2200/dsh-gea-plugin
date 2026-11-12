@@ -226,6 +226,9 @@ test(
     denyWrites = true;
     await approve.click();
     // 服务端拒绝后该版本在本轮被禁用，灰按钮上直接带上原因，不用用户去猜。
+    const result = frame.getByRole("dialog", { name: "处理结果", exact: true });
+    await expect(result).toBeVisible();
+    await result.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(approve).toBeDisabled({ timeout: 15000 });
     await expect(approve).toHaveAttribute("title", /服务端已拒绝当前用户权限/, { timeout: 15000 });
   },

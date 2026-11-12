@@ -196,7 +196,7 @@ test(
   "reject dialog still closes after the request failed with a conflict",
   { timeout: 90000 },
   async (t) => {
-    const { frame, writes, openReject, closeThroughDiscardConfirm } = await fixture(t, {
+    const { frame, writes, openReject } = await fixture(t, {
       rejectFails: true,
     });
     const remark = await openReject();
@@ -204,13 +204,16 @@ test(
     await frame.getByRole("button", { name: "确认退回", exact: true }).click();
     // 失败提示按上游原因码给说法（这里是通知载荷被拒），不再统一说"并发、请刷新"；
     // 这条用例只关心"失败之后弹窗还关不关得掉"，所以只等失败提示出来。
-    await expect(frame.getByRole("dialog", { name: "退回", exact: true })).toContainText(
+    await expect(frame.getByRole("dialog", { name: "处理结果", exact: true })).toContainText(
       "审批通知未能发送",
       { timeout: 20000 },
     );
     await expect(frame.getByText(/错误编号/)).toHaveCount(0);
     assert.equal(writes.length, 1);
-    await closeThroughDiscardConfirm(remark);
+    const result = frame.getByRole("dialog", { name: "处理结果", exact: true });
+    await expect(result.getByRole("spinbutton")).toHaveCount(0);
+    await result.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(remark).toHaveCount(0);
     // 报错后这一批没被受理，勾选不能留在界面上（否则用户看到"还选中着"容易再点一次）。
     await expect(
       frame.locator('tbody label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
