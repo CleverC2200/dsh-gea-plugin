@@ -621,6 +621,8 @@ export async function apply(
     "submit",
     "workbench/query",
     "plugin/sql",
+    "warning/storage",
+    "warning/scheduler",
     "workbench/prepare",
     // 前端上报"这个对话现在停在哪一页菜单"（默认主对话，点菜单时带菜单名）。
     "api-log/snapshot",
@@ -774,6 +776,12 @@ export async function apply(
                     break;
                   case "workbench/query":
                     value = await business.workbenchQuery(payload, request.signal);
+                    break;
+                  case "warning/scheduler":
+                    value = await business.warningScheduler(payload, request.signal);
+                    break;
+                  case "warning/storage":
+                    value = await business.warningStorage(payload, request.signal);
                     break;
                   case "plugin/sql":
                     value = await business.pluginSql(payload, request.signal);

@@ -157,6 +157,12 @@
   "rules": [
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/warning-storage\\.ts$",
+      "tests": ["tests/warning-storage.test.mjs"],
+      "sourceTests": ["tests/warning-storage.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^src/host/gateway-(?:mcp|session)\\.ts$",
       "tests": [
         "tests/knowledge-mcp.test.mjs",
