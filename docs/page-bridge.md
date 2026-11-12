@@ -9,3 +9,5 @@ GEA 身份变化撤销旧授权与在途请求；Workbench 释放旧端口与页
 当前业务角色沿 [标准能力边界](business-standard-capabilities.md) 使用官方 standard。GEA 只约束自身业务工具；旧业务会话全局禁止浏览器/终端的规则已退出。页面动作声明不授予审批或正式写入权限，仍由实际业务 Host 和服务端复核。
 
 [原页面桥全文](history/current-docs-before-20261010/docs/page-bridge.md) 保留旧 AG-UI 轮询、旧动作格式、扫描回退、常量、接入步骤和当时未完成项，仅供追溯。按原路径接入页面、自动派生 capability 或恢复旧工具禁用都不是当前协议。
+
+HTML grant 的 `heartbeat` 只为同一有效身份和当前页面续期页面身份；调用入口及释放约定沿 Workbench 的[页面能力与受控桥](../../dsh-agent-workbench/docs/page-interaction.md)。页面放置或等待用户回答时，仍存活的页面连接应继续提供页面读取工具。
