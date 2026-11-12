@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  bindModulePage,
-  modulePagePrompt,
-} from "../src/host/module-page-scope.ts";
+import { bindModulePage, modulePagePrompt } from "../src/host/module-page-scope.ts";
 const observation = (bases, current) => ({
   parts: {
     pageFilters: { selectedBases: bases, tab: "基地结构" },
@@ -19,12 +16,7 @@ const observation = (bases, current) => ({
 });
 test("each turn uses the latest AQKC selected-base cards instead of the preceding scope", () => {
   const host = { surfaceFor: () => ({ menu: "inventory-aqkc" }) };
-  const binding = bindModulePage(
-    host,
-    "session",
-    "inventory-aqkc",
-    new AbortController().signal,
-  );
+  const binding = bindModulePage(host, "session", "inventory-aqkc", new AbortController().signal);
   binding.observe(observation(["华南基地", "郑州基地"], 2360453));
   assert.match(modulePagePrompt(host, "session") ?? "", /2360453/);
   binding.observe(observation(["华南基地"], 298114));
@@ -33,25 +25,13 @@ test("each turn uses the latest AQKC selected-base cards instead of the precedin
   assert.doesNotMatch(next, /2360453|郑州基地/);
   assert.match(next, /"target":0/);
 });
-for (const state of [
-  "loading",
-  "error",
-  "empty",
-  "mismatched",
-  "filter-changed",
-]) {
+for (const state of ["loading", "error", "empty", "mismatched", "filter-changed"]) {
   test(`AQKC ${state} observation cannot publish stale card values`, () => {
     const host = { surfaceFor: () => ({ menu: "inventory-aqkc" }) };
-    const binding = bindModulePage(
-      host,
-      "s",
-      "inventory-aqkc",
-      new AbortController().signal,
-    );
+    const binding = bindModulePage(host, "s", "inventory-aqkc", new AbortController().signal);
     const payload = observation(["华南基地"], 298114);
     if (state === "mismatched") payload.parts.stockOverview.scope = "郑州基地";
-    else if (state === "filter-changed")
-      payload.parts.pageFilters.selectedBases = ["郑州基地"];
+    else if (state === "filter-changed") payload.parts.pageFilters.selectedBases = ["郑州基地"];
     else payload.parts.queryState.state = state;
     binding.observe(payload);
     const prompt = modulePagePrompt(host, "s");
@@ -60,11 +40,8 @@ for (const state of [
   });
 }
 test("AQKC observations retain grant ownership and do not claim a Cube restriction", async () => {
-  const {
-    inheritModuleCubeScope,
-    moduleCubeScopeReceipt,
-    moduleScopeSignature,
-  } = await import("../src/host/module-page-scope.ts");
+  const { inheritModuleCubeScope, moduleCubeScopeReceipt, moduleScopeSignature } =
+    await import("../src/host/module-page-scope.ts");
   let menu = "inventory-aqkc";
   const host = { surfaceFor: () => ({ menu }) };
   const old = bindModulePage(host, "s", menu, new AbortController().signal);
