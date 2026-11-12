@@ -7,3 +7,5 @@
 - [恢复旧插件后再次安装的启动修复](desktop-upgrade-recovery.md)
 
 - [GEA 0.0.275配套销售计划恢复发行](sales-plan-stale-recovery-release.md)
+
+- [GEA 0.0.276兼容单笔审批修复](sales-plan-single-approval.md)
