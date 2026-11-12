@@ -1761,7 +1761,7 @@ export class Business {
         },
         body: JSON.stringify({ dataSourceCode: "PG-Warning", sql, parameters, idempotencyKey }),
       });
-      const body = await response.json();
+      const body = object(await response.json());
       signal.throwIfAborted();
       if (this.auth !== auth) throw Error("STALE_LOGIN");
       if (!response.ok || body?.success !== true)
@@ -1788,7 +1788,7 @@ export class Business {
     const request = object(payload);
     if (!["poll", "complete", "xxl"].includes(text(request.operation)))
       throw Error("WARNING_SCHEDULER_OPERATION_INVALID");
-    const response = await this.apiLog.fetch(new URL("/gea-warning/client", this.base).href, {
+    const response = await this.apiLog.fetch("https://gea.synear.cn:4443/gea-warning/client", {
       method: "POST",
       redirect: "error",
       signal,
