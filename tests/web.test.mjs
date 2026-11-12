@@ -486,14 +486,18 @@ test(
       await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
       await page.locator('[contenteditable="true"]').waitFor();
       const narrowFrame = await salesPlanFrameElement(page).boundingBox();
+      const narrowDocument = await page.locator(".agent-workbench-document:visible").boundingBox();
       assert.ok(
-        narrowFrame && narrowFrame.height > 150 && narrowFrame.width > 250,
-        JSON.stringify(narrowFrame),
+        narrowFrame && narrowDocument && narrowFrame.height > 150 && narrowFrame.width > 0,
+        JSON.stringify({ narrowFrame, narrowDocument }),
       );
       const narrowConversation = await conversation.boundingBox();
       assert.ok(
-        narrowConversation && narrowFrame.x + narrowFrame.width <= narrowConversation.x,
-        JSON.stringify({ narrowFrame, narrowConversation }),
+        narrowConversation &&
+          Math.abs(narrowFrame.x - narrowDocument.x) <= 1 &&
+          Math.abs(narrowFrame.width + narrowConversation.width - narrowDocument.width) <= 1 &&
+          Math.abs(narrowFrame.x + narrowFrame.width - narrowConversation.x) <= 1,
+        JSON.stringify({ narrowFrame, narrowConversation, narrowDocument }),
       );
       await page.screenshot({ path: ".runtime/web-evidence/narrow.png" });
       assert.deepEqual(errors, []);

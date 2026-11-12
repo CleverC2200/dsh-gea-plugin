@@ -138,7 +138,9 @@ const selected = cases.find((entry) => entry.title === name);
 if (!selected) throw Error("PROBE_FIXTURE_CASE_MISSING");
 try {
   await selected.fn({
+    name: selected.title,
     signal: selected.options.signal ?? new AbortController().signal,
+    diagnostic() {},
     after(fn) {
       hooks.push(fn);
     },

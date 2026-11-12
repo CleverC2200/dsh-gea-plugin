@@ -7,6 +7,7 @@ import { dirname, join, relative } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { until } from "./profile.mjs";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
 
@@ -1393,7 +1394,10 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
     await assert.rejects(controller.submitBatch(requests), /UPDATE_OPERATION_BLOCKED/);
     const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
     assert.equal(operation.stage, mode === "success" ? "pending-restart" : "failed");
-    await new Promise(setImmediate);
+    await until(
+      () => controller.operationStatus(accepted.id),
+      (status) => status.state !== "running",
+    );
     assert.equal(controller.restartReady(), mode === "success");
     assert.deepEqual(await invoke({ action: "plugins-status", operationId: accepted.id }), {
       ok: true,

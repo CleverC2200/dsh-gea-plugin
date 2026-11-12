@@ -109,7 +109,7 @@ const otherSku = {
 };
 
 test(
-  "detail summary uses selected version SKUs while monthly and category values keep their basis",
+  "monthly submission progress uses selected version amounts while category targets retain their weighted basis",
   { timeout: 30000 },
   async (t) => {
     const page = await openSalesPlanPresentation(t, [plan], {
@@ -126,7 +126,8 @@ test(
     ).toBeVisible();
     const monthPlan = page.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(monthPlan.locator("span").first()).toHaveText("¥150");
-    await expect(page.locator("tbody").first()).toContainText("37.5%");
+    await expect(page.locator("tbody").first()).toContainText("125.0%");
+    await expect(page.locator("tbody").first()).toContainText("¥500 / ¥400");
     await expect(page.getByText(/数量 .*%/)).toHaveCount(0);
     await expect(page.locator("thead")).not.toContainText("AI 核对意见");
     await page.getByRole("switch").first().click();
