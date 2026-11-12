@@ -1,9 +1,5 @@
 {
-  "entries": [
-    "AGENTS.md",
-    "README.md",
-    "docs/index.md"
-  ],
+  "entries": ["AGENTS.md", "README.md", "docs/index.md"],
   "history": [
     "docs/history",
     ".agents/notes/implemented/feature/2026-09-11-approval-workspace-ui.md",
@@ -33,7 +29,6 @@
     "desktop/setup.html",
     "docs/acceptance-2026-09-10.md",
     "docs/acceptance-2026-09-11.md",
-    "docs/acceptance-workbench-2026-09-14.md",
     "docs/agent-tools-2026-09-11.md",
     "docs/agents/2026-09-14-avatar-clipboard-resources.md",
     "docs/agents/2026-09-14-desktop-company-mcp.md",
@@ -116,8 +111,6 @@
     "docs/desktop-install-storage-implementation-20260927.md",
     "docs/dms-mock-acceptance.md",
     "docs/handoff/prompt-admin-coordination-2026-09-26.md",
-    "docs/history/AGENTS-pre-agent-environment-04.md",
-    "docs/history/README-pre-agent-environment-04.md",
     "docs/history/capability-contract-pre-agent-environment-04.md",
     "docs/history/install-before-installable-delivery.md",
     "docs/history/local-development-pre-agent-environment-04.md",
@@ -238,17 +231,12 @@
     "typecheck",
     "typecheck:official",
     "test:fixture-inputs",
-    "test:prompt-execution"
+    "test:prompt-execution",
+    "check:comments"
   ],
   "exports": false,
-  "peers": [
-    "../dsh-agent-workbench",
-    "../dsh-agent-manage",
-    "../../official-latest-standard"
-  ],
+  "peers": ["../dsh-agent-workbench", "../dsh-agent-manage", "../../official-latest-standard"],
   "commandRoots": {
-    "docs/plugin-split-validation.md": [
-      "../../official-latest-standard"
-    ]
+    "docs/plugin-split-validation.md": ["../../official-latest-standard"]
   }
 }

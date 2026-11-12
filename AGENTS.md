@@ -1,34 +1,13 @@
-# GEA 工程入口
+# GEA 开发入口
 
-在插件拆分项目内修改功能、调试界面或本地启动时，先读取项目根 `docs/agents/dependency-preparation.md` 的“源码调试与安装验收”，按当前任务选择源码反馈或安装验收，再执行构建。
+先核本次任务登记的 checkout、HEAD 与未提交改动。工具链、命令、锁与公开导出从 [package.json](package.json) 读取；[README](README.md)提供当前产品入口。
 
-在插件拆分项目中执行时，先读该项目根的 `docs/agents/current-development.md`，按本票 `integration-set.json` 核同组三仓 checkout、提交与未提交改动。独立仓库或 CI checkout 按本票候选输入核同组源码。随后读本仓 [README](README.md)。根同名仓、原公司壳与旧发行记录按 [文档索引](docs/index.md) 追溯。
+GEA Host 是业务身份、凭据、Consumer 授权和受控执行的 owner。身份、取消、异步结果与业务写入读[执行链](docs/execution-logic.md)和[能力合同](docs/capability-contract.md)。迟到结果只归原执行，client 只提供身份只读投影。页面归 Workbench，资源与纯计算归 Manage，Session/草稿归 Core。
 
-修改身份、Consumer、额度、取消或业务执行时，读 [执行链](docs/execution-logic.md) 与 [能力声明](docs/capability-contract.md)。GEA Host 为唯一身份与凭据权威；页面和页面/Session 关联归 Workbench，资源及纯计算归 Manage，持久 Session 与草稿归 Core。凭据、失败、取消、部分和 unknown 按原执行合同保留，原业务规则和用户数据不因工程整理改变。
+代码用命名、类型、结构和必要行为测试表达规则，自有源码、脚本与测试不写注释；业务 Prompt/Skill 与运行时文案保持原含义。工具指令先消除依赖，许可证来源按原分发要求保全。`check:comments` 阻断改动文件中的 JS/TS 注释，`--all` 审计完整 JS/TS 存量，增量通过不表示全仓清零。
 
-准备开发依赖与构建时读 [本地开发](docs/local-development.md)，实际工具链、scripts、exports 和锁以仓内配置为准。启动及组合切换读 [源码组合](docs/plugin-split-validation.md) 与 [窗口准入](docs/window-launch-admission.md)，输入检查不证明装载，也不产生运行授权。
+本地检查读[本地开发](docs/local-development.md)，影响计划与构建读[开发构建入口](docs/development-builds.md)。插件拆分项目内先按根 `docs/agents/dependency-preparation.md` 选择源码反馈或安装验收；复用已准备环境，不修改共享 SDK 和他人产物。
 
-普通三包交付读 [打包与接收](docs/package-delivery.md) 和 [安装协议](docs/install.md)。收尾前读 [交付核对](docs/delivery-check.md)，按原规格核完整目标、在途工作、预算、依赖及暂停；一致性、packaged、Host 接收与业务验收分别留证。自动工具不授予授权或自动接续。
+三包打包与 Loader 接收读[普通交付](docs/package-delivery.md)，桌面发版读[桌面交付](scripts/desktop-release.md)。源码、离线检查、实际装载、业务与发布结果分别留证；Core 兼容清单和 CI 策略从对应配置读取，旧报告不作为当前状态。
 
-桌面客户端发版与更新频道交付读 [桌面交付与完整更新回归](scripts/desktop-release.md)，按其中的回归与收尾核验区分产物发布和客户端验收。
-
-只在本任务隔离 checkout 与自有输出工作。正式 GitLab、OSS、npm、频道、原同名仓和正式客户端保持保护；旧文档中的发行步骤不覆盖此边界。业务 Prompt/Skill、运行时字符串、schema、法律来源、用户 Session、草稿及原失败证据保持原归属。
-
-修改异步工具结果、证据持久化或回读时，读 [执行链](docs/execution-logic.md) 的执行归属合同与 [本地检查](docs/local-development.md)。迟到结果只归原执行；身份、轮次或资源变化后，保持原数据与失败证据，按当前归属决定能否发布。
-
-CI Core 的阻断与兼容范围由 `scripts/ci-core-policy.json` 维护；调整门禁或核验合并条件时读 [CI Core 策略](docs/ci-core-policy.md)。
-
-## 规则与执行机制
-
-| 规则                                                                         | 执行机制                                                                                                                                                                         |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 已登记的 Core 仍须具备本次用途所需的当前运行依赖；源码检查不强制准备运行环境 | `check:environment`；三包 reception 与直接 install/observe 强制调用；`test:environment` 接入现有 source-only 快检与 CI                                                           |
-| 当前兼容范围只在包声明中维护，历史升级案例使用固定输入                       | 包烟测核产物与锁保留声明；`test:release-contract` 验证声明的升级边界并接入 source-only 快检与 CI                                                                                 |
-| 完整桌面包的 Core 跟随当前 required 策略，复用底包须匹配该 Core              | 双端 workflow 从 `ciCores("required")` 选择 checkout 与构建标识；`readDesktopInput` 拒绝旧 Core，Mac 预检拒绝旧底包；`input.test.mjs`、`delivery-events.test.mjs` 随影响选择运行 |
-| 覆盖安装按内置完整三包刷新，完成前核三项实际版本及用户配置保全               | `refreshBundledCompanySuite`；`scripts/desktop-gea-upgrade.test.mjs` 接入现有 source-quality 选择                                                                                |
-| 等待重启的更新由新 Host/client 确认，启动恢复保留原回执并暂缓旧目录清理      | `refreshCompanyStartup`、`refreshBundledCompanySuite`；恢复条件见 [安装协议](docs/install.md#公司客户端的内置三包刷新)；`scripts/desktop-gea-upgrade.test.mjs`                   |
-| 修复 PR 统一以 main 为目标，冻结交付使用固定提交                             | `source-quality.mjs --phase plan` 拒绝非 main 的 PR；工作流覆盖目标分支变更，`source-quality.test.mjs` 验证真实错误目标                                                          |
-| 网关服务的日常选测覆盖直接合同和真实恢复入口，完整集成仍追踪公共消费者       | `ci-test-policy.json` 的 gateway service 规则、`ci-policy-impact.test.mjs`                                                                                                       |
-| 小集合共用一次准备，所有入选文件仍须完整执行                                 | `sourceCheckMatrix`、`source-check-shards.test.mjs`                                                                                                                              |
-| 失败项重跑消费实际 producer 的产物和原始回执                                 | dependency-policy 的 job outputs、latest hosted jobs 与分片/正式回执核验；`dependency-policy.test.mjs`、`source-check-shards.test.mjs`、`source-formal-receipt.test.mjs`         |
-| CI 失败后先读取恢复判断；准备失败或同阶段再次失败进入诊断                    | [按需 CI 恢复](docs/ci-core-policy.md#按需-ci-恢复)，`quality-hosted-budget.mjs --retry-plan`；直接 GitHub 操作仍由执行者遵守判断                                                |
+仅修改本任务工作区。GitLab source、正式 OSS/npm/频道、正式客户端、用户 Session/草稿及原始失败证据保持保护；远端或业务写入按本次有效授权执行。未解决的业务合同见[文档入口](docs/index.md)，不因历史文件清理而关闭。

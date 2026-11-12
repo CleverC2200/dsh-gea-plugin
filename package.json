@@ -82,7 +82,8 @@
     "typecheck:plugin-updates": "node scripts/check-plugin-updates-types.mjs",
     "test:package-version": "node --test scripts/package-version-gate.test.mjs scripts/plugin-package-version.test.mjs",
     "test:plugin-updates:desktop": "node --expose-internals --test tests/acceptance/plugin-update-desktop.mjs",
-    "test:full": "node scripts/run-quality-full.mjs"
+    "test:full": "node scripts/run-quality-full.mjs",
+    "check:comments": "node ../dsh-agent-workbench/scripts/check-source-comments.mjs --root ."
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",

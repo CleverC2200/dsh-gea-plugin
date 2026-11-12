@@ -3,7 +3,13 @@ import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, readlinkSync } from "node:fs";
 import { resolve } from "node:path";
 
-export const sourceChecks = ["lint", "format:check", "check:knowledge", "check:prompt-execution"];
+export const sourceChecks = [
+  "lint",
+  "format:check",
+  "check:knowledge",
+  "check:comments",
+  "check:prompt-execution",
+];
 export const sourceTestCommands = ["test:environment", "test:release-contract"];
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -29,6 +35,7 @@ export function sourceCheckBinding({ root, inputSha256 }) {
   });
   return {
     inputSha256,
+    baseSha: process.env.QUALITY_BASE_SHA ?? null,
     head: git("rev-parse", "HEAD").trim(),
     sourceSha256: digest(JSON.stringify(sources)),
     platform: process.platform,

@@ -30,6 +30,8 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 按授权启动与切换时复用 [源码组合说明](plugin-split-validation.md) 的明确五源和自有 runtime。可构建不等于窗口已获授权。旧 desktop:dev 使用已安装公司壳，属于历史入口，不作为当前官方客户端协议。
 
+注释检查使用 `check:comments`，默认核工作区改动及未跟踪的 JS/TS 文件；`QUALITY_BASE_SHA` 或 `--base <完整提交>` 纳入已提交改动，CI 优先使用事件基线，手动执行沿现有 `scripts/quality-peer-baseline.json` 的本仓登记，不得回退到 HEAD。`--all` 审计全仓 JS/TS 存量。脚本用 TypeScript 语法识别注释，URL、字符串和 Prompt 样例不算代码注释；解析失败会拒绝。当前尚未覆盖 HTML/CSS/Shell 等格式，不能据此声称所有格式已清零。存量不设永久白名单，触及文件即完成该文件清理，后续分批迁移。工具指令先消除依赖，许可证与来源按原分发要求保全。
+
 ## Window fixture 的固定输入
 
 `tests/fixtures/source-window.mjs` 在创建临时目录前读取 `GEA_TEST_CANDIDATE_INPUTS`，也接受显式 `inputFile` 参数。输入文件使用三仓候选检查已有的 `core` 提交与 `repositories` 记录，并声明绝对 `corePath` 和 `historicalFailure: { file, sha256 }`。每个仓的 `path` 为绝对路径，`head` 为已冻结的提交；历史失败文件保持原字节，摘要不匹配即拒绝。
