@@ -1,4 +1,3 @@
-/** Assemble immutable plugin snapshots for the isolated DSH source profile. */
 import {
   cp,
   mkdir,
@@ -32,7 +31,6 @@ import {
 } from "./source-combination-integrity.mjs";
 export { readSourceCombination } from "./source-combination-integrity.mjs";
 
-/** A new composition/check/build always names the same explicit five owners. No directory fallback. */
 export function requireSourceInputs(sources) {
   if (sources === undefined) throw Error("EXPLICIT_SOURCE_INPUTS_REQUIRED");
   if (
@@ -51,7 +49,6 @@ export function requireSourceInputs(sources) {
   return sources;
 }
 
-/** Read an already-selected combination without deriving any new source paths. */
 export async function readSourceSelection(runtime) {
   let selected;
   try {
@@ -64,7 +61,6 @@ export async function readSourceSelection(runtime) {
   return selected;
 }
 
-/** Resolve clean declared sources and verify frozen assets in one place for all callers. */
 export async function resolveSourceInputs(sources, { requireEntries = false } = {}) {
   const entries = requireSourceInputs(sources);
   const resolved = [];
@@ -237,8 +233,7 @@ async function preparePlugins(core, runtime, deployment, { sources, id = randomU
   const { businessDeploymentPatch } = await import(
     pathToFileURL(join(gea, "scripts/deployment.mjs"))
   );
-  // Core owns patch parsing and ordering. Capture configured public roots in this
-  // new frozen composition before its final isolated Workspace override.
+
   const { loadOptionalPatches, loadOverlayPatches, readProfilePatches, composeEntries } =
     await import(pathToFileURL(join(core, "packages/boot/app-boot/lib/index.js")));
   const home = join(runtime, "home"),
@@ -292,8 +287,7 @@ async function preparePlugins(core, runtime, deployment, { sources, id = randomU
   const modelIndex = patch.findIndex((row) => row.id === "agent-default-model");
   if (modelIndex < 0) throw Error("SOURCE_MODEL_DEFAULT_MISSING");
   const [modelDefault] = patch.splice(modelIndex, 1);
-  // The verified snapshot carries a seed; only the actual stopped-profile launcher
-  // may adopt it, without overwriting an existing user-selected default.
+
   await writeFile(
     join(snapshot, "profile-defaults.json"),
     JSON.stringify([modelDefault], null, 2),
@@ -301,7 +295,7 @@ async function preparePlugins(core, runtime, deployment, { sources, id = randomU
   );
   patch.push({
     id: "agent-preset-registry",
-    // Manage registers this standard composition; preserve the user's selectedDefault.
+
     config: { default: "auto-negotiation" },
   });
   patch.push({ id: "dsh-agent-manage", config: { sources: [] } });
@@ -397,14 +391,12 @@ async function preparePlugins(core, runtime, deployment, { sources, id = randomU
   return composition;
 }
 
-/** Hash shipped resources; prepared assets exclude dependencies and local Git metadata. */
 export async function resourceDigests(directory, prefix = "", excludeDependencies = false) {
   return excludeDependencies
     ? publishedResourceDigests(directory, prefix)
     : snapshotResourceDigests(directory, prefix);
 }
 
-/** Select a verified local combination only while its Host is stopped. */
 export async function selectSourceCombination(runtime, id, core, { expected } = {}) {
   expected = expected && structuredClone(expected);
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
@@ -416,8 +408,6 @@ export async function selectSourceCombination(runtime, id, core, { expected } = 
       if (error.code !== "ENOENT") throw error;
     }
     if (expected) {
-      // Bind the previous choice, even when its dependencies are the reason for rebuilding.
-      // The target below must independently pass the complete artifact/dependency gate.
       if (current?.id !== expected.id || current?.manifestSha256 !== expected.manifestSha256)
         throw Error("STALE_SOURCE_RECOVERY");
       if (
@@ -446,7 +436,6 @@ export async function selectSourceCombination(runtime, id, core, { expected } = 
   }
 }
 
-/** One-time offline upgrade of the ticket08 code directory; never moves user state. */
 export async function upgradeSourceProfileLayout(runtime) {
   const lock = await open(join(runtime, "source-profile.lock"), "wx", 0o600);
   try {
@@ -467,7 +456,6 @@ export async function upgradeSourceProfileLayout(runtime) {
   }
 }
 
-/** A component's shipped files and declared source form its update identity. */
 export function sourceComponent(record, plugins, name) {
   const prefix = `node_modules/${name}/`;
   const files = Object.entries(record.files)
@@ -488,7 +476,6 @@ export function sourceComponent(record, plugins, name) {
   };
 }
 
-/** Assemble selected component artifacts without replacing the latest unrelated components. */
 export const mergeSourceComponents = sourcePhase("merge", mergeComponents);
 
 async function mergeComponents(runtime, latest, updates, core, { expectedManifests } = {}) {
@@ -634,7 +621,6 @@ async function mergeComponents(runtime, latest, updates, core, { expectedManifes
   return composition;
 }
 
-/** Use only bytes covered by the input snapshot's frozen resource or dependency digest. */
 async function readPinnedInput(file, expected) {
   if (!expected) throw Error("SOURCE_INPUT_DIGEST_MISSING: " + file);
   const bytes = await readFile(file);

@@ -25,7 +25,6 @@ export async function registerHtmlPlugins(
   business: Business,
   packages: readonly HtmlPackage[],
 ) {
-  // Reject duplicate installed declarations before publishing resources or effects.
   const declarationSources = new Map<string, string>();
   for (const { directory, manifest } of packages) {
     const previous = declarationSources.get(manifest.id);
@@ -71,9 +70,9 @@ export async function registerHtmlPlugins(
   });
   const items: any[] = [];
   const incompatible: { id: string; code: "INVALID_AGENT_RESOURCE_IDENTITY" }[] = [];
-  /** A page Session cannot be reopened under a different GEA principal in this host lifetime. */
+
   const sessionPrincipals = new Map<string, string>();
-  // 预设显示名、顺序与隐藏清单：plugin.json 由别的仓库发布，改选择器不必重发插件包。
+
   const presetLabels: {
     hidden: string[];
     order: string[];
@@ -227,7 +226,7 @@ export async function registerHtmlPlugins(
   ctx.effect(() => () => lifetime.abort());
   const json = (value: any, status = 200) =>
     Response.json(value, { status, headers: { "cache-control": "no-store" } });
-  /** The page declaration narrows choices; the installed preset and GEA Gateway authorize each choice. */
+
   const pageAgent = async (
     item: any,
     preset: unknown,
@@ -349,7 +348,6 @@ export async function registerHtmlPlugins(
               let credentials: any;
               let access: any;
               if (item.mock) {
-                // Static demo pages deliberately have no GEA identity, gateway or data source.
                 credentials = { sessionId: "mock-" + session.slice(8) };
                 access = {
                   principalId: "mock-browser",

@@ -1,4 +1,3 @@
-/** Prepare the two original public dependencies required by the unchanged link locks. */
 import { readFile, mkdir, realpath, rename, writeFile, lstat, symlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve, join, dirname } from "node:path";
@@ -162,7 +161,7 @@ export async function verifyQualityUpstreams(root) {
     runtime: "not-observed",
   };
 }
-/** Own fixed source checkouts without downloading assets, installing dependencies or compiling. */
+
 export async function prepareQualityUpstreamSources(root) {
   if (!root) throw Error("QUALITY_UPSTREAM_REQUIRED");
   root = resolve(root);
@@ -241,7 +240,6 @@ export async function prepareQualityUpstreams(root) {
   return verifyQualityUpstreams(root);
 }
 
-/** Bind the unchanged development link locks to already verified fixed upstream material. */
 export async function bindQualityUpstreamInputs(
   root,
   inputs,

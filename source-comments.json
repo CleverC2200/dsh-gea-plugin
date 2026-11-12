@@ -1,0 +1,39 @@
+{
+  "assets": [
+    {
+      "path": "tests/fixtures",
+      "kind": "fixture",
+      "source": "tests/"
+    },
+    {
+      "path": "docs/history",
+      "kind": "historical-evidence",
+      "source": "Git history"
+    },
+    {
+      "path": "docs/analysis",
+      "kind": "historical-evidence",
+      "source": "Git history"
+    },
+    {
+      "path": "docs/reports",
+      "kind": "historical-evidence",
+      "source": "Git history"
+    },
+    {
+      "path": "docs/reviews",
+      "kind": "historical-evidence",
+      "source": "Git history"
+    },
+    {
+      "path": "docs/prototypes",
+      "kind": "historical-evidence",
+      "source": "Git history"
+    },
+    {
+      "path": "default-presets/auto-negotiation/agent.cordis.yml",
+      "kind": "generated-official-core-preset",
+      "source": "scripts/sync-default-preset.mjs"
+    }
+  ]
+}

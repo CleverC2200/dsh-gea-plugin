@@ -1,4 +1,3 @@
-/** Import an explicitly captured ordinary profile npm graph into the official pnpm consumer. */
 import { parseArgs } from "node:util";
 import { resolve, join } from "node:path";
 import { readFile, writeFile, lstat } from "node:fs/promises";

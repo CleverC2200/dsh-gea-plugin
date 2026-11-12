@@ -172,7 +172,10 @@
     "react-dom": "18.3.1",
     "react-grab": "0.2.0",
     "typescript": "5.9.3",
-    "xlsx-republish": "0.20.3"
+    "xlsx-republish": "0.20.3",
+    "parse5": "7.3.0",
+    "postcss": "8.5.26",
+    "highlight.js": "11.11.1"
   },
   "engines": {
     "node": ">=24.0.0"

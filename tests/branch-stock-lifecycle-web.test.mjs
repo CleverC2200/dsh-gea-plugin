@@ -29,7 +29,7 @@ test(
     const branch = stored.selections.find((row) => row.page === "inventory-fc" && row.active);
     assert.equal(branch.preset, "gea-html-inventory-fc");
     assert.equal(branch.sessionId, session);
-    // Client scope is only presentation. The retired route must stay absent; current open resolves Core and GEA.
+
     const retiredOpen = await page.evaluate(async (oldSession) => {
       const response = await fetch("/api/gea-html/inventory-fc/open", {
         method: "POST",
@@ -68,14 +68,14 @@ test(
     await expect(frame.getByText("FC001", { exact: true }).first()).toBeVisible();
     await expect.poll(() => opens.at(-1)?.sessionId).toBe(session);
     assert.equal((await presentation(page)).page, "inventory-fc");
-    // A fresh tab has no mounted controller that could rewrite the stored association.
+
     const missingPage = await page.context().newPage();
     t.after(() => missingPage.close());
     missingPage.setDefaultTimeout(20000);
     await missingPage.addInitScript(
       ({ missing, stored }) => {
         if (window.top !== window) return;
-        // A browser hint may nominate a missing UUID, but must never create or replace the Core Session.
+
         const selected = stored.selections.find((row) => row.page === "inventory-fc" && row.active);
         selected.sessionId = missing;
         localStorage.setItem("agent-workbench.presentation.v2", JSON.stringify(stored));

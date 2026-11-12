@@ -3,7 +3,6 @@ import type { Business } from "./business.ts";
 import { profileFor } from "./prompt-policy.ts";
 import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
-/** HTML resource availability comes from Manage's current validated registration, not the retained preset profile. */
 export async function assertBusinessResourceAvailable(
   ctx: Context,
   preset: string | undefined,
@@ -22,7 +21,6 @@ export async function assertBusinessResourceAvailable(
   if (code) throw Object.assign(Error(code), { code });
 }
 
-/** Persistent Session presets must be checked again before model or tool execution. */
 export async function assertSessionResourceAvailable(
   ctx: Context,
   sessionId?: string,
@@ -35,7 +33,6 @@ export async function assertSessionResourceAvailable(
   await assertBusinessResourceAvailable(ctx, preset ?? undefined, signal);
 }
 
-/** The GEA environment, tenant and user jointly own page Sessions and saved references. */
 export function businessIdentityKey(business: Business): string | undefined {
   const status = business.status();
   return status.user?.id
@@ -43,7 +40,6 @@ export function businessIdentityKey(business: Business): string | undefined {
     : undefined;
 }
 
-/** The selected business preset owns model and tool identity, including unbound sessions. */
 export function sessionConsumer(ctx: Context, business: Business, sessionId?: string): string {
   const agent = sessionId
     ? ctx.agents?.get(sessionId as Parameters<typeof ctx.agents.get>[0])
@@ -59,7 +55,6 @@ export function sessionConsumer(ctx: Context, business: Business, sessionId?: st
   );
 }
 
-/** Explicit cross-domain paths come from the trusted profile, never model-supplied registration claims. */
 export function toolConsumer(
   ctx: Context,
   business: Business,
@@ -107,9 +102,7 @@ export function mountBusinessIdentity(
             pagesReady: pagesReady(),
             subject: businessIdentityKey(business) ?? null,
             status: { environment, environments, authenticated, loginState, user },
-            // A projection of the gateway-verified receipt. It is intentionally
-            // absent until the customer-inventory page has requested its own
-            // delegated session; page labels never manufacture an access range.
+
             customerInventory: business.customerInventoryIdentity?.() ?? null,
           },
           { headers: { "Cache-Control": "no-store" } },

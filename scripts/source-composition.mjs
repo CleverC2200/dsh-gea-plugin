@@ -1,4 +1,3 @@
-/** The plugin source composition; order also defines build dependencies. */
 import { glob, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -16,8 +15,6 @@ const resources = [
   "src/shared",
 ];
 
-// Digests describe publishable assets. Source lockfiles are independently bound
-// through source-profile locks/externalLockFiles, even when reused assets omit them.
 export const sourcePlugins = [
   {
     repo: "dsh-agent-workbench",
@@ -78,7 +75,6 @@ export const sourcePlugins = [
   },
 ];
 
-/** Read the same core package set for type checks, snapshot links and launch inventory. */
 export async function corePackages(core) {
   const packages = [];
   for await (const file of glob(

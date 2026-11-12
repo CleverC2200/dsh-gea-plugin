@@ -14,7 +14,6 @@ manifest = json.loads(Path(manifest_arg).read_text())
 entries = {entry["path"]: entry for entry in manifest["entries"]}
 tracked = {}
 
-
 def clean_git_output(target):
     for source in manifest["binding"]["manifest"]["repositories"]:
         checkout = root / "candidate" / source["repo"]
@@ -58,14 +57,12 @@ def clean_git_output(target):
         return expected == (target.stat().st_mode & 0o777, digest)
     return False
 
-
 def check_output_parents(target):
     for parent in target.parents:
         if parent == root:
             break
         if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
             raise ValueError("output parent refuses symlink traversal")
-
 
 def retired_workbench_declarations():
     retired = []
@@ -93,7 +90,6 @@ def retired_workbench_declarations():
                 raise ValueError("retired declaration refuses removal")
             retired.append(target)
     return retired
-
 
 if action == "export":
     with tarfile.open(bundle, "x") as archive:
@@ -125,7 +121,7 @@ else:
             if digest.hexdigest() != entry["sha256"]:
                 raise ValueError("archive bytes changed")
             os.chmod(staged, member.mode)
-        # Finish all archive checks before touching a final output.
+
         for member in members:
             entry = entries[member.name]
             target = root / member.name
@@ -160,5 +156,5 @@ else:
                     raise ValueError("Git output changed before replacement")
                 os.replace(Path(temporary) / member.name, target)
             else:
-                # link() publishes without overwriting; the private staging alias is removed on exit.
+
                 os.link(Path(temporary) / member.name, target)

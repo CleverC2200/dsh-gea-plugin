@@ -28,7 +28,6 @@ const deny = (reason, message) => {
   throw new SalesReadonlyError("GEA_SALES_READONLY_" + reason, message);
 };
 
-/** Optional validation scope; allowances live for the Host lifetime, independently of login and query epochs. */
 export function createSalesReadonly(config, consumerCode, baseUrl) {
   validateSalesReadonly(config);
   if (config === undefined) return undefined;
@@ -143,7 +142,7 @@ export function createSalesReadonly(config, consumerCode, baseUrl) {
           bucket = "metadata";
         }
       } else deny("TRANSPORT", "本次只读验证未开放此接口");
-      // The logger performs this final charge synchronously at its physical fetch boundary.
+
       return () => {
         signal?.throwIfAborted();
         available(bucket);

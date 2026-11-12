@@ -153,10 +153,10 @@ test(
     await expect(options).toHaveText(["2026年9月"]);
     await expect(options).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Escape");
-    // 节点条默认收起（V1.8 #05），先展开才能看到各节点。
+
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();
-    // 节点条始终展示全部五个节点：角色决定能进哪个节点，没权限的节点置灰不可点。
+
     await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(5);
     const region = frame.getByTestId("regional-approval-stage-region");
     await expect(region).toHaveAttribute("aria-pressed", "true");
@@ -171,7 +171,7 @@ test(
       "当前节点：全部节点",
     );
     const table = frame.locator("tbody").first();
-    // 切到「全部节点」后队列按数据权限重取；表里出现的行都能直接提交或退回，不再卡在「轮到哪个节点」。
+
     await expect(table.getByText("scope-1-row", { exact: true })).toBeVisible({ timeout: 15000 });
     for (const status of [1, 2, 3, 4, 5, 6, 7, 10])
       await expect(table.getByText(`scope-${status}-row`, { exact: true })).toBeVisible();
@@ -224,7 +224,7 @@ test(
     ).toBeVisible();
     await expect(rejectDialog.getByTestId("regional-approval-live-action-checksum")).toHaveCount(0);
     await frame.getByRole("button", { name: "取消", exact: true }).click();
-    // 类型切换入口恢复，原来的角色节点权限保持不变。
+
     await expect(frame.getByRole("tab", { name: "纠偏", exact: true })).toBeVisible();
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   },

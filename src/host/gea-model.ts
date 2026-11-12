@@ -28,13 +28,6 @@ import { transportSignal } from "../shared/transport-signal.ts";
 import { geaTextStream } from "../shared/gea-stream.ts";
 import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
-/**
- * 可选推理档位。GEA 个人模型网关把 `extra_params` 的顶层键覆盖到模型配置的默认
- * extraParams，再由上游 provider 解析 `reasoning_effort`；平台本身不定义档位名，
- * 所以档位由客户端给出。上游只认接入手册里给过的那两个取值（`high` / `max`），
- * 因此这里只暴露这两档，默认 `high`；`off` 是 DSH 内部的 thinking 开关，不在
- * wire 协议里，不能透传。
- */
 const GEA_REASONING_EFFORTS: readonly LlmReasoningEffortInfo[] = [
   {
     id: ReasoningEffortId("high"),
@@ -48,21 +41,14 @@ const GEA_REASONING_EFFORTS: readonly LlmReasoningEffortInfo[] = [
   },
 ];
 
-/** 用户未选档位时materialize的默认档位。 */
 const GEA_DEFAULT_REASONING_EFFORT = ReasoningEffortId("high");
 
-/** 网关只接受非空字符串，且单次覆盖的键值有长度上限；不合法就保持改造前行为。 */
 const GEA_EFFORT_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 const GEA_MODEL_RETRY_POLICY = resolveRetryPolicy(
   { mode: "normal", maxRetries: 2 },
   "gea-analysis.retryPolicy",
 );
 
-/**
- * 把所选档位映射成网关契约里的 `extra_params`。取值不合法时返回 undefined，
- * 请求体不带该字段，服务端保持模型配置默认参数。未显式选择时，DSH 会先按模型声明的
- * `defaultEffort` 补上默认档位再调用，所以正常路径下这里总能拿到一个档位。
- */
 function geaExtraParams(options: GenerateOptions): Record<string, string> | undefined {
   const effort = options.reasoningEffort;
   if (effort === undefined) return undefined;
@@ -71,10 +57,6 @@ function geaExtraParams(options: GenerateOptions): Record<string, string> | unde
   return { reasoning_effort: value };
 }
 
-/**
- * `selectModel` 与 `saveSelection` 都是整体覆盖：不显式带上已选档位就会把它清掉。
- * 档位只存在默认选择里，这里读回来并在仍是本适配器声明的档位时沿用。
- */
 export function geaKeptReasoningEffort(current: {
   provider?: string;
   reasoningEffort?: ReasoningEffortId;
@@ -117,7 +99,6 @@ export async function initializeGeaDefaultModel(
   });
 }
 
-/** 直接调用当前登录用户的 GEA 个人模型路由，不经过 AionUi 代理。 */
 export class GeaModelAdapter extends LlmAdapter {
   private readonly requestOwners = new WeakMap<AbortSignal, AbortSignal>();
   constructor(
@@ -154,7 +135,7 @@ export class GeaModelAdapter extends LlmAdapter {
         ? { context: { contextWindow: route.contextWindows[model] } }
         : {}),
       name: route.names[model] ?? "GEA 模型（名称未提供）",
-      // 声明默认档位：用户没显式选档位时，DSH 会补上它并按 extra_params 发给网关。
+
       reasoning: {
         efforts: GEA_REASONING_EFFORTS,
         defaultEffort: GEA_DEFAULT_REASONING_EFFORT,
@@ -236,7 +217,7 @@ export class GeaModelAdapter extends LlmAdapter {
     );
     const transport = transportSignal(watchdog.signal);
     const signal = transport.signal;
-    // 只在"连接阶段"和"流式阶段"区分，好在报错里说清断在哪一步。
+
     let stage = "连接";
     const modelHost = "GEA 模型网关";
     const business = this.business;
@@ -386,8 +367,7 @@ export class GeaModelAdapter extends LlmAdapter {
         state: captured?.row.state,
         errorCode: captured?.row.errorCode,
       });
-      // 线上实测：模型请求断线时界面只有 `fetch failed` + UNKNOWN（undici 的真实原因在 cause 里）。
-      // 统一翻成可读、带 code 的错误：连哪个 host、断在连接还是流式阶段、原因码是什么。
+
       const idle = timeoutOf(watchdog.signal, "GEA_MODEL_IDLE");
       if (!idle && error instanceof LlmError) throw error;
       if ((error as { code?: string })?.code === "GEA_MODEL_TOOL_TEXT")

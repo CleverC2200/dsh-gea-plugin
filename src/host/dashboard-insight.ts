@@ -64,7 +64,7 @@ function branchEvidenceIssues(answer: string, evidence: unknown): string[] {
       : []),
   ];
 }
-/** Successful outputs are isolated by owner, exact evidence, model and prompt bytes. */
+
 export function createDashboardInsightGenerator(deps: {
   authorize(owner: Owner, signal: AbortSignal): Promise<void>;
   prompt(path: string): Promise<string>;
@@ -91,7 +91,7 @@ export function createDashboardInsightGenerator(deps: {
       throw Error("INVALID_DASHBOARD_INSIGHT_INPUT");
     const evidence = JSON.stringify(value.evidence);
     if (Buffer.byteLength(evidence) > 80000) throw Error("DASHBOARD_INSIGHT_INPUT_TOO_LARGE");
-    // Authorization is checked on cache hits as well as on actual model requests.
+
     await deps.authorize(owner, signal);
     const prompt = await deps.prompt(owner.promptPath);
     const model = await deps.model(owner, signal);

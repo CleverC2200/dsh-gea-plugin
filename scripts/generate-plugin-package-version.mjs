@@ -1,4 +1,3 @@
-/** Compile package identity into source; runtime modules never reread the manifest. */
 import { readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 

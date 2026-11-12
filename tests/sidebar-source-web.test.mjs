@@ -52,7 +52,7 @@ test(
       .getByRole("button", { name: "继续", exact: true })
       .click();
     await expect(page.locator("[data-dsh-better-sidebar]")).toBeAttached({ timeout: 15000 });
-    // 新会话异步打开；先记录启动时的主对话，避免给即将卸载的旧会话选模型。
+
     const conversation = page.locator(
       "[data-conversation-content]:not(.agent-workbench-native-conversation *)",
     );
@@ -78,7 +78,7 @@ test(
     });
     await expect(receipt).toBeVisible();
     await expect(conversation).toHaveAttribute("data-conversation-session", sessionId);
-    // GEA hides auxiliary launch buttons; configure a public shortcut supported by Linux Web too.
+
     await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
     await page.keyboard.press("ControlOrMeta+/");
     const shortcuts = page.getByRole("dialog", { name: "快捷键", exact: true });
@@ -130,7 +130,7 @@ test(
     await page.keyboard.press("ControlOrMeta+S");
     await expect.poll(() => readFile(file, "utf8")).toBe("saved from isolated sidebar\n");
     await page.reload();
-    // GEA may land on its business page at boot; reopen the saved conversation through history.
+
     const history = page.getByRole("button", { name: "历史会话", exact: true });
     if ((await history.getAttribute("aria-expanded")) !== "true") await history.click();
     await page

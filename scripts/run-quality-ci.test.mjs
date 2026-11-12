@@ -503,7 +503,7 @@ test("the current source impact maps changed paths without feature history and s
     );
     return git(cwd, "rev-parse", "HEAD");
   };
-  // Keep fixture paths from creating a false source-graph consumer of the contract under test.
+
   const contract = ["scripts/final-group-input", "contract", "mjs"].join(".");
   const changedPaths = [
     ".github/workflows/quality.yml",
@@ -591,7 +591,7 @@ test("the current source impact maps changed paths without feature history and s
     appendFileSync(join(entry.path, file), "\n");
     entry.head = commit(entry.path, "peer source impact fixture changes");
   }
-  // Make the known paths differ without changing the current code graph or policy semantics.
+
   for (const file of changedPaths) appendFileSync(join(gea.path, file), "\n");
   gea.head = commit(gea.path, "source impact fixture changes");
   assert.equal(git(gea.path, "rev-list", "--count", "HEAD"), "2");

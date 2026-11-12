@@ -73,10 +73,6 @@ test(
       }),
     );
 
-    // The immutable historical body supplies every business-text byte. Only
-    // W 3202a531's refresh button is added to the current full-text expectation.
-    // Separate monthly test plans support the unchanged numerical example.
-    // Its producer commit is unknown; the original artifact and data Git provenance live in the receipt.
     const original = JSON.parse(
       await readFile(new URL("./fixtures/branch-stock-original.json.raw", import.meta.url), "utf8"),
     );
@@ -220,7 +216,7 @@ test(
             fullPage: true,
           });
           await page.setViewportSize({ width: 1440, height: 1000 });
-          // A separate native business session runs the actual tool dispatcher and log receipts.
+
           const created = await app.remote("session/create", {
             cwd: app.runtime + "/workspace",
             agentPreset: "gea-html-inventory-fc",
@@ -308,7 +304,7 @@ test(
         await app.stop();
       }
     }
-    // Preserve the complete names, units, columns, rows and calculations.
+
     assert.equal(results[1].text, branchStockExpectedText(results[0].text));
     await writeFile(
       resolve(out, "comparison.json"),

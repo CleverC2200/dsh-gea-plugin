@@ -100,7 +100,7 @@ test("missing selected file cannot hide behind a valid selected file", (t) => {
 
 function baselineFixture(t) {
   if (fixtureRoots.has(t)) return fixtureRoots.get(t);
-  // Keep installations outside the parent pnpm workspace so they cannot resolve to its root.
+
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "gea-quality-baseline-")));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const result = spawnSync(
@@ -121,7 +121,7 @@ function baselineFixture(t) {
   ]) {
     copyFileSync(new URL(file, root), join(directory, file));
   }
-  // Each fixture declares exact tools with the original registry lock metadata.
+
   const manifest = JSON.parse(readFileSync(new URL("package.json", root)));
   const tools = { oxfmt: manifest.devDependencies.oxfmt, oxlint: manifest.devDependencies.oxlint };
   writeFileSync(
@@ -149,8 +149,7 @@ function baselineFixture(t) {
       "\n" +
       lock.slice(lock.indexOf("packages:\n")),
   );
-  // One file-owned tool preparation is read-only to cases. Each case owns its node_modules
-  // directory and runner links, so removing/replacing a runner cannot affect another fixture.
+
   const prepared = prepareFixtureTools(directory);
   mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
   for (const tool of Object.keys(tools)) {

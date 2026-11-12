@@ -388,7 +388,7 @@ test("knowledge timeout is not retried and does not clear login", async (t) => {
         init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
       }),
   });
-  // Node's timeout signal is unref'ed; keep the fixture alive until it reports the timeout.
+
   const keepAlive = setInterval(() => {}, 1000);
   try {
     assert.equal((await invoke(f, ask, args)).isError, true);
@@ -457,7 +457,7 @@ test("production prompt guards allow knowledge calls, preserve long citations wi
   });
   assert.ok(f.ctx.tools.schemas(f.agents.get("sales")).some((tool) => tool.name === ask));
   assert.deepEqual(successful(await invoke(f, ask, args)), delivered(payload));
-  // Knowledge is governed by the same budget as all other business methods.
+
   for (let i = 1; i < 64; i++) await invoke(f, ask, args);
   const exhausted = await invoke(f, ask, args);
   assert.equal(exhausted.isError, false);

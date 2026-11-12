@@ -1,5 +1,5 @@
 import { normalizeReceiptTime as timestamp } from "./delivery-time.mjs";
-/** Derived accounting and continuation only; consumes the same bounded bytes as checkDelivery. */
+
 const id = (value) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
 const parse = (input) => {
@@ -332,7 +332,6 @@ export function summarizeContinuation(tasks, observedAt) {
   };
 }
 
-/** Narrow replay of the existing readonly48 projection formats; projections never supply authorization. */
 export function reconcileProjections({ delivery, inputs, observedAt, scoped }) {
   if (delivery?.reconciliation === undefined) return null;
   const refs = delivery.reconciliation;

@@ -420,7 +420,7 @@ test(
       },
     );
     assert.equal(mismatch.status, 400);
-    // The old caller-supplied agentPreset field is retired; a forged page resource must be rejected.
+
     assert.equal(mismatch.value.error, "PAGE_RESOURCE_NOT_ALLOWED");
     const selectedReadonly = await selectBusinessResource(app, "gea-readonly");
     assert.equal(selectedReadonly.preset, "gea-readonly");

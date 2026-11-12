@@ -239,7 +239,6 @@ test("current permission failure remains visible across concurrent current MCP q
   await current.assemble({ sections: [], tools: [] });
   assert.equal(current.state().failures.size > 0, true);
   assert.equal(current.guard({ ...exec, token: Symbol(), arguments: {} }), undefined);
-  // Current native tools derive Consumer in GEA; caller-supplied identity is rejected by the registered-tool tests.
 });
 
 test("late successful read after a new turn preserves its original result without entering current evidence", async (t) => {
@@ -391,7 +390,7 @@ for (const transition of ["preset", "identity", "current"]) {
     const result = { content: [{ type: "text", text }] };
     const decision = { kind: "accept" };
     const pending = current.handlers.get("tools/post-execute")(exec, result, async () => decision);
-    // Attach the expected identity rejection before releasing the real file write.
+
     const received =
       transition === "identity"
         ? assert.rejects(pending, /GEA_EVIDENCE_IDENTITY_CHANGED/)
@@ -655,7 +654,7 @@ for (const phase of ["admission", "downstream"]) {
       }),
       (received) => received === error,
     );
-    // Official around-dispatch errors skip post-execute. Even an accidental later hook cannot resurrect this token.
+
     const decision = { kind: "accept" };
     const received = await current.handlers.get("tools/post-execute")(
       exec,

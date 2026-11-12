@@ -1,4 +1,3 @@
-/** Job-local receipts for the public quality CLI's process-independent stages. */
 import {
   readFileSync,
   writeFileSync,
@@ -10,8 +9,6 @@ import {
 import { resolve } from "node:path";
 import { clientEntry } from "./source-combination-integrity.mjs";
 
-// Manage's fixed tsdown build declares one CJS client entry, sourcemap, injected CSS and no DTS.
-// Source/lock admission fixes that build configuration; all three consumers use this exact output set.
 const buildOutputs = [
   { path: "candidate/dsh-gea-plugin/lib" },
   { path: "candidate/dsh-agent-manage/lib" },

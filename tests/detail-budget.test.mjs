@@ -1,11 +1,3 @@
-/**
- * detail 读取不能被上游整包撑爆。
- *
- * 线上问题：kind=detail 直接展开上游响应（含该计划全部 SKU），单条计划就超过按
- * 上下文算出的输入预算，工具永远返回 SNAPSHOT_TOO_LARGE，"逐条看计划卡点"不可用。
- * 这里用一个带 400 条 SKU 的计划验证：模型侧拿到的是投影+截断后的结果，
- * 明确标注 partial，并且整体仍在预算内。
- */
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile, readSession, until } from "./profile.mjs";
@@ -13,7 +5,7 @@ import { profile, readSession, until } from "./profile.mjs";
 const CONTEXT_WINDOW = 32768;
 const MAX_TOKENS = 2048;
 const MAX_SNAPSHOT_BYTES = 100000;
-// 与 deployment.mjs 一致：输入预算 = min(maxSnapshotBytes, context − maxTokens − 1000)
+
 const INPUT_BUDGET = Math.min(MAX_SNAPSHOT_BYTES, CONTEXT_WINDOW - MAX_TOKENS - 1000);
 
 test("detail 结果被投影并截断，不再 SNAPSHOT_TOO_LARGE", { timeout: 90000 }, async (t) => {
@@ -143,7 +135,7 @@ test("detail 结果被投影并截断，不再 SNAPSHOT_TOO_LARGE", { timeout: 9
   console.log("含旧错误 SNAPSHOT_TOO_LARGE:", payload.includes("SNAPSHOT_TOO_LARGE"));
   assert.equal(payload.includes("SNAPSHOT_TOO_LARGE"), false, "detail 仍然超出预算");
   assert.ok(Buffer.byteLength(payload, "utf8") <= INPUT_BUDGET, "工具结果超过输入预算");
-  // 400 条 SKU 必然被截断；截断必须显式标注，不能把子集当全集。
+
   assert.ok(payload.includes('"skuCoverage":"partial"'), "截断没有标注 partial");
   assert.ok(payload.includes("skuHint"), "缺少继续分页的提示");
   assert.ok(payload.includes("p-budget-0001"), "计划身份丢失");

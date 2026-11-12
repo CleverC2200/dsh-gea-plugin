@@ -11,7 +11,6 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
     ? (value as Record<string, unknown>)
     : undefined;
 
-/** Query IDs are resolved from this installed page only. The page never supplies SQL or routing. */
 export async function readConfiguredHtmlQuery(
   resource: { directory: string; manifest: Record<string, any> },
   input: unknown,
@@ -195,8 +194,7 @@ export async function readConfiguredHtmlQuery(
         configVersion: createHash("sha256").update(raw).digest("hex"),
       };
     }
-    // Published-resource and field authorization remain with the GEA gateway.
-    // No local provider is consulted on this path, including after a denied query.
+
     const result = await business.pluginSql(
       {
         ...request,

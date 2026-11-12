@@ -4,10 +4,6 @@ import { expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { openSalesPlanPresentation } from "./fixtures/sales-plan-presentation.mjs";
 
-/**
- * V1.8 #09：达成率列用「细进度条 + 百分比」，百分比前不带「金额」，
- * 配色按 D23 推荐口径分档：<95% 红、95–100% 橙、≥100% 绿。
- */
 test(
   "progress column shows a bar with percent-only text and threshold colours",
   { timeout: 90000 },
@@ -26,7 +22,6 @@ test(
     );
     await expect.poll(async () => (await cellInfo(frame)).length).toBe(3);
 
-    // 进度条颜色带过渡动画，等它稳定后再断言。
     const expected = [
       ["50.0%", "rgb(245, 63, 63)", "低于 95% 用红色"],
       ["97.0%", "rgb(255, 125, 0)", "95–100% 用橙色"],
@@ -38,7 +33,7 @@ test(
           timeout: 8000,
         })
         .toBe(color, { message });
-    // 宽度也是动画出来的，等颜色稳定后再量。
+
     await expect
       .poll(async () => (await cellInfo(frame)).every((cell) => cell.barWidth > 20), {
         timeout: 8000,

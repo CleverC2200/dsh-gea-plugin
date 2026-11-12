@@ -1,12 +1,3 @@
-/**
- * 通道路由：宿主替模型把"这一场该按什么顺序选通道"算出来。
- *
- * 三条通道本来写在工具说明里让模型自己选，线上实测两次翻车都在"选"这一步：页面上
- * 有九个模块的页面工具，模型挑了不是当前页的那个；或者拿着能读的模块去换表猜。
- * 宿主已经知道当前页是谁、哪些模块能读，这里把它算成一个明确的顺序交出去。
- *
- * 只算"该用什么"，不认识任何具体业务，也不执行任何动作。
- */
 import type { PageIdentity } from "../host/page-identity.ts";
 
 export type ChannelName = "page" | "module-mcp" | "governed-read";
@@ -17,35 +8,30 @@ export type ChannelChoice = {
   tool: string;
   consumerCode?: string;
   label?: string;
-  /** 什么时候用它（写给模型看的一句话）。 */
+
   when: string;
 };
 
 export type ChannelPlan = {
-  /** 问"这一屏 / 这几行 / 当前选中的对象"时用；页面没开就没有这一条。 */
   page?: ChannelChoice;
-  /** 命中模块、且模块自带受管查询时用。 */
+
   module?: ChannelChoice;
-  /** 兜底：受管只读（sql / recipe / describe）；问答侧关掉 SQL 时没有这一条。 */
+
   read?: ChannelChoice;
 
   note: string;
 };
 
 export type ChannelInput = {
-  /** 宿主侧的当前页身份（page-identity.ts）。 */
   currentPage?: PageIdentity;
-  /** 已经命中的模块；不知道就只给页面与兜底。 */
+
   module?: {
     consumerCode: string;
     label: string;
     readableTables?: number;
     hasModuleMcp?: boolean;
   };
-  /**
-   * 问答侧是否还允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
-   * 默认允许；关掉之后取数只剩页面证据和模块 MCP 两条路。
-   */
+
   governedRead?: boolean;
 };
 

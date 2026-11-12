@@ -1,4 +1,3 @@
-/** Read-only admission for the current source Host launch interfaces. */
 import { readFile, realpath } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
@@ -102,7 +101,7 @@ export async function admitSourceWindow({
     (await realpath(gea.path)) !== (await realpath(resolve(import.meta.dirname, "..")))
   )
     throw Error("WINDOW_CANDIDATE_CHECKOUT_MISMATCH");
-  // Shared candidate/official checks own the fixed Core and clean three-repository contract.
+
   try {
     execFileSync(
       process.execPath,

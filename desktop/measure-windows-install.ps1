@@ -6,7 +6,7 @@ param(
   [int]$TimeoutSeconds = 1500
 )
 $ErrorActionPreference = 'Stop'
-# This destructive timeout cleanup is CI-only and targets only the process tree we started.
+
 if ($env:GITLAB_CI -ne 'true' -or $env:OS -ne 'Windows_NT') { throw 'Use only on an isolated GitLab Windows runner' }
 $tempRoot = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
 foreach ($path in @($Destination,$ReportDirectory)) {
@@ -30,7 +30,7 @@ try {
   while ($true) {
     $process.Refresh()
     $rows = @(Get-CimInstance Win32_Process)
-    # Include NSIS children even when the bootstrap executable exits early.
+
     do {
       $changed = $false
       foreach ($row in $rows) {

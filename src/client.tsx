@@ -8,7 +8,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-theme/client";
 import { createBusinessIdentityReader } from "./business-identity-client.ts";
 
 export const inject = [];
-/** GEA contributes business views and its read-only identity. Workbench owns navigation and HTML. */
+
 export function apply(ctx: Context): void {
   ctx.effect(() => mountPluginUpdatesClient(ctx));
   const identity = createBusinessIdentityReader();

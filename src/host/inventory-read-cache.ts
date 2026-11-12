@@ -22,7 +22,6 @@ function successfulRows(value: unknown): value is { rows: Record<string, unknown
   );
 }
 
-/** An unavailable snapshot is distinct from a successful business quantity of zero. */
 export function unavailableInventorySnapshot(value: unknown, requireSnapshotDate = true) {
   if (!successfulRows(value)) return false;
   return (
@@ -49,7 +48,6 @@ export function unavailableInventorySnapshot(value: unknown, requireSnapshotDate
   );
 }
 
-/** Only a successful but unavailable initialization snapshot gets one bounded follow-up. */
 export async function recoverInventorySnapshot<T>(read: () => Promise<T>, signal: AbortSignal) {
   signal.throwIfAborted();
   const result = await read();
@@ -62,7 +60,6 @@ export async function recoverInventorySnapshot<T>(read: () => Promise<T>, signal
   return recovered;
 }
 
-/** Memory-only snapshots belong to one verified identity epoch. */
 export class InventoryReadCache {
   private readonly pending = new WeakMap<
     AbortSignal,
@@ -102,7 +99,6 @@ export class InventoryReadCache {
     );
   }
 
-  /** Share only simultaneous reads in the same identity, query and refresh generation. */
   share(
     scope: AbortSignal,
     key: string,
@@ -185,7 +181,7 @@ export class InventoryReadCache {
     startedAt = this.now(),
   ) {
     this.activate(scope);
-    // Failed/cropped responses never become a reusable business snapshot.
+
     if (!successfulRows(value) || unavailableInventorySnapshot(value, requireSnapshotDate)) return;
     if ((this.entries.get(key)?.startedAt ?? -Infinity) > startedAt) return;
     this.entries.delete(key);

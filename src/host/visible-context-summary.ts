@@ -81,25 +81,16 @@ function subagentPrompt(snapshot: string): string {
 }
 
 function getSubagentRuntime(agent: Agent): SubagentRuntime | undefined {
-  // Cordis throws when an optional service is queried outside an injected
-  // scope. Treat that exactly like an unavailable provider and keep the
-  // snapshot path read-only and lossless.
   try {
     const context = (agent as AgentWithSubagents).ctx;
     const fromRegistry = context?.get?.("subagents");
-    if (fromRegistry && typeof fromRegistry === "object")
-      return fromRegistry as SubagentRuntime;
+    if (fromRegistry && typeof fromRegistry === "object") return fromRegistry as SubagentRuntime;
     return context?.subagents;
   } catch {
     return undefined;
   }
 }
 
-/**
- * Use DSH's one-shot child agent as the expensive snapshot-processing seam.
- * The parent receives only the child result; the raw browser snapshot never
- * enters the parent model context unless the child runtime is unavailable.
- */
 export async function summarizeVisibleWorkbenchContext(
   snapshot: string,
   agent: Agent,
@@ -130,7 +121,6 @@ export async function summarizeVisibleWorkbenchContext(
       });
     }
   } catch {
-    // A child failure must not turn a valid page snapshot into a visible tool error.
   } finally {
     if (run) await run.dispose().catch(() => {});
   }

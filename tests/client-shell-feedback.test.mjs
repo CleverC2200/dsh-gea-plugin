@@ -1,8 +1,3 @@
-/**
- * 视觉样式及功能问题反馈（客户端）回归：
- * 会话区命名、左侧菜单选中态、收起后品牌居中、AI 工作台文字对齐、
- * 宿主兜底品牌文案、销售计划筛选默认收起。
- */
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -122,7 +117,6 @@ test(
         await page.getByRole("button", { name: "业务工作台", exact: true }).first().click();
       await menu.waitFor();
 
-      // 业务目录保留完整父子层级；分组标题贴齐抽屉左沿，子项文字与标题文字对齐。
       const planHeading = menu.getByRole("button", { name: "计划管理", exact: true });
       await planHeading.waitFor();
       assert.equal(await planHeading.getAttribute("aria-expanded"), "true");
@@ -157,15 +151,12 @@ test(
         JSON.stringify(menuIndent),
       );
 
-      // 计划页不重复显示顶部头像标题，欢迎页统一使用 Agent。
       await page.locator(".gea-agent-welcome").waitFor();
       assert.equal(await page.locator(".gea-agent-head-sub").count(), 0);
       assert.equal(await page.locator(".gea-agent-head").count(), 0);
       assert.equal(await page.locator(".gea-agent-identity h2").textContent(), "销售计划Agent");
       assert.equal(await page.locator(".gea-agent-actions").count(), 0);
 
-      // The Agent toolbar remains reachable in both maximized views; history
-      // opens the existing native list in the left drawer.
       await page.getByRole("button", { name: "中间区域最大，隐藏会话区" }).click();
       assert.equal(
         await page
@@ -271,8 +262,7 @@ test(
           },
         )
         .toBe(520);
-      // The current Core owns the complete input seat at the window floor,
-      // including short windows and while the welcome area is scrolled.
+
       for (const viewport of [
         { width: 1536, height: 620 },
         { width: 1024, height: 768 },
@@ -361,9 +351,7 @@ test(
               (key) => Math.abs(first[key] - second[key]) < 1,
             );
           });
-          // Layout changes can replace the composer between geometry reads.
-          // Each attempt measures a fresh top-to-bottom scroll, so a persistent
-          // input displacement still fails rather than comparing two bottom states.
+
           await expect(async () => {
             await page.locator(".gea-agent-welcome").evaluate((el) => {
               el.scrollTop = 0;
@@ -394,7 +382,6 @@ test(
         desktopRailWidth,
       );
 
-      // 登记 51：销售计划审批默认不展开筛选。
       const filterFrame = await openSalesPlan(page);
       const filterToggle = filterFrame.locator("button[aria-expanded]").first();
       await filterToggle.waitFor();
@@ -407,8 +394,6 @@ test(
         "false",
       );
 
-      // 三栏宽度归 DSH 自己的 inline grid + 拖拽手柄管，外壳不能再写 !important 压轨道，
-      // 否则左右两侧手柄就拖不动了。
       const readLayout = () =>
         page.evaluate(() => {
           const sidebar = document.querySelector(".gea-sidebar-owned");
@@ -450,7 +435,6 @@ test(
           };
         });
       const dragHandle = async (dx) => {
-        // 手柄会跟着列宽移动，每次拖动前重新取当前位置。
         const current = await readLayout();
         await page.mouse.move(current.handle.x, current.handle.y);
         await page.mouse.down();
@@ -482,7 +466,6 @@ test(
         JSON.stringify(railAfterPageResize),
       );
       assert.ok(
-        // 宿主列宽求解在两次测量间可能有几像素差（滚动条/clamp），4px 内视为"没跟着工作台变"。
         Math.abs(railAfterPageResize.rail.width - railBefore.rail.width) <= 4,
         `调整工作台宽度不能改变对话栏宽度: ${JSON.stringify({ railBefore, railAfterPageResize })}`,
       );
@@ -505,8 +488,6 @@ test(
         JSON.stringify({ layoutBefore, layoutRestored }),
       );
 
-      // 登记 37（改）：窄窗口不再改成上下两行，而是分档收缩左右两栏，
-      // 最窄一档把左侧菜单收进图标列，始终保留「中间工作台 + 右边对话」。
       const layoutAt = () =>
         page.evaluate(() => {
           const frame = document.querySelector("[data-rightbar-col]").parentElement;
@@ -523,7 +504,7 @@ test(
       await page.setViewportSize({ width: 1140, height: 900 });
       await page.waitForTimeout(900);
       const wrappedLayout = await layoutAt();
-      // 单行三栏；左右两栏已被收缩；没有上下拖动条。
+
       assert.equal(
         wrappedLayout.rows.split(" ").filter((value) => Number.parseFloat(value) > 0).length,
         1,
@@ -537,7 +518,7 @@ test(
       await page.setViewportSize({ width: 1000, height: 820 });
       await page.waitForTimeout(900);
       const railLayout = await layoutAt();
-      // 再窄一档：菜单收进图标列（左栏 64px），仍然是三栏单行。
+
       assert.equal(railLayout.narrow, true, JSON.stringify(railLayout));
       assert.ok(railLayout.railWidth > 0 && railLayout.railWidth <= 64, JSON.stringify(railLayout));
       assert.equal(
@@ -561,7 +542,6 @@ test(
       await page.setViewportSize({ width: 1536, height: 920 });
       await page.waitForTimeout(400);
 
-      // 登记 24：宿主兜底品牌文案不出现。
       assert.equal(
         await page.evaluate(
           () =>
@@ -572,7 +552,6 @@ test(
         0,
       );
 
-      // 登记 20：左侧菜单选中项没有深红描边（边框、外描边、阴影都不带红色）。
       const redish = /rgb\(\s*(1[4-9]\d|2\d\d)\s*,\s*(?:[0-9]{1,2})\s*,\s*[0-9]{1,2}\)/;
       const selected = await page
         .locator(
@@ -604,13 +583,12 @@ test(
       );
       assert.equal(redish.test(selected.boxShadow), false, JSON.stringify(selected));
 
-      // 登记 28：侧栏收起后品牌圆标与图标列同一条中线。
       const collapse = page
         .getByRole("button", { name: "收起侧边栏", exact: true })
         .or(page.getByRole("button", { name: "关闭侧边栏", exact: true }));
       await collapse.first().click();
       await page.locator(".gea-sidebar-owned[data-sidebar-collapsed]").waitFor();
-      // 侧栏收起带动画，量几何前先等宽度稳定。
+
       await page.waitForTimeout(700);
       const centering = await page.evaluate(() => {
         const logo = document.querySelector(".gea-shell-logo");
@@ -630,7 +608,7 @@ test(
         Math.abs(centering.logoCenter - centering.railCenter) <= 2,
         JSON.stringify(centering),
       );
-      // 收起动画期间不闪：图标列固定成窄列（不铺满整条侧栏），且切换按侧栏实测宽度走。
+
       const collapsedRail = await page.evaluate(() => {
         const rail = document.querySelector(".gea-sidebar-rail");
         const sidebar = document.querySelector(".gea-sidebar-owned");
@@ -650,7 +628,6 @@ test(
       await page.getByTitle("展开业务菜单", { exact: true }).click();
       await page.waitForTimeout(500);
 
-      // 登记 62/63：业务抽屉收起或历史会话展开时，右栏不回填第二个 Agent 标题。
       await openBusinessPage(page, "gea-proof");
       await page.locator(".agent-workbench-document").waitFor();
       await page.locator(".gea-drawer-function .gea-sidebar-tab").click();
@@ -670,7 +647,6 @@ test(
         "28px",
       );
 
-      // The authorized official Home centers its native hero row and retains the company brand.
       await page
         .getByRole("complementary", { name: "业务导航", exact: true })
         .getByRole("button", { name: "新会话", exact: true })
@@ -683,7 +659,7 @@ test(
       ).toBeVisible();
       const heroCentered = await homeBrand.evaluate((el) => {
         const row = el.getBoundingClientRect();
-        // Core centers its hero on the composer column, which reserves the scrollbar gutter.
+
         const content = el
           .closest("[data-conversation-content]")
           .querySelector("[data-composer-card]")

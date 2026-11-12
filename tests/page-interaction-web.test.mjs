@@ -485,7 +485,7 @@ test(
     await expect(page.locator(".dspi-composer-trigger [data-page-selection-trigger]")).toHaveCount(
       1,
     );
-    // Alt from the composer, then hover a cross-origin frame, releasing in the parent.
+
     await keyboardEditor.click();
     await page.keyboard.down("Alt");
     await expect(pickerButton).toHaveAttribute("aria-pressed", "true");
@@ -494,7 +494,7 @@ test(
     await page.keyboard.up("Alt");
     await expect(pickerButton).toHaveAttribute("aria-pressed", "false");
     await expect(frame.locator(".dspi-outline")).toBeHidden();
-    // Alt events received within the iframe itself follow the same lifecycle.
+
     await frame.locator("h1").click();
     await page.keyboard.down("Alt");
     await expect(pickerButton).toHaveAttribute("aria-pressed", "true");
@@ -503,7 +503,7 @@ test(
     await frame.getByRole("cell", { name: "120 件", exact: true }).hover();
     await expect(pickerButton).toHaveAttribute("aria-pressed", "false");
     await page.keyboard.up("Alt");
-    // Escape after focus has moved to the parent also suppresses the still-held Alt.
+
     await frame.locator("h1").click();
     await page.keyboard.down("Alt");
     await expect(pickerButton).toHaveAttribute("aria-pressed", "true");
@@ -512,7 +512,7 @@ test(
     await frame.getByRole("cell", { name: "120 件", exact: true }).hover();
     await expect(pickerButton).toHaveAttribute("aria-pressed", "false");
     await page.keyboard.up("Alt");
-    // Releasing Alt exits selection without cancelling an already-clicked quote.
+
     await page.route("**/api/page-interaction/reference", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 150));
       await route.continue();
@@ -528,7 +528,7 @@ test(
     await keyboardEditor.press("Backspace");
     await expect(keyboardEditor).toHaveText("");
     await page.unroute("**/api/page-interaction/reference");
-    // Escape in the parent cancels a pending save even after Alt selection has ended.
+
     let releaseSave;
     const saveGate = new Promise((resolve) => {
       releaseSave = resolve;
@@ -553,7 +553,7 @@ test(
     releaseSave();
     await expect(keyboardEditor).toHaveText("");
     await page.unroute("**/api/page-interaction/reference");
-    // Toolbar mode stays on across Alt release and successful references until Escape.
+
     await enableSelection(page);
     await page.keyboard.down("Alt");
     await page.keyboard.up("Alt");
@@ -578,7 +578,7 @@ test(
     );
     await frame.getByRole("button", { name: "查看库存", exact: true }).click();
     await expect(frame.locator("#business")).toHaveText("已执行");
-    // The header means the whole table; the tiny card label means its whole section.
+
     await enableSelection(page);
     await frame.getByRole("columnheader", { name: "库存", exact: true }).hover();
     await expect(frame.locator(".dspi-outline")).toBeVisible();

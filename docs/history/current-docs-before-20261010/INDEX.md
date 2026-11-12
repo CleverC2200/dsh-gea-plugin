@@ -1,10 +1,10 @@
 # 现行入口清理前原文
 
-这些原件来自本次指定GEA基线，按原字节保存旧架构、命令、尺寸、接口、过程和未验收说明。目录移动不改变原文链接，原相对路径应按表中原路径及当时checkout解释；原正文里的源文件和本机路径不是当前导航。现行规则见 [文档索引](../../index.md)。
+旧 AGENTS 规则已移出工作树，仅保留固定提交链接。其余原件来自本次指定GEA基线，按原字节保存旧架构、命令、尺寸、接口、过程和未验收说明。目录移动不改变原文链接，原相对路径应按表中原路径及当时checkout解释；原正文里的源文件和本机路径不是当前导航。现行规则见 [文档索引](../../index.md)。
 
 | 原路径 | 原文快照 | SHA-256 |
 |---|---|---|
-| `AGENTS.md` | [全文](AGENTS.md) | `0db8b95c8f2dd0381754c5a3e0e2cc78d5a78c6fc443fa55331abc353c9506f8` |
+| `AGENTS.md` | [固定提交原文](https://github.com/CleverC2200/dsh-gea-plugin/blob/b5feb8a1f33cdc683c012f8292c328cac17276b8/docs/history/current-docs-before-20261010/AGENTS.md) | `0db8b95c8f2dd0381754c5a3e0e2cc78d5a78c6fc443fa55331abc353c9506f8` |
 | `DESIGN.md` | [全文](DESIGN.md) | `b61993647b7090cab9c5f9a5779eb6e2f1cb1374f4328d7fa4dfda339e9d5817` |
 | `PRODUCT.md` | [全文](PRODUCT.md) | `ddd4631fe56a11de029aa5df116695f8be5f9dce66217d6e5a9bdbec27033a0e` |
 | `README.md` | [全文](README.md) | `0136ccba0b5c4ca58891150c4211e280b9b8ee6b719141749f20753182af453d` |

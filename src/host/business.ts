@@ -47,10 +47,7 @@ import type { BusinessNavigationCatalog } from "@cleverc2200/dsh-agent-workbench
 import { avatarUrl } from "./avatar.ts";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { resolve } from "node:path";
-/**
- * Host 侧业务门面：集中维护 GEA 身份、查询选择、权限校验和只读快照。
- * 浏览器只能提交资源标识与用户意图，凭证、来源数据和最终写入校验都留在这里。
- */
+
 import { resolveInventoryRoles, type InventoryRoleProfile } from "./inventory-role.ts";
 import { prepareGatewayLaunch } from "./html-gateway.ts";
 import { prepareGatewayMcp } from "./gateway-mcp.ts";
@@ -66,7 +63,6 @@ import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interact
 import { readSalesPlanSkuReview } from "./sales-plan-sku-review.js";
 import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 
-/** 受管表列清单的缓存时长：一次探查够用一段时间，又不至于一直用旧结构。 */
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
 
 import { validateServiceAccounts } from "../shared/service-accounts.js";
@@ -100,14 +96,14 @@ export type Row = Record<string, string | number | boolean | null>;
 export interface Deployment {
   memoryGatewayUrl?: string;
   memoryGatewayAllowPrivateHttp?: boolean;
-  /** Optional fixed-run SQL allowance; zero refuses before credentials and transport. */
+
   sqlReadLimit?: {
     consumerCode: string;
     maxRequests: number;
     maxPagesPerQuery: number;
     maxRowsPerQuery: number;
   };
-  /** The native sales capability uses the same enabled declaration as installed HTML capabilities. */
+
   workbenchCapability?: {
     enabled?: boolean;
     readonlyValidation?: {
@@ -133,7 +129,7 @@ export interface Deployment {
   requestTimeoutMs: number;
   mcpRequestTimeoutMs?: number;
   mcpMaxResponseBytes?: number;
-  /** Environment-specific Cube MCP source; absence keeps the existing deployment's routing. */
+
   cubeMcpCodes?: { production?: string; test?: string };
   modelRequestTimeoutMs: number;
   maxSnapshotBytes: number;
@@ -144,12 +140,9 @@ export interface Deployment {
   analysisAgentCode: string;
   analysisSource: "gea" | "direct" | "receipt";
   inputByteBudget: number;
-  /**
-   * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
-   * 默认关闭：问答取数只走模块 MCP + 页面证据（页面自己的查询不受影响）。
-   */
+
   agentSqlRead?: boolean;
-  /** 将当前页快照交给 DSH 一次性子 Agent 压缩；测试/旧宿主可显式关闭。 */
+
   visibleContextSubagent?: boolean;
 }
 export interface Page {
@@ -190,7 +183,6 @@ export interface Detail {
   missing: string[];
 }
 
-/** 浏览器当前可见页的最小只读投影，不作为 GEA 写操作依据。 */
 export interface VisibleWorkbenchContext {
   format: "gea-workbench-visible-v1";
   sequence: number;
@@ -291,7 +283,7 @@ const skuFields = [
   "categoryConfirmedQty",
   "categoryConfirmedAmount",
 ];
-/** GEA 只在部分计划回填物料名称；同一 SKU 编码在别处回填过的名称可以复用。 */
+
 const materialNameFields = [
   "materialDescription",
   "materialDesc",
@@ -308,7 +300,6 @@ class MaterialNameIndex {
     this.names.clear();
   }
 
-  /** 先取本记录自带的权威字段，缺失时再回落到同编码已见过的名称。 */
   apply(records: Array<Record<string, unknown>>): void {
     for (const record of records) {
       const code = record.skuCode == null ? undefined : String(record.skuCode);
@@ -330,7 +321,6 @@ class MaterialNameIndex {
 }
 const exactNumber = /Id$|Code$|Qty$|Amount$|^(id|qty|price|amt|amtBase|qtyDelta|amountDelta)$/;
 
-/** 在 JavaScript 进行舍入前保留小数词法形式和不透明标识。 */
 function parseJson(text: string, salesDimensions = false): unknown {
   return JSON.parse(text, (key: string, value: unknown, context?: { source?: string }) => {
     if (salesDimensions && key === "cust_code" && value !== null) {
@@ -355,7 +345,6 @@ function businessValue(value: unknown): string | undefined {
   return typeof value === "string" || typeof value === "number" ? String(value) : undefined;
 }
 
-/** 将内部只读快照投影成会话中可见的业务资料，避免暴露接口和字段实现。 */
 function businessBrief(snapshot: object): string {
   const root = plainObject(snapshot);
   const records = Array.isArray(root.records)
@@ -403,7 +392,7 @@ function integer(value: unknown, min: number, max = Number.MAX_SAFE_INTEGER): nu
     throw new Error("INVALID_QUERY");
   return value;
 }
-/** 销售计划各 kind 允许的查询字段。 */
+
 const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   aggregate: [
     "periodId",
@@ -442,18 +431,6 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
 
-/**
- * 销售计划查询的形状校验 + 容错。
- *
- * 分页参数对不分页的 kind（detail/versions/compare…）没有意义，但也不算错：线上实测模型
- * 会给 detail 顺手带上 pageSize，严格拒绝等于白烧一轮。同理，模型常把 detail 的 planId
- * 顺手带进 versionSkus（session-2bb0684f 就因为这个多余字段连撞 5 次 INVALID_QUERY）。
- * 这两类"多余但无害"的字段直接丢掉继续跑；真正用错的 key（例如给 detail 传 versionId）
- * 仍然报错，并给出该怎么改。
- *
- * @param kind 查询种类（periods/list/detail/versions/logs/versionSkus/compare）。
- * @param query 模型给的查询对象；返回的是"过滤后的有效字段"。
- */
 export function normalizePlanQuery(
   kind: string,
   query: Record<string, unknown>,
@@ -463,7 +440,7 @@ export function normalizePlanQuery(
   const ignoredPaging = Object.keys(query).filter(
     (key) => (key === "pageNo" || key === "pageSize") && !allowed[kind].includes(key),
   );
-  // 只在"必需的那个 id 已经在了"时才忽略多余字段，避免把"拿 planId 当版本号"这种真错误吞掉。
+
   const benignExtras: Record<string, string[]> = { versionSkus: ["planId"] };
   const ignoredBenign =
     kind === "versionSkus" && query.versionId != null
@@ -476,7 +453,6 @@ export function normalizePlanQuery(
       : Object.fromEntries(Object.entries(query).filter(([key]) => !ignoredKeys.includes(key)));
   const unsupported = Object.keys(effective).filter((key) => !allowed[kind].includes(key));
   if (unsupported.length) {
-    // 这些提示直接决定模型下一轮能不能纠正，不要只说"参数不支持"。
     const guidance =
       kind === "list"
         ? " For a month, call kind=periods with periodMonth (YYYY-MM) first, then pass the returned periodId together with planTypeCode from that result; never invent periodId or planTypeCode."
@@ -517,16 +493,6 @@ function project(value: unknown, fields: readonly string[]): Row {
   );
 }
 
-/**
- * 按字节预算裁剪行数组，保留尽量多的完整行。
- *
- * 上游的 detail 会把整条计划的全部 SKU 一起返回，直接交给模型会超过按上下文
- * 算出的输入预算（SNAPSHOT_TOO_LARGE）。这里按预算截断，并让调用方把“被丢弃的
- * 行数”明确写给模型，避免它把子集当成全部。
- * @param rows - 已投影的行。
- * @param budgetBytes - 该数组可占用的字节数。
- * @returns 保留的行与被丢弃的行数。
- */
 function capRows<T extends Record<string, unknown>>(
   rows: readonly T[],
   budgetBytes: number,
@@ -600,7 +566,7 @@ function validateVisibleWorkbenchContext(
     payload.selectedPlanIds.some((id) => typeof id !== "string" || id.length > 256)
   )
     throw new Error("INVALID_WORKBENCH_CONTEXT");
-  // 展开状态是老客户端可能不带的新字段：缺失按空处理，带了就严格校验。
+
   const expandedPlanIds = payload.expandedPlanIds ?? [];
   if (
     !Array.isArray(expandedPlanIds) ||
@@ -649,7 +615,7 @@ function validateVisibleWorkbenchContext(
     },
   };
 }
-/** 运算前校验来源小数；任何无效记录都不能被静默跳过。 */
+
 function decimalSources(
   values: unknown[],
 ): { values: Decimal[] } | { missing: "decimal-source-unavailable" | "decimal-range-exceeded" } {
@@ -677,7 +643,7 @@ function difference(row: Row, target: string, current: string) {
     value: decimals.values[0].minus(decimals.values[1]).toFixed(),
   };
 }
-/** 独立汇总完整且已校验的 SKU 集合，不改写 GEA 版本中的来源字段。 */
+
 function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
   const basis = `detail.skus[].${field}`;
   const recordCount = rows.length;
@@ -694,12 +660,9 @@ function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
   };
 }
 
-/** 由此处持有凭证和已读取记录；调用方只能选择标识，不能提供业务数据。 */
 export class Business {
-  // epoch 绑定登录身份，queryEpoch 绑定当前查询；任一边界变化都会取消旧请求并丢弃旧选择。
   private readonly identityListeners = new Set<() => void>();
 
-  /** 观察登录身份变化，但不暴露登录凭证。 */
   watchIdentity(listener: () => void): () => void {
     this.identityListeners.add(listener);
     return () => {
@@ -711,9 +674,7 @@ export class Business {
     for (const listener of this.identityListeners) {
       try {
         listener();
-      } catch {
-        // 单个消费者不能破坏登录或退出登录流程。
-      }
+      } catch {}
     }
   }
 
@@ -741,15 +702,9 @@ export class Business {
     string,
     { sequence: number; receivedAt: string; context: VisibleWorkbenchContext }
   >();
-  /**
-   * 每个对话当前打开的业务页身份（HTML 插件页按最近一次页面活动刷新）。
-   * 见 page-identity.ts：这是"当前页是谁"的唯一权威来源。
-   */
+
   private readonly pageIdentities = new Map<string, PageIdentity>();
-  /**
-   * 「这个对话现在停在哪一页菜单」的状态字段：默认主对话，用户点业务菜单时前端上报。
-   * 见 workbench-surface.ts：这是"在不在工作台"的唯一权威来源。
-   */
+
   private readonly surfaces = new Map<string, WorkbenchSurface>();
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
@@ -766,9 +721,9 @@ export class Business {
     string,
     { authToken: string; delegationToken: string }
   >();
-  /** Last verified customer-inventory scope for the current login only. */
+
   private customerInventoryAccess?: { authToken: string; profile: InventoryRoleProfile };
-  /** 受管表列清单的短缓存：同一张表不重复探查。 */
+
   private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
   private capabilities: CapabilityRegistry;
   private loginExpired = false;
@@ -785,28 +740,20 @@ export class Business {
     return this.selectedBase;
   }
 
-  /** 登录环境变化时取消推理和查询。 */
   identitySignal(): AbortSignal {
     return this.epoch.signal;
   }
 
-  /** Opaque authority for browser page associations; changes on logout and environment switches. */
   pageSessionScope(): string | undefined {
     return this.auth ? `${this.runId}:${this.pageIdentityGeneration}` : undefined;
   }
 
-  /**
-   * Safe browser projection of the customer-inventory authorization receipt.
-   * It is available only after the gateway has verified the current delegated
-   * session; delegation credentials and raw receipts never leave the Host.
-   */
   customerInventoryIdentity(): InventoryRoleProfile | null {
     const auth = this.auth;
     const access = this.customerInventoryAccess;
     return auth && access?.authToken === auth.token ? access.profile : null;
   }
 
-  /** 选择已配置环境，并立即丢弃凭证、二维码和预览。 */
   selectEnvironment(payload: Record<string, unknown>) {
     keys(payload, ["environment"]);
     const environment = text(payload.environment);
@@ -817,7 +764,6 @@ export class Business {
     return this.status();
   }
 
-  /** 结束当前 GEA 登录，并使所有绑定旧身份的进行中任务失效。 */
   async logout(payload: Record<string, unknown>, signal = new AbortController().signal) {
     keys(payload, []);
     const auth = this.auth;
@@ -1016,7 +962,6 @@ export class Business {
     });
   }
 
-  /** 仅桌面拥有者可用：凭证通过私有回环通道传递，绝不经浏览器 RPC。 */
   desktopLoginSnapshot(): unknown {
     return this.auth
       ? {
@@ -1064,7 +1009,6 @@ export class Business {
     this.notifyIdentity();
   }
 
-  /** 释放未完成请求，并清除进程内认证状态。 */
   dispose(): void {
     this.clearLogin();
     this.epoch.abort();
@@ -1079,15 +1023,11 @@ export class Business {
     this.details.clear();
     this.versionsByPlan.clear();
     this.skusByVersion.clear();
-    // 注意：这里不能清 visibleWorkbenchContexts。
-    // 工作台页面自己的每次实时查询都会走 workbench/query -> clearQuery()，
-    // 一旦在这里清掉，页面刚同步上来的可见页快照会立刻被自己的查询抹掉，
-    // 模型再读就是"不在工作台"。可见页快照按会话独立存放，
-    // 只在离开页面（context=null）或身份变化（clearLogin）时失效。
+
     for (const request of this.requests.values()) request.abort();
     this.requests.clear();
   }
-  /** 清理查询缓存和未完成请求，避免新选择沿用旧身份或旧页面的数据。 */
+
   private clearLogin(expired = false): void {
     this.apiLog.invalidateReplays();
     this.epoch.abort();
@@ -1106,19 +1046,15 @@ export class Business {
     this.qr = undefined;
     this.passwordChallenge = undefined;
     this.loginExpired = expired;
-    // 身份变化后，之前的可见页快照一律作废。
+
     this.visibleWorkbenchContexts.clear();
     this.surfaces.clear();
-    // 页面身份同理：换了身份，"当前页"这件事也算不清了。
+
     this.pageIdentities.clear();
     this.clearQuery();
     this.notifyIdentity();
   }
 
-  /**
-   * 浏览器推送当前已显示的最小只读投影；字段都按不可信业务数据处理。
-   * 同一 sessionId 的较旧更新不会覆盖较新的页面状态。
-   */
   updateVisibleWorkbenchContext(sessionId: string, payload: Record<string, unknown>): void {
     this.authenticated();
     if (!/^session-[0-9a-f-]{36}$/.test(sessionId)) throw new Error("INVALID_WORKBENCH_SESSION");
@@ -1135,10 +1071,8 @@ export class Business {
   clearVisibleWorkbenchContext(sessionId: string): void {
     if (!/^session-[0-9a-f-]{36}$/.test(sessionId)) throw new Error("INVALID_WORKBENCH_SESSION");
     this.visibleWorkbenchContexts.delete(sessionId);
-    // 离开工作台后，之前发起但还没被执行的前端工具调用一律作废。
   }
 
-  /** 当前会话的页面状态与序列号；页面桥用它判断"改动后的状态是否已报回"。 */
   workbenchStateSnapshot(
     sessionId: string,
   ): { sequence: number; state: VisibleWorkbenchContext } | undefined {
@@ -1146,18 +1080,11 @@ export class Business {
     return value ? { sequence: value.sequence, state: value.context } : undefined;
   }
 
-  /**
-   * 记录"这个对话现在打开的是哪个业务页"。
-   *
-   * 页面的每一次活动（打开、轮询、调用）都会刷新时间戳：这样切页之后身份会自然跟到
-   * 新页面，不会被上一个页面残留的绑定一直占着。
-   */
   touchPageIdentity(sessionId: string, identity: Omit<PageIdentity, "at">): void {
     if (!sessionId) return;
     this.pageIdentities.set(sessionId, { ...identity, at: Date.now() });
   }
 
-  /** 页面关掉时清掉身份；带 pluginId 时只清属于它的那份，避免误删刚切过去的页面。 */
   clearPageIdentity(sessionId: string, pluginId?: string): void {
     const current = this.pageIdentities.get(sessionId);
     if (!current) return;
@@ -1165,25 +1092,18 @@ export class Business {
     this.pageIdentities.delete(sessionId);
   }
 
-  /**
-   * 前端上报"这个对话现在停在哪一页菜单"：默认主对话，点业务菜单时带菜单 id 与菜单名。
-   *
-   * 换菜单（或从主对话切进来）等于换上下文：上一页留下的可见行快照、页面身份、
-   * 以及"同一屏不重复发送"的记忆一律作废，由新页面重新上报，避免跨菜单串证据。
-   */
   setSurface(sessionId: string, input: { menu?: unknown; title?: unknown }): WorkbenchSurface {
     if (!/^session-[0-9a-f-]{36}$/.test(sessionId)) throw new Error("INVALID_WORKBENCH_SESSION");
     const next = normalizeSurface(input);
     const previous = this.surfaces.get(sessionId);
     this.surfaces.set(sessionId, next);
-    // 会话很多时只留最近的一批，避免这张表无限长大。
+
     while (this.surfaces.size > 500) {
       const oldest = this.surfaces.keys().next();
       if (oldest.done || oldest.value === sessionId) break;
       this.surfaces.delete(oldest.value);
     }
-    // 只在"从一个菜单换到另一个菜单"时清：首次上报（previous 为空）可能与页面同步快照
-    // 并发，清掉会把刚同步的这一屏弄丢；同一个菜单重复上报更不能清。
+
     if (previous !== undefined && previous.menu !== next.menu) {
       this.visibleWorkbenchContexts.delete(sessionId);
       this.pageIdentities.delete(sessionId);
@@ -1191,26 +1111,19 @@ export class Business {
     return next;
   }
 
-  /** 当前菜单状态；没上报过就是 undefined（按主对话处理）。 */
   surfaceFor(sessionId: string): WorkbenchSurface | undefined {
     return this.surfaces.get(sessionId);
   }
 
-  /** Withdraw only the surface owned by the closing page. */
   clearSurface(sessionId: string, menu: string): void {
     if (this.surfaces.get(sessionId)?.menu !== menu) return;
     this.surfaces.delete(sessionId);
   }
 
-  /**
-   * 这个对话此刻是否还在业务工作台里。
-   * 只认菜单状态字段，见 host/workbench-presence.ts。
-   */
   workbenchPresenceFor(sessionId: string): WorkbenchPresence {
     return workbenchPresence({ surface: this.surfaces.get(sessionId) });
   }
 
-  /** 当前页身份；超过 TTL 没活动就当没有页面。 */
   currentPageIdentity(sessionId: string): PageIdentity | undefined {
     const value = this.pageIdentities.get(sessionId);
     if (!value) return undefined;
@@ -1221,16 +1134,9 @@ export class Business {
     return value;
   }
 
-  /**
-   * 只返回当前 Agent 会话的页面范围，不重新读取 GEA，也不执行任何写操作。
-   *
-   * focus：用户问题里提到的对象/字段。带上就只回相关行与字段；不带只回摘要（行数、
-   * 字段名、范围），避免整屏明细灌进上下文。
-   */
   visibleWorkbenchContext(sessionId: string, focus?: string): string {
     const value = this.visibleWorkbenchContexts.get(sessionId);
-    // 先看菜单状态字段：主对话（AI 工作台首页）一律不交页面证据，也不去打开页面。
-    // 见 workbench-surface.ts / workbench-presence.ts。
+
     const presence = this.workbenchPresenceFor(sessionId);
     if (!presence.inWorkbench) {
       return JSON.stringify({
@@ -1250,7 +1156,6 @@ export class Business {
       });
     }
     if (!value) {
-      // 绑定页面尚无快照时，保留所属页面和实际工具，不把 Native 当成 HTML lease。
       const identity = this.currentPageIdentity(sessionId);
       if (identity) return currentPageEnvelope(identity);
       return JSON.stringify({
@@ -1270,9 +1175,7 @@ export class Business {
     let context: unknown = value.context;
     try {
       context = JSON.parse(compressed.json);
-    } catch {
-      // 压缩结果异常就退回原快照：宁可大一点，也不能让页面证据消失。
-    }
+    } catch {}
     const body = JSON.stringify({
       source: "GEA_RENDERED_WORKBENCH",
       renderedAt: value.receivedAt,
@@ -1290,7 +1193,6 @@ export class Business {
     return body;
   }
 
-  /** 首屏查询尚未完成时给浏览器一点时间把当前页快照同步进来。 */
   async waitVisibleWorkbenchContext(
     sessionId: string,
     timeoutMs = 2000,
@@ -1305,14 +1207,12 @@ export class Business {
     return this.visibleWorkbenchContext(sessionId, focus);
   }
 
-  /** 模型 Gateway 拒绝当前身份后，将该 GEA 登录标记为过期。 */
   expireModelLogin(): void {
     if (this.auth) this.clearLogin(true);
   }
 
   private readonly avatarRefreshes = new WeakMap<object, Promise<void>>();
 
-  /** 兼容早于头像字段加入前生成的桌面登录快照。 */
   async refreshMissingAvatar(signal: AbortSignal): Promise<void> {
     const auth = this.auth;
     if (!auth || auth.avatar) return;
@@ -1336,7 +1236,6 @@ export class Business {
         }
       } catch {
         this.avatarRefreshes.delete(auth);
-        // 资料或头像读取失败不能阻塞账户控件。
       }
     })();
     this.avatarRefreshes.set(auth, refresh);
@@ -1345,7 +1244,6 @@ export class Business {
 
   private readonly permissionRefreshes = new WeakMap<object, Promise<void>>();
 
-  /** 只读取当前用户的授权；allAuth 是权限目录，不代表当前用户已获授权。 */
   async refreshPermissions(signal: AbortSignal): Promise<void> {
     const auth = this.auth;
     if (!auth || auth.permissionCodes !== undefined) return;
@@ -1369,7 +1267,6 @@ export class Business {
       } catch (error) {
         this.permissionRefreshes.delete(auth);
         if (signal.aborted || !this.auth) throw error;
-        // 旧服务端仍保留服务端范围浏览和精确任务/上下文授权。
       }
     })();
     this.permissionRefreshes.set(auth, refresh);
@@ -1384,17 +1281,10 @@ export class Business {
     delegationToken: string;
   };
 
-  /**
-   * 审批身份只认账号角色：经网关会话解析当前用户，拿角色编码/名称映射到审批节点。
-   * 通知与任务不参与身份判定；角色读取失败时该账号视为没有审批节点（界面全灰），不阻断其它功能。
-   * 默认沿用登录时解析的结果（避免每次查状态都往网关跑）；`force` 由界面刷新触发，
-   * 让管理员刚改完角色的人不用重新登录。
-   */
   async refreshApprovalRoles(
     signal: AbortSignal,
     options: { force?: boolean } = {},
   ): Promise<void> {
-    // Disabled sales keeps startup identity metadata without opening a business Session.
     const native = this.capabilities.get("gea-workbench");
     if (!native || native.enabled === false || native.data?.mock) return;
     const auth = this.auth;
@@ -1476,13 +1366,10 @@ export class Business {
       } catch (error) {
         if (error instanceof SalesReadonlyError) throw error;
         if (signal.aborted || !this.auth) throw error;
-        // 角色读不到就不是审批人：保留只读浏览，不放开审批入口。
-        // 强制刷新失败时保留上一次解析到的角色——一次查询失败不等于角色被收回。
       }
     })();
     this.roleRefreshes.set(auth, refresh);
-    // 这张表只用來合并"正在飞"的请求；落地后必须清掉，否则强制刷新会直接拿到
-    // 登录时那条已经完成的结果，等于没重新解析。
+
     void refresh
       .catch(() => {})
       .finally(() => {
@@ -1491,7 +1378,6 @@ export class Business {
     return refresh;
   }
 
-  /** 对外状态永远不包含 GEA 凭证。 */
   status() {
     const readonlyValidation = this.salesReadonly?.snapshot();
     const models = this.modelRoutes.get(WORKBENCH_AGENT_CODE)?.models;
@@ -1533,12 +1419,6 @@ export class Business {
     return this.auth;
   }
 
-  /**
-   * 持久化私有草稿属于当前登录身份，绝不会调用 GEA 动作，也不代表服务端审批权限。
-   * 界面自 0.0.59 起按“详情可读”开放数量编辑入口（见 `canEdit={... Boolean(access.detail)}`），
-   * 真正的写权限由 GEA 在提交动作时校验；所以这里只校验登录身份、草稿新鲜度和数据形状，
-   * 不再要求审批能力——否则会出现“界面能改、一存就失败”。
-   */
   async salesPlanDraft(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed(this.config.analysisAgentCode, "draft");
     keys(payload, ["planId", "versionId", "approvalRole", "draft"]);
@@ -1574,7 +1454,7 @@ export class Business {
     if (payload.draft !== undefined) {
       const draft = payload.draft as SalesPlanLocalDraft;
       if (!salesPlanDraftMatches(draft, row, detail, draftRole)) throw new Error("STALE_DRAFT");
-      // 固定记录本次校验用的节点口径，读回时才能用同一套基线还原这些调整量。
+
       const value = {
         draft: draftRole ? { ...draft, role: draftRole } : draft,
         savedAt: new Date().toISOString(),
@@ -1605,7 +1485,6 @@ export class Business {
     }
   }
 
-  /** 使用当前 Host 身份读取完整工作流配置。 */
   async workflowConfig(payload: Record<string, unknown>, caller: AbortSignal) {
     this.salesReadonly?.assertWorkflow();
     this.assertExecutionAllowed(this.config.analysisAgentCode);
@@ -1619,7 +1498,6 @@ export class Business {
     return readSalesPlanWorkflowConfig(this.base, auth.token, this.apiLog.fetch, signal);
   }
 
-  /** Fixed FC persistence operations; page values cannot choose SQL, credentials or data source. */
   async branchStorage(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed("branch-inventory");
     const auth = this.authenticated();
@@ -1701,7 +1579,6 @@ export class Business {
     return result;
   }
 
-  /** Dedicated, deployment-authorized DMS action; not a general HTML write capability. */
   async branchDms(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed("branch-inventory");
     const auth = this.authenticated();
@@ -1843,7 +1720,6 @@ export class Business {
     return { agents, domains };
   }
 
-  /** 导航使用当前用户与身份取消信号，原始 Reference 不进入 API 正文日志中心。 */
   async resolveClientNavigation(input: NavigationInput, caller: AbortSignal) {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     const auth = this.authenticated();
@@ -1858,7 +1734,6 @@ export class Business {
     return target;
   }
 
-  /** 只确认已在当前身份下展示的目标；固定 ACK 契约且复用重试幂等键。 */
   async acknowledgeClientNavigation(intentId: string, idempotencyKey: string, caller: AbortSignal) {
     this.assertExecutionAllowed(this.config.analysisAgentCode, "submit");
     if (!/^[A-Za-z0-9._:-]{1,36}$/.test(intentId) || !/^[A-Za-z0-9-]{1,128}$/.test(idempotencyKey))
@@ -1872,7 +1747,6 @@ export class Business {
     );
   }
 
-  /** 导航专用固定路径传输：不保存或回显请求与响应正文，只抛受控错误。 */
   private async navigationRequest(
     path: string,
     body: unknown,
@@ -1933,7 +1807,6 @@ export class Business {
     return data.result;
   }
 
-  /** 使用当前 Host 身份读取固定通知端点，不改变计划选择。 */
   async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     keys(payload, [
@@ -2077,7 +1950,6 @@ export class Business {
     };
   }
 
-  /** 解析当前登录用户的 GEA 个人模型路由，但不向浏览器暴露密钥。 */
   async modelRoute(
     signal: AbortSignal,
     agentCode = WORKBENCH_AGENT_CODE,
@@ -2274,7 +2146,6 @@ export class Business {
     });
   }
 
-  /** 重启二维码登录，并使旧身份留下的所有选择失效。 */
   async loginStart(signal: AbortSignal, payload: Record<string, unknown> = {}) {
     keys(payload, ["environment"]);
     if (payload.environment !== undefined)
@@ -2302,7 +2173,6 @@ export class Business {
     return { loginId, image, expiresIn: 120 };
   }
 
-  /** 只有二维码登录仍是当前登录时，才接纳两次请求共同返回的身份。 */
   async loginPoll(payload: Record<string, unknown>, signal: AbortSignal) {
     if (!this.qr || payload.loginId !== this.qr.loginId) throw new Error("STALE_LOGIN");
     const qr = this.qr;
@@ -2471,7 +2341,6 @@ export class Business {
     }
   }
 
-  /** 只使用当前进程登录准备 Gateway 传输能力。 */
   async htmlLaunch(agentCode: string, signal: AbortSignal, conversationId?: string) {
     this.assertExecutionAllowed(agentCode);
     const auth = this.authenticated();
@@ -2553,15 +2422,12 @@ export class Business {
   }
 
   private readonly moduleMcpCache = new Map<string, { token: string; module: GatewayMcpClient }>();
-  /** A rejected business Session cannot authorize later reads, even if the login stays valid. */
+
   invalidateModuleMcp(consumerCode: string, expected?: GatewayMcpClient): void {
     if (!expected || this.moduleMcpCache.get(consumerCode)?.module === expected)
       this.moduleMcpCache.delete(consumerCode);
   }
-  /**
-   * 模块自带的 MCP 查询通道（每个 consumerCode 一个会话，登录身份变化即失效）。
-   * 页面不可用时的兜底查询走这里：不依赖页面、也不依赖我们替它写 SQL。
-   */
+
   async moduleMcp(consumerCode: string, signal: AbortSignal): Promise<GatewayMcpClient> {
     this.assertExecutionAllowed(consumerCode);
     const auth = this.authenticated();
@@ -2598,12 +2464,11 @@ export class Business {
     }
   }
 
-  /** 本轮成功聚合的有界摘要；读取失败/停手不抹掉已有事实，换轮或身份沿用回执清理。 */
   successfulPlanEvidence(scope: string): Record<string, unknown>[] {
     const receipts: Record<string, unknown>[] = [];
     const seen = new Set<string>();
     const prefix = `${scope || "global"}\u0000plan|`;
-    // 优先保留先取得的整体范围，避免后续小范围探查把完整汇总挤出摘要。
+
     for (const [key, entry] of this.turnReplays) {
       if (!key.startsWith(prefix)) continue;
       try {
@@ -2666,9 +2531,7 @@ export class Business {
         }
         if (Buffer.byteLength(JSON.stringify([...receipts, receipt]), "utf8") > 24_000) break;
         receipts.push(receipt);
-      } catch {
-        /* 非聚合正文或无效回执不能成为成功证据。 */
-      }
+      } catch {}
     }
     return receipts;
   }
@@ -2706,10 +2569,6 @@ export class Business {
     else this.turnStops.clear();
   }
 
-  /**
-   * 诊断用：对某个 consumerCode 真走一遍 MCP（会话申请 → initialize → tools/list），
-   * 并把两段 HTTP 的原始请求/响应带出来。只在 GEA_DEBUG_PROBE=1 时经调试路由暴露。
-   */
   async debugProbeModuleMcp(
     consumerCode: string,
     signal: AbortSignal,
@@ -2749,7 +2608,7 @@ export class Business {
       const requestBody = typeof init?.body === "string" ? init.body.slice(0, 4000) : undefined;
       const response = await this.apiLog.fetch(input, init);
       const sessionHeader = response.headers.get("mcp-session-id") ?? undefined;
-      // 诊断要看清"同一个 body 为什么这次 400、重放 200"：把非敏感请求头一起留下。
+
       const headerBag = new Headers(init?.headers);
       const requestHeaders: Record<string, string> = {};
       for (const key of ["accept", "content-type", "mcp-protocol-version", "mcp-session-id"]) {
@@ -2758,7 +2617,7 @@ export class Business {
       }
       let responseBody: string | undefined;
       const type = response.headers.get("content-type") ?? "";
-      // 网关的错误体不一定是 JSON：只要是文本类且不大，就带回来（诊断要的就是这段）。
+
       const length = Number(response.headers.get("content-length") ?? "0");
       if (
         type.includes("json") ||
@@ -2782,7 +2641,7 @@ export class Business {
       });
       return response;
     };
-    // 会话阶段拿到的身份，用来做"带 _meta / 不带 _meta"的对照实验。
+
     let meta: Record<string, unknown> | undefined;
     let transportSession: string | undefined;
     const experiments: Array<{
@@ -2819,9 +2678,7 @@ export class Business {
               agentCode: consumerCode,
             };
           }
-        } catch {
-          // 不是 JSON 的响应不参与实验。
-        }
+        } catch {}
       }
       const module = await openGatewayMcp(transport, signal);
       return {
@@ -2832,7 +2689,6 @@ export class Business {
         ...(experiments.length ? { experiments } : {}),
       };
     } catch (error) {
-      // 对照实验：同一个代理会话下，tools/list 带 _meta 与不带 _meta 各发一次。
       if (meta) {
         const headers: Record<string, string> = {
           "content-type": "application/json",
@@ -2841,7 +2697,7 @@ export class Business {
         };
         const session = transportSession ?? raw.find((r) => r.mcpSessionId)?.mcpSessionId;
         if (session) headers["mcp-session-id"] = session;
-        // 失败的那条 tools/list 原文（含 SDK 用的 id/params），用于区分"body 问题"与"header 问题"。
+
         const failedList = raw.find(
           (entry) => entry.status === 400 && entry.requestBody?.includes('"tools/list"'),
         );
@@ -2996,7 +2852,7 @@ export class Business {
           return this.pluginSql({ consumerCode: "order", sql, parameters }, signal, true);
         },
       );
-      // Read results stay private until the final scope check; writes still check every statement.
+
       signal.throwIfAborted();
       if (readOnly && (await resolveScope()).key !== reportScope.key)
         throw Error("ORDER_REPORT_SCOPE_CHANGED");
@@ -3009,7 +2865,6 @@ export class Business {
     return task;
   }
 
-  /** 为受信任的 HTML 插件提供受控 SQL；pageRead 仅由 Host 页面 adapter 设置，独立问数不借用页面快照。 */
   async pluginSql(
     payload: Record<string, unknown>,
     caller: AbortSignal,
@@ -3147,7 +3002,6 @@ export class Business {
         this.sqlReadLimit?.assertAvailable(consumerCode);
         const delegation = await getDelegation();
         try {
-          // 配置查询自带 LIMIT/OFFSET；旧调用继续由适配器管理分页。
           const transport = {
             endpoint: this.base.replace(/\/$/, "") + "/ai/gateway/sql/execute",
             token: delegation.delegationToken,
@@ -3257,7 +3111,6 @@ export class Business {
       }
       throw new Error("GEA_PLUGIN_SESSION_REJECTED");
     } catch (error) {
-      // Caller cancellation wins; only this live request's authentication rejection may explain its identity abort.
       caller.throwIfAborted();
       const rejectedCurrentLogin = this.rejectedSqlLogins.get(identity);
       if (
@@ -3267,25 +3120,22 @@ export class Business {
         this.loginExpired
       )
         throw rejectedCurrentLogin.error;
-      // Page refresh, range changes and identity cancellation are not failed reads.
+
       signal.throwIfAborted();
-      // A failed delegated credential must not poison the next page refresh.
+
       if (error instanceof GeaResponseError) this.pluginDelegations.delete(consumerCode);
       throw error;
     }
   }
 
-  /** 向模型适配器提供同一套脱敏日志边界，浏览器永远拿不到原始凭证。 */
   fetchExternal(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     return this.apiLog.fetch(input, init);
   }
 
-  /** The Host installs its sole capability registry, including the native sales declaration. */
   setCapabilities(capabilities: CapabilityRegistry): void {
     this.capabilities = capabilities;
   }
 
-  /** Reject unavailable or simulated execution before authentication, delegation or transport. */
   assertOperation(operation: string): void {
     this.salesReadonly?.assertOperation(operation);
   }
@@ -3322,12 +3172,6 @@ export class Business {
     if (code) throw Object.assign(Error(code), { code });
   }
 
-  /**
-   * 只读探查：模块自述里那几张业务表的列清单。
-   *
-   * 会话里"不用猜表名字段名"靠这一步：表名来自模块契约（宿主静态提取），列名由受管
-   * 只读通道探一次得到（同样按权限过滤），结果按表缓存，避免每问一次都重探。
-   */
   async pluginSchema(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     this.assertExecutionAllowed(text(payload.consumerCode));
     keys(payload, ["consumerCode", "tables"]);
@@ -3339,7 +3183,7 @@ export class Business {
       )
       .slice(0, 20);
     const result: Array<{ table: string; columns: string[]; error?: string }> = [];
-    // 缓存命中的直接给，未命中的按预算并行探：串行探十几张表会把工具超时跑爆。
+
     const pending: string[] = [];
     for (const table of tables) {
       const cacheKey = consumerCode + ":" + table;
@@ -3400,7 +3244,7 @@ export class Business {
     return {
       consumerCode,
       tables: ordered,
-      // 没探完的表如实回报，别让模型以为"这个模块就这么多字段"。
+
       ...(skipped.length
         ? {
             skipped,
@@ -3419,21 +3263,18 @@ export class Business {
     };
   }
 
-  /** 返回当前进程内的脱敏接口目录与调用记录。 */
   apiLogSnapshot(payload: Record<string, unknown>): ApiLogSnapshot {
     keys(payload, []);
     this.authenticated();
     return this.apiLog.snapshot();
   }
 
-  /** 清空当前进程内的调用记录，不影响接口目录与业务缓存。 */
   apiLogClear(payload: Record<string, unknown>): ApiLogSnapshot {
     keys(payload, []);
     this.authenticated();
     return this.apiLog.clear();
   }
 
-  /** 在当前身份内执行日志中心已校验的安全重发。 */
   async apiLogReplay(payload: Record<string, unknown>, signal: AbortSignal) {
     let release: (() => void) | undefined;
     try {
@@ -3488,7 +3329,6 @@ export class Business {
     return this.apiLogBatch.stop(text(payload.runId), this.debugScope());
   }
 
-  /** 开启新分页查询时立即失效旧选择，后续 detail/version/SKU 只能引用本次页面。 */
   async plans(payload: Record<string, unknown>, signal: AbortSignal): Promise<Page> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
@@ -3544,10 +3384,6 @@ export class Business {
     return { page: this.page, row };
   }
 
-  /**
-   * 周期管理依赖下线后，以当前用户可见计划中的 periodId/planTypeCode 重建只读月份索引。
-   * periodId 的现网格式以 YYYYMM 开头；无法识别的历史标识原样展示，避免伪造月份。
-   */
   private async salesPlanPeriodPage(
     query: Record<string, unknown>,
     signal: AbortSignal,
@@ -3639,7 +3475,6 @@ export class Business {
     };
   }
 
-  /** 返回从当前可见计划重建的周期索引，并保留分页覆盖范围。 */
   async periods(signal: AbortSignal): Promise<Collection> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     const path = "/sales-plan/plans";
@@ -3698,7 +3533,6 @@ export class Business {
     return AbortSignal.any([request.signal, this.queryEpoch.signal, this.epoch.signal, signal]);
   }
 
-  /** 当前计划详情与历史版本选择分开标记。 */
   async detail(payload: Record<string, unknown>, signal: AbortSignal): Promise<Detail> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     const { row } = this.selected(payload);
@@ -3726,7 +3560,6 @@ export class Business {
     return detail;
   }
 
-  /** 只列出上游计划身份与所选计划一致的版本。 */
   async versions(payload: Record<string, unknown>, signal: AbortSignal): Promise<Collection> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     const { row } = this.selected(payload);
@@ -3759,7 +3592,6 @@ export class Business {
     };
   }
 
-  /** 只读取已证明属于当前查询计划的版本。 */
   async skus(payload: Record<string, unknown>, signal: AbortSignal): Promise<Collection> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     const { row } = this.selected(payload);
@@ -3782,7 +3614,6 @@ export class Business {
     return result;
   }
 
-  /** 仅从 Host 已持有且已校验的数据冻结快照，生成带哈希和大小上限的模型输入。 */
   prepare(payload: Record<string, unknown>): Preview {
     this.assertModelAllowed();
     this.preview = undefined;
@@ -3850,7 +3681,6 @@ export class Business {
     return this.recordPreview(snapshot);
   }
 
-  /** 使用当前由服务端管理的身份读取原工作台固定 GEA 端点。 */
   async workbenchQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
@@ -4041,11 +3871,6 @@ export class Business {
     });
   }
 
-  /** 为模型读取数据，不使浏览器持有的选择或预览失效。
-   * @param payload 固定资源类型及已校验的查询字段。
-   * @param signal 所属工具执行的取消信号。
-   * @returns 带来源、时间和集合覆盖信息的精确 JSON，供 Session 日志记录。
-   */
   async agentQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<string> {
     this.assertModelAllowed();
     this.assertExecutionAllowed(this.config.analysisAgentCode);
@@ -4081,8 +3906,7 @@ export class Business {
         coverage: coverageValue,
         value: valueOut,
       });
-    // versionSkus 的模型投影按实际返回行数续读，字节裁剪不改变下一次位置。
-    // 页面自身的工作台读取仍走 readWorkbenchQuery（完整数据），不受这里影响。
+
     if (text(payload.kind) === "versionSkus") {
       const rows = (
         Array.isArray(value) ? value : Array.isArray(page?.records) ? page.records : []
@@ -4140,7 +3964,7 @@ export class Business {
         size = Math.max(1, Math.floor(size / 2));
       }
     }
-    // detail：不再内联全部 SKU / 审批日志，避免"一条记录就超限"。
+
     if (text(payload.kind) === "detail") {
       const detail = object(value);
       const skus = Array.isArray(detail.skus) ? detail.skus.map(object) : [];
@@ -4255,9 +4079,7 @@ export class Business {
       text(query.fromVersionId);
       text(query.toVersionId);
     }
-    // versionSkus 不分页：上游按版本返回整份 SKU，模型侧的有界分页由
-    // agentQuery 的本地投影负责（见下方 versionSkus 投影分支）。若这里把
-    // 它当成远端分页集合，数组结果会走进 object() 而抛 INVALID_PAYLOAD。
+
     const paged = kind === "periods" || kind === "list";
     const current = paged ? integer(query.pageNo ?? 1, 1) : 1;
     const size = paged
@@ -4296,7 +4118,7 @@ export class Business {
       true,
       kind,
     );
-    // AionUi 工作台消费完整数组；分页得到的 SKU 子集不能声称数据完整。
+
     const records = (value: unknown): Record<string, unknown>[] => {
       if (Array.isArray(value)) return value.map(object);
       const page = object(value);
@@ -4367,8 +4189,6 @@ export class Business {
         throw new Error("GEA_IDENTITY_MISMATCH");
       await this.fillMaterialNames(skus, signal);
       if (options.forModel) {
-        // 模型侧只回投影后的字段：上游整包带着该计划的全部 SKU 与内部字段，
-        // 直接展开必然超过输入预算，detail 会永远 SNAPSHOT_TOO_LARGE。
         const budget = Math.max(4096, Math.floor(this.config.inputByteBudget / 2));
         const cappedSkus = capRows(
           skus.map((sku) => project(sku, skuFields)),
@@ -4397,8 +4217,7 @@ export class Business {
           ...(cappedLogs.omitted === 0 ? {} : { logsOmitted: cappedLogs.omitted }),
         };
       }
-      // 通知不参与审批身份：上游万一塞回 workflowApproval 也不再透传，
-      // 免得这个已废弃的字段重新变成界面上的判断依据。
+
       const rest = { ...detail };
       delete rest.workflowApproval;
       delete rest.workflow_approval;
@@ -4429,7 +4248,6 @@ export class Business {
     return values;
   }
 
-  /** 工作台提交给原生会话前重新读取所有计划，避免把浏览器旧页面当成事实。 */
   async prepareWorkbench(payload: Record<string, unknown>, signal: AbortSignal): Promise<Preview> {
     this.assertModelAllowed();
     this.assertExecutionAllowed(this.config.analysisAgentCode);
@@ -4448,7 +4266,7 @@ export class Business {
     const active = AbortSignal.any([signal, this.epoch.signal, this.queryEpoch.signal]);
     const records: unknown[] = [];
     const summaryFields = ["id", ...planFields, "effective", "createdAt"];
-    // 两种范围都会重新读取并校验全部资源身份，然后才选择模型可见字段。
+
     for (const planId of ids) {
       const detail = object(
         await this.readWorkbenchQuery({ kind: "detail", query: { planId } }, active),
@@ -4494,12 +4312,11 @@ export class Business {
     return this.recordPreview(snapshot);
   }
 
-  /** 记录不可变快照；会话只接收业务投影，原始快照另存为受限审计依据。 */
   private recordPreview(snapshot: object): Preview {
     const json = JSON.stringify(snapshot, null, 2);
     const snapshotHash = createHash("sha256").update(json).digest("hex");
     const prompt = businessBrief(snapshot);
-    // 输入改为业务投影后，仍以原始快照的大小作为安全上限，不能借此绕过保护。
+
     const bytes = Buffer.byteLength(json);
     const limitBytes = Math.min(this.config.maxSnapshotBytes, this.config.inputByteBudget);
     if (bytes > limitBytes) throw new Error("SNAPSHOT_TOO_LARGE");
@@ -4514,7 +4331,6 @@ export class Business {
     return this.preview;
   }
 
-  /** 原始快照不进入会话展示，按会话标识保存为本机受限审计依据。 */
   async archivePreview(sessionId: string, preview: Preview): Promise<void> {
     if (!/^session-[a-zA-Z0-9-]+$/.test(sessionId)) throw new Error("INVALID_SESSION");
     const dir = resolve(this.config.runtimeDir, "analysis-snapshots");
@@ -4538,12 +4354,10 @@ export class Business {
     await rename(temp, file);
   }
 
-  /** 调用方、登录、查询或 Host 失效时取消待处理的准入。 */
   admissionSignal(caller: AbortSignal): AbortSignal {
     return AbortSignal.any([caller, this.epoch.signal, this.queryEpoch.signal]);
   }
 
-  /** 仅向标准 Session 提交仍然当前的预览。 */
   prepared(id: unknown): Preview {
     this.authenticated();
     if (!this.preview || this.preview.previewId !== id) throw new Error("STALE_PREVIEW");

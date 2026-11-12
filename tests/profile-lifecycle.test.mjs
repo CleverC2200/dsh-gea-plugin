@@ -33,7 +33,7 @@ test(
             cleanup = fn;
           },
         },
-        // This fixture owns a minimal Core HTTP server, not the GEA business routes.
+
         { execArgv: [script], desktopGraph: directory, coreOnly: true },
       );
     } catch (error) {

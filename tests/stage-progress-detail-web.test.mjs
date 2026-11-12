@@ -4,11 +4,6 @@ import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 
-/**
- * 节点百分比一直只能看个结果，核数要人肉反推。现在悬停百分比直接给分子/分母：
- * 「本节点已完成 X 单 / 该月共 Y 单」。这条把数字钉住：分母是该月全部状态的计划单数
- * （4 条），分子是"已过本节点"的单数（状态 1 只对客户提报算完成）。
- */
 test("节点百分比悬停显示分子/分母", { timeout: 90000 }, async (t) => {
   const app = await profile(t);
   const plan = {
@@ -54,7 +49,7 @@ test("节点百分比悬停显示分子/分母", { timeout: 90000 }, async (t) =
     if (path.endsWith("/plans")) {
       const status = req.url.searchParams.get("status");
       const size = Number(req.url.searchParams.get("pageSize") ?? 20);
-      // 该月共 4 条计划单，其中 1 条停在状态 1（等区域处理）。
+
       if (status === null)
         return send({ records: size > 1 ? [plan] : [], total: 4, pages: 4, current: 1, size });
       return send({
@@ -101,7 +96,7 @@ test("节点百分比悬停显示分子/分母", { timeout: 90000 }, async (t) =
 
   const progressOf = (stage) =>
     frame.getByTestId(`regional-approval-stage-${stage}`).locator("small");
-  // 状态 1 = 等区域处理：只有「客户提报」这一步算完成。
+
   await expect(progressOf("customer")).toHaveAttribute("title", "本节点已完成 1 单 / 该月共 4 单");
   await expect(progressOf("customer")).toContainText("进度 25%");
   await expect(progressOf("region")).toHaveAttribute("title", "本节点已完成 0 单 / 该月共 4 单");

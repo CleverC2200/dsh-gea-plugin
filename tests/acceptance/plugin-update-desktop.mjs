@@ -1,4 +1,3 @@
-/** Explicit actual desktop snapshot lane; never reads the current App or a user profile. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

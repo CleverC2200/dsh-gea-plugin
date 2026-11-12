@@ -1,4 +1,3 @@
-/** Small command/OS boundary only. No fixture executes sudo, mounts or a real system Chrome. */
 import fs from "node:fs";
 import cp from "node:child_process";
 import { join } from "node:path";

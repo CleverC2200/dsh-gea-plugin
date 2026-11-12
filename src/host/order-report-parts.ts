@@ -93,7 +93,6 @@ export async function readReportParts(manifest: Manifest, scope: Scope, execute:
   return encoded;
 }
 
-/** Immutable parts retain the parent's tenant, Consumer, period and business scope references. */
 export async function writeReportParts(
   encoded: string,
   scope: Scope,

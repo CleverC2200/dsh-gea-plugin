@@ -4,15 +4,6 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-/**
- * 退回弹窗关不掉：只要本单据有「未提交的 SKU 调整」，关闭动作会先走
- * 「放弃未提交的调整？」二次确认。那个确认框以前只挂在通过/保存分支上，
- * 退回分支点了 X / 取消只会把状态设成"要确认"，界面上什么都不出现——
- * 用户看到的就是"报错了就关不掉"。
- *
- * 这里预置一份未提交调整，把「取消关闭」和「确认退回失败后再取消关闭」
- * 两条路径都钉住：必须出现确认框，点「放弃调整」后弹窗真的消失。
- */
 const fixture = async (t, { rejectFails }) => {
   const app = await profile(t);
   const plan = {
@@ -110,7 +101,7 @@ const fixture = async (t, { rejectFails }) => {
     return false;
   });
   await app.login();
-  // 真实场景里用户先在表里改过数量；这里直接把同一份草稿存进 Host。
+
   const source = (
     await app.rpc("sales-plan/draft", { planId: "p-jxs-2026-09-00001", versionId: "v" })
   ).value;
@@ -150,7 +141,6 @@ const fixture = async (t, { rejectFails }) => {
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
 
   const openReject = async () => {
-    // 关闭弹窗不会自动取消勾选，第二次打开前先确认这一行是选中的。
     const box = frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input');
     if (!(await box.isChecked()))
       await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
@@ -161,7 +151,7 @@ const fixture = async (t, { rejectFails }) => {
   };
   const closeThroughDiscardConfirm = async (remark) => {
     await frame.getByRole("button", { name: "取消", exact: true }).click();
-    // 修复前这里永远等不到：确认框没被渲染，弹窗看起来像卡死。
+
     const discard = frame.getByRole("button", { name: "放弃调整", exact: true });
     await expect(discard).toBeVisible({ timeout: 10000 });
     await discard.click();
@@ -179,9 +169,9 @@ test(
     });
     const remark = await openReject();
     await closeThroughDiscardConfirm(remark);
-    // 只是关闭，不该发出任何审批写请求。
+
     assert.deepEqual(writes, []);
-    // 继续编辑：确认框关掉，退回弹窗还在。
+
     const again = await openReject();
     await frame.getByRole("button", { name: "取消", exact: true }).click();
     const keepEditing = frame.getByRole("button", { name: "继续编辑", exact: true });
@@ -202,12 +192,11 @@ test(
     const remark = await openReject();
     await remark.fill("测试退回原因");
     await frame.getByRole("button", { name: "确认退回", exact: true }).click();
-    // 失败提示按上游原因码给说法（这里是通知载荷被拒），不再统一说"并发、请刷新"；
-    // 这条用例只关心"失败之后弹窗还关不关得掉"，所以只等失败提示出来。
+
     await expect(frame.getByText(/错误编号：req/)).toBeVisible({ timeout: 20000 });
     assert.equal(writes.length, 1);
     await closeThroughDiscardConfirm(remark);
-    // 报错后这一批没被受理，勾选不能留在界面上（否则用户看到"还选中着"容易再点一次）。
+
     await expect(
       frame.locator('tbody label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).not.toBeChecked();

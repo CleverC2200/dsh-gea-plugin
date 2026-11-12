@@ -6,11 +6,6 @@ import { profile } from "./profile.mjs";
 import { openReadySalesPlan, preparePageStartup } from "./fixtures/business-page.mjs";
 import { composerStatsContract } from "./fixtures/composer-stats.mjs";
 
-/**
- * 两个官方Core轴通过公开conversation.composer.dock将统计胶囊放在输入卡下方。
- * 保留统计、居中和完整seat贴底目的，不再要求退场壳层将统计移到上方。
- * 主对话和工作台右侧会话列共用同一个输入条组件，所以这一条同时覆盖两个界面。
- */
 test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底部", { timeout: 90000 }, async (t) => {
   const contract = await composerStatsContract();
   const app = await profile(t, {
@@ -53,7 +48,6 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
   await openReadySalesPlan(page);
   await expect(page.locator("[data-composer-seat]").first()).toBeAttached();
 
-  /** 发一条消息（receipt 模式是本地回执，不调模型），让宿主渲染出统计行。 */
   const ask = async (root) => {
     const conversation = page
       .locator(`${root}[data-conversation-session], ${root} [data-conversation-session]`)
@@ -90,7 +84,6 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
     return sessionId;
   };
 
-  /** 统计行必须在当前Core输入卡下方，输入卡必须贴着对话列底部。 */
   const placement = async (root) =>
     page.locator(root).evaluate((scope, contract) => {
       const seat = scope.querySelector("[data-composer-seat]");
@@ -157,7 +150,6 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
     );
   };
 
-  // ① 工作台右侧会话列（登录后默认停在销售计划页）。
   await expect(page.locator(".agent-workbench-native-conversation").first()).toBeVisible();
   const nativeSession = await ask(".agent-workbench-native-conversation");
   await assertPlacement("工作台", ".agent-workbench-native-conversation", nativeSession);
@@ -167,9 +159,8 @@ test("官方统计胶囊在输入卡下方，完整输入seat贴着对话列底�
     path: ".runtime/composer-evidence/stats-current-dock-workbench.png",
   });
 
-  // ② 主对话：同一个输入条组件，规则必须同样生效。
   await newSession.click();
-  // Core opens this Document asynchronously. Its public content must be outside the old Native rail.
+
   const mainRoot = "[data-conversation-content]:not(.agent-workbench-native-conversation *)";
   await expect(page.locator(mainRoot)).toBeVisible();
   await expect(page.locator(mainRoot)).not.toHaveAttribute(

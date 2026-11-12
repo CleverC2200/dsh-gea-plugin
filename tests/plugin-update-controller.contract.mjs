@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
-// Verify the unchanged public installation and locking source used by this SDK lane.
+
 for (const [path, expected] of Object.entries({
   "packages/boot/plugin-manager/src/operations.ts":
     "16d141f794041d06122ce9f8ab7bae6f55b4a78feefb620f9cb6c7ba5efac547",

@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
-// Observe the public fixture in a fresh process. Product admission has no test-only bypass.
 async function probe(t, input) {
   let inputFile;
   if (input !== undefined) {

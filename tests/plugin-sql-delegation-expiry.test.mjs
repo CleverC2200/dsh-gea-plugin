@@ -120,8 +120,7 @@ test(
     assert.equal(denied.error?.code, "AI_GATEWAY_DATA_PERMISSION_DENIED");
     assert.equal(sessions, 3);
     assert.equal(sqlTokens.at(-1), "delegation-3");
-    // Installed real SQL consumers share the host renewal path. A fresh
-    // delegation can expire on its first query as well as after being cached.
+
     failureMode = "first-token-expiry";
     sessionBase = sessions;
     const aps = JSON.parse(

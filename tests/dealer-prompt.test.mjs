@@ -50,7 +50,7 @@ test(
     );
     const oldSkill =
       "---\nname: inventory-dealer\ndescription: 经销商库存\n---\n先调用 inventory_dealer_page，name=context；必须保持页面打开。\n";
-    // Preserve the original input separately; no current resource registers this historical Skill.
+
     await writeFile(join(root, "history", "skills", "aqkc", "SKILL.md"), oldSkill);
     await writeFile(join(root, "index.html"), "<!doctype html><body>经销商库存</body>");
     await writeFile(
@@ -216,11 +216,10 @@ test(
       );
       return true;
     });
-    // Discovery needs an actual eligible Core Session; login does not grant one.
+
     await createBusinessSession(app);
     await app.login();
     if (process.env.GEA_TEST_SOURCE_CORE === "1") {
-      // The combined profile also connects Agent Manage's default MCP bridge at login.
       await until(
         () => catalogConsumers,
         (values) => values.length > 0,
@@ -365,10 +364,10 @@ test(
     );
     const handshakesBeforeSkill = catalogConsumers.length;
     loadSkill = true;
-    // Explicit Skill loading uses the owning Agent's selected reference.
+
     const loaded = await ask("gea-html-inventory-dealer");
     const skillReply = JSON.stringify(loaded.messages.filter((x) => x.role === "tool"));
-    // Consumer identity is verified by the stock gateway receipt above, not invented in Skill prose.
+
     assert.equal(catalogConsumers.length, handshakesBeforeSkill);
     assert.deepEqual(inspections, ["dealer-inventory-replenishment", "sales_forecast"]);
     assert.match(skillReply, /action=context/);

@@ -4,10 +4,6 @@ import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 
-/**
- * 节点身份只认账号角色：有省区审批角色的账号进来就默认落到「省区审批」，
- * 而不是「全部节点」；通知和权限码都不参与判定。
- */
 test("default node follows the account role, not every node", { timeout: 90000 }, async (t) => {
   const app = await profile(t, {
     roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
@@ -53,9 +49,9 @@ test("default node follows the account role, not every node", { timeout: 90000 }
       reply({ success: true, result });
       return true;
     };
-    // 权限码全空：节点身份不再看它。
+
     if (path.endsWith("/getPermCode")) return send({ codeList: [] });
-    // 上游故意派了同版本可处理任务：它只该被当成提醒，不改变节点口径。
+
     if (path.endsWith("/notifications/n"))
       return send({
         id: "n",
@@ -74,7 +70,7 @@ test("default node follows the account role, not every node", { timeout: 90000 }
     if (path.endsWith("/plans")) {
       const status = req.url.searchParams.get("status");
       requestedStatuses.push(status);
-      // 省区审批节点看的是待省区确认（2）与退回到省区的（7/8）。
+
       const records = status === null || ["2", "7", "8"].includes(status) ? [plan] : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
@@ -110,20 +106,19 @@ test("default node follows the account role, not every node", { timeout: 90000 }
   const frame = await openSalesPlan(page);
   await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
 
-  // 默认节点 = 账号角色对应的省区审批，不是「全部节点」。
   await expect(frame.getByTestId("regional-approval-flow-toggle")).toContainText(
     "当前节点：省区审批",
     { timeout: 20000 },
   );
   await expect
     .poll(() => requestedStatuses.filter((status) => status !== null).length, { timeout: 20000 })
-    .toBeGreaterThanOrEqual(1); // 按省区审批节点的状态重新取数
+    .toBeGreaterThanOrEqual(1);
   await frame.getByTestId("regional-approval-flow-toggle").click();
   await expect(frame.getByTestId("regional-approval-stage-province")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  // 只有账号有角色的节点可点，其它节点留在表里但置灰。
+
   await expect(frame.getByTestId("regional-approval-stage-province")).toBeEnabled();
   for (const stage of ["customer", "region", "area", "category"])
     await expect(frame.getByTestId(`regional-approval-stage-${stage}`)).toBeDisabled();

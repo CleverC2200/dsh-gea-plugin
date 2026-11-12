@@ -81,8 +81,7 @@ module.exports = {
       filter: ["**/*"],
     },
   ],
-  // 架构必须和 payload 对齐：payload 的 Node 与原生模块按平台预装（mac=darwin-arm64，win=win32-x64）。
-  // 不写死时会跟随构建机架构，Apple Silicon 上会静默打出 win-arm64 安装器，而里面装的是 x64 运行时。
+
   mac: {
     icon: join(__dirname, "build/icon.png"),
     target: [{ target: "dmg", arch: ["arm64"] }],

@@ -1,4 +1,4 @@
-# Runs the actual transfer macros against disposable files, before installation.
+
 Unicode true
 Name "GEA installer transfer probe"
 OutFile "${PROBE_OUTPUT}"
@@ -63,7 +63,7 @@ Section
     Goto failed
   !insertmacro GEA_INSTALL_TIMING_LOG "transfer-probe-new-tree-pass"
 
-  # Existing directory and a locked destination remain in place for CopyFiles.
+
   Call CreateStage
   CreateDirectory "$geaInstallStage\resources\payload"
   FileOpen $3 "$geaInstallStage\resources\payload\new.txt" w
@@ -100,7 +100,7 @@ Section
     Goto failed
   !insertmacro GEA_INSTALL_TIMING_LOG "transfer-probe-existing-and-locked-pass"
 
-  # If staging inside INSTDIR is impossible, preserve the original temp/copy path.
+
   StrCpy $INSTDIR "$PLUGINSDIR\GEA path with spaces\app.txt"
   Call CreateStage
   StrCmp $geaMoveEnabled 0 +2
@@ -110,8 +110,8 @@ Section
     Goto failed
   !insertmacro GEA_INSTALL_TIMING_LOG "transfer-probe-stage-fallback-pass"
 
-  # A deep installation path must fall back before the extra stage component
-  # pushes otherwise valid package filenames beyond MAX_PATH.
+
+
   StrCpy $INSTDIR "$PLUGINSDIR\long-"
   StrLen $2 $INSTDIR
   ${DoWhile} $2 < 236

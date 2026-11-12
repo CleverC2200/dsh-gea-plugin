@@ -24,7 +24,7 @@ import {
 } from "./prompt-evidence.ts";
 
 declare const executionBrand: unique symbol;
-/** Issued by this owner. No mutable state or identity revision is exposed. */
+
 export type PromptExecution = { readonly [executionBrand]: true };
 type State = {
   preset: string;
@@ -108,7 +108,6 @@ const fresh = (preset: string): State => ({
   evidenceViews: new Map(),
 });
 
-/** Owns asynchronous prompt effects. Callers receive copies and semantic operations only. */
 export class PromptExecutionState {
   #states = new Map<Agent, State>();
   #pending = new Map<symbol, PromptExecution>();
@@ -294,7 +293,7 @@ export class PromptExecutionState {
     const execution = this.#current(lease);
     if (!execution) return { kind: "stale-context" };
     const id = await this.#store.put(execution.agent.id, tool, text, execution.epoch, grant);
-    // A turn/preset can change while the real store writes; retained files are not published into it.
+
     const current = this.#current(lease);
     if (!current) return { kind: "stale-context" };
     const state = current.state;
@@ -368,7 +367,7 @@ export class PromptExecutionState {
       ],
     };
   }
-  /** Completes one Core dispatch using the metadata captured before admission. */
+
   async finish(
     lease: PromptExecution | undefined,
     result: ToolExecutionResult,
@@ -460,7 +459,7 @@ export class PromptExecutionState {
         ...decision,
         content: [{ type: "text", text: transientResult(text, PROMPT_BUDGET.result) }],
       };
-    // Check ownership before consulting a retired Agent's Skill/session state.
+
     if (!this.#current(lease)) {
       if (original.epoch !== this.#store.epoch()) return this.#identityChanged();
       return decision;
@@ -554,7 +553,7 @@ export class PromptExecutionState {
       content: [{ type: "text" as const, text: published.text }],
     };
   }
-  /** Authorizes and projects a retained reference under the current execution. */
+
   async read(
     lease: PromptExecution | undefined,
     args: EvidenceReadArguments,
@@ -644,7 +643,6 @@ export class PromptExecutionState {
             throw Error("GEA_EVIDENCE_AUTHORIZATION_CHANGED");
         } else if (grant.kind === "mcp") throw Error("GEA_EVIDENCE_AUTHORIZATION_REQUIRED");
         else if (grant.query && grant.valueHash) {
-          // Direct sales reads have no resource-version endpoint. Revalidate the exact query under current row permissions.
           const current = await business.agentQuery(grant.query, signal);
           if (valueHash(current) !== grant.valueHash)
             throw Error("GEA_EVIDENCE_STALE: 数据或权限范围已改变，请取得新的结果。");
@@ -655,7 +653,7 @@ export class PromptExecutionState {
         ? undefined
         : (raw) => {
             const index = datasetIndex(raw, args.evidenceId);
-            // Old non-Cube consumers use character slices (e.g. calculation drafts).
+
             if (
               !index.length &&
               args.format === undefined &&

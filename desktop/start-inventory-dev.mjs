@@ -1,4 +1,3 @@
-/** Start the unchanged official Electron shell with local inventory plugins; no installer build. */
 import { mkdir, readFile, writeFile, symlink, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -27,7 +26,7 @@ await writeFile(
   JSON.stringify({ name: "dsh-inventory-local-desktop", private: true, type: "module" }),
 );
 await copyFile(join(desktop, "inventory-dev-runtime.mjs"), join(payload, "start.mjs"));
-// Carry deployment choices only; never copy browser cookies or login credentials.
+
 if (!existsSync(join(data, "gea.config.json"))) {
   const patch = JSON.parse(
     await readFile(

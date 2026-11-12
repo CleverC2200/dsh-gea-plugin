@@ -8,8 +8,8 @@ Function geaCheckAppRunning
   !insertmacro CHECK_APP_RUNNING
 FunctionEnd
 
-# Preserve all-user/current-user compatibility. Only an empty destination or a
-# registered GEA installation can be replaced as a directory.
+
+
 Function geaValidateInstallDirectory
   Push $0
   Push $1
@@ -97,8 +97,8 @@ FunctionEnd
   !endif
 !macroend
 
-# Indeterminate while work is in progress: the embedded archive's extraction
-# must not make the normal NSIS bar claim 100% before 7-Zip has finished.
+
+
 !macro GEA_INSTALL_STEP TITLE COMPLETE
   Push $0
   Push $1

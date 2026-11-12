@@ -1,4 +1,3 @@
-/** Offline validation of the current isolated source composition. */
 import {
   mkdir,
   mkdtemp,
@@ -31,7 +30,6 @@ const digest = async (path) =>
     .update(await readFile(path))
     .digest("hex");
 
-/** Boot the official profile from artifacts built in the pinned source checkout. */
 import { resolveSourceInputs, readSourceSelection } from "./source-profile.mjs";
 
 export async function runSourceProfile(
@@ -329,8 +327,7 @@ async function launch() {
           logError ??= error;
           stop("SIGTERM");
         });
-      // The fresh local authentication URL is needed to open this isolated profile.
-      // Raw logs are private (0600); no inherited credentials reach this process.
+
       process.stdout.write(data);
     });
   let stoppedBy = null;

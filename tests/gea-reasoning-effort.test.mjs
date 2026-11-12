@@ -6,11 +6,6 @@ import { randomUUID } from "node:crypto";
 import { parse, stringify } from "yaml";
 import { profile, readSession, until } from "./profile.mjs";
 
-/**
- * 个人模型网关 v2.6/v2.7 允许客户端按单次请求传 `extra_params` 覆盖模型默认参数。
- * 上游只认 high / max 两档，所以这里验证：GEA 模型在 DSH 模型目录里只声明这两档、
- * 默认 high；档位只以 `extra_params.reasoning_effort` 出现，且用户选择会被保留。
- */
 test(
   "GEA personal model exposes reasoning efforts and sends the chosen one as extra_params",
   { timeout: 120000 },
@@ -112,7 +107,7 @@ test(
         (rows) => rows.some((row) => row.type === "turn/end"),
       );
     };
-    // app.remote 固定把入参包成 {request}，无参方法要走原始协议。
+
     const remoteNoArgs = async (method) => {
       const response = await fetch(app.origin + "/api/" + method, {
         method: "POST",

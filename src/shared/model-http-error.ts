@@ -1,4 +1,3 @@
-/** Model HTTP failures retain their protocol status and safe gateway diagnostics. */
 import { CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError } from "@deepseek-ai/dsh-llm";
 import { GeaResponseError } from "./gea-error.js";
 import { modelResponseDetails } from "./model-failure.ts";
@@ -17,9 +16,7 @@ export async function modelHttpError(
       received?.(text);
     } catch {}
     raw = JSON.parse(text);
-  } catch {
-    // A proxy's HTML error is not a gateway business message.
-  }
+  } catch {}
   const envelope = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const nested = "error" in envelope ? envelope.error : undefined;
   const body = nested && typeof nested === "object" && !Array.isArray(nested) ? nested : envelope;

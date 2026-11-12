@@ -588,7 +588,6 @@ async function responsePreview(response: Response): Promise<unknown> {
       if (done) break;
       size += value.byteLength;
       if (size > BODY_LIMIT) {
-        // clone() 使用 tee；等待这一支 cancel 会等原响应也结束，形成返回前死锁。
         void reader.cancel();
         return BODY_OMITTED;
       }
@@ -824,7 +823,6 @@ export class GeaApiLogCenter {
     onRecord?.(record.id);
     if (captured) captured.row.apiLogId = record.id;
     try {
-      // 未注入实现时在调用时读取全局 fetch，保留测试、代理和运行时替换能力。
       const originalResponse = await (this.fetchImpl ?? globalThis.fetch)(
         input,
         captured ? { ...init, headers: requestHeaders } : init,
@@ -874,8 +872,7 @@ export class GeaApiLogCenter {
           : sanitizeString(error instanceof Error ? error.message : String(error)),
       };
       this.finish(record, started);
-      // 线上实测：这类失败原样抛出去，界面只有 `fetch failed` + UNKNOWN（真实原因在 cause 里）。
-      // 统一翻成可读、带 code 的错误，并把"在连哪个接口"写进去。
+
       throw new CapturedRequestError(
         record.id,
         networkError(error, {
@@ -886,7 +883,6 @@ export class GeaApiLogCenter {
     }
   }
 
-  // 私有第三个参数只由重发闭包使用；保持公开调用仍兼容 typeof fetch。
   private async fetchWithSource(
     input: RequestInfo | URL,
     init: RequestInit | undefined,

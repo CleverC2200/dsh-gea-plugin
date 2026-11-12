@@ -1,4 +1,3 @@
-/** Read the current Agent's public Tools projection without admission or execution. */
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type {} from "@deepseek-ai/dsh-agent";

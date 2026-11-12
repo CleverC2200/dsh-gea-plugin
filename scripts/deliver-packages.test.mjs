@@ -41,8 +41,7 @@ async function requestFixture(
 ) {
   const work = await mkdtemp(join(tmpdir(), "delivery-owner-inputs-"));
   t.after(() => rm(work, { recursive: true, force: true }));
-  // Standalone fixtures run a copy of the production CLI with a test-only Core registry.
-  // The actual scripts/supported-cores.json and fixed production preflight are never changed.
+
   const core = join(work, "fixture-core");
   await mkdir(core);
   await writeFile(join(core, "package.json"), JSON.stringify({ version: coreVersion }));
@@ -82,7 +81,7 @@ async function requestFixture(
       )
       .replace('from "tar"', `from ${JSON.stringify(import.meta.resolve("tar"))}`),
   );
-  // The temporary CLI exercises the production validator with its declared runtime dependency.
+
   await writeFile(
     fixtureEntry,
     cliSource.replace(
@@ -245,7 +244,7 @@ async function requestFixture(
   );
   const input = join(work, "request.json"),
     destination = join(work, "delivery");
-  // Optional peers still need exact publication metadata, not installed tgz inputs.
+
   versions["@changfenhuang/dsh-genui"] = "0.11.3";
   versions["dsh-better-sidebar"] = "0.24.1";
   await writeFile(

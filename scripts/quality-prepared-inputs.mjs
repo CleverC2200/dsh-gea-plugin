@@ -1,4 +1,3 @@
-/** Transfer generated preparation bytes. Source admission, lock installation and quality remain separate. */
 import { createHash } from "node:crypto";
 import {
   readFileSync,
@@ -377,7 +376,7 @@ function enumerate(root, binding) {
       if (entries.at(-1).sha256 !== expected) refuse("Workbench HTML changed");
     }
   }
-  // Even source-only quality stages bind these unchanged link-lock inputs.
+
   const fixed = json(join(root, "candidate/dsh-gea-plugin/scripts/quality-upstreams.json"));
   if (
     !equalMap(tree("quality-upstreams/upstream-assets/genui-0.16.0-company.1"), fixed.genui.files)

@@ -1,5 +1,5 @@
 import { GeaResponseError } from "./shared/gea-error.js";
-// Shared GEA transport, adapted from the verified inventory pagination implementation.
+
 import { randomUUID } from "node:crypto";
 
 type Scalar = string | number | boolean | null;
@@ -12,7 +12,7 @@ export type ConfiguredSqlRequest = {
   includeTotal: false;
 };
 type QueryOptions = { pageSize: number; pageNo?: number; configured?: ConfiguredSqlRequest };
-/** One Host-owned allowance is reused by all queries and renewed delegations. */
+
 export type SqlReadLimit = { maxRows: number; maxPages: number; beforeRequest(): void };
 export type RowPacking = {
   keys: string[];
@@ -42,7 +42,6 @@ export function queryBusinessDatabase(
     : database.query(sql, values);
 }
 
-/** Domain rows are still fully returned; grouping only reduces gateway pagination round trips. */
 export function queryPackedBusinessRows(
   database: BusinessDatabase,
   sql: string,
@@ -62,7 +61,7 @@ export function packedRowsSql(sql: string, packing: RowPacking) {
     )
   )
     throw new GeaSqlError("GEA_SQL_PARAMETER_INVALID", "业务分组配置无效", 400);
-  // Match the gateway's scalar timestamp serialization, including nulls.
+
   const rowJson =
     "TO_JSONB(dsh_source_rows)" +
     (packing.timestamps ?? [])
@@ -129,8 +128,6 @@ export function usesGeaSql() {
         process.env.GEA_REQUIRE_LAUNCH_SESSION === "true";
 }
 
-// 固定业务 SQL 的位置参数转为销售预测同款命名参数；值不拼入 SQL。
-// 文本数组展开为标量参数组成的 ARRAY，兼容 GEA 的标量 parameters 契约。
 export function prepareGeaSql(sql: string, values: unknown[] = []) {
   const parameters: Record<string, Scalar> = {};
   const scalar = (name: string, value: unknown) => {
@@ -147,8 +144,7 @@ export function prepareGeaSql(sql: string, values: unknown[] = []) {
     parameters[name] = value;
     return `:${name}`;
   };
-  // GEA resolves business tables itself; a PG schema qualifier is interpreted as
-  // a database name there. Strip it only in this adapter, not in direct PG SQL.
+
   const token =
     /'(?:''|[^'])*'|--[^\r\n]*|\/\*[\s\S]*?\*\/|(?<![\w$".])(?:data_service|"data_service")\s*\.\s*|"(?:""|[^"])*"|\$([1-9]\d*)/gi;
   const prepared = sql.replace(token, (match, position: string | undefined) => {
@@ -173,7 +169,6 @@ export function prepareGeaSql(sql: string, values: unknown[] = []) {
   return { sql: prepared.replace(/;\s*$/, ""), parameters };
 }
 
-/** Same governed-SQL pagination contract as the existing GEA sales workbench. */
 export function geaSqlPageRequest(
   prepared: ReturnType<typeof prepareGeaSql>,
   pageNo: number,
@@ -251,7 +246,6 @@ function failureFrom(payload: unknown): Row | undefined {
   return failureFrom(payload.result ?? payload.data);
 }
 
-// 凭据只由 Web 服务端提供。每页重新取凭据，失效或拒绝后不回退直连 PG。
 export function createGeaSqlDatabase(
   delegationToken: () => string,
   transport: { endpoint: string; signal: AbortSignal; fetch?: typeof fetch; limit?: SqlReadLimit },
@@ -334,9 +328,7 @@ export function createGeaSqlDatabase(
                 body.msg,
               ].find((value) => typeof value === "string" && /^[A-Z][A-Z0-9_]{2,127}$/.test(value))
             : null;
-          // This endpoint authenticates with a delegated token. A bare 401
-          // therefore means the delegation can be renewed; a 403 remains a
-          // genuine access decision and must not trigger a retry.
+
           const rejected =
             response.status !== 403 &&
             (response.status === 401 ||
@@ -422,7 +414,7 @@ export function createGeaSqlDatabase(
           (total !== null && total > transport.limit.maxRows))
       )
         throw new GeaSqlError("GEA_SQL_RESULT_LIMIT", "业务查询结果超过本次读取上限", 400);
-      // A single-page query never fetches the remaining counted pages.
+
       if (
         transport.limit &&
         options.pageNo === undefined &&
@@ -432,7 +424,7 @@ export function createGeaSqlDatabase(
         throw new GeaSqlError("GEA_SQL_PAGE_LIMIT", "业务查询页数超过本次读取上限", 400);
       if (includeTotal && total === null)
         throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 计数页缺少总数", 502, true);
-      // Validate metadata whenever supplied; older compatible envelopes may nest only rows/total.
+
       if (!options.configured && record(payload))
         for (const [key, expected] of Object.entries({
           pageNo,
@@ -445,7 +437,6 @@ export function createGeaSqlDatabase(
       return { rows: pageRows, total, ...metadata };
     };
     if (options.configured) {
-      // The installed query owns LIMIT/OFFSET and its paired count. Exactly one physical request.
       const result = await fetchPage(1, false);
       return result;
     }
@@ -478,7 +469,7 @@ export function createGeaSqlDatabase(
       return page.rows;
     };
     const rows = validate(first, 1);
-    // Bounded reads preserve page order; the final counted page checks for changes after all earlier pages.
+
     for (let start = 2; start < pageCount; start += 4) {
       const numbers = Array.from(
         { length: Math.min(4, pageCount - start) },
@@ -516,7 +507,6 @@ export function createGeaSqlDatabase(
     }
   }
   async function queryPackedRows(sql: string, values: unknown[], packing: RowPacking) {
-    // Validate the original fixed SQL before composing the trusted grouping query.
     prepareGeaSql(sql, values);
     return unpackBusinessRows((await query(packedRowsSql(sql, packing), values)).rows);
   }

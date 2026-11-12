@@ -1,6 +1,6 @@
 import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
-/** Switch real source profiles between pinned local combinations; external services are fixtures. */
+
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile, realpath } from "node:fs/promises";
@@ -58,8 +58,7 @@ test(
         const sources = JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8"));
         await mkdir(join(runtime, "workspace"), { recursive: true });
         await writeFile(join(runtime, "workspace/preexisting-user.txt"), "ticket08 user state");
-        // The explicit synthetic old layout is the existing source-combination test input,
-        // not evidence of a historic ticket08 installation or a different product version.
+
         const modules = join(runtime, "home/profiles/plugin-split-validation/node_modules");
         await mkdir(modules, { recursive: true });
         await writeFile(join(modules, "old-module.js"), "old code");
@@ -73,7 +72,7 @@ test(
         await prepareWorkbenchHtmlRoots([
           join(modules, "@cleverc2200/dsh-agent-workbench/lib/business/inventory-fc"),
         ])({ runtime });
-        // Independent snapshots of the same admitted source support durable update/restore.
+
         previous = await prepareSourcePlugins(core, runtime, deployment, {
           sources,
         });

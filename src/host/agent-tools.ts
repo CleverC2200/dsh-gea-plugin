@@ -6,7 +6,7 @@ import { registerBaseInventoryTool } from "./base-inventory-tool.ts";
 import { registerBranchInventoryTool } from "./branch-inventory-tool.ts";
 import type { HtmlPackage } from "@cleverc2200/dsh-agent-workbench";
 import { TOOL_DESCRIPTIONS } from "./prompt-policy.ts";
-/** 固定的 GEA 读取通过原生 Harness 工具生命周期呈现并记录。 */
+
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { Business } from "./business.ts";
@@ -90,10 +90,6 @@ export function stopExpiredGateway(
   );
 }
 
-/** 只注册已认证的读取；可见记录仍以 GEA 为权威。
- * @param ctx 拥有工具注册和释放生命周期的 Host 上下文。
- * @param business 当前进程身份和精确 GEA 查询实现。
- */
 export function registerGeaTools(
   ctx: Context,
   business: Business,
@@ -106,16 +102,13 @@ export function registerGeaTools(
   registerOrderAmendmentTool(ctx, business, htmlPackages);
   registerOrderKpiTool(ctx, business, htmlPackages);
   registerOrderOntimeTool(ctx, business, htmlPackages);
-  /**
-   * 宿主替模型算好的通道顺序：当前页是谁、命中哪个模块、该先用哪条道。
-   * 线上实测"选通道"这一步最容易翻车，所以不由模型自己猜（见 capability/channel.ts）。
-   */
+
   const channelsFor = (sessionId: string): ChannelPlan => {
     const page = business.currentPageIdentity?.(sessionId);
     const module = page?.consumerCode ? capability?.byConsumer(page.consumerCode) : undefined;
     return channelPlan({
       ...(page ? { currentPage: page } : {}),
-      // 问答侧关掉受管 SQL 时，通道计划里不再出现 gea_plugin_read。
+
       governedRead: business.config.agentSqlRead === true,
       ...(module?.data
         ? {
@@ -129,7 +122,6 @@ export function registerGeaTools(
     });
   };
 
-  /** 把通道顺序并进工具结果；结果不是 JSON 就原样返回，绝不让"给建议"变成"给报错"。 */
   const withChannels = (payload: string, plan: ChannelPlan): string => {
     try {
       const value = JSON.parse(payload);
@@ -226,8 +218,6 @@ export function registerGeaTools(
           rawInput: args.query,
         }),
         execute: async (args, exec) => {
-          // 同一条只读查询在同一轮里重复发（线上实测同一个 9 月 periods 读了 15 次）：
-          // 前两次照常查，之后就只回"本轮已读过"，并把重复计入本轮总账。
           const scope = exec.agent?.id ?? "global";
           const stop = business.turnStopped(scope);
           if (stop)
@@ -243,26 +233,15 @@ export function registerGeaTools(
             business.rememberTurnReplay(scope, key, text);
             return text;
           } catch (error) {
-            // 中止（用户点停止）不是取数失败：翻成可读的中止说明，别抛成 [object Object]。
             throw readableError(error);
           }
         },
       }),
     ),
   );
-  /**
-   * 模块索引（模块名 + consumerCode + 代表表名）：问答侧唯一的"有哪些模块"线索。
-   * 仅作为已启用的页面只读接口说明，不作为新 MCP 查询的回退。
-   */
+
   const moduleIndex = capability?.readToolIndex() ?? "（当前没有可直读的业务模块）";
-  /**
-   * 受管只读 SQL（`/ai/gateway/sql/execute`）：问答侧默认**关闭**。
-   *
-   * 线上实测：让模型自己写 SQL 的失败率太高（同一份会话里 13 条失败——宿主追加分页
-   * 导致双 LIMIT、日期列当文本或参数用、猜列名），而且网关只回一句"受控 SQL 执行失败"，
-   * 定位全靠猜。关掉之后问答取数只走两条路：页面证据 + 模块 MCP。
-   * 需要临时打开时把部署配置 `agentSqlRead` 设成 true（页面自己的查询不受这个开关影响）。
-   */
+
   const registerPluginRead = () =>
     ctx.effect(() =>
       ctx.tools.register(
@@ -276,7 +255,7 @@ export function registerGeaTools(
             consumerCode: {
               type: "string",
               required: true,
-              // 一个模块都没装时不写 enum：空的枚举会被工具 schema 判非法，宿主直接起不来。
+
               ...(() => {
                 const consumers = (capability?.readModules() ?? []).map(
                   (contract) => contract.data!.consumerCode,
@@ -321,9 +300,7 @@ export function registerGeaTools(
               readonly: true,
             }),
           },
-          // 受管只读查询要留出网关自己的执行时间（SQL 侧默认 30 秒）：
-          // 之前用 15 秒的普通请求超时，宽口径聚合还没返回就被判超时。
-          // describe 探列也走这里（已按预算并行），所以统一放宽到 60 秒。
+
           timeoutMs: Math.max(business.config.requestTimeoutMs, LAYER_POLICY.read.timeoutMs),
           isConcurrencySafe: () => true,
           presentCall: (args) => ({
@@ -343,7 +320,7 @@ export function registerGeaTools(
                   },
                   exec.signal,
                 )) as object),
-                // 配方清单跟着列清单一起来：模型先看"这类问题有没有现成配方"。
+
                 recipes: recipesFor(String(args.consumerCode)).map((recipe) => ({
                   id: recipe.id,
                   title: recipe.title,
@@ -355,14 +332,13 @@ export function registerGeaTools(
                 })),
               });
             }
-            // 配方优先：模型不必写 SQL，参数也由契约声明。
+
             const recipe =
               typeof args.recipe === "string" && args.recipe.trim()
                 ? findRecipe(String(args.consumerCode), args.recipe.trim())
                 : undefined;
             if (typeof args.recipe === "string" && args.recipe.trim() && !recipe)
               throw new Error(
-                // 配方 id 也是英文标识，模型常拿配方的中文标题来调：先把最像的说出来。
                 `GEA_PLUGIN_RECIPE_UNKNOWN：${
                   didYouMean(
                     String(args.recipe),
@@ -397,15 +373,11 @@ export function registerGeaTools(
             const statement = recipe ? recipe.sql : args.sql;
             if (typeof statement !== "string" || !statement.trim())
               throw new Error("GEA_PLUGIN_SQL_INVALID");
-            // 真机观察：模型侧默认回 200 行×55 列会把输入预算吃光，它只能靠反复试探收敛。
-            // 这里把"给模型看的一页"收紧到 50 行；总数照旧返回，要更多自己翻页。
-            // 页大小超出网关上限由宿主钳制（见 plugin-query），不把模型的参数当错误报。
+
             try {
               return JSON.stringify(
                 await business.pluginSql(
                   {
-                    // 只把受管只读查询认识的键传下去：`recipe`/`describe` 这类工具自己的
-                    // 参数透传到 pluginSql 会被判 INVALID_PAYLOAD（线上实测配方调用必失败）。
                     consumerCode: args.consumerCode,
                     sql: statement,
                     ...(args.parameters === undefined ? {} : { parameters: args.parameters }),
@@ -416,8 +388,6 @@ export function registerGeaTools(
                 ),
               );
             } catch (error) {
-              // 猜表名/猜字段是线上最主要的失败来源：把"下一步"补进错误里，
-              // 否则模型只会换着表继续猜（截断到 200 字内，避免可读原因被整条丢掉）。
               const module = capability?.byConsumer(String(args.consumerCode));
               throw new Error(
                 pluginReadHint(
@@ -463,7 +433,7 @@ export function registerGeaTools(
           const focus = typeof args?.focus === "string" ? args.focus : undefined;
           const snapshot = await business.waitVisibleWorkbenchContext(exec.agent.id, 2000, focus);
           const plan = channelsFor(exec.agent.id);
-          // 已经压成摘要了就不必再让子 Agent 压一遍。
+
           if (business.config.visibleContextSubagent !== true || snapshot.includes('"contextNote"'))
             return withChannels(snapshot, plan);
           const summarized = await summarizeVisibleWorkbenchContext(

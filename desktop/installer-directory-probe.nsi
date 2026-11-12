@@ -1,4 +1,4 @@
-# Execute the production promotion/rollback functions only on disposable files.
+
 Unicode true
 Name "GEA directory installation probe"
 OutFile "${PROBE_OUTPUT}"
@@ -49,7 +49,7 @@ Section
   IfFileExists "$geaOldDirectory\*.*" failed
   !insertmacro GEA_INSTALL_TIMING_LOG "directory-probe-upgrade-pass"
 
-  # Promotion source missing after the original directory has been moved.
+
   Call geaPromoteDirectories
   IfErrors +2
     Goto failed

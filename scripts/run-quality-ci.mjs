@@ -14,7 +14,7 @@ import {
 import { runQualityChecks } from "./run-quality-checks.mjs";
 import { sourceCheckShard } from "./source-check-shards.mjs";
 import { installCommands, browserPreparationBudget } from "./quality-worker-inputs.mjs";
-/** Public source-event admission and fail-closed workflow aggregation. */
+
 import { parseArgs, isDeepStrictEqual } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
@@ -398,7 +398,7 @@ try {
   } else {
     if (!candidatePhases.has(values.phase)) refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input;
-    // The public Workbench reader owns exact source, identity, lock and Core admission.
+
     const { readFinalGroup } = await import(
       pathToFileURL(resolve(values["final-group-workbench"], "scripts/candidate-input.mjs"))
     );
@@ -613,7 +613,7 @@ try {
     )
       await prepareWorkbenchGeaAuthority({ workbench: workbench.path, gea: own.path });
     profileTestsSelected = plan.runtime;
-    // The window contract traverses Core's complete dependency tree, including Web assets.
+
     const needsCoreWeb =
       values.phase === "macos-isolation" ||
       plan.runtime ||
@@ -659,7 +659,7 @@ try {
         resolve(jobRoot, "quality-test-execution-plan.json"),
         JSON.stringify(executionPlan, null, 2) + "\n",
       );
-    // Stage processes reconstruct these values from the admitted tuple, never a prior shell.
+
     for (const key of [
       "GEA_TEST_SOURCE_INPUTS",
       "GEA_TEST_CANDIDATE",
@@ -887,8 +887,6 @@ try {
           APS_BUILD_MODE: "mock",
         });
       else {
-        // Static GEA checks consume Workbench's public declarations too. Emit them
-        // from the admitted source instead of trusting checked-in build outputs.
         run(
           process.execPath,
           [
@@ -902,8 +900,7 @@ try {
           ],
           preparedWorkbench,
         );
-        // Node-only Host tests import this public pure-model entry at runtime.
-        // Keep it on the same source as the declarations without building the UI.
+
         run(
           process.execPath,
           [
@@ -1103,7 +1100,6 @@ try {
     }
     if (stagedPhase) {
       if (building) {
-        // Freeze the prepared package outputs before later processes can execute checks.
         stages.record.artifacts = {};
         for (const { root } of qualityBuildOutputs(jobRoot))
           stages.record.artifacts[root] = await resourceDigests(root);

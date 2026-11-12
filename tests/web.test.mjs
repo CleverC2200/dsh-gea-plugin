@@ -162,7 +162,7 @@ test(
       assert.equal(await frame.locator('input[type="url"], input[type="text"]').count(), 0);
       assert.equal(await page.locator('[contenteditable="true"]').count(), 0);
       const loginBounds = await salesPlanFrameElement(page).boundingBox();
-      // The native page fills its Workbench business column inside Core's standard main.
+
       const businessInsets = () =>
         salesPlanFrameElement(page).evaluate((iframe) => {
           const column = iframe.closest(".agent-workbench-business");
@@ -248,7 +248,7 @@ test(
       );
       await frame.getByText("华东", { exact: true }).first().waitFor();
       await page.getByRole("navigation", { name: "业务导航", exact: true }).waitFor();
-      // 侧栏二级条目要和一级标题左对齐：文字同一竖线，命中区同一左边缘，二级只少一个图标。
+
       const navRows = await page
         .locator(".gea-shell-nav-heading, [data-gea-business-entry]")
         .evaluateAll((buttons) =>
@@ -271,14 +271,14 @@ test(
         [headings[0].hit],
         JSON.stringify(navRows),
       );
-      // 业务条目与其导航容器左边缘一致；主线原生侧栏保留外层留白。
+
       const navigationBox = await page.locator(".gea-shell-navigation").boundingBox();
       assert.ok(
         Math.abs(headings[0].hit - navigationBox.x) <= 2 &&
           children.every((row) => Math.abs(row.hit - navigationBox.x) <= 2),
         JSON.stringify(navRows),
       );
-      // The current AI workbench entry retains both its identity icon and new-session action.
+
       const newSession = await page
         .getByRole("button")
         .filter({ hasText: "AI工作台" })
@@ -320,7 +320,7 @@ test(
       await expect.poll(businessInsets).toEqual([0, 0, 0, 0]);
       const bounds = await salesPlanFrameElement(page).boundingBox();
       assert.ok(bounds.x > 200 && bounds.width < 1100, JSON.stringify(bounds));
-      // The embedded workbench must resize its columns independently of the outer window.
+
       const workbenchFrame = salesPlanFrameElement(page);
       const originalStyle = await workbenchFrame.getAttribute("style");
       for (const [width, viewport, tableWidth] of [
@@ -384,7 +384,7 @@ test(
       const reject = frame.getByRole("button", { name: "退回", exact: true });
       await expect(approve).toBeEnabled();
       await expect(reject).toBeEnabled();
-      // Approval now submits directly; exercise the cancellable rejection form without writing.
+
       await reject.click();
       const approvalDialog = frame.getByRole("dialog", { name: "退回", exact: true });
       await expect(
@@ -422,7 +422,7 @@ test(
       const brandLogo = page.locator(".gea-shell-logo");
       assert.equal(await brandLogo.evaluate((el) => el.tagName), "IMG");
       assert.match(await brandLogo.getAttribute("src"), /^data:image\/png;base64,/);
-      // GEA business identity and the official Core document title have separate owners.
+
       assert.equal(await page.locator(".gea-brand-title").textContent(), "Synear GEA");
       assert.equal(await page.title(), "DeepSeek Harness");
       assert.equal(
@@ -435,7 +435,7 @@ test(
         await page.locator(".gea-user-avatar").evaluate((el) => getComputedStyle(el).borderRadius),
         "50%",
       );
-      // The brand mark is a label now: clicking it must not swap the page.
+
       await brand.click();
       await expect(salesPlanFrameElement(page)).toBeVisible();
       for (const view of ["business", "conversation"]) {
@@ -463,7 +463,7 @@ test(
         await page.getByRole("button", { name: "通用设置", exact: true }).waitFor();
         await page.getByRole("button", { name: "关闭", exact: true }).click();
       }
-      // Back to the business page so the reload below still restores the workbench.
+
       await openSalesPlan(page);
       await expect(salesPlanFrameElement(page)).toBeVisible();
       assert.equal(await page.getByRole("button", { name: "DSH 对话", exact: true }).count(), 0);

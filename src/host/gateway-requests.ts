@@ -16,7 +16,6 @@ type Request = {
   | { kind: "claim"; includeTenant: boolean }
 );
 
-/** GEA envelope transport; Business retains identity authority and protocol-specific consumers. */
 export class GatewayRequests {
   constructor(
     private readonly owner: {

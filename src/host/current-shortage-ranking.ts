@@ -9,7 +9,6 @@ const numeric = (value: unknown) =>
   String(value).trim() !== "" &&
   Number.isFinite(Number(value));
 
-/** A ranking page and its totals must come from one complete authorized query scope. */
 export function currentShortageRankingResult(input: unknown, page: number) {
   const result = record(input);
   if (!result) throw Error("CURRENT_SHORTAGE_RESULT_INVALID");

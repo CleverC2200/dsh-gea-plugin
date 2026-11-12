@@ -66,7 +66,7 @@ test("official Agent-scoped Tools view admits the actual BSP registered UI tool 
       { inject: ["tools", "systemPrompt"] },
     ),
   );
-  // This is the official scoped-test Agent subject over real Cordis/Tools, not a live Host Agent loop.
+
   ctx.provide("agents", {
     list: () => [agent],
     get: (id) => (id === agent.id ? agent : undefined),

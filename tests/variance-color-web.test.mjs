@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import { openSalesPlanPresentation } from "./fixtures/sales-plan-presentation.mjs";
 
-/**
- * V1.8 #14：顶部指标卡「差额（计划 − 目标）」正数红、负数绿；
- * 颜色只作用于差额数值本身，其他指标卡保持原字色。
- */
 const both = async (t, planAmount, targetAmount) => {
   const page = await openSalesPlanPresentation(t, [
     { currentQty: "10", currentAmount: planAmount, targetQty: "10", targetAmount },
@@ -37,7 +33,7 @@ test("positive variance is red and negative variance is green", { timeout: 90000
   await expect(
     positive.locator("span").filter({ hasText: "差额" }).locator("strong").first(),
   ).toHaveText("¥200");
-  // 颜色只作用于差额：另外两张指标卡保持默认字色。
+
   const neutral = await colorOf(positive, "计划金额");
   assert.notEqual(neutral, "rgb(200, 17, 42)", "计划金额不能跟着变红");
   assert.notEqual(neutral, "rgb(22, 142, 88)", "计划金额不能跟着变绿");

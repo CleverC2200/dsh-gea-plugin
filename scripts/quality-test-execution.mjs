@@ -1,4 +1,3 @@
-/** Job-local plans and execution receipts for the admitted required-and-affected selection. */
 import { createHash, randomUUID } from "node:crypto";
 import {
   writeFileSync,
@@ -403,9 +402,7 @@ export function runExecutionPlan({
       let report;
       try {
         report = JSON.parse(readFileSync(reportFile));
-      } catch {
-        /* Missing/partial reporter output remains evidence of an incomplete child. */
-      }
+      } catch {}
       receipt.results.push({
         shardId: shard.id,
         executionId: receipt.executionId,
