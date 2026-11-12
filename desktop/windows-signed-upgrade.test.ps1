@@ -65,6 +65,8 @@ function Start-InstalledApplication {
         $process.Refresh()
         if ($process.HasExited) { throw ('CLIENT_EARLY_EXIT_' + $process.ExitCode) }
         if ($process.MainWindowHandle -ne 0) {
+            if ($process.WaitForExit(3000)) { throw ('CLIENT_EARLY_EXIT_' + $process.ExitCode) }
+            $process.Refresh()
             if ($process.MainWindowTitle -ne 'Synear GEA') { throw ('UNEXPECTED_STARTUP_WINDOW_' + $process.MainWindowTitle) }
             return $process.MainWindowTitle
         }
