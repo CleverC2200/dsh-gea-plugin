@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
 
 const output = await build({
   entryPoints: ["src/host/business.ts"],
@@ -19,6 +20,42 @@ new Function("require", "module", "exports", output.outputFiles[0].text)(
   module,
   module.exports,
 );
+
+const workbenchRoot = resolve(process.env.DSH_TEST_WORKBENCH ?? "../dsh-agent-workbench");
+const models = await build({
+  stdin: {
+    resolveDir: workbenchRoot,
+    contents: `
+      export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
+      export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
+      export { BackendHttpError } from './src/workbench/original/http-error.ts';
+    `,
+  },
+  bundle: true,
+  write: false,
+  platform: "node",
+  format: "cjs",
+});
+const workbench = { exports: {} };
+new Function("require", "module", "exports", models.outputFiles[0].text)(
+  createRequire(import.meta.url),
+  workbench,
+  workbench.exports,
+);
+const { SalesPlanActionAttempt, SalesPlanSubmitAttempt, BackendHttpError } = workbench.exports;
+
+const pageInvocation = (invoke) => async (command) => {
+  try {
+    return await invoke(command);
+  } catch (error) {
+    throw new BackendHttpError({
+      method: "POST",
+      path: "gea.sales-plan",
+      status: error.details.httpStatus,
+      body: { code: error.code, error: error.message, details: error.details },
+    });
+  }
+};
 
 function actionReceipt(patch = {}, init) {
   const action = init
@@ -307,6 +344,8 @@ for (const [httpStatus, retryable] of [
   [502, false],
   [200, true],
   [502, true],
+  [408, false],
+  [408, true],
 ])
   test(`explicit action HTTP ${httpStatus} business rejection with retryable ${retryable} preserves the DMS reason and allows a fresh validated request`, async (t) => {
     const message = "DMS回写失败[ITEM_DISABLED]：产品编码10004856已停用,不能填报";
@@ -335,8 +374,9 @@ for (const [httpStatus, retryable] of [
     const request = { approvalRole: "category", approvalPolicy: "role-visible-v1" };
     await assert.rejects(f.business.salesPlanAction(f.payload(request), signal), (error) => {
       assert.equal(error.name, "Error");
-      assert.equal(error.code, "GEA_HTTP_502");
-      assert.equal(error.message, `GEA_HTTP_502：${message}`);
+      const status = httpStatus === 200 ? 502 : httpStatus;
+      assert.equal(error.code, `GEA_HTTP_${status}`);
+      assert.equal(error.message, `GEA_HTTP_${status}：${message}`);
       assert.equal(error.details.upstreamCode, "SALES_PLAN_DMS_WRITEBACK_FAILED");
       assert.equal(error.details.category, "UPSTREAM");
       assert.equal(error.details.retryable, retryable);
@@ -348,6 +388,58 @@ for (const [httpStatus, retryable] of [
     f.effective(true);
     await assert.rejects(f.business.salesPlanAction(f.payload(request), signal), /已停用/);
     assert.deepEqual(sent, ["save-1", "save-3"]);
+  });
+
+for (const mode of ["json", "text"])
+  test(`public action HTTP 408 ${mode} retains the Workbench command and physically retries the same intent`, async (t) => {
+    const sent = [];
+    const commands = [];
+    let serial = 0;
+    const f = fixture(t, async (_url, init) => {
+      sent.push({
+        body: init.body,
+        requestId: new Headers(init.headers).get("X-Request-Id"),
+        key: new Headers(init.headers).get("Idempotency-Key"),
+      });
+      if (sent.length === 1)
+        return mode === "json"
+          ? Response.json({ message: "请求超时", retryable: true }, { status: 408 })
+          : new Response("request timeout", { status: 408 });
+      return Response.json({ success: true, result: actionReceipt({ replayed: true }, init) });
+    });
+    const signal = new AbortController().signal;
+    await f.business.refreshApprovalRoles(signal);
+    const { planId, versionId, request } = f.payload({
+      approvalRole: "category",
+      approvalPolicy: "role-visible-v1",
+    });
+    const attempt = new SalesPlanActionAttempt(
+      {
+        action: {
+          invoke: pageInvocation((command) => {
+            commands.push(structuredClone(command));
+            return f.business.salesPlanAction(command, signal);
+          }),
+        },
+      },
+      () => `408-${++serial}`,
+    );
+    await assert.rejects(
+      attempt.submit({ planId, versionId, request, planTypeCode: "Y" }),
+      (error) => {
+        assert.equal(error.kind, "unavailable");
+        assert.equal(error.retrySameIntent, true);
+        return true;
+      },
+    );
+    f.effective(false);
+    const receipt = await attempt.retry();
+    assert.equal(receipt.replayed, true);
+    assert.deepEqual(commands[1], commands[0]);
+    assert.deepEqual(sent[1], sent[0]);
+    assert.equal(serial, 2);
+    assert.deepEqual(await attempt.retry(), receipt);
+    assert.equal(sent.length, 2);
   });
 
 for (const mode of [
@@ -795,6 +887,7 @@ for (const [customerCode, returnedStatus, orderType] of [
       employeeRole = true,
       replyMode = "normal";
     const sentBodies = new Map();
+    const sentRequests = [];
     t.mock.method(globalThis, "fetch", async (url, init) => {
       const path = new URL(url).pathname;
       if (path.endsWith("/api/v1/internal/auth/token")) {
@@ -812,6 +905,11 @@ for (const [customerCode, returnedStatus, orderType] of [
         assert.equal(JSON.parse(init.body).submitterName, undefined);
         assert.equal(JSON.parse(init.body).cust_code, Number(request.dealerCode));
         const key = new Headers(init.headers).get("Idempotency-Key");
+        sentRequests.push({
+          body: init.body,
+          key,
+          requestId: new Headers(init.headers).get("X-Request-Id"),
+        });
         if (sentBodies.has(key)) assert.equal(init.body, sentBodies.get(key));
         else sentBodies.set(key, init.body);
         if (replyMode === "timeout") {
@@ -820,6 +918,11 @@ for (const [customerCode, returnedStatus, orderType] of [
           );
           throw init.signal.reason;
         }
+        if (replyMode === "http-408-json")
+          return Response.json({ message: "请求超时", retryable: true }, { status: 408 });
+        if (replyMode === "http-408-text") return new Response("request timeout", { status: 408 });
+        if (replyMode === "http-408-definitive")
+          return Response.json({ message: "请求已拒绝", retryable: false }, { status: 408 });
         if (replyMode === "broken") return new Response("not json", { status: 200 });
         if (replyMode === "wrong-result")
           return Response.json({ success: true, result: "unexpected" });
@@ -832,7 +935,7 @@ for (const [customerCode, returnedStatus, orderType] of [
               message: "产品编码10004856已停用,不能填报",
               retryable: true,
             },
-            { status: replyMode.endsWith("-http") ? 502 : 200 },
+            { status: replyMode.endsWith("-408") ? 408 : replyMode.endsWith("-http") ? 502 : 200 },
           );
         if (refuse)
           return Response.json(
@@ -965,7 +1068,11 @@ for (const [customerCode, returnedStatus, orderType] of [
     assert.equal(tokens, 0);
     assert.equal(writes, 2);
     if (customerCode === "456" && returnedStatus === 7) {
-      for (const mode of ["business-rejection", "business-rejection-http"]) {
+      for (const mode of [
+        "business-rejection",
+        "business-rejection-http",
+        "business-rejection-408",
+      ]) {
         replyMode = mode;
         await assert.rejects(business.salesPlanSubmit(command(mode), signal), (error) => {
           assert.equal(error.details.upstreamCode, "SALES_PLAN_DMS_WRITEBACK_FAILED");
@@ -974,9 +1081,54 @@ for (const [customerCode, returnedStatus, orderType] of [
           return true;
         });
       }
-      for (const mode of ["timeout", "broken", "wrong-result"]) {
+      replyMode = "http-408-definitive";
+      await assert.rejects(business.salesPlanSubmit(command(replyMode), signal), (error) => {
+        assert.equal(error.details.httpStatus, 408);
+        assert.equal(error.details.retryable, false);
+        assert.notEqual(error.details.retrySameIntent, true);
+        return true;
+      });
+      for (const mode of ["http-408-json", "http-408-text", "timeout", "broken", "wrong-result"]) {
         replyMode = mode;
         const intent = command("uncertain-" + mode);
+        if (mode.startsWith("http-408")) {
+          const commands = [];
+          let serial = 0;
+          const attempt = new SalesPlanSubmitAttempt(
+            {
+              submit: {
+                invoke: pageInvocation((payload) => {
+                  commands.push(structuredClone(payload));
+                  return business.salesPlanSubmit(payload, signal);
+                }),
+              },
+            },
+            () => `${mode}-${++serial}`,
+          );
+          await assert.rejects(
+            attempt.submit({
+              request,
+              expected: { planId, previousVersionId: "v1", nextSeq: 2, nextStatus: request.status },
+            }),
+            (error) => {
+              assert.equal(error.kind, "unavailable");
+              assert.equal(error.retrySameIntent, true);
+              return true;
+            },
+          );
+          replyMode = "normal";
+          sourceDenied = true;
+          const receipt = await attempt.retry();
+          sourceDenied = false;
+          assert.equal(receipt.status, request.status);
+          assert.deepEqual(commands[1], commands[0]);
+          assert.deepEqual(sentRequests.at(-1), sentRequests.at(-2));
+          assert.equal(serial, 2);
+          const posts = writes;
+          assert.deepEqual(await attempt.retry(), receipt);
+          assert.equal(writes, posts);
+          continue;
+        }
         await assert.rejects(
           business.salesPlanSubmit(intent, signal),
           (error) => error.details?.retrySameIntent === true,

@@ -295,7 +295,10 @@ export class SalesPlanTransactions {
       assertCurrent();
       if (response.status === 401) this.host.expire(scope.auth);
       if (data?.success === false) error.details.retrySameIntent = false;
-      else if (response.status >= 500 && error.details.retryable !== false)
+      else if (
+        (response.status >= 500 || response.status === 408) &&
+        error.details.retryable !== false
+      )
         error.details.retrySameIntent = true;
       throw error;
     }
