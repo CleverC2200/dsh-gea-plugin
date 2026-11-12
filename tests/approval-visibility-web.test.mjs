@@ -236,7 +236,7 @@ test(
       rejectDialog.getByRole("textbox", { name: "退回原因（必填）", exact: true }),
     ).toBeVisible();
     await expect(rejectDialog.getByTestId("regional-approval-live-action-checksum")).toHaveCount(0);
-    await frame.getByRole("button", { name: "关闭", exact: true }).click();
+    await rejectDialog.getByRole("button", { name: "取消", exact: true }).click();
     // 类型切换入口恢复，原来的角色节点权限保持不变。
     await expect(frame.getByRole("tab", { name: "纠偏", exact: true })).toBeVisible();
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
