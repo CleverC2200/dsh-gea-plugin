@@ -783,7 +783,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/desktop-release(?:\\.test)?\\.mjs$|^scripts/(?:mac-complete-local/full-source|windows-complete-local/build)\\.mjs$",
+      "pattern": "^scripts/(?:desktop-release(?:\\.test)?|desktop-update-data)\\.mjs$|^scripts/(?:mac-complete-local/full-source|windows-complete-local/build)\\.mjs$",
       "tests": ["scripts/desktop-release.test.mjs"],
       "sourceTests": ["scripts/desktop-release.test.mjs"]
     }

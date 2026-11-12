@@ -154,11 +154,9 @@ for (const scenario of ["delayed", "stale", "unavailable"]) {
         assert.equal(writes[0].approvalRole, undefined, "上游报文只发接口文档声明的字段");
         assert.equal(writes[0].expectedSnapshot, undefined);
       } else {
-        await expect(
-          frame.getByText("操作请求失败且未更新本地状态；请刷新权威队列后再决定。", {
-            exact: true,
-          }),
-        ).toBeVisible();
+        const result = frame.getByRole("dialog", { name: "处理结果", exact: true });
+        await expect(result).toContainText(scenario === "stale" ? "草稿" : "草稿读取失败");
+        await result.getByRole("button", { name: "关闭", exact: true }).click();
         await expect(approve).toBeEnabled();
         assert.equal(writes.length, 0);
         const retained = await app.rpc("sales-plan/draft", {

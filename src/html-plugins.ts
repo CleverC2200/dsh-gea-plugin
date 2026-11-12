@@ -407,15 +407,19 @@ export async function registerHtmlPlugins(
               if (!item.mock && principalKey) sessionPrincipals.set(session, principalKey);
               const grantSignal = AbortSignal.any([started!, lifetime.signal]);
               const modulePage = bindModulePage(business, session, item.id, grantSignal);
+              const heartbeat = () => {
+                grantSignal.throwIfAborted();
+                if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
+                business.touchPageIdentity(session, pageIdentity);
+                projection = business.currentPageIdentity(session);
+              };
               return {
                 signal: grantSignal,
                 referenceScope: item.mock ? "mock-browser" : principal!,
                 access,
+                heartbeat,
                 observe: (context: Record<string, unknown>) => {
-                  grantSignal.throwIfAborted();
-                  if (business.surfaceFor(session) !== surface) throw Error("PAGE_OWNER_RELEASED");
-                  business.touchPageIdentity(session, pageIdentity);
-                  projection = business.currentPageIdentity(session);
+                  heartbeat();
                   modulePage.observe(context);
                 },
                 allowsEffect: (

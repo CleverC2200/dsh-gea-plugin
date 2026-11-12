@@ -362,8 +362,8 @@ jobs:
         timeout-minutes: 5
         run: |
           getent ahostsv4 mirrors.edge.kernel.org
-          printf 'https://mirrors.edge.kernel.org/ubuntu/\tpriority:1\nhttps://mirrors.mit.edu/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt
-          sudo apt-get update --error-on=any
+          printf 'https://mirrors.mit.edu/ubuntu/\tpriority:1\nhttps://mirrors.edge.kernel.org/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt
+          sudo apt-get -o Acquire::https::Timeout=15 -o Acquire::Retries=1 update --error-on=any
       - name: Run affected behavior and real TypeScript checks
         if: needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
         run: node scripts/source-quality.mjs --phase affected-check
