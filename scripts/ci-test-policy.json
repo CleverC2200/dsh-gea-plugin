@@ -780,6 +780,51 @@
       "pattern": "^scripts/(?:desktop-release(?:\\.test)?|desktop-update-data)\\.mjs$|^scripts/(?:mac-complete-local/full-source|windows-complete-local/build)\\.mjs$",
       "tests": ["scripts/desktop-release.test.mjs"],
       "sourceTests": ["scripts/desktop-release.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:cube-business-summary\\.py|deploy-cube-business-summary\\.py|test-cube-business-summary\\.cjs|probe-gea\\.mjs)$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/sync-default-preset\\.mjs$",
+      "tests": ["tests/preset-modes.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/verify\\.mjs$",
+      "tests": ["tests/verify-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^source-comments\\.json$",
+      "tests": ["scripts/source-quality.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/cube-operators\\.ts$",
+      "tests": ["tests/cube-query-guard.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/shared/environments\\.d\\.ts$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/e2e/sidebar\\.spec\\.ts$",
+      "tests": ["tests/sidebar-source-web.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/(?:current-source-loader|native-web-prompt|stock-pages|theme-client)\\.mjs$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/profile-configuration-probe\\.mjs$",
+      "tests": ["tests/model-profile-fixture.test.mjs"]
     }
   ],
   "testOwners": {
