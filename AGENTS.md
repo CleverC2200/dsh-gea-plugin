@@ -10,6 +10,8 @@
 
 普通三包交付读 [打包与接收](docs/package-delivery.md) 和 [安装协议](docs/install.md)。收尾前读 [交付核对](docs/delivery-check.md)，按原规格核完整目标、在途工作、预算、依赖及暂停；一致性、packaged、Host 接收与业务验收分别留证。自动工具不授予授权或自动接续。
 
+桌面客户端发版与更新频道交付读 [桌面交付与完整更新回归](scripts/desktop-release.md)，按其中的回归与收尾核验区分产物发布和客户端验收。
+
 只在本任务隔离 checkout 与自有输出工作。正式 GitLab、OSS、npm、频道、原同名仓和正式客户端保持保护；旧文档中的发行步骤不覆盖此边界。业务 Prompt/Skill、运行时字符串、schema、法律来源、用户 Session、草稿及原失败证据保持原归属。
 
 修改异步工具结果、证据持久化或回读时，读 [执行链](docs/execution-logic.md) 的执行归属合同与 [本地检查](docs/local-development.md)。迟到结果只归原执行；身份、轮次或资源变化后，保持原数据与失败证据，按当前归属决定能否发布。

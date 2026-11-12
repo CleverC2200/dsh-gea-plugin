@@ -4,8 +4,14 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import YAML from "yaml";
-import { prepareDesktopRelease, publishDesktopRelease } from "./desktop-release.mjs";
+import {
+  prepareDesktopRelease,
+  publishDesktopRelease,
+  verifyDesktopUpdateRegression,
+} from "./desktop-release.mjs";
+import { compareDesktopUpdateData } from "./desktop-update-data.mjs";
 
 const source = "1".repeat(40);
 const version = "0.2.0-rc.2.20261109.2";
@@ -96,6 +102,7 @@ for (const mac of [true, false])
     if (!mac) f.objects.set(key, Buffer.from(YAML.stringify({ version: "0.2.0-rc.2.20261104.1" })));
     const result = await publishDesktopRelease(plan, f.store);
     assert.equal(result.status, "published-and-anonymously-verified");
+    assert.equal(result.updateAcceptance, "pending-full-ui-regression");
     assert.equal(f.writes.at(-1), key);
     assert.deepEqual(
       YAML.parse(f.objects.get(key).toString())
@@ -182,4 +189,149 @@ test("concurrent feed changes are preserved and unsigned builds cannot be publis
   f.receipt.localCandidate = true;
   await writeFile(join(f.directory, "result.json"), JSON.stringify(f.receipt));
   await assert.rejects(publishDesktopRelease(await f.plan(), f.store), /CANDIDATE_NOT_PUBLISHABLE/);
+});
+
+async function updateFixture(t) {
+  const fixtures = [await fixture(t), await fixture(t, false)];
+  const plans = await Promise.all(fixtures.map((f) => f.plan()));
+  const fromVersion = "0.2.0-rc.2.20261104.1";
+  const receipt = { schema: 1, status: "passed", version, sourceSha: source, platforms: {} };
+  for (const plan of plans)
+    receipt.platforms[plan.platform] = {
+      fromVersion,
+      toVersion: version,
+      installerSha256: plan.files.find((file) => /\.(dmg|exe)$/.test(file.name)).sha256,
+      feedSha256: plan.files.at(-1).sha256,
+      signatureVerified: true,
+      ui: {
+        entry: plan.platform === "mac-arm64" ? "restart-ready" : "check-download",
+        downloadVerified: true,
+        installAndRestartInvoked: true,
+        normalSuccessorWindow: true,
+        accountResumed: true,
+        currentVersionAndLatest: true,
+      },
+      relaunch: {
+        method: "native-updater",
+        manualSuccessorLaunch: false,
+        flagsUnmodified: true,
+        updaterOrCoordinatorIntercepted: false,
+      },
+      data: {
+        status: "passed",
+        fromVersion,
+        toVersion: version,
+        configuration: {
+          status: "passed",
+          allUserPatchValuesPreserved: true,
+          onlyExpectedCoreProofRefreshed: true,
+          coreProofMatchesVerifiedInstalledSeed: true,
+        },
+        history: {
+          status: "passed",
+          historicalSessions: 2,
+          historicalEvents: 6,
+          allOriginalHeadersAndEventsPreserved: true,
+          readWithNewBundledCore: true,
+        },
+      },
+    };
+  return { fixtures, plans, receipt };
+}
+
+test("release completion requires both platforms and rejects stale artifacts or script-controlled relaunch", async (t) => {
+  const { plans, receipt } = await updateFixture(t);
+  assert.equal(verifyDesktopUpdateRegression(plans, receipt).status, "full-ui-update-regression-passed");
+  assert.throws(() => verifyDesktopUpdateRegression([plans[0]], receipt), /BOTH_PLATFORMS_REQUIRED/);
+  for (const platform of ["mac-arm64", "win-x64"]) {
+    for (const change of [
+      (r) => delete r.platforms[platform],
+      (r) => (r.sourceSha = "2".repeat(40)),
+      (r) => (r.platforms[platform].installerSha256 = "0".repeat(64)),
+      (r) => (r.platforms[platform].feedSha256 = "0".repeat(64)),
+      (r) => (r.platforms[platform].fromVersion = version),
+      (r) => (r.platforms[platform].signatureVerified = false),
+      (r) => (r.platforms[platform].ui.installAndRestartInvoked = false),
+      (r) => (r.platforms[platform].ui.accountResumed = false),
+      (r) => (r.platforms[platform].relaunch.manualSuccessorLaunch = true),
+      (r) => (r.platforms[platform].relaunch.flagsUnmodified = false),
+      (r) => (r.platforms[platform].relaunch.updaterOrCoordinatorIntercepted = true),
+      (r) => (r.platforms[platform].data.toVersion = "0.2.0"),
+      (r) => (r.platforms[platform].data.history.historicalEvents = 0),
+      (r) => (r.platforms[platform].data.configuration.allUserPatchValuesPreserved = false),
+    ]) {
+      const changed = structuredClone(receipt);
+      change(changed);
+      assert.throws(() => verifyDesktopUpdateRegression(plans, changed), /DESKTOP_UPDATE_/);
+    }
+  }
+});
+
+test("the final CLI validates both unchanged signed artifact sets without publishing", async (t) => {
+  const { fixtures, receipt } = await updateFixture(t);
+  const input = join(fixtures[0].directory, "update-acceptance.json");
+  await writeFile(input, JSON.stringify(receipt));
+  const output = execFileSync(
+    process.execPath,
+    [
+      "scripts/desktop-release.mjs",
+      "--verify-update",
+      "--source-sha", source,
+      "--mac-artifacts", fixtures[0].directory,
+      "--windows-artifacts", fixtures[1].directory,
+      "--acceptance", input,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(JSON.parse(output).status, "full-ui-update-regression-passed");
+});
+
+test("data comparison preserves every original event and user setting, allowing only the installed Core proof", () => {
+  const oldCore = { root: "old-app", head: "old-core" };
+  const installedCore = { root: "new-app", head: "new-core" };
+  const before = {
+    version: "0.2.0-rc.2.20261104.1",
+    patch: [
+      {
+        id: "gea-proof",
+        config: { secret: "private-do-not-print", pluginUpdates: { core: oldCore } },
+      },
+    ],
+    sessions: [
+      {
+        header: { id: "old-chat", title: "original" },
+        events: [
+          { type: "user", text: "original question" },
+          { type: "assistant", text: "original reply" },
+        ],
+      },
+    ],
+  };
+  const after = structuredClone(before);
+  after.version = version;
+  after.patch[0].config.pluginUpdates.core = installedCore;
+  after.sessions[0].events.push({ type: "user", text: "later message" });
+  const result = compareDesktopUpdateData(before, after, installedCore);
+  assert.equal(result.history.historicalEvents, 2);
+  assert.equal(result.configuration.allUserPatchValuesPreserved, true);
+  for (const change of [
+    (r) => (r.patch[0].config.secret = "changed"),
+    (r) => (r.patch[0].config.pluginUpdates.core = oldCore),
+    (r) => (r.sessions = []),
+    (r) => (r.sessions[0].header.title = "changed"),
+    (r) => r.sessions[0].events.shift(),
+    (r) => (r.sessions[0].events[1].text = "changed reply"),
+  ]) {
+    const changed = structuredClone(after);
+    change(changed);
+    assert.throws(() => compareDesktopUpdateData(before, changed, installedCore), (error) => {
+      assert.match(error.message, /DESKTOP_UPDATE_/);
+      assert.ok(!error.message.includes("private-do-not-print"));
+      return true;
+    });
+  }
+  assert.throws(
+    () => compareDesktopUpdateData({ ...before, sessions: [] }, after, installedCore),
+    /EXISTING_HISTORY_REQUIRED/,
+  );
 });
