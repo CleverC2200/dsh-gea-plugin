@@ -9,6 +9,7 @@ import {
   withoutHistoricalEvidence,
   exactResult,
 } from "../src/host/prompt-evidence.ts";
+import { bindModulePage } from "../src/host/module-page-scope.ts";
 import { mountBusinessPrompts } from "../src/host/prompt-runtime.ts";
 test("evidence projection preserves exact numbers and scope; original reads cannot cross identities or sessions", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "gea-evidence-"));
@@ -16,9 +17,15 @@ test("evidence projection preserves exact numbers and scope; original reads cann
   const store = new PromptEvidenceStore(dir);
   const text =
     '{"coverage":"complete","amount":12.3400,"id":9007199254740993,"rows":' +
-    JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ i, name: "商品".repeat(30) }))) +
+    JSON.stringify(
+      Array.from({ length: 200 }, (_, i) => ({ i, name: "商品".repeat(30) })),
+    ) +
     "}";
-  const id = await store.put("a", "mcp__gea-gateway__query_business_data", text);
+  const id = await store.put(
+    "a",
+    "mcp__gea-gateway__query_business_data",
+    text,
+  );
   const result = JSON.parse(projectEvidence(text, id));
   assert.equal(result.projection, "partial");
   assert.equal(result.id, "9007199254740993");
@@ -60,15 +67,22 @@ test("protected evidence restores after restart only with current authorization"
   let resourceVersion = "v1";
   const authorize = async (saved) => {
     assert.equal(saved.owner, "user-a");
-    if (saved.resources !== resourceVersion) throw Error("AUTHORIZATION_CHANGED");
+    if (saved.resources !== resourceVersion)
+      throw Error("AUTHORIZATION_CHANGED");
   };
   assert.equal(
     (await restored.read("s", id, 0, 4000, authorize)).content,
     "original business data",
   );
-  await assert.rejects(restored.read("another-session", id, 0, 4000, authorize), /UNAVAILABLE/);
+  await assert.rejects(
+    restored.read("another-session", id, 0, 4000, authorize),
+    /UNAVAILABLE/,
+  );
   resourceVersion = "revoked";
-  await assert.rejects(restored.read("s", id, 0, 4000, authorize), /AUTHORIZATION_CHANGED/);
+  await assert.rejects(
+    restored.read("s", id, 0, 4000, authorize),
+    /AUTHORIZATION_CHANGED/,
+  );
 });
 
 test("one evidence grant never includes another consumer historical receipt", () => {
@@ -102,7 +116,9 @@ test("large top-level data and reserved metadata fields remain represented in th
     ],
     meta: "x".repeat(9000),
   };
-  const projected = JSON.parse(projectEvidence(JSON.stringify(original), "ev-id"));
+  const projected = JSON.parse(
+    projectEvidence(JSON.stringify(original), "ev-id"),
+  );
   assert.equal(projected.projection, "partial");
   assert.deepEqual(projected.data.data, original.data);
   assert.ok(projected.omittedPaths.includes("$.meta"));
@@ -147,7 +163,8 @@ test("repeated catalog, query and evidence calls retain business and standard to
         .filter((n) => scope === undefined || [...masks].every((m) => m.has(n)))
         .map((name) => ({ name })),
     get: (name, scope) =>
-      (scope === undefined || [...masks].every((m) => m.has(name))) && names.includes(name)
+      (scope === undefined || [...masks].every((m) => m.has(name))) &&
+      names.includes(name)
         ? { name }
         : undefined,
   };
@@ -168,14 +185,23 @@ test("repeated catalog, query and evidence calls retain business and standard to
     sessionProjections: { stateOf: () => preset },
     agentResources: {
       cubeSource: (id) =>
-        resourceEnabled && ["gea-readonly", "gea-html-inventory-aqkc"].includes(id)
+        resourceEnabled &&
+        ["gea-readonly", "gea-html-inventory-aqkc"].includes(id)
           ? {
               sourceRef: id,
-              consumerCode: id === "gea-readonly" ? "sales_forecast" : "base-safety-stock",
+              consumerCode:
+                id === "gea-readonly" ? "sales_forecast" : "base-safety-stock",
               signal: identity,
             }
           : undefined,
-      list: async () => [{ id: preset, kind: "prompt", installed: true, enabled: resourceEnabled }],
+      list: async () => [
+        {
+          id: preset,
+          kind: "prompt",
+          installed: true,
+          enabled: resourceEnabled,
+        },
+      ],
     },
     skills: { list: async () => [] },
     on: (event, fn) => {
@@ -187,7 +213,11 @@ test("repeated catalog, query and evidence calls retain business and standard to
   const business = {
     config: { runtimeDir: dir, analysisAgentCode: "sales_forecast" },
     assertExecutionAllowed: () => {},
-    status: () => ({ authenticated: true, source: "fixture", user: { id: "one" } }),
+    status: () => ({
+      authenticated: true,
+      source: "fixture",
+      user: { id: "one" },
+    }),
     identitySignal: () => identity,
     turnStopKind: () => undefined,
     watchIdentity: (fn) => {
@@ -197,7 +227,9 @@ test("repeated catalog, query and evidence calls retain business and standard to
     readTurnRevision: () => revision,
     surfaceFor: () => undefined,
   };
-  t.after(mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()));
+  t.after(
+    mountBusinessPrompts(ctx, business, { readModules: () => [] }, new Map()),
+  );
   const start = async (name = "mcp__gea-gateway__inspect_cube_model") => {
     const exec = {
       name,
@@ -227,11 +259,16 @@ test("repeated catalog, query and evidence calls retain business and standard to
     tools: names.map((name) => ({ name, description: name, parameters: {} })),
   };
   const assemble = (currentAgent = agent) =>
-    handlers.get("system-prompt/assemble")(assembly, { agent: currentAgent }, async () => assembly);
+    handlers.get("system-prompt/assemble")(
+      assembly,
+      { agent: currentAgent },
+      async () => assembly,
+    );
   for (const transition of ["query", "turn", "preset", "identity"]) {
     const old1 = await start(),
       old2 = await start();
-    if (transition === "query") await start("mcp__gea-gateway__query_business_data");
+    if (transition === "query")
+      await start("mcp__gea-gateway__query_business_data");
     if (transition === "turn") {
       revision++;
       handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
@@ -240,9 +277,16 @@ test("repeated catalog, query and evidence calls retain business and standard to
     if (transition === "identity") identityChanged();
     await finish(old1);
     await finish(old2);
-    assert.ok((await visible()).includes("mcp__gea-gateway__inspect_cube_model"), transition);
+    assert.ok(
+      (await visible()).includes("mcp__gea-gateway__inspect_cube_model"),
+      transition,
+    );
     assert.equal(
-      guard({ name: "mcp__gea-gateway__inspect_cube_model", agent, arguments: {} }),
+      guard({
+        name: "mcp__gea-gateway__inspect_cube_model",
+        agent,
+        arguments: {},
+      }),
       undefined,
       transition + " ignores stale replies",
     );
@@ -250,7 +294,11 @@ test("repeated catalog, query and evidence calls retain business and standard to
     await finish(await start());
     const paused = await visible();
     assert.equal(
-      guard({ name: "mcp__gea-gateway__inspect_cube_model", agent, arguments: {} }),
+      guard({
+        name: "mcp__gea-gateway__inspect_cube_model",
+        agent,
+        arguments: {},
+      }),
       undefined,
       transition + " repeated catalog replies do not block later calls",
     );
@@ -259,9 +307,15 @@ test("repeated catalog, query and evidence calls retain business and standard to
       "actual query remains callable",
     );
     await start("mcp__gea-gateway__query_business_data");
-    assert.ok((await visible()).includes("mcp__gea-gateway__inspect_cube_model"));
+    assert.ok(
+      (await visible()).includes("mcp__gea-gateway__inspect_cube_model"),
+    );
     assert.equal(
-      guard({ name: "mcp__gea-gateway__inspect_cube_model", agent, arguments: {} }),
+      guard({
+        name: "mcp__gea-gateway__inspect_cube_model",
+        agent,
+        arguments: {},
+      }),
       undefined,
     );
   }
@@ -269,18 +323,29 @@ test("repeated catalog, query and evidence calls retain business and standard to
   const acquired = await start("gea_page");
   await handlers.get("tools/post-execute")(
     acquired,
-    { content: [{ type: "text", text: '{"amount":"12.3400","coverage":"partial"}' }] },
+    {
+      content: [
+        { type: "text", text: '{"amount":"12.3400","coverage":"partial"}' },
+      ],
+    },
     async () => ({ kind: "accept" }),
   );
   const before = (await assemble()).tools.map((tool) => tool.name);
   for (let i = 0; i < 64; i++)
     assert.equal(
-      guard({ name: "mcp__gea-gateway__query_business_data", agent, arguments: {} }),
+      guard({
+        name: "mcp__gea-gateway__query_business_data",
+        agent,
+        arguments: {},
+      }),
       undefined,
       "business calls remain available beyond both former limits",
     );
   for (let i = 0; i < 32; i++)
-    assert.equal(guard({ name: "gea_evidence_read", agent, arguments: {} }), undefined);
+    assert.equal(
+      guard({ name: "gea_evidence_read", agent, arguments: {} }),
+      undefined,
+    );
   for (const status of ["running", "idle"]) {
     agent.status = status;
     const assembled = await assemble();
@@ -288,12 +353,36 @@ test("repeated catalog, query and evidence calls retain business and standard to
       assembled.tools.map((tool) => tool.name),
       before,
     );
-    assert.deepEqual(assembled.sections.slice(0, assembly.sections.length), assembly.sections);
+    assert.deepEqual(
+      assembled.sections.slice(0, assembly.sections.length),
+      assembly.sections,
+    );
     assert.equal(assembled.sections.at(-1).name, "gea-current-shortage");
     assert.match(assembled.sections.at(-1).text, /gea_current_shortage/);
     for (const name of ["read_file", "run_code", "run_agent"])
       assert.equal(guard({ name, agent, arguments: {} }), undefined);
   }
+  business.surfaceFor = () => ({ menu: "inventory-aqkc" });
+  const page = bindModulePage(business, agent.id, "inventory-aqkc", identity);
+  for (const [base, current] of [
+    ["base-a,base-b", 100],
+    ["base-a", 40],
+  ]) {
+    page.observe({
+      parts: {
+        pageFilters: { selectedBases: base.split(",") },
+        queryState: { state: "ready", scope: base },
+        stockOverview: { state: "ready", scope: base, cards: { current } },
+      },
+    });
+    handlers.get("session/event")({ id: agent.id }, { type: "turn/start" });
+    const section = (await assemble()).sections.at(-1);
+    assert.equal(section.name, "current-module-page");
+    assert.match(section.text, new RegExp(`"current":${current}`));
+    if (current === 40)
+      assert.doesNotMatch(section.text, /base-b|"current":100/);
+  }
+  page.release();
   resourceEnabled = false;
   await assert.rejects(start("read_file"), /GEA_AGENT_RESOURCE_DISABLED/);
   resourceEnabled = true;
