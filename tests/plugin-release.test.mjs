@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import semver from "semver";
 import { readFile } from "node:fs/promises";
 import { productionManifest } from "../scripts/production-manifest.mjs";
 import {
@@ -82,7 +83,7 @@ test("personal memory is an optional update alongside the unchanged three-packag
     parsePluginChannel({ ...old, optionalReleases: [ref(memory.name), ref(memory.name)] }),
   );
 });
-test("the production declaration accepts Workbench 92 and retains explicit version boundaries", async () => {
+test("the production declaration accepts published Workbench versions and retains explicit boundaries", async () => {
   const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const manifest = productionManifest(source, {
     [W]: "0.1.73",
@@ -120,7 +121,13 @@ test("the production declaration accepts Workbench 92 and retains explicit versi
   assert.deepEqual(issues("0.1.89"), []);
   assert.deepEqual(issues("0.1.91"), []);
   assert.deepEqual(issues("0.1.92"), []);
-  assert.ok(issues("0.1.93").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+  const accepted = manifest.peerDependencies[W].split(" || ");
+  assert.ok(accepted.every((version) => semver.valid(version)));
+  const latest = semver.rsort(accepted)[0];
+  assert.deepEqual(issues(latest), []);
+  assert.ok(
+    issues(semver.inc(latest, "patch")).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
+  );
   assert.ok(issues("0.999.0").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
 });
 test("single-package update validates existing consumers and permits independently compatible versions", () => {
