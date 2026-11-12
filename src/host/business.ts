@@ -1,3 +1,4 @@
+import { warningStorage } from "./warning-storage.ts";
 import { retryingFetch } from "./http-attempt.ts";
 import { GeaRequestCapture, type CaptureConfig } from "./request-capture.ts";
 import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
@@ -1699,6 +1700,113 @@ export class Business {
     signal.throwIfAborted();
     if (this.auth !== auth) throw Error("STALE_LOGIN");
     return result;
+  }
+
+  async warningStorage(payload: unknown, caller: AbortSignal) {
+    this.assertExecutionAllowed("aps");
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
+    const requestId = randomUUID();
+    const sessionResponse = await this.apiLog.fetch(this.base + "/ai/gateway/agent/session", {
+      method: "POST",
+      redirect: "error",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Token": auth.token,
+        "X-Tenant-Id": auth.tenantId,
+        "X-Request-Id": requestId,
+      },
+      body: JSON.stringify({
+        agentCode: "aps",
+        channel: "AI_PORTAL",
+        requestId,
+        conversationId: randomUUID(),
+      }),
+    });
+    const sessionBody = object(await sessionResponse.json());
+    const session = object(sessionBody.result);
+    signal.throwIfAborted();
+    if (this.auth !== auth) throw Error("STALE_LOGIN");
+    if (
+      !sessionResponse.ok ||
+      sessionBody.success !== true ||
+      object(session.accessDecision).allowed !== true ||
+      !text(session.delegationToken)
+    )
+      throw Error("GEA_PLUGIN_SESSION_REJECTED");
+    const owner = {
+      key: JSON.stringify([this.environment, auth.tenantId ?? null, String(auth.id)]),
+      environment: this.environment,
+      tenantId: auth.tenantId ?? null,
+      id: String(auth.id),
+      username: auth.username,
+      name: auth.name || auth.username,
+    };
+    return warningStorage(owner, payload, async (sql, parameters, idempotencyKey) => {
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      const response = await this.apiLog.fetch(this.base.replace(/\/$/, "") + "/ai/sql/execute", {
+        method: "POST",
+        redirect: "error",
+        signal,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Delegation-Token": text(session.delegationToken),
+          "X-Request-Id": idempotencyKey,
+        },
+        body: JSON.stringify({ dataSourceCode: "PG-Warning", sql, parameters, idempotencyKey }),
+      });
+      const body = object(await response.json());
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      if (!response.ok || body?.success !== true)
+        throw await geaResponseError(
+          new Response(JSON.stringify(body), {
+            status: response.status,
+            headers: { "Content-Type": "application/json" },
+          }),
+          [auth.token, text(session.delegationToken)],
+        );
+      return body;
+    });
+  }
+
+  async warningScheduler(payload: unknown, caller: AbortSignal) {
+    this.assertExecutionAllowed("aps");
+    const auth = this.authenticated();
+    if (this.environment !== "production") throw Error("WARNING_SCHEDULER_ENVIRONMENT_UNAVAILABLE");
+    const signal = AbortSignal.any([
+      caller,
+      this.epoch.signal,
+      AbortSignal.timeout(this.config.requestTimeoutMs),
+    ]);
+    const request = object(payload);
+    if (!["poll", "complete", "xxl"].includes(text(request.operation)))
+      throw Error("WARNING_SCHEDULER_OPERATION_INVALID");
+    const response = await this.apiLog.fetch("https://gea.synear.cn:4443/gea-warning/client", {
+      method: "POST",
+      redirect: "error",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Token": auth.token,
+        "X-Tenant-Id": auth.tenantId ?? "",
+      },
+      body: JSON.stringify(request),
+    });
+    const body = object(await response.json());
+    signal.throwIfAborted();
+    if (this.auth !== auth) throw Error("STALE_LOGIN");
+    if (!response.ok || body.ok !== true)
+      throw Object.assign(Error(text(body.error) || "预警调度服务不可用"), {
+        code: "WARNING_SCHEDULER_FAILED",
+      });
+    return body.value;
   }
 
   /** Dedicated, deployment-authorized DMS action; not a general HTML write capability. */

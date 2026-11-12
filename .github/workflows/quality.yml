@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   candidate-scope:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       cores: ${{ steps.cores.outputs.cores }}
       node-version: ${{ steps.node.outputs.node-version }}
@@ -174,7 +174,7 @@ jobs:
       dependency-review-applicable: ${{ steps.quality-plan.outputs.dependency-review-applicable }}
     name: source-plan-${{ matrix.core }}
     needs: candidate-scope
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -278,7 +278,7 @@ jobs:
     if: needs.source-plan.outputs.applicability == 'source'
     name: prepare-${{ matrix.core }}
     needs: [candidate-scope, source-plan]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -525,7 +525,7 @@ jobs:
   plan-test-shards:
     if: ${{ always() && !cancelled() && needs.candidate-scope.result == 'success' && needs.source-plan.result == 'success' && needs.gates.result == 'success' && needs.source-plan.outputs.applicability == 'source' }}
     needs: [candidate-scope, source-plan, gates]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has-shards: ${{ steps.plan.outputs.has-shards }}
@@ -570,7 +570,7 @@ jobs:
     name: ${{ matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards' }}
     if: ${{ always() && !cancelled() && needs.gates.result == 'success' && needs.plan-test-shards.result == 'success' && needs.plan-test-shards.outputs.has-shards == 'true' }}
     needs: [candidate-scope, gates, plan-test-shards]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -806,7 +806,7 @@ jobs:
     name: Dependency review
     needs: source-plan
     if: github.event_name == 'pull_request' && needs.source-plan.outputs.dependency-review-applicable == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -838,7 +838,7 @@ jobs:
         windows-plugin-update,
         dependency-review,
       ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
