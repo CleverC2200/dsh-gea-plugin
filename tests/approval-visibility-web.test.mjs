@@ -227,6 +227,7 @@ test(
     assert.equal(writes[0].approvalPolicy, "role-visible-v1");
     assert.equal(writes[0].expectedSnapshot, "a".repeat(64));
     assert.equal(writes[0].expectedStatus, 2);
+    await expect(regionCanReview.getByRole("checkbox")).not.toBeChecked();
     await expect(regionCanReview.locator("label.arco-checkbox")).toBeVisible();
     await regionCanReview.locator("label.arco-checkbox").click();
     await frame.getByRole("button", { name: "退回", exact: true }).click();
