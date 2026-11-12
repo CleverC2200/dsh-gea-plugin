@@ -8,4 +8,5 @@
 
 - [GEA 0.0.275配套销售计划恢复发行](sales-plan-stale-recovery-release.md)
 
-- [GEA 0.0.276兼容单笔审批修复](sales-plan-single-approval.md)
+- [GEA 0.0.277兼容单笔审批修复](sales-plan-single-approval.md)
+- [基地库存问数与卡片一致性](base-card-parity.md)
