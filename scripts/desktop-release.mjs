@@ -165,8 +165,94 @@ export async function publishDesktopRelease(plan, store) {
     version: plan.version,
     platform: plan.platform,
     sourceSha: plan.sourceSha,
+    updateAcceptance: "pending-full-ui-regression",
     feed: origin + "/" + feedKey,
     files: uploaded,
+  };
+}
+
+export function verifyDesktopUpdateRegression(plans, receipt) {
+  assert.deepEqual(
+    plans.map((plan) => plan.platform).sort(),
+    ["mac-arm64", "win-x64"],
+    "DESKTOP_UPDATE_BOTH_PLATFORMS_REQUIRED",
+  );
+  assert.ok(
+    receipt?.schema === 1 && receipt.status === "passed",
+    "DESKTOP_UPDATE_RECEIPT_REQUIRED",
+  );
+  const platforms = {};
+  for (const plan of plans) {
+    assert.ok(
+      plan.localCandidate === false &&
+        receipt.sourceSha === plan.sourceSha &&
+        receipt.version === plan.version,
+      "DESKTOP_UPDATE_RELEASE_IDENTITY_MISMATCH",
+    );
+    const row = receipt.platforms?.[plan.platform];
+    assert.ok(row, "DESKTOP_UPDATE_PLATFORM_RECEIPT_REQUIRED: " + plan.platform);
+    const installer = plan.files.find((file) => /\.(dmg|exe)$/.test(file.name));
+    assert.ok(
+      row.installerSha256 === installer.sha256 && row.feedSha256 === plan.files.at(-1).sha256,
+      "DESKTOP_UPDATE_QUALIFIED_ARTIFACT_MISMATCH",
+    );
+    assert.ok(
+      semver.valid(row.fromVersion) &&
+        semver.lt(row.fromVersion, plan.version) &&
+        row.toVersion === plan.version &&
+        row.signatureVerified === true,
+      "DESKTOP_UPDATE_SIGNED_UPGRADE_REQUIRED",
+    );
+    assert.ok(
+      ["check-download", "restart-ready"].includes(row.ui?.entry) &&
+        [
+          "downloadVerified",
+          "installAndRestartInvoked",
+          "normalSuccessorWindow",
+          "accountResumed",
+          "currentVersionAndLatest",
+        ].every((key) => row.ui[key] === true),
+      "DESKTOP_UPDATE_COMPLETE_UI_REQUIRED",
+    );
+    assert.ok(
+      row.relaunch?.method === "native-updater" &&
+        row.relaunch.manualSuccessorLaunch === false &&
+        row.relaunch.flagsUnmodified === true &&
+        row.relaunch.updaterOrCoordinatorIntercepted === false,
+      "DESKTOP_UPDATE_NATIVE_AUTOMATIC_RELAUNCH_REQUIRED",
+    );
+    const data = row.data;
+    assert.ok(
+      data?.status === "passed" &&
+        data.fromVersion === row.fromVersion &&
+        data.toVersion === plan.version &&
+        data.configuration?.status === "passed" &&
+        [
+          "allUserPatchValuesPreserved",
+          "onlyExpectedCoreProofRefreshed",
+          "coreProofMatchesVerifiedInstalledSeed",
+        ].every((key) => data.configuration[key] === true) &&
+        data.history?.status === "passed" &&
+        Number.isSafeInteger(data.history.historicalSessions) &&
+        data.history.historicalSessions > 0 &&
+        Number.isSafeInteger(data.history.historicalEvents) &&
+        data.history.historicalEvents > 0 &&
+        data.history.allOriginalHeadersAndEventsPreserved === true &&
+        data.history.readWithNewBundledCore === true,
+      "DESKTOP_UPDATE_CONFIGURATION_AND_HISTORY_REQUIRED",
+    );
+    platforms[plan.platform] = {
+      fromVersion: row.fromVersion,
+      toVersion: plan.version,
+      historicalSessions: data.history.historicalSessions,
+      historicalEvents: data.history.historicalEvents,
+    };
+  }
+  return {
+    status: "full-ui-update-regression-passed",
+    version: receipt.version,
+    sourceSha: receipt.sourceSha,
+    platforms,
   };
 }
 
@@ -225,13 +311,40 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       artifacts: { type: "string" },
       "source-sha": { type: "string" },
       publish: { type: "boolean", default: false },
+      "verify-update": { type: "boolean", default: false },
+      "mac-artifacts": { type: "string" },
+      "windows-artifacts": { type: "string" },
+      acceptance: { type: "string" },
       output: { type: "string" },
     },
   });
-  const plan = await prepareDesktopRelease(values.artifacts, values["source-sha"]);
-  const result = values.publish
-    ? await publishDesktopRelease(plan, createDesktopOssStore())
-    : { status: "validated-only", ...plan };
+  let result;
+  if (values["verify-update"]) {
+    assert.ok(
+      !values.publish &&
+        !values.artifacts &&
+        values.acceptance &&
+        values["mac-artifacts"] &&
+        values["windows-artifacts"],
+      "DESKTOP_UPDATE_ACCEPTANCE_ARGUMENTS_REQUIRED",
+    );
+    const plans = [];
+    for (const directory of [values["mac-artifacts"], values["windows-artifacts"]])
+      plans.push(await prepareDesktopRelease(directory, values["source-sha"]));
+    result = verifyDesktopUpdateRegression(
+      plans,
+      JSON.parse((await readFile(values.acceptance, "utf8")).replace(/^\uFEFF/, "")),
+    );
+  } else {
+    assert.ok(
+      !values.acceptance && !values["mac-artifacts"] && !values["windows-artifacts"],
+      "DESKTOP_UPDATE_VERIFY_MODE_REQUIRED",
+    );
+    const plan = await prepareDesktopRelease(values.artifacts, values["source-sha"]);
+    result = values.publish
+      ? await publishDesktopRelease(plan, createDesktopOssStore())
+      : { status: "validated-only", ...plan };
+  }
   if (values.output)
     await writeFile(values.output, JSON.stringify(result, null, 2) + "\n", {
       flag: "wx",
