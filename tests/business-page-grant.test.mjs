@@ -5,6 +5,8 @@ import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, cp } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerHtmlPlugins } from "../src/html-plugins.ts";
+import { allowedTools, profileFor } from "../src/host/prompt-policy.ts";
+import { pageIdentityFresh } from "../src/host/page-identity.ts";
 import { writeHtmlDeclarations } from "./fixtures/html-resource.mjs";
 const session = "session-11111111-1111-4111-8111-111111111111";
 test("registered regional, category and MPS mock resources authorize only their current page and no business query", async (t) => {
@@ -264,7 +266,7 @@ async function fixture(t, options = {}) {
     clearSurface: (id, menu) => {
       if (surfaces.get(id)?.menu === menu) surfaces.delete(id);
     },
-    touchPageIdentity: (id, value) => identities.set(id, value),
+    touchPageIdentity: (id, value) => identities.set(id, { ...value, at: Date.now() }),
     clearPageIdentity: (id, plugin) => {
       if (identities.get(id)?.pluginId === plugin) identities.delete(id);
     },
@@ -511,4 +513,53 @@ test("received order workbench requires login, keeps its Consumer and rejects ar
   assert.deepEqual(h.launches, ["order"]);
   assert.deepEqual(h.queries, []);
   grant.release();
+});
+
+test("HTML heartbeat keeps the current page identity fresh without replacing its observation", async (t) => {
+  const h = await fixture(t, { id: "inventory-mps", consumer: "mps" });
+  const grant = await h.authorize();
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => now;
+  t.after(() => {
+    Date.now = originalNow;
+  });
+  const offered = () => {
+    const page = h.identities.get(session);
+    return allowedTools(
+      profileFor(h.preset),
+      page && pageIdentityFresh(page) ? page.pageTool : undefined,
+    );
+  };
+  const answer = Promise.withResolvers();
+  const afterAnswer = answer.promise.then(() => offered().has("gea_page"));
+  assert.equal(offered().has("gea_page"), true);
+  const original = h.identities.get(session);
+  now += 90001;
+  assert.equal(pageIdentityFresh(original), false);
+  assert.equal(offered().has("gea_page"), false);
+  for (let minute = 0; minute < 15; minute++) {
+    grant.heartbeat();
+    now += 60000;
+    assert.equal(offered().has("gea_page"), true);
+  }
+  answer.resolve();
+  assert.equal(await afterAnswer, true);
+  assert.equal(pageIdentityFresh(h.identities.get(session)), true);
+  assert.equal(h.identities.get(session).pluginId, "inventory-mps");
+  assert.deepEqual(h.queries, []);
+  grant.release();
+  assert.equal(h.identities.size, 0);
+  assert.throws(() => grant.heartbeat(), /PAGE_OWNER_RELEASED|abort/i);
+  assert.equal(h.identities.size, 0);
+});
+
+test("a previous page heartbeat cannot replace the current page or survive identity withdrawal", async (t) => {
+  const h = await fixture(t);
+  const previous = await h.authorize();
+  const current = await h.authorize();
+  assert.throws(() => previous.heartbeat(), /PAGE_OWNER_RELEASED|abort/i);
+  assert.equal(h.identities.get(session).pluginId, h.id);
+  h.changeIdentity();
+  assert.throws(() => current.heartbeat(), /abort/i);
 });

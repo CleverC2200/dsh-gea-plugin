@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, lstat, realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, lstat, realpath } from "node:fs/promises";
 import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
@@ -496,12 +496,7 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
   }
   let started = false;
   let before;
-  const suffix =
-    plan.from === plan.to
-      ? "-" +
-        createHash("sha256").update(currentBytes).update(JSON.stringify(plan.targets)).digest("hex")
-      : "";
-  const backup = join(directory, "before-" + plan.from + "-to-" + plan.to + suffix);
+  let backup;
   try {
     await install({
       root,
@@ -564,12 +559,7 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
         before = new Map(
           await Promise.all(files.map(async (file) => [file, await optional(join(profile, file))])),
         );
-        for (const path of [
-          join(profile, "gea"),
-          join(profile, "gea/bootstrap"),
-          directory,
-          backup,
-        ]) {
+        for (const path of [join(profile, "gea"), join(profile, "gea/bootstrap"), directory]) {
           const entry = await lstat(path).catch((error) => {
             if (error.code === "ENOENT") return null;
             throw error;
@@ -577,40 +567,24 @@ export async function refreshBundledCompanySuite({ root, support, seed, home, ma
           if (entry && (!entry.isDirectory() || entry.isSymbolicLink()))
             throw Error("GEA_REFRESH_UNSAFE_BACKUP");
         }
-        await mkdir(backup, { recursive: true, mode: 0o700 });
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        backup = await mkdtemp(join(directory, "before-" + plan.from + "-to-" + plan.to + "-"));
         for (const [file, bytes] of before)
-          if (bytes) {
-            const saved = await optional(join(backup, file));
-            if (saved && !saved.equals(bytes)) throw Error("GEA_REFRESH_BACKUP_CHANGED");
-            if (!saved)
-              await writeFile(join(backup, file), bytes, {
-                flag: "wx",
-                mode: 0o600,
-              });
-          }
+          if (bytes)
+            await writeFile(join(backup, file), bytes, {
+              flag: "wx",
+              mode: 0o600,
+            });
         if (recovery)
           await writeFile(join(recovery.backup, "failed-receipt.json"), recovery.bytes, {
             flag: "wx",
             mode: 0o600,
           });
-        if (pendingRecovery) {
-          const saved = join(backup, "pending-update-receipt.json");
-          const bytes = await optional(saved);
-          if (bytes) {
-            const entry = await lstat(saved);
-            if (
-              !entry.isFile() ||
-              entry.isSymbolicLink() ||
-              !bytes.equals(pendingRecovery.original)
-            )
-              throw Error("GEA_REFRESH_BACKUP_CHANGED");
-          }
-          if (!bytes)
-            await writeFile(saved, pendingRecovery.original, {
-              flag: "wx",
-              mode: 0o600,
-            });
-        }
+        if (pendingRecovery)
+          await writeFile(join(backup, "pending-update-receipt.json"), pendingRecovery.original, {
+            flag: "wx",
+            mode: 0o600,
+          });
         await writeFile(journal, JSON.stringify({ ...plan, status: "installing", backup }) + "\n", {
           mode: 0o600,
         });
