@@ -234,7 +234,7 @@ test(
     await expect(monthPlan.locator("span").first()).toHaveText("¥100");
     // 数量带单位：月计划列的数量显示成「10 件」。
     await expect(monthPlan.locator("small").first()).toHaveText("10 件");
-    await expect(frame.locator("tbody").first()).toContainText("25.0%");
+    await expect(frame.locator("tbody").first()).toContainText("50.0%");
     await expect(frame.locator("tbody").first()).not.toContainText("版本②：¥100 / 10");
     await expect(frame.locator("tbody").first()).not.toContainText("该版本不含月度目标");
     await frame.getByRole("button", { name: /查看.*宝阳销售组|宝阳销售组.*调整/ }).click();
