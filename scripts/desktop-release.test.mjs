@@ -270,7 +270,7 @@ test("release completion requires both platforms and rejects stale artifacts or 
 test("the final CLI validates both unchanged signed artifact sets without publishing", async (t) => {
   const { fixtures, receipt } = await updateFixture(t);
   const input = join(fixtures[0].directory, "update-acceptance.json");
-  await writeFile(input, JSON.stringify(receipt));
+  await writeFile(input, "\uFEFF" + JSON.stringify(receipt));
   const output = execFileSync(
     process.execPath,
     [

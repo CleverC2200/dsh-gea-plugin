@@ -330,7 +330,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       plans.push(await prepareDesktopRelease(directory, values["source-sha"]));
     result = verifyDesktopUpdateRegression(
       plans,
-      JSON.parse(await readFile(values.acceptance, "utf8")),
+      JSON.parse((await readFile(values.acceptance, "utf8")).replace(/^\uFEFF/, "")),
     );
   } else {
     assert.ok(
