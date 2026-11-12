@@ -4,12 +4,8 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-/**
- * V1.8 #12：动作失败时弹窗只给业务语言，不出现 GEA_HTTP_409、payload.plan_month 这类
- * 接口/字段/错误码；技术细节与「错误编号」只进控制台，编号可以在界面上口头转述。
- */
 test(
-  "action failure dialog shows business copy plus a transferable error id",
+  "action failure dialog shows business copy without response identifiers",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t);
@@ -129,9 +125,8 @@ test(
     await dialog.getByLabel("退回原因（必填）", { exact: true }).fill("测试退回原因");
     await dialog.getByRole("button", { name: "确认退回", exact: true }).click();
     // 上游 409 带着原因码时，不能统一说成"并发冲突、请刷新"——这条是服务端通知载荷被拒，
-    // 刷新解决不了，必须直接告诉用户去找后端。
     await expect(
-      dialog.getByText("服务端在生成审批通知时被拒绝，属于服务端问题，刷新无法解决", {
+      dialog.getByText("审批通知未能发送，请联系管理员核对通知配置。", {
         exact: false,
       }),
     ).toBeVisible({ timeout: 20000 });
@@ -146,16 +141,10 @@ test(
     ]) {
       assert.ok(!dialogText.includes(leak), `界面上不应出现「${leak}」，实际：${dialogText}`);
     }
-    const reference = /错误编号：(req)/.exec(dialogText);
-    assert.ok(reference, `失败提示应给出错误编号，实际：${dialogText}`);
-    // 技术细节只进控制台，且带着同一个错误编号，便于管理员核对。
-    assert.ok(
-      warned.some((line) => line.includes(reference[1]) && line.includes("plan_month")),
-      `控制台应有编号与原始报错：${JSON.stringify(warned)}`,
-    );
+    assert.ok(!dialogText.includes("错误编号"), dialogText);
+    assert.ok(warned.some((line) => line.includes("req") && line.includes("plan_month")));
 
-    // 直接「通过」失败时弹窗会关掉、错误落到队列顶部，这条路径同样不能出现技术文案。
-    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     // 退回请求失败后这一笔没被受理，勾选已经清掉；再点「通过」要重新勾一次。
     await expect(
@@ -163,19 +152,21 @@ test(
     ).not.toBeChecked();
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame.getByRole("button", { name: "通过", exact: true }).click();
-    const queueAlert = frame.locator('[class*="exportFeedback"]');
-    await expect(queueAlert).toBeVisible({ timeout: 20000 });
-    // 失败后勾选要一起清掉：这一批没被受理，留着的勾选会让人以为还能直接再点。
+    const resultDialog = frame.getByRole("dialog", { name: "处理结果", exact: true });
+    await expect(resultDialog).toBeVisible({ timeout: 20000 });
+    await expect(resultDialog).toContainText("审批通知未能发送");
+    await expect(resultDialog.getByRole("spinbutton")).toHaveCount(0);
     await expect(
       frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).not.toBeChecked();
-    const queueText = await queueAlert.innerText();
-    assert.ok(
-      queueText.includes("操作请求失败且未更新本地状态"),
-      `队列提示应是业务文案，实际：${queueText}`,
-    );
-    for (const leak of ["payload", "plan_month", "GEA_HTTP", "NOTIFICATION_PAYLOAD_INVALID"]) {
-      assert.ok(!queueText.includes(leak), `队列提示不应出现「${leak}」，实际：${queueText}`);
-    }
+    const resultText = await resultDialog.innerText();
+    for (const leak of [
+      "payload",
+      "plan_month",
+      "GEA_HTTP",
+      "NOTIFICATION_PAYLOAD_INVALID",
+      "错误编号",
+    ])
+      assert.ok(!resultText.includes(leak), resultText);
   },
 );

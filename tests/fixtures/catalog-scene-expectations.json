@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained)",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained); AQKC full author bytes follow merged Manage 876a496c4555499b95de85c764f8b511da5af1e4 current-page evidence rules.",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -43,10 +43,10 @@
       {
         "owner": "workbench",
         "file": "lib/business/inventory-aqkc/skills/aqkc/SKILL.md",
-        "sha256": "d60e791fc1b90eb789539a5637b6d6d9135c0b5ad191aab5c599d2644c08337f",
+        "sha256": "e6bd68b10f7352a120bc0bd79f21495aa0196da0b0feef56f7b2a10626ad22f2",
         "name": "inventory-aqkc",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "662413674cfac1fd2942f1a8e4d03b3fd3847f2c",
+        "sourceHead": "876a496c4555499b95de85c764f8b511da5af1e4",
         "sourceFile": "business-resources/inventory-aqkc/skills/aqkc/SKILL.md"
       },
       {

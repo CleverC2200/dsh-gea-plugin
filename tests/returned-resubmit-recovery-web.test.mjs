@@ -35,7 +35,8 @@ test(
       await expect(
         frame.locator("tbody tr").filter({ hasText: name }).first().getByRole("checkbox"),
       ).toBeChecked();
-    await frame.getByRole("button", { name: "提交所选", exact: true }).click();
+    await expect(frame.getByRole("button", { name: "提交所选", exact: true })).toBeDisabled();
+    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("乌鲁木齐退回区域");
     await expect(dialog).not.toContainText("济南退回区域");
@@ -71,7 +72,7 @@ test(
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
     await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
-    await expect(dialog).toContainText("2.000 件");
+    await expect(dialog).toContainText("结果暂时未知");
     await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
     await dialog.getByRole("button", { name: "重试并核对结果", exact: true }).click();
     await expect(dialog).toContainText("提交成功");
@@ -99,7 +100,7 @@ test(
     const dialog = frame.getByRole("dialog");
     await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
     await expect(dialog).toContainText("成功 1 笔");
-    await expect(dialog).toContainText("待核实 1 笔");
+    await expect(dialog).toContainText("待核对 1 笔");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await rowBox(PLAN_B).click();
     await expect(rowBox(PLAN_B).locator("input")).toBeChecked();
