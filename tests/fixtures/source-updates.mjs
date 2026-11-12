@@ -1,4 +1,3 @@
-/** Small filesystem source combinations use the current core and the real release-history policy. */
 import * as fs from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -150,7 +149,7 @@ export async function sourceUpdateFixture(t) {
   const baseline = await readSourceUpdateBaseline(runtime, core);
   const proposal = async (combination, components, previous = baseline) => {
     const entries = [];
-    // Only reading a staged identity: no selection is changed to derive its metadata.
+
     const record = JSON.parse(
       await fs.readFile(
         join(runtime, "source-combinations", combination, "combination.json"),

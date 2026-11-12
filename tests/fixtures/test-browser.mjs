@@ -1,4 +1,3 @@
-/** Keep the browser owned by the Node test that launches it. */
 export async function testBrowser(t, launch) {
   t.signal.throwIfAborted();
   let browser;

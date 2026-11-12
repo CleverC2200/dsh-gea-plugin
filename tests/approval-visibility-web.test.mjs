@@ -24,8 +24,20 @@ test(
       currentAmount: "10",
       targetAmount: "10",
       targetQty: "1",
-      skuCount: 0,
+      skuCount: 1,
     }));
+    const skusFor = (row) => [
+      {
+        id: row.versionId + "-sku",
+        versionId: row.versionId,
+        skuCode: "123",
+        qty: "1",
+        baseQty: "1",
+        amt: "10",
+        amtBase: "10",
+        price: "10",
+      },
+    ];
     const writes = [];
     app.route((req, res, reply) => {
       const path = req.url.pathname;
@@ -90,7 +102,7 @@ test(
             : {
                 currentVersion: version,
                 versions: [version],
-                skus: [],
+                skus: skusFor(plan),
                 logs: [],
                 ...(plan.status === 2
                   ? {
@@ -107,7 +119,7 @@ test(
               },
         );
       }
-      if (path.endsWith("/versions/v2/skus")) return send([]);
+      if (path.endsWith("/versions/v2/skus")) return send(skusFor(plans[2]));
       if (path.endsWith("/versions/v2/actions")) {
         const body = JSON.parse(req.body);
         writes.push(body);
@@ -215,6 +227,7 @@ test(
     assert.equal(writes[0].approvalPolicy, "role-visible-v1");
     assert.equal(writes[0].expectedSnapshot, "a".repeat(64));
     assert.equal(writes[0].expectedStatus, 2);
+    await expect(regionCanReview.getByRole("checkbox")).not.toBeChecked();
     await expect(regionCanReview.locator("label.arco-checkbox")).toBeVisible();
     await regionCanReview.locator("label.arco-checkbox").click();
     await frame.getByRole("button", { name: "退回", exact: true }).click();
@@ -223,7 +236,7 @@ test(
       rejectDialog.getByRole("textbox", { name: "退回原因（必填）", exact: true }),
     ).toBeVisible();
     await expect(rejectDialog.getByTestId("regional-approval-live-action-checksum")).toHaveCount(0);
-    await frame.getByRole("button", { name: "取消", exact: true }).click();
+    await rejectDialog.getByRole("button", { name: "取消", exact: true }).click();
 
     await expect(frame.getByRole("tab", { name: "纠偏", exact: true })).toBeVisible();
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();

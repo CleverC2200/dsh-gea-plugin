@@ -57,7 +57,6 @@ export async function pageReferenceColumn(t, change) {
     await expect.poll(() => posted, { timeout: 10000 }).toBeTruthy();
     await page.keyboard.up("Alt");
     if (change === "hidden") {
-      // Real rendered column visibility changes, without touching the picker, bridge or React state.
       await frame.locator(".replenishment-table").evaluate((table) => {
         const index = [...table.querySelectorAll("thead th")].findIndex(
           (cell) => cell.dataset.column === "productName",

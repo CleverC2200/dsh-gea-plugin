@@ -11,9 +11,7 @@ if (
 )
   throw Error("PLUGIN_PACKAGE_VERSION_INVALID: package.json requires name and version");
 const literal = (value) => JSON.stringify(value);
-const source =
-  "/** Package identity captured at build time; immutable after module loading. */\n" +
-  `export const pluginPackageVersion = Object.freeze({\n  name: ${literal(manifest.name)},\n  version: ${literal(manifest.version)},\n} as const);\n`;
+const source = `export const pluginPackageVersion = Object.freeze({\n  name: ${literal(manifest.name)},\n  version: ${literal(manifest.version)},\n} as const);\n`;
 const target = "src/plugin-package-version.ts";
 let existing;
 try {

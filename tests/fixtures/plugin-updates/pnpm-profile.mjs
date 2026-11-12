@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { companyPackageNames } from "../../../src/shared/plugin-release.mjs";
-/** Real isolated pnpm layout. Only local TGZ inputs and a private store are permitted. */
+
 export async function installPnpmConsumerLayout(f, range, sdkPeers = {}) {
   let manager = process.env.GEA_PLUGIN_UPDATE_PNPM;
   if (!manager) {

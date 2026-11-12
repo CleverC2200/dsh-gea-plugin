@@ -5,7 +5,7 @@ import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
 test(
-  "action failure dialog shows business copy plus a transferable error id",
+  "action failure dialog shows business copy without response identifiers",
   { timeout: 90000 },
   async (t) => {
     const app = await profile(t);
@@ -125,7 +125,7 @@ test(
     await dialog.getByRole("button", { name: "确认退回", exact: true }).click();
 
     await expect(
-      dialog.getByText("服务端在生成审批通知时被拒绝，属于服务端问题，刷新无法解决", {
+      dialog.getByText("审批通知未能发送，请联系管理员核对通知配置。", {
         exact: false,
       }),
     ).toBeVisible({ timeout: 20000 });
@@ -140,15 +140,10 @@ test(
     ]) {
       assert.ok(!dialogText.includes(leak), `界面上不应出现「${leak}」，实际：${dialogText}`);
     }
-    const reference = /错误编号：(req)/.exec(dialogText);
-    assert.ok(reference, `失败提示应给出错误编号，实际：${dialogText}`);
+    assert.ok(!dialogText.includes("错误编号"), dialogText);
+    assert.ok(warned.some((line) => line.includes("req") && line.includes("plan_month")));
 
-    assert.ok(
-      warned.some((line) => line.includes(reference[1]) && line.includes("plan_month")),
-      `控制台应有编号与原始报错：${JSON.stringify(warned)}`,
-    );
-
-    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).toHaveCount(0);
 
     await expect(
@@ -156,19 +151,21 @@ test(
     ).not.toBeChecked();
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame.getByRole("button", { name: "通过", exact: true }).click();
-    const queueAlert = frame.locator('[class*="exportFeedback"]');
-    await expect(queueAlert).toBeVisible({ timeout: 20000 });
-
+    const resultDialog = frame.getByRole("dialog", { name: "处理结果", exact: true });
+    await expect(resultDialog).toBeVisible({ timeout: 20000 });
+    await expect(resultDialog).toContainText("审批通知未能发送");
+    await expect(resultDialog.getByRole("spinbutton")).toHaveCount(0);
     await expect(
       frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).not.toBeChecked();
-    const queueText = await queueAlert.innerText();
-    assert.ok(
-      queueText.includes("操作请求失败且未更新本地状态"),
-      `队列提示应是业务文案，实际：${queueText}`,
-    );
-    for (const leak of ["payload", "plan_month", "GEA_HTTP", "NOTIFICATION_PAYLOAD_INVALID"]) {
-      assert.ok(!queueText.includes(leak), `队列提示不应出现「${leak}」，实际：${queueText}`);
-    }
+    const resultText = await resultDialog.innerText();
+    for (const leak of [
+      "payload",
+      "plan_month",
+      "GEA_HTTP",
+      "NOTIFICATION_PAYLOAD_INVALID",
+      "错误编号",
+    ])
+      assert.ok(!resultText.includes(leak), resultText);
   },
 );

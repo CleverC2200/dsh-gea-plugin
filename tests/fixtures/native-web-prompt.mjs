@@ -3,7 +3,6 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readSupportedCore } from "../../scripts/supported-cores.mjs";
 
-/** Read the admitted Core's public section without starting another Web server. */
 export async function nativeWebPrompt(origin) {
   const core = resolve("../../official-latest-standard");
   await readSupportedCore(core);
@@ -30,7 +29,6 @@ export async function nativeWebPrompt(origin) {
   return section.text();
 }
 
-/** Exempt only one exact authoritative Core section; keep all other prompt bytes under review. */
 export function withoutNativeWebPrompt(system, native) {
   assert.equal(
     system.split(native).length,

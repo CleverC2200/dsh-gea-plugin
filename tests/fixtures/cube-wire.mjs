@@ -1,4 +1,3 @@
-/** Explicit loopback server contract for native MCP model-loop fixtures. */
 export const fixtureCubeCode = "cube";
 export const inspectSchema = {
   type: "object",
@@ -30,7 +29,6 @@ export const fixtureCubeTools = [
   },
 ];
 
-/** Native discovery only; scenarios still own every business tool response. */
 export function fixtureCubeDiscovery(request, response, reply) {
   if (!request.url.pathname.endsWith("/ai/gateway/mcp/proxy/mcp")) return false;
   const wire = JSON.parse(request.body);

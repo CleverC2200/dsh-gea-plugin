@@ -1,4 +1,3 @@
-/** Execute the original fixture up to deployment admission without starting a Host or browser. */
 import { registerHooks } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";

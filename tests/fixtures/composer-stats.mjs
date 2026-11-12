@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { readSupportedCore } from "../../scripts/supported-cores.mjs";
 
-/** The two official axes render the same public dock with different statistic markers. */
 export async function composerStatsContract() {
   const core = await readSupportedCore(resolve("../../official-latest-standard"));
   if (core.id !== undefined) throw Error("COMPOSER_OFFICIAL_CORE_REQUIRED");

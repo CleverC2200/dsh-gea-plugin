@@ -186,16 +186,23 @@ test(
   "reject dialog still closes after the request failed with a conflict",
   { timeout: 90000 },
   async (t) => {
-    const { frame, writes, openReject, closeThroughDiscardConfirm } = await fixture(t, {
+    const { frame, writes, openReject } = await fixture(t, {
       rejectFails: true,
     });
     const remark = await openReject();
     await remark.fill("测试退回原因");
     await frame.getByRole("button", { name: "确认退回", exact: true }).click();
 
-    await expect(frame.getByText(/错误编号：req/)).toBeVisible({ timeout: 20000 });
+    await expect(frame.getByRole("dialog", { name: "处理结果", exact: true })).toContainText(
+      "审批通知未能发送",
+      { timeout: 20000 },
+    );
+    await expect(frame.getByText(/错误编号/)).toHaveCount(0);
     assert.equal(writes.length, 1);
-    await closeThroughDiscardConfirm(remark);
+    const result = frame.getByRole("dialog", { name: "处理结果", exact: true });
+    await expect(result.getByRole("spinbutton")).toHaveCount(0);
+    await result.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(remark).toHaveCount(0);
 
     await expect(
       frame.locator('tbody label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),

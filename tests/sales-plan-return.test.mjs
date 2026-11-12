@@ -183,7 +183,7 @@ test("continued returns validate existing detail and carry adjustments through a
     assert.equal("expectedReturnTargetStage" in body, false);
   }
 });
-test("failed readback retains the original write body and idempotency key for a retry", async () => {
+test("failed readback retains the successful receipt and retries only the receiving-node read", async () => {
   const f = fixture({ wrongReadback: true });
   await assert.rejects(
     f.tx.action(f.command, new AbortController().signal),
@@ -191,6 +191,6 @@ test("failed readback retains the original write body and idempotency key for a 
   );
   f.after.skus[0].regionConfirmedQty = "110";
   await f.tx.action(f.command, new AbortController().signal);
-  assert.equal(f.bodies.length, 2);
-  assert.equal(f.bodies[0], f.bodies[1]);
+  assert.equal(f.bodies.length, 1);
+  assert.equal(f.reads(), 3);
 });

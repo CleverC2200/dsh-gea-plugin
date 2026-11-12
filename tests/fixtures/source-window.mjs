@@ -1,4 +1,3 @@
-/** Disposable source checkouts and a process observer; the fixed Core is read-only. */
 import { readFile, writeFile, mkdir, cp, symlink, mkdtemp, rm, readdir } from "node:fs/promises";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -299,7 +298,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
     let args;
     if (entry === "runSourceProfile") {
       const runner = join(temporary, "call-profile.mjs");
-      // The runner uses only the existing public function; admission has no test-only interface.
+
       fsWrite(
         runner,
         `import {runSourceProfile} from ${JSON.stringify(pathToFileURL(join(gea, "scripts/start-isolated-validation.mjs")).href)}; await runSourceProfile(${JSON.stringify(fixedCore)},${JSON.stringify(runtime)},${mode !== "isolated-core-host"},${mode === "source-host" ? JSON.stringify(deployment) : "undefined"},0,${JSON.stringify({ window: request, mode, ...extra })});`,

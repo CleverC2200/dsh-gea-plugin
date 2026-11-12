@@ -261,7 +261,7 @@ test(
       monthPlan.locator("small").first(),
       "月计划采用列表 mPlanQty 并显示单位",
     ).toHaveText("20 件");
-    await expect(frame.locator("tbody").first()).toContainText("25.0%");
+    await expect(frame.locator("tbody").first()).toContainText("50.0%");
     await expect(frame.locator("tbody").first()).not.toContainText("版本②：¥100 / 10");
     await expect(frame.locator("tbody").first()).not.toContainText("该版本不含月度目标");
     await shot("03-version-comparison");

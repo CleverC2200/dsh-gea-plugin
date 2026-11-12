@@ -31,7 +31,7 @@ test(
       currentAmount: "10",
       targetAmount: "10",
       targetQty: "1",
-      skuCount: 0,
+      skuCount: 1,
     });
     const plans = [
       plan("a1", "P1", 5),
@@ -44,6 +44,18 @@ test(
       plan("c2", "P3", 10),
 
       plan("d1", "P4", 2),
+    ];
+    const skusFor = (row) => [
+      {
+        id: row.versionId + "-sku",
+        versionId: row.versionId,
+        skuCode: "123",
+        qty: "1",
+        baseQty: "1",
+        amt: "10",
+        amtBase: "10",
+        price: "10",
+      },
     ];
     let denyWrites = false;
     app.route((req, _res, reply) => {
@@ -83,7 +95,7 @@ test(
             ? {
                 currentVersion: { ...row, id: row.versionId, effective: true },
                 versions: [],
-                skus: [],
+                skus: skusFor(row),
                 logs: [],
                 actionContext: {
                   versionId: row.versionId,
@@ -96,7 +108,10 @@ test(
             : {},
         );
       }
-      if (path.endsWith("/skus")) return send([]);
+      if (path.endsWith("/skus")) {
+        const row = plans.find((p) => path.endsWith("/versions/" + p.versionId + "/skus"));
+        return send(row ? skusFor(row) : []);
+      }
       if (path.endsWith("/actions")) {
         if (denyWrites) {
           reply({ code: "403", message: "没有权限" }, 403);
@@ -205,6 +220,9 @@ test(
     denyWrites = true;
     await approve.click();
 
+    const result = frame.getByRole("dialog", { name: "处理结果", exact: true });
+    await expect(result).toBeVisible();
+    await result.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(approve).toBeDisabled({ timeout: 15000 });
     await expect(approve).toHaveAttribute("title", /服务端已拒绝当前用户权限/, { timeout: 15000 });
   },

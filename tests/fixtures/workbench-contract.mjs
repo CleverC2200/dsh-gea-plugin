@@ -3,7 +3,6 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { dirname } from "node:path";
 import { readProfileSources } from "./profile-inputs.mjs";
 
-/** Execute the frozen presentation owner's assertions in its own dependency/build layout. */
 export async function runWorkbenchContracts(files) {
   const sources = await readProfileSources(process.env.GEA_TEST_SOURCE_INPUTS);
   const owner = sources.find((entry) => entry.repo === "dsh-agent-workbench");
@@ -14,7 +13,7 @@ export async function runWorkbenchContracts(files) {
   );
   execFileSync("git", ["diff", "--exit-code", "HEAD", "--", ...files], { cwd });
   const env = { ...process.env };
-  // This child starts its own test runner rather than continuing the parent's test context.
+
   delete env.NODE_TEST_CONTEXT;
   const result = spawnSync(
     process.execPath,

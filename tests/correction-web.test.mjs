@@ -192,12 +192,9 @@ test(
       await selectCustomer(frame);
       const through = frame.getByRole("button", { name: "通过", exact: true });
       await through.click();
-      await expect(
-        frame
-          .getByRole("alert")
-          .filter({ hasText: "操作请求失败且未更新本地状态；请刷新权威队列后再决定。" })
-          .first(),
-      ).toBeVisible();
+      const blocked = frame.getByRole("dialog", { name: "处理结果", exact: true });
+      await expect(blocked).toContainText("数量");
+      await blocked.getByRole("button", { name: "关闭", exact: true }).click();
       await expect(through).toBeEnabled();
       assert.equal(actionRequests(app).length, beforeNegative);
       assert.equal(service.detail().currentVersion.status, 3);
