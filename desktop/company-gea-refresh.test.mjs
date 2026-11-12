@@ -148,7 +148,9 @@ test("the refresh installs one complete suite, keeps user configuration and save
     },
   });
   assert.equal(result.changed, true);
-  const backup = join(f.profile, "gea/bootstrap/gea-refresh/before-0.0.130-to-0.0.166");
+  const { backup } = JSON.parse(
+    await readFile(join(f.profile, "gea/bootstrap/gea-refresh/receipt.json")),
+  );
   assert.equal(await readFile(join(backup, "package.json"), "utf8"), JSON.stringify(current));
   assert.equal(await readFile(join(backup, "pnpm-lock.yaml"), "utf8"), "old lock");
   assert.equal(
@@ -164,6 +166,64 @@ test("the refresh installs one complete suite, keeps user configuration and save
     ).changed,
     false,
   );
+});
+
+test("a restored old profile can repeat the same upgrade without replacing earlier recovery materials", async (t) => {
+  const f = await fixture(t);
+  const paths = [
+    "package.json",
+    "cordis.patch.yml",
+    "pnpm-lock.yaml",
+    ...bundledSuite.map((row) => "node_modules/" + row.name + "/package.json"),
+  ];
+  const original = new Map(
+    await Promise.all(paths.map(async (path) => [path, await readFile(join(f.profile, path))])),
+  );
+  let installs = 0;
+  const options = {
+    ...f,
+    install: async (operation) => {
+      await operation.beforeInstall();
+      installs++;
+      const manifest = JSON.parse(await readFile(join(f.profile, "package.json")));
+      for (const row of bundledSuite) {
+        manifest.dependencies[row.name] = "file:/cache/" + row.file;
+        await writeFile(
+          join(f.profile, "node_modules", row.name, "package.json"),
+          JSON.stringify({ name: row.name, version: row.version }),
+        );
+      }
+      await writeFile(join(f.profile, "package.json"), JSON.stringify(manifest));
+      await operation.complete({ writeFileAtomic: writeFile });
+    },
+  };
+  const journal = join(f.profile, "gea/bootstrap/gea-refresh/receipt.json");
+  assert.equal((await refreshCompanyStartup(options)).refresh.status, "completed");
+  const first = await readFile(journal);
+  const firstBackup = JSON.parse(first).backup;
+  for (const [path, bytes] of original) await writeFile(join(f.profile, path), bytes);
+  const restoredPatch = "# configuration after restoring the old client\n- id: custom\n";
+  await writeFile(join(f.profile, "cordis.patch.yml"), restoredPatch);
+  const session = join(f.home, "sessions/keep.json");
+  await mkdir(join(f.home, "sessions"));
+  await writeFile(session, '{"draft":"keep"}');
+  assert.equal((await refreshCompanyStartup(options)).refresh.status, "completed");
+  const secondBackup = JSON.parse(await readFile(journal)).backup;
+  assert.notEqual(secondBackup, firstBackup);
+  assert.deepEqual(await readFile(join(firstBackup, "package.json")), original.get("package.json"));
+  assert.deepEqual(
+    await readFile(join(firstBackup, "cordis.patch.yml")),
+    original.get("cordis.patch.yml"),
+  );
+  assert.equal(await readFile(join(secondBackup, "cordis.patch.yml"), "utf8"), restoredPatch);
+  for (let attempt = 0; attempt < 3; attempt++)
+    assert.equal(
+      (await refreshCompanyStartup(options)).refresh.status,
+      "current-company-suite-preserved",
+    );
+  assert.equal(installs, 2);
+  assert.equal(await readFile(join(f.profile, "cordis.patch.yml"), "utf8"), restoredPatch);
+  assert.equal(await readFile(session, "utf8"), '{"draft":"keep"}');
 });
 
 test("a pending restart defers bundled refresh while strict installation stays blocked", async (t) => {
@@ -455,7 +515,12 @@ for (const scenario of [
           join(f.profile, "gea/plugin-updates/cache", row.targetSha256 + ".tgz"),
         );
       }
-      const backup = join(f.profile, "gea/bootstrap/gea-refresh", scenario.backup);
+      const { backup } = JSON.parse(
+        await readFile(join(f.profile, "gea/bootstrap/gea-refresh/receipt.json")),
+      );
+      assert.ok(
+        backup.startsWith(join(f.profile, "gea/bootstrap/gea-refresh", scenario.backup) + "-"),
+      );
       assert.equal(await readFile(join(backup, "pending-update-receipt.json"), "utf8"), f.original);
       assert.equal(
         await readFile(join(backup, "package.json"), "utf8"),
@@ -944,7 +1009,7 @@ test("failed refreshes retain their backup and require recovery instead of retry
     await readFile(join(f.profile, "gea/bootstrap/gea-refresh/receipt.json")),
   );
   assert.equal(receipt.status, "failed");
-  await access(join(f.profile, "gea/bootstrap/gea-refresh/before-0.0.130-to-0.0.166/package.json"));
+  await access(join(receipt.backup, "package.json"));
 });
 
 import { createHash } from "node:crypto";

@@ -7,6 +7,7 @@ $installation = Join-Path $WorkDirectory 'installed'
 $executable = Join-Path $installation 'GEA Desktop.exe'
 $userRoot = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'dsh-gea-desktop'
 $marker = Join-Path $userRoot 'signed-upgrade-preservation.json'
+$validationHome = Join-Path $WorkDirectory 'home'
 [IO.Directory]::CreateDirectory($userRoot) | Out-Null
 function Stop-InstalledApplication {
     Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $executable } | ForEach-Object {
@@ -19,6 +20,7 @@ function Install-Client([string]$Installer,[string]$ExecutableName,[string]$Stag
     $info.FileName = $Installer
     $info.Arguments = '/S /D=' + $installation
     $info.UseShellExecute = $false
+    $info.EnvironmentVariables['DSH_HOME'] = Join-Path $WorkDirectory 'installer-home'
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $info
     if (!$process.Start()) { throw 'INSTALLER_START_FAILED' }
@@ -49,6 +51,29 @@ function Installed-Version {
     if ($process.ExitCode -ne 0) { throw ('INSTALLED_MANIFEST_READ_FAILED: ' + $value + $errors.Result) }
     return $value.Trim()
 }
+function Start-InstalledApplication {
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $executable
+    $info.UseShellExecute = $false
+    $info.EnvironmentVariables.Remove('ELECTRON_RUN_AS_NODE')
+    $info.EnvironmentVariables['DSH_HOME'] = $validationHome
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $info
+    if (!$process.Start()) { throw 'CLIENT_START_FAILED' }
+    $deadline = [DateTime]::UtcNow.AddSeconds(120)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $process.Refresh()
+        if ($process.HasExited) { throw ('CLIENT_EARLY_EXIT_' + $process.ExitCode) }
+        if ($process.MainWindowHandle -ne 0) {
+            if ($process.WaitForExit(3000)) { throw ('CLIENT_EARLY_EXIT_' + $process.ExitCode) }
+            $process.Refresh()
+            if ($process.MainWindowTitle -ne 'Synear GEA') { throw ('UNEXPECTED_STARTUP_WINDOW_' + $process.MainWindowTitle) }
+            return $process.MainWindowTitle
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw 'CLIENT_WINDOW_TIMEOUT'
+}
 try {
     Install-Client $OldInstaller 'GEA Desktop.exe' 'baseline'
     if ((Installed-Version) -ne '0.2.0-rc.2.20261102.2') { throw 'BASELINE_VERSION_MISMATCH' }
@@ -60,7 +85,29 @@ try {
     $signature = Get-AuthenticodeSignature -LiteralPath $executable
     $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)
     if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) { throw 'INSTALLED_SIGNATURE_INVALID' }
-    [IO.File]::WriteAllText((Join-Path $WorkDirectory 'overwrite.json'),(@{status='passed';from='0.2.0-rc.2.20261102.2';to=$NewVersion;installedSignature='Valid';existingUserFilesPreserved=$true;employeeDeviceAcceptance=$false} | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+    [IO.Directory]::CreateDirectory($validationHome) | Out-Null
+    $profileMarker = Join-Path $validationHome 'existing-user-data.json'
+    [IO.File]::WriteAllText($profileMarker,$state,[Text.UTF8Encoding]::new($false))
+    $starts = @()
+    $profileSnapshots = @{}
+    $seed = Get-Content -LiteralPath (Join-Path $installation 'resources/company-seed/manifest.json') -Raw | ConvertFrom-Json
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $title = Start-InstalledApplication
+        if ([IO.File]::ReadAllText($profileMarker) -ne $state) { throw 'PROFILE_USER_FILES_CHANGED' }
+        $profile = Join-Path $validationHome 'profiles/desktop'
+        foreach ($package in $seed.packages) {
+            $installedPackage = Get-Content -LiteralPath (Join-Path $profile ('node_modules/' + $package.name + '/package.json')) -Raw | ConvertFrom-Json
+            if ($installedPackage.version -ne $package.version) { throw ('PLUGIN_VERSION_CHANGED_' + $package.name) }
+        }
+        foreach ($file in @('package.json','pnpm-lock.yaml','cordis.patch.yml')) {
+            $bytes = [IO.File]::ReadAllText((Join-Path $profile $file))
+            if ($attempt -eq 1) { $profileSnapshots[$file] = $bytes }
+            elseif ($profileSnapshots[$file] -cne $bytes) { throw ('REPEATED_START_CHANGED_' + $file) }
+        }
+        $starts += @{attempt=$attempt;windowTitle=$title;pluginsMatchSeed=$true;userFilesPreserved=$true}
+        Stop-InstalledApplication
+    }
+    [IO.File]::WriteAllText((Join-Path $WorkDirectory 'overwrite.json'),(@{status='passed';from='0.2.0-rc.2.20261102.2';to=$NewVersion;installedSignature='Valid';existingUserFilesPreserved=$true;nativeStarts=$starts;employeeDeviceAcceptance=$false} | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
 } finally {
     Stop-InstalledApplication
 }
