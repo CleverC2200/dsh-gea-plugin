@@ -57,6 +57,14 @@ await installCompanyPackages({
   offline: false,
 });
 const before = JSON.parse(await readFile(join(profile, "package.json"), "utf8"));
+const restorePackages = [];
+const restoreArchives = join(output, "restore-archives");
+await mkdir(restoreArchives);
+for (const [file] of identities) {
+  const target = join(restoreArchives, file);
+  await copyFile(join(old, file), target);
+  restorePackages.push(target);
+}
 assert.ok(before.dsh.profile.bundles.includes("@cleverc2200/gea-dsh-prototype"));
 const patch = await readFile(join(profile, "cordis.patch.yml"));
 await mkdir(join(profile, "sessions"), { recursive: true });
@@ -83,15 +91,7 @@ await writeFile(join(output, "failed-receipt.json"), JSON.stringify(failed, null
 const recovered = await refreshBundledCompanySuite(options);
 assert.equal(recovered.status, "completed");
 assert.deepEqual(
-  JSON.parse(
-    await readFile(
-      join(
-        profile,
-        `gea/bootstrap/gea-refresh/before-${failed.from}-to-${failed.to}/failed-receipt.json`,
-      ),
-      "utf8",
-    ),
-  ),
+  JSON.parse(await readFile(join(failed.backup, "failed-receipt.json"), "utf8")),
   failed,
 );
 for (const row of manifest.packages.filter(
@@ -140,6 +140,26 @@ await rm(join(output, "same-version-client"), { recursive: true });
 const sameVersion = await refreshBundledCompanySuite(options);
 assert.equal(sameVersion.status, "completed");
 assert.equal(sameVersion.from, sameVersion.to);
+const completed = JSON.parse(await readFile(journal, "utf8"));
+const originalBackup = await readFile(join(completed.backup, "package.json"));
+await installCompanyPackages({
+  root,
+  support,
+  home,
+  profile,
+  packages: restorePackages,
+  store: join(output, "store"),
+  offline: false,
+});
+const restoredPatch = Buffer.concat([patch, Buffer.from("\n# restored client configuration\n")]);
+await writeFile(join(profile, "cordis.patch.yml"), restoredPatch);
+const repeatedUpgrade = await refreshBundledCompanySuite(options);
+assert.equal(repeatedUpgrade.status, "completed");
+assert.equal(repeatedUpgrade.from, recovered.from);
+assert.equal(repeatedUpgrade.to, recovered.to);
+assert.notEqual(JSON.parse(await readFile(journal, "utf8")).backup, completed.backup);
+assert.deepEqual(await readFile(join(completed.backup, "package.json")), originalBackup);
+assert.deepEqual(await readFile(join(profile, "cordis.patch.yml")), restoredPatch);
 const plain = await readFile(join(profile, "package.json"));
 const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), plain]);
 await writeFile(join(profile, "package.json"), bom);
@@ -153,17 +173,25 @@ const normalized = await bootstrapCompanyProfile({
 assert.equal(normalized.changed, true);
 assert.deepEqual(await readFile(normalized.backup), bom);
 assert.deepEqual(await readFile(join(profile, "package.json")), plain);
-const restarted = spawnSync(
-  process.execPath,
-  ["--expose-internals", join(root, "company-bootstrap.mjs"), root, support, seed],
-  {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", DSH_HOME: home },
-    encoding: "utf8",
-  },
-);
-await writeFile(join(output, "restart.log"), restarted.stdout + restarted.stderr);
-assert.equal(restarted.status, 0, restarted.stdout + restarted.stderr);
-assert.equal(JSON.parse(await readFile(journal, "utf8")).status, "completed");
+const completedReceipt = await readFile(journal);
+for (let attempt = 1; attempt <= 3; attempt++) {
+  const restarted = spawnSync(
+    process.execPath,
+    ["--expose-internals", join(root, "company-bootstrap.mjs"), root, support, seed],
+    {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", DSH_HOME: home },
+      encoding: "utf8",
+    },
+  );
+  await writeFile(join(output, `restart-${attempt}.log`), restarted.stdout + restarted.stderr);
+  assert.equal(restarted.status, 0, restarted.stdout + restarted.stderr);
+  assert.deepEqual(await readFile(journal), completedReceipt);
+  assert.deepEqual(await readFile(join(profile, "cordis.patch.yml")), restoredPatch);
+  assert.equal(
+    await readFile(join(profile, "sessions/user-data.json"), "utf8"),
+    '{"keep":"user draft"}',
+  );
+}
 await writeFile(
   join(output, "result.json"),
   JSON.stringify(
@@ -175,6 +203,8 @@ await writeFile(
         "real published GEA159/W9/M16/GenUI0.11.3, removed old client, actual failure then recovery and actual packaged bootstrap restart after BOM conversion",
       recovered,
       normalized,
+      repeatedUpgrade,
+      repeatedBootstrapStarts: 3,
       preservedBundles: current.dsh.profile.bundles,
     },
     null,
