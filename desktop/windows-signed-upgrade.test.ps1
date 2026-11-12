@@ -90,13 +90,13 @@ try {
     [IO.File]::WriteAllText($profileMarker,$state,[Text.UTF8Encoding]::new($false))
     $starts = @()
     $profileSnapshots = @{}
-    $seed = Get-Content -LiteralPath (Join-Path $installation 'resources/company-seed/manifest.json') -Raw | ConvertFrom-Json
+    $seed = Get-Content -LiteralPath (Join-Path $installation 'resources/company-seed/manifest.json') -Encoding UTF8 -Raw | ConvertFrom-Json
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $title = Start-InstalledApplication
         if ([IO.File]::ReadAllText($profileMarker) -ne $state) { throw 'PROFILE_USER_FILES_CHANGED' }
         $profile = Join-Path $validationHome 'profiles/desktop'
         foreach ($package in $seed.packages) {
-            $installedPackage = Get-Content -LiteralPath (Join-Path $profile ('node_modules/' + $package.name + '/package.json')) -Raw | ConvertFrom-Json
+            $installedPackage = Get-Content -LiteralPath (Join-Path $profile ('node_modules/' + $package.name + '/package.json')) -Encoding UTF8 -Raw | ConvertFrom-Json
             if ($installedPackage.version -ne $package.version) { throw ('PLUGIN_VERSION_CHANGED_' + $package.name) }
         }
         foreach ($file in @('package.json','pnpm-lock.yaml','cordis.patch.yml')) {
