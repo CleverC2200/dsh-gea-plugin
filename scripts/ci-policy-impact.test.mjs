@@ -1125,6 +1125,17 @@ test("complete package inputs select existing release and platform contracts", a
     });
 });
 
+test("desktop update data helper changes select the release regression without live device acceptance", (t) => {
+  const fixture = resourceImpactFixture(t);
+  const source = "scripts/desktop-update-data.mjs";
+  fixture.change(fixture.own, source);
+  const plan = fixture.plan();
+  assert.ok(
+    plan.reasons[fixture.own.repo + "/" + source].includes("scripts/desktop-release.test.mjs"),
+  );
+  assert.ok(!plan.files.includes("desktop/startup-state.test.mjs"));
+});
+
 test("gateway transport and session changes retain real consumers while unrelated Profile work stays in integration", async (t) => {
   const consumers = [
     "tests/knowledge-mcp.test.mjs",
