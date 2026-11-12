@@ -713,6 +713,19 @@ try {
         ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
         preparedWorkbench,
       );
+      run(
+        process.execPath,
+        [
+          "node_modules/esbuild/bin/esbuild",
+          "src/sales-plan.ts",
+          "--bundle",
+          "--format=esm",
+          "--platform=node",
+          "--packages=external",
+          "--outfile=lib/sales-plan.js",
+        ],
+        preparedWorkbench,
+      );
       run("corepack", [
         "pnpm",
         "install",

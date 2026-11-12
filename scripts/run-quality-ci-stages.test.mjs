@@ -656,7 +656,18 @@ test("the public macOS task prepares only fixed Host dependencies before executi
     (entry) => entry.command === "corepack" && entry.args.includes("install"),
   );
   const host = commands.findIndex((entry) => entry.command === "host-build");
-  assert.ok(install >= 0 && host > install);
+  const model = commands.findIndex((entry) => entry.command === "workbench-model");
+  assert.ok(model >= 0 && install > model && host > install);
+  assert.equal(commands[model].cwd, join(f.job, "candidate/dsh-agent-workbench"));
+  assert.deepEqual(commands[model].args, [
+    "node_modules/esbuild/bin/esbuild",
+    "src/sales-plan.ts",
+    "--bundle",
+    "--format=esm",
+    "--platform=node",
+    "--packages=external",
+    "--outfile=lib/sales-plan.js",
+  ]);
   assert.deepEqual(commands[host].args, ["scripts/build.mjs", "--target", "host"]);
   assert.equal(
     commands.some(

@@ -651,13 +651,12 @@ export async function installedScenario(
     assert.equal(recovered.stage, "pending-restart");
     assert.equal(recovered.completionProof, null);
     assert.equal(recovered.targets.length, 3);
+    const refreshDirectory = join(root, "profiles/desktop/gea/bootstrap/gea-refresh");
+    const refreshReceipt = JSON.parse(await readFile(join(refreshDirectory, "receipt.json")));
+    assert.equal(dirname(refreshReceipt.backup), refreshDirectory);
+    assert.equal(refreshReceipt.status, "completed");
     assert.deepEqual(
-      await readFile(
-        join(
-          root,
-          "profiles/desktop/gea/bootstrap/gea-refresh/before-0.0.216-to-0.0.221/pending-update-receipt.json",
-        ),
-      ),
+      await readFile(join(refreshReceipt.backup, "pending-update-receipt.json")),
       original,
     );
   }

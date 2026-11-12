@@ -612,6 +612,8 @@ export async function apply(
     "submit",
     "workbench/query",
     "plugin/sql",
+    "warning/storage",
+    "warning/scheduler",
     "workbench/prepare",
 
     "api-log/snapshot",
@@ -765,6 +767,12 @@ export async function apply(
                     break;
                   case "workbench/query":
                     value = await business.workbenchQuery(payload, request.signal);
+                    break;
+                  case "warning/scheduler":
+                    value = await business.warningScheduler(payload, request.signal);
+                    break;
+                  case "warning/storage":
+                    value = await business.warningStorage(payload, request.signal);
                     break;
                   case "plugin/sql":
                     value = await business.pluginSql(payload, request.signal);

@@ -156,6 +156,18 @@
   },
   "rules": [
     {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^(?:src/detection-(?:backend|whitelist)\\.mjs$|services/warning-executor/)",
+      "tests": ["tests/warning-storage.test.mjs", "tests/business-page-grant.test.mjs"],
+      "sourceTests": ["tests/warning-storage.test.mjs", "tests/business-page-grant.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/warning-storage\\.ts$",
+      "tests": ["tests/warning-storage.test.mjs"],
+      "sourceTests": ["tests/warning-storage.test.mjs"]
+    },
+    {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/host/gateway-(?:mcp|session)\\.ts$",
       "tests": [
