@@ -1130,7 +1130,9 @@ test("desktop update data helper changes select the release regression without l
   const source = "scripts/desktop-update-data.mjs";
   fixture.change(fixture.own, source);
   const plan = fixture.plan();
-  assert.ok(plan.reasons[fixture.own.repo + "/" + source].includes("scripts/desktop-release.test.mjs"));
+  assert.ok(
+    plan.reasons[fixture.own.repo + "/" + source].includes("scripts/desktop-release.test.mjs"),
+  );
   assert.ok(!plan.files.includes("desktop/startup-state.test.mjs"));
 });
 

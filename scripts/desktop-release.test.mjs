@@ -241,8 +241,14 @@ async function updateFixture(t) {
 
 test("release completion requires both platforms and rejects stale artifacts or script-controlled relaunch", async (t) => {
   const { plans, receipt } = await updateFixture(t);
-  assert.equal(verifyDesktopUpdateRegression(plans, receipt).status, "full-ui-update-regression-passed");
-  assert.throws(() => verifyDesktopUpdateRegression([plans[0]], receipt), /BOTH_PLATFORMS_REQUIRED/);
+  assert.equal(
+    verifyDesktopUpdateRegression(plans, receipt).status,
+    "full-ui-update-regression-passed",
+  );
+  assert.throws(
+    () => verifyDesktopUpdateRegression([plans[0]], receipt),
+    /BOTH_PLATFORMS_REQUIRED/,
+  );
   for (const platform of ["mac-arm64", "win-x64"]) {
     for (const change of [
       (r) => delete r.platforms[platform],
@@ -276,10 +282,14 @@ test("the final CLI validates both unchanged signed artifact sets without publis
     [
       "scripts/desktop-release.mjs",
       "--verify-update",
-      "--source-sha", source,
-      "--mac-artifacts", fixtures[0].directory,
-      "--windows-artifacts", fixtures[1].directory,
-      "--acceptance", input,
+      "--source-sha",
+      source,
+      "--mac-artifacts",
+      fixtures[0].directory,
+      "--windows-artifacts",
+      fixtures[1].directory,
+      "--acceptance",
+      input,
     ],
     { encoding: "utf8" },
   );
@@ -324,11 +334,14 @@ test("data comparison preserves every original event and user setting, allowing 
   ]) {
     const changed = structuredClone(after);
     change(changed);
-    assert.throws(() => compareDesktopUpdateData(before, changed, installedCore), (error) => {
-      assert.match(error.message, /DESKTOP_UPDATE_/);
-      assert.ok(!error.message.includes("private-do-not-print"));
-      return true;
-    });
+    assert.throws(
+      () => compareDesktopUpdateData(before, changed, installedCore),
+      (error) => {
+        assert.match(error.message, /DESKTOP_UPDATE_/);
+        assert.ok(!error.message.includes("private-do-not-print"));
+        return true;
+      },
+    );
   }
   assert.throws(
     () => compareDesktopUpdateData({ ...before, sessions: [] }, after, installedCore),

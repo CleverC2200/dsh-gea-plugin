@@ -177,7 +177,10 @@ export function verifyDesktopUpdateRegression(plans, receipt) {
     ["mac-arm64", "win-x64"],
     "DESKTOP_UPDATE_BOTH_PLATFORMS_REQUIRED",
   );
-  assert.ok(receipt?.schema === 1 && receipt.status === "passed", "DESKTOP_UPDATE_RECEIPT_REQUIRED");
+  assert.ok(
+    receipt?.schema === 1 && receipt.status === "passed",
+    "DESKTOP_UPDATE_RECEIPT_REQUIRED",
+  );
   const platforms = {};
   for (const plan of plans) {
     assert.ok(

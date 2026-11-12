@@ -47,14 +47,14 @@ corepack pnpm release:desktop --verify-update --source-sha FULL_GEA_SHA \
 
 顶层为 `schema: 1`、`status: "passed"`、本次 `version`、`sourceSha` 和 `platforms`。`platforms` 必须分别含 `mac-arm64`、`win-x64`，每项记录：
 
-| 字段 | 来源与通过条件 |
-| --- | --- |
-| `fromVersion`、`toVersion` | 实际旧版和新版，前者须早于本次版本 |
-| `installerSha256`、`feedSha256` | 同次构建 DMG / EXE 与更新清单摘要，核验器与原始产物比对 |
-| `signatureVerified` | 已安装正式应用验签通过，值为 `true` |
-| `ui.entry` | 实际入口为 `check-download` 或 `restart-ready` |
-| `ui.downloadVerified`、`installAndRestartInvoked`、`normalSuccessorWindow`、`accountResumed`、`currentVersionAndLatest` | 均为 `ui` 内字段，由实际观察逐项确认 `true` |
-| `relaunch` | `method: "native-updater"`、`manualSuccessorLaunch: false`、`flagsUnmodified: true`、`updaterOrCoordinatorIntercepted: false` |
-| `data` | 原样嵌入新版 `desktop-update-data.mjs` 成功回执，旧版、新版须匹配本项 |
+| 字段                                                                                                                    | 来源与通过条件                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `fromVersion`、`toVersion`                                                                                              | 实际旧版和新版，前者须早于本次版本                                                                                            |
+| `installerSha256`、`feedSha256`                                                                                         | 同次构建 DMG / EXE 与更新清单摘要，核验器与原始产物比对                                                                       |
+| `signatureVerified`                                                                                                     | 已安装正式应用验签通过，值为 `true`                                                                                           |
+| `ui.entry`                                                                                                              | 实际入口为 `check-download` 或 `restart-ready`                                                                                |
+| `ui.downloadVerified`、`installAndRestartInvoked`、`normalSuccessorWindow`、`accountResumed`、`currentVersionAndLatest` | 均为 `ui` 内字段，由实际观察逐项确认 `true`                                                                                   |
+| `relaunch`                                                                                                              | `method: "native-updater"`、`manualSuccessorLaunch: false`、`flagsUnmodified: true`、`updaterOrCoordinatorIntercepted: false` |
+| `data`                                                                                                                  | 原样嵌入新版 `desktop-update-data.mjs` 成功回执，旧版、新版须匹配本项                                                         |
 
 快照、用户配置值、会话内容、身份标识和原始截图保持私有。公开回执与发布说明仅保存上述汇总及必要来源；CI 运行核验器与数据比较的拒绝回归，不使用个人资料，也不把夹具测试标成实机验收。

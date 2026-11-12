@@ -73,7 +73,9 @@ async function capture(home) {
   const seed = JSON.parse(await readFile(join(appRoot, "../company-seed/manifest.json"), "utf8"));
   for (const artifact of seed.core.artifacts)
     assert.equal(
-      createHash("sha256").update(await readFile(join(appRoot, artifact.path))).digest("hex"),
+      createHash("sha256")
+        .update(await readFile(join(appRoot, artifact.path)))
+        .digest("hex"),
       artifact.sha256,
       "DESKTOP_UPDATE_INSTALLED_CORE_CHANGED",
     );
@@ -135,7 +137,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     }
     console.log(JSON.stringify(result));
   } catch (error) {
-    console.error(error.message?.match(/^DESKTOP_UPDATE_[A-Z_]+/)?.[0] ?? "DESKTOP_UPDATE_DATA_FAILED");
+    console.error(
+      error.message?.match(/^DESKTOP_UPDATE_[A-Z_]+/)?.[0] ?? "DESKTOP_UPDATE_DATA_FAILED",
+    );
     process.exitCode = 1;
   }
 }
