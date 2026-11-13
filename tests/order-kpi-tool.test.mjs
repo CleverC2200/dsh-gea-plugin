@@ -86,6 +86,7 @@ function fixture(
     },
   ]);
   return {
+    tool,
     calls,
     identity,
     listeners,
@@ -104,6 +105,31 @@ function fixture(
 }
 
 const period = { start: "2026-10-19", endExclusive: "2026-10-26" };
+test("generic tool exposes grouped metrics independently of raw detail publication", async () => {
+  const f = fixture();
+  assert.ok(f.tool.parameters.properties.view.enum.includes("groups"));
+  assert.ok(f.tool.parameters.properties.dimensions.items.enum.includes("director"));
+  assert.ok(f.tool.parameters.properties.dimensions.items.enum.includes("customer"));
+  for (const metric of ["作废率", "改单率", "订单满足率", "准交率", "货龄占比", "可发货天数"]) {
+    const value = JSON.parse(await f.call({ ...period, metric, base: "郑州", view: "contract" }));
+    assert.equal(value.contract.grouping.view, "groups");
+    assert.equal(value.contract.grouping.available, true);
+  }
+  const fulfillment = JSON.parse(await f.call({ ...period, metric: "满足率", view: "contract" }));
+  assert.equal(fulfillment.contract.detailsQueryId, null);
+  assert.equal(fulfillment.contract.grouping.available, true);
+  assert.equal(f.calls.length, 0);
+});
+test("unsupported stock customer grain is reported without Cube fallback or SQL", async () => {
+  const f = fixture();
+  const value = JSON.parse(
+    await f.call({ ...period, metric: "货龄占比", view: "groups", dimensions: ["customer"] }),
+  );
+  assert.equal(value.groups.availability, "unsupported-dimension");
+  assert.equal(value.current, null);
+  assert.equal(value.groups.unsupported[0].dimension, "customer");
+  assert.equal(f.calls.length, 0);
+});
 test("page-independent generic tool resolves exactly six current contracts without running SQL", async () => {
   const f = fixture();
   for (const metric of ["作废率", "改单率", "订单满足率", "准交率", "货龄占比", "可发货天数"]) {
