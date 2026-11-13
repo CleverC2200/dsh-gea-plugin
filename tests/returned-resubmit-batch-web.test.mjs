@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import {
   fixture,
+  pendingResultButton,
   PLAN_A,
   PLAN_B,
   PLAN_C,
@@ -145,10 +146,7 @@ test(
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await frame
-      .getByTestId("regional-approval-workbench")
-      .getByRole("button", { name: "核对提交结果", exact: true })
-      .click();
+    await pendingResultButton(frame).click();
     await expect(dialog.getByRole("button", { name: "核对提交结果", exact: true })).toBeEnabled();
     allowReadback();
     await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
@@ -174,10 +172,7 @@ test(
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await frame
-      .getByTestId("regional-approval-workbench")
-      .getByRole("button", { name: "核对提交结果", exact: true })
-      .click();
+    await pendingResultButton(frame).click();
     await expect(dialog.getByRole("button", { name: "核对提交结果", exact: true })).toBeEnabled();
     allowReadback();
     await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();

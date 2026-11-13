@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import {
   fixture,
+  pendingResultButton,
   PLAN_A,
   PLAN_B,
   captureEvidence,
@@ -36,10 +37,7 @@ test(
         frame.locator("tbody tr").filter({ hasText: name }).first().getByRole("checkbox"),
       ).toBeChecked();
     await expect(frame.getByRole("button", { name: "提交所选", exact: true })).toBeDisabled();
-    await frame
-      .getByTestId("regional-approval-workbench")
-      .getByRole("button", { name: "核对提交结果", exact: true })
-      .click();
+    await pendingResultButton(frame).click();
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("乌鲁木齐退回区域");
     await expect(dialog).not.toContainText("济南退回区域");
@@ -49,10 +47,7 @@ test(
     await expect(frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" })).toHaveCount(0);
     await captureEvidence(page, app, "pending-receipt-recovery");
     allowReadback();
-    await frame
-      .getByTestId("regional-approval-workbench")
-      .getByRole("button", { name: "核对提交结果", exact: true })
-      .click();
+    await pendingResultButton(frame).click();
     await expect(dialog).toContainText("乌鲁木齐退回区域");
     await expect(dialog).toContainText("提交成功");
     assert.equal(submitted.length, 1);
@@ -76,10 +71,7 @@ test(
     await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await frame
-      .getByTestId("regional-approval-workbench")
-      .getByRole("button", { name: "核对提交结果", exact: true })
-      .click();
+    await pendingResultButton(frame).click();
     await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "核对提交结果", exact: true })).toBeEnabled();
@@ -114,10 +106,7 @@ test(
     await rowBox(PLAN_B).click();
     await expect(rowBox(PLAN_B).locator("input")).toBeChecked();
     allowReadback();
-    await frame
-      .getByTestId("regional-approval-workbench")
-      .getByRole("button", { name: "核对提交结果", exact: true })
-      .click();
+    await pendingResultButton(frame).click();
     await expect(dialog).toContainText("成功 2 笔");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(rowBox(PLAN_B).locator("input")).toBeChecked();

@@ -500,3 +500,8 @@ export async function editReturnedQuantity(
   await input.fill(quantity);
   await expect(input).toHaveValue(quantity);
 }
+
+export const pendingResultButton = (frame) =>
+  frame
+    .getByRole("button", { name: "核对提交结果", exact: true })
+    .and(frame.locator('button:not([role="dialog"] *)'));
