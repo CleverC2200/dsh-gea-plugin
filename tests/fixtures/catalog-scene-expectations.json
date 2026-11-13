@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained); AQKC full author bytes follow merged Manage 876a496c4555499b95de85c764f8b511da5af1e4 current-page evidence rules. MPS author bytes follow merged Manage 23af7438045dfdeaa2d1006657a5c1a8487fc56e and its approved pure-tunnel correction; previous registrations remain in previousMetadataSources.",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained); AQKC full author bytes follow merged Manage 876a496c4555499b95de85c764f8b511da5af1e4 current-page evidence rules. MPS author bytes follow merged Manage a1e5a738faae31dfe3b768d3e078ccffdb76c808 and its approved current-SKU plus replacement-history correction; previous registrations remain in previousMetadataSources.",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -16,10 +16,10 @@
       {
         "owner": "workbench",
         "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
-        "sha256": "3d14c718df51e8841281152ee09c4b91ae2d848788d6c9e2ec865d5b4dc9c71c",
+        "sha256": "1810edabcf325f77759f4a87f5fc75489797209b39b7e53965355bc0c2d3660c",
         "name": "inventory-mps",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "23af7438045dfdeaa2d1006657a5c1a8487fc56e",
+        "sourceHead": "a1e5a738faae31dfe3b768d3e078ccffdb76c808",
         "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       },
       {
@@ -216,6 +216,15 @@
         "name": "inventory-mps",
         "sourceRepo": "dsh-agent-manage",
         "sourceHead": "6d293e577ebd94ae88ef14a05211aaca3c30d54b",
+        "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
+      },
+      {
+        "owner": "workbench",
+        "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
+        "sha256": "3d14c718df51e8841281152ee09c4b91ae2d848788d6c9e2ec865d5b4dc9c71c",
+        "name": "inventory-mps",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "23af7438045dfdeaa2d1006657a5c1a8487fc56e",
         "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       }
     ]
