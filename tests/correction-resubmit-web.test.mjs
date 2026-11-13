@@ -198,9 +198,9 @@ test(
     const resubmit = f.getByRole("button", { name: "修改后提交", exact: true });
     await expect(resubmit).toBeEnabled();
     await f.getByRole("button", { name: `打开 ${old.dealerName} 调整明细`, exact: true }).click();
-    const input = f.getByRole("spinbutton", { name: "追加/追减 789", exact: true });
-    await expect(input).toHaveValue("0");
-    await input.fill("-3");
+    const input = f.getByRole("spinbutton", { name: "确认计划量 789", exact: true });
+    await expect(input).toHaveValue("32");
+    await input.fill("35");
     await resubmit.click();
     const d = f.getByRole("dialog", { name: "确认修改并重提", exact: true });
     await expect(d.getByRole("spinbutton")).toHaveCount(0);
