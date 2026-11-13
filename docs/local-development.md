@@ -143,3 +143,5 @@ Profile 准备在一次调用内复用已准入的 Core 身份与资产摘要，
 `installer-timing.test.cjs`、`windows-directory-installer.test.cjs` 与 `installer-differential.test.mjs` 需要显式固定的 GEA_BUILDER_LIB，保留在原手动 desktop unit 入口，不纳入普通候选池。Electron、layered smoke、installer-portability 同样保留实际产物前置，不能用条件 skip 产生源码 CI 通过。
 
 依赖审查只对 PR 中实际消费的 GEA manifest/lock 变化运行，与 Manage 使用同版 dependency-review-action v5 和 high 阻断级别。适用性来自同一实际变化计划并绑定正式 plan，最终聚合在适用时要求成功，无关文档/CSS 的明确不适用不能借用缺失或取消的适用结果。
+
+共享 Workbench 检查通过本仓 `scripts/check-workbench.mjs` 调用。`check:comments`、`check:knowledge` 和 `typecheck:official` 使用同一 `DSH_WORKBENCH_CHECKOUT`；未设置时使用同级 Workbench。官方类型检查显式验证本仓的 `tsconfig.official.json` 与 `scripts/supported-cores.json`，再编译本仓；缺材料直接失败，不准备或切换 Core。
