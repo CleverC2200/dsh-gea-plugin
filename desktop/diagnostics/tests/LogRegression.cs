@@ -46,6 +46,25 @@ internal static class LogRegression {
             string root = ClientStartup.UserDataArgument("GEA.exe --type=renderer --user-data-dir=\"C:\\Users\\fixture-user\\Custom App\" --token=private-token-canary");
             return root == @"C:\Users\fixture-user\Custom App" && ClientStartup.UserDataArgument("GEA.exe --user-data-dir=relative") == null;
         });
+        Check(failures, "host-exit-code-with-private-stderr", delegate {
+            string output = Privacy.TechnicalText("Error: dsh desktop host exited with 3221225786: private-body-canary token=private-token-canary\n    at ChildProcess.<anonymous> (C:\\Users\\fixture-user\\app\\lib\\main.js:4012:64)");
+            return output.Contains("3221225786") && output.Contains("host-exit") && !output.Contains("private-body-canary") && !output.Contains("private-token-canary") && !output.Contains("fixture-user");
+        });
+        Check(failures, "durable-update-state-outside-log-window", delegate {
+            string run = Path.Combine(args[0], "durable-state"), profile = Path.Combine(run, "profile"), updates = Path.Combine(profile, "gea", "plugin-updates");
+            Directory.CreateDirectory(updates);
+            string id = "11111111-1111-4111-8111-111111111111", operation = Path.Combine(updates, "operations", id);
+            Directory.CreateDirectory(operation);
+            string company = Path.Combine(updates, "company-update.json"), latest = Path.Combine(updates, "latest.json"), receipt = Path.Combine(operation, "receipt.json");
+            File.WriteAllText(company, "{\"phase\":\"prepared\",\"desktopVersion\":\"0.2.0-rc.2.20261112.3\",\"body\":\"private-body-canary\"}");
+            File.WriteAllText(latest, "{\"id\":\"" + id + "\"}");
+            File.WriteAllText(receipt, "{\"stage\":\"unknown\",\"diagnostic\":\"PREVIOUS_OPERATION_INTERRUPTED\",\"body\":\"private-body-canary\"}");
+            foreach (string file in new [] { company, latest, receipt }) File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddDays(-3));
+            var plan = new CollectionPlan { Run = run, Output = run, AppRoots = new string[0], Profiles = new [] { profile }, Fixture = true, InstallerLogs = Path.Combine(run, "installer") };
+            string output = Path.Combine(run, "output"); new Probe(plan, "updates", output).Run();
+            string combined = String.Join("\n", Directory.GetFiles(output).Select(File.ReadAllText));
+            return combined.Contains("20261112.3") && combined.Contains(id) && combined.Contains("PREVIOUS_OPERATION_INTERRUPTED") && !combined.Contains("private-body-canary");
+        });
         File.WriteAllText(Path.Combine(args[0], "log-regression.json"), new JavaScriptSerializer().Serialize(new { failed = failures.ToArray(), passed = failures.Count == 0 }));
         foreach (string failure in failures) Console.WriteLine("FAILED " + failure);
         return failures.Count == 0 ? 0 : 1;

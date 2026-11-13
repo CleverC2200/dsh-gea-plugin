@@ -4,6 +4,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      windows_diagnostics:
+        description: "Build the standalone log collector and run its privacy and durable-state regressions"
+        default: false
+        required: false
+        type: boolean
       prepare_windows_cache:
         description: "Prepare shared Windows Core/runtime caches only; actual default branch dispatch required"
         default: false
@@ -65,6 +70,44 @@ permissions:
   contents: read
 
 jobs:
+  windows-diagnostics:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download the pinned Troubleshoot engine
+        run: |
+          $manifest = Get-Content desktop/diagnostics/engine.json -Raw | ConvertFrom-Json
+          $archive = Join-Path $env:RUNNER_TEMP 'troubleshoot.zip'
+          $engine = Join-Path $env:RUNNER_TEMP 'diagnostics-engine'
+          Invoke-WebRequest $manifest.windows.url -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne $manifest.windows.archiveSha256) { throw 'ENGINE_ARCHIVE_HASH_MISMATCH' }
+          Expand-Archive $archive $engine
+          $executable = @(Get-ChildItem $engine -Recurse -Filter support-bundle.exe)
+          if ($executable.Count -ne 1) { throw 'ENGINE_EXECUTABLE_MISSING' }
+          if ($executable[0].DirectoryName -ne $engine) { Copy-Item $executable[0].FullName (Join-Path $engine 'support-bundle.exe') }
+          if (!(Test-Path (Join-Path $engine 'LICENSE'))) { Invoke-WebRequest 'https://raw.githubusercontent.com/replicatedhq/troubleshoot/v0.134.4/LICENSE' -OutFile (Join-Path $engine 'LICENSE') }
+      - name: Build the standalone collector
+        run: ./desktop/diagnostics/build.ps1 -EngineDirectory (Join-Path $env:RUNNER_TEMP 'diagnostics-engine') -OutputDirectory (Join-Path $env:RUNNER_TEMP 'diagnostics-build')
+      - name: Check log projection and durable update records
+        run: ./desktop/diagnostics/tests/run.ps1 -BuildDirectory (Join-Path $env:RUNNER_TEMP 'diagnostics-build') -OutputDirectory (Join-Path $env:RUNNER_TEMP 'diagnostics-regressions')
+      - name: Retain collector and original test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GEA-log-collector-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/diagnostics-build/GEA日志采集.exe
+            ${{ runner.temp }}/diagnostics-build/build-result.json
+            ${{ runner.temp }}/diagnostics-regressions/log-regression.json
+
   windows-overwrite-recheck:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_overwrite_artifact_run != ''
     runs-on: windows-2025

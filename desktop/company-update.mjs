@@ -1,4 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import semver from "semver";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { companyPackageNames, companyReleaseIndex } from "./company-archives.mjs";
@@ -95,6 +98,46 @@ export async function applyCompanyUpdate({
 }) {
   const profile = join(home, "profiles/desktop");
   const receipt = await readCompanyUpdate(profile);
+  const superseded = (value) =>
+    value?.phase === "prepared" &&
+    typeof desktopVersion === "string" &&
+    semver.valid(desktopVersion) &&
+    semver.valid(value.desktopVersion) &&
+    semver.gt(desktopVersion, value.desktopVersion);
+  if (superseded(receipt)) {
+    const require = createRequire(join(root, "dsh/package.json"));
+    const { withFileLock, writeFileAtomic } = await import(
+      pathToFileURL(require.resolve("@deepseek-ai/dsh-atomic-write"))
+    );
+    await withFileLock(join(profile, "package.json"), async () => {
+      const current = await readCompanyUpdate(profile);
+      if (
+        !superseded(current) ||
+        current.id !== receipt.id ||
+        current.desktopVersion !== receipt.desktopVersion
+      )
+        throw Error("GEA_COMPANY_UPDATE_PLAN_CHANGED");
+      await assertProfileIdle(profile, { allowExitedPackageRun: true });
+      await writeFileAtomic(
+        join(
+          profile,
+          "gea/plugin-updates",
+          "company-update-" + current.id + "-" + randomUUID() + ".json",
+        ),
+        await readFile(companyUpdatePath(profile)),
+        { mode: 0o600, dirMode: 0o700 },
+      );
+      await writeFileAtomic(
+        companyUpdatePath(profile),
+        JSON.stringify({ ...current, phase: "cancelled" }),
+        {
+          mode: 0o600,
+          dirMode: 0o700,
+        },
+      );
+    });
+    return null;
+  }
   if (receipt && receipt.desktopVersion === desktopVersion && receipt.phase === "failed")
     throw Error("GEA_COMPANY_UPDATE_RECOVERY_REQUIRED");
   if (!companyUpdateActive(receipt) || receipt.desktopVersion !== desktopVersion) return null;

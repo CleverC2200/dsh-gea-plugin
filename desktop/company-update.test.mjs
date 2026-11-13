@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
@@ -222,4 +223,44 @@ test("ordinary startup without consent or a desktop version does not install any
   assert.equal(await applyCompanyUpdate({ ...f.options, desktopVersion: undefined }), null);
   assert.equal(f.installs(), 0);
   await f.preserve();
+});
+
+test("a newer manually installed client retires a prepared older desktop update without installing it", async (t) => {
+  const f = await fixture(t);
+  f.options.root = fileURLToPath(new URL("../", import.meta.url));
+  await writeFile(
+    companyUpdatePath(f.profile),
+    JSON.stringify({ ...f.receipt, desktopVersion: "0.2.0-rc.2.20261112.3" }),
+  );
+  assert.equal(
+    await applyCompanyUpdate({ ...f.options, desktopVersion: "0.2.0-rc.2.20261113.1" }),
+    null,
+  );
+  assert.equal((await readCompanyUpdate(f.profile)).phase, "cancelled");
+  assert.equal(f.installs(), 0);
+  await f.preserve();
+});
+
+test("a newer client retains pending writes and a prepared future client update", async (t) => {
+  for (const phase of ["installing", "verifying", "failed", "prepared"]) {
+    const f = await fixture(t);
+    const previous = {
+      ...f.receipt,
+      phase,
+      desktopVersion: phase === "prepared" ? "0.2.0-rc.2.20261114.1" : "0.2.0-rc.2.20261112.3",
+      expected:
+        phase === "verifying"
+          ? f.receipt.targets.map(({ name, version }) => ({ name, version }))
+          : null,
+    };
+    const before = JSON.stringify(previous);
+    await writeFile(companyUpdatePath(f.profile), before);
+    assert.equal(
+      await applyCompanyUpdate({ ...f.options, desktopVersion: "0.2.0-rc.2.20261113.1" }),
+      null,
+    );
+    assert.equal(await readFile(companyUpdatePath(f.profile), "utf8"), before);
+    assert.equal(f.installs(), 0);
+    await f.preserve();
+  }
 });
