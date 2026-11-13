@@ -846,6 +846,12 @@
       "pattern": "^scripts/check-workbench\\.mjs$",
       "tests": ["scripts/check-workbench.test.mjs"],
       "sourceTests": ["scripts/check-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/verify-official-input\\.mjs$",
+      "tests": ["scripts/check-workbench.test.mjs"],
+      "sourceTests": ["scripts/check-workbench.test.mjs"]
     }
   ],
   "testOwners": {
