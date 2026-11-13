@@ -78,7 +78,7 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   const resume = frame.getByRole("button", {
-    name: "查看并核对提交结果",
+    name: "核对提交结果",
     exact: true,
   });
   await expect(resume).toBeVisible();

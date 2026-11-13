@@ -36,7 +36,7 @@ test(
         frame.locator("tbody tr").filter({ hasText: name }).first().getByRole("checkbox"),
       ).toBeChecked();
     await expect(frame.getByRole("button", { name: "提交所选", exact: true })).toBeDisabled();
-    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
+    await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("乌鲁木齐退回区域");
     await expect(dialog).not.toContainText("济南退回区域");
@@ -46,9 +46,9 @@ test(
     await expect(frame.locator("tbody tr").filter({ hasText: "乌鲁木齐退回区域" })).toHaveCount(0);
     await captureEvidence(page, app, "pending-receipt-recovery");
     allowReadback();
-    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
+    await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("乌鲁木齐退回区域");
-    await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
+    await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("提交成功");
     assert.equal(submitted.length, 1);
   },
@@ -58,7 +58,7 @@ test(
   "unknown submission survives close and reopens the original intent without another version",
   { timeout: 90000 },
   async (t) => {
-    const { frame, submitted, state } = await fixture(t, { unknownOnce: true });
+    const { frame, submitted, state, allowReadback } = await fixture(t, { unknownOnce: true });
     await selectPlan(frame);
     await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
     const dialog = frame.getByRole("dialog", {
@@ -71,13 +71,13 @@ test(
     await expect(dialog).toContainText("结果暂时未知");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
+    await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("结果暂时未知");
     await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
-    await dialog.getByRole("button", { name: "重试并核对结果", exact: true }).click();
+    allowReadback();
+    await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("提交成功");
-    assert.equal(submitted.length, 2);
-    assert.deepEqual(submitted[1], submitted[0]);
+    assert.equal(submitted.length, 1);
     assert.equal(state.get(PLAN_A).seq, 2);
   },
 );
@@ -105,8 +105,8 @@ test(
     await rowBox(PLAN_B).click();
     await expect(rowBox(PLAN_B).locator("input")).toBeChecked();
     allowReadback();
-    await frame.getByRole("button", { name: "查看并核对提交结果", exact: true }).click();
-    await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
+    await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
+    await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(rowBox(PLAN_B).locator("input")).toBeChecked();

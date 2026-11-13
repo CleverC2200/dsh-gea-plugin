@@ -63,7 +63,7 @@ export const fixture = async (
   ]);
   const submitted = [];
   const logs = [];
-  let readbackBlocked = readbackFailure;
+  let readbackBlocked = readbackFailure || unknownOnce;
   const submittedQuantities = new Map();
   const returnedSkus = new Map();
   const submitReceipts = new Map();
