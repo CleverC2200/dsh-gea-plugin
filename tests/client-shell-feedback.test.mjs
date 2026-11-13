@@ -319,7 +319,7 @@ test(
             const column = { left: contentBox.left, right: contentBox.left + content.clientWidth };
             return [
               ".gea-agent-identity",
-              ".gea-agent-prompts",
+              ".gea-agent-intro",
               ".agent-workbench-native-conversation [data-composer-card]",
             ].map((selector) => {
               const rect = document.querySelector(selector).getBoundingClientRect();

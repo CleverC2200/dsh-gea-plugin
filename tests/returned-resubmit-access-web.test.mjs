@@ -1,7 +1,12 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
-import { fixture, captureEvidence, selectPlan } from "./fixtures/returned-review.mjs";
+import {
+  fixture,
+  captureEvidence,
+  selectPlan,
+  pendingResultButton,
+} from "./fixtures/returned-review.mjs";
 
 test("employee can resubmit without local service configuration", { timeout: 90000 }, async (t) => {
   const { frame, page, app, submitted } = await fixture(t);
@@ -74,13 +79,10 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
   await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
-  await expect(dialog).toContainText("结果暂时未知");
+  await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  const resume = frame.getByRole("button", {
-    name: "查看并核对提交结果",
-    exact: true,
-  });
+  const resume = pendingResultButton(frame);
   await expect(resume).toBeVisible();
   await captureEvidence(page, app, "hidden-pending-before-logout");
   await app.rpc("logout");
