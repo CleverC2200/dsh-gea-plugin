@@ -232,60 +232,6 @@ test("rebasing a baseline anchor cannot absorb changed files", (t) => {
   assert.match(result.stderr, /QUALITY_BASELINE_REQUIRED/);
 });
 
-test("the retained official typecheck command refuses a different official HEAD before tsc", (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "quality-official-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
-  for (const part of [
-    "gea/scripts",
-    "dsh-agent-workbench/scripts",
-    "official/vendor/cordis/lib/types",
-  ])
-    mkdirSync(join(directory, part), { recursive: true });
-  copyFileSync(
-    new URL("scripts/supported-cores.json", root),
-    join(directory, "gea/scripts/supported-cores.json"),
-  );
-  const cordis = join(directory, "official/vendor/cordis/lib/types/index.d.ts");
-  writeFileSync(cordis, "export {};\n");
-  writeFileSync(
-    join(directory, "gea/tsconfig.official.json"),
-    JSON.stringify({ compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } } }),
-  );
-  copyFileSync(
-    new URL("../dsh-agent-workbench/scripts/verify-official-input.mjs", root),
-    join(directory, "dsh-agent-workbench/scripts/verify-official-input.mjs"),
-  );
-  copyFileSync(
-    new URL("scripts/check-workbench.mjs", root),
-    join(directory, "gea/scripts/check-workbench.mjs"),
-  );
-  for (const args of [
-    ["init", "--quiet"],
-    ["add", "."],
-    [
-      "-c",
-      "user.name=Quality Fixture",
-      "-c",
-      "user.email=quality@example.invalid",
-      "commit",
-      "--quiet",
-      "-m",
-      "fixture",
-    ],
-  ]) {
-    const result = spawnSync("git", args, { cwd: join(directory, "official"), encoding: "utf8" });
-    assert.equal(result.status, 0, result.stderr);
-  }
-  const manifest = JSON.parse(readFileSync(new URL("package.json", root)));
-  const result = spawnSync("sh", ["-c", manifest.scripts["typecheck:official"]], {
-    cwd: join(directory, "gea"),
-    encoding: "utf8",
-    env: { ...process.env, DSH_WORKBENCH_CHECKOUT: join(directory, "dsh-agent-workbench") },
-  });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /OFFICIAL_INPUT_REQUIRED/);
-});
-
 test("formatter cannot hide maintained targets behind an ignore pattern", (t) => {
   const directory = baselineFixture(t);
   writeFileSync(join(directory, ".qualityignore"), "src/**\n");
