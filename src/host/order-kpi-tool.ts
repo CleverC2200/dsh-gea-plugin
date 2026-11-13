@@ -13,6 +13,7 @@ export const ORDER_KPI_ROUTING =
   "作废率、改单率、满足率、准交率、货龄占比、可发货天数的口径及独立问数使用gea_order_kpi。" +
   "该工具调用已安装看板同一套查询、计算与代码合同，不要求打开页面；metric、start、endExclusive、base指定所问范围。" +
   "点击卡片先引用当前current/contract，独立核对调用同一入口；旧会话或知识库不得覆盖当前代码版本。" +
+  "分组问数用view=groups和dimensions，先读取contract.grouping.supported及unsupported；应责总监、SKU自动带基地。分组使用groups.contract和行current.target/status，顶层contract/current为原卡片汇总。返回同口径分子分母、待判定及达成状态；原始明细未发布不代表分组未发布。unsupported-dimension是该指标缺少该归属粒度，不是整个指标未发布，也不是权限不足。本期、环比、同比按各自时间窗分别查询，不平均百分比；准交率跨维度合计须重新去重，总监可能共同归属，不相加。" +
   "只有这六项指标使用该入口，其他订单、库存和业务知识问题继续使用已授权Cube和知识库。";
 
 export function registerOrderKpiTool(
@@ -55,12 +56,36 @@ export function registerOrderKpiTool(
             type: "string",
             description: "基地/提货点名称；留空为当前授权全国范围，具体含义由指标合同返回。",
           },
+          dimensions: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: [
+                "base",
+                "item",
+                "category",
+                "director",
+                "sku",
+                "region",
+                "province",
+                "customer",
+                "salesRegion",
+              ],
+            },
+            description:
+              "view=groups分组字段，最多3个且不重复；基地base、品项item、品类category、应责总监director、产品编号sku、大区region、省区province、客户编码customer、销售区域salesRegion（省区优先大区兜底）。默认基地＋品项；先按contract.grouping确认该指标支持的维度，不支持不能泛称指标未发布。",
+          },
           view: {
             type: "string",
-            enum: ["contract", "summary", "details"],
-            description: "默认summary；contract仅取当前口径；details取已发布明细。",
+            enum: ["contract", "summary", "details", "groups"],
+            description:
+              "默认summary；contract取当前口径；groups按dimensions取当前支持维度分组的分子分母、待判定和状态；details取已发布原始明细，明细可用性与分组独立。",
           },
-          page: { type: "integer", description: "明细页码，1起。" },
+          page: {
+            type: "integer",
+            description:
+              "原始明细或分组页码，1起；分组每页100项，按hasMore继续，不能将一页当全量；groups.total始终是全量合计。",
+          },
           expectedVersion: {
             type: "number",
             description: "卡片提供的代码版本；独立问数可不传，旧版本会被拒绝。",
