@@ -74,7 +74,7 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
   await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
-  await expect(dialog).toContainText("结果暂时未知");
+  await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   const resume = frame.getByRole("button", {

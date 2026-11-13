@@ -25,7 +25,7 @@ test(
     await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
     await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
-    await expect(dialog).toContainText("重提已成功");
+    await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect(dialog).not.toContainText("未更新");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
@@ -68,11 +68,11 @@ test(
     await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
     await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
     await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
-    await expect(dialog).toContainText("结果暂时未知");
+    await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).not.toBeVisible();
     await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
-    await expect(dialog).toContainText("结果暂时未知");
+    await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
     allowReadback();
     await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();

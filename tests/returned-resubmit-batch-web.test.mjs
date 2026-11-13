@@ -141,7 +141,7 @@ test(
     await frame.getByRole("button", { name: "提交所选", exact: true }).click();
     const dialog = frame.getByRole("dialog");
     await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
-    await expect(dialog).toContainText("重提已成功");
+    await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
@@ -165,7 +165,7 @@ test(
     await frame.getByRole("button", { name: "提交所选", exact: true }).click();
     const dialog = frame.getByRole("dialog");
     await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
-    await expect(dialog).toContainText("结果暂时未知");
+    await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
