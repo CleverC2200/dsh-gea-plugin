@@ -117,6 +117,17 @@ for (const owner of owners) {
     outputs,
     logPath: path.join(out, owner.repo + "-build.log"),
   });
+  await run(
+    "tar",
+    [
+      "-czf",
+      path.join(out, owner.repo + "-outputs.tar.gz"),
+      "lib",
+      ...(owner.repo === "dsh-agent-manage" ? ["client"] : []),
+    ],
+    owner.path,
+    owner.repo + "-outputs",
+  );
   if (owner.repo !== "dsh-gea-plugin") {
     const raw = path.join(out, "raw-" + owner.repo);
     await fs.mkdir(raw);
