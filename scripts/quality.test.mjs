@@ -236,25 +236,28 @@ test("the retained official typecheck command refuses a different official HEAD 
   const directory = mkdtempSync(join(tmpdir(), "quality-official-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   for (const part of [
-    "gea",
+    "gea/scripts",
     "dsh-agent-workbench/scripts",
-    "dsh-gea-plugin/scripts",
     "official/vendor/cordis/lib/types",
   ])
     mkdirSync(join(directory, part), { recursive: true });
   copyFileSync(
     new URL("scripts/supported-cores.json", root),
-    join(directory, "dsh-gea-plugin/scripts/supported-cores.json"),
+    join(directory, "gea/scripts/supported-cores.json"),
   );
   const cordis = join(directory, "official/vendor/cordis/lib/types/index.d.ts");
   writeFileSync(cordis, "export {};\n");
   writeFileSync(
-    join(directory, "dsh-agent-workbench/tsconfig.official.json"),
+    join(directory, "gea/tsconfig.official.json"),
     JSON.stringify({ compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } } }),
   );
   copyFileSync(
     new URL("../dsh-agent-workbench/scripts/verify-official-input.mjs", root),
     join(directory, "dsh-agent-workbench/scripts/verify-official-input.mjs"),
+  );
+  copyFileSync(
+    new URL("scripts/check-workbench.mjs", root),
+    join(directory, "gea/scripts/check-workbench.mjs"),
   );
   for (const args of [
     ["init", "--quiet"],
@@ -277,6 +280,7 @@ test("the retained official typecheck command refuses a different official HEAD 
   const result = spawnSync("sh", ["-c", manifest.scripts["typecheck:official"]], {
     cwd: join(directory, "gea"),
     encoding: "utf8",
+    env: { ...process.env, DSH_WORKBENCH_CHECKOUT: join(directory, "dsh-agent-workbench") },
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /OFFICIAL_INPUT_REQUIRED/);
