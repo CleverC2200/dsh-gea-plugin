@@ -246,5 +246,19 @@
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
     "scope": "公司 Core：安装失败保留接管、原生恢复锁住替换 Host，以及完整客户端构建"
+  },
+  {
+    "head": "aa3dd81d5bce663ce74f38cce9a60c0a76bb2d87",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "c96d468dd0aa7b857e93b02c062cc5bb3adbe1240decab0980b889aba74a637d",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：安装失败保留接管、原生恢复锁住替换 Host，以及完整客户端构建"
   }
 ]
