@@ -7,7 +7,7 @@ if((Get-FileHash -LiteralPath $engine -Algorithm SHA256).Hash.ToLower() -ne $man
 if(-not (Test-Path -LiteralPath $license -PathType Leaf)) {throw 'ENGINE_LICENSE_MISSING'}
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $output -Force | Out-Null
-$info='[assembly:System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")][assembly:System.Reflection.AssemblyTitle("GEA日志采集")][assembly:System.Reflection.AssemblyProduct("GEA日志采集")] namespace GeaDiagnostics { internal static class BuildInfo { internal const string Version="0.1.1"; internal const string EngineHash="'+$manifest.windows.executableSha256+'"; } }'
+$info='[assembly:System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")][assembly:System.Reflection.AssemblyTitle("GEA日志采集")][assembly:System.Reflection.AssemblyProduct("GEA日志采集")] namespace GeaDiagnostics { internal static class BuildInfo { internal const string Version="0.1.2"; internal const string EngineHash="'+$manifest.windows.executableSha256+'"; } }'
 $infoPath=Join-Path $output 'BuildInfo.cs'
 [IO.File]::WriteAllText($infoPath,$info,[Text.UTF8Encoding]::new($false))
 $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
@@ -18,5 +18,5 @@ $arguments+=@($infoPath)
 & $compiler @arguments
 if($LASTEXITCODE -ne 0) {throw 'DIAGNOSTIC_BUILD_FAILED'}
 $signature=Get-AuthenticodeSignature -LiteralPath $target
-[ordered]@{version='0.1.1';engineVersion=$manifest.version;engineSha256=$manifest.windows.executableSha256;executable=$target;sha256=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLower();signature=[string]$signature.Status;stage='unsigned-development-build';publicDistributionApproved=$false}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $output 'build-result.json') -Encoding UTF8
+[ordered]@{version='0.1.2';engineVersion=$manifest.version;engineSha256=$manifest.windows.executableSha256;executable=$target;sha256=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLower();signature=[string]$signature.Status;stage='unsigned-development-build';publicDistributionApproved=$false}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $output 'build-result.json') -Encoding UTF8
 Get-Content -LiteralPath (Join-Path $output 'build-result.json') -Raw

@@ -17,7 +17,7 @@ namespace GeaDiagnostics {
         static readonly Regex Email = new Regex(@"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         static readonly HashSet<string> Keys = new HashSet<string>(new [] {
             "schema", "schemaVersion", "id", "operationId", "timestamp", "time", "startedAt", "endedAt", "updatedAt", "createdAt", "completedAt",
-            "stage", "phase", "state", "status", "code", "errorCode", "source", "event", "sequence", "seq", "pid", "processId", "processIdentity",
+            "stage", "phase", "state", "status", "code", "errorCode", "source", "event", "eventType", "sequence", "seq", "pid", "processId", "processIdentity",
             "version", "desktopVersion", "installedVersion", "runningHostVersion", "runningClientVersion", "candidateVersion", "targetVersion", "planId", "kind", "packageName",
             "requestId", "traceId", "requestType", "retryOfRequestId", "parentRequestId", "apiLogId", "method", "httpStatus", "durationMs", "elapsedMs",
             "count", "failedOperation", "errorType", "exitCode", "signal", "shutdownCompleted", "platform", "arch", "lineNumber",
@@ -42,7 +42,7 @@ namespace GeaDiagnostics {
             foreach (var pair in input) {
                 if (pair.Key == "name" && pair.Value is string && Regex.IsMatch((string)pair.Value, @"^(?:@cleverc2200/(?:gea-dsh-prototype|dsh-agent-workbench|dsh-personal-memory)|dsh-agent-manage|@deepseek-ai/dsh(?:-[a-z0-9-]+)?)$")) { result[pair.Key] = pair.Value; continue; }
                 if (pair.Key == "diagnostic" && pair.Value is string) { result["diagnosticCodes"] = ErrorCodes((string)pair.Value); continue; }
-                if (depth < 6 && new [] { "targets", "packages", "core", "result", "processes", "completionProof", "completionProofs", "host", "client", "stamp", "problem" }.Contains(pair.Key)) {
+                if (depth < 6 && new [] { "targets", "packages", "core", "result", "processes", "completionProof", "completionProofs", "expected", "host", "client", "stamp", "problem" }.Contains(pair.Key)) {
                     var child = pair.Value as IDictionary<string, object>;
                     var children = pair.Value as object[];
                     if (child != null) result[pair.Key] = Project(child, depth + 1);
@@ -59,7 +59,7 @@ namespace GeaDiagnostics {
             return result;
         }
         static string[] ErrorCodes(string line) {
-            return Regex.Matches(Clean(line), @"\b(?:[A-Za-z]+Exception|[A-Za-z]*Error|ERR_[A-Z0-9_]+|UPDATE_[A-Z0-9_]+|GEA_[A-Z0-9_]+|EACCES|ENOENT|ENOSPC|ECONNRESET|ETIMEDOUT|CERT_HAS_EXPIRED|UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN)\b").Cast<Match>().Select(match => match.Value).Distinct().Take(16).ToArray();
+            return Regex.Matches(Clean(line), @"\b(?:[A-Za-z]+Exception|[A-Za-z]*Error|ERR_[A-Z0-9_]+|UPDATE_[A-Z0-9_]+|GEA_[A-Z0-9_]+|EACCES|ENOENT|ENOSPC|ECONNRESET|ETIMEDOUT|EPIPE|EBUSY|EPERM|ECONNREFUSED|EADDRINUSE|MODULE_NOT_FOUND|PREVIOUS_OPERATION_INTERRUPTED|PACKAGE_WRITERS_UNCONFIRMED|LOADED_OWNER_MISMATCH|CERT_HAS_EXPIRED|UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN)\b").Cast<Match>().Select(match => match.Value).Distinct().Take(16).ToArray();
         }
         internal static string StructuredText(string text) {
             object value = Json.DeserializeObject(text);
@@ -90,6 +90,9 @@ namespace GeaDiagnostics {
                 }
                 else {
                     line = Clean(line);
+                    var hostExit = Regex.Match(line, @"\bdsh desktop host exited with (?<code>-?[0-9]{1,10})(?::|$)");
+                    long exitCode;
+                    if (hostExit.Success && Int64.TryParse(hostExit.Groups["code"].Value, out exitCode)) lines.Add(Json.Serialize(new { eventType = "host-exit", exitCode = exitCode }));
                     lines.AddRange(ErrorCodes(line));
                     if (line.IndexOf("Unexpected end of JSON", StringComparison.OrdinalIgnoreCase) >= 0) lines.Add("JSON_PARSE_TRUNCATED");
                     if (line.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0) lines.Add("TIMEOUT");

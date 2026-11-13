@@ -133,7 +133,7 @@ namespace GeaDiagnostics {
             File.Copy(archive, Path.Combine(packaging, "诊断数据.tar.gz"));
             string summary = "GEA日志采集\r\n生成时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\r\n工具版本：" + BuildInfo.Version + "\r\n" + (partial ? "部分记录未获取，请结合收集清单判断。" : "已完成所有采集项目。") + "\r\n将整个 ZIP 文件发给技术支持，并补充故障大致时间和操作步骤。\r\n";
             File.WriteAllText(Path.Combine(packaging, "请先阅读.txt"), summary, new UTF8Encoding(true));
-            Privacy.Save(Path.Combine(packaging, "收集清单.json"), new { version = BuildInfo.Version, timeUtc = DateTime.UtcNow.ToString("o"), partial = partial, groups = coverage, sourceLogWindowHours = 24, credentialFilesCollected = false, sessionBodiesCollected = false });
+            Privacy.Save(Path.Combine(packaging, "收集清单.json"), new { version = BuildInfo.Version, timeUtc = DateTime.UtcNow.ToString("o"), partial = partial, groups = coverage, sourceLogWindowHours = 24, durableUpdateStateAgeLimited = false, credentialFilesCollected = false, sessionBodiesCollected = false });
             using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream("Troubleshoot.License")) using (var output = File.Create(Path.Combine(packaging, "Troubleshoot-LICENSE.txt"))) source.CopyTo(output);
             string target = Path.Combine(plan.Output, "GEA日志采集-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 4) + ".zip");
             Directory.CreateDirectory(plan.Output);

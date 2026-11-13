@@ -95,6 +95,9 @@ namespace GeaDiagnostics {
             if (name == "requests.jsonl") return "request-metadata";
             if (name.StartsWith("crash-")) return "crash-log";
             if (name.StartsWith("stages-")) return "installer-stages";
+            if (name == "company-update.json") return "desktop-update-state";
+            if (name.StartsWith("company-update-")) return "desktop-update-history";
+            if (name == "latest.json") return "update-operation-pointer";
             if (name == "receipt.json") return "update-receipt";
             return "technical" + Path.GetExtension(file);
         }
@@ -134,8 +137,25 @@ namespace GeaDiagnostics {
         void Updates() {
             int before = sequence;
             foreach (string profile in plan.Profiles) {
+                var stateFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                string updateRoot = Path.Combine(profile, "gea", "plugin-updates");
+                foreach (string file in Files(Path.Combine(profile, "gea"), 1, 2, p => String.Equals(Path.GetDirectoryName(p), updateRoot, StringComparison.OrdinalIgnoreCase) && (Path.GetFileName(p) == "company-update.json" || Path.GetFileName(p) == "latest.json"), false)) {
+                    stateFiles.Add(file);
+                    Source(file, true);
+                    if (Path.GetFileName(file) != "latest.json") continue;
+                    try {
+                        var pointer = Privacy.Json.DeserializeObject(Privacy.ReadBounded(file, 4096)) as IDictionary<string, object>;
+                        object value;
+                        Guid id;
+                        if (pointer == null || !pointer.TryGetValue("id", out value) || !(value is string) || !Guid.TryParse((string)value, out id)) throw new IOException("UPDATE_POINTER_INVALID");
+                        string operations = Path.Combine(profile, "gea", "plugin-updates", "operations");
+                        if (!Directory.Exists(operations)) continue;
+                        if ((File.GetAttributes(operations) & FileAttributes.ReparsePoint) != 0) throw new IOException("LINKED_SOURCE_SKIPPED");
+                        foreach (string receipt in Files(Path.Combine(operations, id.ToString()), 0, 1, p => Path.GetFileName(p) == "receipt.json", false)) { stateFiles.Add(receipt); Source(receipt, true); }
+                    } catch (Exception error) { coverage.Add(new { source = "update-operation-pointer", state = "unavailable", code = ErrorCode(error) }); }
+                }
                 foreach (string relative in new [] { "gea/plugin-updates", "gea/bootstrap", "gea/bundled-refresh" })
-                    foreach (string file in Files(Path.Combine(profile, relative.Replace('/', Path.DirectorySeparatorChar)), 3, 60, p => Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(p).StartsWith("before-") && !Path.GetFileName(p).Equals("package.json", StringComparison.OrdinalIgnoreCase) && Path.GetFileName(p) != "windows-job-ack.json")) {
+                    foreach (string file in Files(Path.Combine(profile, relative.Replace('/', Path.DirectorySeparatorChar)), 3, 60, p => !stateFiles.Contains(p) && Path.GetExtension(p).Equals(".json", StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(p).StartsWith("before-") && !Path.GetFileName(p).Equals("package.json", StringComparison.OrdinalIgnoreCase) && Path.GetFileName(p) != "windows-job-ack.json")) {
                         Source(file, true);
                     }
                 foreach (string file in Files(Path.Combine(profile, ".plugin-manager/logs"), 2, 12, p => Path.GetExtension(p).Equals(".log", StringComparison.OrdinalIgnoreCase))) Source(file, false);
