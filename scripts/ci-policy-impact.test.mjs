@@ -414,6 +414,22 @@ const workbenchBuildContracts = [
   "scripts/run-quality-ci-stages.test.mjs",
 ];
 
+test("official input changes select the real consumer for peer plans and local source plans", (t) => {
+  for (const repo of ["dsh-agent-workbench", "dsh-gea-plugin"]) {
+    const fixture = resourceImpactFixture(t);
+    const entry = fixture.repositories.find((entry) => entry.repo === repo);
+    const file =
+      repo === "dsh-agent-workbench"
+        ? "scripts/verify-official-input.mjs"
+        : "scripts/check-workbench.mjs";
+    fixture.change(entry, file, "export const changed = true;\n");
+    for (const sourceOnly of repo === "dsh-gea-plugin" ? [false, true] : [false]) {
+      const plan = fixture.plan({ sourceOnly });
+      assert.ok(plan.files.includes("scripts/check-workbench.test.mjs"), JSON.stringify(plan));
+    }
+  }
+});
+
 test("Workbench compiled version changes select loaded Host and client identity contracts", (t) => {
   const fixture = resourceImpactFixture(t);
   const file = "src/plugin-package-version.ts";
