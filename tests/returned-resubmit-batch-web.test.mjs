@@ -144,7 +144,12 @@ test(
     await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await frame
+      .getByTestId("regional-approval-workbench")
+      .getByRole("button", { name: "核对提交结果", exact: true })
+      .click();
+    await expect(dialog.getByRole("button", { name: "核对提交结果", exact: true })).toBeEnabled();
     allowReadback();
     await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
@@ -168,7 +173,12 @@ test(
     await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    await frame.getByRole("button", { name: "核对提交结果", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await frame
+      .getByTestId("regional-approval-workbench")
+      .getByRole("button", { name: "核对提交结果", exact: true })
+      .click();
+    await expect(dialog.getByRole("button", { name: "核对提交结果", exact: true })).toBeEnabled();
     allowReadback();
     await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
