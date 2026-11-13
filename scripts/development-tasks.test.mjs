@@ -449,11 +449,14 @@ test("Workbench keeps its copied Manage resources, compute sources and provenanc
   t.mock.method(cp, "execFileSync", (file, args, options) =>
     args.join(" ") === "pnpm --version" ? "1.0.0\n" : original(file, args, options),
   );
-  t.mock.method(cp, "spawnSync", () => {
+  const commands = [];
+  t.mock.method(cp, "spawnSync", (file, args) => {
+    commands.push({ file, args });
     compile();
     return { status: 0 };
   });
   assert.equal((await developmentTask("build", {}, path)).status, "built");
+  assert.deepEqual(commands[0], { file: "corepack", args: ["pnpm", "run", "build:plugin"] });
   gea.write("business-resources/unrelated/SKILL.md", "changed resource");
   assert.equal((await developmentTask("build", {}, path)).status, "reused");
   manage.write("business-resources/unrelated/SKILL.md", "changed copied resource");
@@ -463,6 +466,11 @@ test("Workbench keeps its copied Manage resources, compute sources and provenanc
   manage.manifest.description = "changed provenance";
   manage.write("package.json", JSON.stringify(manage.manifest));
   assert.equal((await developmentTask("build", {}, path)).status, "built");
+  const all = await developmentTask("build", { target: "all" }, path);
+  assert.equal(all.status, "built");
+  assert.deepEqual(commands.at(-1), { file: "corepack", args: ["pnpm", "run", "build"] });
+  assert.equal(JSON.parse(fs.readFileSync(all.receipt)).input.target, "all");
+  assert.ok(all.receipt.endsWith("build-all.json"));
 });
 
 test("dependency preparation still binds complete linked peer manifests and commits", async (t) => {

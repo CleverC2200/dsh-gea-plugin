@@ -120,7 +120,7 @@ function command(owner, script) {
 }
 async function build(owner, target) {
   const scripts = {
-    "dsh-agent-workbench": { plugin: "build:core", all: "build" },
+    "dsh-agent-workbench": { plugin: "build:plugin", all: "build" },
     "dsh-agent-manage": { plugin: "build", client: "build:client" },
     "dsh-gea-plugin": { plugin: "build:plugin", host: "build:host", client: "build:client" },
   };

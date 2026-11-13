@@ -895,7 +895,7 @@ try {
     }
     if (building && values["prepare-inputs"]) {
       if (plan.runtime)
-        run("npm", ["run", "build:core"], preparedWorkbench, {
+        run("npm", ["run", "build:plugin"], preparedWorkbench, {
           DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
           APS_BUILD_MODE: "mock",
         });
