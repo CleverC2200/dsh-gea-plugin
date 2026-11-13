@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -88,4 +96,51 @@ test("an older tool that silently ignores consumer arguments cannot pass officia
   const result = f.run(["official-input"]);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /WORKBENCH_CONSUMER_RECEIPT_REQUIRED/);
+});
+
+test("the public official typecheck rejects an unregistered Core and mixed declarations before tsc", (t) => {
+  const f = fixture(t);
+  const root = new URL("../", import.meta.url);
+  const workbench = join(f.root, "dsh-agent-workbench");
+  f.prepare(workbench);
+  copyFileSync(
+    new URL("../dsh-agent-workbench/scripts/verify-official-input.mjs", root),
+    join(workbench, "scripts/verify-official-input.mjs"),
+  );
+  const core = join(f.root, "official");
+  const cordis = join(core, "vendor/cordis/lib/types/index.d.ts");
+  mkdirSync(dirname(cordis), { recursive: true });
+  writeFileSync(cordis, "export {};\n");
+  for (const args of [
+    ["init", "-q"],
+    ["add", "."],
+    ["-c", "user.name=fixture", "-c", "user.email=fixture@invalid", "commit", "-qm", "fixture"],
+  ]) {
+    const result = spawnSync("git", args, { cwd: core, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const config = { compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } } };
+  writeFileSync(join(f.consumer, "tsconfig.official.json"), JSON.stringify(config));
+  const registry = join(f.consumer, "scripts/supported-cores.json");
+  copyFileSync(new URL("scripts/supported-cores.json", root), registry);
+  const manifest = JSON.parse(readFileSync(new URL("package.json", root)));
+  const run = () =>
+    spawnSync("sh", ["-c", manifest.scripts["typecheck:official"]], {
+      cwd: f.consumer,
+      encoding: "utf8",
+      env: { ...process.env, DSH_WORKBENCH_CHECKOUT: workbench },
+    });
+  const unregistered = run();
+  assert.notEqual(unregistered.status, 0);
+  assert.match(unregistered.stderr, /OFFICIAL_INPUT_REQUIRED/);
+  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: core, encoding: "utf8" });
+  assert.equal(head.status, 0, head.stderr);
+  writeFileSync(registry, JSON.stringify([{ head: head.stdout.trim() }]));
+  const foreign = join(f.root, "foreign-sdk.d.ts");
+  writeFileSync(foreign, "export {};\n");
+  config.compilerOptions.paths["@deepseek-ai/dsh-sdk-client"] = [foreign];
+  writeFileSync(join(f.consumer, "tsconfig.official.json"), JSON.stringify(config));
+  const mixed = run();
+  assert.notEqual(mixed.status, 0);
+  assert.match(mixed.stderr, /OFFICIAL_SOURCE_MISMATCH/);
 });
