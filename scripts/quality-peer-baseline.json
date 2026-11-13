@@ -3,11 +3,11 @@
   "repositories": [
     {
       "repo": "dsh-agent-workbench",
-      "head": "d64f01c63f89e870dcafb56f436f90ce12892f28"
+      "head": "469e1216ebdca3f36a65269a1550f3286103936d"
     },
     {
       "repo": "dsh-agent-manage",
-      "head": "23af7438045dfdeaa2d1006657a5c1a8487fc56e"
+      "head": "a1e5a738faae31dfe3b768d3e078ccffdb76c808"
     },
     {
       "repo": "dsh-gea-plugin",
