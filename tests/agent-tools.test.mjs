@@ -14,7 +14,6 @@ test(
   "GEA tools use the native model-tool-model loop and persist success, permission errors and cancellation",
   { timeout: process.env.GEA_TEST_SOURCE_CORE === "1" ? 180000 : 90000 },
   async (t) => {
-    // 一个最小的业务页面插件：只用来验证"普通对话里页面工具怎么回答模型"。
     const probeRoot = await mkdtemp(join(tmpdir(), "gea-page-probe-"));
     const probeSkill = [
       "---",
@@ -30,7 +29,7 @@ test(
       "",
     ].join("\n");
     await mkdir(join(probeRoot, "skills", "probe"), { recursive: true });
-    // 页面 SQL 是受控查询输入；可读表来自独立 capability 声明。
+
     await writeFile(
       join(probeRoot, "index.html"),
       [
@@ -41,7 +40,7 @@ test(
       ].join("\n"),
     );
     await writeFile(join(probeRoot, "skills", "probe", "SKILL.md"), probeSkill);
-    // 主对话（标准 agent）按默认根扫描技能：这里把同一份业务规则挂到 DSH_AGENTS_HOME 下。
+
     const agentsHome = await mkdtemp(join(tmpdir(), "gea-agents-home-"));
     await mkdir(join(agentsHome, "skills", "inventory-probe"), { recursive: true });
     await writeFile(join(agentsHome, "skills", "inventory-probe", "SKILL.md"), probeSkill);
@@ -76,7 +75,7 @@ test(
         capabilities: [],
       }),
     );
-    // 第二个模块：非演示（真实）模块，用来验证"权限没开通"这类网关侧状态。
+
     const realRoot = await mkdtemp(join(tmpdir(), "gea-real-probe-"));
     await mkdir(join(realRoot, "skills", "probe"), { recursive: true });
     await writeFile(
@@ -488,8 +487,7 @@ test(
         );
         return true;
       }
-      // 每一轮都要先读一次"这一屏"，读到结果才收尾：用来验证"同一份快照，
-      // 换菜单后还算不算本轮证据"。按"最后一条用户消息之后有没有工具结果"判断本轮。
+
       if (outcome === "page-evidence-guard") {
         if (!body.tools.some((tool) => tool.function.name === "gea_visible_workbench_context")) {
           res.end(event({ content: "当前主对话没有页面工具，未使用旧页面证据回答。" }, "stop"));
@@ -715,7 +713,7 @@ test(
     });
     await app.login();
     const page = (await app.rpc("plans")).value;
-    // Page operations use Workbench's actual owner token and the submit result's Core Session.
+
     const owners = new Map();
     async function pageOperation(sessionId, operation, parameters) {
       const response = await fetch(app.origin + "/api/agent-workbench/page", {
@@ -816,7 +814,7 @@ test(
         assert.match(localSkillCatalog, /inventory-probe/);
         assert.match(localSkillCatalog, /DEVELOPER_SKILL_MUST_NOT_LEAK/);
         assert.doesNotMatch(promptMessages, /PROBE-RULE-42/);
-        // 只要求核心工具在列；部署补丁还会挂其他工具（例如浏览器 MCP），不在这里锁死全集。
+
         const toolNames = modelRequests[0].tools.map((x) => x.function.name);
         for (const expected of [
           "gea_sales_plan_read",
@@ -917,9 +915,9 @@ test(
         );
         assert.match(result.content, /current-visible-page/);
         assert.match(result.content, /当前客户/);
-        // 通道顺序由宿主算好一起给出，模型不必自己挑通道。
+
         assert.match(result.content, /"channels"/);
-        // 问答侧关掉受管 SQL 之后，取数通道指向模块 MCP。
+
         assert.match(JSON.parse(result.content).channels.note, /query_business_data/);
         assert.match(JSON.parse(result.content).channels.note, /inspect_cube_model/);
         assert.equal(result.content.includes("gea_plugin_read"), false);
@@ -1029,11 +1027,11 @@ test(
           (message) =>
             message.role === "tool" && message.tool_call_id === "visible-context-unavailable-1",
         );
-        // 在业务菜单里但这一屏还没上报快照：如实说"没有快照"，而不是假装不在工作台。
+
         assert.match(result.content, /PAGE_HAS_NO_SNAPSHOT/);
         assert.match(result.content, /in-workbench-no-snapshot/);
         assert.match(result.content, /销售计划/);
-        // 没有页面时也要给出兜底通道（受管只读），而不是让模型空转。
+
         assert.match(result.content, /"channels"/);
         assert.equal(
           rows.some(
@@ -1067,7 +1065,7 @@ test(
         },
       });
       await ended(id);
-      // 用户从业务菜单切回主对话：快照还在服务端，但不再是"你眼前这一屏"。
+
       const surface = await closeNativePage(id);
       assert.equal(surface.ok, true, JSON.stringify(surface));
       modelRequests = [];
@@ -1082,7 +1080,7 @@ test(
         () => readSession(app.runtime, id),
         (entries) => entries.filter((entry) => entry.type === "turn/end").length === 2,
       );
-      // 模型每次请求都带全量历史，只能看"最后一条用户消息之后"的那条工具结果。
+
       assert.equal(
         modelRequests.length,
         2,
@@ -1112,7 +1110,7 @@ test(
       assert.match(result.content, /PAGE_NOT_IN_WORKBENCH/);
       assert.match(result.content, /not-in-workbench/);
       assert.match(result.content, /主对话/);
-      // 旧快照的行内容一个字都不能带出去。
+
       assert.equal(result.content.includes("河北"), false);
       assert.equal(
         rows.some((entry) => entry.type === "tool/result" && entry.data.message.content[0].isError),
@@ -1123,7 +1121,7 @@ test(
       outcome = "success";
       modelRequests = [];
       await ended(await submit());
-      // 默认（部署配置没打开 agentSqlRead）不给模型写 SQL 的机会。
+
       assert.equal(
         modelRequests[0].tools.some((candidate) => candidate.function.name === "gea_plugin_read"),
         false,
@@ -1181,7 +1179,7 @@ test(
       async () => {
         outcome = "success";
         const id = await createPageSession();
-        // 菜单状态字段：只有点了业务菜单才算"在工作台"（默认是主对话）。
+
         const synced = await pageOperation(id, "context", {
           format: "gea-workbench-visible-v1",
           sequence: 1,
@@ -1281,8 +1279,7 @@ test(
         });
         outcome = "success";
         const id = await createPageSession();
-        // 菜单状态字段：这一屏的上下文只在"点了业务菜单"的对话里才算证据。
-        // 页面自述能力：工具由通用桥按这份目录为该会话生成。
+
         const catalog = {
           surface: "gea-workbench",
           tool: "gea_workbench_apply",
@@ -1339,7 +1336,7 @@ test(
           content: [{ type: "text", text: "只看河北" }],
         });
         assert.equal(prompted.ok, true, JSON.stringify(prompted));
-        // 工作台页面这一侧：按 AG-UI 取工具调用事件。
+
         await until(() => modelRequests.length > 0, Boolean);
         assert.ok(
           modelRequests[0].tools.some((tool) => tool.function.name === "gea_workbench_apply"),
@@ -1354,8 +1351,7 @@ test(
           !modelRequests[0].tools.some((tool) => tool.function.name === "gea_plugin_page_apply"),
           "Native grant 不准入 HTML 声明动作",
         );
-        // 工具由桥按元素目录生成：模型只会 4 个通用动词；说明里只给数量，
-        // 目录按需取（directory=true），不再随每次请求把标签全塞进上下文。
+
         const applyTool = modelRequests[0].tools.find(
           (tool) => tool.function.name === "gea_workbench_apply",
         );
@@ -1399,7 +1395,7 @@ test(
           action: "expand",
           reason: "展开这一行",
         });
-        // 页面执行完把结果按 AG-UI 的 tool 消息回填，并上报新的页面快照。
+
         const settled = await pageOperation(id, "catalog", {
           pageSource: "self-report",
           toolMessages: [
@@ -1431,12 +1427,12 @@ test(
         assert.equal(value.protocol, "ag-ui-frontend-tool");
         assert.equal(value.applied, true, JSON.stringify(value));
         assert.equal(value.kind, "invoke");
-        // 改动后必须拿到"改动后"的快照，否则模型会拿旧页面下结论。
+
         assert.equal(value.snapshotAfterApply, true);
         assert.equal(value.authority, "view-only");
         assert.equal(value.tool.toolCallName, "gea_workbench_apply");
         assert.equal(value.state.visibleRows.length, 2);
-        // 只改视图：整轮下来不能碰任何 GEA 写接口。
+
         assert.equal(
           app.requests.some((request) =>
             /\/actions$|\/submit$|\/sales-plan\/action$/.test(request.url.pathname),
@@ -1450,8 +1446,7 @@ test(
           ),
           true,
         );
-        // 只读元素上的 setValue 必须被挡在宿主侧，不能变成"改好了"。
-        // （命令没有下发到页面，所以这里是一个带错误码的成功结果，而不是工具异常。）
+
         assert.match(
           modelRequests[2].messages.find(
             (message) => message.role === "tool" && message.tool_call_id === "workbench-command-2",
@@ -1544,7 +1539,7 @@ test(
     );
     await t.test("页面声明受策略收口：非白名单页面不注册，改数据的动作不暴露", async () => {
       outcome = "success";
-      // 1) 不在白名单里的页面：声明了也不给工具。
+
       const foreign = await createPageSession();
       const foreignDeclaration = await pageOperation(foreign, "catalog", {
         pageSource: "self-report",
@@ -1573,7 +1568,7 @@ test(
       );
 
       await ended(foreign);
-      // 2) 白名单页面：改视图的动作和"填草稿"的动作都要暴露（它们都是页面开放的）。
+
       const allowed = await createPageSession();
       await pageOperation(allowed, "catalog", {
         pageSource: "self-report",
@@ -1612,7 +1607,7 @@ test(
         "expandRow",
         "setConfirmedQuantity",
       ]);
-      // 动作里不存在"提交/审批"这类会落库的动作：页面没声明就永远调不到。
+
       assert.equal(
         tool.function.parameters.properties.kind.enum.some((kind) =>
           /submit|approve|save/i.test(kind),
@@ -1660,7 +1655,6 @@ test(
         (entries) => entries.filter((entry) => entry.type === "turn/end").length === 1,
       );
 
-      // 页面切走了：桥关闭 / 这一屏不再是工作台时报 null。
       const released = await pageOperation(id, "catalog", {
         pageSource: "self-report",
         toolMessages: [],
@@ -1750,7 +1744,7 @@ test(
       const tool = modelRequests[0].tools.find(
         (candidate) => candidate.function.name === "gea_workbench_apply",
       );
-      // 元素目录：模型只会四个通用动词。
+
       assert.deepEqual(tool.function.parameters.properties.kind.enum, [
         "invoke",
         "setValue",
@@ -1758,7 +1752,7 @@ test(
         "clear",
         "directory",
       ]);
-      // 说明里区分了"可操作"和"只读"，并给出数量；元素 label 用 directory=true 按需取。
+
       assert.match(tool.function.description, /只读元素/);
       assert.match(tool.function.description, /可编辑/);
       assert.equal(
@@ -1766,7 +1760,7 @@ test(
         false,
         "元素标签不再写进工具说明，改用 directory=true 按需取",
       );
-      // 只读行上的 setValue 不会下发；事件来自第二个（可编辑字段）调用。
+
       const [start, args] = events;
       assert.deepEqual(JSON.parse(args.delta), {
         kind: "setValue",
@@ -1798,7 +1792,7 @@ test(
       const value = JSON.parse(delivered.content);
       assert.equal(value.applied, true, JSON.stringify(value));
       assert.equal(value.kind, "setValue");
-      // 这一屏的目录是页面自述的；这次改动在"改草稿"这一层留下了回执。
+
       assert.equal(value.pageSource, "self-report", JSON.stringify(value));
       assert.equal(value.draft.outcome, "applied");
       assert.match(value.draft.id, /^draft-/);
@@ -2051,7 +2045,7 @@ test(
           },
         };
         assert.deepEqual((await pageOperation(id, "context", synced)).value, { synced: true });
-        // 工作台页面自己的实时查询走的就是这条：它曾经把刚同步的可见页快照清掉。
+
         const live = await app.rpc("workbench/query", {
           kind: "periods",
           query: { pageSize: 1 },

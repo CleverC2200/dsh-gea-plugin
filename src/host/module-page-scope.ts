@@ -1,4 +1,3 @@
-/** Borrowed page observations for these two modules only; Core still owns the Session. */
 type Page = { id: string; payload?: Record<string, any>; signal: AbortSignal; receivedAt: number };
 const modules = new Set(["inventory-customer", "inventory-orderfulfillment"]);
 const bindings = new WeakMap<object, Map<string, Page>>();
@@ -67,7 +66,6 @@ export function modulePagePrompt(host: Host, session: string): string | undefine
   );
 }
 
-/** Add the effective host restriction without parsing/re-encoding business numeric values. */
 export function moduleCubeScopeReceipt(host: Host, session: string, result: string) {
   const page = pageFor(host, session);
   const payload = page?.payload;
@@ -99,7 +97,6 @@ export function moduleCubeScopeReceipt(host: Host, session: string, result: stri
   );
 }
 
-/** Add restrictions as AND intersections; unrepresentable page scopes fail closed. */
 export function inheritModuleCubeScope(host: Host, session: string, args: Record<string, any>) {
   const menu = host.surfaceFor?.(session)?.menu;
   if (!menu || !modules.has(menu) || (args.action && args.action !== "query")) return args;
@@ -173,7 +170,7 @@ export function inheritModuleCubeScope(host: Host, session: string, args: Record
           "GEA_PAGE_SCOPE_UNMAPPED: 此Cube模型未建立订单创建日及页面筛选映射，不能用其他时点替代。",
         );
       const time = model + ".header_addtime";
-      // Preserve source wall-clock dates, matching the installed page SQL. This does not claim a source timezone contract.
+
       filters.push(
         { member: time, operator: "afterOrOnDate", values: [f.start + "T00:00:00"] },
         { member: time, operator: "beforeDate", values: [f.end_exclusive + "T00:00:00"] },
@@ -211,7 +208,6 @@ export function inheritModuleCubeScope(host: Host, session: string, args: Record
   return result;
 }
 
-/** Heartbeats do not change query ownership, but filter/identity changes do. */
 export function moduleScopeSignature(host: Host, session: string) {
   const page = pageFor(host, session);
   if (!page) return undefined;

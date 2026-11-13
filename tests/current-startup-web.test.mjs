@@ -25,8 +25,7 @@ test(
       "@cleverc2200/dsh-agent-workbench",
       "lib",
     );
-    // Match the whole default catalog against the selected snapshot's authored declarations.
-    // There is no single-FC override or filtering of the actual response.
+
     const declaredPages = [];
     for (const directory of [
       "samples",

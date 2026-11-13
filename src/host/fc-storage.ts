@@ -262,7 +262,7 @@ function canonical(value: any): string {
       : v,
   );
 }
-/** Fixed statements only. Published tenant tables and a trusted warehouse binding are required. */
+
 export async function fcStorage(
   config: FcStorageConfig,
   scope: Scope,
@@ -389,13 +389,11 @@ export async function fcStorage(
     };
   if (result.result?.affectedRows !== 1)
     return { status: "unknown", idempotencyKey: key, revision };
-  // Once acknowledged, a failed refresh must never repeat the write.
+
   try {
     const read = await load(revision);
     if (read.revision === revision && canonical(read.value) === payload)
       return { status: "saved", idempotencyKey: key, ...read };
-  } catch {
-    /* The write is acknowledged; caller may retry reads only. */
-  }
+  } catch {}
   return { status: "saved-unverified", idempotencyKey: key, revision };
 }

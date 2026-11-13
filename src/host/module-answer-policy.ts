@@ -4,7 +4,6 @@ const pagePresets = new Set([
   "gea-html-inventory-orderworkbench",
 ]);
 
-/** Evidence precedence does not change tool availability or business authorization. */
 export function moduleAnswerPolicy(preset: string | undefined): string | undefined {
   if (!preset || !pagePresets.has(preset)) return;
   return [

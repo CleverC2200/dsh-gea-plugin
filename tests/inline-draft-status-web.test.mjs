@@ -5,7 +5,6 @@ import { profile } from "./profile.mjs";
 import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 
-/** 暂存失败提示必须贴着改过的数字，重试成功后原地消失，不再占用表格顶部通栏。 */
 test(
   "inline draft status sits next to the edited number and clears after retry",
   { timeout: 90000 },
@@ -53,7 +52,7 @@ test(
       };
       if (path.endsWith("/getPermCode"))
         return send({ codeList: ["sales-plan:plan:region-approve"] });
-      // 队列会按节点状态分别取数，同一条计划只能出现一次。
+
       if (path.endsWith("/plans")) {
         const status = req.url.searchParams.get("status");
         const records = status === null || status === "1" ? [plan] : [];
@@ -105,10 +104,9 @@ test(
       .click();
     const input = frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true });
     await expect(input).toBeVisible();
-    // 明细表嵌在队列行的展开格里，取最近的一层 td 才是数字所在的单元格。
+
     const cell = input.locator("xpath=ancestor::td[1]");
 
-    // 让暂存请求失败，模拟服务端拒绝。
     let failWrites = true,
       writeAttempts = 0;
     await page.route("**/api/gea-proof/sales-plan/draft", async (route) => {
@@ -134,7 +132,7 @@ test(
     await input.fill("22.125");
     await expect(cell.getByText("暂存失败", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(cell.getByRole("button", { name: "重试", exact: true })).toBeVisible();
-    // 提示只出现在改过的那一行，并且必须落在数字所在单元格内（不是表格顶部通栏）。
+
     await expect(frame.getByText("暂存失败", { exact: true })).toHaveCount(1);
     assert.equal(
       await frame

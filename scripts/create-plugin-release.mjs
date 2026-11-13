@@ -1,4 +1,3 @@
-/** Emit one immutable release from the final tar manifest. Does not publish or update a channel. */
 import { parseArgs } from "node:util";
 import { readFile, mkdir, writeFile, realpath } from "node:fs/promises";
 import { createHash } from "node:crypto";

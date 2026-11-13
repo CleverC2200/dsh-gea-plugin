@@ -571,7 +571,7 @@ test("public verifier refuses a prior receipt for a declaration symlink and its 
   rmSync(declaration);
   writeFileSync(target, "export declare class External {}\n");
   symlinkSync(target, declaration);
-  // Reproduce the receipt the old reader could issue for this symlink.
+
   record.files[file] = "link:" + realpathSync(target);
   writeFileSync(fixture.receipt, JSON.stringify(record));
   const verify = () =>

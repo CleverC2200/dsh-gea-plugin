@@ -22,7 +22,6 @@ import { GeaResponseError } from "../shared/gea-error.js";
 import { object, text, keys } from "./payload.ts";
 import { serializeSalesPlanSubmission } from "./sales-plan-wire.ts";
 
-/** Borrow Business's current identity for one write attempt. */
 export type SalesPlanWriteIdentity = {
   token: string;
   tenantId: string;
@@ -79,17 +78,15 @@ function upstreamActionBody(request: Record<string, unknown>): Record<string, un
   return body;
 }
 
-/** Owns validated write intent, exact retry body and receipts for one Business login lifetime. */
 export class SalesPlanTransactions {
   constructor(private readonly host: SalesPlanHost) {}
   clear(): void {
     this.resubmissions.clear();
     this.correctionRequests.clear();
   }
-  /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
+
   private readonly resubmissions = new Map<string, WriteIntent>();
 
-  /** 重提前重新读取 GEA 当前版本和 SKU；浏览器只允许改变数量，身份、价格与路由由服务端来源决定。 */
   async submit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     const scope = this.host.scope("submit");
     payload = structuredClone(payload);
@@ -205,7 +202,7 @@ export class SalesPlanTransactions {
           },
           rows,
         );
-        // 浏览器只能改变数量；身份、价格和路由必须来自 GEA。
+
         if (!isDeepStrictEqual(JSON.parse(JSON.stringify(prepared.request)), request))
           throw new GeaResponseError(409, {
             message: "提交数据与当前 GEA 来源不一致，请重新核对",
@@ -363,7 +360,6 @@ export class SalesPlanTransactions {
 
   private readonly correctionRequests = new Map<string, WriteIntent>();
 
-  /** 审批动作按幂等键缓存；即使首次响应丢失，重试也只能重放同一已授权意图。 */
   async action(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     const scope = this.host.scope("approve");
     payload = structuredClone(payload);
@@ -390,7 +386,6 @@ export class SalesPlanTransactions {
     return intent.flight;
   }
 
-  /** 执行一次已完成来源、角色和快照校验的 GEA 动作；DMS 写回有意不在此方法内。 */
   private async executeAction(
     payload: Record<string, unknown>,
     caller: AbortSignal,

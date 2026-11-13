@@ -34,7 +34,7 @@ export type UpdateClientReport = {
   hostProcessIdentity: string;
   pageIdentity: string;
   nonce: string;
-  /** Revision of the desired public graph; actual loaded identity is the ACTIVE namespace stamp. */
+
   modules: {
     stamp: PluginPackageStamp;
     identity: string;
@@ -127,7 +127,7 @@ const nullableText = (value: unknown): string | null => {
   if (value === null || (typeof value === "string" && value.length <= 300)) return value;
   throw Error("UPDATE_STATUS_INVALID");
 };
-/** Validate Host status before publishing it into the official provider observable. */
+
 export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
   const value = updateObject(raw);
   if (

@@ -20,7 +20,7 @@ holdBuildAdmission({ operation: values.watch ? "watch" : "build" });
 execFileSync(process.execPath, ["scripts/generate-plugin-package-version.mjs"], {
   stdio: "inherit",
 });
-// One-shot and watch builds use identical wrappers and retain output on errors.
+
 const targets = {
   host: [
     {

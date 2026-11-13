@@ -1,4 +1,3 @@
-/** Public plugin/page grant fixture only. No listener, profile or external transport. */
 import test from "node:test";
 import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import assert from "node:assert/strict";

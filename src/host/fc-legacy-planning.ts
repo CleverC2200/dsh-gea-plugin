@@ -50,7 +50,6 @@ function normalized(kind: string, value: any) {
       };
 }
 
-/** Original tables use whole-statement UPSERT and content revisions, not append-only numeric revisions. */
 export async function legacyPlanningStorage(
   dataSourceCode: string,
   scope: { userId: string; tenantId: string },
@@ -198,7 +197,6 @@ export async function legacyPlanningStorage(
     author: scope.userId,
   };
   if (kind === "plans") {
-    // The page saves the full loaded set. Reject omissions instead of silently deleting old SKUs.
     const wanted = new Set(expected.plans!.map((p: any) => p.month + ":" + p.sku));
     requireOk(
       (current.value?.plans ?? []).every((p: any) => wanted.has(p.month + ":" + p.sku)),
@@ -242,7 +240,7 @@ export async function legacyPlanningStorage(
       ...(r.from ? { effectiveFrom: r.from } : {}),
       ...(r.to ? { effectiveTo: r.to } : {}),
     }));
-    // Last warehouse rule provides the saved fallback without taking precedence over explicit rules.
+
     if (expected.days !== 7)
       rules.push({
         id: defaultRuleId,
@@ -286,8 +284,6 @@ export async function legacyPlanningStorage(
   try {
     const saved = await load();
     if (saved.revision === revision) return { status: "saved", ...saved, idempotencyKey: key };
-  } catch {
-    /* Keep the original intent for read-only reconciliation. */
-  }
+  } catch {}
   return { status: "saved-unverified", revision, idempotencyKey: key };
 }

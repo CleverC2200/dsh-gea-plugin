@@ -3,15 +3,15 @@
   "repositories": [
     {
       "repo": "dsh-agent-workbench",
-      "head": "b20dfb0ce5ef3d626879789701eeb6adaf372d20"
+      "head": "8007988f3edef96f0656606451789e6652a5e3f9"
     },
     {
       "repo": "dsh-agent-manage",
-      "head": "4d7df955384e02a40655add95ee8ce6bd524ee5f"
+      "head": "7d6d2790f9e4c0f65baac41318b1405c3d4d4854"
     },
     {
       "repo": "dsh-gea-plugin",
-      "head": "a5894d2f140b6e11ccb542c711cf598e3797f041"
+      "head": "6db5bd93cc186a3975490538922f15cfe2de7d6c"
     }
   ]
 }

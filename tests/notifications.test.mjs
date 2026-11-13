@@ -145,8 +145,7 @@ test(
       })),
     );
     const ui = await context.newPage();
-    // The first confirmed GEA scope replaces the unconfirmed Inbox instance.
-    // Its real Core conversation appears only after that page owns the current Session.
+
     const openInbox = async () => {
       await preparePageStartup(ui);
       await ui.getByRole("button", { name: "消息待办", exact: true }).click();
@@ -187,7 +186,7 @@ test(
     await mkdir(".runtime/web-evidence", { recursive: true });
     await ui.screenshot({ path: ".runtime/web-evidence/inbox.png" });
     await ui.getByRole("button", { name: "Fixture task", exact: true }).click();
-    // 上游标识不露给业务：详情里不再出现来源引用和聚合标识。
+
     const drawer = ui.getByRole("dialog");
     assert.equal(
       await drawer.getByText("external-session-1", { exact: true }).count(),

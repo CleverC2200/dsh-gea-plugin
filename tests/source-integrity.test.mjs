@@ -23,7 +23,6 @@ import { createReadScope } from "../scripts/delivery-input-scope.mjs";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 async function ownedDirectory(t, name) {
-  // A caller-provided directory retains this run's fixtures for review.
   const parent = process.env.GEA_SOURCE_INTEGRITY_TMP ?? tmpdir();
   await mkdir(parent, { recursive: true });
   const directory = await realpath(await mkdtemp(join(parent, name + "-")));
@@ -58,7 +57,7 @@ async function fixture(t) {
     externalFiles[path] = hash(bytes);
     dependencies.push(path);
   }
-  // Tail files must remain covered when a reader processes several batches.
+
   for (let index = 0; index < 73; index++) {
     const name = String(index).padStart(3, "0");
     await resource(`pages/${index % 3}/asset-${name}.json`, JSON.stringify({ index }));
@@ -282,8 +281,7 @@ test("safe read scope refuses an escaping resource link and a protected transiti
     /INTEGRITY_INPUT_OUTSIDE_ROOT/,
   );
   await unlink(f.resourceLink);
-  // The resource link is removed from this fixture so the refusal comes from
-  // the external graph rather than its resource inventory.
+
   delete f.files["dependency-link"];
   const recordPath = join(f.directory, "combination.json");
   const record = JSON.parse(await readFile(recordPath, "utf8"));

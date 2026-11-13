@@ -1,13 +1,3 @@
-/**
- * versionSkus 的模型侧读取必须有界分页，不能把整份 SKU 灌回模型。
- *
- * 线上问题：一个版本的 SKU 可能上千条，kind=versionSkus 整包返回会直接顶到
- * 输入预算。这里验证投影后的分页契约：
- *   - 不是最后一页时 coverage=partial，并给出可继续取的 nextQuery；
- *   - 最后一页 coverage=complete，nextQuery=null；
- *   - 单页仍然超预算时自动缩页，而不是报 SNAPSHOT_TOO_LARGE。
- * 页面自身的工作台读取不受影响，这里只看模型读到的内容。
- */
 import { readFile } from "node:fs/promises";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
@@ -62,7 +52,7 @@ test(
       "\n\n";
     const modelRequests = [];
     const skus = skuRows(400);
-    // 每一次"新对话"按顺序取一条脚本；同一对话的第二轮就是收尾回答。
+
     const scripted = [
       { pageNo: 1, pageSize: 5 },
       { pageNo: 80, pageSize: 5 },
@@ -197,7 +187,7 @@ test(
     assert.deepEqual(first.nextQuery, { versionId, offset: 5, pageSize: 5 });
     assert.ok(first.note.includes("nextQuery"), "提示没有指向下一页: " + first.note);
     assert.equal(JSON.parse(toolPayloads[0]).coverage, "partial");
-    // 投影只留模型需要的字段，不带版本内内部标识。
+
     assert.deepEqual(Object.keys(first.records[0]).sort(), [
       "amt",
       "amtBase",

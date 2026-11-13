@@ -542,7 +542,6 @@ for (const mode of ["source-host", "isolated-source-host", "isolated-core-host"]
     );
   });
 
-// The existing public function must record the admitted Core before attempting a Host.
 test("isolated Core admission records the registered version before a held profile lock", async (t) => {
   const fixture = await sourceWindow(t, "isolated-core-host");
   await mkdir(fixture.runtime, { recursive: true });

@@ -1,4 +1,3 @@
-/** Verify one explicit durable Session; fresh live acceptance additionally requires the current Host run. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -25,11 +24,12 @@ const legacyUser = rows.find(
   (row) =>
     row.type === "user/message" &&
     row.data.content?.some(
-      (part) =>
-        part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
+      (part) => part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
     ),
 );
-let expected, snapshot, snapshotRow = legacyUser;
+let expected,
+  snapshot,
+  snapshotRow = legacyUser;
 if (legacyUser) {
   const prompt = legacyUser.data.content.find(
     (part) => part.type === "text" && part.text.includes("GEA_SNAPSHOT_SHA256="),
@@ -40,26 +40,23 @@ if (legacyUser) {
   snapshot = JSON.parse(json);
 } else {
   const archived = JSON.parse(
-    await readFile(
-      resolve(runtime, "analysis-snapshots", values.session + ".json"),
-      "utf8",
-    ),
+    await readFile(resolve(runtime, "analysis-snapshots", values.session + ".json"), "utf8"),
   );
   assert.equal(archived.schema, 1, "UNSUPPORTED_SNAPSHOT_ARCHIVE");
   assert.equal(archived.sessionId, values.session, "SNAPSHOT_SESSION_MISMATCH");
   expected = archived.snapshotHash;
   snapshot = archived.snapshot;
   assert.equal(
-    createHash("sha256").update(JSON.stringify(snapshot, null, 2)).digest("hex"),
+    createHash("sha256")
+      .update(JSON.stringify(snapshot, null, 2))
+      .digest("hex"),
     expected,
     "SNAPSHOT_HASH_MISMATCH",
   );
   snapshotRow = rows.find(
     (row) =>
       row.type === "user/message" &&
-      row.data.content?.some(
-        (part) => part.type === "text" && part.text.includes("业务资料（共"),
-      ),
+      row.data.content?.some((part) => part.type === "text" && part.text.includes("业务资料（共")),
   );
 }
 assert.ok(snapshotRow, "SNAPSHOT_NOT_FOUND");
@@ -68,15 +65,8 @@ assert.ok(
   "UNSUPPORTED_SNAPSHOT_FORMAT",
 );
 const firstTurn = rows.find((row) => row.type === "turn/end");
-assert.equal(
-  firstTurn?.data.reason.kind,
-  "completed",
-  "FIRST_ANALYSIS_NOT_COMPLETED",
-);
-assert.ok(
-  rows.indexOf(snapshotRow) < rows.indexOf(firstTurn),
-  "SNAPSHOT_NOT_IN_FIRST_ANALYSIS",
-);
+assert.equal(firstTurn?.data.reason.kind, "completed", "FIRST_ANALYSIS_NOT_COMPLETED");
+assert.ok(rows.indexOf(snapshotRow) < rows.indexOf(firstTurn), "SNAPSHOT_NOT_IN_FIRST_ANALYSIS");
 const answers = rows.filter(
   (row) =>
     row.type === "assistant/message" &&
@@ -105,19 +95,12 @@ if (values["require-live"]) {
     body: "{}",
   });
   const status = await response.json();
-  assert.ok(
-    status.ok && status.value.authenticated,
-    "FRESH_GEA_LOGIN_REQUIRED",
-  );
+  assert.ok(status.ok && status.value.authenticated, "FRESH_GEA_LOGIN_REQUIRED");
   assert.ok(
     typeof snapshot.runId === "string" && snapshot.runId.length > 0,
     "SNAPSHOT_RUN_REQUIRED",
   );
-  assert.equal(
-    snapshot.runId,
-    status.value.runId,
-    "PREVIOUS_PROCESS_NOT_FRESH_ACCEPTANCE",
-  );
+  assert.equal(snapshot.runId, status.value.runId, "PREVIOUS_PROCESS_NOT_FRESH_ACCEPTANCE");
   assert.equal(
     snapshot.sourceUrl,
     status.value.source + "/sales-plan/plans",
@@ -141,29 +124,17 @@ if (values["require-live"]) {
       hostname !== "[::1]",
     "LOCAL_FIXTURE_NOT_LIVE_ACCEPTANCE",
   );
-  assert.equal(
-    status.value.mode,
-    "model",
-    "LOCAL_RECEIPT_NOT_MODEL_ACCEPTANCE",
-  );
-  assert.equal(
-    status.value.provider,
-    "gea-analysis",
-    "GEA_MODEL_PROVIDER_REQUIRED",
-  );
+  assert.equal(status.value.mode, "model", "LOCAL_RECEIPT_NOT_MODEL_ACCEPTANCE");
+  assert.equal(status.value.provider, "gea-analysis", "GEA_MODEL_PROVIDER_REQUIRED");
   assert.ok(
     typeof status.value.model === "string" && status.value.model.length > 0,
     "CURRENT_MODEL_REQUIRED",
   );
-  // Message source records the route that produced the answer; a later model selection is only intent.
+
   for (const answer of answers) {
     const source = answer.data.message?.source;
     assert.equal(source?.kind, "model", "MODEL_ANSWER_REQUIRED");
-    assert.equal(
-      source.provider,
-      status.value.provider,
-      "ANALYSIS_PROVIDER_MISMATCH",
-    );
+    assert.equal(source.provider, status.value.provider, "ANALYSIS_PROVIDER_MISMATCH");
     assert.equal(source.model, status.value.model, "ANALYSIS_MODEL_MISMATCH");
   }
   freshLiveVerified = true;
@@ -179,9 +150,7 @@ const report = {
   firstAnalysisCompleted: true,
   freshLiveVerified,
 };
-await writeFile(
-  resolve(runtime, "verification.json"),
-  JSON.stringify(report, null, 2) + "\n",
-  { mode: 0o600 },
-);
+await writeFile(resolve(runtime, "verification.json"), JSON.stringify(report, null, 2) + "\n", {
+  mode: 0o600,
+});
 console.log(JSON.stringify(report, null, 2));

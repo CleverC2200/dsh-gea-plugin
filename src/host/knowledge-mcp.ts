@@ -1,4 +1,3 @@
-/** WeKnora business results are answers and citations, never Cube datasets or reusable authorization grants. */
 import { withMcpTrace, type GatewayTrace } from "./mcp-trace.ts";
 export const KNOWLEDGE_SOURCE = "mcp.weknora";
 export const KNOWLEDGE_METHODS = ["weknora_list_knowledge_bases", "weknora_ask"] as const;
@@ -39,7 +38,6 @@ function invalid(field: string, payload?: unknown, gatewayTrace: GatewayTrace = 
   );
 }
 
-/** Enforce the documented knowledge arguments without rewriting questions or selecting a different identity. */
 export function knowledgeArguments(method: KnowledgeMethod, args: Record<string, unknown>): void {
   const allowed = method === "weknora_ask" ? ["query", "knowledgeBaseIds"] : [];
   if (Object.keys(args).some((key) => !allowed.includes(key)))
@@ -77,7 +75,6 @@ export function knowledgeSelection(catalog: string, args: Record<string, unknown
     );
 }
 
-/** Prefer the structured business result; text-only peers must supply exactly one business JSON value. */
 export function knowledgeResult(
   method: KnowledgeMethod,
   result: Record<string, unknown>,

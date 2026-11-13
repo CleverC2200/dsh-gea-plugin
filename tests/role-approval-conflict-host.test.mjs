@@ -16,7 +16,7 @@ test(
       };
       if (path.endsWith("/getPermCode"))
         return send({ codeList: ["sales-plan:plan:region-approve"] });
-      // 提交时重新读到的版本已经被别人推到下一节点（状态 1 → 2）。
+
       if (path.endsWith("/plans/p"))
         return send({
           currentVersion: { id: "v", planId: "p", status: 2, effective: true, planTypeCode: "Y" },

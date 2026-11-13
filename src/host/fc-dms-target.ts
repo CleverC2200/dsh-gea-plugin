@@ -1,4 +1,3 @@
-/** DMS routing is materialized per warehouse, preserving its existing read scope. */
 export const FC_DMS_WAREHOUSE_TARGET_SQL = `WITH ready AS (
  SELECT MAX(b.inv_batch_id) AS batch_id FROM agents_inv_branch_sku_day AS b
  WHERE b.inv_variant_id='__BRANCH_READY__' AND b.warehouseid=:gea_p1

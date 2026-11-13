@@ -1,4 +1,3 @@
-/** Official package-operation entry; no profile SDK links, overlays, peer bypasses or auxiliary inputs. */
 import { readFile, writeFile } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { pathToFileURL } from "node:url";

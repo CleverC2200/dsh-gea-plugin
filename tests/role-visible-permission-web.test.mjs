@@ -125,12 +125,12 @@ test(
     await page.goto(app.origin);
 
     const frame = await openSalesPlan(page);
-    // V1.8 #05：流程图默认收起，先展开再操作节点。
+
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();
     const region = frame.getByTestId("regional-approval-stage-region");
     await expect(region).toHaveAttribute("aria-pressed", "true");
-    await region.click(); // Include tracking rows, not only this role's pending queue.
+    await region.click();
     const row = frame.locator("tbody tr").filter({ hasText: plan.belong_base }).first();
     await expect(row).toBeVisible();
     await row.locator("label.arco-checkbox").click();

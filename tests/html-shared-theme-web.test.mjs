@@ -4,7 +4,7 @@ import {
   openRegisteredWorkbenchPage,
   prepareWorkbenchPageAccess,
 } from "./fixtures/business-page.mjs";
-/** Real profile/iframe acceptance; the table itself is a workbench-owned local sample. */
+
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
@@ -33,7 +33,7 @@ test(
       "utf8",
     );
     await writeFile(join(root, "index.html"), sample);
-    // Temporary verification material consumed by the existing loader, never a shipped plugin.
+
     await writeFile(
       join(root, "plugin.json"),
       JSON.stringify({
@@ -94,7 +94,7 @@ test(
         .getByRole("button", { name: "继续", exact: true })
         .click();
       await openRegisteredWorkbenchPage(page, "项目清单样板");
-      // The shipped sample is static; use the public Core conversation action for draft checks.
+
       await page
         .locator(".agent-workbench-document")
         .getByRole("button", { name: "新建对话", exact: true })
@@ -205,7 +205,7 @@ test(
         ]) {
           for (const element of await page.locator(selector).all()) {
             await expect(element).toHaveCSS("background-color", surface);
-            // The container carries primary text; description and suggestion text consume body typography.
+
             await expect(element).toHaveCSS(
               "color",
               selector === ".gea-agent-welcome"
@@ -292,7 +292,7 @@ test(
           fullPage: true,
         });
       }
-      // Theme switches must also restore the same mounted welcome, without a reload.
+
       await settings();
       await changeThemeSetting(page, "浅色", "preference");
       await page.getByRole("button", { name: "关闭", exact: true }).click();
@@ -314,7 +314,7 @@ test(
       );
       await page.setViewportSize({ width: 720, height: 900 });
       await expect(frame.getByRole("button", { name: "查询", exact: true })).toBeVisible();
-      // AppFrame commits its ResizeObserver measurement on the next animation frame.
+
       await expect
         .poll(() =>
           child.evaluate(
@@ -359,7 +359,7 @@ test(
         await child.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         true,
       );
-      // The shared layout stacks at 720px; the smaller page exercises real table overflow.
+
       await expect
         .poll(() =>
           child.evaluate(
@@ -399,14 +399,14 @@ test(
       await expect(
         page.getByRole("button", { name: "同时显示中间区域和会话区", exact: true }),
       ).toBeVisible();
-      // Parent DOM edits are not theme authority; the public snapshot owns updates.
+
       await page.evaluate(() =>
         document.body.style.setProperty("--workbench-theme-version", '"2.0.0"'),
       );
       await expect(frame.locator("#summary")).toHaveText("共 4 个项目");
       await expect(frame.getByRole("alert")).toBeHidden();
       await page.evaluate(() => document.body.style.removeProperty("--workbench-theme-version"));
-      // The fixed iframe resource also refuses a damaged assembled sample.
+
       await writeFile(
         join(root, "index.html"),
         sample.replace(/<style data-workbench-resource="1.1.1">[\s\S]*?<\/style>/, ""),
@@ -436,7 +436,7 @@ test(
       await expect(
         page.getByText("本地验证回执（非 AI 分析）：业务资料已进入会话。", { exact: true }),
       ).toBeVisible();
-      // Linux Web has no default sidebar binding; configure an allowed one through the public editor.
+
       await expect(page.getByRole("dialog", { name: /内测声明|预览版说明/ })).toHaveCount(0);
       await page.keyboard.press("ControlOrMeta+/");
       const shortcuts = page.getByRole("dialog", { name: "快捷键", exact: true });

@@ -180,7 +180,7 @@ test(
       ).toHaveCount(1);
       const frame = iframe.contentFrame();
       await selector.click();
-      // A heading hit promotes to its surrounding meaningful block in these real prototypes.
+
       const target = frame
         .locator(".card-h:visible,h1:visible,h2:visible,h3:visible,th:visible")
         .first();

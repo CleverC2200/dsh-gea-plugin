@@ -1,4 +1,3 @@
-/** Validate the public deployment before credentials or runtime state are used. */
 export function validateSqlReadLimit(config) {
   if (config === undefined) return;
   if (
@@ -20,7 +19,6 @@ export function validateSqlReadLimit(config) {
     throw Error("INVALID_SQL_READ_LIMIT");
 }
 
-/** A fixed Host lifetime shares one physical SQL allowance, including retries. */
 export function createSqlReadLimit(config) {
   validateSqlReadLimit(config);
   if (config === undefined) return undefined;

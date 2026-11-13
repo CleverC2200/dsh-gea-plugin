@@ -82,7 +82,8 @@
     "typecheck:plugin-updates": "node scripts/check-plugin-updates-types.mjs",
     "test:package-version": "node --test scripts/package-version-gate.test.mjs scripts/plugin-package-version.test.mjs",
     "test:plugin-updates:desktop": "node --expose-internals --test tests/acceptance/plugin-update-desktop.mjs",
-    "test:full": "node scripts/run-quality-full.mjs"
+    "test:full": "node scripts/run-quality-full.mjs",
+    "check:comments": "node ../dsh-agent-workbench/scripts/check-source-comments.mjs --root ."
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",
@@ -172,7 +173,10 @@
     "react-dom": "18.3.1",
     "react-grab": "0.2.0",
     "typescript": "5.9.3",
-    "xlsx-republish": "0.20.3"
+    "xlsx-republish": "0.20.3",
+    "parse5": "7.3.0",
+    "postcss": "8.5.26",
+    "highlight.js": "11.11.1"
   },
   "engines": {
     "node": ">=24.0.0"

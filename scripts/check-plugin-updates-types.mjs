@@ -1,4 +1,3 @@
-/** Type-check the Host, transport and real detail contributions against one unchanged public SDK. */
 import { readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { resolve, join, isAbsolute } from "node:path";
 import { execFileSync } from "node:child_process";

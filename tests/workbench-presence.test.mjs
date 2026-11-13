@@ -1,9 +1,3 @@
-/**
- * "这个对话在主对话还是业务工作台"的判定。
- *
- * 线上现象：用户在主对话里问业务问题，助手却拿工作台留下的页面快照当"眼前这一屏"。
- * 现在只认前端上报的菜单状态字段：默认主对话，点菜单才切；快照/心跳都不能当判据。
- */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { workbenchPresence } from "../src/host/workbench-presence.ts";
@@ -80,10 +74,10 @@ test("每轮注入的「业务位置」：主对话就明说别读页面", () =>
   assert.match(main, /页面/);
   assert.match(main, /未绑定/);
   assert.match(main, /query_business_data/);
-  // 线上实测：位置提示来回变之后，模型说"用户消息是空的"——这条必须钉住。
+
   assert.match(main, /用户指向这一屏/);
   assert.match(main, /不空读页面/);
-  // 报了 main 与没上报过是同一种事实，措辞一致。
+
   assert.equal(surfacePromptLine(normalizeSurface({ menu: MAIN_MENU })), main);
 });
 
@@ -94,8 +88,6 @@ test("每轮注入的「业务位置」：业务菜单才允许读这一屏", ()
   assert.match(line, /页面：全链库存工作台/);
   assert.match(line, /页面证据/);
 
-  // 用户要求：默认不读页面；只有用户这条消息里出现页面意图（这一屏/这几行/展开/选中/这单）才读，
-  // 免得一进对话就拉整屏快照把上下文撑爆。
   assert.match(line, /仅用户引用可见内容时/);
 
   assert.match(line, /独立范围问题/);

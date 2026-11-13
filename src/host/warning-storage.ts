@@ -52,7 +52,6 @@ function fail(code: string, message: string): never {
   throw Object.assign(Error(message), { code });
 }
 
-/** Fixed PG-Warning statements only; all operations use the separately authorized SQL whitelist API. */
 export async function warningStorage(owner: Owner, input: unknown, execute: Execute) {
   const request = inputSchema.parse(input);
   async function sql(statement: string, parameters: Record<string, unknown> = {}) {

@@ -103,7 +103,7 @@ test("public quality binds the original policy and tools while accepting complet
     const bytes = readFileSync(installed);
     const metadata = JSON.parse(bytes);
     metadata.version = "0.0.0";
-    // pnpm may hardlink package files into its store. Replace the fixture inode, never edit it.
+
     writeFileSync(installed + ".quality-test", JSON.stringify(metadata));
     renameSync(installed + ".quality-test", installed);
     try {
@@ -139,12 +139,12 @@ test("public quality binds the original policy and tools while accepting complet
     assert.deepEqual(readFileSync(join(directory, file)), bytes);
   for (const file of ["src/policy-valid.mjs", "src/policy-new-debugger.mjs"])
     rmSync(join(directory, file));
-  // Later main debt stays red. Compare the unmodified fixture before adding generated outputs.
+
   const originalDiscovery = spawnSync(process.execPath, ["scripts/quality.mjs", "lint"], {
     cwd: directory,
     encoding: "utf8",
   });
-  // Original generated/third-party exclusions remain outside authored-source discovery.
+
   mkdirSync(join(directory, "src/lib"));
   writeFileSync(join(directory, "src/lib/policy-generated.mjs"), "debugger;\n");
   writeFileSync(join(directory, "desktop/core-asar-reader.cjs"), "debugger;\n");

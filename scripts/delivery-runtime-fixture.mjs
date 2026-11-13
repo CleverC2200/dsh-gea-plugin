@@ -1,11 +1,10 @@
-/** Explicit test setup only. Never imported by the delivery checker. */
 import { mkdir, writeFile, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { checkDelivery } from "./delivery-check.mjs";
 const hash = (v) => createHash("sha256").update(v).digest("hex");
-// Explicit fixture preparation is outside checkDelivery and does not use an active environment.
+
 export async function prepareRuntimeFixture(request, when) {
   const root = await realpath(request.root),
     task = request.tasks[0],

@@ -19,7 +19,7 @@ import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from "./host/desktop-navigation.ts";
 import { attachWebLogin } from "./host/web-login.ts";
-/** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
+
 import { appendFile, mkdir } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import companyDefaults from "../desktop/company.config.json" with { type: "json" };
@@ -144,7 +144,7 @@ export const Config = z.object({
   modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(600000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).default(companyDefaults.maxSnapshotBytes),
   runtimeDir: z.string(),
-  // The feature validates this optional deployment input and stays blocked on incomplete configuration.
+
   pluginUpdates: z.any<unknown>(),
   analysisMode: z.union(["receipt", "model"]).default("model"),
   analysisModel: z.string().default(companyDefaults.analysis.model),
@@ -159,10 +159,7 @@ export const Config = z.object({
         companyDefaults.analysis.contextWindow - companyDefaults.analysis.maxTokens - 1000,
       ),
     ),
-  /**
-   * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
-   * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
-   */
+
   agentSqlRead: z.boolean().default(false),
   workbenchCapability: z
     .object({
@@ -191,7 +188,6 @@ export const Config = z.object({
   ]),
 });
 
-/** 执行标准模型调用，但不发起外部推理请求。 */
 class ReceiptAdapter extends LlmAdapter {
   constructor(
     private readonly config: Deployment,
@@ -231,7 +227,6 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
-/** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(
   ctx: Context,
   input: Omit<Deployment, "runtimeDir"> & {
@@ -301,7 +296,6 @@ export async function apply(
     "login/password",
   ]);
 
-  // 只装载 Workbench 已登记的 v2 HTML 包；缺少分离声明由装载校验拒绝。
   const htmlPackages = ctx.workbenchPages
     .packages()
     .filter((item) => item.manifest.gea?.contract === "gea-html-v2");
@@ -333,7 +327,7 @@ export async function apply(
   ]);
   ctx.effect(() => releaseOriginalResources);
   const htmlPlugins = await registerHtmlPlugins(ctx, business, htmlPackages);
-  // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
+
   const capability = createCapabilityRegistry([
     sharedAgentCapability,
     ...htmlPlugins.capabilityContracts,
@@ -344,9 +338,9 @@ export async function apply(
       keywords: ["区域计划", "审批", "销售计划", "计划量"],
     }),
   ]);
-  // 受管只读的模块白名单也来自契约：不再在业务代码里维护一份模块清单。
+
   business.setCapabilities(capability);
-  // The official stream seam also covers retained direct-provider selections.
+
   ctx.effect(() =>
     ctx.on("llm/stream", async function* (options, next) {
       business.assertModelAllowed();
@@ -424,7 +418,7 @@ export async function apply(
       },
     ),
   );
-  // Sidebar 工具遵循其公开 Document 条件；业务 profile 不再整体屏蔽官方通用能力。
+
   ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
@@ -441,8 +435,7 @@ export async function apply(
     business.clearTurnReplays(scope);
     business.clearTurnStops(scope);
   };
-  // native pre-step.messages 是本步新领取的消息，不是全历史。领取新问题时（提示组装前）清理，
-  // 不能只按消息数组里的用户条数判断换轮；同一句重问也有新的领取事件。
+
   ctx.effect(() =>
     ctx.on("agent/inbox/claimed", ({ agent, message }) => {
       if (message.source.kind !== "user") return;
@@ -490,8 +483,7 @@ export async function apply(
           });
       };
       updateRegistration();
-      // 官方模型菜单通过路由变更刷新目录。只观察 Host 身份代际和有效性，
-      // 头像等展示变化不能重新发现模型，也不改 Session 的模型选择。
+
       const unwatch = business.watchIdentity(() => {
         const nextIdentity = business.identitySignal();
         const nextAuthenticated = business.status().authenticated;
@@ -550,7 +542,7 @@ export async function apply(
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
-      // selectModel 同样是整体覆盖，不带上档位会把它清掉。
+
       const keptEffort =
         config.analysisMode === "model" && config.analysisSource === "gea"
           ? geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection())
@@ -583,7 +575,6 @@ export async function apply(
       );
       return session;
     })().catch((error: unknown) => {
-      // admission 可能已在失败前成功，因此保留已生成的身份标识。
       attempt.result = undefined;
       throw error;
     });
@@ -605,7 +596,7 @@ export async function apply(
     "status",
     "notifications",
     "workflow/config",
-    // 界面刷新时重新解析账号角色（管理员刚改完权限不必重新登录）。
+
     "approval/roles",
     "sales-plan/action",
     "sales-plan/draft",
@@ -624,14 +615,14 @@ export async function apply(
     "warning/storage",
     "warning/scheduler",
     "workbench/prepare",
-    // 前端上报"这个对话现在停在哪一页菜单"（默认主对话，点菜单时带菜单名）。
+
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
     "api-log/batch/start",
     "api-log/batch/read",
     "api-log/batch/stop",
-    // 只在显式打开调试开关时注册：逐个模块真跑一遍 MCP，并把原始报文带回来。
+
     ...(process.env.GEA_DEBUG_PROBE === "1" ? ["debug/mcp-probe"] : []),
   ]);
   pagesReady = true;
@@ -801,8 +792,7 @@ export async function apply(
                   case "workflow/config":
                     value = await business.workflowConfig(payload, request.signal);
                     break;
-                  // 界面上的「刷新」会走这里：重新解析当前账号角色，管理员刚改完权限的人也
-                  // 不用重新登录就能看到新的可审批节点。
+
                   case "approval/roles":
                     business.assertExecutionAllowed(config.analysisAgentCode);
                     await business.refreshApprovalRoles(request.signal, {
@@ -821,7 +811,7 @@ export async function apply(
                         business.refreshApprovalRoles(request.signal),
                       ]);
                     }
-                    // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
+
                     value = {
                       ...business.status(),
                       htmlPlugins: htmlPackages.length > 0,
@@ -907,7 +897,7 @@ export async function apply(
                       ? config.analysisModel
                       : route.models[0]!;
                     request.signal.throwIfAborted();
-                    // saveSelection 是整体覆盖：不带上已选档位就会把用户的档位选择清掉。
+
                     const kept = geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection());
                     if (requestedPreset === undefined)
                       await ctx.agentDefaultModel.saveSelection({
@@ -975,7 +965,7 @@ export async function apply(
               });
             } catch (caughtError) {
               let error = caughtError;
-              // 业务操作失败时也可能同时发现登录过期并清除身份。
+
               try {
                 await desktopLogin.flush();
                 await webLogin.flush();

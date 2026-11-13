@@ -1,5 +1,5 @@
 import { retryingFetch } from "./http-attempt.ts";
-/** 当前登录身份的 Gateway 握手规则。页面 launch 和 MCP transport 共用。 */
+
 import { randomUUID } from "node:crypto";
 import { throwIfAborted } from "../shared/abort.ts";
 
@@ -69,7 +69,6 @@ export async function prepareGatewaySession(
   const decision = record(result?.accessDecision);
   const context = record(result?.gatewayContext);
 
-  // 权限没开通和"请求/会话本身有问题"要分开：前者是正常业务状态，不该显示成调用失败。
   if (decision?.allowed === false)
     throw Object.assign(
       new Error(

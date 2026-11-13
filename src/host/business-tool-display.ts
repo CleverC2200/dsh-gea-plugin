@@ -8,7 +8,6 @@ const DISPLAY_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "输出 dsh-ui 围栏前校验复杂 spec（≥3 节点或含表格）；≤2 简单节点可省略。传待输出的原始 JSON 字符串或对象。返回 genui-validation 的状态、诊断、next、reply_language；仅 next=emit_repaired_fence 时输出 repaired_json。warning=block_markdown 时按替代节点重新校验。",
 };
 
-/** Business-only model display; the native registered schema and validator remain authoritative. */
 export function businessToolDisplay(tool: ToolSchema): ToolSchema {
   if (tool.name !== "forecast_compute" && !DISPLAY_DESCRIPTIONS[tool.name]) return tool;
   const parameters = structuredClone(tool.parameters);

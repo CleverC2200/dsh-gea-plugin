@@ -1,4 +1,3 @@
-/** Observe this profile's real process receipt before starting the unchanged Host ready deadline. */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -23,9 +22,7 @@ export async function waitProfileReady({
         let host;
         try {
           host = JSON.parse(bytes);
-        } catch {
-          /* An incomplete or malformed receipt grants no startup clock. */
-        }
+        } catch {}
         if (
           bytes !== source.previous &&
           host?.launcherPid === child.pid &&
@@ -69,7 +66,7 @@ export async function waitProfileReady({
     }
     if (child.exitCode !== null || child.signalCode !== null)
       throw Error("Profile exited: " + output);
-    // Leave another observation before a short startup deadline, without extending it.
+
     const interval =
       deadline === undefined ? 50 : Math.min(50, Math.max(1, (deadline - Date.now()) / 2));
     await delay(interval, undefined, { signal });
@@ -77,7 +74,6 @@ export async function waitProfileReady({
   throw Error("Profile not ready: " + readOutput());
 }
 
-/** Prove local routes are installed without refreshing identity or issuing business reads. */
 export async function probeProfileBusiness(origin, cookie, signal, fetcher = fetch) {
   const response = await fetcher(origin + "/api/gea-proof/api-log/snapshot", {
     method: "POST",
@@ -92,7 +88,7 @@ export async function probeProfileBusiness(origin, cookie, signal, fetcher = fet
   if (response.status !== 200)
     throw new Error("GEA business readiness failed: HTTP " + response.status);
   const result = await response.json();
-  // Guest and read-only policy errors also prove the business handler is installed.
+
   if (
     result?.ok !== true &&
     !(result?.ok === false && typeof result.error?.code === "string" && result.error.code)

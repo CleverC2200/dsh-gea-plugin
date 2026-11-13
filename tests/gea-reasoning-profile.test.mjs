@@ -1,4 +1,3 @@
-/** Real fixed Core and real three-plugin runtime; only external services and optional enhancements are fixtures. */
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";

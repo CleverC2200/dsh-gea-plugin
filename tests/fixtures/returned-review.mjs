@@ -488,7 +488,6 @@ export const selectPlan = (frame, name = "乌鲁木齐退回区域") =>
     .locator("label.arco-checkbox")
     .click();
 
-/** Quantities are edited in the row; submission dialogs only review the resulting draft. */
 export async function editReturnedQuantity(
   frame,
   quantity,

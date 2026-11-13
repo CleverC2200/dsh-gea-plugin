@@ -1,6 +1,6 @@
 {
   "provenance": {
-    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained); AQKC full author bytes follow merged Manage 876a496c4555499b95de85c764f8b511da5af1e4 current-page evidence rules.",
+    "declarations": "catalog-scene-manifest-r40-05 retained; independent Git registrations and corrected Manage parameter forwarding; full Skill bytes bind fixed author sources, never model actual; MPS, customer, order workbench and QLL author bytes follow admitted Manage 76078202e44ab486a6c6feb94d45d7b30143a20f; this CI repair does not modify the Skills; FC and QLL author bytes follow user-approved downstream-customer and on-hand-only rules in merged Manage 1afe4b2d2a9259335895cc84df2ec1437804e5a2; FC customer-type wording follows e8a718f796790ed5bd8f09e8dc991448ad017755 (all downstream customer types, source-defined attribution retained); AQKC full author bytes follow merged Manage 876a496c4555499b95de85c764f8b511da5af1e4 current-page evidence rules. MPS author bytes follow the merged forming-machine solver instructions in Manage 6d293e577ebd94ae88ef14a05211aaca3c30d54b; its previous registration remains in previousMetadataSources.",
     "manifestSha256": "f9d90f112f2b5a707abf9370e212b8e8d42471e30b193adb3d3dae34c3ebd01c",
     "geaRegistrationBase": "3f23c0d7a65d42afb685a859a07201bf6ccf00d5",
     "metadataSources": [
@@ -16,10 +16,10 @@
       {
         "owner": "workbench",
         "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
-        "sha256": "5044f214e5d6403e611f06e600e4e8b3b3c40a1658f190f96416a96978485d2e",
+        "sha256": "bee0e9c34e76c0541e07eaba553ea7794e936b07995a89ebe980a31a79cf25fa",
         "name": "inventory-mps",
         "sourceRepo": "dsh-agent-manage",
-        "sourceHead": "76078202e44ab486a6c6feb94d45d7b30143a20f",
+        "sourceHead": "6d293e577ebd94ae88ef14a05211aaca3c30d54b",
         "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
       },
       {
@@ -198,7 +198,18 @@
       "owner": "dsh-agent-manage",
       "commit": "69bb250210c854ddee91edd245e84127f2e50e81",
       "review": "Manage PR47 changed customer inventory from mock evidence to read-only governed SQL; only this author-source binding advances. Original capture and retired fixtures remain frozen."
-    }
+    },
+    "previousMetadataSources": [
+      {
+        "owner": "workbench",
+        "file": "lib/static/mps/skills/inventory-mps/SKILL.md",
+        "sha256": "5044f214e5d6403e611f06e600e4e8b3b3c40a1658f190f96416a96978485d2e",
+        "name": "inventory-mps",
+        "sourceRepo": "dsh-agent-manage",
+        "sourceHead": "76078202e44ab486a6c6feb94d45d7b30143a20f",
+        "sourceFile": "business-resources/inventory-mps/skills/inventory-mps/SKILL.md"
+      }
+    ]
   },
   "coreHeads": {
     "rc2": "639ed015397290b3745d163aafe02ffee4aa3f84",

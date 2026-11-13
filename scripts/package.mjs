@@ -1,5 +1,5 @@
 import { holdBuildAdmission } from "./build-admission.mjs";
-/** Create a local release tarball from an explicit allowlist, excluding credentials and machine state. */
+
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile, readdir, lstat } from "node:fs/promises";

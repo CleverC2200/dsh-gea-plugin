@@ -1,4 +1,3 @@
-/** Real rc.2 Tools/hooks, GEA Business and Manage calculator; only the local Skill body is supplied. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -146,7 +145,6 @@ async function fixture(t) {
     text,
     ids,
     turn: () => {
-      // Host turn reset advances Business's public read revision before the Core event.
       business.clearTurnReplays(agent.id);
       return ctx.parallel("session/event", { id: agent.id }, { type: "turn/start" });
     },

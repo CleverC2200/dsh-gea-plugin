@@ -22,7 +22,6 @@ export const BRANCH_INVENTORY_ROUTING =
   "target_gap_qty=可用库存+调拨中量-目标库存，正数表示富余、负数表示不足，必须保留符号，不能称为绝对值缺口。" +
   "recommended_qty是逐分仓SKU截零后的建议量之和，不得跨SKU抵扣富余或用汇总差额倒算。回答用业务名称，不照抄内部字段名。";
 
-/** Independent dialogue uses the same date, snapshot and pagination reader as the page. */
 export function registerBranchInventoryTool(
   ctx: Context,
   business: Business,

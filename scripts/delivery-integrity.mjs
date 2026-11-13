@@ -1,4 +1,3 @@
-/** Internal read-only integrity observations behind checkDelivery. Unsupported Git layouts stay unknown. */
 import { readdir, lstat } from "node:fs/promises";
 import { resolve, relative, join, posix } from "node:path";
 import { createHash } from "node:crypto";
@@ -63,7 +62,7 @@ async function gitState(scope, source, objectRoot) {
       flags = index.readUInt16BE(offset + 60),
       mode = index.readUInt32BE(offset + 24).toString(8),
       objectId = index.subarray(offset + 40, offset + 60).toString("hex");
-    if (flags & 0xf000) fail("GIT_INDEX_UNSUPPORTED"); // stages, assume-valid and extended entries require their own semantics.
+    if (flags & 0xf000) fail("GIT_INDEX_UNSUPPORTED");
     const end = index.indexOf(0, offset + 62);
     if (end < 0 || end >= index.length - 20) fail("GIT_INDEX_UNSUPPORTED");
     const path = index.toString("utf8", offset + 62, end);
@@ -133,7 +132,7 @@ async function gitState(scope, source, objectRoot) {
     committed,
   };
 }
-/** Verify full supported checkout, including new/deleted/staged files. No Git subprocess. */
+
 export async function observeCandidate(root, candidate, { readScope } = {}) {
   const scope = readScope ?? (await createReadScope(root));
   if (!candidate?.checkout) return null;
@@ -159,8 +158,7 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
       if (!bytes) return;
       for (const line of bytes.toString().split(/\r?\n/)) {
         if (!line || line.startsWith("#")) continue;
-        // Registered checkout grammar: literals and Workbench's tarball suffix.
-        // Negation and other globs still require unsupported Git semantics.
+
         const tarball = line === "*.tgz";
         if (!tarball && /[!*?[\]\\ ]/.test(line)) fail("GIT_IGNORE_SYNTAX_UNSUPPORTED");
         rules.push({
@@ -325,7 +323,6 @@ export async function observeCandidate(root, candidate, { readScope } = {}) {
   }
 }
 
-/** Assembly linkage is recorded; bytes, selection and canonical combination validity are freshly observed. */
 export async function observeAssembly(root, record, context) {
   const scope = context.readScope ?? (await createReadScope(root));
   const evidence = [],
@@ -378,7 +375,7 @@ export async function observeAssembly(root, record, context) {
       return result("unknown", "ASSEMBLY_BINDING_REQUIRED");
     const runtime = await scope.resolve(record.runtime),
       directory = join(runtime, "source-combinations", record.combinationId);
-    // Match the canonical combination reader's bound; ordinary inputs retain 16 MiB.
+
     const manifestInput = await observe(
       {
         id: "assembly-manifest",
@@ -442,7 +439,7 @@ export async function observeAssembly(root, record, context) {
       if (!sha(ref.sha256) || actual.sha256 !== ref.sha256)
         return result("failed", "ASSEMBLY_BUILD_INPUT_MISMATCH", "REBUILD_CHANGED_INPUTS");
     }
-    // Guard the complete dependency traversal before entering the official validator. Do not reimplement its digest rules.
+
     const visited = new Set();
     let count = 0;
     async function guardTree(path) {
@@ -460,7 +457,7 @@ export async function observeAssembly(root, record, context) {
     await guardTree(directory);
     for (const external of [...manifest.externalRoots, ...manifest.externalLockFiles])
       await guardTree(external);
-    // Deliberately omit core argument: the canonical validator otherwise spawns Git.
+
     activeInputId = "assembly-combination";
     await readSourceCombination(runtime, record.combinationId, undefined, {
       readScope: scope,

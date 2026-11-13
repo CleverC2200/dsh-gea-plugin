@@ -177,7 +177,7 @@ for (const pendingState of ["loading", "error", "ready"])
         const csv = await readFile(await download.path(), "utf8");
         assert.match(csv, /导出原基地/);
         assert.doesNotMatch(csv, /新筛选基地/);
-        // The bridge coalesces publication for 350 ms; let the completed export's queued update settle.
+
         await page.waitForTimeout(700);
         const after = contexts.at(-1);
         await mkdir(".runtime/branch-stock-evidence", { recursive: true });

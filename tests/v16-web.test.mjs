@@ -193,25 +193,25 @@ test(
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
     await expect(frame.getByRole("button", { name: "保存调整", exact: true })).toHaveCount(0);
     await expect(frame.getByRole("button", { name: "重提", exact: true })).toHaveCount(0);
-    // 月初/纠偏切换入口恢复。
+
     const header = frame.locator("header").first();
     await expect(header.getByRole("tab", { name: "月初", exact: true })).toBeVisible();
     assert.equal(modelCalls, 0, "opening the workbench must not trigger analysis");
     const readProgress = () =>
       frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
-    // 节点条始终展示全部五个节点，进度按状态统计，跟当前选中的节点无关。
+
     await expect
       .poll(readProgress)
       .toEqual(["进度 100%", "进度 0%", "进度 0%", "进度 0%", "进度 0%"]);
     const before = await readProgress();
     assert.equal(before.length, 5);
-    // V1.8 #05：流程图默认收起，点标题行右侧的入口展开后才能点各节点。
+
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();
-    // 角色决定能进哪个节点：没权限的节点置灰不可点。
+
     for (const stage of ["province", "area", "category"])
       await expect(frame.getByTestId("regional-approval-stage-" + stage)).toBeDisabled();
-    // 再点当前节点回「全部节点」，再点一次回本节点；来回切换不重置进度条。
+
     await frame.getByTestId("regional-approval-stage-region").click();
     assert.deepEqual(await readProgress(), before);
     await frame.getByTestId("regional-approval-stage-region").click();
@@ -232,7 +232,7 @@ test(
     ).not.toContainText("审批状态");
     const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
     await expect(monthPlan.locator("span").first()).toHaveText("¥100");
-    // 数量带单位：月计划列的数量显示成「10 件」。
+
     await expect(monthPlan.locator("small").first()).toHaveText("10 件");
     await expect(frame.locator("tbody").first()).toContainText("50.0%");
     await expect(frame.locator("tbody").first()).not.toContainText("版本②：¥100 / 10");
@@ -258,7 +258,7 @@ test(
     const editor = frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true });
     await expect(editor).toHaveValue("20");
     await editor.fill("22.125");
-    // 明细汇总里的数量；月计划列现在也会显示同一个「22 件」，所以要限定在汇总卡里找。
+
     await expect(
       frame.getByLabel("当前页明细汇总").getByText("22 件", { exact: true }),
     ).toBeVisible();

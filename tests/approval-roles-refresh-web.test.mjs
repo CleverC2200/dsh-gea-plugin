@@ -4,11 +4,6 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-/**
- * 账号角色原来只在登录时解析一次并缓存，管理员改完权限得重新登录才生效。
- * 现在点界面上的「刷新数据」会重新解析角色并覆盖节点口径。这条钉住：
- * 刷新前按旧角色亮节点，刷新后按新角色亮，而且确实又请求了一次当前用户解析。
- */
 test(
   "the refresh button re-resolves account roles and updates clickable nodes",
   { timeout: 90000 },
@@ -104,7 +99,6 @@ test(
     assert.ok(resolves >= 1, `登录时至少要解析一次角色，实际 ${resolves}`);
     const before = resolves;
 
-    // 管理员把「区域审批」换成「省区审批」，用户不重新登录、只点刷新。
     roles.length = 0;
     roles.push({ code: "sales_plan_province_approver", name: "省区审批" });
     await frame.getByRole("button", { name: "刷新数据", exact: true }).click();

@@ -49,7 +49,7 @@ test(
     assert.deepEqual(joined.routing.keywords, declaration.routing.keywords);
     assert.ok(joined.routing.summary, "the current declaration must retain a route summary");
     assert.equal(manifest.gea.readonly, true);
-    // FC 906b3b... blob 80ec24ef...: only the declared v1→v2 protocol migration is allowed.
+
     const originalMcp = await readFile(
       new URL("./fixtures/branch-stock-original-mcp.txt", import.meta.url),
     );

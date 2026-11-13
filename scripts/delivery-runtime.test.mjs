@@ -112,11 +112,11 @@ async function fixture(t, taskId = "22") {
     run: async () => (await checkDelivery(request, when)).tasks[0],
   };
 }
-// Explicit controlled assembly/ownership setup is shared with readiness prerequisites.
+
 async function selectedFixture(t, taskId = "22") {
   const f = await fixture(t, taskId);
   const context = await prepareRuntimeFixture(f.request, when);
-  // Runtime behavior tests declare a synthetic real-readonly record; no live operation occurs.
+
   context.runRecord.mode = "real-readonly";
   await context.put("run", context.runRecord);
   return { ...f, ...context };

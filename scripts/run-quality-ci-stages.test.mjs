@@ -123,7 +123,7 @@ function fixture(
     manage = join(job, "candidate/dsh-agent-manage"),
     workbench = join(job, "source/dsh-agent-workbench"),
     core = join(job, "source/official-core");
-  // Copy only this fixture's authored inputs; parallel quality tests own transient scripts directories.
+
   for (const file of fixtureSourceFiles)
     write(join(gea, "scripts", file), readFileSync(join(sourceRoot, "scripts", file)));
   const workbenchSource =
@@ -327,7 +327,7 @@ function fixture(
   }
   const input = join(job, "candidate-input.json");
   json(input, manifest);
-  // Only OS command boundaries are controlled. Admission, Git, plan, receipts and tests execute real code.
+
   const preload = join(gea, "scripts/fixtures/quality-ci-commands.mjs");
   const summary = join(job, "summary.md");
   const run = (stage, extra = {}, args = [], execution = {}) => {

@@ -10,9 +10,6 @@ import { createRequire } from "node:module";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-// Development pnpm inputs and the generated ordinary production shrinkwrap are different graphs.
-// Production lock/manifest checks live in package-smoke.test.mjs at the actual artifact seam.
-
 test("GEA and the pinned workbench resolve the same Cordis instance", () => {
   const fromRoot = createRequire(join(root, "package.json"));
   const fromWorkbench = createRequire(fromRoot.resolve("@cleverc2200/dsh-agent-workbench"));
@@ -44,7 +41,7 @@ test(
       join(fixture, "pnpm-workspace.yaml"),
       YAML.stringify({ verifyDepsBeforeRun: workspace.verifyDepsBeforeRun }),
     );
-    // pnpm run 对子脚本注入 false，避免重复检查；独立空目录应使用自己的配置。
+
     const fixtureEnv = { ...process.env };
     delete fixtureEnv.pnpm_config_verify_deps_before_run;
     const child = spawn(

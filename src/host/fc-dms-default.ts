@@ -6,7 +6,6 @@ export const FC_DMS_PRODUCTION_GATEWAY = "http://100.100.6.46:38000/synear/dms";
 
 export const FC_DMS_TEST_GATEWAY = "http://100.100.1.147:8000/synear_test/DMS";
 
-/** Production uses the authenticated GEA profile; sandbox credentials never cross environments. */
 export function resolveFcDmsDeployment(
   deployments: DmsEnvironments | undefined,
   environment: "production" | "test",

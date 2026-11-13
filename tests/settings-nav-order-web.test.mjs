@@ -12,7 +12,6 @@ import {
   salesPlanFrame,
 } from "./fixtures/business-page.mjs";
 
-// This private package uses Core's published client loader and settings.section ledger.
 const settingsClient = `window.__ModuleLoader__.load({
   id: '@fixture/settings-order',
   factory(require) {
@@ -43,7 +42,6 @@ const settingsClient = `window.__ModuleLoader__.load({
 });`;
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-/** Native General/Models and Sidebar retain their real order while a public registrant changes. */
 test("设置扩展保持顺序且插件管理位于末尾", { timeout: 90000 }, async (t) => {
   let fixtureFiles, profilePatch;
   const app = await profile(t, {
@@ -76,7 +74,7 @@ test("设置扩展保持顺序且插件管理位于末尾", { timeout: 90000 }, 
       const profileDirectory = resolve(runtime, "home/profiles/plugin-split-validation");
       await mkdir(profileDirectory, { recursive: true });
       const patch = resolve(profileDirectory, "cordis.patch.yml");
-      // Keep any actual profile entries instead of replacing a prepared user patch.
+
       let entries = [];
       try {
         entries = YAML.parse(await readFile(patch, "utf8"));
@@ -168,7 +166,7 @@ test("设置扩展保持顺序且插件管理位于末尾", { timeout: 90000 }, 
   }
   for (const file of fixtureFiles)
     assert.equal(digest(await readFile(file.path)), file.sha256, file.path);
-  // Core may persist/normalize this user configuration; executable fixture inputs remain immutable.
+
   const savedPatch = await readFile(profilePatch.path, "utf8");
   await writeFile(resolve(".runtime/settings-order-evidence/saved-patch.yml"), savedPatch);
   await writeFile(

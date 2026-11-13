@@ -1,4 +1,3 @@
-// 中止与"非 Error 被抛出"的可读化：线上点停止后界面出现 Error: [object Object]。
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -14,11 +13,9 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
-// dsh 中止时携带的就是这个形状（会话记录 turn/end 里的 reason）。
 const abortReason = { kind: "aborted", reason: { kind: "user" } };
 
 test("中止原因（对象）翻成可读的中止说明，不再是 [object Object]", () => {
@@ -61,7 +58,7 @@ test("普通对象被抛出时带出内容与错误码，不再只说 [object Ob
   const withoutMessage = m.readableError({ foo: "bar", n: 1 });
   assert.match(withoutMessage.message, /"foo":"bar"/);
   assert.equal(withoutMessage.message.includes("[object Object]"), false);
-  // 原始值兜底
+
   assert.equal(m.readableError("字符串错").message, "字符串错");
   assert.equal(m.readableError(undefined).message, "undefined");
 });

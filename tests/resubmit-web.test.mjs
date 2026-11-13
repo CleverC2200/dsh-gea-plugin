@@ -65,8 +65,6 @@ test("月初与纠偏入口恢复，重提不依赖服务配置", { timeout: 600
       return true;
     }
     if (path.endsWith("/plans")) {
-      // 纠偏列表会按当前角色的可见状态逐个 status 查询再合并；上游 mock 必须认 status，
-      // 否则同一条会被每个状态各返回一次，页面上就出现重复行。
       const status = req.url.searchParams.get("status");
       const orderType = req.url.searchParams.get("orderType");
       const records =

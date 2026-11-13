@@ -60,9 +60,9 @@ test(
     for (const name of ["计划提报数据", "模型双期预测", "历史同期发货"]) {
       await expect(prototype.getByRole("region", { name, exact: true })).toBeVisible();
     }
-    // 原型自带的数字人会话列关掉，会话只留外壳右侧这一个。
+
     await expect(prototype.locator("aside.ap-dock")).toBeHidden();
-    // 右侧会话区跟着这一页换成「主计划参谋」。
+
     await expect(page.getByText("主生产计划Agent").first()).toBeVisible();
     const sessionContent = page
       .locator(".agent-workbench-document:visible")
@@ -76,7 +76,7 @@ test(
     assert.equal(selected.ok, true);
     assert.ok(selected.value, "the MPS page must use a real Core Session");
     assert.equal(selected.value.values.agentPreset, "gea-html-inventory-mps");
-    // 已登录时工作台必须落在中间列里，不能铺成整屏登录遮罩。
+
     const frame = htmlFrameElement(page, "plan-category-production");
     await expect(frame).not.toHaveClass(/gea-login-frame/);
     const box = await frame.boundingBox();
@@ -85,14 +85,13 @@ test(
       box.width < viewport.width * 0.9,
       `workbench frame must stay inside the center column, got ${box.width} of ${viewport.width}`,
     );
-    // 右栏和产销协同等工作台页共用同一套业务页布局：DSH 原生欢迎区的品牌块
-    // （鲸鱼「探索未至之境」）和「工作区 / Agent 预设」选择器都要让开，否则主计划页会退回原生落地页样式。
+
     await expect(page.locator(".agent-workbench-document")).toBeVisible();
     await expect(page.locator(".agent-workbench-native-conversation")).toHaveCount(1);
     const conversation = page.locator(".agent-workbench-native-conversation");
     await expect(conversation.getByText("探索未至之境").first()).toBeHidden();
     await expect(conversation.getByText("workspace", { exact: true }).first()).toBeHidden();
-    // 欢迎区里已经有助手名片，右栏顶部不再重复一行「主计划参谋」标题。
+
     await expect(page.locator(".agent-workbench-native-conversation .gea-agent-head")).toHaveCount(
       0,
     );

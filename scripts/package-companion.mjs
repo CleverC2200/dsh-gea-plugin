@@ -1,4 +1,3 @@
-/** Curate only publication metadata after an owner's normal pack lifecycle. */
 import { parseArgs } from "node:util";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";

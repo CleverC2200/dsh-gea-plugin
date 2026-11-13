@@ -1,4 +1,3 @@
-/** Product tests own the Web process and replace only external HTTP services. */
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { createServer } from "node:https";
@@ -17,7 +16,7 @@ import { waitProfileReady, probeProfileBusiness } from "./fixtures/profile-ready
 import { fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
-/** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
+
 export function readToolResults(rows) {
   return rows
     .filter((row) => row.type === "tool/result")
@@ -225,7 +224,6 @@ async function createProfile(t, options) {
             },
           });
         else if (path.endsWith("/ai/gateway/agent/session/current-user/resolve")) {
-          // 审批身份只认账号角色：默认给"区域审批"，用例可用 roles 覆盖（[] 表示任何节点都不可点）。
           const roles = options.roles ?? [{ code: "sales_plan_region_approver", name: "区域审批" }];
           reply({
             success: true,
@@ -470,7 +468,7 @@ async function createProfile(t, options) {
       {
         cwd: root,
         detached: process.platform !== "win32",
-        // 测试里不挂浏览器 MCP：每次启动都拉 npx + Chrome 会拖慢并让并发用例超时。
+
         env: {
           ...process.env,
           NODE_EXTRA_CA_CERTS: cert,
@@ -543,7 +541,7 @@ async function createProfile(t, options) {
           authenticatedLaunch = url;
         }
         if (options.coreOnly) return true;
-        // Core can expose its URL before Manage's asynchronous services are installed.
+
         return probeProfileBusiness(currentOrigin, cookie, readySignal);
       },
     });

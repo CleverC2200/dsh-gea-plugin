@@ -21,7 +21,6 @@ const quantity = (value: unknown): boolean =>
   String(value).trim() !== "" &&
   Number.isFinite(Number(value));
 
-/** Failed or partially authorized queries never become a zero-valued business answer. */
 export function currentShortageResult(input: unknown, view: boolean | "locations", page: number) {
   const detail = view === true;
   const locations = view === "locations";
@@ -112,7 +111,6 @@ export function currentShortageResult(input: unknown, view: boolean | "locations
   };
 }
 
-/** Only trusted installed IDs are resolved; no arbitrary SQL or caller-selected identity is exposed. */
 export function registerCurrentShortageTool(
   ctx: Context,
   business: Business,

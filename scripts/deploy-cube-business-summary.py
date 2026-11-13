@@ -12,10 +12,8 @@ from pathlib import Path
 import shutil
 import tempfile
 
-
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
 
 def replace(source, target):
     stat = target.stat()
@@ -31,7 +29,6 @@ def replace(source, target):
     finally:
         if os.path.exists(name):
             os.unlink(name)
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -71,14 +68,13 @@ def main():
             touched.append(m)
             assert sha(target) == m['candidateSha256' if applying else 'originalSha256']
     except Exception:
-        # Restore only files still equal to this operation's output, not another editor's work.
+
         for m in reversed(touched):
             target = root / m['fileName']
             if sha(target) == m['candidateSha256' if applying else 'originalSha256']:
                 replace((backup if applying else args.candidate) / target.name, target)
         raise
     print(json.dumps(dict(action=args.action, files=len(touched), backup=str(backup), hashes={m['fileName']: sha(root / m['fileName']) for m in manifest})))
-
 
 if __name__ == '__main__':
     main()

@@ -1,4 +1,3 @@
-/** 绑定登录身份的 GEA Gateway 能力；密钥不会离开 Fetch 闭包。 */
 import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
 import { retryingFetch } from "./http-attempt.ts";
 import { KNOWLEDGE_METHODS, KNOWLEDGE_SOURCE } from "./knowledge-mcp.ts";
@@ -17,7 +16,6 @@ export type GatewayMcpTransport = {
 const nonempty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
-/** Successful discovery can omit a tool; that is distinct from a missing transport route. */
 export class GatewayMcpToolUnavailable extends Error {
   readonly code = "GEA_MCP_TOOL_UNAVAILABLE";
   readonly toolName: string;
@@ -31,10 +29,6 @@ export class GatewayMcpToolUnavailable extends Error {
   }
 }
 
-/**
- * `Retry-After` 的两种形态都认：秒数（`2`）和 HTTP 日期。
- * 拿不到就返回 undefined——那就只说"限流了"，不编一个等待时间。
- */
 function retryAfterMs(headers: Headers): number | undefined {
   const raw = headers.get("Retry-After")?.trim();
   if (!raw) return undefined;
@@ -43,7 +37,6 @@ function retryAfterMs(headers: Headers): number | undefined {
   return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
 }
 
-/** 先用当前登录身份申请 Gateway 上下文，再封装只带该上下文的 MCP Fetch 能力；传输会话协商仍由 MCP SDK 负责。 */
 export async function prepareGatewayMcp(
   base: string,
   auth: { token: string; tenantId: string },
@@ -57,7 +50,6 @@ export async function prepareGatewayMcp(
     maxResponseBytes?: number;
   } = {},
 ): Promise<GatewayMcpTransport> {
-  // Setup and each request can stop without poisoning a login-owned cached connection.
   const setup = AbortSignal.any([identity, ...(routing.setupSignal ? [routing.setupSignal] : [])]);
   const meta = await prepareGatewaySession(base, auth, consumer, setup, timeoutMs, fetchImpl);
   throwIfAborted(setup);
@@ -96,11 +88,7 @@ export function gatewayMcpTransport(
   let initializeBody: string | undefined;
   let transportSession: string | undefined;
   let reconnect: Promise<void> | undefined;
-  /**
-   * 中止（用户点停止）时 fetch 以 `signal.reason` 为拒绝原因，而 dsh 的 reason 是对象
-   * （`{kind:"aborted",reason:{kind:"user"}}`）——原样抛出去界面上就是 `Error: [object Object]`。
-   * 传输层是最早的边界，在这里统一翻成可读错误。
-   */
+
   const send = async (init: RequestInit): Promise<Response> => {
     const headers = new Headers(init.headers);
     try {
@@ -119,7 +107,6 @@ export function gatewayMcpTransport(
     }
   };
   const restore = async (headers: Headers) => {
-    // 重新初始化只恢复传输会话，不重新申请业务权限，也不接受调用方自带身份。
     headers.delete("MCP-Session-Id");
     const response = await send({
       method: "POST",
@@ -154,7 +141,6 @@ export function gatewayMcpTransport(
     transportSession = session;
   };
   const gatewayFetch: typeof fetch = async (input, init) => {
-    // 仅把 MCP 方法名映射为服务端分配的路由码；调用方不能直接指定 GEA 路由。
     throwIfAborted(identity);
     const target = input instanceof Request ? input.url : String(input);
     if (target !== url) throw new Error("GEA_MCP_ENDPOINT_REJECTED");
@@ -181,7 +167,6 @@ export function gatewayMcpTransport(
       if (
         ["tools/list", "tools/call", "resources/list", "resources/read"].includes(message.method)
       ) {
-        // 完全替换调用方提供的身份；绝不把它写入业务参数。
         message.params = { ...message.params, _meta: meta };
         if (message.method === "tools/call") {
           const mcpCode = routeFor(message.params.name);
@@ -213,7 +198,7 @@ export function gatewayMcpTransport(
       initializeBody = body as string;
       transportSession = res.headers.get("MCP-Session-Id") ?? undefined;
     }
-    // Restore transport once for a pre-execution 404, except knowledge asks, which must never be replayed.
+
     if (
       res.status === 404 &&
       init?.method === "POST" &&
@@ -255,9 +240,7 @@ export function gatewayMcpTransport(
         }
         throw withMcpTrace(businessFailure, gatewayTrace);
       }
-      // 限流是"等一下还能用"，不是"连接坏了"：规约 §14 要求按 Retry-After 等待，
-      // 并降低并发/缩小查询范围，不能原样立刻重试。REST /call 会回 429 + Retry-After；
-      // 这里的 MCP 入口同样要认。
+
       if (res.status === 429) {
         const waitMs = retryAfterMs(res.headers);
         throw withMcpTrace(
@@ -289,7 +272,7 @@ export function gatewayMcpTransport(
         gatewayTrace,
       );
     }
-    // Knowledge has no resource-link route; its client owns response parsing and trace errors.
+
     if ((discovery || (invocation && invocation.code !== KNOWLEDGE_SOURCE)) && res.ok) {
       const text = await readMcpResponseText(
         res,
@@ -367,7 +350,7 @@ export function gatewayMcpTransport(
           { status: res.status, headers },
         );
       }
-      // Return the original wire text, preserving decimals and large integers in inline results.
+
       const headers = new Headers(res.headers);
       headers.delete("content-length");
       headers.delete("content-encoding");

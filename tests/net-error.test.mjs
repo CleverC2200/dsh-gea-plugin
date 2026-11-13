@@ -1,4 +1,3 @@
-// fetch failed 的翻译：线上那次界面只有 `fetch failed` + UNKNOWN，真实原因在 error.cause 里。
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -17,7 +16,6 @@ const m = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
-/** 造一个 undici 形状的失败：TypeError('fetch failed') + cause 带 code/hostname/syscall。 */
 const undiciFailure = (code, extra = {}) =>
   Object.assign(new TypeError("fetch failed"), {
     cause: Object.assign(new Error(code), { code, ...extra }),
@@ -80,7 +78,7 @@ test("已有 code 的错误与用户中止保持原样（不重复包装）", ()
   });
   const readable = m.networkError(aborted, { what: "x" });
   assert.match(readable.message, /GEA_TURN_ABORTED/);
-  // dsh 实际就是把 reason 对象本身当拒绝原因抛出来
+
   const rawReason = m.networkError({ kind: "aborted", reason: { kind: "user" } }, { what: "x" });
   assert.match(rawReason.message, /GEA_TURN_ABORTED/);
 });

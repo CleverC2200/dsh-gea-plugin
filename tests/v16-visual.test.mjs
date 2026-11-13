@@ -335,7 +335,7 @@ test(
     await page.getByRole("button", { name: /收起侧边栏|Collapse sidebar/ }).click();
     await shot("10-sidebar-collapsed");
     await expect(page.locator(".gea-shell-navigation .gea-shell-label").first()).toBeHidden();
-    // The current owned collapsed brand exposes the public menu expansion action.
+
     const collapsedMenu = page.getByTitle("展开业务菜单", { exact: true });
     await expect(collapsedMenu).toBeVisible();
     const railWidth = await page

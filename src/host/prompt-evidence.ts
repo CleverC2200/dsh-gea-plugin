@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-/** Parsed business numbers retain their lexical value, including unsafe IDs and decimal precision. */
 export function exactResult(text: string): unknown {
   return JSON.parse(text, (_key, value, context?: { source?: string }) =>
     typeof value === "number" &&
@@ -12,7 +11,6 @@ export function exactResult(text: string): unknown {
   );
 }
 
-/** Host retry/batch envelopes must not smuggle another consumer's historical data into a new grant. */
 export function withoutHistoricalEvidence(text: string): string {
   if (!text.includes("availableEvidence")) return text;
   let changed = false;
@@ -35,7 +33,7 @@ export function withoutHistoricalEvidence(text: string): string {
       delete record.availableEvidence;
       changed = true;
     }
-    // Envelope paths only; do not rewrite business rows or user-provided JSON columns.
+
     for (const key of ["results", "result", "content", "text"])
       if (key in record) record[key] = clean(record[key]);
     return record;
@@ -48,7 +46,6 @@ export function withoutHistoricalEvidence(text: string): string {
   }
 }
 
-/** Reduce at record boundaries; the original is always separately recoverable. */
 export function projectEvidence(
   text: string,
   evidenceId: string,
@@ -122,7 +119,6 @@ export function projectEvidence(
   return JSON.stringify({ ...result, data: undefined, omittedPaths: ["$"] });
 }
 
-/** Content-addressed per identity/session, bounded in memory; files hold the original for review. */
 export type EvidenceGrant = {
   owner: string;
   kind?: "mcp" | "local";
@@ -207,9 +203,7 @@ export class PromptEvidenceStore {
     if (!record && authorize) {
       try {
         record = JSON.parse(await readFile(join(this.directory, id + ".json"), "utf8"));
-      } catch {
-        /* Unknown reference stays unavailable. */
-      }
+      } catch {}
     }
     if (
       !record ||

@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import { openSalesPlanPresentation } from "./fixtures/sales-plan-presentation.mjs";
 
-/**
- * V1.8 #14：顶部指标卡「差额（计划 − 目标）」正数红、负数绿；
- * 颜色只作用于差额数值本身，其他指标卡保持原字色。
- */
 const both = async (t, planAmount, targetAmount) => {
   const page = await openSalesPlanPresentation(t, [
     { currentQty: "10", currentAmount: planAmount, targetQty: "10", targetAmount },
@@ -31,21 +27,39 @@ const colorOf = (metrics, label) =>
     .first()
     .evaluate((element) => getComputedStyle(element).color);
 
-test("positive variance is red and negative variance is green", { timeout: 90000 }, async (t) => {
-  const positive = await both(t, "1200", "1000");
-  await expect.poll(() => colorOf(positive, "差额"), { timeout: 15000 }).toBe("rgb(200, 17, 42)");
-  await expect(
-    positive.locator("span").filter({ hasText: "差额" }).locator("strong").first(),
-  ).toHaveText("¥200");
-  // 颜色只作用于差额：另外两张指标卡保持默认字色。
-  const neutral = await colorOf(positive, "计划金额");
-  assert.notEqual(neutral, "rgb(200, 17, 42)", "计划金额不能跟着变红");
-  assert.notEqual(neutral, "rgb(22, 142, 88)", "计划金额不能跟着变绿");
-});
+const semanticColor = (metrics, token) =>
+  metrics.evaluate((element, name) => {
+    const probe = document.createElement("span");
+    probe.style.color = `rgb(var(${name}))`;
+    element.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
 
-test("loss (plan below target) is green, not red", { timeout: 90000 }, async (t) => {
+test(
+  "positive variance uses danger-7 while the plan amount stays neutral",
+  { timeout: 90000 },
+  async (t) => {
+    const positive = await both(t, "1200", "1000");
+    const danger = await semanticColor(positive, "--danger-7");
+    const success = await semanticColor(positive, "--success-8");
+    assert.notEqual(danger, success);
+    await expect.poll(() => colorOf(positive, "差额"), { timeout: 15000 }).toBe(danger);
+    await expect(
+      positive.locator("span").filter({ hasText: "差额" }).locator("strong").first(),
+    ).toHaveText("¥200");
+
+    const neutral = await colorOf(positive, "计划金额");
+    assert.notEqual(neutral, danger, "计划金额不能跟着变红");
+    assert.notEqual(neutral, success, "计划金额不能跟着变绿");
+  },
+);
+
+test("negative variance uses success-8", { timeout: 90000 }, async (t) => {
   const negative = await both(t, "800", "1000");
-  await expect.poll(() => colorOf(negative, "差额"), { timeout: 15000 }).toBe("rgb(22, 142, 88)");
+  const success = await semanticColor(negative, "--success-8");
+  await expect.poll(() => colorOf(negative, "差额"), { timeout: 15000 }).toBe(success);
   await expect(
     negative.locator("span").filter({ hasText: "差额" }).locator("strong").first(),
   ).toHaveText("−¥200");

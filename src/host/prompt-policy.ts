@@ -11,7 +11,7 @@ export const PROMPT_BUDGET = {
 } as const;
 export type PromptProfile = {
   label: string;
-  /** Trusted Agent catalog metadata, independent of the business page title. */
+
   presetName?: string;
   description?: string;
   consumerCode: string;
@@ -25,7 +25,6 @@ export function profileFor(preset: string | undefined): PromptProfile | undefine
 
 const mountedProfiles = new Set<string>();
 
-/** Mount a validated Agent Manage resource; an existing identity cannot be overwritten. */
 export function installPromptProfile(preset: string, profile: PromptProfile): () => void {
   if (mountedProfiles.has(preset)) throw Error("PROMPT_PROFILE_ALREADY_MOUNTED");
   const previous = policy.profiles[preset as keyof typeof policy.profiles];
@@ -46,7 +45,6 @@ export function installPromptProfile(preset: string, profile: PromptProfile): ()
   };
 }
 
-/** GEA owns actual business execution. Optional UI tools keep their Host registration and user-setting guards. */
 export const CORE_TOOLS = [
   "gea_capabilities",
   "gea_evidence_read",

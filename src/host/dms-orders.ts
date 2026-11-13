@@ -3,7 +3,6 @@ import { mkdir, readFile, writeFile, rename, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { dmsSigningSecret } from "./fc-dms-default.ts";
 
-/** Host-owned identity bindings; custom deployments resolve secrets from their environment. */
 export interface DmsConfig {
   gatewayUrl: string;
   manageUrl?: string;
@@ -29,7 +28,7 @@ const required = (value: unknown, field: string): string => {
     throw Error(`DMS 参数无效：${field}`);
   return value.trim();
 };
-/** Only documented fields cross the DMS boundary; quantities are in pieces. */
+
 export function parseDmsOrder(input: unknown): Order {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw Error("DMS 订单参数无效");
   const source = input as Record<string, unknown>;
@@ -104,7 +103,6 @@ function baseUrl(raw: string) {
   return url;
 }
 
-/** Credentials never leave this transport. DMS owns redemption on its loginSSO page. */
 export class DmsClient {
   private readonly config: DmsConfig;
   private readonly identity: { username?: string; workcode?: string };
@@ -195,7 +193,7 @@ export class DmsClient {
       redirect: redirect.href,
     };
   }
-  /** Server-side adapter for clients that own the DMS login callback; never expose token maps to GEA pages. */
+
   async exchange(key: string, menu: string | undefined, signal: AbortSignal) {
     const query = new URLSearchParams({ key: required(key, "key") });
     if (menu !== undefined) query.set("menu", required(menu, "menu"));
@@ -235,7 +233,6 @@ export class DmsClient {
   }
 }
 
-/** Preserve the page intent alongside the globally scoped DMS preorder identifier. */
 export async function submitOwnedDmsOrder(
   directory: string,
   owner: string,
@@ -254,7 +251,6 @@ export async function submitOwnedDmsOrder(
       .slice(0, 30);
   const saved = await readDmsIntent(directory, owner, order.aiPreOrderCode);
   if (saved) {
-    // The existing intent remains authoritative, including an unresolved write.
     const receipt = await submitDmsOrder(directory, owner, order, client, signal);
     return { ...receipt, requestAiPreOrderCode };
   }
@@ -280,7 +276,6 @@ async function readDmsIntent(directory: string, owner: string, id: string) {
   }
 }
 
-/** Append-only slots serialize new batches across processes; only a durable receipt releases the next slot. */
 async function claimDmsBatch(
   directory: string,
   owner: string,
@@ -336,7 +331,6 @@ async function claimDmsBatch(
   throw Error("补货批次正在并发确认，请稍后核对原批次");
 }
 
-/** Persist intent before sending: absent upstream idempotency, unknown writes must never be replayed. */
 export async function submitDmsOrder(
   directory: string,
   owner: string,
@@ -373,7 +367,7 @@ export async function submitDmsOrder(
   }
   try {
     const receipt = await client.submit(order, login.accessToken, signal);
-    // Store an acknowledged result even if the owning page disappears during persistence.
+
     const temp = file + "." + randomUUID();
     await writeFile(temp, JSON.stringify({ fingerprint, receipt }), {
       mode: 0o600,

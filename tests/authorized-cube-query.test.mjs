@@ -25,8 +25,7 @@ const resource = (model, extra = {}) => ({
   maxBytes: 262144,
   ...extra,
 });
-// Retained evidence still rechecks its original grant through this current transport interface.
-// Current query authorization and execution run through Core tools.execute in current-mcp-tools.test.mjs.
+
 test("resource discovery uses the negotiated route and trusted session, handles audit failure and 429 without fallback", async () => {
   let response = { success: true, resources: [resource("inv")] };
   let rate = false;

@@ -1,6 +1,6 @@
 import { holdBuildAdmission } from "./build-admission.mjs";
 import { managedPackages as names } from "./development-repositories.mjs";
-/** Assemble ordinary plugin artifacts from explicit, already built owner inputs. */
+
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -218,8 +218,6 @@ async function preflight(input, destination) {
         throw error;
       }
     } else {
-      // Prepare uses this same owner formatter. Validate publication metadata
-      // here so a missing optional peer version cannot create a failed stage.
       const { productionManifest } = await import(
         pathToFileURL(join(path, "scripts/production-manifest.mjs"))
       );
@@ -278,7 +276,7 @@ async function deliver(input, destination) {
   await writeFile(versionsPath, JSON.stringify(input.versions, null, 2) + "\n");
   const gea = owners.find((owner) => owner.repo === "dsh-gea-plugin");
   const stage = join(work, "gea-production");
-  // A rejected prepare cannot reach either curation or publication.
+
   command(
     process.execPath,
     [
@@ -408,7 +406,7 @@ async function deliver(input, destination) {
   for (const file of ["package.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"])
     await copyFile(join(stage, file), join(work, `gea-${file}`));
   await rm(stage, { recursive: true });
-  // Publishing filenames and a success receipt is the final step, after every check.
+
   await rename(pending, join(destination, "packages"));
   await writeFile(
     join(destination, "SHA256SUMS"),
@@ -456,7 +454,6 @@ try {
   }
   await deliver(request, destination);
 } catch (error) {
-  // External logs and paths may contain tokens. Emit only our fixed diagnostic code.
   console.error(
     /^(?:DELIVERY|BUILD)_[A-Z_]+$/.test(error.message) ? error.message : "DELIVERY_INPUT_INVALID",
   );

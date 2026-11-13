@@ -1,4 +1,3 @@
-/** Compare actual runtime consumers while retaining rolling image releases as observations. */
 import { readFileSync } from "node:fs";
 import { release, version } from "node:os";
 const reject = (detail) => {

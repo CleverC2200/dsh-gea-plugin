@@ -4,10 +4,6 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-/**
- * 勾选口径必须和「勾上以后按钮能不能用」一致：分组行只要组里还有一条能提交或退回就允许勾选，
- * 整行都不能操作才置灰。否则会出现「点两个不行、点三个才行」这种能勾上却按不动的状态。
- */
 test(
   "grouped queue rows stay selectable exactly when the batch buttons can run",
   { timeout: 90000 },
@@ -38,16 +34,15 @@ test(
       skuCount: 1,
     });
     const plans = [
-      // P1：代表行是「品类已审批（待回写）」这种不可操作的状态，但组里还有一条待省区审批的计划。
       plan("a1", "P1", 5),
       plan("a2", "P1", 2),
-      // P2：两条都能审。
+
       plan("b1", "P2", 2),
       plan("b2", "P2", 2),
-      // P3：整组都不可操作（待回写 + 回写完成）。
+
       plan("c1", "P3", 5),
       plan("c2", "P3", 10),
-      // P4：单条计划，用来验证被服务端拒绝后灰按钮会说明原因。
+
       plan("d1", "P4", 2),
     ];
     const skusFor = (row) => [
@@ -187,10 +182,10 @@ test(
       )
       .toBe(true);
     assert.equal(rows.length, 4, JSON.stringify(rows));
-    // P1 的代表行不可操作，但组里还有待审计划：仍然可以勾选。
+
     assert.equal(rowOf("P1")?.selectable, true, JSON.stringify(rows));
     assert.equal(rowOf("P2")?.selectable, true, JSON.stringify(rows));
-    // P3 整组都不可操作：置灰，从源头挡掉「勾上却按不动」。
+
     assert.equal(rowOf("P3")?.selectable, false, JSON.stringify(rows));
 
     const checkboxOf = (province) =>
@@ -214,7 +209,6 @@ test(
     await expect(approve).toBeDisabled();
     await expect(reject).toBeDisabled();
 
-    // 被服务端拒绝过的版本，灰按钮要直接说人话解释原因，别让用户猜。
     await frame
       .locator("tbody tr")
       .filter({ hasText: "P4" })
@@ -225,7 +219,7 @@ test(
     await expect(approve).toBeEnabled();
     denyWrites = true;
     await approve.click();
-    // 服务端拒绝后该版本在本轮被禁用，灰按钮上直接带上原因，不用用户去猜。
+
     const result = frame.getByRole("dialog", { name: "处理结果", exact: true });
     await expect(result).toBeVisible();
     await result.getByRole("button", { name: "关闭", exact: true }).click();

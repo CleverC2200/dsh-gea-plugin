@@ -33,10 +33,7 @@ import {
 } from "../src/business-navigation.ts";
 
 test("外壳自己接管右栏的页面都算业务页（漏一个就退回原生落地页样式）", () => {
-  // 主生产计划（MPS）是靠这条判定挂上 gea-business-shell 的：漏登记时右栏会冒出
-  // DSH 原生欢迎区（鲸鱼 + 工作区/Agent 预设选择器），所以每个菜单里的原型页都要在册。
   for (const item of BUSINESS_MENU_PRESET.flatMap((group) => group.items))
-    // HTML 插件页按注册上来的面板动态判定；「(待设计)」的条目还没有页面，不用登记。
     if (!item.id.startsWith("inventory-") && !item.title.includes("待设计"))
       assert.equal(isGeaBusinessPanel(item.id, []), true, `${item.title} 要按业务页布局`);
   assert.deepEqual(GEA_SHELL_PANELS, [
@@ -46,7 +43,7 @@ test("外壳自己接管右栏的页面都算业务页（漏一个就退回原�
     "plan-category-production",
     "gea-inbox",
   ]);
-  // HTML 插件页按注册上来的面板动态判定，不写死在这张表里。
+
   assert.equal(isGeaBusinessPanel("inventory-qll", []), false);
   assert.equal(
     isGeaBusinessPanel("inventory-qll", [
@@ -57,7 +54,6 @@ test("外壳自己接管右栏的页面都算业务页（漏一个就退回原�
 });
 
 test("business menu labels rename inventory pages without republishing plugin bundles", () => {
-  // 插件包清单里仍是旧名字，菜单按这里的业务叫法展示。
   assert.equal(businessMenuLabel("inventory-aqkc", "安全库存"), "基地库存");
   assert.equal(businessMenuLabel("inventory-qll", "全链路库存"), "全链库存");
   assert.equal(businessMenuLabel("inventory-fc", "分仓库存"), "分仓库存");

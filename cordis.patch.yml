@@ -1,4 +1,3 @@
-# GEA owns only its business identity, model and controlled execution.
 - insert:
     - id: gea-proof
       name: "@cleverc2200/gea-dsh-prototype"

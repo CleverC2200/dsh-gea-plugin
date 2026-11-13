@@ -1,4 +1,3 @@
-/** Controlled OS commands for the public quality CLI fixture; never imported by the runner. */
 import fs from "node:fs";
 import os from "node:os";
 import commands from "node:child_process";

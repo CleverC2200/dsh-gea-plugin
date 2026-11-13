@@ -4,7 +4,7 @@ import {
   currentDocumentIds,
   validateInitialPresets,
 } from "./preset-discovery.mjs";
-/** In-process ordinary Web profile boot. Real Loader/resolver/services, with all outgoing transports denied. */
+
 import assert from "node:assert/strict";
 import { readFile, writeFile, realpath } from "node:fs/promises";
 import { join, basename, dirname } from "node:path";
@@ -56,7 +56,7 @@ try {
   projected.artifactSetSha256 = artifactSetSha256(owner.artifacts);
   const anchor = join(v.core, "apps/cli/package.json"),
     coreRequire = createRequire(anchor);
-  // Installation-anchor require is only for importing the fixed Core. Profile SDK lookup is below through PluginPackages.
+
   const official = (name) => import(pathToFileURL(coreRequire.resolve(name)));
   const boot = await official("@deepseek-ai/dsh-app-boot");
   const { provideCmdline } = await official("@deepseek-ai/dsh-cmdline");
@@ -162,7 +162,7 @@ try {
     assert(ctx.get(name) !== undefined, `PUBLIC_SERVICE_MISSING:${name}`);
     return { name, available: true };
   });
-  // Public Host graph proves client entry registration and advertised artifacts, not browser execution.
+
   checkpoint("client-graph");
   const graph = ctx.clientModules.graph();
   projected.clients = names.map((name) => {
@@ -184,7 +184,7 @@ try {
       browserExecuted: false,
     };
   });
-  // Test actual importer routing at each installed plugin, including non-dsh SDK peers that version preflight omits.
+
   checkpoint("sdk");
   projected.sdk = [];
   for (const artifact of owner.artifacts) {
@@ -368,7 +368,7 @@ try {
     broken: Boolean(row.broken),
   }));
   projected.actualDefault = (await ctx.agentPresets.resolve()).id;
-  // Observe the installed default; do not write a legacy selectedDefault patch to make it pass.
+
   assert.equal(projected.actualDefault, "auto-negotiation", "DEFAULT_ORCHESTRATION_NOT_EFFECTIVE");
   projected.workbenchPageCount = ctx.workbenchPages.list().length;
   assert.equal(
@@ -379,7 +379,6 @@ try {
   projected.success = true;
   checkpoint("complete");
 } catch (error) {
-  // Only explicit leading harness codes are public; incidental enum/text fragments are not codes.
   projected.failure =
     String(error?.message ?? "").match(/^([A-Z][A-Z0-9_]{4,})(?=:|\n|$)/)?.[1] ??
     "RUNTIME_RECEPTION_FAILED";

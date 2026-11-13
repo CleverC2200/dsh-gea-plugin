@@ -4,7 +4,6 @@ import type { Business } from "./business.ts";
 import { profileFor } from "./prompt-policy.ts";
 import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
-/** Cube-only ownership. A personal reference never enters the business profile registry. */
 export function resolveCubeAccess(ctx: Context, business: Business, sessionId: string) {
   if (!business.status().authenticated) throw Error("GEA_IDENTITY_REQUIRED");
   const agent = ctx.agents.get(sessionId as Parameters<typeof ctx.agents.get>[0]);

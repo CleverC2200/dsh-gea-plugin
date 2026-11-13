@@ -1,11 +1,5 @@
 import { holdBuildAdmission } from "./build-admission.mjs";
-/**
- * Package the Electron shell from an isolated project directory.
- *
- * The runtime payload is prepared separately because it contains platform
- * native dependencies. Keeping it outside the staging project also prevents
- * electron-builder from walking the parent workspace's node_modules.
- */
+
 import { cp, mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -83,7 +77,6 @@ async function assertDirectory(path, label) {
   }
 }
 
-/** The packaged manifest must keep the data-schema contract the shell validates against. */
 export function stagedManifest(manifest) {
   return {
     name: manifest.name,
@@ -102,7 +95,7 @@ async function prepareStaging(target) {
     await cp(join(desktop, name), join(staging, name));
   }
   const manifest = JSON.parse(await readFile(join(desktop, "package.json"), "utf8"));
-  // A staging project must never inherit the workspace manifest or dependencies.
+
   const staged = stagedManifest(manifest);
   const { writeFile } = await import("node:fs/promises");
   await writeFile(join(staging, "package.json"), JSON.stringify(staged, null, 2) + "\n");
@@ -151,8 +144,7 @@ export async function main(argv = process.argv.slice(2)) {
   await validateDesktopPackage({ target: values.target, payloadRoot });
   holdBuildAdmission({ operation: "desktop", output: buildRoot });
   await buildDesktopTools();
-  // Windows is the validated installation target for this change. macOS can
-  // exercise the same layout explicitly before its separate signing acceptance.
+
   if (
     (values.target === "win" || process.env.GEA_ENABLE_LAYERED_MAC === "1") &&
     !(await readCoreLayout(join(payloadRoot, values.target, "payload")))

@@ -3,7 +3,6 @@ import { resolve } from "node:path";
 import assert from "node:assert/strict";
 import { businessDeploymentPatch, readDeployment } from "../../scripts/deployment.mjs";
 
-/** Core startup owns its Workspace; keep its Documents lookup inside this fresh fixture. */
 export function prepareCoreDocuments({ coreOnly = false } = {}) {
   return async ({ runtime, config, credentialEnv }) => {
     const patch = [
