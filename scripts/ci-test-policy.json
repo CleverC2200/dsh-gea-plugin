@@ -152,6 +152,9 @@
     },
     "tests/aps-default-policy.test.mjs": {
       "dependencies": false
+    },
+    "scripts/check-workbench.test.mjs": {
+      "dependencies": false
     }
   },
   "rules": [
@@ -837,6 +840,12 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^tests/fixtures/profile-configuration-probe\\.mjs$",
       "tests": ["tests/model-profile-fixture.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/check-workbench\\.mjs$",
+      "tests": ["scripts/check-workbench.test.mjs"],
+      "sourceTests": ["scripts/check-workbench.test.mjs"]
     }
   ],
   "testOwners": {
