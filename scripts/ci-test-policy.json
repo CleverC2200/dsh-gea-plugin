@@ -161,8 +161,16 @@
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/(?:host/(?:deployment-transport|fc-dms-default|business)\\.ts|shared/environments\\.(?:js|d\\.ts))$",
-      "tests": ["tests/deployment-transport.test.mjs", "tests/fc-dms-default.test.mjs"],
-      "sourceTests": ["tests/deployment-transport.test.mjs", "tests/fc-dms-default.test.mjs"]
+      "tests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ],
+      "sourceTests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ]
     },
     {
       "repo": "dsh-agent-workbench",
@@ -858,6 +866,26 @@
       "pattern": "^scripts/verify-official-input\\.mjs$",
       "tests": ["scripts/check-workbench.test.mjs"],
       "sourceTests": ["scripts/check-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:inventory_warehouse_scope|test_fc_plan_template_snapshot|test_fc_summary|test_inventory_warehouse_scope|update-fc-warehouse-exceptions)\\.py$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/feishu-warning-transport\\.mjs$",
+      "tests": ["tests/deployment-transport.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/html-bridge\\.ts$",
+      "tests": ["tests/html-gateway.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/warning-people-request\\.ts$",
+      "tests": ["tests/deployment-transport.test.mjs"]
     }
   ],
   "testOwners": {

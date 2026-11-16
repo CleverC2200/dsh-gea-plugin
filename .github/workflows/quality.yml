@@ -151,6 +151,33 @@ jobs:
           npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1 tar@7.5.22
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
           node scripts/check-windows-plugin-update.mjs
+      - uses: actions/checkout@v7
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ needs.candidate-scope.outputs.workbench-sha }}
+          path: environment-peer/dsh-agent-workbench
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Prepare browser tools for Windows environment isolation
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        shell: pwsh
+        run: |
+          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund react@18.3.1 react-dom@18.3.1 @icon-park/react@1.4.2 @playwright/test@1.58.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path environment-peer/dsh-agent-workbench/node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
+          node node_modules/@playwright/test/cli.js install chromium
+          exit $LASTEXITCODE
+      - name: Verify Windows environment boundary and request log UI
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        shell: bash
+        env:
+          DSH_TEST_GEA_CHECKOUT: ${{ github.workspace }}
+        run: |
+          mkdir -p windows-result
+          node --test tests/deployment-boundary.test.mjs tests/api-log.test.mjs tests/fc-dms-default.test.mjs | tee windows-result/environment-host.tap
+          cd environment-peer/dsh-agent-workbench
+          node --test tests/api-log-center.browser.mjs tests/warning-executor.test.mjs tests/warning-feishu-service.test.mjs | tee ../../windows-result/environment-ui.tap
       - name: Preserve Windows scope and native outcome
         if: always()
         shell: bash

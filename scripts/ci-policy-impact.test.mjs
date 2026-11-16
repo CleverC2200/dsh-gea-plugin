@@ -287,6 +287,12 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ],
     ],
     [0, "scripts/check-agent-knowledge.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+    [0, "scripts/inventory_warehouse_scope.py", []],
+    [0, "scripts/test_fc_plan_template_snapshot.py", []],
+    [0, "scripts/test_fc_summary.py", []],
+    [0, "scripts/test_inventory_warehouse_scope.py", []],
+    [0, "scripts/update-fc-warehouse-exceptions.py", []],
+
     [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
   ];

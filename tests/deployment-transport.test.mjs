@@ -3,12 +3,11 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { resolveEnvironments } from "../src/shared/environments.js";
 
 const built = await build({
   stdin: {
     contents:
-      "export { Business } from './src/host/business.ts'; export { DeploymentTransport } from './src/host/deployment-transport.ts'; export { createCapabilityRegistry } from './src/capability/registry.ts';",
+      "export { Business } from './src/host/business.ts'; export { createCapabilityRegistry } from './src/capability/registry.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -23,7 +22,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   mod,
   mod.exports,
 );
-const { Business, DeploymentTransport, createCapabilityRegistry } = mod.exports;
+const { Business, createCapabilityRegistry } = mod.exports;
 const environments = {
   production: "https://production.fixture/gea",
   test: "https://test.fixture/gea",
@@ -147,57 +146,6 @@ test("changing login cancels an adapter that ignores abort and cannot publish it
   login("test");
   release.resolve();
   await assert.rejects(pending);
-});
-
-test("external model grants are credential-bound and expire with the identity epoch", async () => {
-  const epoch = new AbortController();
-  const transport = new DeploymentTransport(
-    { environments },
-    () => ({
-      environment: "production",
-      base: environments.production,
-      signal: epoch.signal,
-      identity: { id: "u", token: "gea", tenantId: "0" },
-    }),
-    async () => Response.json({ data: [] }),
-  );
-  transport.allowModel("https://model.fixture/v1", "model-secret");
-  await assert.rejects(
-    transport.fetch("https://model.fixture/v1/models", {
-      headers: { Authorization: "Bearer gea" },
-    }),
-    /GEA_TARGET_IDENTITY_MISMATCH/,
-  );
-  const response = await transport.fetch("https://model.fixture/v1/models", {
-    headers: { Authorization: "Bearer model-secret" },
-  });
-  await response.body.cancel();
-  epoch.abort();
-  await assert.rejects(
-    transport.fetch("https://model.fixture/v1/models", {
-      headers: { Authorization: "Bearer model-secret" },
-    }),
-  );
-});
-
-test("business environment mappings reject identical and known inverted authorities", () => {
-  assert.throws(
-    () =>
-      resolveEnvironments({
-        geaEnvironments: { production: "https://same.fixture", test: "https://same.fixture/" },
-      }),
-    /GEA_ENVIRONMENTS_NOT_DISTINCT/,
-  );
-  assert.throws(
-    () =>
-      resolveEnvironments({
-        geaEnvironments: {
-          production: "https://gea.synear.cn:4443/gea-boot",
-          test: "https://gea.synear.cn/gea-boot",
-        },
-      }),
-    /GEA_ENVIRONMENT_TARGET_MISMATCH/,
-  );
 });
 
 test("custom DMS environment collisions are rejected before any signed or bearer request is sent", async (t) => {
