@@ -937,6 +937,7 @@ test("RC2 delivery retains upstream, private and company Core identities", async
     { head: "9111f88ddafc1a2a7b8a373ecb44de54b16895a1", version: "0.2.0-rc.2" },
     { head: "0accab310546c1bc8d3ad46b8803dcbcfaa02477", version: "0.2.0-rc.2" },
     { head: "aa3dd81d5bce663ce74f38cce9a60c0a76bb2d87", version: "0.2.0-rc.2" },
+    { head: "8cc49e9b5c5ddf3751af2f6fb21276513a14bf9b", version: "0.2.0-rc.2" },
   ]);
   assert.match(
     await readFile(join(fixture.destination, "INSTALL.md"), "utf8"),
