@@ -18,6 +18,7 @@ function fixture(
     const rows = [
       {
         kind: "2",
+        base: "郑州",
         region: "全国",
         province: "省区",
         numerator: 10,
@@ -38,8 +39,8 @@ function fixture(
     preset = "gea-html-inventory-orderworkbench",
     enabled = true,
     currentView;
-  const identity = new AbortController(),
-    listeners = new Set(),
+  let identity = new AbortController();
+  const listeners = new Set(),
     calls = [],
     agent = { id: "test-order" };
   const ctx = {
@@ -101,10 +102,79 @@ function fixture(
       enabled = false;
       for (const listener of listeners) listener();
     },
+    replaceIdentity: () => {
+      identity.abort();
+      identity = new AbortController();
+    },
   };
 }
 
 const period = { start: "2026-10-19", endExclusive: "2026-10-26" };
+const cancellationGroups = { ...period, metric: "作废率", view: "groups", dimensions: ["base"] };
+
+test("repeated unavailable cancellation groups do not reissue SQL or invent empty groups", async () => {
+  const f = fixture(async () => {
+    throw Object.assign(Error("offline"), { code: "GEA_SQL_UNAVAILABLE" });
+  });
+  const first = JSON.parse(await f.call(cancellationGroups));
+  assert.equal(f.calls.length, 1);
+  assert.equal(first.groups.availability, "unavailable");
+  assert.equal(first.retryPolicy.automaticRetry, false);
+  for (let index = 0; index < 3; index++) {
+    const result = JSON.parse(await f.call(cancellationGroups));
+    assert.equal(result.retryPolicy.suppressed, true);
+    assert.equal(result.sources[0].code, "GEA_SQL_UNAVAILABLE");
+    assert.equal(result.groups.availability, "unavailable");
+    assert.equal(result.current.value, null);
+  }
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.listeners.size, 0);
+  await f.call({ ...cancellationGroups, base: "郑州" });
+  assert.equal(f.calls.length, 2);
+  f.replaceIdentity();
+  await f.call(cancellationGroups);
+  assert.equal(f.calls.length, 3);
+  f.disable();
+  await assert.rejects(() => f.call(cancellationGroups), /UNAVAILABLE|DISABLED|MISSING/);
+  assert.equal(f.calls.length, 3);
+});
+
+test("cancellation query suppression expires and successful fresh results remain queryable", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  let available = false;
+  const f = fixture(async () => {
+    if (!available) throw Object.assign(Error("offline"), { code: "GEA_SQL_QUERY_TIMEOUT" });
+    const rows = [
+      {
+        base: "郑州",
+        kind: "1",
+        region: null,
+        province: null,
+        numerator: 10,
+        denominator: 100,
+        sample_numerator: 10,
+        sample_denominator: 100,
+        sample_records: 1,
+        records: 1,
+        invalid: 0,
+        unknown_quantity: 0,
+      },
+    ];
+    return { rows, returnedColumns: Object.keys(rows[0]), rejectedColumns: [] };
+  });
+  await f.call(cancellationGroups);
+  available = true;
+  assert.equal(JSON.parse(await f.call(cancellationGroups)).retryPolicy.suppressed, true);
+  assert.equal(f.calls.length, 1);
+  t.mock.timers.tick(60001);
+  const result = JSON.parse(await f.call(cancellationGroups));
+  assert.equal(result.groups.availability, "available");
+  assert.equal(result.current.numerator, 10);
+  assert.equal(result.retryPolicy.suppressed, false);
+  assert.equal(f.calls.length, 2);
+  await f.call(cancellationGroups);
+  assert.equal(f.calls.length, 3);
+});
 test("generic tool exposes grouped metrics independently of raw detail publication", async () => {
   const f = fixture();
   assert.ok(f.tool.parameters.properties.view.enum.includes("groups"));
@@ -161,6 +231,66 @@ test("generic independent query returns exact shared components and no implicit 
   assert.ok(f.calls.length > 0);
   assert.ok(f.calls.every((c) => c.configured && c.request.consumerCode === "order"));
 });
+
+test("KPI queries stop at the shared call deadline without an external timeout wrapper", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  let stopped = false;
+  const f = fixture(async (_request, signal) => {
+    entered();
+    try {
+      await new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    } finally {
+      stopped = true;
+    }
+  });
+  const pending = f.call({ ...period, metric: "改单率" });
+  const rejected = assert.rejects(pending, /GEA_ORDER_KPI_TIMEOUT/);
+  await started;
+  t.mock.timers.tick(180000);
+  await rejected;
+  assert.equal(stopped, true);
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.tool.timeoutMs, 180000);
+});
+
+for (const reason of ["caller", "identity", "resource"]) {
+  test(`pending KPI queries stop when ${reason} cancels the execution`, async () => {
+    let entered;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    let stopped = false;
+    const f = fixture(async (_request, signal) => {
+      entered();
+      try {
+        await new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      } finally {
+        stopped = true;
+      }
+    });
+    const caller = new AbortController();
+    const pending = f.tool.execute(
+      { ...period, metric: "作废率" },
+      { agent: { id: "test-order" }, signal: caller.signal },
+    );
+    const rejected = assert.rejects(pending);
+    await started;
+    if (reason === "caller") caller.abort();
+    else if (reason === "identity") f.identity.abort();
+    else f.disable();
+    await rejected;
+    assert.equal(stopped, true);
+    assert.equal(f.listeners.size, 0);
+  });
+}
 test("generic KPI route preserves Cube and knowledge tools for other questions", () => {
   const names = allowedTools(PROFILES["gea-html-inventory-orderworkbench"]);
   for (const name of [
