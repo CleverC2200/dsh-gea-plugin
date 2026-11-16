@@ -1,4 +1,5 @@
 import { warningStorage } from "./warning-storage.ts";
+import { searchPeople } from "./people-search.ts";
 import { retryingFetch } from "./http-attempt.ts";
 import { GeaRequestCapture, type CaptureConfig } from "./request-capture.ts";
 import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
@@ -1578,6 +1579,17 @@ export class Business {
     signal.throwIfAborted();
     if (this.auth !== auth) throw Error("STALE_LOGIN");
     return result;
+  }
+
+  async searchPeople(payload: unknown, caller: AbortSignal) {
+    this.assertExecutionAllowed("aps");
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    return searchPeople(
+      payload,
+      (path, active) => this.gatewayRequests.read(path, auth, active),
+      signal,
+    );
   }
 
   async warningStorage(payload: unknown, caller: AbortSignal) {
