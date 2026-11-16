@@ -115,10 +115,7 @@ test("amendment tool executes only installed quantity SQL, retaining bound picku
   assert.equal(value.current.numerator, 10);
   assert.match(f.calls[0].request.sql, /requested_qty>=0/);
   assert.match(f.calls[0].request.sql, /pickup_point='01'/);
-  assert.doesNotMatch(
-    f.calls[0].request.sql,
-    /custchangetime|requireddeliverytime|hourly/,
-  );
+  assert.doesNotMatch(f.calls[0].request.sql, /custchangetime|requireddeliverytime|hourly/);
   assert.equal(f.calls[0].request.consumerCode, "order");
   assert.equal(f.calls[0].request.parameters.gea_p900, "郑州");
   assert.equal(f.calls[0].request.parameters.gea_p1, "2026-10-01");
