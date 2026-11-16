@@ -235,9 +235,10 @@ function validate(kind: Kind, value: any, warehouse: string) {
       keys.add(r.sku);
     }
     if (value.stage === "dms-received") {
-      fields(value.receipt, ["orderCode", "aiPreOrderCode", "requestAiPreOrderCode"]);
+      fields(value.receipt, ["orderCode", "aiPreOrderCode", "requestAiPreOrderCode", "dmsMessage"]);
       check(
-        scalarText(value.receipt.orderCode) &&
+        (value.receipt.dmsMessage === undefined || scalarText(value.receipt.dmsMessage, 1000)) &&
+          scalarText(value.receipt.orderCode) &&
           scalarText(value.receipt.aiPreOrderCode, 64) &&
           (value.receipt.requestAiPreOrderCode === undefined
             ? value.receipt.aiPreOrderCode === value.aiPreOrderCode
