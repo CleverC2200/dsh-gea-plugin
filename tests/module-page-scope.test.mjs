@@ -23,20 +23,42 @@ test("outbound model receives the full snapshot while durable user text stays sh
   const host = { surfaceFor: () => ({ menu: "inventory-orderworkbench" }) };
   const controller = new AbortController();
   bindModulePage(host, "s", "inventory-orderworkbench", controller.signal).observe({
-    metricDetails: { trigger: "metric-card", displayText: "短问题\n本期日期", agentPrompt: "完整快照：分子7786、分母7812、基地、样本及同比" },
+    metricDetails: {
+      trigger: "metric-card",
+      displayText: "短问题\n本期日期",
+      agentPrompt: "完整快照：分子7786、分母7812、基地、样本及同比",
+    },
   });
   const inputs = [
-    { role: "user", id: "message-1", source: { kind: "user" }, content: [{ type: "text", text: "短问题\n本期日期" }] },
-    { role: "user", id: "context-1", source: { kind: "page-snapshot" }, content: [{ type: "text", text: "自动页面快照" }] },
+    {
+      role: "user",
+      id: "message-1",
+      source: { kind: "user" },
+      content: [{ type: "text", text: "短问题\n本期日期" }],
+    },
+    {
+      role: "user",
+      id: "context-1",
+      source: { kind: "page-snapshot" },
+      content: [{ type: "text", text: "自动页面快照" }],
+    },
   ];
   const original = structuredClone(inputs);
-  const messages = [{ role: "system", content: "原Skill要求" }, { role: "user", content: "短问题\n本期日期" }];
+  const messages = [
+    { role: "system", content: "原Skill要求" },
+    { role: "user", content: "短问题\n本期日期" },
+  ];
   appendOrderCardModelContext(host, "s", inputs, messages);
   assert.match(messages[0].content, /原Skill要求[\s\S]*完整快照[\s\S]*7786/);
   assert.equal(messages[1].content, inputs[0].content[0].text);
   assert.deepEqual(inputs, original);
   const next = [{ role: "user", content: "另一问题" }];
-  appendOrderCardModelContext(host, "s", [{ role: "user", id: "message-2", content: [{ type: "text", text: "另一问题" }] }], next);
+  appendOrderCardModelContext(
+    host,
+    "s",
+    [{ role: "user", id: "message-2", content: [{ type: "text", text: "另一问题" }] }],
+    next,
+  );
   assert.deepEqual(next, [{ role: "user", content: "另一问题" }]);
 });
 test("order card details are private prompt context for one turn and preserve Cube routing", () => {
@@ -44,12 +66,21 @@ test("order card details are private prompt context for one turn and preserve Cu
   const host = { surfaceFor: () => ({ menu }) };
   const controller = new AbortController();
   const binding = bindModulePage(host, "s", menu, controller.signal);
-  binding.observe({ metricDetails: { trigger: "metric-card", agentPrompt: "完整请求：基地明细、合计、同比与证据", displayText: "短问题" } });
+  binding.observe({
+    metricDetails: {
+      trigger: "metric-card",
+      agentPrompt: "完整请求：基地明细、合计、同比与证据",
+      displayText: "短问题",
+    },
+  });
   binding.observe({ filters: { dimension: "national" } });
   menu = "inventory-customer";
   assert.equal(modulePagePrompt(host, "s")?.includes("完整请求"), false);
   menu = "inventory-orderworkbench";
-  assert.match(modulePagePrompt(host, "s", { text: "短问题", turn: "1" }), /完整请求：基地明细、合计、同比与证据/);
+  assert.match(
+    modulePagePrompt(host, "s", { text: "短问题", turn: "1" }),
+    /完整请求：基地明细、合计、同比与证据/,
+  );
   assert.match(modulePagePrompt(host, "s", { text: "短问题", turn: "1" }), /完整请求/);
   assert.equal(modulePagePrompt(host, "s", { text: "另一个问题", turn: "2" }), undefined);
   assert.equal(modulePagePrompt(host, "s", { text: "短问题", turn: "2" }), undefined);

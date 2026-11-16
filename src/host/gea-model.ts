@@ -247,7 +247,12 @@ export class GeaModelAdapter extends LlmAdapter {
           "MODEL_NOT_FOUND",
         );
       const requestBody = toGeaRequest(options);
-      appendOrderCardModelContext(business, options.sessionId, options.messages, requestBody.messages);
+      appendOrderCardModelContext(
+        business,
+        options.sessionId,
+        options.messages,
+        requestBody.messages,
+      );
       modelSecret = route.secret;
       const response = await business.capture.observe(
         () =>
