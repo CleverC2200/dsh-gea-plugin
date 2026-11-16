@@ -30,27 +30,18 @@ const signal = () => new AbortController().signal;
 const ok = (result) => Response.json({ success: true, code: 200, result });
 const login = {
   access_token: "private-access",
-  redirect:
-    "https://manage.test/user/loginSSO?token=short-ticket&menu=/corder/ordermgt",
+  redirect: "https://manage.test/user/loginSSO?token=short-ticket&menu=/corder/ordermgt",
 };
 test("login signs form JSON, preserves gateway prefix and never sends bearer to token exchange", async () => {
   const requests = [];
-  const client = new DmsClient(
-    config,
-    { workcode: "W1" },
-    async (url, init) => {
-      requests.push({ url, init });
-      return ok(
-        requests.length === 1
-          ? login
-          : { access_token: "exchanged", refresh_token: "refresh" },
-      );
-    },
-  );
+  const client = new DmsClient(config, { workcode: "W1" }, async (url, init) => {
+    requests.push({ url, init });
+    return ok(
+      requests.length === 1 ? login : { access_token: "exchanged", refresh_token: "refresh" },
+    );
+  });
   assert.equal((await client.login(signal())).accessToken, "private-access");
-  const signed = JSON.parse(
-    new URLSearchParams(requests[0].init.body).get("ssoToken"),
-  );
+  const signed = JSON.parse(new URLSearchParams(requests[0].init.body).get("ssoToken"));
   assert.equal(signed.source, "ai");
   assert.equal(signed.menu, "/corder/ordermgt");
   assert.equal(signed.workcode, "W1");
@@ -60,10 +51,7 @@ test("login signs form JSON, preserves gateway prefix and never sends bearer to 
       .update("W1" + signed.time + "fixture-secret")
       .digest("hex"),
   );
-  assert.equal(
-    requests[0].url,
-    "http://gateway.test/synear_test/DMS/auth/oauthout/ssoLogin",
-  );
+  assert.equal(requests[0].url, "http://gateway.test/synear_test/DMS/auth/oauthout/ssoLogin");
   assert.equal(requests[0].init.redirect, "error");
   await client.exchange("a+b&x", "order", signal());
   assert.equal(new URL(requests[1].url).searchParams.get("key"), "a+b&x");
@@ -87,23 +75,12 @@ test("acknowledged submission persists and duplicate intent returns receipt with
   const dir = await mkdtemp(join(tmpdir(), "dms-test-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const requests = [];
-  const client = new DmsClient(
-    config,
-    { username: "U1" },
-    async (url, init) => {
-      requests.push({ url, init });
-      return ok(
-        url.endsWith("ssoLogin")
-          ? login
-          : { orderCode: "D1", aiPreOrderCode: "AI123" },
-      );
-    },
-  );
+  const client = new DmsClient(config, { username: "U1" }, async (url, init) => {
+    requests.push({ url, init });
+    return ok(url.endsWith("ssoLogin") ? login : { orderCode: "D1", aiPreOrderCode: "AI123" });
+  });
   const order = parseDmsOrder(input);
-  assert.equal(
-    (await submitDmsOrder(dir, "owner", order, client, signal())).orderCode,
-    "D1",
-  );
+  assert.equal((await submitDmsOrder(dir, "owner", order, client, signal())).orderCode, "D1");
   assert.equal(requests[1].init.headers.Authorization, "Bearer private-access");
   assert.deepEqual(JSON.parse(requests[1].init.body), order);
   assert.equal(
@@ -190,9 +167,7 @@ test("empty HTTP 200 is not an acknowledged DMS order", async () => {
     { username: "U" },
     async () => new Response(null, { status: 200 }),
   );
-  await assert.rejects(
-    client.submit(parseDmsOrder(input), "fixture-token", signal()),
-  );
+  await assert.rejects(client.submit(parseDmsOrder(input), "fixture-token", signal()));
 });
 
 test("revision 32 branch sample accepts customerName/orderModel and documented remarks", () => {
@@ -221,28 +196,18 @@ test("revision 32 branch sample accepts customerName/orderModel and documented r
   assert.equal(parsed.orderModel, "cg");
   assert.equal(parsed.orderRemarks, "AI自动创建订单");
   assert.deepEqual(parsed.itemList, sample.itemList);
-  assert.throws(
-    () => parseDmsOrder({ ...sample, orderModel: "unknown" }),
-    /orderModel/,
-  );
-  assert.throws(
-    () => parseDmsOrder({ ...sample, remarks: "wrong field" }),
-    /未支持字段/,
-  );
+  assert.throws(() => parseDmsOrder({ ...sample, orderModel: "unknown" }), /orderModel/);
+  assert.throws(() => parseDmsOrder({ ...sample, remarks: "wrong field" }), /未支持字段/);
 });
 
 test("login uses the DMS returned redirect without a preconfigured management address", async () => {
   const { manageUrl: _manageUrl, ...automatic } = config;
-  const client = new DmsClient(
-    automatic,
-    { username: "U1" },
-    async (_url, init) => {
-      const signed = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
-      assert.equal(signed.username, "U1");
-      assert.equal(signed.menu, "/corder/ordermgt");
-      return ok(login);
-    },
-  );
+  const client = new DmsClient(automatic, { username: "U1" }, async (_url, init) => {
+    const signed = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
+    assert.equal(signed.username, "U1");
+    assert.equal(signed.menu, "/corder/ordermgt");
+    return ok(login);
+  });
   assert.deepEqual(await client.login(signal()), {
     accessToken: login.access_token,
     redirect: login.redirect,
@@ -254,9 +219,9 @@ test("login uses the DMS returned redirect without a preconfigured management ad
     "https://manage.test/user/loginSSO",
   ]) {
     await assert.rejects(
-      new DmsClient(automatic, { username: "U1" }, async () =>
-        ok({ ...login, redirect }),
-      ).login(signal()),
+      new DmsClient(automatic, { username: "U1" }, async () => ok({ ...login, redirect })).login(
+        signal(),
+      ),
       /免登地址/,
     );
   }
@@ -273,14 +238,7 @@ test("same-month distinct batches send once each; old successful batches still r
       aiPreOrderCode: order.aiPreOrderCode,
     }),
   };
-  const first = await submitOwnedDmsOrder(
-    directory,
-    "owner",
-    input,
-    client,
-    signal(),
-    "001",
-  );
+  const first = await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
   const next = await submitOwnedDmsOrder(
     directory,
     "owner",
@@ -292,14 +250,7 @@ test("same-month distinct batches send once each; old successful batches still r
   assert.notEqual(first.aiPreOrderCode, next.aiPreOrderCode);
   assert.equal(next.orderCode, "D2");
   assert.deepEqual(
-    await submitOwnedDmsOrder(
-      directory,
-      "owner",
-      input,
-      client,
-      signal(),
-      "001",
-    ),
+    await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001"),
     first,
   );
   assert.equal(sends, 2);
@@ -364,14 +315,7 @@ test("concurrent distinct batches cannot both pass the unresolved predecessor", 
       return { orderCode: "D1", aiPreOrderCode: order.aiPreOrderCode };
     },
   };
-  const first = submitOwnedDmsOrder(
-    directory,
-    "owner",
-    input,
-    client,
-    signal(),
-    "001",
-  );
+  const first = submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
   await started;
   try {
     await assert.rejects(
@@ -588,11 +532,7 @@ test("legacy unknown intent remains blocked even when its batch is edited", asyn
   const directory = await mkdtemp(join(tmpdir(), "dms-legacy-unknown-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const hash = (s) => createHash("sha256").update(s).digest("hex");
-  const lane = join(
-    directory,
-    "batches",
-    hash(JSON.stringify(["owner", "001"])),
-  );
+  const lane = join(directory, "batches", hash(JSON.stringify(["owner", "001"])));
   await mkdir(lane, { recursive: true });
   await writeFile(
     join(lane, "000000000001.json"),
@@ -629,8 +569,7 @@ test(
   async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "dms-process-race-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
-    const moduleUrl = new URL("../src/host/dms-orders.ts", import.meta.url)
-      .href;
+    const moduleUrl = new URL("../src/host/dms-orders.ts", import.meta.url).href;
     const run = (id, hold) => {
       const script = `
       import {submitOwnedDmsOrder} from ${JSON.stringify(moduleUrl)};
@@ -683,13 +622,8 @@ test("a persisted not-sent batch can retry edited quantities with its original r
   const directory = await mkdtemp(join(tmpdir(), "dms-not-sent-edited-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const hash = (s) => createHash("sha256").update(s).digest("hex");
-  const id =
-    "AI" + hash(JSON.stringify(["owner", input.aiPreOrderCode])).slice(0, 30);
-  const lane = join(
-    directory,
-    "batches",
-    hash(JSON.stringify(["owner", "001"])),
-  );
+  const id = "AI" + hash(JSON.stringify(["owner", input.aiPreOrderCode])).slice(0, 30);
+  const lane = join(directory, "batches", hash(JSON.stringify(["owner", "001"])));
   await mkdir(lane, { recursive: true });
   await writeFile(
     join(lane, "000000000001.json"),
@@ -709,23 +643,9 @@ test("a persisted not-sent batch can retry edited quantities with its original r
     },
   };
   const edited = { ...input, itemList: [{ productCode: "SKU1", quantity: 2 }] };
-  const receipt = await submitOwnedDmsOrder(
-    directory,
-    "owner",
-    edited,
-    client,
-    signal(),
-    "001",
-  );
+  const receipt = await submitOwnedDmsOrder(directory, "owner", edited, client, signal(), "001");
   assert.deepEqual(
-    await submitOwnedDmsOrder(
-      directory,
-      "owner",
-      edited,
-      client,
-      signal(),
-      "001",
-    ),
+    await submitOwnedDmsOrder(directory, "owner", edited, client, signal(), "001"),
     receipt,
   );
   assert.equal(sends, 1);
@@ -764,39 +684,21 @@ test("successful DMS message survives receipt replay without another send", asyn
   const directory = await mkdtemp(join(tmpdir(), "dms-success-message-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   let sends = 0;
-  const client = new DmsClient(
-    config,
-    { workcode: "W1" },
-    async (url, init) => {
-      if (String(url).endsWith("ssoLogin")) return ok(login);
-      sends++;
-      const order = JSON.parse(init.body);
-      return Response.json({
-        success: true,
-        code: 200,
-        message: "暂存成功",
-        result: { orderCode: "D1", aiPreOrderCode: order.aiPreOrderCode },
-      });
-    },
-  );
-  const first = await submitOwnedDmsOrder(
-    directory,
-    "owner",
-    input,
-    client,
-    signal(),
-    "W1",
-  );
+  const client = new DmsClient(config, { workcode: "W1" }, async (url, init) => {
+    if (String(url).endsWith("ssoLogin")) return ok(login);
+    sends++;
+    const order = JSON.parse(init.body);
+    return Response.json({
+      success: true,
+      code: 200,
+      message: "暂存成功",
+      result: { orderCode: "D1", aiPreOrderCode: order.aiPreOrderCode },
+    });
+  });
+  const first = await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "W1");
   assert.equal(first.dmsMessage, "暂存成功");
   assert.deepEqual(
-    await submitOwnedDmsOrder(
-      directory,
-      "owner",
-      input,
-      client,
-      signal(),
-      "W1",
-    ),
+    await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "W1"),
     first,
   );
   assert.equal(sends, 1);
@@ -821,17 +723,11 @@ test("DMS messages hide bearer and signing secrets without exposing response obj
       access_token: "unrelated-token",
     }),
   );
-  await assert.rejects(
-    client.submit(parseDmsOrder(input), "private-bearer", signal()),
-    (error) => {
-      assert.match(error.message, /DMS返回：校验失败/);
-      assert.doesNotMatch(
-        error.message,
-        /private-bearer|fixture-secret|unrelated-token/,
-      );
-      return true;
-    },
-  );
+  await assert.rejects(client.submit(parseDmsOrder(input), "private-bearer", signal()), (error) => {
+    assert.match(error.message, /DMS返回：校验失败/);
+    assert.doesNotMatch(error.message, /private-bearer|fixture-secret|unrelated-token/);
+    return true;
+  });
 });
 
 test("non-JSON responses never invent a DMS business result", async () => {
@@ -840,12 +736,9 @@ test("non-JSON responses never invent a DMS business result", async () => {
     { workcode: "W1" },
     async () => new Response("not found", { status: 502 }),
   );
-  await assert.rejects(
-    client.submit(parseDmsOrder(input), "fixture", signal()),
-    (error) => {
-      assert.match(error.message, /HTTP 502/);
-      assert.doesNotMatch(error.message, /DMS返回/);
-      return true;
-    },
-  );
+  await assert.rejects(client.submit(parseDmsOrder(input), "fixture", signal()), (error) => {
+    assert.match(error.message, /HTTP 502/);
+    assert.doesNotMatch(error.message, /DMS返回/);
+    return true;
+  });
 });

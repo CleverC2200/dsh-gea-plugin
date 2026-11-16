@@ -31,8 +31,7 @@ const required = (value: unknown, field: string): string => {
 };
 
 export function parseDmsOrder(input: unknown): Order {
-  if (!input || typeof input !== "object" || Array.isArray(input))
-    throw Error("DMS 订单参数无效");
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw Error("DMS 订单参数无效");
   const source = input as Record<string, unknown>;
   const order = {} as Order;
   const fields = ["aiPreOrderCode", "customerCode", "addressCode", "pupCode"];
@@ -54,10 +53,7 @@ export function parseDmsOrder(input: unknown): Order {
   };
   if (
     Object.keys(source).some(
-      (key) =>
-        ![...fields, ...optional, ...Object.keys(enums), "itemList"].includes(
-          key,
-        ),
+      (key) => ![...fields, ...optional, ...Object.keys(enums), "itemList"].includes(key),
     )
   )
     throw Error("DMS 订单包含未支持字段");
@@ -69,26 +65,15 @@ export function parseDmsOrder(input: unknown): Order {
     throw Error("DMS 参数无效：orderModel");
   for (const [field, values] of Object.entries(enums)) {
     const value = source[field] ?? values[0];
-    if (!values.includes(value as string))
-      throw Error(`DMS 参数无效：${field}`);
+    if (!values.includes(value as string)) throw Error(`DMS 参数无效：${field}`);
     order[field] = value;
   }
-  if (order.isCarpooling === "L" && !order.carpoolingCode)
-    throw Error("拼车单号不能为空");
-  if (
-    !Array.isArray(source.itemList) ||
-    !source.itemList.length ||
-    source.itemList.length > 5000
-  )
+  if (order.isCarpooling === "L" && !order.carpoolingCode) throw Error("拼车单号不能为空");
+  if (!Array.isArray(source.itemList) || !source.itemList.length || source.itemList.length > 5000)
     throw Error("DMS 产品明细不能为空或超过5000条");
   const seen = new Set<string>();
   order.itemList = source.itemList.map((item) => {
-    if (
-      !item ||
-      Object.keys(item).some(
-        (key) => !["productCode", "quantity"].includes(key),
-      )
-    )
+    if (!item || Object.keys(item).some((key) => !["productCode", "quantity"].includes(key)))
       throw Error("DMS 产品明细无效");
     const productCode = required(item.productCode, "productCode");
     if (seen.has(productCode)) throw Error("DMS 产品编码重复");
@@ -112,15 +97,13 @@ function dmsResponseMessage(body: unknown): string | undefined {
   for (const field of ["message", "msg"]) {
     if (!(field in body)) continue;
     const value = Reflect.get(body, field);
-    if (typeof value === "string" && value.trim())
-      return value.trim().slice(0, 1000);
+    if (typeof value === "string" && value.trim()) return value.trim().slice(0, 1000);
   }
   return undefined;
 }
 
 function savedDmsRejection(saved: unknown): string {
-  if (!saved || typeof saved !== "object" || !("dmsRejectionMessage" in saved))
-    return "";
+  if (!saved || typeof saved !== "object" || !("dmsRejectionMessage" in saved)) return "";
   return typeof saved.dmsRejectionMessage === "string"
     ? saved.dmsRejectionMessage.slice(0, 1100) + "。"
     : "";
@@ -152,15 +135,8 @@ export class DmsClient {
     this.identity = identity;
     this.transport = transport;
   }
-  private async request(
-    path: string,
-    init: RequestInit,
-    signal: AbortSignal,
-  ): Promise<any> {
-    if (
-      signal.aborted &&
-      path === "/dms/order/dmsOrderHead/submitZcOrderDirect"
-    )
+  private async request(path: string, init: RequestInit, signal: AbortSignal): Promise<any> {
+    if (signal.aborted && path === "/dms/order/dmsOrderHead/submitZcOrderDirect")
       throw new DmsRequestNotSent("订单尚未发送至DMS，可重新暂存");
     signal.throwIfAborted();
     const base = baseUrl(this.config.gatewayUrl);
@@ -185,21 +161,15 @@ export class DmsClient {
       if (message) throw new DmsRequestRejection(`DMS返回：${message}`);
       if (!response.ok) throw Error(`DMS 请求失败（HTTP ${response.status}）`);
       if (!body) throw Error("DMS未返回可解析的JSON回执");
-      throw new DmsRequestRejection(
-        "DMS 拒绝请求，未返回具体原因，请在DMS核查",
-      );
+      throw new DmsRequestRejection("DMS 拒绝请求，未返回具体原因，请在DMS核查");
     }
     return { result: body.result, message };
   }
   assertConfigured() {
     baseUrl(this.config.gatewayUrl);
     if (this.config.manageUrl) baseUrl(this.config.manageUrl);
-    required(
-      this.identity.username?.trim() || this.identity.workcode?.trim(),
-      "登录账号",
-    );
-    if (!/^[A-Z_][A-Z0-9_]*$/i.test(this.config.secretEnv))
-      throw Error("DMS 密钥环境变量配置无效");
+    required(this.identity.username?.trim() || this.identity.workcode?.trim(), "登录账号");
+    if (!/^[A-Z_][A-Z0-9_]*$/i.test(this.config.secretEnv)) throw Error("DMS 密钥环境变量配置无效");
     if (!dmsSigningSecret(this.config)) throw Error("DMS 签名密钥未配置");
   }
   async login(signal: AbortSignal) {
@@ -236,9 +206,7 @@ export class DmsClient {
     )
       throw Error("DMS 登录回执不完整");
     const redirect = new URL(result.redirect);
-    const manage = this.config.manageUrl
-      ? baseUrl(this.config.manageUrl)
-      : undefined;
+    const manage = this.config.manageUrl ? baseUrl(this.config.manageUrl) : undefined;
     if (
       !["http:", "https:"].includes(redirect.protocol) ||
       (manage !== undefined && redirect.origin !== manage.origin) ||
@@ -310,29 +278,12 @@ export async function submitOwnedDmsOrder(
       .update(JSON.stringify([owner, requestAiPreOrderCode]))
       .digest("hex")
       .slice(0, 30);
-  const lane = batchLane(
-    directory,
-    owner,
-    warehouseCode ?? String(order.customerCode),
-  );
-  const receipt = await submitDmsOrder(
-    directory,
-    owner,
-    order,
-    client,
-    signal,
-    {
-      lockFile: join(lane, "admission"),
-      claim: () =>
-        claimDmsBatch(
-          directory,
-          owner,
-          warehouseCode ?? String(order.customerCode),
-          order,
-          signal,
-        ),
-    },
-  );
+  const lane = batchLane(directory, owner, warehouseCode ?? String(order.customerCode));
+  const receipt = await submitDmsOrder(directory, owner, order, client, signal, {
+    lockFile: join(lane, "admission"),
+    claim: () =>
+      claimDmsBatch(directory, owner, warehouseCode ?? String(order.customerCode), order, signal),
+  });
   return { ...receipt, requestAiPreOrderCode };
 }
 
@@ -371,22 +322,14 @@ async function claimDmsBatch(
 ) {
   const lane = batchLane(directory, owner, warehouse);
   await mkdir(lane, { recursive: true, mode: 0o700 });
-  const fingerprint = createHash("sha256")
-    .update(JSON.stringify(order))
-    .digest("hex");
+  const fingerprint = createHash("sha256").update(JSON.stringify(order)).digest("hex");
   for (let attempt = 0; attempt < 8; attempt++) {
     signal.throwIfAborted();
-    const slots = (await readdir(lane))
-      .filter((name) => /^\d{12}\.json$/.test(name))
-      .sort();
+    const slots = (await readdir(lane)).filter((name) => /^\d{12}\.json$/.test(name)).sort();
     const last = slots.at(-1);
     if (last) {
       const previous = JSON.parse(await readFile(join(lane, last), "utf8"));
-      const saved = await readDmsIntent(
-        directory,
-        owner,
-        previous.aiPreOrderCode,
-      );
+      const saved = await readDmsIntent(directory, owner, previous.aiPreOrderCode);
       if (saved && saved.state !== "not-sent") {
         if (previous.aiPreOrderCode === order.aiPreOrderCode) {
           if (previous.fingerprint !== fingerprint)
@@ -405,9 +348,7 @@ async function claimDmsBatch(
           );
       }
     }
-    const next =
-      String(last ? Number(last.slice(0, 12)) + 1 : 1).padStart(12, "0") +
-      ".json";
+    const next = String(last ? Number(last.slice(0, 12)) + 1 : 1).padStart(12, "0") + ".json";
     try {
       await writeFile(
         join(lane, next),
@@ -431,18 +372,15 @@ export async function submitDmsOrder(
   signal: AbortSignal,
   admission?: { lockFile: string; claim: () => Promise<void> },
 ) {
-  const hash = (value: string) =>
-    createHash("sha256").update(value).digest("hex");
+  const hash = (value: string) => createHash("sha256").update(value).digest("hex");
   const file = intentPath(directory, owner, order.aiPreOrderCode);
   const fingerprint = hash(JSON.stringify(order));
   const existing = async () => {
     const saved = JSON.parse(await readFile(file, "utf8"));
     signal.throwIfAborted();
     if (saved.state === "not-sent") return null;
-    if (saved.fingerprint !== fingerprint)
-      throw Error("预订单号已用于另一份订单，请核查原订单");
-    if (saved.receipt)
-      return saved.receipt as Awaited<ReturnType<DmsClient["submit"]>>;
+    if (saved.fingerprint !== fingerprint) throw Error("预订单号已用于另一份订单，请核查原订单");
+    if (saved.receipt) return saved.receipt as Awaited<ReturnType<DmsClient["submit"]>>;
     throw Error(
       `${savedDmsRejection(saved)}本地未确认DMS订单 ${order.aiPreOrderCode} 的结果，结果未知，请先到DMS核对；禁止重复提交`,
     );
@@ -451,10 +389,7 @@ export async function submitDmsOrder(
     try {
       return await existing();
     } catch (error) {
-      if (
-        !(error instanceof Error && "code" in error && error.code === "ENOENT")
-      )
-        throw error;
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
       return null;
     }
   };
@@ -475,27 +410,20 @@ export async function submitDmsOrder(
     signal.throwIfAborted();
     await admission?.claim();
     signal.throwIfAborted();
-    await writeFileAtomic(
-      file,
-      JSON.stringify({ fingerprint, state: "unknown" }),
-      { mode: 0o600 },
-    );
+    await writeFileAtomic(file, JSON.stringify({ fingerprint, state: "unknown" }), { mode: 0o600 });
     return null;
   };
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-  if (admission)
-    await mkdir(dirname(admission.lockFile), { recursive: true, mode: 0o700 });
+  if (admission) await mkdir(dirname(admission.lockFile), { recursive: true, mode: 0o700 });
   const reserveIntent = () => withFileLock(file, reserve);
   const previous = admission
     ? await withFileLock(admission.lockFile, reserveIntent)
     : await reserveIntent();
   if (previous) return previous;
   if (signal.aborted) {
-    await writeFileAtomic(
-      file,
-      JSON.stringify({ fingerprint, state: "not-sent" }),
-      { mode: 0o600 },
-    );
+    await writeFileAtomic(file, JSON.stringify({ fingerprint, state: "not-sent" }), {
+      mode: 0o600,
+    });
     throw new DmsRequestNotSent("订单尚未发送至DMS，可重新暂存");
   }
   try {
@@ -510,11 +438,9 @@ export async function submitDmsOrder(
     return receipt;
   } catch (error) {
     if (error instanceof DmsRequestNotSent) {
-      await writeFileAtomic(
-        file,
-        JSON.stringify({ fingerprint, state: "not-sent" }),
-        { mode: 0o600 },
-      );
+      await writeFileAtomic(file, JSON.stringify({ fingerprint, state: "not-sent" }), {
+        mode: 0o600,
+      });
       throw error;
     }
     if (error instanceof DmsRequestRejection)
@@ -527,8 +453,7 @@ export async function submitDmsOrder(
         }),
         { mode: 0o600 },
       );
-    const reason =
-      error instanceof DmsRequestRejection ? `${error.message}。` : "";
+    const reason = error instanceof DmsRequestRejection ? `${error.message}。` : "";
     throw Error(
       `${reason}DMS订单 ${order.aiPreOrderCode} 未取得可确认回执，请在DMS核查；禁止重复提交`,
     );
