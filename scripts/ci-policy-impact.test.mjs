@@ -94,6 +94,18 @@ test("bundled suite source changes select their complete upgrade owner once and 
   assert.ok(fixture.plan().files.includes("tests/window-launch-admission.test.mjs"));
 });
 
+test("environment transport changes select credential and DMS isolation behavior in source-only CI", (t) => {
+  const fixture = resourceImpactFixture(t, [
+    "tests/deployment-transport.test.mjs",
+    "tests/fc-dms-default.test.mjs",
+  ]);
+  fixture.change(fixture.own, "src/host/deployment-transport.ts", "export const changed = true;\n");
+  const plan = fixture.plan({ sourceOnly: true });
+  assert.ok(plan.files.includes("tests/deployment-transport.test.mjs"));
+  assert.ok(plan.files.includes("tests/fc-dms-default.test.mjs"));
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});
+
 test("a docs-only change declares no source, browser or runtime obligation", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "README.md", "Changed documentation\n");

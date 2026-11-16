@@ -159,6 +159,12 @@
   },
   "rules": [
     {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:host/(?:deployment-transport|fc-dms-default|business)\\.ts|shared/environments\\.(?:js|d\\.ts))$",
+      "tests": ["tests/deployment-transport.test.mjs", "tests/fc-dms-default.test.mjs"],
+      "sourceTests": ["tests/deployment-transport.test.mjs", "tests/fc-dms-default.test.mjs"]
+    },
+    {
       "repo": "dsh-agent-workbench",
       "pattern": "^(?:src/detection-(?:backend|whitelist)\\.mjs$|services/warning-executor/)",
       "tests": ["tests/warning-storage.test.mjs", "tests/business-page-grant.test.mjs"],

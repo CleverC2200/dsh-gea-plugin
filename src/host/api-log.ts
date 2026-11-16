@@ -548,6 +548,8 @@ function sanitizeUrl(raw: string): {
   query: Record<string, string>;
 } {
   const parsed = new URL(raw);
+  parsed.username = "";
+  parsed.password = "";
   const query: Record<string, string> = {};
   for (const [key, value] of parsed.searchParams) {
     const safeValue = SENSITIVE_KEY.test(key) ? "[已脱敏]" : sanitizeString(value);
@@ -719,6 +721,7 @@ export class GeaApiLogCenter {
     context: ApiLogContext = { source: "daily" },
     forceMetadata = false,
   ): Promise<Response> {
+    const environment = this.environment();
     const ownerScope = this.currentScope();
     const acceptRequest = this.beforeRequest
       ? await this.beforeRequest(input, init, purpose)
@@ -768,7 +771,7 @@ export class GeaApiLogCenter {
       catalogId: catalog?.id ?? null,
       catalogName: catalog?.name ?? "未登记接口",
       group: catalog?.group ?? "未登记",
-      environment: this.environment(),
+      environment,
       startedAt: new Date(started).toISOString(),
       outcome: "pending",
       replayPolicy: catalog?.replayPolicy ?? "blocked",
@@ -776,6 +779,7 @@ export class GeaApiLogCenter {
       ...(replayedFrom ? { replayedFrom } : {}),
       request: {
         method,
+        origin: new URL(rawUrl).origin,
         ...loggedUrl,
         headers: metadataOnly ? auditHeaders(requestHeaders) : sanitizeHeaders(requestHeaders),
         body: metadataOnly
