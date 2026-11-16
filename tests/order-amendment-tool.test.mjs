@@ -16,6 +16,7 @@ function fixture(
     const rows = [
       {
         kind: "2",
+        base: "郑州",
         region: "全国",
         province: "省区",
         numerator: 10,
@@ -115,7 +116,7 @@ test("amendment tool executes only installed quantity SQL, retaining bound picku
   assert.match(f.calls[0].request.sql, /requested_qty>=0/);
   assert.match(f.calls[0].request.sql, /pickup_point='01'/);
   assert.doesNotMatch(
-    f.calls[0].request.sql.split("SELECT '2' AS kind")[1],
+    f.calls[0].request.sql,
     /custchangetime|requireddeliverytime|hourly/,
   );
   assert.equal(f.calls[0].request.consumerCode, "order");
