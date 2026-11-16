@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import {
   DmsClient,
   parseDmsOrder,
@@ -28,18 +30,27 @@ const signal = () => new AbortController().signal;
 const ok = (result) => Response.json({ success: true, code: 200, result });
 const login = {
   access_token: "private-access",
-  redirect: "https://manage.test/user/loginSSO?token=short-ticket&menu=/corder/ordermgt",
+  redirect:
+    "https://manage.test/user/loginSSO?token=short-ticket&menu=/corder/ordermgt",
 };
 test("login signs form JSON, preserves gateway prefix and never sends bearer to token exchange", async () => {
   const requests = [];
-  const client = new DmsClient(config, { workcode: "W1" }, async (url, init) => {
-    requests.push({ url, init });
-    return ok(
-      requests.length === 1 ? login : { access_token: "exchanged", refresh_token: "refresh" },
-    );
-  });
+  const client = new DmsClient(
+    config,
+    { workcode: "W1" },
+    async (url, init) => {
+      requests.push({ url, init });
+      return ok(
+        requests.length === 1
+          ? login
+          : { access_token: "exchanged", refresh_token: "refresh" },
+      );
+    },
+  );
   assert.equal((await client.login(signal())).accessToken, "private-access");
-  const signed = JSON.parse(new URLSearchParams(requests[0].init.body).get("ssoToken"));
+  const signed = JSON.parse(
+    new URLSearchParams(requests[0].init.body).get("ssoToken"),
+  );
   assert.equal(signed.source, "ai");
   assert.equal(signed.menu, "/corder/ordermgt");
   assert.equal(signed.workcode, "W1");
@@ -49,7 +60,10 @@ test("login signs form JSON, preserves gateway prefix and never sends bearer to 
       .update("W1" + signed.time + "fixture-secret")
       .digest("hex"),
   );
-  assert.equal(requests[0].url, "http://gateway.test/synear_test/DMS/auth/oauthout/ssoLogin");
+  assert.equal(
+    requests[0].url,
+    "http://gateway.test/synear_test/DMS/auth/oauthout/ssoLogin",
+  );
   assert.equal(requests[0].init.redirect, "error");
   await client.exchange("a+b&x", "order", signal());
   assert.equal(new URL(requests[1].url).searchParams.get("key"), "a+b&x");
@@ -73,12 +87,23 @@ test("acknowledged submission persists and duplicate intent returns receipt with
   const dir = await mkdtemp(join(tmpdir(), "dms-test-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const requests = [];
-  const client = new DmsClient(config, { username: "U1" }, async (url, init) => {
-    requests.push({ url, init });
-    return ok(url.endsWith("ssoLogin") ? login : { orderCode: "D1", aiPreOrderCode: "AI123" });
-  });
+  const client = new DmsClient(
+    config,
+    { username: "U1" },
+    async (url, init) => {
+      requests.push({ url, init });
+      return ok(
+        url.endsWith("ssoLogin")
+          ? login
+          : { orderCode: "D1", aiPreOrderCode: "AI123" },
+      );
+    },
+  );
   const order = parseDmsOrder(input);
-  assert.equal((await submitDmsOrder(dir, "owner", order, client, signal())).orderCode, "D1");
+  assert.equal(
+    (await submitDmsOrder(dir, "owner", order, client, signal())).orderCode,
+    "D1",
+  );
   assert.equal(requests[1].init.headers.Authorization, "Bearer private-access");
   assert.deepEqual(JSON.parse(requests[1].init.body), order);
   assert.equal(
@@ -165,7 +190,9 @@ test("empty HTTP 200 is not an acknowledged DMS order", async () => {
     { username: "U" },
     async () => new Response(null, { status: 200 }),
   );
-  await assert.rejects(client.submit(parseDmsOrder(input), "fixture-token", signal()));
+  await assert.rejects(
+    client.submit(parseDmsOrder(input), "fixture-token", signal()),
+  );
 });
 
 test("revision 32 branch sample accepts customerName/orderModel and documented remarks", () => {
@@ -194,18 +221,28 @@ test("revision 32 branch sample accepts customerName/orderModel and documented r
   assert.equal(parsed.orderModel, "cg");
   assert.equal(parsed.orderRemarks, "AI自动创建订单");
   assert.deepEqual(parsed.itemList, sample.itemList);
-  assert.throws(() => parseDmsOrder({ ...sample, orderModel: "unknown" }), /orderModel/);
-  assert.throws(() => parseDmsOrder({ ...sample, remarks: "wrong field" }), /未支持字段/);
+  assert.throws(
+    () => parseDmsOrder({ ...sample, orderModel: "unknown" }),
+    /orderModel/,
+  );
+  assert.throws(
+    () => parseDmsOrder({ ...sample, remarks: "wrong field" }),
+    /未支持字段/,
+  );
 });
 
 test("login uses the DMS returned redirect without a preconfigured management address", async () => {
   const { manageUrl: _manageUrl, ...automatic } = config;
-  const client = new DmsClient(automatic, { username: "U1" }, async (_url, init) => {
-    const signed = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
-    assert.equal(signed.username, "U1");
-    assert.equal(signed.menu, "/corder/ordermgt");
-    return ok(login);
-  });
+  const client = new DmsClient(
+    automatic,
+    { username: "U1" },
+    async (_url, init) => {
+      const signed = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
+      assert.equal(signed.username, "U1");
+      assert.equal(signed.menu, "/corder/ordermgt");
+      return ok(login);
+    },
+  );
   assert.deepEqual(await client.login(signal()), {
     accessToken: login.access_token,
     redirect: login.redirect,
@@ -217,9 +254,9 @@ test("login uses the DMS returned redirect without a preconfigured management ad
     "https://manage.test/user/loginSSO",
   ]) {
     await assert.rejects(
-      new DmsClient(automatic, { username: "U1" }, async () => ok({ ...login, redirect })).login(
-        signal(),
-      ),
+      new DmsClient(automatic, { username: "U1" }, async () =>
+        ok({ ...login, redirect }),
+      ).login(signal()),
       /免登地址/,
     );
   }
@@ -231,9 +268,19 @@ test("same-month distinct batches send once each; old successful batches still r
   let sends = 0;
   const client = {
     login: async () => ({ accessToken: "fixture" }),
-    submit: async (order) => ({ orderCode: "D" + ++sends, aiPreOrderCode: order.aiPreOrderCode }),
+    submit: async (order) => ({
+      orderCode: "D" + ++sends,
+      aiPreOrderCode: order.aiPreOrderCode,
+    }),
   };
-  const first = await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
+  const first = await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    input,
+    client,
+    signal(),
+    "001",
+  );
   const next = await submitOwnedDmsOrder(
     directory,
     "owner",
@@ -245,7 +292,14 @@ test("same-month distinct batches send once each; old successful batches still r
   assert.notEqual(first.aiPreOrderCode, next.aiPreOrderCode);
   assert.equal(next.orderCode, "D2");
   assert.deepEqual(
-    await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001"),
+    await submitOwnedDmsOrder(
+      directory,
+      "owner",
+      input,
+      client,
+      signal(),
+      "001",
+    ),
     first,
   );
   assert.equal(sends, 2);
@@ -310,7 +364,14 @@ test("concurrent distinct batches cannot both pass the unresolved predecessor", 
       return { orderCode: "D1", aiPreOrderCode: order.aiPreOrderCode };
     },
   };
-  const first = submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
+  const first = submitOwnedDmsOrder(
+    directory,
+    "owner",
+    input,
+    client,
+    signal(),
+    "001",
+  );
   await started;
   try {
     await assert.rejects(
@@ -331,8 +392,8 @@ test("concurrent distinct batches cannot both pass the unresolved predecessor", 
   assert.equal(sends, 1);
 });
 
-test("login failure retains the batch slot and permits only that same batch to resume", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "dms-batches-"));
+test("login failure never blocks a new or edited unsent batch", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-unsent-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   let fail = true,
     sends = 0;
@@ -341,26 +402,17 @@ test("login failure retains the batch slot and permits only that same batch to r
       if (fail) throw Error("login unavailable");
       return { accessToken: "fixture" };
     },
-    submit: async (order) => ({ orderCode: "D" + ++sends, aiPreOrderCode: order.aiPreOrderCode }),
+    submit: async (order) => ({
+      orderCode: "D" + ++sends,
+      aiPreOrderCode: order.aiPreOrderCode,
+    }),
   };
   await assert.rejects(
     submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001"),
     /login/,
   );
   fail = false;
-  await assert.rejects(
-    submitOwnedDmsOrder(
-      directory,
-      "owner",
-      { ...input, aiPreOrderCode: "NEXT" },
-      client,
-      signal(),
-      "001",
-    ),
-    /禁止新批次/,
-  );
-  await submitOwnedDmsOrder(directory, "owner", input, client, signal(), "001");
-  await submitOwnedDmsOrder(
+  const next = await submitOwnedDmsOrder(
     directory,
     "owner",
     { ...input, aiPreOrderCode: "NEXT" },
@@ -368,7 +420,47 @@ test("login failure retains the batch slot and permits only that same batch to r
     signal(),
     "001",
   );
-  assert.equal(sends, 2);
+  assert.equal(next.orderCode, "D1");
+  assert.equal(sends, 1);
+});
+
+test("legacy reservation without a send intent allows a changed replacement", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-legacy-unsent-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const lane = join(
+    directory,
+    "batches",
+    createHash("sha256")
+      .update(JSON.stringify(["owner", "001"]))
+      .digest("hex"),
+  );
+  await mkdir(lane, { recursive: true });
+  await writeFile(
+    join(lane, "000000000001.json"),
+    JSON.stringify({ aiPreOrderCode: "AIold", fingerprint: "old" }),
+  );
+  let sends = 0;
+  const client = {
+    login: async () => ({ accessToken: "fixture" }),
+    submit: async (order) => ({
+      orderCode: "D" + ++sends,
+      aiPreOrderCode: order.aiPreOrderCode,
+    }),
+  };
+  const next = await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    {
+      ...input,
+      aiPreOrderCode: "NEXT",
+      itemList: [{ productCode: "SKU1", quantity: 2 }],
+    },
+    client,
+    signal(),
+    "001",
+  );
+  assert.equal(next.orderCode, "D1");
+  assert.equal(sends, 1);
 });
 
 test("DMS customer-contact rejection is actionable and retains the no-replay intent", async (t) => {
@@ -378,7 +470,11 @@ test("DMS customer-contact rejection is actionable and retains the no-replay int
   const client = new DmsClient(config, { workcode: "W1" }, async (url) => {
     if (String(url).endsWith("ssoLogin")) return ok(login);
     writes++;
-    return Response.json({ success: false, code: 500, message: "当前登录人不是客户对接人" });
+    return Response.json({
+      success: false,
+      code: 500,
+      message: "当前登录人不是客户对接人",
+    });
   });
   await assert.rejects(
     submitOwnedDmsOrder(directory, "owner", input, client, signal(), "W1"),
@@ -389,4 +485,248 @@ test("DMS customer-contact rejection is actionable and retains the no-replay int
     /结果未知/,
   );
   assert.equal(writes, 1);
+});
+
+test("slow login cannot overtake a later unknown batch", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-login-race-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let resume, entered;
+  const waiting = new Promise((resolve) => {
+    resume = resolve;
+  });
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  let sends = 0;
+  const first = submitOwnedDmsOrder(
+    directory,
+    "owner",
+    input,
+    {
+      login: async () => {
+        entered();
+        await waiting;
+        return { accessToken: "fixture" };
+      },
+      submit: async (order) => {
+        sends++;
+        return { orderCode: "Dfirst", aiPreOrderCode: order.aiPreOrderCode };
+      },
+    },
+    signal(),
+    "001",
+  );
+  await started;
+  try {
+    await assert.rejects(
+      submitOwnedDmsOrder(
+        directory,
+        "owner",
+        { ...input, aiPreOrderCode: "NEXT" },
+        {
+          login: async () => ({ accessToken: "fixture" }),
+          submit: async () => {
+            sends++;
+            throw Error("response lost");
+          },
+        },
+        signal(),
+        "001",
+      ),
+      /未取得/,
+    );
+  } finally {
+    resume();
+  }
+  await assert.rejects(first, /结果未知/);
+  assert.equal(sends, 1);
+});
+
+test("cancellation before draft dispatch does not block edited retry", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-unsent-cancel-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const cancelled = new AbortController();
+  let sends = 0;
+  await assert.rejects(
+    submitOwnedDmsOrder(
+      directory,
+      "owner",
+      input,
+      {
+        login: async () => {
+          cancelled.abort();
+          return { accessToken: "fixture" };
+        },
+        submit: async () => {
+          sends++;
+          throw Error("must not send");
+        },
+      },
+      cancelled.signal,
+      "001",
+    ),
+    /尚未发送/,
+  );
+  await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    { ...input, itemList: [{ productCode: "SKU1", quantity: 2 }] },
+    {
+      login: async () => ({ accessToken: "fixture" }),
+      submit: async (order) => ({
+        orderCode: "D" + ++sends,
+        aiPreOrderCode: order.aiPreOrderCode,
+      }),
+    },
+    signal(),
+    "001",
+  );
+  assert.equal(sends, 1);
+});
+
+test("legacy unknown intent remains blocked even when its batch is edited", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-legacy-unknown-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const hash = (s) => createHash("sha256").update(s).digest("hex");
+  const lane = join(
+    directory,
+    "batches",
+    hash(JSON.stringify(["owner", "001"])),
+  );
+  await mkdir(lane, { recursive: true });
+  await writeFile(
+    join(lane, "000000000001.json"),
+    JSON.stringify({ aiPreOrderCode: "AIold", fingerprint: "old" }),
+  );
+  await writeFile(
+    join(directory, hash(JSON.stringify(["owner", "AIold"])) + ".json"),
+    JSON.stringify({ state: "unknown", fingerprint: "old" }),
+  );
+  let sends = 0;
+  await assert.rejects(
+    submitOwnedDmsOrder(
+      directory,
+      "owner",
+      input,
+      {
+        login: async () => ({ accessToken: "fixture" }),
+        submit: async () => {
+          sends++;
+          throw Error("must not send");
+        },
+      },
+      signal(),
+      "001",
+    ),
+    /先到DMS核对/,
+  );
+  assert.equal(sends, 0);
+});
+
+test(
+  "separate processes cannot dispatch past an in-flight warehouse batch",
+  { timeout: 10000 },
+  async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "dms-process-race-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const moduleUrl = new URL("../src/host/dms-orders.ts", import.meta.url)
+      .href;
+    const run = (id, hold) => {
+      const script = `
+      import {submitOwnedDmsOrder} from ${JSON.stringify(moduleUrl)};
+      const order = ${JSON.stringify(input)};
+      order.aiPreOrderCode = ${JSON.stringify(id)};
+      let sent = 0;
+      try {
+        const receipt = await submitOwnedDmsOrder(${JSON.stringify(directory)}, "owner", order, {
+          login: async () => ({accessToken:"fixture"}),
+          submit: async (o) => {
+            sent++;
+            if (${JSON.stringify(hold)}) {
+              process.send({event:"dispatched"});
+              await new Promise(resolve => process.once("message", resolve));
+            }
+            return {orderCode:"D",aiPreOrderCode:o.aiPreOrderCode};
+          }
+        }, new AbortController().signal, "001");
+        process.send({event:"receipt",receipt,sent});
+      } catch (e) { process.send({event:"blocked",message:e.message,sent}); }
+      process.disconnect();
+    `;
+      const child = spawn(
+        process.execPath,
+        ["--experimental-strip-types", "--input-type=module", "-e", script],
+        { stdio: ["ignore", "pipe", "pipe", "ipc"] },
+      );
+      t.after(() => {
+        if (child.exitCode === null) child.kill();
+      });
+      return child;
+    };
+    const first = run("FIRST", true);
+    assert.equal((await once(first, "message"))[0].event, "dispatched");
+    try {
+      const second = run("SECOND", false);
+      const value = (await once(second, "message"))[0];
+      assert.equal(value.event, "blocked");
+      assert.match(value.message, /结果未知/);
+      assert.equal(value.sent, 0);
+    } finally {
+      const done = once(first, "message");
+      first.send("release");
+      assert.equal((await done)[0].event, "receipt");
+    }
+  },
+);
+
+test("a persisted not-sent batch can retry edited quantities with its original request ID", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-not-sent-edited-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const hash = (s) => createHash("sha256").update(s).digest("hex");
+  const id =
+    "AI" + hash(JSON.stringify(["owner", input.aiPreOrderCode])).slice(0, 30);
+  const lane = join(
+    directory,
+    "batches",
+    hash(JSON.stringify(["owner", "001"])),
+  );
+  await mkdir(lane, { recursive: true });
+  await writeFile(
+    join(lane, "000000000001.json"),
+    JSON.stringify({ aiPreOrderCode: id, fingerprint: "old" }),
+  );
+  await writeFile(
+    join(directory, hash(JSON.stringify(["owner", id])) + ".json"),
+    JSON.stringify({ state: "not-sent", fingerprint: "old" }),
+  );
+  let sends = 0;
+  const client = {
+    login: async () => ({ accessToken: "fixture" }),
+    submit: async (order) => {
+      sends++;
+      assert.equal(order.itemList[0].quantity, 2);
+      return { orderCode: "D", aiPreOrderCode: order.aiPreOrderCode };
+    },
+  };
+  const edited = { ...input, itemList: [{ productCode: "SKU1", quantity: 2 }] };
+  const receipt = await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    edited,
+    client,
+    signal(),
+    "001",
+  );
+  assert.deepEqual(
+    await submitOwnedDmsOrder(
+      directory,
+      "owner",
+      edited,
+      client,
+      signal(),
+      "001",
+    ),
+    receipt,
+  );
+  assert.equal(sends, 1);
 });
