@@ -16,6 +16,7 @@ import {
 import { idleWatchdog, timeoutOf } from "@deepseek-ai/dsh-timeout";
 import type { Business } from "./business.ts";
 import { toGeaMessages } from "./gea-messages.ts";
+import { appendOrderCardModelContext } from "./module-page-scope.ts";
 import { networkError } from "../shared/net-error.ts";
 import { modelHttpError } from "../shared/model-http-error.ts";
 import {
@@ -246,6 +247,12 @@ export class GeaModelAdapter extends LlmAdapter {
           "MODEL_NOT_FOUND",
         );
       const requestBody = toGeaRequest(options);
+      appendOrderCardModelContext(
+        business,
+        options.sessionId,
+        options.messages,
+        requestBody.messages,
+      );
       modelSecret = route.secret;
       const response = await business.capture.observe(
         () =>
