@@ -107,6 +107,25 @@ export function parseDmsOrder(input: unknown): Order {
 class DmsRequestRejection extends Error {}
 class DmsRequestNotSent extends Error {}
 
+function dmsResponseMessage(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  for (const field of ["message", "msg"]) {
+    if (!(field in body)) continue;
+    const value = Reflect.get(body, field);
+    if (typeof value === "string" && value.trim())
+      return value.trim().slice(0, 1000);
+  }
+  return undefined;
+}
+
+function savedDmsRejection(saved: unknown): string {
+  if (!saved || typeof saved !== "object" || !("dmsRejectionMessage" in saved))
+    return "";
+  return typeof saved.dmsRejectionMessage === "string"
+    ? saved.dmsRejectionMessage.slice(0, 1100) + "。"
+    : "";
+}
+
 function baseUrl(raw: string) {
   const url = new URL(raw);
   if (
@@ -150,18 +169,27 @@ export class DmsClient {
       signal,
       redirect: "error",
     });
-    if (!response.ok) throw Error(`DMS 请求失败（HTTP ${response.status}）`);
-    const body = await response.json();
+    const body = await response.json().catch(() => null);
     signal.throwIfAborted();
-    if (body?.success !== true || body?.code !== 200) {
-      const reason = body?.message ?? body?.msg;
+    let message = dmsResponseMessage(body);
+    if (message) {
+      const authorization = new Headers(init.headers).get("Authorization");
+      for (const credential of [
+        dmsSigningSecret(this.config),
+        authorization?.replace(/^Bearer\s+/i, ""),
+      ])
+        if (credential) message = message.split(credential).join("[已隐藏]");
+    }
+    message = message?.slice(0, 1000);
+    if (!response.ok || body?.success !== true || body?.code !== 200) {
+      if (message) throw new DmsRequestRejection(`DMS返回：${message}`);
+      if (!response.ok) throw Error(`DMS 请求失败（HTTP ${response.status}）`);
+      if (!body) throw Error("DMS未返回可解析的JSON回执");
       throw new DmsRequestRejection(
-        reason === "当前登录人不是客户对接人"
-          ? "DMS 拒绝暂存：当前登录人不是客户对接人，请在DMS核对账号与客户关联"
-          : "DMS 拒绝请求，请在DMS核查账号、订单字段及业务配置",
+        "DMS 拒绝请求，未返回具体原因，请在DMS核查",
       );
     }
-    return body.result;
+    return { result: body.result, message };
   }
   assertConfigured() {
     baseUrl(this.config.gatewayUrl);
@@ -184,7 +212,7 @@ export class DmsClient {
     const sign = createHash("md5")
       .update(key + time + secret)
       .digest("hex");
-    const result = await this.request(
+    const { result } = await this.request(
       "/auth/oauthout/ssoLogin",
       {
         method: "POST",
@@ -229,7 +257,7 @@ export class DmsClient {
   async exchange(key: string, menu: string | undefined, signal: AbortSignal) {
     const query = new URLSearchParams({ key: required(key, "key") });
     if (menu !== undefined) query.set("menu", required(menu, "menu"));
-    const result = await this.request(
+    const { result } = await this.request(
       "/auth/oauthout/getOauth2Token?" + query,
       { method: "GET" },
       signal,
@@ -239,7 +267,7 @@ export class DmsClient {
     return result;
   }
   async submit(order: Order, accessToken: string, signal: AbortSignal) {
-    const result = await this.request(
+    const { result, message } = await this.request(
       "/dms/order/dmsOrderHead/submitZcOrderDirect",
       {
         method: "POST",
@@ -261,6 +289,7 @@ export class DmsClient {
     return {
       orderCode: result.orderCode as string,
       aiPreOrderCode: order.aiPreOrderCode,
+      ...(message ? { dmsMessage: message } : {}),
     };
   }
 }
@@ -372,7 +401,7 @@ async function claimDmsBatch(
           saved.fingerprint !== previous.fingerprint
         )
           throw Error(
-            `本地未确认DMS订单 ${previous.aiPreOrderCode} 的结果，结果未知，请先到DMS核对原批次；禁止新批次下单`,
+            `${savedDmsRejection(saved)}本地未确认DMS订单 ${previous.aiPreOrderCode} 的结果，结果未知，请先到DMS核对原批次；禁止新批次下单`,
           );
       }
     }
@@ -413,9 +442,9 @@ export async function submitDmsOrder(
     if (saved.fingerprint !== fingerprint)
       throw Error("预订单号已用于另一份订单，请核查原订单");
     if (saved.receipt)
-      return saved.receipt as { orderCode: string; aiPreOrderCode: string };
+      return saved.receipt as Awaited<ReturnType<DmsClient["submit"]>>;
     throw Error(
-      `本地未确认DMS订单 ${order.aiPreOrderCode} 的结果，结果未知，请先到DMS核对；禁止重复提交`,
+      `${savedDmsRejection(saved)}本地未确认DMS订单 ${order.aiPreOrderCode} 的结果，结果未知，请先到DMS核对；禁止重复提交`,
     );
   };
   const readExisting = async () => {
@@ -488,6 +517,16 @@ export async function submitDmsOrder(
       );
       throw error;
     }
+    if (error instanceof DmsRequestRejection)
+      await writeFileAtomic(
+        file,
+        JSON.stringify({
+          fingerprint,
+          state: "unknown",
+          dmsRejectionMessage: error.message,
+        }),
+        { mode: 0o600 },
+      );
     const reason =
       error instanceof DmsRequestRejection ? `${error.message}。` : "";
     throw Error(

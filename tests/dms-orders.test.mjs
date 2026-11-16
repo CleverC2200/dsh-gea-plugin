@@ -164,9 +164,9 @@ test("rejects foreign redirects, business errors, mismatched receipts and cancel
   );
   await assert.rejects(
     new DmsClient(config, { username: "U" }, async () =>
-      Response.json({ success: false, code: 500, message: "private-access" }),
+      Response.json({ success: false, code: 500, message: "账号未启用" }),
     ).login(signal()),
-    /DMS 拒绝/,
+    /DMS返回：账号未启用/,
   );
   await assert.rejects(
     new DmsClient(config, { username: "U" }, async () =>
@@ -729,4 +729,123 @@ test("a persisted not-sent batch can retry edited quantities with its original r
     receipt,
   );
   assert.equal(sends, 1);
+});
+
+test("DMS rejection messages remain visible on initial failure and guarded retry", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-response-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let sends = 0;
+  const client = new DmsClient(config, { workcode: "W1" }, async (url) => {
+    if (String(url).endsWith("ssoLogin")) return ok(login);
+    sends++;
+    return Response.json({
+      success: false,
+      code: 500,
+      msg: "产品SKU1未维护客户价格，请联系业务员",
+    });
+  });
+  for (const id of ["FIRST", "FIRST", "NEXT"]) {
+    await assert.rejects(
+      submitOwnedDmsOrder(
+        directory,
+        "owner",
+        { ...input, aiPreOrderCode: id },
+        client,
+        signal(),
+        "W1",
+      ),
+      /DMS返回：产品SKU1未维护客户价格，请联系业务员/,
+    );
+  }
+  assert.equal(sends, 1);
+});
+
+test("successful DMS message survives receipt replay without another send", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "dms-success-message-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let sends = 0;
+  const client = new DmsClient(
+    config,
+    { workcode: "W1" },
+    async (url, init) => {
+      if (String(url).endsWith("ssoLogin")) return ok(login);
+      sends++;
+      const order = JSON.parse(init.body);
+      return Response.json({
+        success: true,
+        code: 200,
+        message: "暂存成功",
+        result: { orderCode: "D1", aiPreOrderCode: order.aiPreOrderCode },
+      });
+    },
+  );
+  const first = await submitOwnedDmsOrder(
+    directory,
+    "owner",
+    input,
+    client,
+    signal(),
+    "W1",
+  );
+  assert.equal(first.dmsMessage, "暂存成功");
+  assert.deepEqual(
+    await submitOwnedDmsOrder(
+      directory,
+      "owner",
+      input,
+      client,
+      signal(),
+      "W1",
+    ),
+    first,
+  );
+  assert.equal(sends, 1);
+});
+
+test("HTTP failure displays the DMS business response when provided", async () => {
+  const client = new DmsClient(config, { workcode: "W1" }, async () =>
+    Response.json({ message: "提货点已停用" }, { status: 400 }),
+  );
+  await assert.rejects(
+    client.submit(parseDmsOrder(input), "fixture", signal()),
+    /DMS返回：提货点已停用/,
+  );
+});
+
+test("DMS messages hide bearer and signing secrets without exposing response objects", async () => {
+  const client = new DmsClient(config, { workcode: "W1" }, async () =>
+    Response.json({
+      success: false,
+      code: 500,
+      message: "校验失败 private-bearer fixture-secret",
+      access_token: "unrelated-token",
+    }),
+  );
+  await assert.rejects(
+    client.submit(parseDmsOrder(input), "private-bearer", signal()),
+    (error) => {
+      assert.match(error.message, /DMS返回：校验失败/);
+      assert.doesNotMatch(
+        error.message,
+        /private-bearer|fixture-secret|unrelated-token/,
+      );
+      return true;
+    },
+  );
+});
+
+test("non-JSON responses never invent a DMS business result", async () => {
+  const client = new DmsClient(
+    config,
+    { workcode: "W1" },
+    async () => new Response("not found", { status: 502 }),
+  );
+  await assert.rejects(
+    client.submit(parseDmsOrder(input), "fixture", signal()),
+    (error) => {
+      assert.match(error.message, /HTTP 502/);
+      assert.doesNotMatch(error.message, /DMS返回/);
+      return true;
+    },
+  );
 });
