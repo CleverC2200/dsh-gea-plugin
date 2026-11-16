@@ -1676,7 +1676,11 @@ export class Business {
       AbortSignal.timeout(this.config.requestTimeoutMs),
     ]);
     const request = object(payload);
-    if (!["poll", "complete", "xxl"].includes(text(request.operation)))
+    if (
+      !["poll", "complete", "xxl", "feishu-status", "feishu-recipient", "feishu-send"].includes(
+        text(request.operation),
+      )
+    )
       throw Error("WARNING_SCHEDULER_OPERATION_INVALID");
     const response = await this.apiLog.fetch("https://gea.synear.cn:4443/gea-warning/client", {
       method: "POST",
