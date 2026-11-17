@@ -4,7 +4,7 @@ import { join } from "node:path";
 export async function executableBits(path, stat) {
   if (!process.versions.electron || !/[\\/]node_modules\.asar[\\/]/.test(path))
     return stat.mode & 0o111;
-  const { archiveEntry } = await import("./core-asar-reader.cjs");
+  const { archiveEntry } = await import(new URL("./core-asar-reader.cjs", import.meta.url).href);
   const file = archiveEntry(path);
   if (!file) return stat.mode & 0o111;
   if (file.entry.unpacked) {

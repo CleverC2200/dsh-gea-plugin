@@ -6,7 +6,7 @@ import {
   readDesktopPluginSource,
   desktopCoreHead,
   resolveDesktopAcceptanceSource,
-  verifyPersonalMemoryArchive,
+  verifyDesktopPluginArchive,
 } from "./input.mjs";
 import { assertMacBaseline, macBaseline } from "../mac-complete-local/baseline.mjs";
 import { readFile, mkdtemp, writeFile, rm, mkdir, cp, symlink } from "node:fs/promises";
@@ -88,20 +88,35 @@ test("personal memory must contain its settings client and match the installed G
   const archive = join(dir, "memory.tgz");
   const pack = () => execFileSync("tar", ["-czf", archive, "-C", dir, "package"]);
   pack();
-  assert.throws(
-    () => verifyPersonalMemoryArchive(archive, row, baseline),
-    /MEMORY_ARCHIVE_INVALID/,
-  );
+  assert.throws(() => verifyDesktopPluginArchive(archive, row, baseline), /MEMORY_ARCHIVE_INVALID/);
   await writeFile(join(dir, "package/lib/client.js"), "compiled settings client");
   pack();
-  assert.doesNotThrow(() => verifyPersonalMemoryArchive(archive, row, baseline));
+  assert.doesNotThrow(() => verifyDesktopPluginArchive(archive, row, baseline));
   manifest.peerDependencies[gea.name] = "0.0.1";
   await writeFile(join(dir, "package/package.json"), JSON.stringify(manifest));
   pack();
-  assert.throws(
-    () => verifyPersonalMemoryArchive(archive, row, baseline),
-    /MEMORY_ARCHIVE_INVALID/,
-  );
+  assert.throws(() => verifyDesktopPluginArchive(archive, row, baseline), /MEMORY_ARCHIVE_INVALID/);
+});
+
+test("desktop packaging requires a GEA Host that owns managed installation", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-managed-host-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await mkdir(join(dir, "package"));
+  const row = baseline.seed.packages.find((row) => row.name === "@cleverc2200/gea-dsh-prototype");
+  const archive = join(dir, "gea.tgz");
+  for (const strategy of ["suite", "managed-suite"]) {
+    await writeFile(
+      join(dir, "package/package.json"),
+      JSON.stringify({ name: row.name, version: row.version, geaPluginUpdateStrategy: strategy }),
+    );
+    execFileSync("tar", ["-czf", archive, "-C", dir, "package"]);
+    if (strategy === "suite")
+      assert.throws(
+        () => verifyDesktopPluginArchive(archive, row, baseline),
+        /DESKTOP_MANAGED_INSTALLATION_HOST_REQUIRED/,
+      );
+    else assert.doesNotThrow(() => verifyDesktopPluginArchive(archive, row, baseline));
+  }
 });
 
 async function check(t, input, source = baseline.geaSourceSha) {
@@ -285,6 +300,7 @@ test("native acceptance bundle input refuses mutable, foreign or incomplete iden
 test("Native artifact validation loads from a clean checkout through the fixture dependency root", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "gea-native-dependencies-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
+  const checkout = join(directory, "gea");
   for (const file of [
     "scripts/windows-complete-local/input.mjs",
     "scripts/windows-complete-local/run-bundle.mjs",
@@ -295,12 +311,12 @@ test("Native artifact validation loads from a clean checkout through the fixture
     "scripts/supported-cores.json",
     "src/shared/plugin-release.mjs",
   ]) {
-    await mkdir(dirname(join(directory, file)), { recursive: true });
-    await cp(file, join(directory, file));
+    await mkdir(dirname(join(checkout, file)), { recursive: true });
+    await cp(file, join(checkout, file));
   }
   const sha = "1".repeat(64);
   const args = [
-    join(directory, "scripts/windows-complete-local/run-bundle.mjs"),
+    join(checkout, "scripts/windows-complete-local/run-bundle.mjs"),
     "--bundle-url",
     `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/verification/${sha}/native.tgz`,
     "--bundle-sha256",
@@ -309,22 +325,29 @@ test("Native artifact validation loads from a clean checkout through the fixture
   ];
   const run = () =>
     spawnSync(process.execPath, args, {
-      cwd: directory,
+      cwd: checkout,
       encoding: "utf8",
       env: { ...process.env, NODE_PATH: "" },
     });
   assert.match(run().stderr, /ERR_MODULE_NOT_FOUND/);
-  const dependencies = join(directory, ".runtime/fixture-dependencies/node_modules");
+  const dependencies = join(checkout, ".runtime/fixture-dependencies/node_modules");
   await mkdir(dependencies, { recursive: true });
-  await symlink(
-    dirname(createRequire(import.meta.url).resolve("semver/package.json")),
-    join(dependencies, "semver"),
-    "junction",
-  );
-  await symlink(dependencies, join(directory, "node_modules"), "junction");
+  for (const name of ["semver", "yaml"])
+    await symlink(
+      dirname(createRequire(import.meta.url).resolve(name + "/package.json")),
+      join(dependencies, name),
+      "junction",
+    );
+  await symlink(dependencies, join(checkout, "node_modules"), "junction");
   const result = run();
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).status, "input-validated");
+  const archivedCoreRequire = createRequire(
+    join(directory, "core/packages/boot/plugin-manager/package.json"),
+  );
+  assert.throws(() => archivedCoreRequire("yaml"), { code: "MODULE_NOT_FOUND" });
+  await symlink(dependencies, join(directory, "node_modules"), "junction");
+  assert.equal(archivedCoreRequire("yaml").parse("driver: ready").driver, "ready");
 });
 
 test("Native artifact rechecks bind an ancestor build to the actual qualification checkout", async (t) => {

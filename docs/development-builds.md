@@ -38,6 +38,8 @@ node ../dsh-gea-plugin/scripts/development-tasks.mjs finish
 
 容量策略与预算只有 `scripts/build-admission.mjs` 一份。准入读取实际输出卷剩余空间，同卷重型写入串行，watch 保留预算并拒绝同 checkout 写入。正常结束只释放自己的占用记录；异常遗留记录保留并拒绝后续写入，先核 PID、任务输入和打开文件再按既有清理流程处理。准入不是系统配额，其他程序和 swap 仍可消耗空间。
 
+`source-quality` 的 GitHub-hosted Linux worker 在 SDK 准备前通过 `scripts/hosted-sdk-capacity.mjs` 使用同一准入。空间足够时不统计或删除预装 SDK；容量不足才从脚本固定的候选目录回收，每次删除后重新准入，仍不足继续拒绝。`hosted-sdk-capacity.json` 随 worker 成功或失败产物保存；本机及 self-hosted runner 不支持该清理入口。
+
 `verify --input <absolute candidate.json> --sha256 <original bytes SHA256>` 调用既有完整 quality 门禁；本机默认做定向验证，常规完整验证放到登记 GitHub Actions。源码检查、CI、真实安装与业务验收分别留证。
 
 Workbench/Manage 原始 TGZ 使用 `scripts/pack-raw.mjs --input <absolute input.json> --repo <repo> --destination <absolute new output directory>`。输入中对应仓需提供现有交付合同的 path/head/buildReceipt；构建动作生成的回执可直接使用。目标父目录须存在。工具核明确 cwd、包身份、干净源、锁与构建产物，再预览允许文件、禁敏感隐藏文件并忽略打包脚本，写包后核归档。GEA 单包与桌面包继续沿原入口。

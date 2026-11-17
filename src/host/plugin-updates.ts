@@ -95,8 +95,16 @@ export function mountPluginUpdates(
         const config = updateObject(raw);
         if (
           Object.keys(config).some(
-            (key) => !["source", "core", "checkTimeoutMs", "pollIntervalMs"].includes(key),
+            (key) =>
+              ![
+                "source",
+                "core",
+                "checkTimeoutMs",
+                "pollIntervalMs",
+                "installationProtocol",
+              ].includes(key),
           ) ||
+          (config.installationProtocol !== undefined && config.installationProtocol !== 1) ||
           !Number.isSafeInteger(config.checkTimeoutMs) ||
           Number(config.checkTimeoutMs) < 1000 ||
           Number(config.checkTimeoutMs) > 120000 ||

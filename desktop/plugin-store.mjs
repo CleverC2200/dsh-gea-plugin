@@ -2,7 +2,6 @@ import { mkdir, readFile, rename, rm, open, lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { relocateVirtualStore } from "./copy-graph.mjs";
 import { randomUUID, createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { withPluginStoreLock } from "./plugin-store-lock.mjs";
 import { collectPluginStorage, pruneUnreferencedArchives } from "./plugin-storage.mjs";
 import {
@@ -12,7 +11,6 @@ import {
   materializeGraph,
   compactGraph,
 } from "./core-layer.mjs";
-import { physicalFs } from "./physical-fs.mjs";
 
 function versionId(id) {
   if (typeof id !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(id) || id === "baseline")
@@ -27,7 +25,7 @@ function compatibleReceipt(receipt, schema) {
     ? receipt.coreDataSchema === schema && receipt.dataSchema === `layered-v1:${schema}`
     : (receipt.dataSchema ?? 1) === schema;
 }
-async function atomic(path, value) {
+export async function writePluginStoreJson(path, value) {
   const temporary = path + "." + randomUUID() + ".tmp";
   const file = await open(temporary, "wx", 0o600);
   try {
@@ -46,6 +44,9 @@ export class PluginStore {
   }
   async withLock(action, options) {
     return withPluginStoreLock(this.root, action, options);
+  }
+  async withSelectionLock(action) {
+    return withPluginStoreLock(join(this.root, "selection"), action);
   }
   async collectGarbage() {
     if (this.maintenanceTask) return this.maintenanceTask;
@@ -107,7 +108,8 @@ export class PluginStore {
         signal?.throwIfAborted();
         await relocateVirtualStore(stage, { sourceDirectory: current.path, storeRoot: this.root });
         await install(stage, {
-          registerProcess: async (workerPid) => atomic(lockPath, { ...owner, workerPid }),
+          registerProcess: async (workerPid) =>
+            writePluginStoreJson(lockPath, { ...owner, workerPid }),
         });
         await relocateVirtualStore(stage);
         await pruneUnreferencedArchives(stage);
@@ -118,9 +120,8 @@ export class PluginStore {
         )
           throw Error("DATA_SCHEMA_UNSUPPORTED");
         const versions = {};
-        const dependency = createRequire(join(stage, "package.json"));
         for (const name of Object.keys(manifest.dependencies ?? {})) {
-          const pkg = await json(dependency.resolve(name + "/package.json"));
+          const pkg = await json(join(stage, "node_modules", name, "package.json"));
           if (pkg.desktopDataSchema !== undefined && pkg.desktopDataSchema !== this.dataSchema)
             throw Error("DATA_SCHEMA_UNSUPPORTED");
           versions[name] = pkg.version;
@@ -153,7 +154,7 @@ export class PluginStore {
           lockSha256: createHash("sha256").update(lockBytes).digest("hex"),
           ...layout,
         };
-        await atomic(join(stage, "version.json"), receipt);
+        await writePluginStoreJson(join(stage, "version.json"), receipt);
 
         const destination = join(this.root, "versions", id);
         try {
@@ -164,13 +165,20 @@ export class PluginStore {
         }
         await rename(stage, destination);
         return receipt;
-      } finally {
-        await physicalFs.rm(stage, { recursive: true, force: true });
+      } catch (error) {
+        await writePluginStoreJson(join(stage, "preparation-failure.json"), {
+          id,
+          state: "failed",
+          code: /^[A-Z][A-Z0-9_]+$/.test(error.message)
+            ? error.message
+            : "PLUGIN_PREPARATION_FAILED",
+        }).catch(() => undefined);
+        throw error;
       }
     });
   }
-  async recoverPreparation() {
-    const path = join(this.root, "prepare.lock");
+  async recoverPreparation(directory = this.root) {
+    const path = join(directory, "prepare.lock");
     let owner;
     try {
       owner = await json(path);
@@ -201,8 +209,22 @@ export class PluginStore {
     await rm(path, { force: true });
     return "recovered";
   }
-  async beginBoot() {
-    return this.withLock(async () => {
+  async queueActivation(id) {
+    versionId(id);
+    const receipt = await json(join(this.root, "versions", id, "version.json"));
+    if (
+      receipt.id !== id ||
+      receipt.state !== "prepared" ||
+      !compatibleReceipt(receipt, this.dataSchema)
+    )
+      throw Error("PLUGIN_VERSION_NOT_PREPARED");
+    return this.withSelectionLock(async () => {
+      const state = await this.status();
+      await writePluginStoreJson(join(this.root, "selection.json"), { ...state, pending: id });
+    });
+  }
+  async beginBoot({ activatePending = false } = {}) {
+    return this.withSelectionLock(async () => {
       await mkdir(this.root, { recursive: true, mode: 0o700 });
       let state = await this.status();
       if (this.dataSchema === 2 && (state.dataSchema ?? 1) === 1) {
@@ -214,7 +236,7 @@ export class PluginStore {
           dataSchema: 2,
           upgradedFrom: state,
         };
-        await atomic(join(this.root, "selection.json"), state);
+        await writePluginStoreJson(join(this.root, "selection.json"), state);
       }
       if ((state.dataSchema ?? 1) !== this.dataSchema) throw Error("DATA_SCHEMA_INCOMPATIBLE");
 
@@ -226,32 +248,56 @@ export class PluginStore {
           booting: null,
           error: "PREVIOUS_BOOT_INTERRUPTED",
         };
-        await atomic(join(this.root, "selection.json"), state);
+        await writePluginStoreJson(join(this.root, "selection.json"), state);
       }
-      await atomic(join(this.root, "selection.json"), { ...state, booting: state.active });
+      if (activatePending && state.pending) {
+        versionId(state.pending);
+        const receipt = await json(join(this.root, "versions", state.pending, "version.json"));
+        if (
+          receipt.id !== state.pending ||
+          receipt.state !== "prepared" ||
+          !compatibleReceipt(receipt, this.dataSchema)
+        )
+          throw Error("PLUGIN_VERSION_NOT_PREPARED");
+        state = {
+          ...state,
+          active: state.pending,
+          previous: state.active,
+          verified: state.verified ?? state.active,
+          pending: null,
+        };
+      }
+      await writePluginStoreJson(join(this.root, "selection.json"), {
+        ...state,
+        booting: state.active,
+      });
       return this.selected();
     });
   }
-  async confirmBoot() {
-    return this.withLock(async () => {
+  async confirmBoot(expectedId) {
+    return this.withSelectionLock(async () => {
       const state = await this.status();
-      await atomic(join(this.root, "selection.json"), {
+      if (expectedId !== undefined && (state.active !== expectedId || state.booting !== expectedId))
+        return false;
+      await writePluginStoreJson(join(this.root, "selection.json"), {
         ...state,
         booting: null,
         verified: state.active,
         error: null,
         dataSchema: this.dataSchema,
       });
+      return true;
     });
   }
   async failBoot(reason) {
-    return this.withLock(async () => {
+    return this.withSelectionLock(async () => {
       const state = await this.status();
       const fallback = state.verified ?? state.previous ?? "baseline";
-      await atomic(join(this.root, "selection.json"), {
+      await writePluginStoreJson(join(this.root, "selection.json"), {
         ...state,
         active: fallback,
         previous: state.active,
+        pending: null,
         booting: null,
         error: reason,
       });
@@ -259,7 +305,7 @@ export class PluginStore {
     });
   }
   async activate(id) {
-    return this.withLock(async () => {
+    return this.withSelectionLock(async () => {
       const current = await this.status();
       if ((current.dataSchema ?? 1) !== this.dataSchema)
         throw Error("DATA_SCHEMA_INCOMPATIBLE: preserve data; restore a compatible application");
@@ -272,7 +318,7 @@ export class PluginStore {
       }
       await mkdir(this.root, { recursive: true, mode: 0o700 });
       const state = await this.status();
-      await atomic(join(this.root, "selection.json"), {
+      await writePluginStoreJson(join(this.root, "selection.json"), {
         ...state,
         active: id,
         previous: state.active,

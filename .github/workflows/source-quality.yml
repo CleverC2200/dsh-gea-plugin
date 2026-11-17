@@ -12,6 +12,11 @@ on:
         description: Full 40-character ancestor SHA for source acceptance comparison
         required: true
         type: string
+      sdk_cache:
+        description: Reuse SDK artifacts or prepare them cold for manual acceptance
+        type: choice
+        options: [reuse, cold]
+        default: reuse
 
 env:
   SOURCE_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.comparison_base || '' }}
@@ -297,12 +302,9 @@ jobs:
             npm install --global npm@11.11.0
           fi
           corepack enable
-      - name: Reclaim unused hosted SDKs before native preparation
+      - name: Admit SDK capacity and reclaim hosted tools only when needed
         if: (steps.affected.outputs.core == 'true' || steps.affected.outputs.sdk == 'true') && steps.reuse.outputs.hit != 'true'
-        run: |
-          df -h "$GITHUB_WORKSPACE"
-          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /usr/local/.ghcup /opt/ghc
-          df -h "$GITHUB_WORKSPACE"
+        run: node scripts/hosted-sdk-capacity.mjs --output "$GITHUB_WORKSPACE/official-latest-standard" --report "$GITHUB_WORKSPACE/hosted-sdk-capacity.json"
       - name: Locate existing package download cache
         if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
         id: cache-path
@@ -332,7 +334,7 @@ jobs:
         id: sdk-paths
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
-        if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true'
+        if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true' && (github.event_name != 'workflow_dispatch' || inputs.sdk_cache != 'cold')
         id: sdk-cache
         with:
           path: ${{ steps.sdk-paths.outputs.paths }}
@@ -341,7 +343,7 @@ jobs:
         if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true'
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
       - uses: actions/cache/save@v4
-        if: success() && steps.affected.outputs.sdk == 'true' && steps.sdk-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true'
+        if: success() && steps.affected.outputs.sdk == 'true' && steps.sdk-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true' && (github.event_name != 'workflow_dispatch' || inputs.sdk_cache != 'cold')
         continue-on-error: true
         timeout-minutes: 1
         with:
@@ -410,6 +412,7 @@ jobs:
             source-checks-scope.json
             source-preparation.json
             dependency-policy-receipt.json
+            hosted-sdk-capacity.json
           if-no-files-found: ignore
       - name: Keep source selection and executed check evidence
         if: always()
@@ -437,6 +440,7 @@ jobs:
             quality-test-results/
             profile-lifecycle.ndjson
             dependency-policy-receipt.json
+            hosted-sdk-capacity.json
           if-no-files-found: ignore
 
   dependency-review:

@@ -87,5 +87,6 @@ export async function installPnpmConsumerLayout(f, range, sdkPeers = {}) {
     store,
   ]);
   await writeFile(join(f.root, "actual-pnpm-install.log"), output);
+  await f.initializeInstallation();
   return { invoke, store, company, manager };
 }

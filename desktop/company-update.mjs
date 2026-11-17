@@ -92,8 +92,8 @@ export async function applyCompanyUpdate({
   manifest,
   install,
   desktopVersion = process.env.GEA_DESKTOP_VERSION,
+  profile = join(home, "profiles/desktop"),
 }) {
-  const profile = join(home, "profiles/desktop");
   const receipt = await readCompanyUpdate(profile);
   if (receipt && receipt.desktopVersion === desktopVersion && receipt.phase === "failed")
     throw Error("GEA_COMPANY_UPDATE_RECOVERY_REQUIRED");

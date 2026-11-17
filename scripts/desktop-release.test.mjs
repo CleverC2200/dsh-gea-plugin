@@ -324,6 +324,18 @@ test("data comparison preserves every original event and user setting, allowing 
   const result = compareDesktopUpdateData(before, after, installedCore);
   assert.equal(result.history.historicalEvents, 2);
   assert.equal(result.configuration.allUserPatchValuesPreserved, true);
+  const managed = structuredClone(after);
+  managed.patch[0].config.pluginUpdates.installationProtocol = 1;
+  assert.equal(
+    compareDesktopUpdateData(before, managed, installedCore).configuration
+      .managedInstallationProtocol,
+    1,
+  );
+  managed.patch[0].config.pluginUpdates.installationProtocol = 2;
+  assert.throws(
+    () => compareDesktopUpdateData(before, managed, installedCore),
+    /USER_CONFIGURATION_CHANGED/,
+  );
   for (const change of [
     (r) => (r.patch[0].config.secret = "changed"),
     (r) => (r.patch[0].config.pluginUpdates.core = oldCore),
