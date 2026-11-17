@@ -55,9 +55,12 @@ export class FeedbackSubmitter {
     private readonly maxZipBytes = 20 * 1024 * 1024,
   ) {}
 
-  submit(request: SessionFeedbackSubmitRequest): Promise<SessionFeedbackSubmitResult> {
+  submit(
+    request: SessionFeedbackSubmitRequest,
+  ): Promise<SessionFeedbackSubmitResult> {
     const sessionId =
-      this.business.capture.session(request.sessionId)?.rootSessionId ?? request.sessionId;
+      this.business.capture.session(request.sessionId)?.rootSessionId ??
+      request.sessionId;
     const existing = this.active.get(sessionId);
     if (existing)
       return existing.description === request.description
@@ -88,7 +91,8 @@ export class FeedbackSubmitter {
         "GEA_FEEDBACK_SESSION_LOG_UNAVAILABLE",
         "官方会话日志服务不可用，请稍后重试",
       );
-    const id = brandString<SessionFeedbackSubmitRequest["sessionId"]>(sessionId);
+    const id =
+      brandString<SessionFeedbackSubmitRequest["sessionId"]>(sessionId);
     await flushLiveSessionLog(deps, id);
     const official = await readSessionLogText(deps.sessionPersistence, id);
     if (!official)
@@ -98,7 +102,10 @@ export class FeedbackSubmitter {
       );
     const header: unknown = JSON.parse(official.split("\n")[0]);
     if (!isRecord(header) || header.version !== 4 || header.id !== sessionId)
-      throw new FeedbackFailure("GEA_FEEDBACK_SESSION_FORMAT", "官方会话日志格式与反馈接口不匹配");
+      throw new FeedbackFailure(
+        "GEA_FEEDBACK_SESSION_FORMAT",
+        "官方会话日志格式与反馈接口不匹配",
+      );
     const snapshot = await this.business.capture.snapshot(sessionId);
     const files: Record<string, Uint8Array> = {
       ...snapshot.files,
@@ -112,24 +119,36 @@ export class FeedbackSubmitter {
       files["gea-api-logs.jsonl"] = Buffer.from(
         records.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
       );
-      if (records.length < Math.max(snapshot.requestIds.size, snapshot.apiLogIds.size))
+      if (
+        records.length <
+        Math.max(snapshot.requestIds.size, snapshot.apiLogIds.size)
+      )
         missing.push({
           file: "gea-api-logs.jsonl",
-          reason: "部分 API 日志已淘汰、未记录正文或无法取得；完整请求记录以独立清单为准",
+          reason:
+            "部分 API 日志已淘汰、未记录正文或无法取得；完整请求记录以独立清单为准",
         });
-    } else missing.push({ file: "gea-api-logs.jsonl", reason: "未取得属于本会话的独立 API 日志" });
+    } else
+      missing.push({
+        file: "gea-api-logs.jsonl",
+        reason: "未取得属于本会话的独立 API 日志",
+      });
     const captureCompletedAt = new Date().toISOString();
     const pack = () => {
       const manifest = {
         formatVersion: 1,
         sessionId,
-        clientVersion: process.env.DSH_CLIENT_VERSION ?? pluginPackageVersion.version,
+        clientVersion:
+          process.env.DSH_CLIENT_VERSION ?? pluginPackageVersion.version,
         captureStartedAt,
         captureCompletedAt,
         files: Object.keys(files),
         missing,
       };
-      const entries = { "manifest.json": Buffer.from(JSON.stringify(manifest)), ...files };
+      const entries = {
+        "manifest.json": Buffer.from(JSON.stringify(manifest)),
+        ...files,
+      };
       const uncompressed = Object.values(entries).reduce(
         (total, bytes) => total + bytes.byteLength,
         0,
@@ -147,7 +166,10 @@ export class FeedbackSubmitter {
       if (archive.fits) break;
       if (!files[optional]) continue;
       delete files[optional];
-      missing.push({ file: optional, reason: "为满足反馈上传容量限制，本次省略此可选原文文件" });
+      missing.push({
+        file: optional,
+        reason: "为满足反馈上传容量限制，本次省略此可选原文文件",
+      });
       archive = pack();
     }
     if (!archive.fits)
@@ -156,7 +178,10 @@ export class FeedbackSubmitter {
         "官方日志和请求清单超过反馈容量上限，未提交反馈",
       );
     const submissionId = randomUUID();
-    const directory = join(this.business.config.runtimeDir, "feedback-submissions");
+    const directory = join(
+      this.business.config.runtimeDir,
+      "feedback-submissions",
+    );
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const path = join(directory, submissionId + ".zip");
     await writeFile(path, archive.zip, { mode: 0o600, flag: "wx" });
@@ -201,7 +226,8 @@ export class FeedbackSubmitter {
         );
       }
       owner.signal.throwIfAborted();
-      const result = isRecord(value) && isRecord(value.result) ? value.result : undefined;
+      const result =
+        isRecord(value) && isRecord(value.result) ? value.result : undefined;
       if (
         !response.ok ||
         !isRecord(value) ||
@@ -209,7 +235,9 @@ export class FeedbackSubmitter {
         value.code !== 200 ||
         !result ||
         typeof result.reportId !== "string" ||
-        !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(result.reportId) ||
+        !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(
+          result.reportId,
+        ) ||
         typeof result.receivedAt !== "string" ||
         !Number.isFinite(Date.parse(result.receivedAt))
       ) {
@@ -253,10 +281,16 @@ export class FeedbackSubmitter {
       if (error instanceof Error && error.name === "TimeoutError")
         return {
           ok: false,
-          error: { code: "GEA_FEEDBACK_TIMEOUT", message: "反馈上传超时，原包已保留，请重试" },
+          error: {
+            code: "GEA_FEEDBACK_TIMEOUT",
+            message: "反馈上传超时，原包已保留，请重试",
+          },
         };
       if (error instanceof FeedbackFailure)
-        return { ok: false, error: { code: error.code, message: error.message } };
+        return {
+          ok: false,
+          error: { code: error.code, message: error.message },
+        };
       const code =
         error instanceof Error && /^[A-Z_]{1,100}$/.test(error.message)
           ? error.message
@@ -281,6 +315,14 @@ export function mountFeedbackSubmit(
   timeoutMs: number,
   maxZipBytes: number,
 ): void {
-  const submitter = new FeedbackSubmitter(ctx, business, timeoutMs, maxZipBytes);
-  ctx.effect(() => ctx.sessionFeedback.registerSubmit((request) => submitter.submit(request)));
+  if (typeof ctx.sessionFeedback.registerSubmit !== "function") return;
+  const submitter = new FeedbackSubmitter(
+    ctx,
+    business,
+    timeoutMs,
+    maxZipBytes,
+  );
+  ctx.effect(() =>
+    ctx.sessionFeedback.registerSubmit((request) => submitter.submit(request)),
+  );
 }
