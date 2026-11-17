@@ -3941,51 +3941,53 @@ export class Business {
             parameters: { month: month.replace("-", ""), ...customerParameters },
           },
         ];
-        for (const source of sources) {
-          try {
-            const result = object(
-              await this.pluginSql(
-                {
-                  consumerCode: this.config.analysisAgentCode,
-                  sql: source.sql,
-                  parameters: source.parameters,
-                  pageNo: 1,
-                  pageSize: 200,
-                },
-                signal,
-              ),
-            );
-            if (
-              !Array.isArray(result.rows) ||
-              result.total !== result.rows.length ||
-              (Array.isArray(result.rejectedColumns) && result.rejectedColumns.length)
-            )
-              throw new Error("发货数据读取不完整");
-            const received = new Map<string, string>();
-            for (const value of result.rows) {
-              const row = object(value);
-              const metric = row[source.field];
+        await Promise.all(
+          sources.map(async (source) => {
+            try {
+              const result = object(
+                await this.pluginSql(
+                  {
+                    consumerCode: this.config.analysisAgentCode,
+                    sql: source.sql,
+                    parameters: source.parameters,
+                    pageNo: 1,
+                    pageSize: 200,
+                  },
+                  signal,
+                ),
+              );
               if (
-                typeof row.cust_code !== "string" ||
-                !batch.includes(row.cust_code) ||
-                received.has(row.cust_code) ||
-                typeof metric !== "string" ||
-                !/^-?\d+(?:\.\d+)?$/.test(metric)
+                !Array.isArray(result.rows) ||
+                result.total !== result.rows.length ||
+                (Array.isArray(result.rejectedColumns) && result.rejectedColumns.length)
               )
-                throw new Error("发货数据格式不完整");
-              received.set(row.cust_code, metric);
+                throw new Error("发货数据读取不完整");
+              const received = new Map<string, string>();
+              for (const value of result.rows) {
+                const row = object(value);
+                const metric = row[source.field];
+                if (
+                  typeof row.cust_code !== "string" ||
+                  !batch.includes(row.cust_code) ||
+                  received.has(row.cust_code) ||
+                  typeof metric !== "string" ||
+                  !/^-?\d+(?:\.\d+)?$/.test(metric)
+                )
+                  throw new Error("发货数据格式不完整");
+                received.set(row.cust_code, metric);
+              }
+              for (const [customer, metric] of received)
+                source.values.set(`${month}\u0000${customer}`, metric);
+            } catch (error) {
+              signal.throwIfAborted();
+              for (const customer of batch) {
+                const key = `${month}\u0000${customer}`;
+                const message = `${source.label}读取失败：${error instanceof Error ? error.message : "查询失败"}`;
+                failures.set(key, [failures.get(key), message].filter(Boolean).join("；"));
+              }
             }
-            for (const [customer, metric] of received)
-              source.values.set(`${month}\u0000${customer}`, metric);
-          } catch (error) {
-            signal.throwIfAborted();
-            for (const customer of batch) {
-              const key = `${month}\u0000${customer}`;
-              const message = `${source.label}读取失败：${error instanceof Error ? error.message : "查询失败"}`;
-              failures.set(key, [failures.get(key), message].filter(Boolean).join("；"));
-            }
-          }
-        }
+          }),
+        );
       }
     }
     signal.throwIfAborted();

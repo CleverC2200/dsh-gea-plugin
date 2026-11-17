@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 const bundle = await build({
   entryPoints: ["src/host/sales-plan-sku-review.ts"],
   bundle: true,
@@ -21,6 +22,59 @@ const detail = async () => ({
 });
 const signal = () => new AbortController().signal;
 
+test("history reads only the plan SKUs once and preserves missing months and partial nulls", async () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(
+    "CREATE TABLE agents_scm_cust_deliv_daily_di(cust_code TEXT, ship_month TEXT, material_code TEXT, act_dl_qty REAL)",
+  );
+  const insert = db.prepare("INSERT INTO agents_scm_cust_deliv_daily_di VALUES (?, ?, ?, ?)");
+  for (const row of [
+    ["customer1", "202511", "1001", 8],
+    ["customer1", "202511", "1001", 2],
+    ["customer1", "202609", "1001", null],
+    ["customer1", "202609", "1001", 5],
+    ["customer1", "202610", "1002", 7],
+    ["other-customer", "202610", "1002", 900],
+    ...Array.from({ length: 400 }, (_, index) => ["customer1", "202610", "unplanned-" + index, 99]),
+  ])
+    insert.run(...row);
+  let calls = 0;
+  try {
+    const result = await read(
+      query,
+      async () => ({
+        currentVersion: { id: "v1", planId: "p1", dealerCode: "customer1" },
+        skus: ["1001", "1002", "1003"].map((skuCode) => ({ skuCode, versionId: "v1" })),
+      }),
+      async (input) => {
+        calls++;
+        const rows = db.prepare(input.sql).all(input.parameters);
+        return {
+          rows: rows.slice((input.pageNo - 1) * 200, input.pageNo * 200),
+          total: rows.length,
+        };
+      },
+      () => "2026-11",
+      signal(),
+    );
+    assert.equal(result.shipmentUnavailable, true);
+    assert.deepEqual(
+      result.rows.map((row) =>
+        row.shipments.map((value) => (value === null ? null : Number(value))),
+      ),
+      [
+        [10, null, 0],
+        [0, 0, 7],
+        [0, 0, 0],
+      ],
+    );
+    assert.deepEqual(result.rows[1].shipments.slice(0, 2), ["0", "0"]);
+    assert.equal(calls, 1);
+  } finally {
+    db.close();
+  }
+});
+
 test("historical shipment query binds only the authorized customer and three actual shipping months", async () => {
   const calls = [];
   const result = await read(
@@ -28,16 +82,17 @@ test("historical shipment query binds only the authorized customer and three act
     detail,
     async (input) => {
       calls.push(input);
-      assert.match(input.sql, /SUM\(act_dl_qty\)/);
+      assert.match(input.sql, /SUM\(CASE WHEN ship_month/);
       assert.match(input.sql, /WHERE cust_code = :customer AND ship_month IN/);
       assert.deepEqual(input.parameters, {
         customer: "customer1",
         month0: "202511",
         month1: "202609",
         month2: "202610",
+        sku0: "1001",
       });
       return {
-        rows: [{ material_code: "1001", ship_month: "202609", ship_qty: "31.5" }],
+        rows: [{ material_code: "1001", ship_qty0: "0", ship_qty1: "31.5", ship_qty2: "0" }],
         total: 1,
       };
     },
@@ -93,28 +148,35 @@ test("partial pages, malformed facts and query failure never become zero shipmen
   }
 });
 
-test("pagination consumes every row and explicit null remains unknown", async () => {
+test("bounded SKU batches consume every row and explicit null remains unknown", async () => {
   const pages = [];
   const result = await read(
     query,
-    detail,
-    async ({ pageNo }) => {
+    async () => ({
+      currentVersion: { id: "v1", planId: "p1", dealerCode: "customer1" },
+      skus: Array.from({ length: 201 }, (_, index) => ({
+        skuCode: String(1001 + index),
+        versionId: "v1",
+      })),
+    }),
+    async ({ pageNo, parameters }) => {
       pages.push(pageNo);
       return {
         rows: [
           {
-            material_code: "1001",
-            ship_month: pageNo === 1 ? "202511" : "202609",
-            ship_qty: pageNo === 1 ? null : "5",
+            material_code: parameters.sku0,
+            ship_qty0: null,
+            ship_qty1: "5",
+            ship_qty2: "0",
           },
         ],
-        total: 2,
+        total: 1,
       };
     },
     () => "2026-11",
     signal(),
   );
-  assert.deepEqual(pages, [1, 2]);
+  assert.deepEqual(pages, [1, 1]);
   assert.deepEqual(result.rows[0].shipments, [null, "5", "0"]);
 });
 
