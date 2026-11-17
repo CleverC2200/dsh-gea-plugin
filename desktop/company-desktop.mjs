@@ -25,7 +25,7 @@ export async function startCompanyDesktop({
           join(resources, "runtime"),
           join(resources, "company-seed"),
           ...(recover ? ["--recover-installation"] : []),
-        ...(!recover && retryInstallation ? ["--retry-installation"] : []),
+          ...(!recover && retryInstallation ? ["--retry-installation"] : []),
         ],
         {
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },

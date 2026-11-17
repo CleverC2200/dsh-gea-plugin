@@ -48,4 +48,12 @@ node desktop/legacy-gea-cleanup.mjs --legacy-data /absolute/dsh-gea-desktop --ho
 # 执行时追加 --apply。旧客户端与后台进程需已退出，状态不明时入口保留文件。
 ```
 
+失败候选默认不自动重试。维护者正常退出客户端后，可让同一个安装只重试一次；入口先恢复可用图，再重新准备，原失败记录保留：
+
+```powershell
+$env:GEA_RETRY_INSTALLATION = "1"
+Start-Process -FilePath "C:\Path\GEA Desktop.exe"
+Remove-Item Env:GEA_RETRY_INSTALLATION
+```
+
 这些处理不证明登录、身份或业务异常由旧版本引起。Windows 实机及原故障复测需单独验收。

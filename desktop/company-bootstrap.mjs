@@ -935,7 +935,11 @@ export async function prepareCompanyBoot({
     const id = retry ? bundle + "-" + randomUUID() : bundle;
     const attempt = join(installation.directory, bundle + ".json");
     if (retry || !existsSync(attempt)) {
-      if (existsSync(attempt)) await cp(attempt, attempt + ".before-retry-" + randomUUID(), { force: false, errorOnExist: true });
+      if (existsSync(attempt))
+        await cp(attempt, attempt + ".before-retry-" + randomUUID(), {
+          force: false,
+          errorOnExist: true,
+        });
       await writePluginStoreJson(attempt, { id, stage: "preparing" });
       try {
         await installation.prepare(id, installBundled);
@@ -986,6 +990,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       graphId: selected.id,
       trial: false,
     };
-  } else boot = await prepareCompanyBoot({ root, support, seed, home, manifest, retry: process.argv.includes("--retry-installation") });
+  } else
+    boot = await prepareCompanyBoot({
+      root,
+      support,
+      seed,
+      home,
+      manifest,
+      retry: process.argv.includes("--retry-installation"),
+    });
   console.log("GEA_INSTALLATION_BOOT", JSON.stringify(boot));
 }
