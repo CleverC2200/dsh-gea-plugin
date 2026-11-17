@@ -617,7 +617,8 @@
         },
         "dependencies": {
           "zod": "4.4.3"
-        }
+        },
+        "artifactSha256": "123e1789ac18eececf725a6de631f3454d05d0d6b8c41db0c443b1924b23da15"
       },
       {
         "name": "dsh-agent-manage",
@@ -655,7 +656,8 @@
           "smol-toml": "^1.8.0",
           "yaml": "^2.7.0",
           "zod": "^4.4.3"
-        }
+        },
+        "artifactSha256": "06835bf774a66dc46c18c17a6f68b8efd8cf9bae0f5e5a0d52fe655de2ccc693"
       },
       {
         "name": "@cleverc2200/gea-dsh-prototype",
@@ -699,7 +701,8 @@
           "zod": "4.6.6",
           "@modelcontextprotocol/sdk": "1.32.0"
         },
-        "geaPluginUpdateStrategy": "suite"
+        "geaPluginUpdateStrategy": "suite",
+        "artifactSha256": "1f9f430d11cfde27ccbcd49266d5ff19599af9e826a6bccc3fda0d8a7c095111"
       },
       {
         "name": "@cleverc2200/dsh-personal-memory",
@@ -780,6 +783,45 @@
         },
         "artifactSha256": "83ca562f4849c69bc24f65aea69aee33f474e8787f72a48e8985fa77c1bf041f",
         "geaPluginUpdateStrategy": "suite"
+      },
+      {
+        "name": "dsh-agent-manage",
+        "version": "0.6.3-company.81",
+        "peerDependencies": {
+          "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
+          "@deepseek-ai/cordis-plugin-include": "1.0.9 || 1.0.10-alpha.1",
+          "@deepseek-ai/dsh-agent-preset-registry": "0.2.0-rc.2 || 0.2.1-alpha.1",
+          "@deepseek-ai/dsh-hooks-claude-code": "0.2.0-rc.2 || 0.2.1-alpha.1",
+          "@deepseek-ai/dsh-llm": "0.2.0-rc.2 || 0.2.1-alpha.1",
+          "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2 || 0.2.1-alpha.1",
+          "@deepseek-ai/dsh-skill": "0.2.0-rc.2 || 0.2.1-alpha.1",
+          "@deepseek-ai/dsh-skill-filesystem": "0.2.0-rc.2 || 0.2.1-alpha.1",
+          "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
+          "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1"
+        },
+        "peerDependenciesMeta": {
+          "@deepseek-ai/dsh-mcp-client": {
+            "optional": true
+          },
+          "@deepseek-ai/dsh-hooks-claude-code": {
+            "optional": true
+          },
+          "@deepseek-ai/dsh-tools": {
+            "optional": true
+          }
+        },
+        "dependencies": {
+          "@modelcontextprotocol/sdk": "1.32.0",
+          "ajv": "^8.17.1",
+          "decimal.js": "10.6.0",
+          "fflate": "^0.8.3",
+          "javascript-lp-solver": "1.0.3",
+          "js-yaml": "4.3.2",
+          "smol-toml": "^1.8.0",
+          "yaml": "^2.7.0",
+          "zod": "^4.4.3"
+        },
+        "artifactSha256": "06835bf774a66dc46c18c17a6f68b8efd8cf9bae0f5e5a0d52fe655de2ccc693"
       }
     ]
   }

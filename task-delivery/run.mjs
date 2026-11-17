@@ -80,8 +80,17 @@ const { parsePluginManifest, parseInstalledPluginManifest } = await import(
   pathToFileURL(join(gea, "src/shared/plugin-release.mjs"))
 );
 const snapshots = await json(join(tool, "deployed-local.json"));
-for (const snapshot of snapshots)
-  for (const manifest of snapshot.installed) parseInstalledPluginManifest(manifest);
+const suiteNames = ["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage", "@cleverc2200/gea-dsh-prototype"];
+for (const snapshot of snapshots) {
+  if (!suiteNames.every((name) => snapshot.installed.some((manifest) => manifest.name === name)))
+    throw Error("RELEASE_INSTALLED_GRAPH_INCOMPLETE");
+  for (const manifest of snapshot.installed) {
+    if (suiteNames.includes(manifest.name)) {
+      parsePluginManifest(manifest);
+      if (!/^[a-f0-9]{64}$/.test(manifest.artifactSha256)) throw Error("RELEASE_ARTIFACT_IDENTITY_REQUIRED");
+    } else parseInstalledPluginManifest(manifest);
+  }
+}
 const aps = join(wb, "business/inventory-apsplan/source");
 await run("npm", ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"], aps);
 for (const [path, target] of [
