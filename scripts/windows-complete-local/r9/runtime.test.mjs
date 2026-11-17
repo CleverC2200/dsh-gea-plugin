@@ -55,8 +55,10 @@ test(
       new Promise((resolve, reject) => {
         socket.addEventListener("message", (event) => {
           const result = JSON.parse(event.data);
-          if (result.id === 1)
-            result.error ? reject(Error(result.error.message)) : resolve(result.result);
+          if (result.id === 1) {
+            if (result.error) reject(Error(result.error.message));
+            else resolve(result.result);
+          }
         });
         socket.send(JSON.stringify({ id: 1, method, params }));
       });
