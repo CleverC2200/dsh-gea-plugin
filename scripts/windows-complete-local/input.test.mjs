@@ -14,6 +14,8 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { readDesktopAcceptanceInput } from "./acceptance-input.mjs";
 const cli = fileURLToPath(new URL("./input.mjs", import.meta.url));
 const released = JSON.parse(
   await readFile(new URL("./released-input.fixture.json", import.meta.url)),
@@ -40,6 +42,15 @@ test("desktop inputs require the independently pinned personal memory plugin", a
   assert.deepEqual(
     (await readDesktopInput(path, baseline.geaSourceSha)).seed.packages.at(-1),
     baseline.seed.packages.at(-1),
+  );
+  assert.deepEqual(
+    await readDesktopAcceptanceInput(path, { sourceSha: baseline.geaSourceSha }),
+    await readDesktopInput(path, baseline.geaSourceSha),
+  );
+  await writeFile(path, JSON.stringify(input));
+  await assert.rejects(
+    readDesktopAcceptanceInput(path, { sourceSha: baseline.geaSourceSha }),
+    /DESKTOP_PERSONAL_MEMORY_REQUIRED/,
   );
 });
 
@@ -277,6 +288,7 @@ test("Native artifact validation loads from a clean checkout through the fixture
   for (const file of [
     "scripts/windows-complete-local/input.mjs",
     "scripts/windows-complete-local/run-bundle.mjs",
+    "scripts/windows-complete-local/acceptance-input.mjs",
     "scripts/mac-complete-local/baseline.mjs",
     "scripts/ci-core-policy.mjs",
     "scripts/ci-core-policy.json",
@@ -344,6 +356,60 @@ test("Native artifact rechecks bind an ancestor build to the actual qualificatio
     () => resolveDesktopAcceptanceSource(current, "", directory),
     /DESKTOP_NATIVE_SOURCE_INVALID/,
   );
+  await assert.rejects(
+    readDesktopAcceptanceInput(join(directory, "input"), {
+      sourceSha: current,
+      qualifiedSourceSha: built,
+      checkout: directory,
+    }),
+    /DESKTOP_ARCHIVE_CONTRACT_REQUIRED/,
+  );
+});
+
+test("archive acceptance preserves the original three-package Core contract and input projection", async (t) => {
+  const source = "de47eeee858ed7de4f1dbd18a0f9e15dc72efeaf";
+  const checkout = fileURLToPath(new URL("../../", import.meta.url));
+  const git = (...args) => execFileSync("git", args, { cwd: checkout, encoding: "utf8" }).trim();
+  const input = JSON.parse(
+    git("show", source + ":scripts/windows-complete-local/released-input.fixture.json"),
+  );
+  const policy = JSON.parse(git("show", source + ":scripts/ci-core-policy.json"));
+  input.geaSourceSha = source;
+  input.seed.core.head = policy.required[0].head;
+  const directory = await mkdtemp(join(tmpdir(), "gea-original-input-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "input.json");
+  const bytes = JSON.stringify(input);
+  await writeFile(path, bytes);
+  await assert.rejects(readDesktopInput(path, source), /DESKTOP_CORE_POLICY_MISMATCH/);
+  const fixed = await readDesktopAcceptanceInput(path, {
+    sourceSha: git("rev-parse", "HEAD"),
+    qualifiedSourceSha: source,
+    checkout,
+  });
+  const expected = {
+    ...input,
+    seed: {
+      ...input.seed,
+      packages: input.seed.packages.map(({ name, version, url, sha256 }) => ({
+        name,
+        version,
+        url,
+        sha256,
+      })),
+      source: {
+        channel: input.seed.source.channel,
+        channelUrl: input.seed.source.channelUrl,
+        authenticationRef: input.seed.source.authenticationRef,
+        allowed: input.seed.source.allowed,
+      },
+    },
+  };
+  assert.equal(fixed.seed.packages.length, 3);
+  assert.equal(fixed.seed.core.head, policy.required[0].head);
+  const sha = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  assert.equal(sha(fixed), sha(expected));
+  assert.equal(await readFile(path, "utf8"), bytes);
 });
 
 test("a wrapper-only build binds the fixed plugin commit and rejects unrelated or wrong-version sources", async (t) => {
