@@ -63,6 +63,7 @@
     "desktop/updates.test.mjs",
     "desktop/verify-client-artifacts.test.cjs",
     "scripts/windows-complete-local/input.test.mjs",
+    "scripts/windows-complete-local/online-upgrade-input.test.mjs",
     "scripts/windows-complete-local/core-cache.test.mjs",
     "scripts/windows-complete-local/signing.test.mjs",
     "scripts/mac-complete-local/signing.test.mjs",
@@ -805,13 +806,15 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|prepare-signing\\.ps1)$",
+      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|online-upgrade(?:-input(?:\\.test)?)?\\.mjs|prepare-signing\\.ps1)$",
       "tests": [
         "scripts/windows-complete-local/signing.test.mjs",
+        "scripts/windows-complete-local/online-upgrade-input.test.mjs",
         "scripts/delivery-events.test.mjs"
       ],
       "sourceTests": [
         "scripts/windows-complete-local/signing.test.mjs",
+        "scripts/windows-complete-local/online-upgrade-input.test.mjs",
         "scripts/delivery-events.test.mjs"
       ]
     },
