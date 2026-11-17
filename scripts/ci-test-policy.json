@@ -549,7 +549,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/company-(?:archives|bootstrap|gea-refresh)\\.mjs$",
+      "pattern": "^desktop/(?:company-(?:archives|bootstrap|gea-refresh|installation|desktop)|plugin-store|plugin-storage|copy-graph|core-file-mode|official-(?:branding|main))\\.(?:mjs|cjs|d\\.mts)$",
       "tests": ["scripts/desktop-gea-upgrade.test.mjs"],
       "sourceTests": ["scripts/desktop-gea-upgrade.test.mjs"]
     },
@@ -898,7 +898,9 @@
     "desktop/plugin-storage.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/plugin-store.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/recovery.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
-    "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
+    "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/company-installation.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/company-desktop.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
     "scripts/desktop-release.test.mjs": ["semver", "yaml"],

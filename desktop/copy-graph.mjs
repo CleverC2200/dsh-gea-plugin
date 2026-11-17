@@ -1,7 +1,20 @@
-import { mkdir, readdir, copyFile, cp, lstat, readFile, writeFile, chmod } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  copyFile,
+  cp,
+  lstat,
+  readFile,
+  writeFile,
+  chmod,
+  readlink,
+  symlink,
+  stat,
+} from "node:fs/promises";
 import { join, resolve, relative } from "node:path";
 import { constants } from "node:fs";
 import { executableBits } from "./core-file-mode.mjs";
+import { createRequire } from "node:module";
 
 export async function copyGraphEntry(source, target, { signal } = {}) {
   const pending = new Set();
@@ -35,12 +48,26 @@ export async function copyGraphEntry(source, target, { signal } = {}) {
 
           const bits = await executableBits(source, entry);
           if (bits) await chmod(target, 0o644 | bits);
-        } else
-          await cp(source, target, {
-            recursive: true,
-            dereference: true,
-            mode: constants.COPYFILE_FICLONE,
-          });
+        } else {
+          try {
+            await cp(source, target, {
+              recursive: true,
+              dereference: true,
+              mode: constants.COPYFILE_FICLONE,
+            });
+          } catch (error) {
+            if (!entry.isSymbolicLink() || error.code !== "ENOENT") throw error;
+            await stat(source).then(
+              () => {
+                throw error;
+              },
+              (missing) => {
+                if (missing.code !== "ENOENT") throw missing;
+              },
+            );
+            await symlink(await readlink(source), target, "file");
+          }
+        }
       });
     }
   };
@@ -61,7 +88,19 @@ export async function relocateVirtualStore(
     file = join(modules, ".modules.yaml");
   let metadata;
   try {
-    metadata = JSON.parse(await readFile(file, "utf8"));
+    const text = await readFile(file, "utf8");
+    try {
+      metadata = JSON.parse(text);
+    } catch {
+      let yaml;
+      try {
+        yaml = createRequire(import.meta.url)("yaml");
+      } catch (error) {
+        if (error.code !== "MODULE_NOT_FOUND") throw error;
+        yaml = createRequire(new URL("./dsh/package.json", import.meta.url))("yaml");
+      }
+      metadata = yaml.parse(text);
+    }
   } catch (error) {
     if (error.code === "ENOENT" || error instanceof SyntaxError) return false;
     throw error;

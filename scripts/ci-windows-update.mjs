@@ -18,8 +18,17 @@ export const windowsNativeEntrypoints = Object.freeze({
   fixture: "tests/plugin-update-windows.native.mjs",
 });
 
+export const windowsCompanyInput = Object.freeze({
+  coreHead: "0accab310546c1bc8d3ad46b8803dcbcfaa02477",
+  installerSha256: "6d00d30ffa4e77acac442eedcb569174cded892722179ab6b5f0ace384b62aaa",
+  installerUrl:
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/058c553187862f8769beaf3d9b39f59ff2237c24/desktop/Synear-GEA-0.2.0-rc.2.20261112.4-win-x64-signed.exe",
+  acceptance:
+    "released Windows runtime with candidate company entry; isolated data; no publication or installer qualification",
+});
+
 const affected = [
-  /^desktop\/(?:company-update|company-gea-refresh|company-archives)\.(?:mjs|d\.mts)$/,
+  /^desktop\/(?:company-[^/]+|plugin-store(?:-lock)?|plugin-storage|copy-graph|core-layer|core-file-mode|physical-fs|official-branding)\.(?:mjs|d\.mts)$/,
   /^src\/host\/plugin-(?:update[^/]*|release-source)\.ts$/,
   /^src\/shared\/plugin-(?:update[^/]*\.ts|release\.(?:mjs|d\.mts))$/,
   /^tests\/(?:plugin-update[^/]*\.(?:contract|native)\.mjs|fixtures\/plugin-updates\/)/,

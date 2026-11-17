@@ -32,7 +32,7 @@ for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-writ
     const fileCommit = await prepareWindowsFileCommit(join(root, "platform"), anchor, "0.2.0-rc.2");
     const f = await controllerFixture(
       { after: (action) => cleanup.push(action) },
-      { mode, fileCommit },
+      { mode, fileCommit, managed: !mode.startsWith("pnpm") },
     );
     await symlink(
       join(process.env.GEA_WINDOWS_RUNTIME, "dsh/node_modules"),
@@ -68,17 +68,8 @@ for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-writ
       .items.find((x) => x.packageName === "@cleverc2200/gea-dsh-prototype");
     assert.equal(item.state, "available");
     await controller.submit({ packageName: item.packageName, planId: item.planId });
-    const result = await waitForStage(
-      controller,
-      ["pending-restart", "failed", "unknown", "failed"],
-      30000,
-    );
-    const expected =
-      mode === "success" || mode.startsWith("pnpm")
-        ? "pending-restart"
-        : mode === "fail-after-write"
-          ? "failed"
-          : "unknown";
+    const result = await waitForStage(controller, ["pending-restart", "failed", "unknown"], 30000);
+    const expected = mode === "success" || mode.startsWith("pnpm") ? "pending-restart" : "failed";
     if (result.stage !== expected) {
       for (const log of result.logs)
         console.error("WINDOWS_FIXTURE_LOG", mode, await readFile(log, "utf8"));
@@ -93,14 +84,16 @@ for (const mode of ["success", "pnpm", "pnpm-stalled-registry", "fail-after-writ
       assert.equal(proof.nonce, result.processes[0].startIdentity);
     }
     if (!mode.startsWith("pnpm")) {
-      const installing = JSON.parse(await readFile(join(f.dir, "installing-receipt.json"), "utf8"));
+      const installing = JSON.parse(
+        await readFile(join(f.evidence, "installing-receipt.json"), "utf8"),
+      );
       assert.equal(installing.stage, "installing");
       assert.deepEqual(installing.processes, result.processes);
       assert.equal(installing.id, result.id);
     }
     if (mode === "fail-after-write") assert.equal(result.diagnostic, "PACKAGE_INSTALL_FAILED");
     if (mode === "orphan") {
-      const pid = Number(await readFile(join(f.dir, "orphan-pid"), "utf8"));
+      const pid = Number(await readFile(join(f.evidence, "orphan-pid"), "utf8"));
       assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
     }
     const receipt = JSON.parse(

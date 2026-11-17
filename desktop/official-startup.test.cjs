@@ -32,11 +32,14 @@ function start(ownsLock) {
             },
           },
         };
-      if (name === "node:child_process")
+      if (name === "./company-desktop.mjs")
         return {
-          spawnSync(exe, args) {
-            events.push(["bootstrap", exe, ...args]);
-            return { status: 0 };
+          async startCompanyDesktop(options) {
+            assert.equal(options.root, "/app");
+            assert.equal(options.resources, "/resources");
+            events.push(["bootstrap", options.app.getPath("appData") + "/dsh-gea-desktop"]);
+            env.GEA_COMPANY_CLIENT = "1";
+            options.loadOfficial();
           },
         };
       if (name === "./lib/main.js") {
@@ -52,7 +55,7 @@ test("a second desktop instance never starts bootstrap or cleanup", () => {
   assert.deepEqual(start(false), ["lock", "quit"]);
 });
 
-test("the owning desktop bootstraps with the exact legacy GEA root before loading official main", () => {
+test("the shipped company entry delegates preparation and rollback before loading official main", () => {
   const events = start(true);
   assert.equal(events[0], "lock");
   assert.equal(events[1][0], "bootstrap");
@@ -84,6 +87,8 @@ test("the company desktop packages every module used by cleanup and refresh", as
   const files = result.files.find((row) => typeof row === "object" && row.to === ".").filter;
   for (const file of [
     "official-main.cjs",
+    "company-desktop.mjs",
+    "company-installation.mjs",
     "company-bootstrap.mjs",
     "company-gea-refresh.mjs",
     "company-update.mjs",

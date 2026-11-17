@@ -122,7 +122,7 @@ async function stoppedUpdateProcesses(profile, receipt) {
   return processes.every((row) => [row.pid, -row.pid].every(processExited));
 }
 
-async function readProfileUpdateState(
+export async function readProfileUpdateState(
   profile,
   { allowExitedPackageRun = false, allowStoppedUpdate = false } = {},
 ) {
