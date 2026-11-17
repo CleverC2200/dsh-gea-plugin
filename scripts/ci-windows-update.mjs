@@ -29,7 +29,7 @@ export const windowsCompanyInput = Object.freeze({
 });
 
 const affected = [
-  /^desktop\/(?:company-[^/]+|plugin-store(?:-lock)?|plugin-storage|copy-graph|core-layer|core-file-mode|physical-fs|official-branding)\.(?:mjs|d\.mts)$/,
+  /^desktop\/(?:company-[^/]+|windows-job|plugin-store(?:-lock)?|plugin-storage|copy-graph|core-layer|core-file-mode|physical-fs|official-branding)\.(?:mjs|d\.mts)$/,
   /^src\/host\/plugin-(?:update[^/]*|release-source)\.ts$/,
   /^src\/shared\/plugin-(?:update[^/]*\.ts|release\.(?:mjs|d\.mts))$/,
   /^tests\/(?:plugin-update[^/]*\.(?:contract|native)\.mjs|fixtures\/plugin-updates\/)/,
