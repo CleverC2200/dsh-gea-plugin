@@ -671,6 +671,31 @@ test("runtime consumers request the Workbench plugin target and stop before down
   assert.equal(existsSync(join(f.job, "tests-executed")), false);
 });
 
+test("the packaged Workbench consumer requests full plugin outputs before starting tests", (t) => {
+  const f = fixture(t, { additionalTests: ["scripts/page-interaction-package.test.mjs"] });
+  const prepared = f.run("prepare");
+  assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+  const result = f.run("build", { FIXTURE_FAIL: "workbench-plugin" });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  const commands = readFileSync(join(f.job, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.ok(
+    commands.some(
+      (entry) =>
+        entry.command === "npm" &&
+        entry.cwd === join(f.job, "candidate/dsh-agent-workbench") &&
+        entry.args.join(" ") === "run build:plugin",
+    ),
+  );
+  assert.equal(
+    commands.some((entry) => entry.command === "workbench-model"),
+    false,
+  );
+  assert.equal(existsSync(join(f.job, "tests-executed")), false);
+});
+
 test("the public macOS task prepares only fixed Host dependencies before executing both native contracts", (t) => {
   const f = fixture(t, { macos: true });
   const result = f.run(undefined, {}, ["--phase", "macos-isolation"]);

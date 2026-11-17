@@ -107,6 +107,9 @@
     "scripts/build-admission.test.mjs": {
       "dependencies": false
     },
+    "scripts/hosted-sdk-capacity.test.mjs": {
+      "dependencies": false
+    },
     "scripts/build.test.mjs": {
       "dependencies": true
     },
@@ -333,6 +336,12 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:plugin-split-development\\.mjs|delivery-package-runtime\\.mjs|delivery-runtime/(?:package\\.json|pnpm-lock\\.yaml))$",
       "tests": ["scripts/deliver-packages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/hosted-sdk-capacity\\.mjs$",
+      "tests": ["scripts/hosted-sdk-capacity.test.mjs"],
+      "sourceTests": ["scripts/hosted-sdk-capacity.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
