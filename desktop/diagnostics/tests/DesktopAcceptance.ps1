@@ -62,9 +62,9 @@ try {
  Click $folder
  $shell=New-Object -ComObject Shell.Application
  $folderVerified=$false;$clock=[Diagnostics.Stopwatch]::StartNew()
- while(!$folderVerified -and $clock.Elapsed.TotalSeconds -lt 20){foreach($window in @($shell.Windows())){try{foreach($item in @($window.Document.SelectedItems())){if($item.Path -eq $archive[0].FullName){$folderVerified=$true}}}catch{}};if(!$folderVerified){Start-Sleep -Milliseconds 200}}
+ while(!$folderVerified -and $clock.Elapsed.TotalSeconds -lt 20){foreach($window in @($shell.Windows())){try{$items=$window.Document.SelectedItems();for($index=0;$index -lt $items.Count;$index++){if($items.Item($index).Path -eq $archive[0].FullName){$folderVerified=$true}}}catch{}};if(!$folderVerified){Start-Sleep -Milliseconds 200}}
  $explorer=@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'"|Select-Object ProcessId,ParentProcessId,SessionId,CommandLine)
- $windows=@();foreach($window in @($shell.Windows())){try{$windows+=@{name=$window.Name;url=$window.LocationURL;hwnd=$window.HWND;selected=@($window.Document.SelectedItems()|ForEach-Object{$_.Path})}}catch{$windows+=@{error=$_.Exception.Message}}}
+ $windows=@();foreach($window in @($shell.Windows())){try{$items=$window.Document.SelectedItems();$selected=@();for($index=0;$index -lt $items.Count;$index++){$selected+=@($items.Item($index).Path)};$windows+=@{name=$window.Name;url=$window.LocationURL;hwnd=$window.HWND;selectedCount=$items.Count;selected=$selected;focused=$window.Document.FocusedItem.Path}}catch{$windows+=@{error=$_.Exception.Message}}}
  [ordered]@{expected=$archive[0].FullName;verified=$folderVerified;explorer=$explorer;windows=$windows;session=[Diagnostics.Process]::GetCurrentProcess().SessionId}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $OutputDirectory 'explorer-result.json') -Encoding UTF8
  Assert $folderVerified 'ARCHIVE_NOT_SELECTED_IN_EXPLORER'
  $result=[ordered]@{passed=$true;elevated=$false;defaultLaunchWithoutArguments=$true;nativeWindow=$true;zipReadable=$true;groups=$manifest.groups.Count;partial=$manifest.partial;privacyCanariesAbsent=$true;clipboardSummary=$true;explorerSelectedArchive=$true;cancelWindow=$true;closeWaitsForCancellation=$true;embeddedResources=$assembly.GetManifestResourceNames().Length}
