@@ -52,6 +52,63 @@ test("Windows installed upgrade qualification requires explicit signed packaging
   );
 });
 
+test("online qualification consumes the original target receipt and prepares its dependencies before launch", () => {
+  const job = workflow.jobs["windows-overwrite-recheck"];
+  const dispatch = Function("github", "inputs", `return (${job.if})`);
+  assert.equal(
+    dispatch(
+      { event_name: "workflow_dispatch" },
+      { windows_online_update: true, windows_overwrite_artifact_run: "" },
+    ),
+    true,
+  );
+  assert.equal(
+    dispatch(
+      { event_name: "pull_request" },
+      { windows_online_update: true, windows_overwrite_artifact_run: "" },
+    ),
+    false,
+  );
+  const steps = job.steps;
+  const dependencies = steps.findIndex(
+    (step) => step.name === "Prepare artifact acceptance dependencies",
+  );
+  const launch = steps.findIndex(
+    (step) => step.name === "Recheck installed package version and preserved user files",
+  );
+  assert.ok(dependencies >= 0 && dependencies < launch);
+  assert.match(steps[dependencies].if, /inputs\.windows_online_update/);
+  assert.match(steps[launch].run, /online-upgrade\.mjs',baseline\[0\],files\[0\],output/);
+  const original = steps.find((step) => step.name === "Verify original main packaging source");
+  const script = original.run.split("<<'NODE'\n")[1].replace(/\nNODE\s*$/, "");
+  for (const [extra, code] of [
+    [{ ORIGINAL_RUN: "" }, "DELIVERY_ARTIFACT_RUN_REQUIRED"],
+    [
+      {
+        ORIGINAL_RUN: "123",
+        NATIVE_BUNDLE_URL: "https://example.invalid/",
+        NATIVE_BUNDLE_SHA256: "digest",
+      },
+      "DELIVERY_ACCEPTANCE_MODE_CONFLICT",
+    ],
+    [{ ORIGINAL_RUN: "123", NATIVE_BUNDLE_SHA256: "digest" }, "DESKTOP_NATIVE_BUNDLE_INVALID"],
+  ]) {
+    const result = spawnSync(process.execPath, ["--input-type=module"], {
+      input: script,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WINDOWS_ONLINE_UPDATE: "true",
+        NATIVE_BUNDLE_URL: "",
+        NATIVE_BUNDLE_SHA256: "",
+        ...extra,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, new RegExp(code));
+  }
+});
+
 function eligible(
   condition,
   steps,

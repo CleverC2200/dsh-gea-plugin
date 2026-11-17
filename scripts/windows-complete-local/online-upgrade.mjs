@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createReadStream, openSync, closeSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -7,15 +7,22 @@ import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { readOnlineUpgradeTarget, verifyOnlineUpgradeFeed } from "./online-upgrade-input.mjs";
+import { companyWindowsCertificate } from "./signing.mjs";
 
 assert.equal(process.platform, "win32");
-const [baseline, output] = process.argv.slice(2).map((path) => resolve(path));
+assert.equal(process.argv.slice(2).length, 3, "DESKTOP_ONLINE_INPUT_REQUIRED");
+const [baseline, buildReceipt, output] = process.argv.slice(2).map((path) => resolve(path));
 const gea = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const oldVersion = "0.2.0-rc.2.20261030.2";
-const newVersion = "0.2.0-rc.2.20261102.3";
-const expectedNewSha = "2d030084d92bf115aa4850d7b80b968174dffc6a1b6a3ceb846f988bc64444e0";
-const feed =
-  "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/nightly.yml";
+const targetBuild = await readFile(buildReceipt);
+const targetInput = readOnlineUpgradeTarget(JSON.parse(targetBuild), {
+  sourceSha: process.env.GITHUB_SHA,
+  qualifiedSourceSha: process.env.GEA_QUALIFICATION_SOURCE_SHA,
+  checkout: gea,
+  baselineVersion: oldVersion,
+});
+const { version: newVersion, sha256: expectedNewSha, feedUrl: feed } = targetInput;
 const installation = join(output, "installed");
 const executable = join(installation, "GEA Desktop.exe");
 const journal = join(output, "journal");
@@ -32,6 +39,8 @@ const evidence = {
   from: oldVersion,
   to: newVersion,
   productionFeed: feed,
+  target: targetInput,
+  buildReceiptSha256: createHash("sha256").update(targetBuild).digest("hex"),
   installerRebuilt: false,
   updaterReplaced: false,
   forcedStopBeforeHandoff: false,
@@ -50,10 +59,10 @@ function milestone(name, details = {}) {
   });
   console.log("Windows online upgrade: " + name);
 }
-async function sha256(path) {
-  const hash = createHash("sha256");
+async function fileDigest(path, algorithm = "sha256", encoding = "hex") {
+  const hash = createHash(algorithm);
   for await (const chunk of createReadStream(path)) hash.update(chunk);
-  return hash.digest("hex");
+  return hash.digest(encoding);
 }
 function powershell(script, args = [], timeout = 30000) {
   const path = join(output, "probe.ps1");
@@ -154,8 +163,14 @@ async function target(prefix) {
 }
 try {
   assert.equal(
-    await sha256(baseline),
+    await fileDigest(baseline),
     "6cda3843fde29110328e973ae6ef059b9842dd38040a3e018538b0cb6e5bf6c1",
+  );
+  const originalInstaller = resolve(dirname(buildReceipt), "../artifacts", targetInput.artifact);
+  assert.equal(await fileDigest(originalInstaller), expectedNewSha);
+  assert.equal(
+    new X509Certificate(await readFile(companyWindowsCertificate)).fingerprint256,
+    targetInput.fingerprint,
   );
   const response = await fetch(feed, {
     signal: AbortSignal.timeout(30000),
@@ -163,9 +178,11 @@ try {
   });
   assert.equal(response.status, 200);
   const metadata = await response.text();
-  assert.equal(/^version:\s*(\S+)/m.exec(metadata)?.[1], newVersion);
-  assert.ok(metadata.includes(`GEA-Desktop-${newVersion}-win-x64-signed.exe`));
   await writeFile(join(output, "live-nightly.yml"), metadata);
+  verifyOnlineUpgradeFeed(metadata, {
+    ...targetInput,
+    sha512: await fileDigest(originalInstaller, "sha512", "base64"),
+  });
   milestone("published-source-and-baseline-verified");
   const trust = spawnSync(
     "powershell.exe",
@@ -337,7 +354,7 @@ try {
   const pending = join(process.env.LOCALAPPDATA, cacheName, "pending");
   const candidates = await readdir(pending);
   for (const name of candidates.filter((name) => name.endsWith(".exe"))) {
-    const actual = await sha256(join(pending, name));
+    const actual = await fileDigest(join(pending, name));
     if (actual === expectedNewSha) evidence.downloadedInstallerSha256 = actual;
   }
   assert.equal(evidence.downloadedInstallerSha256, expectedNewSha);
