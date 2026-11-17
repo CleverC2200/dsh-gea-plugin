@@ -17,6 +17,33 @@ const businessCore = [
   "tests/optional-companion-manifest.test.mjs",
 ].sort();
 
+test("R9 maintained helpers select offline behavior tests without a runtime SDK", async (t) => {
+  const tests = [
+    "scripts/windows-complete-local/r9/runtime.test.mjs",
+    "scripts/windows-complete-local/r9/evidence.test.mjs",
+  ];
+  for (const source of [
+    "scripts/windows-complete-local/r9.mjs",
+    ...[
+      "case.json",
+      "runtime.mjs",
+      "evidence.mjs",
+      "windows-run.mjs",
+      "seed-history.mjs",
+      "install-old.mjs",
+      "install.ps1",
+    ].map((file) => "scripts/windows-complete-local/r9/" + file),
+  ])
+    await t.test(source, (t) => {
+      const fixture = resourceImpactFixture(t, tests);
+      fixture.change(fixture.own, source);
+      const plan = fixture.plan({ sourceOnly: true });
+      for (const file of tests)
+        assert.equal(plan.files.filter((entry) => entry === file).length, 1, JSON.stringify(plan));
+      assert.equal(plan.sdk, false);
+    });
+});
+
 test("real package consumers declare their frozen candidate inputs before source-only execution", async (t) => {
   for (const file of [
     "scripts/package-smoke.test.mjs",
