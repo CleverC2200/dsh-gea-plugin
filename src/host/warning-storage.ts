@@ -3,6 +3,34 @@ import { z } from "zod";
 
 const text = z.string().min(1).max(256);
 const record = z.record(z.string(), z.unknown());
+const directoryKind = "warning-owner-directory";
+const directoryPrefix = "warning-owners-";
+const directoryRows = z
+  .array(
+    z
+      .object({
+        type: z.enum(["基地", "品类", "基地×品类"]),
+        scope: z.string().trim().min(1).max(160),
+        name: z.string().trim().min(1).max(80),
+        employeeNo: z.string().regex(/^\d{5,20}$/),
+      })
+      .strict(),
+  )
+  .max(500)
+  .superRefine((rows, ctx) => {
+    const keys = rows.map((row) => JSON.stringify([row.type, row.scope, row.employeeNo]));
+    if (new Set(keys).size !== keys.length)
+      ctx.addIssue({ code: "custom", message: "责任关系不能重复" });
+  });
+const directoryPayload = z
+  .object({
+    id: text,
+    kind: z.literal(directoryKind),
+    owner: z.object({ key: text }).passthrough(),
+    revision: z.number().int().positive(),
+    owners: directoryRows,
+  })
+  .passthrough();
 const stateSchema = z.object({
   tasks: z.array(record).max(10000),
   runs: z.array(record).max(10000),
@@ -11,6 +39,15 @@ const stateSchema = z.object({
 const inputSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("load") }).strict(),
   z.object({ operation: z.literal("save"), state: stateSchema, expectedRevision: text }).strict(),
+  z.object({ operation: z.literal("directory-load") }).strict(),
+  z
+    .object({
+      operation: z.literal("directory-save"),
+      revision: z.number().int().nonnegative(),
+      directoryId: text,
+      owners: directoryRows,
+    })
+    .strict(),
 ]);
 type Owner = {
   key: string;
@@ -88,8 +125,40 @@ export async function warningStorage(owner: Owner, input: unknown, execute: Exec
     }
     return fail("WARNING_READ_LIMIT", "预警记录超过本次读取上限");
   }
+  if (request.operation === "directory-load" || request.operation === "directory-save") {
+    const id = directoryPrefix + hash(owner.key).slice(0, 48);
+    if (request.operation === "directory-save" && request.directoryId !== id)
+      fail("WARNING_OWNER_DENIED", "登录账号已变化，请重新读取责任人配置");
+    const rows = await read("detection_tasks", "t.id", " WHERE t.id = :gea_p1", { gea_p1: id });
+    if (rows.length > 1) fail("WARNING_RECORD_INVALID", "责任人配置存在重复记录");
+    const prior = rows.length ? directoryPayload.parse(rows[0]) : undefined;
+    if (prior && !owns(prior, owner)) fail("WARNING_OWNER_DENIED", "责任人配置不属于当前账号");
+    if (request.operation === "directory-load")
+      return { directoryId: id, revision: prior?.revision ?? 0, owners: prior?.owners ?? [] };
+    if (request.revision !== (prior?.revision ?? 0))
+      fail("WARNING_WRITE_CONFLICT", "责任人清单已被其他窗口修改，请刷新后重试");
+    const next = {
+      id,
+      kind: directoryKind,
+      metric: "预警负责人配置",
+      scope: "品类",
+      enabled: false,
+      deletedAt: prior?.deletedAt ?? new Date().toISOString(),
+      owner,
+      revision: request.revision + 1,
+      owners: request.owners,
+    };
+    await persist("detection_tasks", next, prior, {
+      id,
+      metric_name: "预警负责人配置",
+      scope_type: "品类",
+      xxl_job_id: null,
+      enabled: false,
+    });
+    return { directoryId: id, revision: next.revision, owners: next.owners };
+  }
   const allTasks = await read("detection_tasks", "t.id");
-  const tasks = allTasks.filter((task) => owns(task, owner));
+  const tasks = allTasks.filter((task) => owns(task, owner) && task.kind !== directoryKind);
 
   const runs: Record<string, unknown>[] = [],
     events: Record<string, unknown>[] = [];
@@ -163,6 +232,8 @@ export async function warningStorage(owner: Owner, input: unknown, execute: Exec
   if (request.expectedRevision !== revision(current))
     fail("WARNING_WRITE_CONFLICT", "预警已被其他会话修改，请重新读取");
   for (const item of incoming.tasks) {
+    if (item.kind === directoryKind || text.parse(item.id).startsWith(directoryPrefix))
+      fail("WARNING_STATE_INVALID", "负责人配置须通过专用操作维护");
     if (!owns(item, owner)) fail("WARNING_OWNER_DENIED", "不能修改其他用户的预警任务");
     const prior = allTasks.find((old) => old.id === item.id);
     if (prior && !owns(prior, owner)) fail("WARNING_OWNER_DENIED", "预警任务不属于当前用户");
