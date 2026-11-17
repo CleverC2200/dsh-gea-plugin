@@ -231,9 +231,9 @@ test(
         .locator("xpath=ancestor::table[1]/thead"),
     ).not.toContainText("审批状态");
     const monthPlan = frame.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
-    await expect(monthPlan.locator("span").first()).toHaveText("¥100");
+    await expect(monthPlan.locator("span").first()).toHaveText("¥200");
 
-    await expect(monthPlan.locator("small").first()).toHaveText("10 件");
+    await expect(monthPlan.locator("small").first()).toHaveText("20 件");
     await expect(frame.locator("tbody").first()).toContainText("50.0%");
     await expect(frame.locator("tbody").first()).not.toContainText("版本②：¥100 / 10");
     await expect(frame.locator("tbody").first()).not.toContainText("该版本不含月度目标");

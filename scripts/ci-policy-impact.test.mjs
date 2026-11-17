@@ -94,6 +94,18 @@ test("bundled suite source changes select their complete upgrade owner once and 
   assert.ok(fixture.plan().files.includes("tests/window-launch-admission.test.mjs"));
 });
 
+test("environment transport changes select credential and DMS isolation behavior in source-only CI", (t) => {
+  const fixture = resourceImpactFixture(t, [
+    "tests/deployment-transport.test.mjs",
+    "tests/fc-dms-default.test.mjs",
+  ]);
+  fixture.change(fixture.own, "src/host/deployment-transport.ts", "export const changed = true;\n");
+  const plan = fixture.plan({ sourceOnly: true });
+  assert.ok(plan.files.includes("tests/deployment-transport.test.mjs"));
+  assert.ok(plan.files.includes("tests/fc-dms-default.test.mjs"));
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});
+
 test("a docs-only change declares no source, browser or runtime obligation", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "README.md", "Changed documentation\n");
@@ -275,6 +287,12 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ],
     ],
     [0, "scripts/check-agent-knowledge.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+    [0, "scripts/inventory_warehouse_scope.py", []],
+    [0, "scripts/test_fc_plan_template_snapshot.py", []],
+    [0, "scripts/test_fc_summary.py", []],
+    [0, "scripts/test_inventory_warehouse_scope.py", []],
+    [0, "scripts/update-fc-warehouse-exceptions.py", []],
+
     [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
   ];

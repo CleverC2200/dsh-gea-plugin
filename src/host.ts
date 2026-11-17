@@ -118,6 +118,7 @@ export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
   serviceAccounts: z.any(),
   dms: z.any<Deployment["dms"]>(),
+  warningSchedulerEnvironments: z.object({ production: z.string(), test: z.string() }),
   orderFulfillmentConfirmation: z.any<Deployment["orderFulfillmentConfirmation"]>(),
   fcStorage: z.any<Deployment["fcStorage"]>(),
   environment: environmentSchema.default(

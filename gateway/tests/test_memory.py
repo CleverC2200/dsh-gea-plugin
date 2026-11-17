@@ -7,7 +7,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from personal_memory import Gateway, Metadata, make_server
+from personal_memory import Gateway, Metadata, make_server, resolve_identity_environments
 
 
 class Upstream(BaseHTTPRequestHandler):
@@ -43,6 +43,16 @@ class Upstream(BaseHTTPRequestHandler):
         pass
 
 
+class IdentityDeploymentTests(unittest.TestCase):
+    def test_single_memory_deployment_can_accept_one_identity_environment(self):
+        self.assertEqual(resolve_identity_environments({'production': 'https://production.fixture/'}), {'production': 'https://production.fixture'})
+
+    def test_invalid_or_colliding_identity_authorities_are_rejected(self):
+        for mapping in ({}, [], {'production': 'https://same.fixture', 'test': 'https://same.fixture/'}, {'production': 'https://gea.synear.cn:4443/gea-boot'}, {'test': 'https://gea.synear.cn/gea-boot'}):
+            with self.subTest(mapping=mapping), self.assertRaises(ValueError):
+                resolve_identity_environments(mapping)
+
+
 class MemoryHTTPFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -50,7 +60,7 @@ class MemoryHTTPFixture(unittest.TestCase):
         threading.Thread(target=self.upstream.serve_forever, daemon=True).start()
         base = 'http://127.0.0.1:' + str(self.upstream.server_port)
         self.metadata = Metadata(str(Path(self.tmp.name) / 'memory.sqlite'))
-        self.gateway = Gateway(self.metadata, {'production': base, 'test': base}, base, 'backend-secret')
+        self.gateway = Gateway(self.metadata, {'production': base, 'test': base.replace('127.0.0.1', 'localhost')}, base, 'backend-secret')
         self.server = make_server(('127.0.0.1', 0), self.gateway)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 

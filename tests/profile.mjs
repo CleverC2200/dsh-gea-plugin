@@ -295,6 +295,17 @@ async function createProfile(t, options) {
     ? resolve(root, ".runtime/test-core", randomUUID())
     : resolve(dir, "runtime");
   const config = resolve(dir, "gea.json");
+  const fixtureXdgConfig =
+    process.platform === "linux" ? resolve(runtime, "xdg-config") : undefined;
+  if (fixtureXdgConfig) {
+    const fixtureDocuments = resolve(runtime, "Documents");
+    await mkdir(fixtureXdgConfig, { recursive: true });
+    await mkdir(fixtureDocuments, { recursive: true });
+    await writeFile(
+      resolve(fixtureXdgConfig, "user-dirs.dirs"),
+      `XDG_DOCUMENTS_DIR=${JSON.stringify(fixtureDocuments)}\n`,
+    );
+  }
   await writeFile(
     config,
     JSON.stringify({
@@ -471,6 +482,7 @@ async function createProfile(t, options) {
 
         env: {
           ...process.env,
+          ...(fixtureXdgConfig ? { XDG_CONFIG_HOME: fixtureXdgConfig } : {}),
           NODE_EXTRA_CA_CERTS: cert,
           GEA_BROWSER_MCP: "0",
           ...(options.desktopGraph
