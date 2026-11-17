@@ -49,6 +49,7 @@ import {
 } from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun, type PluginUpdateFileCommit } from "./plugin-update-windows.ts";
 import { openCompanyInstallation } from "../../desktop/company-installation.mjs";
+import { companyPnpmNetworkArguments } from "../../desktop/company-pnpm.mjs";
 
 export const pluginUpdateProcessIdentity = `${process.pid}:${performance.timeOrigin}`;
 type Source = Pick<
@@ -89,6 +90,20 @@ function fail(code: string): never {
 }
 const code = (error: unknown, fallback: string) =>
   error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message) ? error.message : fallback;
+const packageFailure = (
+  outcome: Awaited<ReturnType<typeof runProfilePnpm>> | null,
+  cancelled: boolean,
+) => {
+  if (cancelled) return "HOST_CANCELLED";
+  if (outcome?.timedOut) return "PACKAGE_INSTALL_TIMEOUT";
+  if (
+    /\b(?:ERR_PNPM_)?(?:FETCH_5\d\d|ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND)\b/.test(
+      outcome?.output ?? "",
+    )
+  )
+    return "PACKAGE_DEPENDENCY_NETWORK_FAILED";
+  return "PACKAGE_INSTALL_FAILED";
+};
 const activeHost = (proof: RuntimePackageProof | undefined) =>
   proof?.host.kind === "active" ||
   (proof?.name === personalMemoryPackageName && proof.host.kind === "unversioned");
@@ -941,6 +956,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                       "--ignore-pnpmfile",
                       "--config.auto-install-peers=false",
                       "--config.update-notifier=false",
+                      ...companyPnpmNetworkArguments,
                     ],
                     {
                       ...(windowsRun?.packageManager ?? options.profile.packageManager),
@@ -958,7 +974,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                 }
                 await currentMonitor.capture();
                 const processes = currentMonitor.snapshot();
-                if (outcome?.logPath) operation.logs.push(outcome.logPath);
+                if (outcome?.logPath) {
+                  const saved = join(operationDirectory, "pnpm.log");
+                  await writeFile(saved, await readFile(outcome.logPath), { mode: 0o600 });
+                  operation.logs = [saved];
+                }
                 let stopped = await currentMonitor.waitForQuiescence(
                   options.quiescenceWaitMs ?? 2_000,
                 );
@@ -984,9 +1004,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                     outcome.timedOut ||
                     lifetime.signal.aborted
                   )
-                    throw Error(
-                      lifetime.signal.aborted ? "HOST_CANCELLED" : "PACKAGE_INSTALL_FAILED",
-                    );
+                    throw Error(packageFailure(outcome, lifetime.signal.aborted));
                   else if (
                     !retainsProfileUpdates(baseline, after, downloads) ||
                     downloads.some(
@@ -997,11 +1015,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                     )
                   )
                     throw Error("PACKAGE_POSTCHECK_FAILED");
-                  if (outcome?.logPath) {
-                    const saved = join(operationDirectory, "pnpm.log");
-                    await writeFile(saved, await readFile(outcome.logPath), { mode: 0o600 });
-                    operation.logs = [saved];
-                  }
                 }
               },
               lifetime.signal,

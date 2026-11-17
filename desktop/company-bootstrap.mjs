@@ -13,6 +13,7 @@ import {
   planBundledCompanyRefresh,
 } from "./company-gea-refresh.mjs";
 import { CompanyInstallation } from "./company-installation.mjs";
+import { companyPnpmNetworkArguments } from "./company-pnpm.mjs";
 import { writePluginStoreJson } from "./plugin-store.mjs";
 import { companyUpdatePath, readCompanyUpdate } from "./company-update.mjs";
 import {
@@ -430,6 +431,7 @@ export async function installCompanyPackages({
               ? ["--strict-peer-dependencies", "--config.auto-install-peers=false"]
               : []),
             "--config.update-notifier=false",
+            ...companyPnpmNetworkArguments,
             "--registry=https://registry.npmjs.org",
             "--store-dir=" + selectedStore,
             "--config.cache-dir=" + join(home, "desktop-company-cache", "metadata"),

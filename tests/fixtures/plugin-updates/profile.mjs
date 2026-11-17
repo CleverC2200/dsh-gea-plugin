@@ -16,6 +16,7 @@ export async function controllerFixture(
     fileCommit,
     allUpdates = false,
     releasePeers = {},
+    releaseDependencies = {},
     companyVersions = false,
     memory = false,
     memoryBootstrap = false,
@@ -74,7 +75,7 @@ export async function controllerFixture(
     const manifest = {
       name,
       version,
-      dependencies: {},
+      dependencies: releaseDependencies[name] ?? {},
       peerDependencies:
         releasePeers[name] ??
         (index === 2
@@ -125,7 +126,7 @@ export async function controllerFixture(
     if (allUpdates || index >= 2) {
       await writeFile(
         join(target, "package.json"),
-        JSON.stringify({ ...manifest, version: oldVersion }),
+        JSON.stringify({ ...manifest, version: oldVersion, dependencies: {} }),
       );
       await writeFile(
         join(target, "lib/host.js"),

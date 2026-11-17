@@ -551,7 +551,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:company-(?:archives|bootstrap|gea-refresh|installation|desktop)|plugin-store|plugin-storage|copy-graph|core-file-mode|official-(?:branding|main))\\.(?:mjs|cjs|d\\.mts)$",
+      "pattern": "^desktop/(?:company-(?:archives|bootstrap|gea-refresh|installation|desktop|pnpm)|plugin-store|plugin-storage|copy-graph|core-file-mode|official-(?:branding|main))\\.(?:mjs|cjs|d\\.mts)$",
       "tests": ["scripts/desktop-gea-upgrade.test.mjs"],
       "sourceTests": ["scripts/desktop-gea-upgrade.test.mjs"]
     },
@@ -593,7 +593,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^tests/fixtures/plugin-updates/package-manager\\.cjs$",
+      "pattern": "^tests/fixtures/plugin-updates/(?:package-manager\\.cjs|download-registry\\.mjs)$",
       "tests": ["tests/plugin-update-controller.contract.mjs"]
     },
     {

@@ -65,6 +65,7 @@ export function officialGeaBranding(config, { companySeed, brandedMain } = {}) {
                 "official-main.cjs",
                 "company-desktop.mjs",
                 "company-installation.mjs",
+                "company-pnpm.mjs",
                 "company-bootstrap.mjs",
                 "company-gea-refresh.mjs",
                 "company-update.mjs",

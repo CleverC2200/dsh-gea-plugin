@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { until } from "./profile.mjs";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
@@ -1142,6 +1143,115 @@ test("older channel keeps its candidate and reports a downgrade without acceptin
   );
   assert.equal(controller.snapshot().operation, null);
 });
+
+test("a transient dependency registry outage retries before the installer silence limit", async (t) => {
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
+  const { downloadRegistry } = await import("./fixtures/plugin-updates/download-registry.mjs");
+  const f = await controllerFixture(t, {
+    managed: false,
+    releaseDependencies: {
+      "@cleverc2200/gea-dsh-prototype": { "fixture-network-dependency": "1.0.0" },
+    },
+  });
+  const registry = await downloadRegistry(t, f.root, "transient");
+  const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
+  f.profile.packageManager.args = [manager, "--registry=" + registry.origin];
+  const controller = createPluginUpdateController({ ...f.options, idleTimeoutMs: 5000 });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const item = controller.snapshot().items.find((item) => item.planId);
+  await controller.submit({ packageName: item.packageName, planId: item.planId });
+  const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
+  const log = await readFile(operation.logs[0], "utf8");
+  assert.equal(
+    operation.stage,
+    "pending-restart",
+    JSON.stringify({ operation, requests: registry.requests, log }),
+  );
+  assert(registry.requests.filter((path) => path === "/" + registry.name).length >= 3);
+  assert(registry.requests.includes("/dependency.tgz"));
+  assert.equal(
+    (await readPluginProfile(f.dir)).packages.find((pkg) => pkg.name === item.packageName).version,
+    "3.0.0",
+  );
+});
+
+for (const [mode, diagnostic] of [
+  ["partial", "PACKAGE_INSTALL_TIMEOUT"],
+  ["unavailable", "PACKAGE_DEPENDENCY_NETWORK_FAILED"],
+  ["corrupt", "PACKAGE_INSTALL_FAILED"],
+]) {
+  test(`dependency download ${mode} keeps the live graph and retries from a fresh candidate`, async (t) => {
+    const { controllerFixture, waitForStage } =
+      await import("./fixtures/plugin-updates/profile.mjs");
+    const { installPnpmConsumerLayout } =
+      await import("./fixtures/plugin-updates/pnpm-profile.mjs");
+    const { downloadRegistry } = await import("./fixtures/plugin-updates/download-registry.mjs");
+    const f = await controllerFixture(t, {
+      managed: false,
+      releaseDependencies: {
+        "@cleverc2200/gea-dsh-prototype": { "fixture-network-dependency": "1.0.0" },
+      },
+    });
+    const registry = await downloadRegistry(t, f.root, mode);
+    const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
+    f.profile.packageManager.args = [manager, "--registry=" + registry.origin];
+    const files = [
+      "package.json",
+      "pnpm-lock.yaml",
+      "cordis.patch.yml",
+      "user-draft.txt",
+      "credential.enc",
+    ];
+    await writeFile(join(f.dir, "user-draft.txt"), "keep draft\n");
+    await writeFile(join(f.dir, "credential.enc"), Buffer.from([0, 255, 13, 10, 128]));
+    const before = await Promise.all(files.map((name) => readFile(join(f.dir, name))));
+    const controller = createPluginUpdateController({
+      ...f.options,
+      idleTimeoutMs: mode === "partial" ? 2000 : 5000,
+    });
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    let item = controller.snapshot().items.find((item) => item.planId);
+    await controller.submit({ packageName: item.packageName, planId: item.planId });
+    const failed = await waitForStage(controller, ["pending-restart", "failed", "unknown"], 20000);
+    const log = await readFile(failed.logs[0], "utf8");
+    assert.equal(
+      failed.stage,
+      "failed",
+      JSON.stringify({ failed, requests: registry.requests, log }),
+    );
+    assert.equal(failed.diagnostic, diagnostic, log);
+    assert.equal(failed.logs[0], join(failed.directory, "pnpm.log"));
+    assert.equal((await f.installation.store.status()).pending ?? null, null);
+    assert.deepEqual(await Promise.all(files.map((name) => readFile(join(f.dir, name)))), before);
+    assert(registry.requests.includes("/" + registry.name));
+    if (mode !== "unavailable") assert(registry.requests.includes("/dependency.tgz"));
+    registry.recover();
+    await controller.check();
+    item = controller.snapshot().items.find((item) => item.planId);
+    assert(item, JSON.stringify(controller.snapshot()));
+    await controller.submit({ packageName: item.packageName, planId: item.planId });
+    const retried = await waitForStage(controller, ["pending-restart", "failed", "unknown"], 20000);
+    const retryLog = await readFile(retried.logs[0], "utf8");
+    assert.equal(retried.stage, "pending-restart", JSON.stringify({ retried, retryLog }));
+    assert.notEqual(retried.id, failed.id);
+    assert.equal(await readFile(failed.logs[0], "utf8"), log);
+    const load = createRequire(
+      await realpath(
+        join(
+          await f.candidateDirectory(),
+          "node_modules/@cleverc2200/gea-dsh-prototype/package.json",
+        ),
+      ),
+    );
+    assert.equal(load(registry.name), "complete");
+    assert.deepEqual(await Promise.all(files.map((name) => readFile(join(f.dir, name)))), before);
+  });
+}
 
 test("plugin installation exits after Done even when the pnpm update registry never responds", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
