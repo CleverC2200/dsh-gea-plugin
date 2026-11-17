@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import semver from "semver";
 import { readFile } from "node:fs/promises";
+import { validatePluginCombination } from "../src/shared/plugin-release.mjs";
 import { productionManifest } from "../scripts/production-manifest.mjs";
 const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const versions = {
@@ -17,7 +18,10 @@ test("ordinary three-package manifest keeps required companions and exact option
     assert.notEqual(manifest.peerDependenciesMeta?.[name]?.optional, true);
   }
   for (const name of ["@changfenhuang/dsh-genui", "dsh-better-sidebar"]) {
-    assert.equal(manifest.peerDependencies[name], versions[name]);
+    assert.equal(
+      manifest.peerDependencies[name],
+      source.peerDependencies?.[name] ?? versions[name],
+    );
     assert.equal(manifest.peerDependenciesMeta?.[name]?.optional, true);
     assert.equal(manifest.dependencies[name], undefined);
   }
@@ -58,4 +62,36 @@ test("production release accepts the integrated inventory companion versions", (
       true,
       `${name}@${version} must be installable in the released suite`,
     );
+});
+
+test("GenUI source update preserves installed optional companion compatibility", () => {
+  const manifest = productionManifest(source, {
+    ...versions,
+    "@changfenhuang/dsh-genui": "0.16.0-company.1",
+  });
+  for (const version of [undefined, "0.11.3", "0.16.0-company.1"]) {
+    const peers = Object.entries(manifest.peerDependencies)
+      .filter(([name]) => name !== "@changfenhuang/dsh-genui")
+      .map(([name, range]) => ({
+        name,
+        version: semver.minVersion(range).version,
+      }));
+    if (version) peers.push({ name: "@changfenhuang/dsh-genui", version });
+    assert.deepEqual(
+      validatePluginCombination({
+        core: { sdk: {} },
+        manifests: [manifest, ...peers],
+      }),
+      [],
+    );
+  }
+  assert.equal(
+    semver.satisfies("0.15.0", manifest.peerDependencies["@changfenhuang/dsh-genui"]),
+    false,
+  );
+  assert.equal(
+    semver.satisfies("0.17.0", manifest.peerDependencies["@changfenhuang/dsh-genui"]),
+    false,
+  );
+  assert.equal(manifest.dependencies["@changfenhuang/dsh-genui"], undefined);
 });

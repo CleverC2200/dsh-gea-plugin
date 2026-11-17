@@ -3,10 +3,10 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const owner = "src/host/prompt-execution-state.ts";
-/** Complements private fields/types: reject reintroducing the real past mutation paths. */
+
 export function checkPromptExecutionSource(source, file) {
   const issues = [];
-  // Mask literal/comment contents without changing offsets used by diagnostics.
+
   const code = source.replace(
     /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
     (literal) => literal.replace(/[^\n]/g, " "),

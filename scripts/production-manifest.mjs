@@ -1,5 +1,5 @@
 import { validSdkPeers } from "./supported-cores.mjs";
-/** Publish the plugin's runtime graph; the official profile provides SDK and companion peers. */
+
 export function productionManifest(source, versions) {
   if (versions[source.name] !== undefined && versions[source.name] !== source.version)
     throw Error("COMPILED_PACKAGE_VERSION_MISMATCH");

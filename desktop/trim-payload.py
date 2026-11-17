@@ -26,7 +26,7 @@ for name,record in manifest['packages'].items():
   record['distribution']='installed';record['installedPath']='node_modules/'+name;installed+=1
  else:record['distribution']='archive'
 (target/'plugins.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
-# This payload is immutable; its old installer lock references the removed duplicate archives.
+
 for name in ['package-lock.json','使用说明.md']:
  p=target/name
  if p.exists():remove(p,'superseded-installation-metadata')

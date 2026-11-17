@@ -1,4 +1,3 @@
-/** 在外部 JSON 输入边界接纳一个对象。 */
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("INVALID_PAYLOAD");

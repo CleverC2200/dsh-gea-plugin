@@ -1,4 +1,3 @@
-/** One read scope for delivery metadata, Git objects, source and canonical artifact validation. */
 import { realpath, lstat, readFile } from "node:fs/promises";
 import { resolve, relative, isAbsolute, dirname, basename, join } from "node:path";
 const fail = (code) => {
@@ -16,7 +15,7 @@ const within = (root, path) => {
   const value = relative(root, path);
   return value !== ".." && !value.startsWith("../") && !isAbsolute(value);
 };
-// Resolve missing persistent directories from the closest real ancestor without creating or walking them.
+
 async function persistentLocation(path) {
   const suffix = [];
   let ancestor = path;
@@ -64,8 +63,7 @@ export async function createReadScope(root, persistentRefs = []) {
     guard(lexical, traverse);
     const physical = await realpath(lexical);
     guard(physical, traverse);
-    // realpath cannot expose other hardlink names. Do not read or traverse a
-    // file whose independent scope cannot be proved without scanning Session.
+
     const info = await lstat(physical);
     if (info.isFile() && info.nlink !== 1) fail("INTEGRITY_MULTILINK_UNVERIFIABLE");
     return physical;

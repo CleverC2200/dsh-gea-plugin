@@ -1,4 +1,3 @@
-/** Run current Manage registrations and GEA execution against a caller-owned HTTP fixture. */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
@@ -104,7 +103,7 @@ export async function currentMcp(t, options = {}) {
   await tools;
   const runtime = options.prompts ? await mkdtemp(join(tmpdir(), "knowledge-runtime-")) : undefined;
   const business = new Business({
-    ...(runtime ? { runtimeDir: runtime } : {}),
+    runtimeDir: runtime ?? tmpdir(),
     geaBaseUrl: "https://mcp.fixture.invalid",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,

@@ -41,8 +41,7 @@ async function requestFixture(
 ) {
   const work = await mkdtemp(join(tmpdir(), "delivery-owner-inputs-"));
   t.after(() => rm(work, { recursive: true, force: true }));
-  // Standalone fixtures run a copy of the production CLI with a test-only Core registry.
-  // The actual scripts/supported-cores.json and fixed production preflight are never changed.
+
   const core = join(work, "fixture-core");
   await mkdir(core);
   await writeFile(join(core, "package.json"), JSON.stringify({ version: coreVersion }));
@@ -82,7 +81,7 @@ async function requestFixture(
       )
       .replace('from "tar"', `from ${JSON.stringify(import.meta.resolve("tar"))}`),
   );
-  // The temporary CLI exercises the production validator with its declared runtime dependency.
+
   await writeFile(
     fixtureEntry,
     cliSource.replace(
@@ -245,7 +244,7 @@ async function requestFixture(
   );
   const input = join(work, "request.json"),
     destination = join(work, "delivery");
-  // Optional peers still need exact publication metadata, not installed tgz inputs.
+
   versions["@changfenhuang/dsh-genui"] = "0.11.3";
   versions["dsh-better-sidebar"] = "0.24.1";
   await writeFile(
@@ -927,6 +926,18 @@ test("RC2 delivery retains upstream, private and company Core identities", async
     { head: "6f88c3ea2d266ba1825d88bab10d92479a6ffde8", version: "0.2.0-rc.2" },
     { head: "0337d907d0c1305edfa0c915886a203e5e55539d", version: "0.2.0-rc.2" },
     { head: "a0c0d2ff884b1808eccb9bb254a1659281364d7d", version: "0.2.0-rc.2" },
+    { head: "6156856b3a33ad2d408c2cf8162df1b32371c3d7", version: "0.2.0-rc.2" },
+    { head: "e00863fb9a48745b292a1f61beb547cc79dfbf8f", version: "0.2.0-rc.2" },
+    { head: "863cda8787cd97dfef0f2b438a705b155299e74f", version: "0.2.0-rc.2" },
+    { head: "46484a2f10acd1732d6b2d99cda7bc2797d7dfbf", version: "0.2.0-rc.2" },
+    { head: "691896b52ad9fa7b8b75fa1ba2079223e422df79", version: "0.2.0-rc.2" },
+    { head: "56437408c8b4ef60413f537e1124cebc41906fd4", version: "0.2.0-rc.2" },
+    { head: "447f4c9244face209cce4b770a3a23acfaa3a374", version: "0.2.0-rc.2" },
+    { head: "6b4d3154ceb92494b77b4ae95b132525a298b629", version: "0.2.0-rc.2" },
+    { head: "9111f88ddafc1a2a7b8a373ecb44de54b16895a1", version: "0.2.0-rc.2" },
+    { head: "0accab310546c1bc8d3ad46b8803dcbcfaa02477", version: "0.2.0-rc.2" },
+    { head: "aa3dd81d5bce663ce74f38cce9a60c0a76bb2d87", version: "0.2.0-rc.2" },
+    { head: "8cc49e9b5c5ddf3751af2f6fb21276513a14bf9b", version: "0.2.0-rc.2" },
   ]);
   assert.match(
     await readFile(join(fixture.destination, "INSTALL.md"), "utf8"),

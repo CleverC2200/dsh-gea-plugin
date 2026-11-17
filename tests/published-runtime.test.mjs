@@ -24,7 +24,7 @@ test("fixed Core and workbench resolve while ordinary patches preserve the offic
     findSupportedCore({ head: current.adaptation, version: current.version }),
     "the default deployment adaptation must remain registered",
   );
-  // The deployment default and the official CI axis have separate registered identities.
+
   const core = await readSupportedCore(coreRoot);
   assert.equal(core.id, undefined, "a private adaptation cannot pass as an official Core axis");
   assert.deepEqual(

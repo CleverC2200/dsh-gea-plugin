@@ -4,8 +4,6 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-// Hold the iframe's status request until the Host moves from A to B, while its
-// parent still carries A's last confirmed projection.
 test(
   "a late workbench status response cannot mix another user's roles with the projected identity",
   {
@@ -114,8 +112,7 @@ test(
       "roles and scope must come from the same Host status",
     );
     holdIdentity = false;
-    // Identity changes revoke the old owner and can replace its iframe while
-    // this read is in flight. Retry the read against the current frame owner.
+
     await expect(async () => {
       assert.equal((await projected())?.scope, authorityB.scope);
     }).toPass({ timeout: 15000 });

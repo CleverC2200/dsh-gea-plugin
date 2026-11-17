@@ -30,6 +30,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
 const { Business, createCapabilityRegistry } = module.exports;
 function fixture(t, maxRequests = 0) {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://fixture.invalid",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,

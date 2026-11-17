@@ -126,7 +126,7 @@ test(
         name: "打开 纠偏客户 调整明细",
         exact: true,
       });
-      const input = frame.getByRole("spinbutton", { name: "追加/追减 123", exact: true });
+      const input = frame.getByRole("spinbutton", { name: "确认计划量 123", exact: true });
       if (
         !(await input.isVisible()) &&
         (await button.locator("[data-expanded]").getAttribute("data-expanded")) !== "true"
@@ -146,11 +146,11 @@ test(
       const initial = service.detail();
       const initialActions = actionRequests(app).length;
       const city = await open("region");
-      await expect(city.input).toHaveValue("0");
+      await expect(city.input).toHaveValue("32");
       const skuRow = frame.getByRole("row").filter({ hasText: "冻结基准SKU" }).last();
       await expect(skuRow.getByRole("cell").nth(1).locator("span")).toHaveText("30");
       await expect(skuRow.getByRole("cell").nth(1).locator("small")).toHaveText("¥60");
-      await city.input.fill("8");
+      await city.input.fill("38");
       await expect
         .poll(async () => {
           const result = await app.rpc("sales-plan/draft", {
@@ -167,13 +167,13 @@ test(
       assert.equal(service.detail().currentVersion.status, 1);
       await city.button.click();
       await city.button.click();
-      await expect(city.input).toHaveValue("8");
+      await expect(city.input).toHaveValue("38");
       await selectCustomer(frame);
       const current = frame.getByTestId("regional-approval-stage-region");
       await current.click();
       await expect(current).toHaveAttribute("aria-pressed", "true");
       await expect(customerRow(frame).getByRole("checkbox")).toBeChecked();
-      await expect(city.input).toHaveValue("8");
+      await expect(city.input).toHaveValue("38");
       await approve(1);
       assert.equal(service.detail().skus[0].regionAdjAddQty, "8");
       assert.equal(service.detail().skus[0].regionAdjAddAmount, "16.00");
@@ -186,23 +186,20 @@ test(
       assert.equal(service.detail().skus[0].provinceConfirmedAmount, "76");
 
       const area = await open("area");
-      await area.input.fill("-39");
+      await area.input.fill("-1");
       await expect(frame.getByText("暂存失败", { exact: true })).toBeVisible();
       const beforeNegative = actionRequests(app).length;
       await selectCustomer(frame);
       const through = frame.getByRole("button", { name: "通过", exact: true });
       await through.click();
-      await expect(
-        frame
-          .getByRole("alert")
-          .filter({ hasText: "操作请求失败且未更新本地状态；请刷新权威队列后再决定。" })
-          .first(),
-      ).toBeVisible();
+      const blocked = frame.getByRole("dialog", { name: "处理结果", exact: true });
+      await expect(blocked).toContainText("数量");
+      await blocked.getByRole("button", { name: "关闭", exact: true }).click();
       await expect(through).toBeEnabled();
       assert.equal(actionRequests(app).length, beforeNegative);
       assert.equal(service.detail().currentVersion.status, 3);
       assert.equal(service.writes.length, 2);
-      await area.input.fill("-3");
+      await area.input.fill("35");
       await approve(3);
       assert.equal(service.detail().skus[0].areaConfirmedQty, "35");
       assert.equal(service.detail().skus[0].areaConfirmedAmount, "70");

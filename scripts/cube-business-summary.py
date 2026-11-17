@@ -14,31 +14,25 @@ import yaml
 VERSION = "business-summary-20260927"
 MODELS = ("agents_sales_plan_detail_mi", "agents_scm_inventory_age", "agents_scm_cust_inventory_daily")
 
-
 def col(name):
     return '{CUBE}."' + name + '"'
-
 
 def measure(name, title, sql, kind, unit, description):
     return dict(name=name, title=title, sql=sql, type=kind, public=True,
                 description=description, meta=dict(unit=unit, semantic_version=VERSION))
 
-
 def distinct(name, title, column, unit, description):
     return measure(name, title, col(column), "count_distinct", unit, description)
-
 
 def missing(name, title, columns):
     condition = " OR ".join(col(c) + " IS NULL" for c in columns)
     return measure(name, title, "CASE WHEN " + condition + " THEN 1 ELSE 0 END",
                    "sum", "行", "筛选范围内任一指定源字段为 NULL 的记录数；缺失不补零。")
 
-
 def guarded(name, title, column, checks, unit, description):
-    # Aggregate the physical source only after validating each result group's scope.
+
     sql = "CASE WHEN " + " AND ".join(checks) + " THEN SUM(" + col(column) + ") ELSE NULL END"
     return measure(name, title, sql, "number", unit, description)
-
 
 def additions(name):
     if name == MODELS[0]:
@@ -88,7 +82,6 @@ def additions(name):
         ]
     raise ValueError(name)
 
-
 def transform(name, source):
     before = yaml.safe_load(source)
     cube = before["cubes"][0]
@@ -113,7 +106,6 @@ def transform(name, source):
     assert yaml.safe_load(result) == expected, "Existing model changed"
     return result
 
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", type=Path, required=True)
@@ -133,7 +125,6 @@ def main():
                              addedMeasures=[m["name"] for m in additions(name)]))
     (args.output / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(manifest, ensure_ascii=False))
-
 
 if __name__ == "__main__":
     main()

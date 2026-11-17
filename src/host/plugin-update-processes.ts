@@ -63,7 +63,7 @@ export function previousPackageProcessesStopped(profile: string, operation: Plug
     )
   );
 }
-/** Observe the public runner's durable run record. A missing record is not a stopped-tree proof. */
+
 export async function observeProfilePackageProcesses(profile: string) {
   const directory = join(profile, ".plugin-manager"),
     filename = join(directory, "run.json");

@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -23,6 +24,7 @@ new Function("require", "module", "exports", out.outputFiles[0].text)(
 const { Business, registerGeaTools } = m.exports;
 function fixture(t) {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.example.test",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,
@@ -83,5 +85,3 @@ test("success evidence survives a whole-turn stop but is cleared on a new questi
   f.business.logout({});
   assert.equal(f.business.successfulPlanEvidence("one").length, 0);
 });
-
-// Current MCP execution and server-shaped requests are verified by current-mcp-tools.test.mjs.

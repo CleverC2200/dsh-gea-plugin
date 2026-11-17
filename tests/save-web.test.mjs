@@ -134,6 +134,7 @@ test(
             versionId: "v",
             fromStatus: 4,
             toStatus: 4,
+            approvalRole: "category",
             replayed: false,
             requestId: log.requestId,
             traceId: "trace",

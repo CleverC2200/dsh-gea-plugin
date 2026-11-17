@@ -1,4 +1,3 @@
-/** Read-only admission inputs for the disposable Window fixture. */
 import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";

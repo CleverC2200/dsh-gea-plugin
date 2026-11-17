@@ -1,4 +1,3 @@
-/** Verify the existing clean-source/frozen-assets contract for the owned Workbench build. */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFile, readdir, realpath, readlink, lstat, symlink, mkdir, cp } from "node:fs/promises";
@@ -69,7 +68,6 @@ process.stdout.write(JSON.stringify(orderWorkbenchSourceConfig(JSON.parse(readFi
   );
 }
 
-/** Bind the fixed Workbench reader to the already admitted GEA authority without copying it. */
 export async function prepareWorkbenchGeaAuthority({ workbench, gea }) {
   const target = await realpath(gea),
     sibling = resolve(dirname(workbench), "dsh-gea-plugin");
@@ -118,8 +116,18 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     )
       continue;
     if (line.startsWith("?? ") && file.startsWith("lib/types/") && file.endsWith(".d.ts")) {
-      // Declaration emission adds regular files; lstat never follows external targets.
       if ((await lstat(join(prepared, file))).isFile()) continue;
+    }
+    if (line.startsWith("?? ") && file === "lib/query-scheduler.js") {
+      const output = join(prepared, file);
+      const expected = await frozenFileBytes(source, head, "business/shared/query-scheduler.js");
+      if (
+        expected &&
+        (await lstat(output)).isFile() &&
+        (await realpath(output)) === output &&
+        expected.equals(await readFile(output))
+      )
+        continue;
     }
     if (
       line.startsWith("?? ") &&
@@ -159,7 +167,7 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      /^lib\/business\/(?:inventory-(?:aqkc|apsplan|fc|customer|orderfulfillment|orderworkbench)\/skills\/|inventory-orderfulfillment\/(?:agent-prompt\.md|SOURCE\.json|README\.md)$)/.test(
+      /^lib\/business\/(?:inventory-(?:aqkc|apsplan|fc|qll|customer|orderfulfillment|orderworkbench)\/skills\/|inventory-qll\/insight-prompt\.md$|inventory-orderfulfillment\/(?:agent-prompt\.md|SOURCE\.json|README\.md)$)/.test(
         file,
       ) &&
       manage
@@ -167,7 +175,10 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
       const owner = await realpath(manage.path);
       if (!/^[a-f0-9]{40}$/.test(manage.head) || git(owner, "rev-parse", "HEAD") !== manage.head)
         throw Error("QUALITY_WORKBENCH_MANAGE_SOURCE_MISMATCH");
-      const resource = file.replace(/^lib\/business\//, "business-resources/");
+      const resource =
+        file === "lib/business/inventory-qll/insight-prompt.md"
+          ? "business-resources/inventory-qll/skills/qll/insight-rules.md"
+          : file.replace(/^lib\/business\//, "business-resources/");
       const entry = git(owner, "ls-tree", manage.head, "--", resource);
       const original = join(owner, resource),
         output = join(prepared, file);
@@ -237,7 +248,7 @@ export async function verifyPreparedWorkbench({ source, prepared, head, manage, 
     throw Error("QUALITY_WORKBENCH_ASSET_MISMATCH");
   return current;
 }
-/** Keep publishable assets separate from the prepared worktree's Git metadata and dependency store. */
+
 export async function prepareWorkbenchAssets({ source, prepared, head, manage, receipt, assets }) {
   const record = await verifyPreparedWorkbench({
     source,

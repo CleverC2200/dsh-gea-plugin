@@ -113,7 +113,7 @@ test(
       await expect.poll(() => waiting).toBe(true);
       await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("loading");
       const loading = contexts.at(-1);
-      // The existing UI deliberately keeps its last snapshot visible during a same-warehouse query.
+
       assert.match(await frame.locator(".priority-analysis").innerText(), /当前库存[\d,]+件/);
       held.resolve();
       await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("error");

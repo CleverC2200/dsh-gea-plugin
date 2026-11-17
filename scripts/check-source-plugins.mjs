@@ -1,4 +1,3 @@
-/** Check/build this isolated workspace's plugins against the built sibling DSH source. */
 import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -9,7 +8,6 @@ import { corePackages, sourcePlugins } from "./source-composition.mjs";
 import { pathToFileURL } from "node:url";
 import { resolveSourceInputs } from "./source-profile.mjs";
 
-/** Check/build only the declared source inputs; frozen release assets are verified and reused. */
 export async function checkSourcePlugins({
   sources,
   build = false,

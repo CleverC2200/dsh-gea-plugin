@@ -18,7 +18,6 @@ export const fixture = async (
     denySubmit = false,
     endedReject = false,
     readbackFailure = false,
-    serviceReady = true,
     shortened = false,
     unknownOnce = false,
     normalBatch = false,
@@ -29,19 +28,6 @@ export const fixture = async (
 ) => {
   const app = await profile(t, {
     roles: role === "customer" ? [] : [{ code: `sales_plan_${role}_approver`, name: role }],
-    config: serviceReady
-      ? {
-          serviceAccounts: {
-            production: {
-              clientIdEnv: "GEA_SUBMIT_CLIENT",
-              clientSecretEnv: "GEA_SUBMIT_SECRET",
-              tenantId: "0",
-              allowedUserIds: ["9007199254740993"],
-            },
-          },
-        }
-      : {},
-    env: { GEA_SUBMIT_CLIENT: "fixture", GEA_SUBMIT_SECRET: "fixture-secret" },
   });
   const state = new Map([
     [
@@ -77,8 +63,9 @@ export const fixture = async (
   ]);
   const submitted = [];
   const logs = [];
-  let readbackBlocked = readbackFailure;
+  let readbackBlocked = readbackFailure || unknownOnce;
   const submittedQuantities = new Map();
+  const returnedSkus = new Map();
   const submitReceipts = new Map();
   if (normalBatch) state.get(PLAN_B).status = 1;
   const approved = [];
@@ -118,6 +105,7 @@ export const fixture = async (
     price: "12.3400",
     amt: submittedQuantities.get(planId) === "3.000" ? "37.02" : "24.68",
     amtBase: "12.34",
+    ...returnedSkus.get(planId),
   });
   const rowVersions = (planId, current) =>
     current.seq === 1
@@ -295,6 +283,38 @@ export const fixture = async (
       }
       const fromStatus = row.status;
       const rejectTarget = { region: 6, province: 7, area: 8, category: 9 }[role];
+      if (body.action === "REJECT") {
+        const current = sku(planId);
+        const quantityFields = [
+          "qty",
+          "regionConfirmedQty",
+          "provinceConfirmedQty",
+          "areaConfirmedQty",
+        ];
+        const amountFields = [
+          "amt",
+          "regionConfirmedAmount",
+          "provinceConfirmedAmount",
+          "areaConfirmedAmount",
+        ];
+        const target = rejectTarget - 6;
+        const values = { ...returnedSkus.get(planId) };
+        for (const adjustment of body.adjustments ?? []) {
+          assert.equal(adjustment.skuCode, current.skuCode);
+          const baseline = quantityFields
+            .slice(0, target + 1)
+            .reverse()
+            .map((field) => current[field])
+            .find((value) => value != null);
+          const quantity = Number(baseline) + Number(adjustment.adjustQty);
+          assert.ok(Number.isFinite(quantity) && quantity >= 0);
+          values[quantityFields[target]] = String(quantity);
+          values[amountFields[target]] = (quantity * Number(current.price)).toFixed(2);
+        }
+        for (const suffix of ["ConfirmedQty", "ConfirmedAmount", "AdjAddQty", "AdjCutQty"])
+          values[role + suffix] = null;
+        returnedSkus.set(planId, values);
+      }
       row.status = body.action === "REJECT" ? rejectTarget : 2;
       (body.action === "REJECT" ? rejected : approved).push({ planId, body });
       return send({
@@ -310,21 +330,20 @@ export const fixture = async (
       });
     }
     if (path.endsWith("/api/v1/internal/auth/token"))
-      return send({
-        access_token: "fixture-service",
-        token_type: "Bearer",
-        expires_in: 600,
-        scope: "sales-plan:write",
-      });
-    if (path.endsWith("/api/v1/internal/sales-plans")) {
+      throw Error("Employee flow cannot use service credentials");
+    if (path.endsWith("/sales-plan/plans/resubmit")) {
       const body = JSON.parse(req.body);
-      const planId = [...state.entries()].find(
-        ([, row]) => Number(row.dealerCode) === body.cust_code,
-      )?.[0];
+      const planId = [...state].find(([, row]) => row.dealerCode === String(body.cust_code))?.[0];
       assert.ok(planId);
+      assert.equal(req.headers["x-access-token"], "fixture-gea-token");
+      assert.equal(req.headers.authorization, undefined);
+      assert.equal(typeof body.cust_code, "number");
+      const status = returnedStatus - 5;
+      assert.equal(body.status, status);
       submitted.push({
         planId,
         body,
+        status,
         key: req.headers["idempotency-key"],
         requestId: req.headers["x-request-id"],
       });
@@ -334,16 +353,15 @@ export const fixture = async (
         reply({ success: false, message: "提报窗口已关闭，请联系业务管理员" }, 403);
         return true;
       }
-      assert.equal(body.status, returnedStatus - 5);
       assert.equal(body.items.length, 1);
-      assert.equal(body.items[0].price, "12.3400");
+      assert.equal(body.items[0].skuCode, sku(planId).skuCode);
       const row = state.get(planId);
       row.versionId = planId === PLAN_A ? "v-new" : "v-new-b";
       row.seq = 2;
-      row.status = body.status;
+      row.status = status;
       const nodes = shortened ? [1, 3, 4] : [1, 2, 3, 4];
       row.nextActor = { 1: "region", 2: "province", 3: "area", 4: "category" }[
-        nodes.find((node) => node >= body.status)
+        nodes.find((node) => node >= status)
       ];
       submittedQuantities.set(planId, body.items[0].qty);
       logs.push({
@@ -356,7 +374,7 @@ export const fixture = async (
         planId: planId,
         versionId: row.versionId,
         seq: 2,
-        status: body.status,
+        status,
         requestId: req.headers["x-request-id"],
         traceId: "t",
         auditId: "a",
@@ -470,7 +488,6 @@ export const selectPlan = (frame, name = "乌鲁木齐退回区域") =>
     .locator("label.arco-checkbox")
     .click();
 
-/** Quantities are edited in the row; submission dialogs only review the resulting draft. */
 export async function editReturnedQuantity(
   frame,
   quantity,
@@ -483,3 +500,8 @@ export async function editReturnedQuantity(
   await input.fill(quantity);
   await expect(input).toHaveValue(quantity);
 }
+
+export const pendingResultButton = (frame) =>
+  frame
+    .getByRole("button", { name: "核对提交结果", exact: true })
+    .and(frame.locator('button:not([role="dialog"] *)'));

@@ -1,4 +1,3 @@
-/** Authorized Cube and knowledge tools share login-owned MCP transport and keep distinct result contracts. */
 import { readMcpTrace, withMcpTrace } from "./mcp-trace.ts";
 import { KNOWLEDGE_METHODS, knowledgeArguments, knowledgeResult } from "./knowledge-mcp.ts";
 import { randomUUID } from "node:crypto";
@@ -27,7 +26,7 @@ export type GatewayMcpTool = {
 export type GatewayMcpClient = {
   tools(): GatewayMcpTool[];
   call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string>;
-  /** Retained evidence can recheck its original resource grant; new queries do not use this API. */
+
   authorizedResources: GatewayMcpTransport["authorizedResources"];
 };
 
@@ -107,7 +106,7 @@ export async function openGatewayMcp(
     if (!response.ok) throw withMcpTrace(Error(`GEA_MCP_HTTP_${response.status}`), gatewayTrace);
     try {
       const text = await readMcpResponseText(response, callSignal, transport.maxResponseBytes);
-      // Keep original numeric lexemes when structuredContent is serialized for the tool output.
+
       const numbers = new WeakMap<object, Map<string, string>>();
       const parse = (text: string): unknown =>
         JSON.parse(
@@ -153,9 +152,7 @@ export async function openGatewayMcp(
           let value: unknown;
           try {
             value = parse(text);
-          } catch {
-            /* Explanatory text is not business JSON. */
-          }
+          } catch {}
           textValues.set(text, value);
         }
         return textValues.get(text);

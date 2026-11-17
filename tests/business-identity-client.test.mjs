@@ -75,6 +75,7 @@ test("the read-only identity route exposes configured environment choices withou
   assert.deepEqual(await response.json(), {
     scope: null,
     subject: null,
+    pagesReady: true,
     status: {
       environment: "test",
       environments: ["production", "test"],
@@ -571,4 +572,41 @@ test("a stalled startup request still aborts after five seconds within the start
   assert.equal(signal.aborted, true);
   assert.equal(reader.getSnapshot().state, "unknown");
   assert.equal(reader.getSnapshot().error, undefined);
+});
+
+test("page capability readiness notifies the existing projection without changing the business identity", async (t) => {
+  const previousFetch = globalThis.fetch,
+    previousWindow = globalThis.window;
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    globalThis.window = previousWindow;
+  });
+  globalThis.window = new EventTarget();
+  let ready = false,
+    notifications = 0,
+    identityChanges = 0;
+  window.addEventListener("gea-business-identity-changed", () => identityChanges++);
+  globalThis.fetch = async () =>
+    Response.json({
+      scope: "same-scope",
+      subject: "same-user",
+      pagesReady: ready,
+      status: {
+        environment: "production",
+        authenticated: true,
+        loginState: "authenticated",
+        user: null,
+      },
+    });
+  const reader = createBusinessIdentityReader();
+  t.after(reader.subscribe(() => notifications++));
+  await reader.refresh();
+  assert.equal(reader.getSnapshot().pagesReady, false);
+  ready = true;
+  await reader.refresh();
+  assert.equal(reader.getSnapshot().pagesReady, true);
+  assert.equal(notifications, 2);
+  assert.equal(identityChanges, 0);
+  ready = "invalid";
+  await assert.rejects(reader.refresh(), { code: "IDENTITY_INVALID_RESPONSE" });
 });

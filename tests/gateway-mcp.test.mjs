@@ -1,5 +1,7 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { build } from "esbuild";
 const { outputFiles } = await build({
   entryPoints: ["src/host/gateway-mcp.ts"],
@@ -24,6 +26,105 @@ const session = () => ({
     },
     delegationToken: "delegation-secret",
   },
+});
+
+test("MCP HTTP sends carry distinct request IDs through handshake, reconnect and resources", async (t) => {
+  const received = [];
+  let generation = 0;
+  let toolAttempts = 0;
+  const server = createServer(async (request, response) => {
+    try {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks).toString());
+      received.push({ path: request.url, headers: request.headers, body });
+      response.setHeader("Content-Type", "application/json");
+      response.setHeader("X-Request-Id", request.headers["x-request-id"] ?? "missing");
+      if (request.url.endsWith("/session")) return response.end(JSON.stringify(session()));
+      if (request.url.endsWith("/resources"))
+        return response.end(JSON.stringify({ success: true, resources: [] }));
+      let result = {};
+      if (body.method === "initialize") {
+        response.setHeader("MCP-Session-Id", `transport-${++generation}`);
+        result = { protocolVersion: body.params.protocolVersion };
+      } else if (body.method === "notifications/initialized") {
+        response.statusCode = 202;
+        return response.end();
+      } else if (body.method === "tools/list") {
+        result = {
+          tools: [{ name: "read", _meta: { sourceType: "MCP", sourceCode: "read-service" } }],
+        };
+      } else if (body.method === "tools/call") {
+        if (++toolAttempts === 1) {
+          response.statusCode = 404;
+          return response.end();
+        }
+        result = { content: [{ type: "text", text: "ok" }] };
+      }
+      response.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
+    } catch (error) {
+      response.statusCode = 500;
+      response.end(String(error));
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(
+    () =>
+      new Promise((resolve) => {
+        server.close(resolve);
+        server.closeAllConnections();
+      }),
+  );
+  const signal = new AbortController().signal;
+  const { GeaRequestCapture } = await import("./helpers/feedback-capture.mjs");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const capture = new GeaRequestCapture(
+    "/unused",
+    () => ({ environment: "test", userId: "u", tenantId: "0", base }),
+    () => base,
+  );
+  const sender = (input, init) => {
+    const headers = new Headers(init.headers);
+    capture.begin(String(input), init.method, headers);
+    return fetch(input, { ...init, headers });
+  };
+  const connection = await prepareGatewayMcp(base, auth, consumer, signal, 3000, sender);
+  const rpc = async (id, method, params) => {
+    const response = await connection.fetch(connection.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2025-11-25",
+        "X-Request-Id": "must-not-reuse-caller-id",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", ...(id ? { id } : {}), method, params }),
+    });
+    assert.ok(response.ok);
+    assert.equal(response.headers.get("X-Request-Id"), received.at(-1).headers["x-request-id"]);
+    return response.status === 202 ? response.text() : response.json();
+  };
+  await rpc("init", "initialize", { protocolVersion: "2025-11-25" });
+  await rpc(null, "notifications/initialized");
+  await rpc("list", "tools/list", {});
+  const result = await rpc("tool", "tools/call", { name: "read", arguments: { query: "x" } });
+  assert.equal(result.result.content[0].text, "ok");
+  await connection.authorizedResources("read", signal);
+  assert.equal(received.length, 9);
+  const ids = received.map((item) => item.headers["x-request-id"]);
+  for (const id of ids)
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(new Set(ids).size, received.length);
+  const attempts = received.filter((item) => item.body.method === "tools/call");
+  assert.equal(attempts.length, 2);
+  assert.deepEqual(attempts[0].body, attempts[1].body);
+  assert.equal(attempts[1].headers["mcp-session-id"], "transport-2");
+  assert.deepEqual(attempts[1].body.params.arguments, { query: "x" });
+  assert.equal(attempts[1].body.params._meta.mcpCode, "read-service");
+  assert.equal(received[0].headers["x-access-token"], auth.token);
+  for (const item of received.slice(1)) assert.equal(item.headers["x-access-token"], undefined);
+  for (const item of received)
+    t.diagnostic(`${item.body.method ?? item.path}: X-Request-Id=${item.headers["x-request-id"]}`);
 });
 
 test("stopping a setup or request does not poison the retained login transport", async () => {
@@ -95,7 +196,7 @@ test("creates authorized session and isolates trusted meta from business argumen
     1000,
     fake,
   );
-  assert.equal(calls[0].init.headers["X-Access-Token"], "login-secret");
+  assert.equal(new Headers(calls[0].init.headers).get("X-Access-Token"), "login-secret");
   const create = JSON.parse(calls[0].init.body);
   assert.equal(create.consumerCode, "test-agent");
   assert.equal(create.tenantId, undefined);
@@ -135,7 +236,6 @@ test("creates authorized session and isolates trusted meta from business argumen
 });
 
 test("rejects denied, incomplete and wrong-consumer sessions despite HTTP success", async () => {
-  // 权限没开是业务状态（AGENT_ACCESS_DENIED），其余是协议级拒绝（SESSION_REJECTED）。
   const cases = [
     [(p) => (p.result.accessDecision.allowed = false), /AGENT_ACCESS_DENIED/],
     [(p) => (p.result.delegationToken = ""), /SESSION_REJECTED/],
@@ -223,6 +323,7 @@ test("Business login notifications and transport capabilities follow logout and 
   )(createRequire(import.meta.url), module, module.exports);
   const { Business } = module.exports;
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: {
       production: "https://gea.test",
       test: "https://test.gea.test",
@@ -646,7 +747,7 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
     ),
     (error) => error.code === "AGENT_ACCESS_DENIED" && /无权访问/.test(error.message),
   );
-  // 会话"形状不对"（不是权限问题）仍然是协议级错误。
+
   await assert.rejects(
     prepareGatewayMcp(
       "https://gea.test",
@@ -672,8 +773,6 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
 });
 
 test("HTTP 429 按 Retry-After 给出等待建议，不当作连接坏了", async () => {
-  // 规约 §14：限流要么回 429 + Retry-After（REST /call），要么在 200 的业务信封里回；
-  // 两种情况都要给"等多久"，并且明确不能原样立刻重试。
   let calls = 0;
   const connection = await prepareGatewayMcp(
     "https://gea.test",
@@ -715,12 +814,12 @@ test("HTTP 429 按 Retry-After 给出等待建议，不当作连接坏了", asyn
       assert.match(error.message, /GEA_MCP_RATE_LIMITED/);
       assert.match(error.message, /等 3 秒再试/);
       assert.equal(error.message.includes("upstream-secret"), false);
-      // 限流不是"重新登录"能修的，别给那条误导建议。
+
       assert.equal(error.message.includes("请检查连接或重新登录"), false);
       assert.equal(error.retryable, true);
       return true;
     },
   );
-  // 429 不做传输层自动重试（规约：不原样立刻重试，由调用方按等待时间决定）。
+
   assert.equal(calls, 1);
 });

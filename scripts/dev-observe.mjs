@@ -1,4 +1,3 @@
-/** Opt-in, local GEA measurements. Never schedules work or reuses build results. */
 import { spawn, execFileSync } from "node:child_process";
 import {
   appendFile,
@@ -86,7 +85,6 @@ export async function rotate(
   let total = runs.reduce((n, r) => n + r.info.size, 0);
   let removed = 0;
   for (const run of runs.sort((a, b) => a.info.mtimeMs - b.info.mtimeMs)) {
-    // Incomplete/active files are never removed by retention.
     if (!run.end || (now - run.info.mtimeMs <= maxAgeMs && total <= maxBytes)) continue;
     const deleted = await safe(async () => {
       await unlink(run.path);
@@ -145,7 +143,7 @@ async function space(cwd, enabled) {
   if (!enabled) return null;
   const disk = await safe(() => statfs(cwd));
   const directories = {};
-  // Explicit, project-local paths only; no shared-store or whole-machine scan.
+
   for (const name of ["node_modules", "lib", ".runtime/packages"]) {
     directories[name] = await safe(async () => {
       const info = await lstat(join(cwd, name));
@@ -224,8 +222,7 @@ export async function runObserved({
   let requestedSignal = null;
   let tail = "";
   let actualVersion = null;
-  // In a TTY keep native output behavior. Non-TTY output is streamed verbatim;
-  // only bounded numeric progress fields are retained, never terminal content.
+
   const child = spawn(command, args, {
     cwd,
     detached: process.platform !== "win32",
@@ -260,9 +257,7 @@ export async function runObserved({
         try {
           if (process.platform === "win32") child.kill(signal);
           else process.kill(-child.pid, signal);
-        } catch {
-          /* already exited */
-        }
+        } catch {}
       },
     ]),
   );

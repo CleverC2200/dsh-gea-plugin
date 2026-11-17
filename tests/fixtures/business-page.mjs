@@ -11,7 +11,6 @@ import {
   WELCOME_NOTICE_VERSION,
 } from "../../../../official-latest-standard/packages/client/ui-settings-models/src/onboarding-copy.ts";
 
-/** Read only Core's public, redacted settings view; acknowledgement still happens through Continue. */
 async function welcomeNoticeAcknowledged(page) {
   const response = await page.request.post(new URL("/api/settings/describe", page.url()).href, {
     maxRetries: 2,
@@ -33,7 +32,6 @@ async function welcomeNoticeAcknowledged(page) {
   return welcome.value?.[WELCOME_NOTICE_ACK_FIELD] === WELCOME_NOTICE_VERSION;
 }
 
-/** Wait for Core's asynchronous first-run decision; already acknowledged restarts need no dialog. */
 export async function preparePageStartup(page) {
   const notice = page.getByRole("dialog", { name: /内测声明|预览版说明/ });
   const proceed = notice.getByRole("button", { name: "继续", exact: true });
@@ -71,7 +69,6 @@ export async function preparePageStartup(page) {
   await notice.waitFor({ state: "hidden" });
 }
 
-/** Follow the same public company menu as a user; the Document owns its real frame. */
 export async function openBusinessPage(page, id) {
   await showBusinessMenu(page);
   await page.locator(`[data-gea-business-entry="${id}"]`).click();
@@ -91,7 +88,6 @@ export async function openSalesPlan(page) {
   return salesPlanFrame(page);
 }
 
-/** Authenticated business reads wait for the Session association and its current page owner. */
 export async function openReadySalesPlan(page) {
   await showBusinessMenu(page);
   const ownerReady = waitForNativeOwner(page, "gea-proof", "gea-readonly");
@@ -125,7 +121,6 @@ export async function openWorkbenchPage(page, label) {
     .click();
 }
 
-/** The public Workbench loader configuration belongs to this isolated profile only. */
 export function prepareWorkbenchHtmlRoots(roots) {
   return async ({ runtime }) => {
     const directory = resolve(runtime, "home/profiles/plugin-split-validation");

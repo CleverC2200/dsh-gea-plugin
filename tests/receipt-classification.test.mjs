@@ -7,7 +7,6 @@ import { zstdCompressSync } from "node:zlib";
 import { readSession } from "./profile.mjs";
 import { assertReceiptMessages } from "./fixtures/receipt-skill-catalog.mjs";
 
-// Independent resource declarations, never captured from a Session or model request.
 const entries = JSON.parse(
   await readFile(new URL("./fixtures/receipt-catalog-declaration.json", import.meta.url), "utf8"),
 );

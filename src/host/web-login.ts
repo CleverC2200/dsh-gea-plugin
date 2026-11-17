@@ -1,4 +1,3 @@
-/** GEA Host persists its login inside the current profile without exposing credentials to the browser. */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Business } from "./business.ts";

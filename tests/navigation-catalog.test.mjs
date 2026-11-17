@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -20,6 +21,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
 
 function fixture(t, config = {}) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://catalog.fixture.invalid/gea",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,
@@ -105,8 +107,8 @@ test("catalog reads the full authorized market with Host credentials independent
   for (const { init } of requests) {
     assert.equal(init.method, "GET");
     assert.equal(init.body, undefined);
-    assert.equal(init.headers["X-Access-Token"], "catalog-fixture-token");
-    assert.equal(init.headers["X-Tenant-Id"], "7");
+    assert.equal(new Headers(init.headers).get("X-Access-Token"), "catalog-fixture-token");
+    assert.equal(new Headers(init.headers).get("X-Tenant-Id"), "7");
   }
 });
 

@@ -1,27 +1,27 @@
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
-import { fixture, captureEvidence, selectPlan } from "./fixtures/returned-review.mjs";
+import {
+  fixture,
+  captureEvidence,
+  selectPlan,
+  pendingResultButton,
+} from "./fixtures/returned-review.mjs";
 
-test(
-  "service configuration unavailable permits review but blocks submission",
-  { timeout: 90000 },
-  async (t) => {
-    const { frame, page, app, submitted } = await fixture(t, {
-      serviceReady: false,
-    });
-    await selectPlan(frame);
-    await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
-    const dialog = frame.getByRole("dialog", {
-      name: "确认修改并重提",
-      exact: true,
-    });
-    await expect(dialog).toContainText("当前环境尚未配置服务提报通道，请联系管理员完成接入配置。");
-    await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeDisabled();
-    await captureEvidence(page, app, "submission-unavailable");
-    assert.equal(submitted.length, 0);
-  },
-);
+test("employee can resubmit without local service configuration", { timeout: 90000 }, async (t) => {
+  const { frame, page, app, submitted } = await fixture(t);
+  await selectPlan(frame);
+  await frame.getByRole("button", { name: "修改后提交", exact: true }).click();
+  const dialog = frame.getByRole("dialog", {
+    name: "确认修改并重提",
+    exact: true,
+  });
+  await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
+  await expect(dialog).toContainText("提交成功，已核验最新状态。");
+  await captureEvidence(page, app, "employee-without-service-configuration");
+  assert.equal(submitted.length, 1);
+});
 
 test(
   "submission refusal preserves the business reason without another write path",
@@ -79,13 +79,12 @@ test("logout revokes a hidden pending submission", { timeout: 90000 }, async (t)
   await expect(dialog.getByRole("button", { name: "确认重提", exact: true })).toBeEnabled();
   await expect(dialog.locator("label.arco-checkbox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "确认重提", exact: true }).click();
-  await expect(dialog).toContainText("结果暂时未知");
+  await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-  const resume = frame.getByRole("button", {
-    name: "恢复待处理重提",
-    exact: true,
-  });
+  await expect(dialog).not.toBeVisible();
+  const resume = pendingResultButton(frame);
   await expect(resume).toBeVisible();
+  await captureEvidence(page, app, "hidden-pending-before-logout");
   await app.rpc("logout");
   await expect(resume).not.toBeVisible();
   await expect(frame.getByRole("button", { name: "刷新二维码", exact: true })).toBeVisible();

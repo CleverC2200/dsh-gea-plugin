@@ -1,6 +1,6 @@
 param([switch]$Silent, [string]$Destination, [int]$MaxMinutes=60)
 $ErrorActionPreference='Stop'
-# No process termination, uninstall, security changes, or business-file collection.
+
 if ($Silent -and ($env:GITLAB_CI -ne 'true' -or $env:OS -ne 'Windows_NT')) { throw 'Silent mode is reserved for disposable GitLab Windows CI validation.' }
 if ($Destination -and (-not $Silent -or -not ([IO.Path]::GetFullPath($Destination)).StartsWith(([IO.Path]::GetFullPath($env:TEMP)).TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase))) { throw 'CI destination must be inside TEMP.' }
 $manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'diagnostic-package.json') -Raw | ConvertFrom-Json
@@ -19,12 +19,12 @@ $watch=[Diagnostics.Stopwatch]::StartNew()
 $reason='unknown'; $samples=0; $root=$null; $lastLive=@(); $lastSnapshot=0
 function Save-Json($name,$value) { $value | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $output $name) -Encoding utf8 }
 function Record-Error($stage,$errorRecord) {
-  # Error type is enough to explain missing telemetry; omit paths and identifiers.
+
   @{utc=[DateTime]::UtcNow.ToString('o');stage=$stage;type=$errorRecord.Exception.GetType().FullName;id=($errorRecord.FullyQualifiedErrorId -split ',')[0]} | ConvertTo-Json -Compress | Add-Content -LiteralPath (Join-Path $output 'collection-errors.jsonl') -Encoding utf8
 }
 function Export-Report {
   Save-Json 'result.json' ([ordered]@{schema=2;startedUtc=$started.ToString('o');elapsedMs=$watch.ElapsedMilliseconds;reason=$reason;sampleCount=$samples;installerSha256=$manifest.sha256;rootExited=($root -and $root.HasExited);exitCode=$(if($root -and $root.HasExited){$root.ExitCode}else{$null});liveProcessCount=$lastLive.Count;collectorElevated=$admin;stageFiles=@(Get-ChildItem -LiteralPath $output -Filter 'stages-*.log' | Select-Object -ExpandProperty Name)})
-  # A snapshot is independent of the live files and survives closing the console.
+
   $zip=$output+'-snapshot-'+$watch.ElapsedMilliseconds+'.zip'
   try { Compress-Archive -Path (Join-Path $output '*') -DestinationPath $zip -CompressionLevel Fastest; Write-Host "Report saved: $zip" } catch { Record-Error 'zip' $_; Write-Host "Raw report remains available: $output" }
 }
@@ -38,8 +38,8 @@ try {
   try { $environment.antivirus=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct | Select-Object displayName,productState) } catch { Record-Error 'security-center' $_ }
   try { $environment.defender=Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,BehaviorMonitorEnabled,IoavProtectionEnabled,AntivirusSignatureVersion } catch { Record-Error 'defender' $_ }
   Save-Json 'environment.json' $environment
-  # Optional candidate preflight executes only disposable test files. A failed
-  # transfer probe must stop before touching the user's installed application.
+
+
   if($manifest.transferProbe -or $manifest.directoryProbe){
     $probe=$manifest.transferProbe
     $probeComplete='transfer-probe-pass(\r?\n|$)'
@@ -83,7 +83,7 @@ try {
       $disk=@(); try {$disk=@(Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk | Select-Object Name,DiskReadBytesPersec,DiskWriteBytesPersec,CurrentDiskQueueLength,PercentDiskTime)}catch{Record-Error 'disk-sample' $_}
       [ordered]@{utc=[DateTime]::UtcNow.ToString('o');elapsedMs=$watch.ElapsedMilliseconds;rootExited=$root.HasExited;processes=@($observed | Select-Object Name,ProcessId,ParentProcessId,KernelModeTime,UserModeTime,ReadTransferCount,WriteTransferCount,WorkingSetSize);disk=$disk} | ConvertTo-Json -Depth 6 -Compress | Add-Content -LiteralPath (Join-Path $output 'samples.jsonl') -Encoding utf8
       $samples++
-      # NSIS stage PIDs also identify elevated children if their parent disappears between polls.
+
       foreach($file in @(Get-ChildItem -LiteralPath $output -Filter 'stages-*.log')){
         if($file.BaseName -match '^stages-(\d+)$'){
           $stageId=[int]$Matches[1]
@@ -110,7 +110,7 @@ try {
 } catch {$reason='collector-error';Record-Error 'collector' $_;Write-Host 'Collection encountered an error. Saving available evidence.'}
 finally {
   $watch.Stop()
-  # The fallback is used if elevation does not inherit the diagnostic environment variable.
+
   $fallback=Join-Path $env:TEMP 'GEA-Install-Diagnostics'
   if(Test-Path -LiteralPath $fallback){Get-ChildItem -LiteralPath $fallback -Filter 'stages-*.log' | Where-Object {$_.LastWriteTimeUtc -ge $started} | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $output ('fallback-'+$_.Name))}}
   Export-Report

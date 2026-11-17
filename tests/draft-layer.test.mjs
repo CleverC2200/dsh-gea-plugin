@@ -1,6 +1,3 @@
-/**
- * "改草稿"这一层：页面只声明能力，限流/超时/确认/回执统一在这里。
- */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -16,8 +13,7 @@ const { outputFiles } = await build({
   format: "esm",
 });
 const m = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 
 const request = (overrides = {}) => ({
@@ -30,10 +26,13 @@ const request = (overrides = {}) => ({
 });
 
 test("每一次改动都留下可追溯的回执", () => {
-  const layer = m.createDraftLayer({ id: (() => {
-    let n = 0;
-    return () => "draft-" + ++n;
-  })(), now: () => 1000 });
+  const layer = m.createDraftLayer({
+    id: (() => {
+      let n = 0;
+      return () => "draft-" + ++n;
+    })(),
+    now: () => 1000,
+  });
   const begun = layer.begin(request({ reason: "用户要求把补货量改成 200" }));
   assert.equal(begun.ok, true);
   const receipt = layer.finish(begun.receiptId, { applied: true });
@@ -50,9 +49,16 @@ test("每一次改动都留下可追溯的回执", () => {
 test("失败、超时与被拒也记得下来，不混成同一种结果", () => {
   const layer = m.createDraftLayer();
   const a = layer.begin(request());
-  assert.equal(layer.finish(a.receiptId, { applied: false, error: "ELEMENT_GONE" }).outcome, "failed");
+  assert.equal(
+    layer.finish(a.receiptId, { applied: false, error: "ELEMENT_GONE" }).outcome,
+    "failed",
+  );
   const b = layer.begin(request());
-  assert.equal(layer.finish(b.receiptId, { applied: false, error: "PAGE_TOOL_PENDING", timedOut: true }).outcome, "timeout");
+  assert.equal(
+    layer.finish(b.receiptId, { applied: false, error: "PAGE_TOOL_PENDING", timedOut: true })
+      .outcome,
+    "timeout",
+  );
   const c = layer.begin(request());
   assert.equal(layer.finish(c.receiptId, { applied: false }).outcome, "rejected");
 });
@@ -65,7 +71,7 @@ test("同一会话短时间改太频繁会被挡住", () => {
   assert.equal(blocked.ok, false);
   assert.equal(blocked.code, "DRAFT_RATE_LIMITED");
   assert.match(blocked.reason, /改动太频繁/);
-  // 别的会话不受影响。
+
   assert.equal(layer.begin(request({ sessionId: "session-2" })).ok, true);
 });
 

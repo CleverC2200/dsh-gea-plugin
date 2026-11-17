@@ -1,3 +1,4 @@
+import { mountDesktopUpdateOperations } from "./plugin-update-desktop.ts";
 import { prepareWindowsFileCommit } from "./plugin-update-windows.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-connection";
@@ -16,7 +17,7 @@ import {
 } from "./plugin-update-controller.ts";
 import { readHostPluginModules } from "./plugin-update-runtime.ts";
 import { readPluginUpdateCore } from "./plugin-update-core.ts";
-import { companyPackageNames } from "../shared/plugin-release.mjs";
+import { companyPackageNames, updatablePackageNames } from "../shared/plugin-release.mjs";
 import {
   parseUpdateClientReport,
   updateObject,
@@ -25,7 +26,6 @@ import {
 } from "../shared/plugin-update-wire.ts";
 import type { ClientModuleObservation, PluginUpdateRow } from "../shared/plugin-update-state.ts";
 
-/** The authenticated page reports materialized exports; Host verifies binding and its own ACTIVE facts. */
 export function validateClientObservation(
   raw: unknown,
   binding: { hostProcessIdentity: string; pageIdentity: string; nonce: string; expires: number },
@@ -54,7 +54,6 @@ export function validateClientObservation(
   return report;
 }
 
-/** Mount only authenticated transport routes; GEA business identity is unrelated to plugin installation. */
 export function mountPluginUpdates(
   ctx: Context,
   raw: unknown,
@@ -162,7 +161,24 @@ export function mountPluginUpdates(
             : "UPDATE_CORE_OR_SOURCE_UNVERIFIED";
       }
     })());
-  for (const action of ["status", "check", "update", "update-all", "observed"] as const) {
+  routes.push(
+    mountDesktopUpdateOperations(ctx, async () => {
+      if (!bootReady) throw Error("UPDATE_HOST_STARTING");
+      await ready();
+      if (stopped) throw Error("UPDATE_HOST_CLOSED");
+      if (!controller || !controllerReady) throw Error(diagnostic);
+      return controller;
+    }),
+  );
+  for (const action of [
+    "status",
+    "check",
+    "update",
+    "update-all",
+    "observed",
+    "company-prepare",
+    "company-cancel",
+  ] as const) {
     routes.push(
       ctx.connection.fetch.register({
         path: `/api/gea/plugin-updates/${action}`,
@@ -203,7 +219,11 @@ export function mountPluginUpdates(
                   };
                 }) ?? blocked();
               const value: UpdateClientStatus = {
+                restartReady: controllerReady && controller?.restartReady() === true,
                 revision: Math.max(state?.revision ?? 0, revision),
+                companyUpdate: controllerReady
+                  ? ((await controller?.companyStatus()) ?? null)
+                  : null,
                 items,
                 hostProcessIdentity: pluginUpdateProcessIdentity,
                 challenge: page.nonce,
@@ -216,7 +236,14 @@ export function mountPluginUpdates(
               );
             }
             if (!controller || !controllerReady) throw Error(diagnostic);
-            if (action === "check") {
+            if (action === "company-prepare") {
+              if (Object.keys(payload).length !== 1 || typeof payload.desktopVersion !== "string")
+                throw Error("UPDATE_REQUEST_INVALID");
+              await controller.prepareDesktop(payload.desktopVersion);
+            } else if (action === "company-cancel") {
+              if (Object.keys(payload).length) throw Error("UPDATE_REQUEST_INVALID");
+              await controller.cancelDesktop();
+            } else if (action === "check") {
               if (Object.keys(payload).length) throw Error("UPDATE_REQUEST_INVALID");
               await controller.check(
                 AbortSignal.any([request.signal, lifetime.signal, AbortSignal.timeout(timeout)]),
@@ -226,7 +253,7 @@ export function mountPluginUpdates(
                 Object.keys(payload).length !== 1 ||
                 !Array.isArray(payload.plans) ||
                 !payload.plans.length ||
-                payload.plans.length > companyPackageNames.length
+                payload.plans.length > updatablePackageNames.length
               )
                 throw Error("UPDATE_REQUEST_INVALID");
               const plans = payload.plans.map((rawPlan) => {
@@ -294,12 +321,13 @@ export function mountPluginUpdates(
                   },
                 });
               await controller.reconcileRuntime();
+              await controller.confirmDesktop();
             }
             revision++;
             return Response.json({ ok: true, value: null });
           } catch (error) {
             const code =
-              error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message)
+              error instanceof Error && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.message)
                 ? error.message
                 : "UPDATE_REQUEST_FAILED";
             return Response.json({ ok: false, error: { code } }, { status: 409 });

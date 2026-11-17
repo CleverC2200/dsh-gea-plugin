@@ -5,6 +5,12 @@
     "tests/plugin-release.test.mjs",
     "tests/plugin-release-preflight.test.mjs"
   ],
+  "companionPeerTests": [
+    "tests/optional-companion-manifest.test.mjs",
+    "tests/plugin-release.test.mjs",
+    "tests/plugin-release-preflight.test.mjs",
+    "tests/published-runtime.test.mjs"
+  ],
   "required": [
     "tests/controlled-execution.test.mjs",
     "tests/plugin-sql-cancel.test.mjs",
@@ -20,10 +26,12 @@
     "scripts/*.test.mjs",
     "tests/*.contract.mjs",
     "tests/*.browser.mjs",
+    "scripts/mac-complete-local/ad-hoc.test.mjs",
     "desktop/boot-watch.test.cjs",
     "desktop/client-installer.test.mjs",
     "desktop/company-bootstrap.test.mjs",
     "desktop/company-gea-refresh.test.mjs",
+    "desktop/company-update.test.mjs",
     "desktop/company-resources.test.mjs",
     "desktop/config.test.cjs",
     "desktop/copy-graph.test.mjs",
@@ -48,12 +56,15 @@
     "desktop/recovery.test.mjs",
     "desktop/runtime-cookies.test.cjs",
     "desktop/runtime-resolution.test.mjs",
+    "desktop/runtime-start.test.mjs",
     "desktop/startup-copy.test.cjs",
     "desktop/updates.test.mjs",
     "desktop/verify-client-artifacts.test.cjs",
     "scripts/windows-complete-local/input.test.mjs",
     "scripts/windows-complete-local/core-cache.test.mjs",
-    "scripts/windows-complete-local/signing.test.mjs"
+    "scripts/windows-complete-local/signing.test.mjs",
+    "scripts/mac-complete-local/signing.test.mjs",
+    "scripts/desktop-release.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -64,6 +75,12 @@
     "scripts/run-quality-ci.test.mjs"
   ],
   "sourceFixtures": {
+    "scripts/desktop-release.test.mjs": {
+      "dependencies": true
+    },
+    "scripts/mac-complete-local/signing.test.mjs": {
+      "dependencies": false
+    },
     "scripts/source-preparation.test.mjs": {
       "dependencies": false
     },
@@ -135,9 +152,78 @@
     },
     "tests/aps-default-policy.test.mjs": {
       "dependencies": false
+    },
+    "scripts/check-workbench.test.mjs": {
+      "dependencies": false
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:host/(?:deployment-transport|fc-dms-default|business)\\.ts|shared/environments\\.(?:js|d\\.ts))$",
+      "tests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ],
+      "sourceTests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^(?:src/detection-(?:backend|whitelist)\\.mjs$|services/warning-executor/)",
+      "tests": ["tests/warning-storage.test.mjs", "tests/business-page-grant.test.mjs"],
+      "sourceTests": ["tests/warning-storage.test.mjs", "tests/business-page-grant.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/warning-storage\\.ts$",
+      "tests": ["tests/warning-storage.test.mjs"],
+      "sourceTests": ["tests/warning-storage.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/gateway-(?:mcp|session)\\.ts$",
+      "tests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/gateway-mcp.test.mjs",
+        "tests/prompt-execution-policy.test.mjs",
+        "tests/authorized-cube-loop.test.mjs",
+        "tests/authorized-cube-query.test.mjs",
+        "tests/business-profile-recovery.test.mjs",
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs",
+        "tests/gateway-handshake.test.mjs",
+        "tests/inventory-role.test.mjs"
+      ],
+      "sourceTests": [
+        "tests/knowledge-mcp.test.mjs",
+        "tests/current-mcp-tools.test.mjs",
+        "tests/cube-direct-mcp.test.mjs",
+        "tests/cube-new.test.mjs",
+        "tests/gateway-mcp.test.mjs",
+        "tests/prompt-execution-policy.test.mjs",
+        "tests/authorized-cube-loop.test.mjs",
+        "tests/authorized-cube-query.test.mjs",
+        "tests/business-profile-recovery.test.mjs",
+        "tests/controlled-execution.test.mjs",
+        "tests/business-page-grant.test.mjs",
+        "tests/gateway-handshake.test.mjs",
+        "tests/inventory-role.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/gateway-session\\.ts$",
+      "tests": ["tests/html-gateway.test.mjs", "tests/order-sales-confirmation.test.mjs"],
+      "sourceTests": ["tests/html-gateway.test.mjs", "tests/order-sales-confirmation.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/host/gateway-mcp-service\\.ts$",
@@ -167,6 +253,11 @@
         "tests/business-page-grant.test.mjs",
         "tests/gateway-handshake.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^gateway/",
+      "tests": ["tests/memory-gateway.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -380,6 +471,15 @@
     },
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^(?:src/host/service-account\\.ts|tests/service-account\\.test\\.mjs)$",
+      "tests": [
+        "tests/sales-plan-action.test.mjs",
+        "tests/deployment-service-account.test.mjs",
+        "tests/host-config-keychain.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^src/(?:host\\.ts|host/(?:api-log|business|debug-run))",
       "tests": [
         "tests/api-log.test.mjs",
@@ -423,9 +523,10 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^(?:src/(?:host/plugin-update|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)|tests/plugin-update-archive\\.test\\.mjs$)",
+      "pattern": "^(?:src/(?:host/plugin-update|desktop-updates-client|plugin-updates|shared/plugin-update|host/plugin-release|shared/plugin-release)|tests/plugin-update-archive\\.test\\.mjs$)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
+        "tests/plugin-update-restart.test.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
         "tests/plugin-release.test.mjs"
@@ -476,9 +577,10 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^src/(?:client\\.tsx|host/plugin-update|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
+      "pattern": "^src/(?:client\\.tsx|host/plugin-update|desktop-updates-client|plugin-updates|plugin-detail-updates|plugin-update-locales|shared/plugin-update|host/plugin-release|shared/plugin-release)",
       "tests": [
         "tests/plugin-update-controller.contract.mjs",
+        "tests/plugin-update-restart.test.mjs",
         "tests/plugin-update-integration.contract.mjs",
         "tests/plugin-release-source.test.mjs",
         "tests/plugin-release.test.mjs",
@@ -527,6 +629,7 @@
       "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
       "tests": [
         "scripts/delivery-events.test.mjs",
+        "scripts/mac-complete-local/signing.test.mjs",
         "scripts/windows-complete-local/core-cache.test.mjs",
         "scripts/windows-complete-local/input.test.mjs"
       ]
@@ -580,12 +683,18 @@
     },
     {
       "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/desktop-dev\\.mjs$",
+      "tests": ["scripts/desktop-dev.test.mjs"],
+      "sourceTests": ["scripts/desktop-dev.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:plugin-release-preflight|release-preflight|package-source-integrity|deliver-packages)\\.mjs$",
       "tests": ["scripts/deliver-packages.test.mjs", "tests/plugin-release-preflight.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|compile|prepare|shared-cache|cache-report|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/(?:build|baseline)\\.mjs)$",
+      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|compile|prepare|shared-cache|cache-report|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/(?:build|baseline|full-source|ad-hoc(?:\\.test)?)\\.mjs)$",
       "tests": [
         "scripts/windows-complete-local/core-cache.test.mjs",
         "scripts/windows-complete-local/input.test.mjs",
@@ -679,7 +788,13 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|(?:signed|online)-upgrade\\.mjs|prepare-signing\\.ps1)$",
+      "pattern": "^scripts/mac-complete-local/(?:build|full-source|signing(?:\\.test)?|ci-signing)\\.mjs$",
+      "tests": ["scripts/mac-complete-local/signing.test.mjs"],
+      "sourceTests": ["scripts/mac-complete-local/signing.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|prepare-signing\\.ps1)$",
       "tests": [
         "scripts/windows-complete-local/signing.test.mjs",
         "scripts/delivery-events.test.mjs"
@@ -688,9 +803,93 @@
         "scripts/windows-complete-local/signing.test.mjs",
         "scripts/delivery-events.test.mjs"
       ]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:desktop-release(?:\\.test)?|desktop-update-data)\\.mjs$|^scripts/(?:mac-complete-local/full-source|windows-complete-local/build)\\.mjs$",
+      "tests": ["scripts/desktop-release.test.mjs"],
+      "sourceTests": ["scripts/desktop-release.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:cube-business-summary\\.py|deploy-cube-business-summary\\.py|test-cube-business-summary\\.cjs|probe-gea\\.mjs)$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/sync-default-preset\\.mjs$",
+      "tests": ["tests/preset-modes.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/verify\\.mjs$",
+      "tests": ["tests/verify-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^source-comments\\.json$",
+      "tests": ["scripts/source-quality.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/cube-operators\\.ts$",
+      "tests": ["tests/cube-query-guard.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/shared/environments\\.d\\.ts$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/e2e/sidebar\\.spec\\.ts$",
+      "tests": ["tests/sidebar-source-web.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/(?:current-source-loader|native-web-prompt|stock-pages|theme-client)\\.mjs$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/profile-configuration-probe\\.mjs$",
+      "tests": ["tests/model-profile-fixture.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/check-workbench\\.mjs$",
+      "tests": ["scripts/check-workbench.test.mjs"],
+      "sourceTests": ["scripts/check-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/verify-official-input\\.mjs$",
+      "tests": ["scripts/check-workbench.test.mjs"],
+      "sourceTests": ["scripts/check-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:inventory_warehouse_scope|test_fc_plan_template_snapshot|test_fc_summary|test_inventory_warehouse_scope|update-fc-warehouse-exceptions)\\.py$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/feishu-warning-transport\\.mjs$",
+      "tests": ["tests/deployment-transport.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/html-bridge\\.ts$",
+      "tests": ["tests/html-gateway.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/warning-people-request\\.ts$",
+      "tests": ["tests/deployment-transport.test.mjs"]
     }
   ],
   "testOwners": {
+    "desktop/company-update.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/company-bootstrap.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/company-gea-refresh.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/legacy-gea-cleanup.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
@@ -702,6 +901,7 @@
     "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
+    "scripts/desktop-release.test.mjs": ["semver", "yaml"],
     "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
     "scripts/run-quality-ci.test.mjs": ["yaml"]

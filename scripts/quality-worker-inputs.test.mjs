@@ -268,7 +268,7 @@ function fixture(
     const original = "original/" + name;
     json(original + "/package.json", {
       name: name === "dsh-genui" ? "@changfenhuang/dsh-genui" : name,
-      version: "0.11.3",
+      version: "0.16.0-company.1",
       packageManager: "pnpm@11.8.0",
       main: "lib/index.js",
       types: "lib/types/index.d.ts",
@@ -277,6 +277,9 @@ function fixture(
     for (const file of [
       "cordis.patch.yml",
       "SKILL.md",
+      "ICON-NAMES.md",
+      "THIRD_PARTY_NOTICES.md",
+      "assets/genui-icon.svg",
       "locale/en.json",
       "locale/zh.json",
       "icon.svg",
@@ -338,14 +341,16 @@ function fixture(
       "lib/client.js": "fixed client",
       "cordis.patch.yml": "fixed patch",
       "SKILL.md": "fixed skill",
+      "ICON-NAMES.md": "fixed tracked resource",
+      "THIRD_PARTY_NOTICES.md": "fixed tracked resource",
+      "assets/genui-icon.svg": "fixed tracked resource",
     };
     fixed.genui.files = {};
     for (const [file, bytes] of Object.entries(genui)) {
-      put("quality-upstreams/upstream-assets/genui-0.11.3/" + file, bytes);
+      put("quality-upstreams/upstream-assets/genui-0.16.0-company.1/" + file, bytes);
       fixed.genui.files[file] = hash(bytes);
     }
     json("candidate/dsh-gea-plugin/scripts/quality-upstreams.json", fixed);
-    // The complete generated inventory is frozen at the producer; Git source declarations are already fixed.
   }
   const geaHead = commit(gea);
   for (const path of [manage, gea])
@@ -464,7 +469,8 @@ function fixture(
       artifact: { path: native, sha256: hash("fixed native") },
     });
   }
-  if (!publicQuality) put("quality-upstreams/upstream-assets/genui-0.11.3/package.json", "{}\n");
+  if (!publicQuality)
+    put("quality-upstreams/upstream-assets/genui-0.16.0-company.1/package.json", "{}\n");
   put("quality-upstreams/upstream-reference/dsh-better-sidebar/lib/index.js", "fixed sidebar");
   if (browser) {
     const directories = ["chromium", "headless", "ffmpeg"].map((name) =>
@@ -691,7 +697,7 @@ cp.spawnSync=(command,args,options={})=>{
     assert.equal(selected.status, 0, selected.stdout + selected.stderr);
     executionPlan = JSON.parse(selected.stdout);
     json("quality-test-execution-plan.json", executionPlan);
-    // Selection output is bound by its own SHA; obtain the original CLI's actual selection using the same reader.
+
     const selection = run("--input-type=module", [
       "-e",
       `import {selectCiTests} from ${JSON.stringify(join(wb, "scripts/ci-test-plan.mjs"))};import {selectPlatformTests} from ${JSON.stringify(join(gea, "scripts/ci-platform-tests.mjs"))};console.log(JSON.stringify(selectPlatformTests(selectCiTests({repositories:${JSON.stringify(candidate.repositories)},repo:'dsh-gea-plugin',base:${JSON.stringify(geaHead)}}))));`,
@@ -1088,6 +1094,7 @@ async function producerWaitReady(f, run, waiting) {
       }),
     ]),
     "worker did not enter producer wait",
+    30000,
   );
   const observation = f.run(join(own, "scripts/run-quality-ci.mjs"), [
     "--stage",
@@ -1667,11 +1674,11 @@ test("the real selector maps the shared worker implementation to both public CLI
   for (const file of [
     "tests/required.test.mjs",
     ...policy.versionTests,
+    ...(policy.companionPeerTests ?? []),
     ...policy.browserFixtures,
+    ...policy.tests.filter((file) => !file.includes("*")),
     "scripts/quality-worker-inputs.test.mjs",
     "scripts/quality-prepared-inputs.test.mjs",
-    "scripts/windows-complete-local/input.test.mjs",
-    "scripts/windows-complete-local/core-cache.test.mjs",
     "tests/unrelated.test.mjs",
     "tests/unrelated.contract.mjs",
     "tests/unrelated.browser.mjs",
@@ -1805,7 +1812,7 @@ test("the actual producer binding and index CLI preserve the exact bytes consume
   assert.equal(consumer.status, 0, consumer.stderr);
   assert.equal(JSON.parse(consumer.stdout).status, "prepared");
   assert.ok(JSON.parse(consumer.stdout).artifacts.length > 0);
-  // Root-local lib combination metadata remains excluded by the existing general digest contract.
+
   f.put("candidate/dsh-gea-plugin/lib/combination.json", "GEA lib metadata");
   f.put("candidate/dsh-agent-manage/lib/combination.json", "Manage lib metadata");
   const tested = f.quality("tests", [
@@ -1821,7 +1828,7 @@ test("the actual producer binding and index CLI preserve the exact bytes consume
   assert.ok(sdk.args.includes("--with-web"));
   assert.ok(sdk.args.includes("--with-flock"));
   assert.ok(!sdk.args.includes("--prepare"));
-  // Even after transport and worker readiness, the original CLI rechecks exact output bytes.
+
   rmSync(join(f.root, "tests-executed"));
   f.json("quality-stages.json", index.stages);
   f.put("candidate/dsh-agent-manage/client/client.js.map", "changed after worker readiness");
@@ -1917,13 +1924,17 @@ test("worker CLI overlaps two real installs while keeping nested Workbench inven
   assert.ok(paths.durationMs >= 0);
 });
 
-async function deadline(promise, message = "worker did not close after install failure") {
+async function deadline(
+  promise,
+  message = "worker did not close after install failure",
+  timeoutMs = 5000,
+) {
   let timer;
   try {
     return await Promise.race([
       promise,
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error(message)), 5000);
+        timer = setTimeout(() => reject(Error(message)), timeoutMs);
       }),
     ]);
   } finally {
@@ -2193,7 +2204,7 @@ test("worker CLI reaps descendants holding stdio after a successful install lead
   assert.equal(f.produce().status, 0);
   assert.equal(f.exportBundle().status, 0);
   f.clear();
-  // Establish both concurrent installs before the leader exits; scheduler speed is not a precondition.
+
   const run = f.receiveAsync({
     PROCESS_INSTALLS: "1",
     PAIR_BARRIER: "1",

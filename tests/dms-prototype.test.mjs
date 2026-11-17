@@ -1,5 +1,5 @@
-/** Public plugin/page grant fixture only. No listener, profile or external transport. */
 import test from "node:test";
+import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -88,6 +88,11 @@ test("current DMS package registers one Manage resource and mock view grant reje
   });
   let transports = 0;
   const business = {
+    capture: new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => "https://fixture.invalid",
+    ),
     config: {},
     status: () => ({ authenticated: false }),
     pageSessionScope: () => undefined,

@@ -2,6 +2,9 @@ export type CompanyPackageName =
   | "@cleverc2200/dsh-agent-workbench"
   | "dsh-agent-manage"
   | "@cleverc2200/gea-dsh-prototype";
+export type UpdatablePackageName = CompanyPackageName | "@cleverc2200/dsh-personal-memory";
+export const personalMemoryPackageName: "@cleverc2200/dsh-personal-memory";
+export const updatablePackageNames: readonly UpdatablePackageName[];
 export type CoreIdentity = { head: string; version: string };
 export type FixedCore = CoreIdentity & { sdk: Record<string, string> };
 export type PluginManifest = {
@@ -16,7 +19,7 @@ export type PluginManifest = {
 export type PluginRelease = {
   schema: 1;
   updateStrategy?: "suite";
-  name: CompanyPackageName;
+  name: UpdatablePackageName;
   version: string;
   artifact: { url: string; size: number; sha256: string };
   supportedCores: CoreIdentity[];
@@ -55,7 +58,7 @@ export type PluginSuiteUpdatePlan =
   | {
       kind: "blocked";
       code: string;
-      packageName?: CompanyPackageName;
+      packageName?: UpdatablePackageName;
       failures?: CombinationFailure[];
     };
 export function planPluginSuiteUpdate(input: {
@@ -68,8 +71,8 @@ export function findPluginUpdatePath(input: {
   core: FixedCore;
   installed: PluginManifest[];
   releases: PluginRelease[];
-  firstStep?: CompanyPackageName;
-}): CompanyPackageName[] | null;
+  firstStep?: UpdatablePackageName;
+}): UpdatablePackageName[] | null;
 export function projectPluginRelease(input: {
   manifest: PluginManifest;
   artifact: PluginRelease["artifact"];
@@ -91,7 +94,7 @@ export function parseInstalledPluginManifest(
 ): ReturnType<typeof parsePluginManifest>;
 export function comparePluginVersions(left: string, right: string): number;
 export type PluginReleaseReference = {
-  name: CompanyPackageName;
+  name: UpdatablePackageName;
   url: string;
   sha256: string;
 };
@@ -104,6 +107,7 @@ export type PluginChannel = {
   expiresAt: string;
   releases: PluginReleaseReference[];
   companionReleases?: PluginReleaseReference[];
+  optionalReleases?: PluginReleaseReference[];
 };
 export function parsePluginChannel(value: unknown): PluginChannel;
 export function mergePluginChannelRelease(input: {

@@ -1,6 +1,6 @@
 # 官方布局 Windows 公司包
 
-`Delivery fixture checks` 的 `workflow_dispatch` 接受 `windows_complete_input` JSON。双端完整包的 Core 由 `scripts/ci-core-policy.json` 的 required 项统一选择，采用当前 workflow GEA HEAD 和已发布三包。GEA `package:desktop:win` 是旧壳入口，不产生此完整客户端。
+`Delivery fixture checks` 的 `workflow_dispatch` 接受 `windows_complete_input` JSON。双端完整包的 Core 由 `scripts/ci-core-policy.json` 的 required 项统一选择，采用当前 workflow GEA HEAD、已发布三包和固定来源的 `@cleverc2200/dsh-personal-memory` 归档。个人记忆是桌面必需输入，不改变公司三包更新组合。GEA `package:desktop:win` 是旧壳入口，不产生此完整客户端。
 
 先用公开输入检查，不执行构建：
 
@@ -18,6 +18,8 @@ Windows job 实读两仓HEAD及clean、下载三TGZ并核SHA及manifest，再运
 
 bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativeUpdateAcceptance:true`，并绑定`buildReceiptSha256`原字节SHA和`inputSha256`。无bundle时仅构建，Native更新仍未验。artifact只留R9回执、bundle绑定及`public/`脱敏证据；raw请求和配置由验收目录的隐私合同单独保全。
 
+已完成构建的安装包可通过 `windows_overwrite_artifact_run` 配合这两个 bundle 输入，在新 Windows runner 重跑 Native 验收。该路径核原任务为主线发行、构建步骤成功，且构建源码是当前验证源码的祖先；继续使用原安装包、原构建回执字节和原固定输入，不重新打包或读取签名私钥。Native 路径跳过会先安装目标版本的普通覆盖测试，公钥证书在临时 runner 的 CurrentUser Root 中准备。
+
 ## Windows 首次安装证书与在线更新
 
 完整 Windows 构建默认 `windows_signed=true`。首次安装内置 `desktop/build/codesign.cer` 和公钥导入脚本。安装器保持 Core 的当前用户安装模式，在解压新程序前检查 `CurrentUser\Root`，缺少证书时向用户说明信任变更，经确认后导入。已信任时不再提示；首次静默安装缺少信任时直接失败。卸载不移除证书，避免破坏同一签名者的其他安装。
@@ -26,10 +28,12 @@ bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativ
 
 GitHub 构建从仓库 secrets `GEA_WINDOWS_SIGNING_PFX_BASE64`、`GEA_WINDOWS_SIGNING_PASSWORD` 读取私钥材料，写入 runner 临时目录，结束后删除。仓库不包含这些 secret；配置这些值和正式发布由发行负责人办理。手工 Windows 构建可直接设置本地路径，无需上传私钥。
 
-公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启，更新地址固定为 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/`。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`；后续发布先上传 EXE 与 blockmap，再更新 `nightly.yml`，并保留旧版本供差分下载。现有桌面 JSON 频道仍服务旧客户端，本次不改它。更新源通过独立发布步骤维护，构建始终使用 `--publish never`。
+公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启，更新地址固定为 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/`。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`，签名构建另核完整交付 `release-plan.json`。正式分发必须使用[统一交付入口](../desktop-release.md)，同时发布安装包和更新文件，保留旧版本供差分下载。现有桌面 JSON 频道仍服务旧客户端，本次不改它。构建始终使用 `--publish never`。
 
 已有客户端需要先安装一次包含新证书的引导版本，之后才能使用该证书验签更新。首次安装仍可能出现 Windows 安全提示。换证前必须提前部署新证书并核发布者兼容性，不能直接覆盖现有私钥。
 
 `windows_certificate_test=true` 单独执行 Windows 机器证书库导入、重复导入、PFX 签名与时间戳夹具，使用临时测试证书，不使用正式私钥。它不构建完整桌面、不访问业务，也不证明真实旧版到新版升级。当前用户根证书导入可能出现 Windows 系统确认，保留给员工首次安装交互。完整 NSIS 安装、真实公司证书签包及真实客户端更新仍需各自验收。
 
-`windows_update_acceptance=true` 在 Windows runner 上复用 Core 的真实下载、发布者及负向验签夹具，并从固定的 `20261102.2` 未签名版覆盖安装到本次签名版，检查实际 EXE 版本、签名及原有用户文件保留。它使用临时构建机，不代表员工设备或生产业务验收。
+`windows_update_acceptance=true` 在 Windows runner 上复用 Core 的真实下载、发布者及负向验签夹具，并从固定的 `20261102.2` 未签名版覆盖安装到本次签名版，按构建回执定位新版 EXE，覆盖产品更名后的版本、签名及原有用户文件保留检查。它使用临时构建机，不代表员工设备或生产业务验收。
+
+Windows 界面使用 Synear GEA，内部主程序名沿用 `GEA Desktop.exe`。官方安装器按注册目录和主程序文件确认既有安装，保留该文件名使旧版覆盖升级与已有快捷方式继续匹配；安装目录归属、签名和用户文件保留检查继续执行。

@@ -4,7 +4,7 @@ import { access, lstat, readFile, readlink, realpath, stat } from "node:fs/promi
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
-  companyPackageNames,
+  updatablePackageNames,
   parseInstalledPluginManifest,
   type PluginManifest,
   type PluginRelease,
@@ -123,7 +123,7 @@ export async function readPluginProfile(profileDirectory: string): Promise<Profi
   if (!within(await realpath(profileDirectory), nodeModules))
     throw Error("PROFILE_NODE_MODULES_NOT_OWNED");
   const packages: ProfilePackage[] = [];
-  for (const name of companyPackageNames) {
+  for (const name of updatablePackageNames) {
     if (!Object.hasOwn(dependencies, name)) continue;
     const bytes = await optionalFile(join(nodeModules, name, "package.json"));
     if (!bytes) continue;

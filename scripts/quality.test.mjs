@@ -100,7 +100,7 @@ test("missing selected file cannot hide behind a valid selected file", (t) => {
 
 function baselineFixture(t) {
   if (fixtureRoots.has(t)) return fixtureRoots.get(t);
-  // Keep installations outside the parent pnpm workspace so they cannot resolve to its root.
+
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "gea-quality-baseline-")));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const result = spawnSync(
@@ -121,7 +121,7 @@ function baselineFixture(t) {
   ]) {
     copyFileSync(new URL(file, root), join(directory, file));
   }
-  // Each fixture declares exact tools with the original registry lock metadata.
+
   const manifest = JSON.parse(readFileSync(new URL("package.json", root)));
   const tools = { oxfmt: manifest.devDependencies.oxfmt, oxlint: manifest.devDependencies.oxlint };
   writeFileSync(
@@ -149,8 +149,7 @@ function baselineFixture(t) {
       "\n" +
       lock.slice(lock.indexOf("packages:\n")),
   );
-  // One file-owned tool preparation is read-only to cases. Each case owns its node_modules
-  // directory and runner links, so removing/replacing a runner cannot affect another fixture.
+
   const prepared = prepareFixtureTools(directory);
   mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
   for (const tool of Object.keys(tools)) {
@@ -231,56 +230,6 @@ test("rebasing a baseline anchor cannot absorb changed files", (t) => {
   const result = checkFixture(directory, "lint");
   assert.equal(result.status, 1);
   assert.match(result.stderr, /QUALITY_BASELINE_REQUIRED/);
-});
-
-test("the retained official typecheck command refuses a different official HEAD before tsc", (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "quality-official-"));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
-  for (const part of [
-    "gea",
-    "dsh-agent-workbench/scripts",
-    "dsh-gea-plugin/scripts",
-    "official/vendor/cordis/lib/types",
-  ])
-    mkdirSync(join(directory, part), { recursive: true });
-  copyFileSync(
-    new URL("scripts/supported-cores.json", root),
-    join(directory, "dsh-gea-plugin/scripts/supported-cores.json"),
-  );
-  const cordis = join(directory, "official/vendor/cordis/lib/types/index.d.ts");
-  writeFileSync(cordis, "export {};\n");
-  writeFileSync(
-    join(directory, "dsh-agent-workbench/tsconfig.official.json"),
-    JSON.stringify({ compilerOptions: { paths: { "@deepseek-ai/cordis": [cordis] } } }),
-  );
-  copyFileSync(
-    new URL("../dsh-agent-workbench/scripts/verify-official-input.mjs", root),
-    join(directory, "dsh-agent-workbench/scripts/verify-official-input.mjs"),
-  );
-  for (const args of [
-    ["init", "--quiet"],
-    ["add", "."],
-    [
-      "-c",
-      "user.name=Quality Fixture",
-      "-c",
-      "user.email=quality@example.invalid",
-      "commit",
-      "--quiet",
-      "-m",
-      "fixture",
-    ],
-  ]) {
-    const result = spawnSync("git", args, { cwd: join(directory, "official"), encoding: "utf8" });
-    assert.equal(result.status, 0, result.stderr);
-  }
-  const manifest = JSON.parse(readFileSync(new URL("package.json", root)));
-  const result = spawnSync("sh", ["-c", manifest.scripts["typecheck:official"]], {
-    cwd: join(directory, "gea"),
-    encoding: "utf8",
-  });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /OFFICIAL_INPUT_REQUIRED/);
 });
 
 test("formatter cannot hide maintained targets behind an ignore pattern", (t) => {

@@ -1,5 +1,9 @@
 import { setTimeout as delay } from "node:timers/promises";
 
+export function inventoryReadCacheTtl(consumerCode: string): number {
+  return (consumerCode === "branch-inventory" ? 5 : 20) * 60 * 1000;
+}
+
 function successfulRows(value: unknown): value is { rows: Record<string, unknown>[] } {
   return (
     !!value &&
@@ -18,7 +22,6 @@ function successfulRows(value: unknown): value is { rows: Record<string, unknown
   );
 }
 
-/** An unavailable snapshot is distinct from a successful business quantity of zero. */
 export function unavailableInventorySnapshot(value: unknown, requireSnapshotDate = true) {
   if (!successfulRows(value)) return false;
   return (
@@ -45,7 +48,6 @@ export function unavailableInventorySnapshot(value: unknown, requireSnapshotDate
   );
 }
 
-/** Only a successful but unavailable initialization snapshot gets one bounded follow-up. */
 export async function recoverInventorySnapshot<T>(read: () => Promise<T>, signal: AbortSignal) {
   signal.throwIfAborted();
   const result = await read();
@@ -58,7 +60,6 @@ export async function recoverInventorySnapshot<T>(read: () => Promise<T>, signal
   return recovered;
 }
 
-/** Memory-only snapshots belong to one verified identity epoch. */
 export class InventoryReadCache {
   private readonly pending = new WeakMap<
     AbortSignal,
@@ -75,8 +76,10 @@ export class InventoryReadCache {
   private scope?: AbortSignal;
   private readonly entries = new Map<string, { at: number; startedAt: number; value: unknown }>();
   private readonly now: () => number;
-  constructor(now = Date.now) {
+  private readonly clone: typeof structuredClone;
+  constructor(now = Date.now, clone: typeof structuredClone = structuredClone) {
     this.now = now;
+    this.clone = clone;
   }
 
   private activate(scope: AbortSignal) {
@@ -96,7 +99,6 @@ export class InventoryReadCache {
     );
   }
 
-  /** Share only simultaneous reads in the same identity, query and refresh generation. */
   share(
     scope: AbortSignal,
     key: string,
@@ -151,7 +153,7 @@ export class InventoryReadCache {
       subscription.addEventListener("abort", abort, { once: true });
       entry.promise.then(
         (value) => {
-          if (detach()) resolve(structuredClone(value));
+          if (detach()) resolve(this.clone(value));
         },
         (error) => {
           if (detach()) reject(error);
@@ -160,15 +162,15 @@ export class InventoryReadCache {
     });
   }
 
-  get(scope: AbortSignal, key: string, freshAfter: number) {
+  get(scope: AbortSignal, key: string, freshAfter: number, maxAgeMs = 20 * 60 * 1000) {
     this.activate(scope);
     const entry = this.entries.get(key);
     if (!entry) return undefined;
-    if (entry.startedAt < freshAfter || this.now() - entry.at >= 20 * 60 * 1000) {
+    if (entry.startedAt < freshAfter || this.now() - entry.at >= maxAgeMs) {
       this.entries.delete(key);
       return undefined;
     }
-    return structuredClone(entry.value);
+    return this.clone(entry.value);
   }
 
   set(
@@ -179,11 +181,11 @@ export class InventoryReadCache {
     startedAt = this.now(),
   ) {
     this.activate(scope);
-    // Failed/cropped responses never become a reusable business snapshot.
+
     if (!successfulRows(value) || unavailableInventorySnapshot(value, requireSnapshotDate)) return;
     if ((this.entries.get(key)?.startedAt ?? -Infinity) > startedAt) return;
     this.entries.delete(key);
     while (this.entries.size >= 256) this.entries.delete(this.entries.keys().next().value!);
-    this.entries.set(key, { at: this.now(), startedAt, value: structuredClone(value) });
+    this.entries.set(key, { at: this.now(), startedAt, value: this.clone(value) });
   }
 }

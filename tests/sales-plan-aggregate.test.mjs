@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -39,6 +40,7 @@ const sku = (id, amt, qty = "1", extras = {}) => ({
 });
 function fixture(t, plans, skus, intercept) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.example.test",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,
@@ -56,7 +58,7 @@ function fixture(t, plans, skus, intercept) {
   t.mock.method(globalThis, "fetch", async (url, init) => {
     calls.push(String(url));
     assert.equal(init.method, "GET");
-    assert.equal(init.headers["X-Access-Token"], "fixture-token");
+    assert.equal(new Headers(init.headers).get("X-Access-Token"), "fixture-token");
     const u = new URL(url);
     let value;
     if (u.pathname.endsWith("/skus"))

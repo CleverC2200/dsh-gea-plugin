@@ -62,7 +62,7 @@ test(
     const camel = await approve("workflow-task-camel");
     assert.equal(camel.ok, true, JSON.stringify(camel));
     assert.equal(writes, 1);
-    // 上游换成蛇形字段时同样要认得出来，避免再次静默失效。
+
     keyShape = "snake";
     const snake = await approve("workflow-task-snake");
     assert.equal(snake.ok, true, JSON.stringify(snake));

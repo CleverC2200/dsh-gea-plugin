@@ -8,6 +8,8 @@ PR 与 main push 由 `.github/workflows/source-quality.yml` 按实际 Git 差异
 
 ## 按需 CI 恢复
 
+Ubuntu source workers 在浏览器依赖安装前，使用 Linux Kernel Archives 与 MIT 的 Ubuntu HTTPS 镜像，保留 Ubuntu 的索引签名校验；索引刷新遇到任何来源错误均失败，并受五分钟步骤预算限制。DNS 解析记录随步骤保存。Playwright 的系统依赖安装和原测试集合保持必需。
+
 失败后使用现有预算 CLI 读取同一 run/head 的完整 attempt 历史，显式请求恢复判断。先在环境中提供只读 `GITHUB_TOKEN`：
 
 ```sh
@@ -19,6 +21,8 @@ GITHUB_REPOSITORY=CleverC2200/dsh-gea-plugin GITHUB_RUN_ID=<run-id> GITHUB_RUN_A
 依赖策略使用成功 producer 输出的 artifact ID、attempt 和回执摘要。失败项重跑不按 consumer attempt 推算产物名称；固定源码、Core、原锁、管理器、Node、平台、架构和原生依赖内容核验保持。分片汇总另读同一 run 的最新 job 清单，验证每份回执确由对应 attempt 的成功 worker 产生，再逐份核原始计划与精确覆盖。 GitHub 会把复用 job 的 run_attempt 标为新轮次；实际 producer 由原始执行时间、runner、steps 与各 attempt 的完整历史清单一致性确定，不单独相信该字段。失败分片保留独立 attempt 证据，当前分片产物只替换自己的摘要入口。正式输入回执也从实际 source-plan producer 的 attempt 定位。
 
 ## 日常计时参考
+
+准备前成本摘要和最终 Markdown 摘要复用选测计划的 `reasons`，按变更展示触发文件数量、Profile 数量及主要测试消费者，并保留准备条件和分片信息。实际规则与直接、传递消费数量读取选择器同次记录的来源元数据。单项触发集合及归并 owner 后的来源类别均可能重叠，不能相加作为总数；旧计划缺来源元数据时保持未知，不推断完整依赖路径。文件数量不代表全部成本，准备要求不证明准备完成，测试计时也不包含准备、构建、调度和收尾。
 
 日常分片上传 `quality-test-results/` 的逐文件报告，失败或取消时保留已有部分报告。完成的同轮全部执行回执可在对应干净 GEA 源码上刷新参考：
 

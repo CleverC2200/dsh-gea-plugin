@@ -1,4 +1,3 @@
-/** Transfer generated preparation bytes. Source admission, lock installation and quality remain separate. */
 import { createHash } from "node:crypto";
 import {
   readFileSync,
@@ -70,7 +69,7 @@ function generated(file) {
   const workbench = "candidate/dsh-agent-workbench/";
   if (file.startsWith(workbench)) return isPreparedWorkbenchOutput(file.slice(workbench.length));
   return (
-    /^(?:\.quality-system-chrome\/|official-latest-standard\/(?:packages|vendor|apps|native)\/.+\/lib\/|official-latest-standard\/apps\/web\/dist\/|quality-upstreams\/upstream-reference\/dsh-better-sidebar\/lib\/|quality-upstreams\/upstream-assets\/genui-0\.11\.3\/|\.quality-browser\/)/.test(
+    /^(?:\.quality-system-chrome\/|official-latest-standard\/(?:packages|vendor|apps|native)\/.+\/lib\/|official-latest-standard\/apps\/web\/dist\/|quality-upstreams\/upstream-reference\/dsh-better-sidebar\/lib\/|quality-upstreams\/upstream-assets\/genui-0\.16\.0-company\.1\/|\.quality-browser\/)/.test(
       file,
     ) ||
     /^official-latest-standard\/\.git\/dsh-sdk-(?:artifacts|web|flock)\.json$/.test(file) ||
@@ -86,8 +85,8 @@ function outputRoot(file) {
   const marker = file.indexOf("/lib/");
   if (marker >= 0) return file.slice(0, marker + 4);
   if (file.startsWith(".quality-browser/")) return file.split("/").slice(0, 2).join("/");
-  if (file.startsWith("quality-upstreams/upstream-assets/genui-0.11.3/"))
-    return "quality-upstreams/upstream-assets/genui-0.11.3";
+  if (file.startsWith("quality-upstreams/upstream-assets/genui-0.16.0-company.1/"))
+    return "quality-upstreams/upstream-assets/genui-0.16.0-company.1";
   return dirname(file);
 }
 function checkLink(root, entry) {
@@ -377,9 +376,11 @@ function enumerate(root, binding) {
       if (entries.at(-1).sha256 !== expected) refuse("Workbench HTML changed");
     }
   }
-  // Even source-only quality stages bind these unchanged link-lock inputs.
+
   const fixed = json(join(root, "candidate/dsh-gea-plugin/scripts/quality-upstreams.json"));
-  if (!equalMap(tree("quality-upstreams/upstream-assets/genui-0.11.3"), fixed.genui.files))
+  if (
+    !equalMap(tree("quality-upstreams/upstream-assets/genui-0.16.0-company.1"), fixed.genui.files)
+  )
     refuse("GenUI bytes changed");
   tree("quality-upstreams/upstream-reference/dsh-better-sidebar/lib");
   if (plan.browser) {

@@ -1,4 +1,3 @@
-import { serializeSalesPlanSubmission } from "./sales-plan-wire.ts";
 import {
   correctionDecimal,
   salesPlanAccessForRow,
@@ -6,26 +5,23 @@ import {
   salesPlanVersionEvidenceStale,
   salesPlanWorkflow,
   validateSalesPlanActionInput,
+  verifyReturnedSalesPlan,
+  salesPlanReturnDestination,
   prepareSalesPlanResubmit,
   type SalesPlanApprovalRole,
   type SalesPlanWorkflowRow,
   type GeaSalesPlanActionRequest,
+  type GeaSalesPlanActionReceipt,
   type GeaSalesPlanDetail,
   type GeaSalesPlanPeriod,
   type GeaSalesPlanSku,
 } from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { isDeepStrictEqual } from "node:util";
-import { GeaResponseError, geaResponseError } from "../shared/gea-error.js";
+import { GeaResponseError } from "../shared/gea-error.js";
 import { object, text, keys } from "./payload.ts";
-import {
-  serviceAccountUnavailableReason,
-  serviceAccountUnavailableError,
-  ServiceAccountSession,
-  type ServiceAccountConfig,
-} from "./service-account.ts";
+import { serializeSalesPlanSubmission } from "./sales-plan-wire.ts";
 
-/** Borrow Business's current identity for one write attempt. */
 export type SalesPlanWriteIdentity = {
   token: string;
   tenantId: string;
@@ -38,13 +34,19 @@ type SalesPlanWriteScope = {
   auth: SalesPlanWriteIdentity;
   base: string;
   signal: AbortSignal;
-  serviceAccount: ServiceAccountConfig | undefined;
 };
 type WriteIntent = {
   fingerprint: string;
   body?: string;
   flight?: Promise<unknown>;
   receipt?: unknown;
+  actionReceipt?: GeaSalesPlanActionReceipt;
+  matchesActionReceipt?: (receipt: GeaSalesPlanActionReceipt) => boolean;
+  returnEvidence?: {
+    detail: GeaSalesPlanDetail;
+    request: GeaSalesPlanActionRequest;
+    planId: string;
+  };
 };
 type SalesPlanHost = {
   scope(effect: "submit" | "approve"): SalesPlanWriteScope;
@@ -76,28 +78,20 @@ function upstreamActionBody(request: Record<string, unknown>): Record<string, un
   return body;
 }
 
-/** Owns validated write intent, exact retry body and receipts for one Business login lifetime. */
 export class SalesPlanTransactions {
   constructor(private readonly host: SalesPlanHost) {}
   clear(): void {
-    this.serviceAccount.clear();
     this.resubmissions.clear();
     this.correctionRequests.clear();
   }
-  private readonly serviceAccount = new ServiceAccountSession();
-  /** 在本次登录生命周期内，将一个幂等键绑定到一份已校验请求。 */
+
   private readonly resubmissions = new Map<string, WriteIntent>();
 
-  /** 重提前重新读取 GEA 当前版本和 SKU；浏览器只允许改变数量，身份、价格与路由由服务端来源决定。 */
   async submit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     const scope = this.host.scope("submit");
     payload = structuredClone(payload);
     keys(payload, ["source", "request", "requestId", "idempotencyKey"]);
     const auth = scope.auth;
-    const config = scope.serviceAccount;
-    if (!config) throw serviceAccountUnavailableError("configuration");
-    const unavailableReason = serviceAccountUnavailableReason(config, auth);
-    if (unavailableReason) throw serviceAccountUnavailableError(unavailableReason);
     const source = object(payload.source);
     keys(source, ["planId", "versionId"]);
     const planId = text(source.planId),
@@ -208,23 +202,26 @@ export class SalesPlanTransactions {
           },
           rows,
         );
-        // 浏览器只能改变数量；身份、价格和路由必须来自 GEA。
+
         if (!isDeepStrictEqual(JSON.parse(JSON.stringify(prepared.request)), request))
           throw new GeaResponseError(409, {
             message: "提交数据与当前 GEA 来源不一致，请重新核对",
           });
         if (scope.signal.aborted) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
-        attempt.body = serializeSalesPlanSubmission(prepared.request);
+        const submission = {
+          ...prepared.request,
+          submitterCode: text(version.submitter),
+        };
+        delete submission.submitterName;
+        attempt.body = serializeSalesPlanSubmission(submission);
       }
-      const receipt = await this.serviceAccount.submit(
-        config,
-        scope.base,
-        attempt.body,
+      const receipt = await this.executeResubmission(
         requestId,
         idempotencyKey,
+        attempt.body,
+        scope,
         signal,
-        this.host.fetch,
       );
       attempt.receipt = receipt;
       return receipt;
@@ -235,9 +232,128 @@ export class SalesPlanTransactions {
     return attempt.flight;
   }
 
+  private async executeResubmission(
+    requestId: string,
+    idempotencyKey: string,
+    body: string,
+    scope: SalesPlanWriteScope,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const uncertain = () => {
+      const error = new GeaResponseError(502, {
+        message: "重提结果暂时未知，请使用原操作重试或回读状态",
+      });
+      error.details.retrySameIntent = true;
+      return error;
+    };
+    const assertCurrent = () => {
+      if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+      if (signal.aborted) throw uncertain();
+    };
+    let response: Response;
+    try {
+      response = await this.host.fetch(scope.base + "/sales-plan/plans/resubmit", {
+        method: "POST",
+        redirect: "error",
+        signal,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Access-Token": scope.auth.token,
+          "X-Tenant-Id": scope.auth.tenantId,
+          "X-Request-Id": requestId,
+          "Idempotency-Key": idempotencyKey,
+        },
+        body,
+      });
+    } catch {
+      assertCurrent();
+      throw uncertain();
+    }
+    assertCurrent();
+    if (!response.ok) {
+      const data = await response.text().then(
+        (raw) => {
+          try {
+            return object(this.host.decode(raw));
+          } catch {
+            return undefined;
+          }
+        },
+        () => undefined,
+      );
+      const error = new GeaResponseError(response.status, data, [scope.auth.token]);
+      assertCurrent();
+      if (response.status === 401) this.host.expire(scope.auth);
+      if (data?.success === false) error.details.retrySameIntent = false;
+      else if (
+        (response.status >= 500 || response.status === 408) &&
+        error.details.retryable !== false
+      )
+        error.details.retrySameIntent = true;
+      throw error;
+    }
+    let data: Record<string, unknown>;
+    try {
+      data = object(this.host.decode(await response.text()));
+    } catch {
+      assertCurrent();
+      throw uncertain();
+    }
+    assertCurrent();
+    if (data.success !== true || !data.result) {
+      const status =
+        data.code === 510
+          ? 403
+          : typeof data.code === "number" && data.code >= 400 && data.code <= 599
+            ? data.code
+            : 502;
+      const error = new GeaResponseError(status, data, [scope.auth.token]);
+      if (status === 401) this.host.expire(scope.auth);
+      if (data.success === false) error.details.retrySameIntent = false;
+      else if (status >= 500 && error.details.retryable !== false)
+        error.details.retrySameIntent = true;
+      throw error;
+    }
+    let receipt: Record<string, unknown>;
+    try {
+      receipt = object(data.result);
+    } catch {
+      throw uncertain();
+    }
+    if (
+      typeof receipt.planId !== "string" ||
+      !receipt.planId.trim() ||
+      typeof receipt.versionId !== "string" ||
+      !receipt.versionId.trim() ||
+      typeof receipt.seq !== "number" ||
+      !Number.isSafeInteger(receipt.seq) ||
+      receipt.seq <= 0 ||
+      typeof receipt.status !== "number" ||
+      !Number.isInteger(receipt.status) ||
+      receipt.status < 0 ||
+      receipt.status > 10 ||
+      typeof receipt.replayed !== "boolean" ||
+      receipt.requestId !== requestId ||
+      typeof receipt.traceId !== "string" ||
+      !receipt.traceId.trim() ||
+      (receipt.auditId != null && typeof receipt.auditId !== "string")
+    )
+      throw uncertain();
+    return {
+      planId: receipt.planId,
+      versionId: receipt.versionId,
+      seq: receipt.seq,
+      status: receipt.status,
+      replayed: receipt.replayed,
+      requestId: receipt.requestId,
+      traceId: receipt.traceId,
+      auditId: receipt.auditId ?? null,
+    };
+  }
+
   private readonly correctionRequests = new Map<string, WriteIntent>();
 
-  /** 审批动作按幂等键缓存；即使首次响应丢失，重试也只能重放同一已授权意图。 */
   async action(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     const scope = this.host.scope("approve");
     payload = structuredClone(payload);
@@ -264,7 +380,6 @@ export class SalesPlanTransactions {
     return intent.flight;
   }
 
-  /** 执行一次已完成来源、角色和快照校验的 GEA 动作；DMS 写回有意不在此方法内。 */
   private async executeAction(
     payload: Record<string, unknown>,
     caller: AbortSignal,
@@ -280,11 +395,13 @@ export class SalesPlanTransactions {
       "expectedStatus",
       "remark",
       "adjustments",
+      "expectedReturnTargetStage",
       "adjustmentMode",
       "approvalRole",
       "approvalPolicy",
     ]);
-    if (!["SAVE", "APPROVE", "REJECT"].includes(text(request.action)))
+    const action = request.action;
+    if (action !== "SAVE" && action !== "APPROVE" && action !== "REJECT")
       throw new Error("INVALID_ACTION");
     if (
       request.action === "APPROVE" &&
@@ -365,6 +482,19 @@ export class SalesPlanTransactions {
         throw new GeaResponseError(409, {
           message: "GEA 尚未支持本次角色审批契约，请升级服务端后重试",
         });
+      if (request.expectedReturnTargetStage !== undefined) {
+        if (request.action !== "REJECT") throw new Error("INVALID_PAYLOAD");
+        const context = salesPlanReturnDestination(detail, role);
+        if (
+          context.versionId !== versionId ||
+          context.status !== request.expectedStatus ||
+          context.currentStage !==
+            ["customer", "region", "province", "area", "category"].indexOf(role) + 1 ||
+          context.targetStage !== request.expectedReturnTargetStage
+        )
+          throw new GeaResponseError(409, { message: "退回节点已变化，请刷新后重试" });
+        intent.returnEvidence = { detail, request: request as GeaSalesPlanActionRequest, planId };
+      }
       validateSalesPlanActionInput(
         {
           planId,
@@ -374,38 +504,190 @@ export class SalesPlanTransactions {
         },
         workflowRows,
       );
+      const flow = salesPlanWorkflow(row.planTypeCode, workflowRows);
+      const approvalRoles: NonNullable<GeaSalesPlanActionRequest["approvalRole"]>[] = [
+        "region",
+        "province",
+        "area",
+        "category",
+      ];
+      intent.matchesActionReceipt = (receipt) => {
+        if (access.roleContractSupported && receipt.approvalRole !== role) return false;
+        if (request.expectedReturnTargetStage !== undefined)
+          return receipt.toStatus === Number(request.expectedReturnTargetStage) + 5;
+        if (action === "SAVE") return receipt.toStatus === row.status;
+        if (!access.roleContractSupported)
+          return (
+            receipt.toStatus === flow.transition(row.status, action) ||
+            (action === "APPROVE" && !access.snapshotHash && receipt.toStatus === row.status)
+          );
+        if (action === "REJECT") {
+          const pending = flow.pending(role);
+          return pending !== undefined && receipt.toStatus === flow.transition(pending, action);
+        }
+        if (receipt.toStatus === 5) {
+          const approvedRoles = receipt.approvedRoles;
+          return (
+            Array.isArray(approvedRoles) &&
+            approvalRoles.every(
+              (stage) => flow.pending(stage) === undefined || approvedRoles.includes(stage),
+            )
+          );
+        }
+        return (
+          receipt.toStatus === row.status ||
+          ([1, 2, 3, 4].includes(receipt.toStatus) && flow.actor(receipt.toStatus) !== undefined)
+        );
+      };
       if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+      const body = upstreamActionBody(request);
+      if (request.action !== "SAVE") {
+        const planKind =
+          detail.currentVersion.orderType === "Z"
+            ? "纠偏"
+            : detail.currentVersion.orderType === "M"
+              ? "月初"
+              : "";
+        const roleName = {
+          region: "区域审批",
+          province: "省区审批",
+          area: "大区审批",
+          category: "品类审批",
+        }[role];
+        body.notification =
+          request.action === "APPROVE"
+            ? {
+                title: "需求预测审批待处理",
+                content: `一份${planKind}需求预测已通过${roleName}，请查看并按最新内容处理。`,
+              }
+            : {
+                title: "需求预测退回待处理",
+                content: `一份${planKind}需求预测已退回，请查看退回原因并修改后重新提报。`,
+              };
+      }
+      intent.body = JSON.stringify(body);
     }
     signal.throwIfAborted();
-    intent.body ??= JSON.stringify(upstreamActionBody(request));
-    const response = await this.host.fetch(
-      scope.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions",
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Access-Token": auth.token,
-          "X-Tenant-Id": auth.tenantId,
-          "X-Request-Id": text(payload.requestId),
-          "Idempotency-Key": text(payload.idempotencyKey),
-        },
-        body: intent.body,
-        redirect: "error",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(this.host.timeoutMs)]),
-      },
-    );
-    signal.throwIfAborted();
-    if (!response.ok) {
-      const error = await geaResponseError(response, [auth.token]);
-      signal.throwIfAborted();
-      if (response.status === 401) this.host.expire(auth);
-      throw error;
+    const uncertain = () => {
+      const error = new GeaResponseError(502, {
+        message: "审批结果暂时未知，请使用原操作重试或回读状态",
+      });
+      error.details.retrySameIntent = true;
+      return error;
+    };
+    if (!intent.actionReceipt) {
+      const transportSignal = AbortSignal.any([signal, AbortSignal.timeout(this.host.timeoutMs)]);
+      const assertCurrent = () => {
+        if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+        if (transportSignal.aborted) throw uncertain();
+      };
+      let response: Response;
+      try {
+        response = await this.host.fetch(
+          scope.base + "/sales-plan/plans/versions/" + encodeURIComponent(versionId) + "/actions",
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              "X-Access-Token": auth.token,
+              "X-Tenant-Id": auth.tenantId,
+              "X-Request-Id": text(payload.requestId),
+              "Idempotency-Key": text(payload.idempotencyKey),
+            },
+            body: intent.body,
+            redirect: "error",
+            signal: transportSignal,
+          },
+        );
+      } catch {
+        assertCurrent();
+        throw uncertain();
+      }
+      assertCurrent();
+      let data: Record<string, unknown>;
+      try {
+        data = object(this.host.decode(await response.text()));
+      } catch {
+        assertCurrent();
+        if (!response.ok && response.status < 500 && response.status !== 408) {
+          if (response.status === 401) this.host.expire(auth);
+          throw new GeaResponseError(response.status, undefined);
+        }
+        throw uncertain();
+      }
+      assertCurrent();
+      if (!response.ok || data.success === false) {
+        const status = !response.ok
+          ? response.status
+          : data.code === 510
+            ? 403
+            : typeof data.code === "number" && data.code >= 400 && data.code <= 599
+              ? data.code
+              : 502;
+        const error = new GeaResponseError(status, data, [auth.token]);
+        if (status === 401) this.host.expire(auth);
+        if (data.success === false) error.details.retrySameIntent = false;
+        else if ((status >= 500 || status === 408) && error.details.retryable !== false)
+          error.details.retrySameIntent = true;
+        throw error;
+      }
+      if (data.success !== true) throw uncertain();
+      let receipt: Record<string, unknown>;
+      try {
+        receipt = object(data.result);
+      } catch {
+        throw uncertain();
+      }
+      if (
+        receipt.planId !== payload.planId ||
+        receipt.versionId !== versionId ||
+        receipt.requestId !== payload.requestId ||
+        typeof receipt.fromStatus !== "number" ||
+        receipt.fromStatus !== request.expectedStatus ||
+        typeof receipt.toStatus !== "number" ||
+        !Number.isInteger(receipt.toStatus) ||
+        receipt.toStatus < 0 ||
+        receipt.toStatus > 10 ||
+        typeof receipt.replayed !== "boolean" ||
+        typeof receipt.traceId !== "string" ||
+        !receipt.traceId.trim() ||
+        (receipt.auditId != null && typeof receipt.auditId !== "string")
+      )
+        throw uncertain();
+      const received = {
+        ...receipt,
+        planId: text(receipt.planId),
+        versionId: text(receipt.versionId),
+        requestId: text(receipt.requestId),
+        fromStatus: receipt.fromStatus,
+        toStatus: receipt.toStatus,
+        replayed: receipt.replayed,
+        traceId: receipt.traceId,
+        auditId: receipt.auditId ?? null,
+      };
+      if (!intent.matchesActionReceipt?.(received)) throw uncertain();
+      intent.actionReceipt = received;
     }
-    const data = object(this.host.decode(await response.text()));
-    if (data.success !== true || !data.result) throw new Error("GEA_WRITE_REJECTED");
-    if (scope.signal.aborted) throw new Error("STALE_LOGIN");
-    signal.throwIfAborted();
-    return data.result;
+    const receipt = intent.actionReceipt;
+    if (intent.returnEvidence) {
+      const evidence = intent.returnEvidence;
+      try {
+        const after = (await this.host.query(
+          { kind: "detail", query: { planId: evidence.planId } },
+          signal,
+        )) as GeaSalesPlanDetail;
+        if (!verifyReturnedSalesPlan(evidence.detail, after, evidence.request, receipt))
+          throw new Error("RETURN_READBACK_MISMATCH");
+      } catch {
+        if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+        const error = new GeaResponseError(502, {
+          message: "退回结果尚未核对，请刷新或使用原操作重试",
+        });
+        error.details.retrySameIntent = true;
+        throw error;
+      }
+    }
+    return receipt;
   }
 }

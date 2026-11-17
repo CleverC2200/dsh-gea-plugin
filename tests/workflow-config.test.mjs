@@ -4,7 +4,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
   stdin: {
     contents:
-      "export * from './src/host/workflow-config.ts'; export * from '../dsh-agent-workbench/src/workbench/workflow-loader.ts'; export * from '../dsh-agent-workbench/src/workbench/original/salesPlanWorkflow.ts';",
+      "export * from './src/host/workflow-config.ts'; export { GeaRequestCapture } from './src/host/request-capture.ts'; export { GeaApiLogCenter } from './src/host/api-log.ts'; export * from '../dsh-agent-workbench/src/workbench/workflow-loader.ts'; export * from '../dsh-agent-workbench/src/workbench/original/salesPlanWorkflow.ts';",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -12,7 +12,13 @@ const { outputFiles } = await build({
   platform: "node",
   format: "esm",
 });
-const { readSalesPlanWorkflowConfig, salesPlanWorkflow, createWorkflowLoader } = await import(
+const {
+  GeaRequestCapture,
+  GeaApiLogCenter,
+  readSalesPlanWorkflowConfig,
+  salesPlanWorkflow,
+  createWorkflowLoader,
+} = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 const rows = ["0", "4", "Y"].map((node, i) => ({
@@ -31,7 +37,7 @@ function mock(change = (x) => x) {
         code: 200,
         result: { accessDecision: { allowed: true }, delegationToken: "private-delegation" },
       });
-    assert.equal(init.headers["X-Delegation-Token"], "private-delegation");
+    assert.equal(new Headers(init.headers).get("X-Delegation-Token"), "private-delegation");
     const request = JSON.parse(init.body);
     assert.match(
       request.sql,
@@ -42,7 +48,7 @@ function mock(change = (x) => x) {
       success: true,
       code: 200,
       result: change({
-        requestId: init.headers["X-Request-Id"],
+        requestId: new Headers(init.headers).get("X-Request-Id"),
         operation: "SELECT",
         tables: ["agents_scm_plan_workflow_config"],
         total: 3,
@@ -70,6 +76,47 @@ test("live configuration preserves level gaps and projects no credentials", asyn
   assert.deepEqual(flow.pendingStatuses("category"), [4]);
   assert.equal(flow.resubmit(6), 1);
   assert.equal(flow.transition(4, "REJECT"), 6);
+});
+test("workflow checks the actual common transport request ID and still rejects a mismatched receipt", async () => {
+  const base = "https://example.test";
+  for (const mismatch of [false, true]) {
+    const capture = new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => base,
+    );
+    const requestIds = [];
+    const apiLog = new GeaApiLogCenter(
+      () => "test",
+      undefined,
+      async (url, init) => {
+        const headers = new Headers(init.headers);
+        requestIds.push(headers.get("X-Request-Id"));
+        return mock((value) => (mismatch ? { ...value, requestId: "unrelated" } : value))(url, {
+          ...init,
+          headers,
+        });
+      },
+      undefined,
+      undefined,
+      undefined,
+      capture,
+    );
+    try {
+      const read = readSalesPlanWorkflowConfig(
+        base,
+        "token",
+        apiLog.fetch,
+        new AbortController().signal,
+      );
+      if (mismatch) await assert.rejects(read, /GEA_WORKFLOW_RESPONSE_INVALID/);
+      else assert.equal((await read).length, 3);
+      assert.equal(new Set(requestIds).size, 2);
+      for (const id of requestIds) assert.match(id, /^[a-f0-9-]{36}$/);
+    } finally {
+      await capture.dispose();
+    }
+  }
 });
 test("configuration rejects incomplete, mismatched, duplicate and malformed responses", async () => {
   for (const change of [

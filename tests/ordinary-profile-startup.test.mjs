@@ -6,10 +6,8 @@ import { tmpdir } from "node:os";
 import { boot } from "@deepseek-ai/dsh-app-boot";
 import * as gea from "../lib/host.js";
 
-// Cordis's const enum is erased from JS; this is the app-boot audit value.
 const FIBER_ACTIVE = 2;
 
-// The production Loader and GEA Host run here; unrelated public services are local recording adapters.
 async function start(home, config = {}) {
   const dir = join(home, "profiles", "ordinary");
   await mkdir(dir, { recursive: true });
@@ -55,7 +53,12 @@ async function start(home, config = {}) {
           return dispose;
         },
       });
-      ctx.provide("agents", { get: () => undefined, list: () => [] });
+      ctx.provide("agents", {
+        get: () => undefined,
+        list: () => [],
+        currentInitiator: () => undefined,
+      });
+      ctx.provide("sessionFeedback", { registerSubmit: () => dispose });
       ctx.plugin((scope) => {
         scope.provide("userAgents", {
           watch: (listener) => {

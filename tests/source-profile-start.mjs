@@ -1,4 +1,3 @@
-/** Real source-profile launcher for tests whose external services are loopback fixtures. */
 import { resolve } from "node:path";
 import { readDeployment } from "../scripts/deployment.mjs";
 import { runSourceProfile } from "../scripts/start-isolated-validation.mjs";

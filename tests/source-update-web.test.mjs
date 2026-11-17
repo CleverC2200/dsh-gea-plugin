@@ -1,6 +1,6 @@
 import { measureSourceUpdate } from "./fixtures/source-update-timing.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
-/** Real current profile activation uses local metadata-only candidate versions and loopback services. */
+
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
@@ -11,6 +11,7 @@ import { chromium, expect } from "@playwright/test";
 import { profile, readSession, readToolResults, until } from "./profile.mjs";
 import { openWorkbenchPage, htmlFrameElement } from "./fixtures/business-page.mjs";
 import { installStockRoutes, stockState } from "./fixtures/branch-stock.mjs";
+import { configuredBranchStockFixture } from "./fixtures/configured-branch-stock.mjs";
 import { branchStockAcceptance } from "./fixtures/branch-stock-acceptance.mjs";
 import { readDeployment } from "../scripts/deployment.mjs";
 import {
@@ -73,7 +74,7 @@ test(
             .map(Number);
           workbenchVersion[2]++;
           const plannedWorkbench = workbenchVersion.join(".");
-          // This loopback fixture explicitly declares its unchanged code compatible with the test manifest version.
+
           for (const accepted of Object.values(baseRecord.compatibility))
             accepted.workbench.push(plannedWorkbench);
           await fs.writeFile(baseRecordFile, JSON.stringify(baseRecord, null, 2));
@@ -157,6 +158,7 @@ test(
       );
     }
     const state = stockState();
+    state.configuredSql = await configuredBranchStockFixture();
     installStockRoutes(app, state, (body) => {
       const index = body.messages.findLastIndex((message) => message.role === "user"),
         tools = body.messages.slice(index + 1).filter((message) => message.role === "tool");

@@ -104,7 +104,7 @@ test("one explicit page requires one GEA request and delegation token stays in h
     },
   );
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].init.headers["X-Delegation-Token"], "private-token");
+  assert.equal(new Headers(requests[0].init.headers).get("X-Delegation-Token"), "private-token");
   assert.match(JSON.parse(requests[0].init.body).sql, /OFFSET/);
   assert.deepEqual(result, {
     rows: [{ sku: "A" }],

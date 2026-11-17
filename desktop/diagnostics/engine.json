@@ -1,0 +1,10 @@
+{
+  "version": "0.134.4",
+  "license": "Apache-2.0",
+  "source": "https://github.com/replicatedhq/troubleshoot/releases/tag/v0.134.4",
+  "windows": {
+    "url": "https://github.com/replicatedhq/troubleshoot/releases/download/v0.134.4/support-bundle_windows_amd64.zip",
+    "archiveSha256": "622f1b512e9c02c848a113023c2c6931d43c34e0a024068e078355643c8858ae",
+    "executableSha256": "f92dff1fe5073c11aac9271eb92f511c912ad69f90322d0e7a25e53073f548c3"
+  }
+}

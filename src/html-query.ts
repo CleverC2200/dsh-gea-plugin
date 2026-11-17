@@ -5,14 +5,9 @@ import {
   unpackBusinessRows,
 } from "./html-sql.ts";
 
-/**
- * 占位符扫描：字符串/注释/双引号标识符整段跳过，只认 `:name` 与 `?`。
- * 两处（形态统计、改写）共用同一份定义，避免统计和改写口径不一致。
- */
 const PLACEHOLDER =
   /'(?:''|[^'])*'|"(?:""|[^"])*"|--[^\r\n]*|\/\*[\s\S]*?\*\/|(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)|(\?)/g;
 
-/** SQL 里到底用了哪种占位符：命名几个、位置几个。 */
 function placeholderShape(sql: string) {
   const names: string[] = [];
   let positional = 0;
@@ -24,10 +19,6 @@ function placeholderShape(sql: string) {
   return { names, positional };
 }
 
-/**
- * 位置占位符的取值顺序：数组按原序；对象按数字键排序（{"1":…,"2":…} 是模型最常写的
- * 形态），非数字键按传入顺序。数量对不上就明确报数量，而不是让它继续猜。
- */
 function positionalValues(parameters: any, count: number): unknown[] {
   const values = Array.isArray(parameters)
     ? parameters.slice()
@@ -70,8 +61,6 @@ export function prepareHtmlQuery(input: any) {
         "MIXED_QUERY_PARAMETERS：SQL 里同时用了 :name 和 ? 占位符；统一改成 :name（例如 where cust_code = :cust）",
       );
     if (positional > 0) {
-      // 线上实测：模型写 `where cust_code = ?` 配 `{"1": …}`。位置占位符按顺序绑定
-      // 值本身是安全的（值不拼进 SQL），这里直接接受，不再让它改写法重来一轮。
       values = positionalValues(parameters, positional);
       let index = 0;
       sql = sql.replace(PLACEHOLDER, (token: string, _name?: string, question?: string) =>
@@ -79,8 +68,6 @@ export function prepareHtmlQuery(input: any) {
       );
     } else {
       if (used.length === 0) {
-        // 空的 parameters（{}）当没传：模型和宿主都爱顺手带一个空对象，
-        // 这不是"参数写法错"，不该把一条本来就好的 SQL 判失败。
         const provided = Object.keys(parameters);
         if (provided.length > 0)
           throw Error(
@@ -131,7 +118,7 @@ export async function readHtmlQuery(
   },
 ) {
   const query = prepareHtmlQuery(input);
-  // Opt-in compact wire format; preserve metadata and legacy records consumers.
+
   const finish = (value: any) => {
     if (input.resultShape === "rows") delete value.records;
     return value;
@@ -145,10 +132,8 @@ export async function readHtmlQuery(
     pageSize < 1 ||
     pageSize > 200
   )
-    // 报错也要能读：宿主会先钳制，这里是兜底；真漏进来时至少知道上限是多少。
     throw Error("INVALID_PAGE：页码从 1 起，每页最多 200 行");
-  // The upstream governed endpoint applies the current consumer and user's resource/data permissions.
-  // HTML filters are presentation inputs, never authorization constraints.
+
   if (pageNo !== undefined) {
     if (input.packing) throw Error("PACKED_PAGING_UNSUPPORTED");
     const page = await db.queryPage(query.sql, query.values, pageNo, pageSize);

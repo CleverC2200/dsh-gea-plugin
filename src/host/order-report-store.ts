@@ -13,7 +13,6 @@ type Execute = (
   requestId?: string,
 ) => Promise<any>;
 
-/** Fixed report statements only. Tenant, author and Consumer come from the authenticated Host. */
 export async function orderReportStore(
   input: any,
   identity: {
@@ -22,6 +21,7 @@ export async function orderReportStore(
     reportScope: { key: string; base: string; bases?: unknown[] };
   },
   execute: Execute,
+  options: { headerOnly?: boolean } = {},
 ) {
   if (
     !input ||
@@ -76,9 +76,11 @@ export async function orderReportStore(
   };
   if (!Number.isSafeInteger(params.tenant) || !identity.id) throw fail("GEA_IDENTITY_INCOMPLETE");
   const readParameters = { ...params };
+  if (options.headerOnly && input.operation !== "load") throw fail("ORDER_REPORT_REQUEST_INVALID");
+  const selectedFields = options.headerOnly ? "version, last_request_id, schema_version" : fields;
   const read = async () => {
     const result = await execute(
-      `SELECT ${fields} FROM ${table} WHERE ${identityWhere} LIMIT 2`,
+      `SELECT ${selectedFields} FROM ${table} WHERE ${identityWhere} LIMIT 2`,
       readParameters,
     );
     if (!Array.isArray(result.rows) || result.rows.length > 1 || result.rejectedColumns?.length)
@@ -86,9 +88,7 @@ export async function orderReportStore(
     const row = result.rows[0];
     if (!row) return null;
     if (
-      !["report_data", "version", "last_request_id", "schema_version"].every((key) =>
-        Object.hasOwn(row, key),
-      ) ||
+      !selectedFields.split(", ").every((key) => Object.hasOwn(row, key)) ||
       Number(row.schema_version) !== 1 ||
       !Number.isSafeInteger(Number(row.version))
     )
@@ -113,6 +113,13 @@ export async function orderReportStore(
     };
   };
   const existing = await read();
+  if (options.headerOnly)
+    return {
+      version: Number(existing?.version ?? 0),
+      requestId: existing?.last_request_id,
+      report: null,
+      scope: identity.reportScope,
+    };
   if (input.operation === "load")
     return { ...(await decode(existing)), scope: identity.reportScope };
   if (
@@ -155,7 +162,7 @@ export async function orderReportStore(
     : `INSERT INTO ${table} (tenant_id, scope_key, period_type, period_start, period_end_exclusive, scope_name, scope_refs, consumer_code, report_data, schema_version, calculation_version, version, last_request_id, create_by, create_time, update_by, update_time) VALUES (:tenant, :scope, :kind, :start, :end, :scopeName, :scopeRefs, :consumer, :report, 1, 'order-report-v1', :next, :request, :actor, :now, :actor, :now)`;
   const available = 65_536 - Buffer.byteLength(JSON.stringify({ ...params, report: "" })) - 16;
   if (available <= 0) throw fail("ORDER_REPORT_PARAMETERS_TOO_LARGE");
-  // Stop recompressing once the existing atomic SQL/parameter split can hold the full envelope.
+
   const targetBytes = available + Math.max(0, 65_536 - sql.length - 32);
   const encodedReport = await encodeOrderReport(reportJson, targetBytes);
   const storedReport =
@@ -175,7 +182,7 @@ export async function orderReportStore(
   params.report = storedReport;
   if (Buffer.byteLength(JSON.stringify(params)) > 65_536) {
     const prefix = String(storedReport).slice(0, -available);
-    // Only our ASCII compression envelope may enter a SQL literal, never report text.
+
     if (!prefix || /[^A-Za-z0-9+/=,:{}"-]/.test(prefix)) throw fail("ORDER_REPORT_FORMAT_INVALID");
     sql = sql.replace(":report", `CONCAT('${prefix}', :report)`);
     params.report = String(storedReport).slice(-available);

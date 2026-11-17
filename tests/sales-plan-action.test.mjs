@@ -1,7 +1,9 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
 
 const output = await build({
   entryPoints: ["src/host/business.ts"],
@@ -19,13 +21,82 @@ new Function("require", "module", "exports", output.outputFiles[0].text)(
   module.exports,
 );
 
-function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflowRows) {
+const workbenchRoot = resolve(process.env.DSH_TEST_WORKBENCH ?? "../dsh-agent-workbench");
+const models = await build({
+  stdin: {
+    resolveDir: workbenchRoot,
+    contents: `
+      export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanActionModel.ts';
+      export * from './src/workbench/original/workbenches/regionalApproval/models/salesPlanSubmitModel.ts';
+      export { BackendHttpError } from './src/workbench/original/http-error.ts';
+    `,
+  },
+  bundle: true,
+  write: false,
+  platform: "node",
+  format: "cjs",
+});
+const workbench = { exports: {} };
+new Function("require", "module", "exports", models.outputFiles[0].text)(
+  createRequire(import.meta.url),
+  workbench,
+  workbench.exports,
+);
+const { SalesPlanActionAttempt, SalesPlanSubmitAttempt, BackendHttpError } = workbench.exports;
+
+const pageInvocation = (invoke) => async (command) => {
+  try {
+    return await invoke(command);
+  } catch (error) {
+    throw new BackendHttpError({
+      method: "POST",
+      path: "gea.sales-plan",
+      status: error.details.httpStatus,
+      body: { code: error.code, error: error.message, details: error.details },
+    });
+  }
+};
+
+function actionReceipt(patch = {}, init) {
+  const action = init
+    ? JSON.parse(init.body).action
+    : patch.approved
+      ? "APPROVE"
+      : patch.rejected
+        ? "REJECT"
+        : "SAVE";
+  return {
+    planId: "p",
+    versionId: "v",
+    fromStatus: 4,
+    toStatus: action === "APPROVE" ? 5 : action === "REJECT" ? 9 : 4,
+    approvalRole: "category",
+    approvedRoles: ["region", "province", "area", "category"],
+    requestId: init ? new Headers(init.headers).get("X-Request-Id") : "save-1",
+    traceId: "trace",
+    auditId: null,
+    replayed: false,
+    ...patch,
+  };
+}
+
+function fixture(
+  t,
+  actionReply,
+  detailGate,
+  detailPatch = {},
+  listPage,
+  workflowRows,
+  config = {},
+) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://localhost",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,
     inputByteBudget: 30000,
     pageSize: 20,
+    ...config,
   });
   business.restoreDesktopLogin({
     schema: 1,
@@ -84,8 +155,15 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
         planId: "p",
         versionId: "v",
         fromStatus: status,
-        toStatus: status,
-        requestId: init.headers["X-Request-Id"],
+        toStatus:
+          JSON.parse(init.body).action === "APPROVE"
+            ? 5
+            : JSON.parse(init.body).action === "REJECT"
+              ? 9
+              : status,
+        approvalRole: "category",
+        approvedRoles: ["region", "province", "area", "category"],
+        requestId: new Headers(init.headers).get("X-Request-Id"),
         traceId: "trace",
         auditId: "audit",
         replayed: false,
@@ -112,7 +190,7 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
           node_num: node,
         }));
       result = {
-        requestId: init.headers["X-Request-Id"],
+        requestId: new Headers(init.headers).get("X-Request-Id"),
         operation: "SELECT",
         tables: ["agents_scm_plan_workflow_config"],
         total: rows.length,
@@ -149,8 +227,16 @@ function fixture(t, actionReply, detailGate, detailPatch = {}, listPage, workflo
   };
 }
 
-test("unavailable employee resubmission refuses before token exchange, internal submission or approval", async (t) => {
-  const f = fixture(t);
+test("signed-out employee resubmission refuses before any network", async (t) => {
+  const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
+    geaBaseUrl: "https://localhost",
+  });
+  t.after(() => business.dispose());
+  const f = { business };
+  t.mock.method(globalThis, "fetch", async () => {
+    throw Error("unexpected request");
+  });
   await assert.rejects(
     f.business.salesPlanSubmit(
       {
@@ -175,7 +261,7 @@ test("unavailable employee resubmission refuses before token exchange, internal 
       new AbortController().signal,
     ),
     (error) =>
-      error.details.resubmitUnavailableReason === "configuration" && /配置/.test(error.message),
+      error.details.resubmitUnavailableReason === "signed-out" && /登录/.test(error.message),
   );
   assert.equal(globalThis.fetch.mock.callCount(), 0);
 });
@@ -253,6 +339,252 @@ test("explicit role SAVE keeps its snapshot, authorization and one idempotent in
   assert.equal(f.writes(), 1);
 });
 
+for (const [httpStatus, retryable] of [
+  [200, false],
+  [502, false],
+  [200, true],
+  [502, true],
+  [408, false],
+  [408, true],
+])
+  test(`explicit action HTTP ${httpStatus} business rejection with retryable ${retryable} preserves the DMS reason and allows a fresh validated request`, async (t) => {
+    const message = "DMS回写失败[ITEM_DISABLED]：产品编码10004856已停用,不能填报";
+    const sent = [];
+    const f = fixture(t, async (_url, init) => {
+      sent.push(new Headers(init.headers).get("Idempotency-Key"));
+      return Response.json(
+        {
+          success: false,
+          code: 502,
+          result: null,
+          errorCode: "SALES_PLAN_DMS_WRITEBACK_FAILED",
+          category: "UPSTREAM",
+          message,
+          retryable,
+          requestId: "fixture-request",
+          traceId: "fixture-trace",
+          auditId: null,
+          details: null,
+        },
+        { status: httpStatus },
+      );
+    });
+    const signal = new AbortController().signal;
+    await f.business.refreshApprovalRoles(signal);
+    const request = { approvalRole: "category", approvalPolicy: "role-visible-v1" };
+    await assert.rejects(f.business.salesPlanAction(f.payload(request), signal), (error) => {
+      assert.equal(error.name, "Error");
+      const status = httpStatus === 200 ? 502 : httpStatus;
+      assert.equal(error.code, `GEA_HTTP_${status}`);
+      assert.equal(error.message, `GEA_HTTP_${status}：${message}`);
+      assert.equal(error.details.upstreamCode, "SALES_PLAN_DMS_WRITEBACK_FAILED");
+      assert.equal(error.details.category, "UPSTREAM");
+      assert.equal(error.details.retryable, retryable);
+      assert.equal(error.details.retrySameIntent, false);
+      return true;
+    });
+    f.effective(false);
+    await assert.rejects(f.business.salesPlanAction(f.payload(request), signal), /已变化/);
+    f.effective(true);
+    await assert.rejects(f.business.salesPlanAction(f.payload(request), signal), /已停用/);
+    assert.deepEqual(sent, ["save-1", "save-3"]);
+  });
+
+for (const mode of ["json", "text"])
+  test(`public action HTTP 408 ${mode} retains the Workbench command and physically retries the same intent`, async (t) => {
+    const sent = [];
+    const commands = [];
+    let serial = 0;
+    const f = fixture(t, async (_url, init) => {
+      sent.push({
+        body: init.body,
+        requestId: new Headers(init.headers).get("X-Request-Id"),
+        key: new Headers(init.headers).get("Idempotency-Key"),
+      });
+      if (sent.length === 1)
+        return mode === "json"
+          ? Response.json({ message: "请求超时", retryable: true }, { status: 408 })
+          : new Response("request timeout", { status: 408 });
+      return Response.json({ success: true, result: actionReceipt({ replayed: true }, init) });
+    });
+    const signal = new AbortController().signal;
+    await f.business.refreshApprovalRoles(signal);
+    const { planId, versionId, request } = f.payload({
+      approvalRole: "category",
+      approvalPolicy: "role-visible-v1",
+    });
+    const attempt = new SalesPlanActionAttempt(
+      {
+        action: {
+          invoke: pageInvocation((command) => {
+            commands.push(structuredClone(command));
+            return f.business.salesPlanAction(command, signal);
+          }),
+        },
+      },
+      () => `408-${++serial}`,
+    );
+    await assert.rejects(
+      attempt.submit({ planId, versionId, request, planTypeCode: "Y" }),
+      (error) => {
+        assert.equal(error.kind, "unavailable");
+        assert.equal(error.retrySameIntent, true);
+        return true;
+      },
+    );
+    f.effective(false);
+    const receipt = await attempt.retry();
+    assert.equal(receipt.replayed, true);
+    assert.deepEqual(commands[1], commands[0]);
+    assert.deepEqual(sent[1], sent[0]);
+    assert.equal(serial, 2);
+    assert.deepEqual(await attempt.retry(), receipt);
+    assert.equal(sent.length, 2);
+  });
+
+for (const mode of [
+  "network",
+  "timeout",
+  "body",
+  "http-body",
+  "envelope",
+  "receipt",
+  "wrong-request",
+  "wrong-status",
+])
+  test(`unknown action ${mode} keeps the exact intent and retries without revalidating changed source`, async (t) => {
+    const sent = [];
+    const f = fixture(
+      t,
+      async (_url, init) => {
+        sent.push({
+          body: init.body,
+          key: new Headers(init.headers).get("Idempotency-Key"),
+          requestId: new Headers(init.headers).get("X-Request-Id"),
+        });
+        if (sent.length > 1)
+          return Response.json({ success: true, result: actionReceipt({ replayed: true }) });
+        if (mode === "network") throw new TypeError("connection lost fixture-token");
+        if (mode === "timeout") {
+          await new Promise((_done, reject) => {
+            const timer = setTimeout(() => reject(new Error("timeout was not enforced")), 500);
+            init.signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer);
+                reject(init.signal.reason);
+              },
+              { once: true },
+            );
+          });
+        }
+        if (mode === "body") return new Response("<html>fixture-token</html>");
+        if (mode === "http-body")
+          return new Response("<html>fixture-token</html>", { status: 502 });
+        if (mode === "envelope") return Response.json({ result: actionReceipt() });
+        if (mode === "receipt") return Response.json({ success: true, result: { approved: true } });
+        if (mode === "wrong-status")
+          return Response.json({ success: true, result: actionReceipt({ toStatus: 0 }) });
+        return Response.json({
+          success: true,
+          result: actionReceipt({ requestId: "other-request" }),
+        });
+      },
+      undefined,
+      {},
+      undefined,
+      undefined,
+      { requestTimeoutMs: 30 },
+    );
+    const signal = new AbortController().signal;
+    await f.business.refreshApprovalRoles(signal);
+    const command = f.payload({ approvalRole: "category", approvalPolicy: "role-visible-v1" });
+    await assert.rejects(f.business.salesPlanAction(command, signal), (error) => {
+      assert.equal(error.code, "GEA_HTTP_502");
+      assert.equal(error.details.retrySameIntent, true);
+      assert.equal(error.message.includes("fixture-token"), false);
+      return true;
+    });
+    f.effective(false);
+    const receipt = await f.business.salesPlanAction(command, signal);
+    assert.equal(receipt.replayed, true);
+    assert.deepEqual(sent[1], sent[0]);
+    assert.deepEqual(await f.business.salesPlanAction(command, signal), receipt);
+    assert.equal(sent.length, 2);
+  });
+
+test("a received return receipt retries only readback after a read failure or mismatch", async (t) => {
+  let readbacks = 0;
+  const patch = {
+    currentVersion: {
+      id: "v",
+      planId: "p",
+      status: 4,
+      effective: true,
+      planTypeCode: "Y",
+      orderType: "M",
+    },
+    skus: [
+      {
+        skuCode: "789",
+        versionId: "v",
+        qty: "90",
+        price: "2",
+        areaConfirmedQty: "120",
+        areaConfirmedAmount: "240",
+      },
+    ],
+    actionContext: {
+      versionId: "v",
+      status: 4,
+      nodeOrder: 5,
+      allowedActions: ["REJECT"],
+      snapshotHash: "a".repeat(64),
+      policy: "role-visible-v1",
+      roleActions: [{ role: "category", allowedActions: ["REJECT"] }],
+    },
+  };
+  const f = fixture(
+    t,
+    async () => Response.json({ success: true, result: actionReceipt({ toStatus: 9 }) }),
+    async () => {
+      if (f.writes()) {
+        readbacks++;
+        if (readbacks === 1) throw new Error("offline readback");
+      }
+    },
+    patch,
+  );
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  const command = f.payload({
+    action: "REJECT",
+    approvalRole: "category",
+    approvalPolicy: "role-visible-v1",
+    expectedReturnTargetStage: 4,
+    remark: "核对",
+    adjustments: [{ skuCode: "789", adjustQty: "10" }],
+  });
+  await assert.rejects(
+    f.business.salesPlanAction(command, signal),
+    (error) => error.details?.retrySameIntent === true,
+  );
+  await assert.rejects(
+    f.business.salesPlanAction(command, signal),
+    (error) => error.details?.retrySameIntent === true,
+  );
+  assert.equal(f.writes(), 1);
+  patch.currentVersion.status = 9;
+  patch.skus[0].areaConfirmedQty = "130";
+  patch.skus[0].areaConfirmedAmount = "260";
+  const receipt = await f.business.salesPlanAction(command, signal);
+  assert.equal(receipt.toStatus, 9);
+  assert.equal(f.writes(), 1);
+  assert.equal(readbacks, 3);
+  await f.business.salesPlanAction(command, signal);
+  assert.equal(readbacks, 3);
+});
+
 test("a late approval 401 cannot expire a replacement login", async (t) => {
   let release, entered;
   const started = new Promise((done) => {
@@ -302,8 +634,8 @@ test("concurrent approval retries preserve one validated body and share the rece
   const f = fixture(t, async (_url, init) => {
     sent.push({
       body: init.body,
-      key: init.headers["Idempotency-Key"],
-      request: init.headers["X-Request-Id"],
+      key: new Headers(init.headers).get("Idempotency-Key"),
+      request: new Headers(init.headers).get("X-Request-Id"),
     });
     entered();
     await new Promise((done) => {
@@ -311,7 +643,7 @@ test("concurrent approval retries preserve one validated body and share the rece
     });
     return Response.json({
       success: true,
-      result: { planId: "p", versionId: "v", requestId: "save-1", replayed: false },
+      result: actionReceipt({}, init),
     });
   });
   const signal = new AbortController().signal;
@@ -372,12 +704,12 @@ test("approval intent snapshots caller payload before awaiting source validation
     async (_url, init) => {
       bodies.push({
         body: init.body,
-        requestId: init.headers["X-Request-Id"],
-        key: init.headers["Idempotency-Key"],
+        requestId: new Headers(init.headers).get("X-Request-Id"),
+        key: new Headers(init.headers).get("Idempotency-Key"),
       });
       return Response.json({
         success: true,
-        result: { planId: "p", versionId: "v", requestId: "save-1" },
+        result: actionReceipt({}, init),
       });
     },
     async () => {
@@ -413,7 +745,7 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
     entered = done;
   });
   const f = fixture(t, async (_url, init) => {
-    const old = init.headers["X-Access-Token"] === "fixture-token";
+    const old = new Headers(init.headers).get("X-Access-Token") === "fixture-token";
     if (old) {
       entered();
       await new Promise((done) => {
@@ -422,7 +754,7 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
     }
     return Response.json({
       success: true,
-      result: { planId: "p", versionId: "v", owner: old ? "old" : "replacement" },
+      result: actionReceipt({ owner: old ? "old" : "replacement" }, init),
     });
   });
   const signal = new AbortController().signal;
@@ -452,34 +784,28 @@ test("a late approval receipt cannot replace the new login's same-key receipt", 
   assert.equal(f.writes(), 2);
 });
 
-for (const [customerCode, returnedStatus] of [
-  ["456", 7],
-  ["9007199254740993", 7],
-  ["9223372036854775807", 7],
-  ["456", 6],
+for (const [customerCode, returnedStatus, orderType] of [
+  ["456", 7, "M"],
+  ["9007199254740993", 7, "M"],
+  ["9223372036854775807", 7, "M"],
+  ["456", 6, "M"],
+  ["456", 7, "Z"],
+  ["456", 6, "Z"],
+  ["456", 8, "M"],
+  ["456", 9, "M"],
+  ["456", 8, "Z"],
+  ["456", 9, "Z"],
 ])
-  test(`public Business resubmits returned M status ${returnedStatus} with exact customer ${customerCode}, separate service identity and nullable audit receipt`, async (t) => {
-    process.env.GEA_CONTRACT_CLIENT = "contract-client";
-    process.env.GEA_CONTRACT_SECRET = "contract-secret";
-    t.after(() => {
-      delete process.env.GEA_CONTRACT_CLIENT;
-      delete process.env.GEA_CONTRACT_SECRET;
-    });
+  test(`public Business resubmits returned ${orderType} status ${returnedStatus} with exact customer ${customerCode}, employee login without service configuration and nullable audit receipt`, async (t) => {
+    const role = { 7: "region", 8: "province", 9: "area" }[returnedStatus];
     const business = new module.exports.Business({
+      runtimeDir: tmpdir(),
       geaBaseUrl: "https://localhost",
       analysisAgentCode: "sales_forecast",
       requestTimeoutMs: 2000,
       inputByteBudget: 30000,
       pageSize: 20,
       periodPageSize: 100,
-      serviceAccounts: {
-        production: {
-          clientIdEnv: "GEA_CONTRACT_CLIENT",
-          clientSecretEnv: "GEA_CONTRACT_SECRET",
-          tenantId: "1",
-          allowedUserIds: ["someone-else"],
-        },
-      },
     });
     business.restoreDesktopLogin({
       schema: 1,
@@ -492,7 +818,7 @@ for (const [customerCode, returnedStatus] of [
         id: "user-1",
         username: "test",
         roles:
-          returnedStatus === 6 ? [] : [{ code: "sales_plan_region_approver", name: "区域审批" }],
+          returnedStatus === 6 ? [] : [{ code: `sales_plan_${role}_approver`, name: "审批人" }],
       },
     });
     t.after(() => business.dispose());
@@ -502,9 +828,9 @@ for (const [customerCode, returnedStatus] of [
       planId,
       periodId: "17",
       planTypeCode: "Y",
-      orderType: "M",
+      orderType,
       status: returnedStatus,
-      submitter: "user-1",
+      submitter: returnedStatus === 6 ? "user-1" : "original-owner",
       effective: true,
       seq: 1,
       cust_code: JSON.rawJSON(customerCode),
@@ -527,8 +853,9 @@ for (const [customerCode, returnedStatus] of [
       amtBase: "12.34",
     };
     const request = {
-      orderType: "M",
-      status: returnedStatus === 6 ? 1 : 2,
+      ...(orderType === "Z" ? { adjustmentMode: "ABSOLUTE_NET" } : {}),
+      orderType,
+      status: returnedStatus - 5,
       periodId: "17",
       periodMonth: "2026-10",
       planTypeCode: "Y",
@@ -549,6 +876,7 @@ for (const [customerCode, returnedStatus] of [
           baseQty: "1.000",
           qty: "2.000",
           price: "12.3400",
+          ...(orderType === "Z" ? { adjAddQty: "3", adjCutQty: "0" } : {}),
         },
       ],
     };
@@ -556,48 +884,62 @@ for (const [customerCode, returnedStatus] of [
       writes = 0,
       refuse = false,
       sourceDenied = false,
-      employeeRole = true;
+      employeeRole = true,
+      replyMode = "normal";
+    const sentBodies = new Map();
+    const sentRequests = [];
     t.mock.method(globalThis, "fetch", async (url, init) => {
       const path = new URL(url).pathname;
       if (path.endsWith("/api/v1/internal/auth/token")) {
         tokens++;
-        assert.equal(init.headers["X-Access-Token"], undefined);
-        return Response.json({
-          success: true,
-          result: {
-            access_token: "service-" + tokens,
-            token_type: "Bearer",
-            expires_in: 600,
-            scope: "sales-plan:write",
-          },
-        });
+        throw Error("Employee resubmission must not exchange service credentials");
       }
-      if (path.endsWith("/api/v1/internal/sales-plans")) {
+      if (path.endsWith("/sales-plan/plans/resubmit")) {
         writes++;
-        assert.equal(init.headers.Authorization, "Bearer service-" + tokens);
-        assert.equal(init.headers["X-Access-Token"], undefined);
-        const {
-          dealerCode: _dealerCode,
-          areaCode: _areaCode,
-          provinceCode: _provinceCode,
-          orgCode: _orgCode,
-          baseName: _baseName,
-          ...unchanged
-        } = request;
-        const sent = JSON.parse(init.body, (key, value, context) =>
-          key === "cust_code" ? { type: typeof value, source: context.source } : value,
-        );
-        assert.deepEqual(sent, {
-          ...unchanged,
-          cust_code: { type: "number", source: customerCode },
-          region_code: "27",
-          province_region_code: "0005",
-          sales_group_code: "578",
-          belong_base: "郑州",
+        assert.equal(new Headers(init.headers).get("Authorization"), null);
+        assert.equal(new Headers(init.headers).get("X-Access-Token"), "employee-token");
+        assert.equal(new Headers(init.headers).get("X-Tenant-Id"), "1");
+        assert.equal(new Headers(init.headers).get("X-Source-Version-Id"), null);
+        assert.deepEqual(JSON.parse(init.body).items, request.items);
+        assert.equal(JSON.parse(init.body).submitterCode, version.submitter);
+        assert.equal(JSON.parse(init.body).submitterName, undefined);
+        assert.equal(JSON.parse(init.body).cust_code, Number(request.dealerCode));
+        const key = new Headers(init.headers).get("Idempotency-Key");
+        sentRequests.push({
+          body: init.body,
+          key,
+          requestId: new Headers(init.headers).get("X-Request-Id"),
         });
+        if (sentBodies.has(key)) assert.equal(init.body, sentBodies.get(key));
+        else sentBodies.set(key, init.body);
+        if (replyMode === "timeout") {
+          await new Promise((resolve) =>
+            init.signal.addEventListener("abort", resolve, { once: true }),
+          );
+          throw init.signal.reason;
+        }
+        if (replyMode === "http-408-json")
+          return Response.json({ message: "请求超时", retryable: true }, { status: 408 });
+        if (replyMode === "http-408-text") return new Response("request timeout", { status: 408 });
+        if (replyMode === "http-408-definitive")
+          return Response.json({ message: "请求已拒绝", retryable: false }, { status: 408 });
+        if (replyMode === "broken") return new Response("not json", { status: 200 });
+        if (replyMode === "wrong-result")
+          return Response.json({ success: true, result: "unexpected" });
+        if (replyMode.startsWith("business-rejection"))
+          return Response.json(
+            {
+              success: false,
+              code: 502,
+              errorCode: "SALES_PLAN_DMS_WRITEBACK_FAILED",
+              message: "产品编码10004856已停用,不能填报",
+              retryable: true,
+            },
+            { status: replyMode.endsWith("-408") ? 408 : replyMode.endsWith("-http") ? 502 : 200 },
+          );
         if (refuse)
           return Response.json(
-            { errorCode: "UNAUTHORIZED", message: "服务授权失效", traceId: "service-failure" },
+            { errorCode: "UNAUTHORIZED", message: "员工登录已过期", traceId: "service-failure" },
             { status: 401 },
           );
         return Response.json({
@@ -608,17 +950,18 @@ for (const [customerCode, returnedStatus] of [
             seq: 2,
             status: request.status,
             replayed: false,
-            requestId: init.headers["X-Request-Id"],
+            requestId: new Headers(init.headers).get("X-Request-Id"),
             traceId: "trace",
             auditId: null,
           },
         });
       }
       if (!path.endsWith("/sql/execute"))
-        assert.equal(init.headers["X-Access-Token"], "employee-token");
-      assert.equal(init.headers.Authorization, undefined);
+        assert.equal(new Headers(init.headers).get("X-Access-Token"), "employee-token");
+      assert.equal(new Headers(init.headers).get("Authorization"), null);
       let result;
-      if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:region-approve"] };
+      if (path.endsWith("/getPermCode"))
+        result = { codeList: role ? [`sales-plan:plan:${role}-approve`] : [] };
       else if (path.endsWith("/plans/" + planId)) {
         if (sourceDenied) return Response.json({ message: "来源无权读取" }, { status: 403 });
         result = { currentVersion: version, versions: [version], skus: [sku], logs: [] };
@@ -640,7 +983,8 @@ for (const [customerCode, returnedStatus] of [
       else if (path.endsWith("/current-user/resolve"))
         result = {
           success: true,
-          roles: employeeRole ? [{ code: "sales_plan_region_approver", name: "区域审批" }] : [],
+          roles:
+            role && employeeRole ? [{ code: `sales_plan_${role}_approver`, name: "审批人" }] : [],
         };
       else if (path.endsWith("/sql/execute")) {
         const body = JSON.parse(init.body);
@@ -651,7 +995,7 @@ for (const [customerCode, returnedStatus] of [
           node_num: node,
         }));
         result = {
-          requestId: init.headers["X-Request-Id"],
+          requestId: new Headers(init.headers).get("X-Request-Id"),
           operation: "SELECT",
           tables: ["agents_scm_plan_workflow_config"],
           total: rows.length,
@@ -699,11 +1043,16 @@ for (const [customerCode, returnedStatus] of [
     sourceDenied = false;
     assert.equal(tokens, 0);
     assert.equal(writes, 0);
-    const receipt = await business.salesPlanSubmit(command("first"), signal);
+    const [receipt, concurrent] = await Promise.all([
+      business.salesPlanSubmit(command("first"), signal),
+      business.salesPlanSubmit(command("first"), signal),
+    ]);
+    assert.deepEqual(concurrent, receipt);
     assert.equal(receipt.auditId, null);
     assert.equal(receipt.status, request.status);
     assert.deepEqual(await business.salesPlanSubmit(command("first"), signal), receipt);
     assert.equal(writes, 1);
+    assert.equal(Object.hasOwn(JSON.parse(sentBodies.get("first")), "notification"), false);
     await assert.rejects(
       business.salesPlanSubmit(
         { ...command("first"), request: { ...request, targetQty: "2.000" } },
@@ -713,20 +1062,85 @@ for (const [customerCode, returnedStatus] of [
     );
     assert.equal(writes, 1);
     await business.salesPlanSubmit(command("second"), signal);
-    assert.equal(tokens, 1);
+    assert.equal(tokens, 0);
     assert.equal(writes, 2);
-    refuse = true;
-    await assert.rejects(
-      business.salesPlanSubmit(command("service-failure"), signal),
-      (error) => error.details.authentication === "service",
-    );
-    assert.equal(writes, 4);
-    assert.equal(tokens, 2);
-    assert.equal(business.status().loginState, "authenticated");
+    if (customerCode === "456" && returnedStatus === 7) {
+      for (const mode of [
+        "business-rejection",
+        "business-rejection-http",
+        "business-rejection-408",
+      ]) {
+        replyMode = mode;
+        await assert.rejects(business.salesPlanSubmit(command(mode), signal), (error) => {
+          assert.equal(error.details.upstreamCode, "SALES_PLAN_DMS_WRITEBACK_FAILED");
+          assert.equal(error.details.retryable, true);
+          assert.equal(error.details.retrySameIntent, false);
+          return true;
+        });
+      }
+      replyMode = "http-408-definitive";
+      await assert.rejects(business.salesPlanSubmit(command(replyMode), signal), (error) => {
+        assert.equal(error.details.httpStatus, 408);
+        assert.equal(error.details.retryable, false);
+        assert.notEqual(error.details.retrySameIntent, true);
+        return true;
+      });
+      for (const mode of ["http-408-json", "http-408-text", "timeout", "broken", "wrong-result"]) {
+        replyMode = mode;
+        const intent = command("uncertain-" + mode);
+        if (mode.startsWith("http-408")) {
+          const commands = [];
+          let serial = 0;
+          const attempt = new SalesPlanSubmitAttempt(
+            {
+              submit: {
+                invoke: pageInvocation((payload) => {
+                  commands.push(structuredClone(payload));
+                  return business.salesPlanSubmit(payload, signal);
+                }),
+              },
+            },
+            () => `${mode}-${++serial}`,
+          );
+          await assert.rejects(
+            attempt.submit({
+              request,
+              expected: { planId, previousVersionId: "v1", nextSeq: 2, nextStatus: request.status },
+            }),
+            (error) => {
+              assert.equal(error.kind, "unavailable");
+              assert.equal(error.retrySameIntent, true);
+              return true;
+            },
+          );
+          replyMode = "normal";
+          sourceDenied = true;
+          const receipt = await attempt.retry();
+          sourceDenied = false;
+          assert.equal(receipt.status, request.status);
+          assert.deepEqual(commands[1], commands[0]);
+          assert.deepEqual(sentRequests.at(-1), sentRequests.at(-2));
+          assert.equal(serial, 2);
+          const posts = writes;
+          assert.deepEqual(await attempt.retry(), receipt);
+          assert.equal(writes, posts);
+          continue;
+        }
+        await assert.rejects(
+          business.salesPlanSubmit(intent, signal),
+          (error) => error.details?.retrySameIntent === true,
+        );
+        replyMode = "normal";
+        sourceDenied = true;
+        assert.equal((await business.salesPlanSubmit(intent, signal)).status, request.status);
+        sourceDenied = false;
+      }
+    }
+    const writesBeforeExpiration = writes;
     const records = business
       .apiLogSnapshot({})
       .records.filter((record) =>
-        ["service.submit", "plans.detail", "plans.version-skus"].includes(record.catalogId),
+        ["plans.resubmit", "plans.detail", "plans.version-skus"].includes(record.catalogId),
       );
     assert.ok(records.length > 0);
     assert.equal(
@@ -735,6 +1149,14 @@ for (const [customerCode, returnedStatus] of [
     );
     assert.equal(JSON.stringify(records).includes('"789"'), false);
     assert.equal(JSON.stringify(records).includes("contract-secret"), false);
+    refuse = true;
+    await assert.rejects(
+      business.salesPlanSubmit(command("employee-expired"), signal),
+      (error) => error.code === "GEA_HTTP_401",
+    );
+    assert.equal(writes, writesBeforeExpiration + 1);
+    assert.equal(tokens, 0);
+    assert.equal(business.status().loginState, "expired");
   });
 
 function correctionFixture(t, actionReply) {
@@ -789,13 +1211,45 @@ function correctionFixture(t, actionReply) {
   };
 }
 
+for (const orderType of ["M", "Z"])
+  for (const action of ["APPROVE", "REJECT"])
+    test(`${orderType} ${action} sends business notification text through the actual action request`, async (t) => {
+      const sent = [];
+      const f = correctionFixture(t, async (_url, init) => {
+        sent.push(JSON.parse(init.body));
+        return Response.json({ success: true, result: actionReceipt({ accepted: true }, init) });
+      });
+      f.detail.currentVersion.orderType = orderType;
+      f.detail.actionContext = undefined;
+      const signal = new AbortController().signal;
+      await f.business.refreshApprovalRoles(signal);
+      const command = f.payload({ action, expectedSnapshot: undefined, remark: "开发验收" });
+      await f.business.salesPlanAction(command, signal);
+      await f.business.salesPlanAction(command, signal);
+      assert.equal(sent.length, 1);
+      const kind = orderType === "Z" ? "纠偏" : "月初";
+      assert.deepEqual(
+        sent[0].notification,
+        action === "APPROVE"
+          ? {
+              title: "需求预测审批待处理",
+              content: `一份${kind}需求预测已通过品类审批，请查看并按最新内容处理。`,
+            }
+          : {
+              title: "需求预测退回待处理",
+              content: `一份${kind}需求预测已退回，请查看退回原因并修改后重新提报。`,
+            },
+      );
+      assert.doesNotMatch(JSON.stringify(sent[0].notification), /sales-plan:|版本|p-jxs-/);
+    });
+
 test("Z approval uses the current environment workflow for a newly configured skipped-node type", async (t) => {
   let body;
   const f = fixture(
     t,
     async (_url, init) => {
       body = JSON.parse(init.body);
-      return Response.json({ success: true, result: { approved: true } });
+      return Response.json({ success: true, result: actionReceipt({ approved: true }, init) });
     },
     undefined,
     {
@@ -830,9 +1284,16 @@ test("Z approval uses the current environment workflow for a newly configured sk
       }),
       signal,
     ),
-    { approved: true },
+    actionReceipt({ approved: true }),
   );
-  assert.deepEqual(body, { action: "APPROVE", expectedStatus: 4 });
+  assert.deepEqual(body, {
+    action: "APPROVE",
+    expectedStatus: 4,
+    notification: {
+      title: "需求预测审批待处理",
+      content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+    },
+  });
 });
 
 test("Z adjustments stay local and cannot SAVE through the remote action endpoint", async (t) => {
@@ -850,7 +1311,7 @@ test("Z approval reuses monthly action authority and original body without corre
   let sent;
   const f = correctionFixture(t, async (url, init) => {
     sent = { path: new URL(url).pathname, body: JSON.parse(init.body) };
-    return Response.json({ success: true, result: { approved: true } });
+    return Response.json({ success: true, result: actionReceipt({ approved: true }, init) });
   });
   f.detail.actionContext = undefined;
   f.detail.correctionContext = undefined;
@@ -861,7 +1322,7 @@ test("Z approval reuses monthly action authority and original body without corre
       f.payload({ action: "APPROVE", adjustmentMode: undefined, expectedSnapshot: undefined }),
       signal,
     ),
-    { approved: true },
+    actionReceipt({ approved: true }),
   );
   assert.deepEqual(sent, {
     path: "/sales-plan/plans/versions/v/actions",
@@ -869,6 +1330,10 @@ test("Z approval reuses monthly action authority and original body without corre
       action: "APPROVE",
       expectedStatus: 4,
       adjustments: [{ skuCode: "789", adjustQty: "8" }],
+      notification: {
+        title: "需求预测审批待处理",
+        content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+      },
     },
   });
 });
@@ -877,7 +1342,7 @@ test("Z rejection uses the original monthly action body and requires its reason"
   let body;
   const f = correctionFixture(t, async (_url, init) => {
     body = JSON.parse(init.body);
-    return Response.json({ success: true, result: { rejected: true } });
+    return Response.json({ success: true, result: actionReceipt({ rejected: true }, init) });
   });
   f.detail.actionContext = undefined;
   f.detail.correctionContext = undefined;
@@ -888,27 +1353,42 @@ test("Z rejection uses the original monthly action body and requires its reason"
   assert.equal(f.writes(), 0);
   assert.deepEqual(
     await f.business.salesPlanAction(f.payload({ ...request, remark: "请核对调整数量" }), signal),
-    { rejected: true },
+    actionReceipt({ rejected: true, requestId: "save-2" }),
   );
-  assert.deepEqual(body, { action: "REJECT", expectedStatus: 4, remark: "请核对调整数量" });
+  assert.deepEqual(body, {
+    action: "REJECT",
+    expectedStatus: 4,
+    remark: "请核对调整数量",
+    notification: {
+      title: "需求预测退回待处理",
+      content: "一份纠偏需求预测已退回，请查看退回原因并修改后重新提报。",
+    },
+  });
 });
 
 test("Z approval keeps monthly role and snapshot checks without correction metadata", async (t) => {
   let sent;
   const f = correctionFixture(t, async (url, init) => {
     sent = { path: new URL(url).pathname, body: JSON.parse(init.body) };
-    return Response.json({ success: true, result: { approved: true } });
+    return Response.json({ success: true, result: actionReceipt({ approved: true }, init) });
   });
   f.detail.correctionContext = undefined;
   const signal = new AbortController().signal;
   await f.business.refreshApprovalRoles(signal);
-  assert.deepEqual(await f.business.salesPlanAction(f.payload(), signal), { approved: true });
+  assert.deepEqual(
+    await f.business.salesPlanAction(f.payload(), signal),
+    actionReceipt({ approved: true }),
+  );
   assert.deepEqual(sent, {
     path: "/sales-plan/plans/versions/v/actions",
     body: {
       action: "APPROVE",
       expectedStatus: 4,
       adjustments: [{ skuCode: "789", adjustQty: "8" }],
+      notification: {
+        title: "需求预测审批待处理",
+        content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+      },
     },
   });
   await assert.rejects(
@@ -965,22 +1445,32 @@ test("correction readback preserves frozen amounts, all six node fields and serv
 test("unknown correction write retries its frozen body and key without revalidating changed source", async (t) => {
   const bodies = [];
   const f = correctionFixture(t, async (_url, init) => {
-    bodies.push({ key: init.headers["Idempotency-Key"], body: init.body });
+    bodies.push({ key: new Headers(init.headers).get("Idempotency-Key"), body: init.body });
     if (bodies.length === 1) throw new TypeError("isolated response lost");
-    return Response.json({ success: true, result: { replayed: true } });
+    return Response.json({ success: true, result: actionReceipt({ replayed: true }, init) });
   });
   const signal = new AbortController().signal;
   await f.business.refreshApprovalRoles(signal);
   const payload = f.payload();
-  await assert.rejects(f.business.salesPlanAction(payload, signal), /isolated response lost/);
+  await assert.rejects(
+    f.business.salesPlanAction(payload, signal),
+    (error) => error.details?.retrySameIntent === true,
+  );
   f.detail.actionContext.snapshotHash = "b".repeat(64);
   f.detail.actionContext.allowedActions = [];
-  assert.deepEqual(await f.business.salesPlanAction(payload, signal), { replayed: true });
+  assert.deepEqual(
+    await f.business.salesPlanAction(payload, signal),
+    actionReceipt({ replayed: true, toStatus: 5 }),
+  );
   assert.deepEqual(bodies[0], bodies[1]);
   assert.deepEqual(JSON.parse(bodies[1].body), {
     action: "APPROVE",
     expectedStatus: 4,
     adjustments: [{ skuCode: "789", adjustQty: "8" }],
+    notification: {
+      title: "需求预测审批待处理",
+      content: "一份纠偏需求预测已通过品类审批，请查看并按最新内容处理。",
+    },
   });
 });
 
@@ -1524,65 +2014,48 @@ test("Business enforces string organization dimensions while preserving leading 
   assert.equal(calls, before);
 });
 
-test("Business exposes safe resubmission channel reasons and blocks before any network", async (t) => {
+test("employee resubmission readiness needs login and ignores absent or obsolete service references", async (t) => {
   const network = t.mock.method(globalThis, "fetch", async () => {
     throw Error("unexpected channel request");
   });
-  process.env.GEA_STATUS_CLIENT = "fixture-client";
-  process.env.GEA_STATUS_SECRET = "fixture-secret";
-  t.after(() => {
-    delete process.env.GEA_STATUS_CLIENT;
-    delete process.env.GEA_STATUS_SECRET;
-  });
-  for (const [reason, tenantId, credential] of [
-    ["signed-out", undefined, true],
-    ["configuration", "1", true],
-    ["tenant", "2", true],
-    ["credential", "1", false],
-    [undefined, "1", true],
+  for (const serviceAccounts of [
+    undefined,
+    {
+      production: {
+        clientIdEnv: "GEA_STATUS_CLIENT",
+        clientSecretEnv: "GEA_STATUS_SECRET",
+        tenantId: "different-tenant",
+        keychainService: "old-local-reference",
+      },
+    },
   ]) {
+    if (serviceAccounts) serviceAccounts.production.tenantId = "2";
     const business = new module.exports.Business({
+      runtimeDir: tmpdir(),
       geaBaseUrl: "https://localhost",
-      analysisAgentCode: "sales_forecast",
-      requestTimeoutMs: 2000,
-      inputByteBudget: 30000,
-      pageSize: 20,
-      serviceAccounts:
-        reason === "configuration"
-          ? undefined
-          : {
-              production: {
-                clientIdEnv: "GEA_STATUS_CLIENT",
-                clientSecretEnv: "GEA_STATUS_SECRET",
-                tenantId: "1",
-              },
-            },
+      serviceAccounts,
     });
     t.after(() => business.dispose());
-    if (tenantId)
-      business.restoreDesktopLogin({
-        schema: 1,
-        environment: "production",
-        base: "https://localhost",
-        auth: {
-          token: "fixture-token",
-          tenantId,
-          id: "ordinary-user",
-          name: "Test",
-          username: "test",
-        },
-      });
-    if (!credential) delete process.env.GEA_STATUS_SECRET;
-    const status = business.status();
-    assert.equal(status.resubmitUnavailableReason, reason);
-    assert.equal(status.resubmitConnected, reason === undefined);
-    assert.equal(JSON.stringify(status).includes("fixture-secret"), false);
-    if (reason)
-      await assert.rejects(
-        business.salesPlanSubmit({}, new AbortController().signal),
-        (error) => error.details?.resubmitUnavailableReason === reason,
-      );
-    process.env.GEA_STATUS_SECRET = "fixture-secret";
+    assert.equal(business.status().resubmitConnected, false);
+    assert.equal(business.status().resubmitUnavailableReason, "signed-out");
+    await assert.rejects(
+      business.salesPlanSubmit({}, new AbortController().signal),
+      (error) => error.details?.resubmitUnavailableReason === "signed-out",
+    );
+    business.restoreDesktopLogin({
+      schema: 1,
+      environment: "production",
+      base: "https://localhost",
+      auth: {
+        token: "employee-token",
+        tenantId: "1",
+        id: "ordinary-user",
+        name: "Test",
+        username: "test",
+      },
+    });
+    assert.equal(business.status().resubmitConnected, true);
+    assert.equal(business.status().resubmitUnavailableReason, undefined);
   }
   assert.equal(network.mock.callCount(), 0);
 });

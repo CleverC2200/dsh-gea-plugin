@@ -1,12 +1,7 @@
-/**
- * Node/undici 的 fetch 失败可能只提供 TypeError("fetch failed")，具体原因位于 cause。
- * 读取 cause 的 code、hostname 和 syscall 生成可读错误，并保留网络失败或超时分类。
- */
 import { isAbortError, readableError } from "./abort.ts";
 
-/** 网络层失败：连不上、连接被重置、DNS 失败等。 */
 export const NETWORK_FAILURE_CODE = "GEA_NETWORK_FAILED";
-/** 超时：请求发出去了但没在预算内回来。 */
+
 export const NETWORK_TIMEOUT_CODE = "GEA_NETWORK_TIMEOUT";
 
 type CauseLike = {
@@ -22,7 +17,6 @@ type CauseLike = {
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value.trim() : undefined;
 
-/** 一个 cause（可能是 AggregateError，多个地址各一条）压成一句话。 */
 function causeOf(error: unknown): string | undefined {
   const cause = (error as { cause?: unknown })?.cause as CauseLike | undefined;
   if (!cause || typeof cause !== "object") return undefined;
@@ -48,27 +42,16 @@ function causeOf(error: unknown): string | undefined {
   return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
-/** 超时判定：AbortSignal.timeout 产生的是 TimeoutError。 */
 function isTimeout(error: unknown): boolean {
   if (error instanceof Error && error.name === "TimeoutError") return true;
   const reason = (error as { cause?: unknown })?.cause;
   return reason instanceof Error && reason.name === "TimeoutError";
 }
 
-/**
- * fetch 失败 → 可读错误。
- *
- * @param error 捕获到的原始错误。
- * @param context `what` 是"在连什么"（会打印给用户/日志），`stage` 是阶段说明，
- *   `timeoutMs` 给了就在超时时写进文案。
- * 已经是带 code 的错误、或用户中止，原样返回（不重复包装）。
- */
 export function networkError(
   error: unknown,
   context: { what: string; stage?: string; timeoutMs?: number; timeoutScope?: "model-idle" },
 ): Error {
-  // 中止（用户点停止）走既有口径；已有 code 的错（GEA_MODEL_HTTP_500 这类）保持原样。
-  // dsh 中止时 fetch 直接以 signal.reason 为拒绝原因；有的实现会把它包进 cause，两种都认。
   const abortish = isAbortError(error)
     ? error
     : isAbortError((error as { cause?: unknown })?.cause)

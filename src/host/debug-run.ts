@@ -1,4 +1,3 @@
-/** 单次重发与批量重发共用的在途互斥。 */
 export class DebugRunCoordinator {
   private current?: string;
   claim(id: string): () => void {

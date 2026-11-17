@@ -2,7 +2,6 @@ import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { profile } from "./profile.mjs";
 
-/** Host 侧草稿能力闸门：既不能把界面能编辑的对象判成不可写，也不能凭登录权限放行。 */
 test(
   "Host saves a private draft for every shape the workbench can edit",
   { timeout: 60000 },
@@ -96,25 +95,20 @@ test(
         ...extra,
       });
 
-    // 多角色账号：界面能编辑，Host 也必须能落草稿（曾经的必失败场景）。
     const multiRole = await write("province", "2");
     assert.equal(multiRole.ok, true, JSON.stringify(multiRole));
     assert.deepEqual((await draftOf()).draft.adjustments, [{ skuCode: "1001", adjustQty: "2" }]);
 
-    // 不带角色回退时仍按节点顺序解析，不再因为“角色不唯一”直接判死。
     assert.equal((await write(undefined, "2")).ok, true);
 
-    // 取值基线按界面使用的角色计算：region 视图看到的是 qty=22，改到 10 必须被接受。
     const regionView = await write("region", "-12");
     assert.equal(regionView.ok, true, JSON.stringify(regionView));
     assert.deepEqual((await draftOf()).draft.adjustments, [{ skuCode: "1001", adjustQty: "-12" }]);
 
-    // 同一基线下的非法结果（负数量）仍要被拒绝，且不能覆盖已验证草稿。
     const negative = await write("province", "-20");
     assert.equal(negative.ok, false, "负数结果仍必须被拒绝");
     assert.deepEqual((await draftOf()).draft.adjustments, [{ skuCode: "1001", adjustQty: "-12" }]);
 
-    // 伪造来源快照必须被拒绝，不能覆盖已验证草稿。
     const forged = await write("province", "2", {
       draft: {
         planId: "p",
@@ -129,10 +123,8 @@ test(
     assert.equal(forged.ok, false);
     assert.deepEqual((await draftOf()).draft.adjustments, [{ skuCode: "1001", adjustQty: "-12" }]);
 
-    // 角色必须是真实审批节点。
     assert.equal((await write("admin", "2")).ok, false);
 
-    // 没有角色契约时，服务端同版本可处理任务也构成依据。
     mode = "workflow-task";
     const workflowTask = await write("province", "2");
     assert.equal(workflowTask.ok, true, JSON.stringify(workflowTask));
@@ -144,8 +136,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const app = await profile(t);
-    // 真实生产形态：status 8（被省区退回）、无 actionContext、无可处理通知、账号也没有 sales-plan 权限。
-    // 界面自 0.0.59 起按“详情可读”开放编辑入口，所以本地草稿只校验身份、新鲜度和形状，不校验审批能力。
+
     app.route((req, _res, reply) => {
       const path = req.url.pathname;
       const send = (result) => {
@@ -196,7 +187,6 @@ test(
       [{ skuCode: "1001", adjustQty: "2" }],
     );
 
-    // 格式与新鲜度仍然是硬门槛：逻辑不成立的草稿不能落盘覆盖已验证内容。
     const negative = await app.rpc("sales-plan/draft", {
       planId: "p",
       versionId: "v",

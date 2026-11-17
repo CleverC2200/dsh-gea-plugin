@@ -56,8 +56,8 @@
   !insertmacro GEA_INSTALL_TIMING_LOG "init"
 !macroend
 
-# electron-builder calls this immediately after the bundled 7z has been
-# extracted to a temporary directory and copied into the destination.
+
+
 !macro customFiles_x64
   !ifdef GEA_DIRECTORY_INSTALL
     !insertmacro GEA_INSTALL_TIMING_LOG "stage-payload-ready"
@@ -66,7 +66,7 @@
   !endif
 !macroend
 
-# Called after registry entries and shortcuts have been written.
+
 !macro customInstall
   !insertmacro GEA_REGISTER_NAVIGATION
   !ifdef GEA_DIRECTORY_INSTALL

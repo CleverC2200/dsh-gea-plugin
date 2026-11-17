@@ -1,4 +1,3 @@
-/** Incremental strict gates; audit modes retain the full existing debt. */
 import { spawnSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -7,8 +6,7 @@ import { resolve, relative, sep } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const anchor = "041ef35e16effcf98ffe3b252b64512c704dc29a";
 const hash = (data) => createHash("sha256").update(data).digest("hex");
-// Original 7e7a464 policy blobs, accepting only LF or their complete CRLF rendering.
-// Compare bytes without rewriting the policy, baseline, source or evidence.
+
 const policy = {
   "quality-baseline.json": [
     "7a0b2da1102c657493e1a341ff7097edf2fec3a9953cbc8684aa5ebdee904b35",
@@ -68,8 +66,7 @@ function git(args) {
   if (result.status !== 0) throw new Error(result.stderr);
   return result.stdout;
 }
-// Preserve the original generated/third-party exclusions. New Git ignore rules
-// must not hide authored files that a tracked consumer can load locally.
+
 const exclusions = selected.length
   ? []
   : git(["show", anchor + ":.gitignore"])

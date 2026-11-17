@@ -1,14 +1,17 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { loadServiceAccountCredentials } from "../src/shared/service-accounts.js";
+import { validateServiceAccounts } from "../src/shared/service-accounts.js";
 import { resolveEnvironments } from "../src/shared/environments.js";
+import {
+  DEFAULT_MEMORY_GATEWAY_URL,
+  resolveMemoryGatewayUrl,
+} from "../src/shared/memory-gateway.js";
 import { validateSqlReadLimit } from "../src/shared/sql-read-limit.js";
 import { validateSalesReadonly } from "../src/shared/sales-readonly.js";
-/** Validate deployment inputs before creating a profile or reading credentials. */
+
 import { readFile, mkdir, rm, symlink, realpath, lstat, unlink, writeFile } from "node:fs/promises";
 import { resolve, isAbsolute } from "node:path";
 
-/** Parse an HTTPS endpoint and reject credentials or URL routing metadata. */
 function httpsEndpoint(value, code) {
   let url;
   try {
@@ -21,20 +24,9 @@ function httpsEndpoint(value, code) {
   return url;
 }
 
-/**
- * Read and normalize deployment before Host launch. resolveCredentials:false skips keychain
- * resolution; checkDirectCredential:false permits admission's structural comparison without
- * reading a secret. Launch callers retain direct-key checks against credentialEnv.
- */
 export async function readDeployment(
   path,
-  {
-    credentialEnv = process.env,
-    platform = process.platform,
-    readKeychain,
-    resolveCredentials = true,
-    checkDirectCredential = true,
-  } = {},
+  { credentialEnv = process.env, checkDirectCredential = true } = {},
 ) {
   let config;
   try {
@@ -44,6 +36,13 @@ export async function readDeployment(
   }
   if (!config || Array.isArray(config) || typeof config !== "object")
     throw new Error("GEA_CONFIG_INVALID");
+  if (config.memoryGatewayAllowPrivateHttp === undefined)
+    config.memoryGatewayAllowPrivateHttp = false;
+  config.memoryGatewayUrl =
+    resolveMemoryGatewayUrl(
+      config.memoryGatewayUrl === undefined ? DEFAULT_MEMORY_GATEWAY_URL : config.memoryGatewayUrl,
+      config.memoryGatewayAllowPrivateHttp,
+    ) ?? "";
   validateSqlReadLimit(config.sqlReadLimit);
   if (
     config.workbenchCapability !== undefined &&
@@ -105,16 +104,10 @@ export async function readDeployment(
     }
     config.analysis = a;
   }
-  await loadServiceAccountCredentials(config.serviceAccounts, {
-    credentialEnv,
-    platform,
-    readKeychain,
-    resolveCredentials,
-  });
+  validateServiceAccounts(config.serviceAccounts);
   return { ...config, geaBaseUrl: url.href.replace(/\/$/, "") };
 }
 
-/** Resolve the supported public workbench API before writing runtime state. */
 export function resolveWorkbench(anchor = import.meta.url) {
   try {
     const dependency = createRequire(anchor);
@@ -130,17 +123,6 @@ export function resolveWorkbench(anchor = import.meta.url) {
   }
 }
 
-/**
- * Resolve the content plugins mounted by the historical company Desktop.
- *
- * genui renders model-authored inline UI; better-sidebar adds the right-Sidebar
- * explorer/editor/terminal/git/browser tab types. Both are ordinary
- * dependencies of this package, so a release install resolves them from its own
- * node_modules; a source checkout resolves them from the development install.
- * The rows carry an absolute entry path in non-bundle compositions and lose it
- * in historical bundle compositions. The current official source launcher
- * mounts each sibling from its own bundle patch and never calls this resolver.
- */
 export function resolveBuiltinPlugins(anchor = import.meta.url) {
   const dependency = createRequire(anchor);
   const entry = (specifier, id) => {
@@ -155,7 +137,7 @@ export function resolveBuiltinPlugins(anchor = import.meta.url) {
     return [
       {
         ...entry("@changfenhuang/dsh-genui", "genui"),
-        // 围栏渲染失败时把逐节点诊断送回同一轮，让模型重发修正版。
+
         config: { fenceFeedback: true },
       },
       entry("dsh-better-sidebar", "better-sidebar"),
@@ -168,7 +150,6 @@ export function resolveBuiltinPlugins(anchor = import.meta.url) {
   }
 }
 
-/** Build ordinary patch rows for the supported dsh profile launcher. */
 export function businessDeploymentPatch(
   config,
   root,
@@ -195,8 +176,12 @@ export function businessDeploymentPatch(
           name: resolve(root, "lib/host.js"),
           config: {
             geaBaseUrl: config.geaBaseUrl,
+            memoryGatewayUrl: config.memoryGatewayUrl,
+            memoryGatewayAllowPrivateHttp: config.memoryGatewayAllowPrivateHttp,
             serviceAccounts: config.serviceAccounts,
             dms: config.dms,
+            warningSchedulerEnvironments: config.warningSchedulerEnvironments,
+            orderFulfillmentConfirmation: config.orderFulfillmentConfirmation,
             fcStorage: config.fcStorage,
             environment: config.environment,
             geaEnvironments: config.geaEnvironments,
@@ -219,8 +204,7 @@ export function businessDeploymentPatch(
                   analysis.contextWindow - analysis.maxTokens - 1000,
                 )
               : config.maxSnapshotBytes,
-            // 问答侧默认关掉"模型自己写 SQL"：取数只走模块 MCP + 页面证据。
-            // 需要临时打开时在部署配置里写 agentSqlRead: true。
+
             agentSqlRead: config.agentSqlRead === true,
             workbenchCapability: config.workbenchCapability,
             sqlReadLimit: config.sqlReadLimit,
@@ -266,7 +250,6 @@ export function businessDeploymentPatch(
   return rows;
 }
 
-/** Historical company Desktop composition; the current official source launcher never calls this interface. */
 export function deploymentPatch(config, root, runtime, { bundle = false } = {}) {
   const [title, model, ...business] = businessDeploymentPatch(config, root, runtime);
   const rows = [
@@ -294,10 +277,7 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
         ],
       },
     },
-    // 浏览器 MCP（Playwright）**默认不挂**：它一次注入 25 个 mcp__browser__* 工具，实测
-    // 合计 18,498 字符，占工具清单 2/3（整块从 12.2k 推到 27.7k）——业务问答用不到它，
-    // 却每次请求都付这份上下文；每次启动还会拉起一个 npx 进程 + 浏览器。
-    // 需要浏览器自动化的场合显式打开：GEA_BROWSER_MCP=1。
+
     ...(process.env.GEA_BROWSER_MCP === "1"
       ? [
           {
@@ -331,17 +311,9 @@ export function deploymentPatch(config, root, runtime, { bundle = false } = {}) 
   return rows;
 }
 
-/**
- * 默认 preset 沿用 DSH 标准组合，但走我们自己的 id：
- * DSH 对内置 id `standard` 会强行用它自带的显示名（标准模式），换个 id 才能改显示名。
- */
 export const DEFAULT_PRESET_ID = "auto-negotiation";
 export const DEFAULT_PRESET_NAME = "智能编排";
 
-/**
- * 预设发现目录：先找插件包内的 default-presets（桌面端整包安装后的布局），
- * 再找仓库根的 default-presets / presets（源码与开发态）。不存在的目录不登记。
- */
 function presetRoots(root) {
   return [
     resolve(root, "node_modules/@cleverc2200/gea-dsh-prototype/default-presets"),
@@ -352,14 +324,6 @@ function presetRoots(root) {
     .map((path) => ({ path, trust: "system" }));
 }
 
-/**
- * 把组合文件放进 native-presets：优先软链 DSH 原始文件，保证能力集不被改动。
- *
- * Windows 创建文件软链需要 SeCreateSymbolicLinkPrivilege（开发者模式或管理员），
- * 普通账户只会拿到 EPERM；目录还能退到 junction，文件没有等价物，所以这里退回写一份
- * 内容逐字节相同的副本 —— native-presets 是启动器每次启动重建的派生目录，副本同样会在
- * 下一次启动被刷新，能力集不变。
- */
 async function placeCompositionFile(link, source, createLink) {
   const content = await readFile(source);
   let entry = null;
@@ -369,7 +333,6 @@ async function placeCompositionFile(link, source, createLink) {
     if (error.code !== "ENOENT") throw error;
   }
   if (entry?.isSymbolicLink()) {
-    // 切换已准备版本后这里仍指向上一版组合目录。只替换软链本身。
     let current = null;
     try {
       current = await realpath(link);
@@ -381,10 +344,9 @@ async function placeCompositionFile(link, source, createLink) {
     entry = null;
   }
   if (entry) {
-    // 真实文件：内容一致就是旧版复制布局留下的副本，原样沿用。
     const existing = await readFile(link).catch(() => null);
     if (existing?.equals(content)) return;
-    // 内容落后于当前 DSH 包：重写。这里和同目录的 preset.yml 一样，是启动器自己的派生目录。
+
     await writeFile(link, content, { mode: 0o600 });
     return;
   }
@@ -396,13 +358,11 @@ async function placeCompositionFile(link, source, createLink) {
   }
 }
 
-/** Prepare the renamed DSH standard preset and the ordered sales-plan preset. */
 export async function prepareNativePreset(runtime, target, { createLink = symlink } = {}) {
   const parent = resolve(runtime, "native-presets");
   await readFile(resolve(target, "agent.cordis.yml"), "utf8");
   await mkdir(parent, { recursive: true });
-  // 旧版本发布的是 native-presets/standard：可能是目录，也可能是指向 DSH 包目录的软链。
-  // 软链只删链接本身，别顺着链接把 DSH 包里的预设删了。
+
   const legacy = resolve(parent, "standard");
   try {
     const entry = await lstat(legacy);
@@ -412,7 +372,7 @@ export async function prepareNativePreset(runtime, target, { createLink = symlin
     if (error.code !== "ENOENT") throw error;
   }
   const directory = resolve(parent, DEFAULT_PRESET_ID);
-  // Upgrade the earlier directory-link layout: discovery only scans real directories.
+
   try {
     if ((await lstat(directory)).isSymbolicLink()) {
       if ((await realpath(directory)) !== (await realpath(target)))
@@ -423,19 +383,16 @@ export async function prepareNativePreset(runtime, target, { createLink = symlin
     if (error.code !== "ENOENT") throw error;
   }
   await mkdir(directory, { recursive: true });
-  // 组合文件继续软链 DSH 原始文件，保证能力集不被改动；没有软链权限的机器退回副本。
+
   await placeCompositionFile(
     resolve(directory, "agent.cordis.yml"),
     resolve(target, "agent.cordis.yml"),
     createLink,
   );
-  // 只有显示名不一样：写自己的一份 preset.yml。
-  // 老版本在这里留的是指向 DSH 包内的软链，必须先删掉，否则会顺着链接改到包里。
+
   const preset = await readFile(resolve(target, "preset.yml"), "utf8");
   const renamed = preset.replace(/^name:.*$/m, `name: ${DEFAULT_PRESET_NAME}`);
   const presetPath = resolve(directory, "preset.yml");
   await rm(presetPath, { force: true });
   await writeFile(presetPath, renamed, { mode: 0o600 });
-
-  // Business resources are published on selection by Agent Manage; never copy their compositions.
 }

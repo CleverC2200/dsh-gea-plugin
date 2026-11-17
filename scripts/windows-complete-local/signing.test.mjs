@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { X509Certificate } from "node:crypto";
 import { rootCertificates } from "node:tls";
 import {
@@ -101,25 +102,46 @@ test("a mismatched public certificate and a failed timestamp stop signed packagi
   );
 });
 
-test("company signing keeps the official updater and changes only signer and company feed", () => {
+test("company signing keeps the official updater and company feed", () => {
   const original =
-    "const windowsSigner=createWindowsTokenSigner({certificateFile: env.DSH_DESKTOP_WINDOWS_CER_FILE});\nconst update=resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);\nconst publish=[{provider:'generic',url:update.publicUrl,channel:'nightly'}];";
+    "const windowsSigner=createWindowsTokenSigner({certificateFile: env.DSH_DESKTOP_WINDOWS_CER_FILE});\nconst update=resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);\nconst publish=[{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }];";
   const adapted = adaptSignedWindowsFactory(original, "C:/core/apps/desktop");
   assert.match(
     adapted,
     /createCompanyWindowsSigner\(\{ repairExecutable: repairDanglingAuthenticodeDirectory,/,
   );
   assert.match(adapted, /const update=resolveCompanyWindowsUpdate\(\)/);
-  assert.ok(
-    adapted.endsWith(
-      "const publish=[{provider:'generic',url:update.publicUrl,channel:'nightly'}];",
-    ),
-  );
   assert.equal(
     new URL(companyWindowsUpdateUrl).origin,
     "https://synear-gea.oss-cn-hangzhou.aliyuncs.com",
   );
   assert.throws(() => adaptSignedWindowsFactory("changed Core", "C:/core"), /ADAPTER_DRIFT/);
+});
+
+test("the adopted company generic updater uses single ranges and retains other providers", async (t) => {
+  const { directory } = await fixture(t);
+  await mkdir(join(directory, "scripts"));
+  await writeFile(
+    join(directory, "scripts/windows-sign.mjs"),
+    "export function repairDanglingAuthenticodeDirectory() {}\n",
+  );
+  const original = `
+const update = resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);
+export const publish = [{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }, { provider: 'github', owner: 'example', repo: 'desktop' }];
+export const signer = () => createWindowsTokenSigner({});
+`;
+  const output = join(directory, "builder-factory.mjs");
+  await writeFile(output, adaptSignedWindowsFactory(original, directory));
+  const { publish } = await import(pathToFileURL(output).href);
+  assert.deepEqual(publish, [
+    {
+      provider: "generic",
+      url: companyWindowsUpdateUrl,
+      channel: "nightly",
+      useMultipleRangeRequest: false,
+    },
+    { provider: "github", owner: "example", repo: "desktop" },
+  ]);
 });
 
 test("certificate import runs before extraction and preserves upstream installer behavior", () => {

@@ -1,4 +1,3 @@
-/** GEA 错误只保留有界的状态、追踪字段和截断消息，凭证、Bearer 和完整响应体一律脱敏。 */
 export class GeaResponseError extends Error {
   constructor(status, data, secrets = []) {
     const code = `GEA_HTTP_${status}`;
@@ -39,13 +38,10 @@ export class GeaResponseError extends Error {
   }
 }
 
-/** 只从 JSON 错误提取诊断字段；HTML 不展示给用户。 */
 export async function geaResponseError(response, secrets) {
   let data;
   try {
     data = await response.json();
-  } catch {
-    /* 非 JSON Gateway 响应没有结构化 GEA 诊断信息。 */
-  }
+  } catch {}
   return new GeaResponseError(response.status, data, secrets);
 }

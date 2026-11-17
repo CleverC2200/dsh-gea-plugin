@@ -235,9 +235,10 @@ function validate(kind: Kind, value: any, warehouse: string) {
       keys.add(r.sku);
     }
     if (value.stage === "dms-received") {
-      fields(value.receipt, ["orderCode", "aiPreOrderCode", "requestAiPreOrderCode"]);
+      fields(value.receipt, ["orderCode", "aiPreOrderCode", "requestAiPreOrderCode", "dmsMessage"]);
       check(
-        scalarText(value.receipt.orderCode) &&
+        (value.receipt.dmsMessage === undefined || scalarText(value.receipt.dmsMessage, 1000)) &&
+          scalarText(value.receipt.orderCode) &&
           scalarText(value.receipt.aiPreOrderCode, 64) &&
           (value.receipt.requestAiPreOrderCode === undefined
             ? value.receipt.aiPreOrderCode === value.aiPreOrderCode
@@ -262,7 +263,7 @@ function canonical(value: any): string {
       : v,
   );
 }
-/** Fixed statements only. Published tenant tables and a trusted warehouse binding are required. */
+
 export async function fcStorage(
   config: FcStorageConfig,
   scope: Scope,
@@ -389,13 +390,11 @@ export async function fcStorage(
     };
   if (result.result?.affectedRows !== 1)
     return { status: "unknown", idempotencyKey: key, revision };
-  // Once acknowledged, a failed refresh must never repeat the write.
+
   try {
     const read = await load(revision);
     if (read.revision === revision && canonical(read.value) === payload)
       return { status: "saved", idempotencyKey: key, ...read };
-  } catch {
-    /* The write is acknowledged; caller may retry reads only. */
-  }
+  } catch {}
   return { status: "saved-unverified", idempotencyKey: key, revision };
 }

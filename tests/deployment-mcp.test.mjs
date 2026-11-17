@@ -62,3 +62,17 @@ test("deployment retains launcher timeout limits and forwards the current wire b
   ])
     await assert.rejects(deployment(t, settings), /INVALID_mcp/);
 });
+
+test("test-only sales confirmation reaches Host profiles without enabling production", async (t) => {
+  const config = await deployment(t, {
+    environment: "test",
+    orderFulfillmentConfirmation: { test: true },
+  });
+  for (const bundle of [false, true]) {
+    const host = hostConfig(config, bundle);
+    assert.deepEqual(host.orderFulfillmentConfirmation, { test: true });
+    assert.notEqual(host.orderFulfillmentConfirmation.production, true);
+  }
+  const disabled = await deployment(t);
+  assert.equal(hostConfig(disabled, false).orderFulfillmentConfirmation, undefined);
+});

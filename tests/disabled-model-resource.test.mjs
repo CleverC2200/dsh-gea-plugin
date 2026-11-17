@@ -10,7 +10,6 @@ import { ToolRuntime, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
 import { LlmRuntime, LlmAdapter } from "@deepseek-ai/dsh-llm";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
 
-// Exercise Host's registered public routes and adapter. No profile, Task or HTTP server starts.
 async function fixture(
   t,
   enabled,
@@ -67,7 +66,6 @@ async function fixture(
   });
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(resolve(".runtime/disabled-resource-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
   const compiled = await build({
     stdin: {
       contents:
@@ -118,12 +116,26 @@ async function fixture(
     cleanups = [],
     guards = [];
   const preset = "gea-html-inventory-dealer";
-  // A pre-existing Session's persisted preset projection survives resource changes.
+
   const agent = {
     id: "session-11111111-1111-4111-8111-111111111111",
-    session: { preset, header: { cwd: root }, snapshotEvents: () => [] },
+    session: {
+      id: "session-11111111-1111-4111-8111-111111111111",
+      preset,
+      header: { cwd: root },
+      snapshotEvents: () => [],
+    },
   };
   const ctx = {
+    sessionFeedback: { registerSubmit: () => () => {} },
+    profileContext: { dir: root },
+    sessionController: {
+      inspect: async (id) => ({
+        meta: { id, isSeeded: false },
+        inheritedEventCount: 0,
+        events: [],
+      }),
+    },
     effect(fn) {
       const off = fn();
       if (typeof off === "function") cleanups.push(off);
@@ -161,8 +173,6 @@ async function fixture(
       ],
     },
     agentPresets: {
-      // This route-only fixture supplies the registry's public declaration document.
-      // Actual standard composition and Agent scopes run in the source-profile tests.
       readDocument: async () => ({
         agentPreset: "standard",
         content: JSON.stringify([{ name: "@deepseek-ai/dsh-persona" }]),
@@ -170,7 +180,7 @@ async function fixture(
       register: async () => async () => {},
       resolve: async (id) => ({ id }),
     },
-    agents: { get: () => agent, list: () => [agent] },
+    agents: { get: () => agent, list: () => [agent], currentInitiator: () => undefined },
     sessionProjections: { stateOf: (session) => session.preset },
     workbenchPages: {
       packages: () => [{ directory, manifest, htmlPath: join(directory, "index.html") }],
@@ -258,6 +268,7 @@ async function fixture(
     for (const off of cleanups.reverse()) await off();
     await ctx.agentResources.dispose();
   });
+  t.after(() => rm(root, { recursive: true, force: true }));
   await apply(ctx, {
     workbenchCapability: { enabled: workbenchEnabled },
     geaBaseUrl: "https://fixture.invalid",
@@ -753,7 +764,8 @@ test("the registered GEA model adapter translates connection and stream failures
           }
         },
         (error) => {
-          assert.equal(error.code, "GEA_NETWORK_FAILED");
+          assert.equal(error.code, "TRANSPORT");
+          assert.equal(error.cause.code, "GEA_NETWORK_FAILED");
           assert.match(error.message, /ECONNRESET/);
           if (stage === "stream") assert.match(error.message, /流式读取/);
           return true;

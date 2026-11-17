@@ -75,6 +75,7 @@ async function fixture(t) {
   });
   const origin = "https://127.0.0.1:" + server.address().port;
   const business = new mod.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: origin,
     environment: "test",
     analysisAgentCode: "fixture",
@@ -392,10 +393,12 @@ test("late old 401 cannot expire a replacement login even when the login token i
   });
   const original = globalThis.fetch;
   let release;
-  globalThis.fetch = async () =>
-    new Promise((resolve) => {
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/sys/logout")) return Response.json({ success: true, code: 200 });
+    return new Promise((resolve) => {
       release = () => resolve(Response.json({ success: false }, { status: 401 }));
     });
+  };
   t.after(() => {
     globalThis.fetch = original;
   });
@@ -437,10 +440,12 @@ test("replacement identity cannot read or replay earlier or late-completing logs
   const old = await f.capture();
   const originalFetch = globalThis.fetch;
   let complete;
-  globalThis.fetch = async () =>
-    new Promise((resolve) => {
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/sys/logout")) return Response.json({ success: true, code: 200 });
+    return new Promise((resolve) => {
       complete = () => resolve(Response.json({ secretBusinessValue: "old identity" }));
     });
+  };
   t.after(() => {
     globalThis.fetch = originalFetch;
   });
@@ -450,7 +455,7 @@ test("replacement identity cannot read or replay earlier or late-completing logs
   f.business.logout({});
   f.business.restoreDesktopLogin(saved);
   complete();
-  await (await pending).text();
+  await assert.rejects(pending, /abort|STALE/i);
   globalThis.fetch = originalFetch;
   assert.deepEqual(f.business.apiLogSnapshot({}).records, []);
   const replay = await f.business.apiLogReplay({ id: old.id, confirmed: false }, signal());

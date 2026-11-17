@@ -6,6 +6,10 @@
 
 订单履约的可信预设为 `gea-html-inventory-orderfulfillment`，Consumer 为 `order01`，Skill 清单与 Manage 安装声明一致。页面通过命名查询接入当前用户的 GEA 委托；本地数据库预览不证明用户权限，也不作为正式入口的拒权回退。
 
+订单飞书确认的专用 workspace 端口支持读取后端人员目录及显式提交收件人，创建和人员搜索均重新取得当前身份的 order01 委托。最多十个收件人，测试处理人必须在收件人中；后端再次核租户、飞书映射和实时 GEA 查看／处理／测试能力，正常模式拒绝覆盖订单销售。页面不能传应用、群、权限、SQL、路由或测试开关，也不能通过此端口执行销售决定或 OMS 操作。身份取消后不能发送或发布旧结果，未知写入结果不自动重试。
+
+同一订单端口的 settings_get、settings_save 分别映射固定的 settings/get、settings/save 后端路径。仅接收两个推送开关、满足率阈值、提醒小时数和预期版本；规则在身份握手之前复制并校验，读写都重新取得当前委托。页面不能指定租户、规则所有者、调度器开关、接收人或 SQL。保存超时或结果未知不自动重试，需重新读取后台版本核对。
+
 [Business](../src/host/business.ts) 持有唯一 GEA 身份、环境、凭据和登录代际。[client](../src/client.tsx) 发布一个 [只读身份 reader](../src/business-identity-client.ts) 与账户动作；Native、HTML 和账户呈现消费这个投影。读取故障保留最后确认身份，不把未知或读取失败当作主动退出。
 
 [业务身份](../src/host/business-identity.ts) 从 Core Session 实际 preset 与 Manage 当前安装、启用状态重新核业务资源。选中的可信 profile 决定 Consumer 和明确跨 Consumer 路径；Skill 或页面可见不能授予 Consumer。真实业务工具的 `toolConsumer` 要求可信 profile。通用模型目录、默认模型信息与无可信 profile 会话使用共用 `workbench` 模型路由；明确指定业务预设的模型发现和推理继续使用该业务 Consumer。页面 Consumer 不改变模型身份。Host 模型执行和 Prompt runtime 消费同一选择，普通 Session 的业务工具仍由 `toolConsumer` 拒绝。拒权后不能换 Consumer、模型、模块或任意传输绕过。身份变化取消旧请求、失效旧 grant；用户 Core Session、历史与草稿保留。
@@ -17,6 +21,8 @@
 [能力声明](capability-contract.md) 定义模块可用、影响等级与 mock 边界。GEA 使用 Workbench 包登记与 Manage 资源入口，不扫描 HTML SQL、DOM 或 Skill 正文来派生权限。
 
 [GatewayRequests](../src/host/gateway-requests.ts) 集中 GEA envelope 请求的身份代际、取消、超时、请求标识与读取处理。Business 保留登录权威和精确数字解析；模型凭据、通知与审批保留各自错误码，Gateway MCP 握手继续按独立协议校验。请求结束及正文读取后重新核原身份，旧身份迟到的 401 不得清除新登录；取消和超时分别报告，不包装成网络失败。
+
+[DeploymentTransport](../src/host/deployment-transport.ts) 在实际发送处按当前身份环境约束能力目标与凭据，普通调用和日志重放共用。GEA 与 DMS 使用对应环境的目标；记忆允许共享部署，继续携带原身份环境并保留原数据归属；独立模型使用当前代际的 GEA 凭据领取结果，不继承 GEA 登录令牌。预警调度目标由 Host 的 `warningSchedulerEnvironments` 登记，自定义 GEA 部署缺少对应目标时拒绝调度，不回退公司目标。日志保留脱敏后的真实 origin；登录环境标签不表示后端数据环境已被验证。
 
 模型请求的 `modelRequestTimeoutMs` 表示空闲间隔，默认 300000 毫秒。完整 SSE 事件和注释心跳都会续期，客户端不设模型请求总时长上限；已有显式配置值仍优先。聊天与 `model/advice` 共用[模型适配器](../src/host/gea-model.ts)的空闲生命周期，用户停止与身份切换继续取消在途请求。
 
@@ -80,18 +86,18 @@ MCP 查询默认超时300秒，显式 `mcpRequestTimeoutMs` 优先。`mcpMaxResp
 
 ## 分析发起与业务提单
 
-| 路径           | 当前实现与条件                                                                                                                                                                                                                                                         |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                                |
-| 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 校验当前有效退回版本、周期、SKU、价格、身份、流程和原正文。当前环境须有匹配租户的非密钥配置引用与可用 Host 服务凭据；[service-account](../src/host/service-account.ts) 交换委托后向 `/api/v1/internal/sales-plans` 发送原幂等请求 |
-| 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                       |
-| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                           |
+| 路径           | 当前实现与条件                                                                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 分析发起       | [Host](../src/host.ts) 的 `submit` 接受已核对 preview 与 workbenchContext，沿 Manage 资源和 Core Session 提交分析。它不调用业务提单接口                                                                                                                             |
+| 退回重提       | [Business.salesPlanSubmit](../src/host/business.ts) 使用当前员工的 `X-Access-Token` 和 `X-Tenant-Id` 调用 `/sales-plan/plans/resubmit`。Host 重读来源版本和完整 SKU，只接受数量修改，保留原业务提报人，按原业务键提交新版本。服务端记录实际操作员工，复用提报事务。 |
+| 首次提单       | 上述退回重提方法要求来源计划与状态 6–9，不提供独立首次提单流程。业务原型或规格中的首次提单合同不等于本方法已接线                                                                                                                                                    |
+| 角色审批与纠偏 | [Business.salesPlanAction](../src/host/business.ts) 复用月初的身份、角色、版本、已有快照和原幂等意图；业务定义见 [角色规则 V1.3](../specs/sales-plan-role-approval-v1.3.md) 与 [纠偏规格](../specs/sales-plan-correction.md)                                        |
 
 M/Z 查询和审批复用原接口。`salesPlanAction` 从新鲜明细核对有效版本及状态，Z 的通过、退回沿月初既有角色与流程校验、原请求正文执行；原响应提供快照时仍核一致性，不要求纠偏专用 context、节点字段或 `ABSOLUTE_NET` 标记。界面保存调整复用 [Business.salesPlanDraft](../src/host/business.ts) 本地草稿，不推进节点；Z 的远端 SAVE 拒绝发送，原月初远端 SAVE 行为保留。0、5、10 和历史版本均拒绝写入；选择查看节点不授予写权限。本轮不执行 DMS。源码规则不证明真实服务或客户端验收通过。
 
 [`SalesPlanTransactions`](../src/host/sales-plan-transactions.ts) 持有本次登录内的重提与审批意图、已验证原正文、在途请求和回执。Business 保留公开写入口与登录权威，只借出当前身份、环境地址、身份取消信号和现有查询能力；退出或切换身份清空事务状态。意图登记时复制调用参数，校验、幂等指纹与发送正文使用同一快照；结果未知时只允许原键原正文重试。审批迟到的401或成功回执不能登出新身份或替换其回执。
 
-服务凭据留在 Host，配置只存引用。旧 `allowedUserIds` 在配置加载边界丢弃，不参与业务准入。重提通道状态只表达登录、配置、租户及凭据是否就绪，不授予角色或来源数据权限；当前用户的角色、完整来源重读及可操作版本检查继续独立执行。状态 6 只允许原提交人重提，状态 7–9 按现有责任节点角色校验，与 Workbench 的 `salesPlanCanResubmit` 共用规则。页面消费 `resubmitConnected` 与非敏感的 `resubmitUnavailableReason`，服务端认证失败仍单独标记为服务认证，不清除员工登录。未知重提结果保持原键与原正文，退出或重启后重新回读计划。HTTP 成功还须核有效版本、旧版本失效、节点字段和日志，不等于真实业务验收。角色审批不借用客户重提来生成新版本；通知位置不授予审批角色。
+桌面重提使用当前员工登录，`resubmitConnected` 只表示已登录，不授予角色或来源数据权限。旧 `serviceAccounts` 引用保留，桌面启动和提报不再读取其环境变量或钥匙串。Host 校验有效来源版本、状态 6–9 和当前修改责任角色；状态 6 仅原提交人可重提。服务端按租户、周期、计划类型和经销商定位原计划，校验功能权限并绑定实际操作员工的幂等回执。接口文档注明目标计划数据范围校验尚未补齐，客户端校验不能替代该服务端约束。响应丢失或损坏后保留原键和原正文重试，身份变化取消旧执行；HTTP 401 仅使对应员工登录过期。系统集成的服务身份接口保留，桌面不回退到服务账号。
 
 ## 通知与日志
 

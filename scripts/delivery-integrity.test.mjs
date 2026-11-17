@@ -277,7 +277,6 @@ test("official artifact, dependency and lock drift identify exact safe input cla
   assert.deepEqual(await readFile(join(f.root, "runtime/source-selection.json")), selected);
 });
 async function resizeAssemblyManifest(f, size) {
-  // Whitespace changes byte size while keeping the complete valid manifest semantics.
   const json = JSON.stringify(f.manifest);
   const bytes = json + " ".repeat(size - Buffer.byteLength(json));
   await writeFile(join(f.directory, "combination.json"), bytes);

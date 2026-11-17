@@ -1,7 +1,7 @@
 export const macBaseline = Object.freeze({
-  coreHead: "a0c0d2ff884b1808eccb9bb254a1659281364d7d",
-  url: "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/db85af3c71bf7825e6546eef45daf72028dd957f/desktop/GEA-Desktop-0.2.0-rc.2.20261024.3-mac-arm64-local.dmg",
-  sha256: "663ced21d557d0776a507c4ee369e0abe6c21471d19e898d67c753f69bee1282",
+  coreHead: "6156856b3a33ad2d408c2cf8162df1b32371c3d7",
+  url: "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/6156856b3a33ad2d408c2cf8162df1b32371c3d7/desktop/GEA-Desktop-0.2.0-rc.2.20261103.2-mac-arm64-core615-baseline.dmg",
+  sha256: "1b906dd068b9ad1ad5ef1ad2e3299efbe18fc1c208630ca8a3eaf2cddc75c6fa",
 });
 
 export function assertMacBaseline(coreHead, baseline = macBaseline) {

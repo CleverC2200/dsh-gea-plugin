@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -26,6 +27,7 @@ const { Business, registerGeaTools, createCapabilityRegistry } = module.exports;
 
 function fixture(t) {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://localhost",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 1000,
@@ -55,8 +57,7 @@ function fixture(t) {
     registered.get(name).execute(args, { agent: { id: scope, session: {} }, signal });
   return { business, execute };
 }
-// Retired catalog/listing specifications are preserved under fixtures/retired-query/specifications.
-// Current authorization, schema refresh and cancellation run through Core tools.execute in current-mcp-tools.test.mjs.
+
 test("registered native read non-Error failures remain readable", async (t) => {
   const f = fixture(t);
   t.mock.method(f.business, "agentQuery", async () => {

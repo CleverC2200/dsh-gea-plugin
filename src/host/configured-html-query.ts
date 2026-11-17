@@ -11,7 +11,6 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
     ? (value as Record<string, unknown>)
     : undefined;
 
-/** Query IDs are resolved from this installed page only. The page never supplies SQL or routing. */
 export async function readConfiguredHtmlQuery(
   resource: { directory: string; manifest: Record<string, any> },
   input: unknown,
@@ -19,6 +18,7 @@ export async function readConfiguredHtmlQuery(
   signal: AbortSignal,
   consumerCode: string = resource.manifest.gea.consumerCode,
   pageRead = false,
+  completeCollection = false,
 ) {
   signal.throwIfAborted();
   let raw: string;
@@ -35,7 +35,11 @@ export async function readConfiguredHtmlQuery(
       throw Object.assign(Error("配置查询只接受查询 ID 和业务参数"), {
         code: "INVALID_CONFIGURED_QUERY",
       });
-    const query = input as { queryId?: unknown; parameters?: unknown; freshAfter?: unknown };
+    const query = input as {
+      queryId?: unknown;
+      parameters?: unknown;
+      freshAfter?: unknown;
+    };
     const candidateId = query.queryId;
     const candidateParameters = query.parameters;
     if (
@@ -98,6 +102,63 @@ export async function readConfiguredHtmlQuery(
     await import(contractUrl);
   signal.throwIfAborted();
   try {
+    const definition = config.queries[queryId];
+    if (
+      config.agentId === "inventory-aqkc" &&
+      ["summary", "locations", "detail", "sku-ranking"].some(
+        (view) => queryId === "current-shortage." + view,
+      )
+    ) {
+      const { readBaseCurrentShortage } =
+        await import("@cleverc2200/dsh-agent-workbench/configured-facts");
+      if (typeof readBaseCurrentShortage !== "function")
+        return {
+          success: false,
+          errorCode: "GEA_WORKBENCH_UPDATE_REQUIRED",
+          message: "请完成 Workbench 更新后读取基地缺货数据",
+        };
+      return await readBaseCurrentShortage(config, queryId, parameters, {
+        signal,
+        execute: (_request, call): Promise<unknown> =>
+          readConfiguredHtmlQuery(
+            resource,
+            { queryId: call.queryId, parameters: call.values },
+            business,
+            signal,
+            consumerCode,
+          ),
+      });
+    }
+    if (completeCollection && definition?.pagination?.countQuery) {
+      const client = queryContract.createQueryClient(config, (_request, call) =>
+        readConfiguredHtmlQuery(
+          resource,
+          { queryId: call.queryId, parameters: call.values },
+          business,
+          signal,
+          consumerCode,
+          pageRead,
+        ),
+      );
+      const result = await client.readAll(
+        queryId,
+        { ...parameters, page_size: 50, offset: 0 },
+        {
+          signal,
+          requiredColumns: definition.resultColumns,
+          keyFields: definition.pagination.keyFields,
+          atomicPages: true,
+          maxRows: 100000,
+        },
+      );
+      return {
+        ...result,
+        returnedColumns: result.pages[0]?.returnedColumns ?? definition.resultColumns,
+        rejectedColumns: result.pages[0]?.rejectedColumns ?? [],
+        totalRowCount: result.total,
+        hasMorePages: false,
+      };
+    }
     const request = queryContract.makeRequest(config, queryId, parameters);
     signal.throwIfAborted();
     if ("cube" in request) {
@@ -133,8 +194,7 @@ export async function readConfiguredHtmlQuery(
         configVersion: createHash("sha256").update(raw).digest("hex"),
       };
     }
-    // Published-resource and field authorization remain with the GEA gateway.
-    // No local provider is consulted on this path, including after a denied query.
+
     const result = await business.pluginSql(
       {
         ...request,

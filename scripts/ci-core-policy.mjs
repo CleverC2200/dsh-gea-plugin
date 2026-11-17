@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 
-/** Select immutable official inputs for one CI lane. Compatibility never changes required gates. */
 export function ciCores(lane) {
   if (!["required", "compatibility"].includes(lane)) throw Error("CI_CORE_POLICY_LANE_REQUIRED");
   const policy = JSON.parse(

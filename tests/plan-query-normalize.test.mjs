@@ -1,10 +1,3 @@
-/**
- * 销售计划查询的字段容错。
- *
- * 线上实测（session-2bb0684f）：模型调 `kind=versionSkus` 时顺手带上了 detail 的 planId，
- * 校验只允许 versionId/pageNo/pageSize，于是同一轮连报 5 次 INVALID_QUERY、白烧 5 次调用。
- * 这里钉住"多余但无害的字段丢掉继续跑、真正用错的字段仍然报可读原因"。
- */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -47,10 +40,9 @@ test("versionSkus：只给 planId（没有 versionId）仍然报错，并说清�
 });
 
 test("detail：顺手带的分页参数被丢掉（原有容错保持）", () => {
-  assert.deepEqual(
-    normalizePlanQuery("detail", { planId: "p-1", pageSize: 50 }),
-    { planId: "p-1" },
-  );
+  assert.deepEqual(normalizePlanQuery("detail", { planId: "p-1", pageSize: 50 }), {
+    planId: "p-1",
+  });
 });
 
 test("detail：真给错字段仍然报错", () => {

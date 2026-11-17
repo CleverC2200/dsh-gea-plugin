@@ -1,4 +1,3 @@
-/** Product tests own the Web process and replace only external HTTP services. */
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { createServer } from "node:https";
@@ -17,7 +16,7 @@ import { waitProfileReady, probeProfileBusiness } from "./fixtures/profile-ready
 import { fixtureCubeDiscovery } from "./fixtures/cube-wire.mjs";
 
 const defaultRoot = resolve(import.meta.dirname, "..");
-/** Decode persisted tool receipts at the test boundary; never omit a malformed result. */
+
 export function readToolResults(rows) {
   return rows
     .filter((row) => row.type === "tool/result")
@@ -141,6 +140,7 @@ async function createProfile(t, options) {
         const path = request.url.pathname;
         if (path.endsWith("/getLoginQrcode"))
           reply({ success: true, result: { qrcodeId: "fixture-qr" } });
+        else if (path.endsWith("/sys/logout")) reply({ success: true, code: 200, result: null });
         else if (path.endsWith("/getQrcodeToken"))
           reply({
             success: true,
@@ -224,7 +224,6 @@ async function createProfile(t, options) {
             },
           });
         else if (path.endsWith("/ai/gateway/agent/session/current-user/resolve")) {
-          // 审批身份只认账号角色：默认给"区域审批"，用例可用 roles 覆盖（[] 表示任何节点都不可点）。
           const roles = options.roles ?? [{ code: "sales_plan_region_approver", name: "区域审批" }];
           reply({
             success: true,
@@ -296,6 +295,17 @@ async function createProfile(t, options) {
     ? resolve(root, ".runtime/test-core", randomUUID())
     : resolve(dir, "runtime");
   const config = resolve(dir, "gea.json");
+  const fixtureXdgConfig =
+    process.platform === "linux" ? resolve(runtime, "xdg-config") : undefined;
+  if (fixtureXdgConfig) {
+    const fixtureDocuments = resolve(runtime, "Documents");
+    await mkdir(fixtureXdgConfig, { recursive: true });
+    await mkdir(fixtureDocuments, { recursive: true });
+    await writeFile(
+      resolve(fixtureXdgConfig, "user-dirs.dirs"),
+      `XDG_DOCUMENTS_DIR=${JSON.stringify(fixtureDocuments)}\n`,
+    );
+  }
   await writeFile(
     config,
     JSON.stringify({
@@ -390,11 +400,7 @@ async function createProfile(t, options) {
   async function start() {
     t.signal?.throwIfAborted();
     recordLifecycle({ event: "preparation-started" });
-    const fixture = JSON.parse(await readFile(config, "utf8"));
-    if (Object.values(fixture.serviceAccounts ?? {}).some((account) => account.keychainService))
-      throw new Error("SOURCE_TEST_REQUIRES_FIXTURE_CREDENTIALS");
     const deployment = await readDeployment(config, {
-      resolveCredentials: false,
       credentialEnv: options.env ?? {},
     });
     for (const endpoint of [
@@ -473,9 +479,10 @@ async function createProfile(t, options) {
       {
         cwd: root,
         detached: process.platform !== "win32",
-        // 测试里不挂浏览器 MCP：每次启动都拉 npx + Chrome 会拖慢并让并发用例超时。
+
         env: {
           ...process.env,
+          ...(fixtureXdgConfig ? { XDG_CONFIG_HOME: fixtureXdgConfig } : {}),
           NODE_EXTRA_CA_CERTS: cert,
           GEA_BROWSER_MCP: "0",
           ...(options.desktopGraph
@@ -546,7 +553,7 @@ async function createProfile(t, options) {
           authenticatedLaunch = url;
         }
         if (options.coreOnly) return true;
-        // Core can expose its URL before Manage's asynchronous services are installed.
+
         return probeProfileBusiness(currentOrigin, cookie, readySignal);
       },
     });

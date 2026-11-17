@@ -161,6 +161,34 @@ export async function runPluginReleasePreflight(inputPath, { desktopCore } = {})
         (await realpath(target.archive))
     )
       fail("RELEASE_DELIVERY_SOURCE_MISMATCH", release.name);
+    if (delivered.source.kind === "immutable-published-archive") {
+      const deployed =
+        Array.isArray(input.deployed) &&
+        input.deployed.some(
+          (snapshot) =>
+            Array.isArray(snapshot?.installed) &&
+            snapshot.installed.some(
+              (installed) =>
+                installed.name === release.name &&
+                installed.version === release.version &&
+                installed.artifactSha256 === release.artifact.sha256,
+            ),
+        );
+      const tag = spawnSync(
+        "git",
+        ["-C", source.path, "rev-parse", `v${release.version}^{commit}`],
+        { encoding: "utf8" },
+      );
+      if (
+        release.name === companyPackageNames[2] ||
+        !deployed ||
+        tag.status !== 0 ||
+        tag.stdout.trim() !== source.head
+      )
+        fail("RELEASE_PUBLISHED_ARCHIVE_PROOF_REQUIRED", release.name);
+      targets.push({ ...target, metadataSha256: digest(await readFile(target.metadata)), release });
+      continue;
+    }
     const build = await verifyPackageBuild({
       path: source.path,
       head: source.head,

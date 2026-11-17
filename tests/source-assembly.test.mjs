@@ -29,6 +29,14 @@ test(
     assert.equal(copy.parentId, preparation.id);
     assert.equal(copy.componentCount, 5);
     assert.deepEqual(Object.keys(composition.dependencies), names);
+    for (const file of ["ICON-NAMES.md", "THIRD_PARTY_NOTICES.md", "assets/genui-icon.svg"])
+      assert.equal(
+        await readFile(
+          join(runtime, "source-combinations", composition.id, "node_modules", names[3], file),
+          "utf8",
+        ),
+        "original fixture input\n",
+      );
     assert.deepEqual(new Set(composition.bundles), new Set(names));
     assert.equal(composition.patches.length, 1);
     assert.deepEqual(await readSourceCombination(runtime, composition.id, core), composition);

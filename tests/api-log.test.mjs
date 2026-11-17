@@ -19,6 +19,27 @@ const json = (value, init = {}) =>
     headers: { "X-Trace-Id": "trace-1", ...init.headers },
   });
 
+test("audit keeps the original selected environment across admission waits and preserves target origin", async () => {
+  let environment = "production";
+  const center = new GeaApiLogCenter(
+    () => environment,
+    20,
+    async () => json({ success: true }),
+    async () => {
+      environment = "test";
+    },
+  );
+  const response = await center.fetch(
+    "https://production.fixture/gea-boot/sales-plan/plans?secret=hidden",
+  );
+  await response.body.cancel();
+  const [record] = center.snapshot().records;
+  assert.equal(record.environment, "production");
+  assert.equal(record.request.origin, "https://production.fixture");
+  assert.equal(record.request.url, "/sales-plan/plans");
+  assert.equal(JSON.stringify(record).includes("hidden"), false);
+});
+
 test("records known APIs and never exposes credentials", async () => {
   const calls = [];
   const center = new GeaApiLogCenter(
@@ -312,6 +333,7 @@ test("service submission and its detail reads retain only audit metadata and can
   );
   for (const [path, method] of [
     ["/api/v1/internal/sales-plans", "POST"],
+    ["/sales-plan/plans/resubmit", "POST"],
     ["/sales-plan/plans/private-plan", "GET"],
     ["/sales-plan/plans/versions/private-version/skus", "GET"],
     ["/sales-plan/plans", "GET"],
@@ -341,15 +363,10 @@ test("service submission and its detail reads retain only audit metadata and can
   }
   const snapshot = center.snapshot();
   const wire = JSON.stringify(snapshot.records);
-  for (const value of [
-    "private.example",
-    "private-plan",
-    "private-version",
-    "sku-private",
-    "private-key",
-  ])
+  for (const value of ["private-plan", "private-version", "sku-private", "private-key"])
     assert.equal(wire.includes(value), false, value);
   for (const record of snapshot.records) {
+    assert.equal(record.request.origin, "https://private.example");
     assert.equal(record.replayAvailable, false);
     assert.equal(
       snapshot.catalog.find((entry) => entry.id === record.catalogId).replayPolicy,
@@ -360,4 +377,105 @@ test("service submission and its detail reads retain only audit metadata and can
     assert.equal(record.response.body.auditId, "audit-1");
     await assert.rejects(center.replay(record.id, true), /API_LOG_REPLAY_UNAVAILABLE/);
   }
+});
+
+test("personal memory audit never stores original input or saved content and cannot replay", async () => {
+  const center = new GeaApiLogCenter(
+    () => "test",
+    20,
+    async () => json({ success: true, result: { content: "saved-personal-content" } }),
+  );
+  for (const endpoint of [
+    "state",
+    "settings",
+    "list",
+    "get",
+    "recall",
+    "generate",
+    "update",
+    "delete",
+    "clear",
+    "operations",
+  ]) {
+    const response = await center.fetch("https://memory.example/v1/memory/" + endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Access-Token": "memory-token" },
+      body: JSON.stringify({ text: "original-personal-input", content: "manual-edit-content" }),
+    });
+    await response.body.cancel();
+  }
+  const snapshot = center.snapshot();
+  const wire = JSON.stringify(snapshot);
+  for (const secret of [
+    "original-personal-input",
+    "saved-personal-content",
+    "manual-edit-content",
+    "memory-token",
+  ])
+    assert.equal(wire.includes(secret), false);
+  assert.ok(
+    snapshot.records.every(
+      (record) =>
+        !record.replayAvailable && record.request.body === null && !record.response.body.content,
+    ),
+  );
+});
+
+test("password, captcha and logout keep only safe audit fields and cannot be replayed", async () => {
+  const center = new GeaApiLogCenter(
+    () => "test",
+    500,
+    async (url) =>
+      json({
+        success: false,
+        code: String(url).includes("randomImage") ? 0 : 500,
+        message: "synthetic-password",
+        result: {
+          token: "synthetic-auth-token",
+          userInfo: { username: "synthetic-username" },
+          image: "synthetic-captcha-image",
+        },
+      }),
+  );
+  const headers = { "Content-Type": "application/json", "X-Access-Token": "synthetic-auth-token" };
+  for (const path of ["/sys/login", "/sys/randomImage/synthetic-check-key", "/sys/logout"]) {
+    const response = await center.fetch(
+      "https://gea.example/gea-boot" + path,
+      path.includes("randomImage")
+        ? {}
+        : {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              username: "synthetic-username",
+              password: "synthetic-password",
+              captcha: "a1B2",
+              checkKey: "synthetic-check-key",
+            }),
+          },
+    );
+    await response.body.cancel();
+  }
+  const snapshot = center.snapshot();
+  assert.deepEqual(snapshot.records.map((record) => record.catalogId).sort(), [
+    "auth.captcha",
+    "auth.logout",
+    "auth.password",
+  ]);
+  for (const record of snapshot.records) {
+    assert.equal(record.request.body, null);
+    assert.equal(record.response.body.success, false);
+    assert.equal(record.replayAvailable, false);
+    assert.equal(record.replayPolicy, "blocked");
+    assert.ok([0, 500].includes(record.response.body.code));
+  }
+  for (const secret of [
+    "synthetic-password",
+    "synthetic-auth-token",
+    "synthetic-username",
+    "synthetic-captcha-image",
+    "synthetic-check-key",
+    "a1B2",
+  ])
+    assert.equal(JSON.stringify(snapshot).includes(secret), false);
 });

@@ -1,4 +1,3 @@
-/** Frozen official installations and their SDK peers, shared by build and delivery checks. */
 import registry from "./supported-cores.json" with { type: "json" };
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -39,7 +38,6 @@ export function supportsRegisteredCores(manifest) {
   );
 }
 
-/** Admit an isolated official source using the shared SDK verifier and the single GEA registry. */
 export async function readSupportedCore(core) {
   const head = execFileSync("git", ["-C", core, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const cli = JSON.parse(await readFile(join(core, "apps/cli/package.json"), "utf8"));

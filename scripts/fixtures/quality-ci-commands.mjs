@@ -1,4 +1,3 @@
-/** Controlled OS commands for the public quality CLI fixture; never imported by the runner. */
 import fs from "node:fs";
 import os from "node:os";
 import commands from "node:child_process";
@@ -95,7 +94,7 @@ commands.spawnSync = (command, args, options = {}) => {
       if (clone.status) return clone;
     }
     if (!existsSync(core)) return { ...success, status: 1, stderr: "missing prepared SDK" };
-    if (process.env.QUALITY_STAGE_FIXTURE_MACOS === "1") {
+    if (process.env.QUALITY_STAGE_FIXTURE_MACOS === "1" || args.includes("--with-web")) {
       mkdirSync(resolve(core, "apps/web/dist"), { recursive: true });
       writeFileSync(resolve(core, "apps/web/dist/index.html"), "fixture Web\n");
       for (const kind of ["artifacts", "web"])
@@ -119,6 +118,11 @@ commands.spawnSync = (command, args, options = {}) => {
     if (args.includes("--version"))
       return { ...success, stdout: cwd.includes("dsh-better-sidebar") ? "11.8.0" : "11.27.0" };
     if (args.includes("build") || args.includes("build:plugin")) {
+      if (
+        process.env.FIXTURE_FAIL === "workbench-plugin" &&
+        cwd === resolve(job, "candidate/dsh-agent-workbench")
+      )
+        return { ...success, status: 1 };
       if (process.env.FIXTURE_FAIL === "build" && cwd === resolve(job, "candidate/dsh-gea-plugin"))
         return { ...success, status: 1 };
       mkdirSync(resolve(cwd, "lib"), { recursive: true });

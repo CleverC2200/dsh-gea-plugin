@@ -424,9 +424,6 @@ test("goal verification requires terminal command and turn evidence from the sam
   }
 });
 
-// Replays the stage-closeout pattern documented in
-// .scratch/real-readonly-48/evidence/retro-20261009-closeout/report.md.
-// The permission and inputs below are test fixtures, not new business receipts.
 test("goal verification rejects a done stage with independently authorized work remaining", async (t) => {
   const f = await fixture(t);
   await permission(f);

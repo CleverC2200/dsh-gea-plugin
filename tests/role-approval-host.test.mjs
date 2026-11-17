@@ -95,7 +95,7 @@ test(
       }
     }
     mode = "supported";
-    // 未提报、待回写、回写完成都不是审批动作，仍然写不了。
+
     for (status of [0, 5, 10]) assert.equal((await action()).ok, false, `status ${status}`);
     assert.equal(writes, 0);
     for (status of [6, 7, 8, 9]) {

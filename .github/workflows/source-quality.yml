@@ -94,7 +94,6 @@ jobs:
           ref: ${{ steps.plan.outputs.workbench-sha }}
           path: source/dsh-agent-workbench
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/checkout@v7
         if: steps.plan.outputs.engineering == 'true'
@@ -103,7 +102,6 @@ jobs:
           ref: ${{ steps.plan.outputs.manage-sha }}
           path: candidate/dsh-agent-manage
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - name: Plan independent source-check workers
         if: steps.plan.outputs.engineering == 'true'
@@ -188,7 +186,7 @@ jobs:
       max-parallel: 40
       matrix:
         shard: ${{ fromJSON(needs.source-plan.outputs.shards) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       QUALITY_GROUP_GEA: ${{ needs.source-plan.outputs.gea-sha }}
@@ -222,7 +220,6 @@ jobs:
           ref: ${{ needs.source-plan.outputs.workbench-sha }}
           path: source/dsh-agent-workbench
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/checkout@v7
         if: needs.source-plan.outputs.engineering == 'true'
@@ -231,7 +228,6 @@ jobs:
           ref: ${{ needs.source-plan.outputs.manage-sha }}
           path: candidate/dsh-agent-manage
           fetch-depth: 0
-          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - name: Select affected behavior and type checks before preparation
         if: needs.source-plan.outputs.engineering == 'true'
@@ -301,6 +297,12 @@ jobs:
             npm install --global npm@11.11.0
           fi
           corepack enable
+      - name: Reclaim unused hosted SDKs before native preparation
+        if: (steps.affected.outputs.core == 'true' || steps.affected.outputs.sdk == 'true') && steps.reuse.outputs.hit != 'true'
+        run: |
+          df -h "$GITHUB_WORKSPACE"
+          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /usr/local/.ghcup /opt/ghc
+          df -h "$GITHUB_WORKSPACE"
       - name: Locate existing package download cache
         if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
         id: cache-path
@@ -355,6 +357,16 @@ jobs:
         with:
           path: ${{ steps.affected.outputs.tools-downloads }}
           key: ${{ steps.tool-download-cache.outputs.cache-primary-key }}
+      - name: Prepare signed Ubuntu indexes from HTTPS archive mirrors
+        if: needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
+        timeout-minutes: 5
+        run: |
+          getent ahostsv4 mirrors.edge.kernel.org
+          printf 'https://mirrors.mit.edu/ubuntu/\tpriority:1\nhttps://mirrors.edge.kernel.org/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt
+          if ! sudo apt-get -o Acquire::https::Timeout=15 -o Acquire::Retries=1 update --error-on=any; then
+            printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://mirrors.edge.kernel.org/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt
+            sudo apt-get -o Acquire::https::Timeout=15 -o Acquire::Retries=1 update --error-on=any
+          fi
       - name: Run affected behavior and real TypeScript checks
         if: needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
         run: node scripts/source-quality.mjs --phase affected-check

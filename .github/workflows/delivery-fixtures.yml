@@ -20,7 +20,7 @@ on:
         required: false
         type: boolean
       windows_complete_input:
-        description: "Desktop version, required policy Core, merged GEA SHA and three immutable published packages as JSON"
+        description: "Desktop version, required Core, merged GEA SHA, company suite and pinned personal memory as JSON"
         required: false
         type: string
       windows_certificate_test:
@@ -49,7 +49,7 @@ on:
         required: false
         type: boolean
       mac_complete_input:
-        description: "Fixed macOS arm64 desktop input with the same Core and immutable three-package contract"
+        description: "Fixed macOS arm64 input with the same Core, company suite and pinned personal memory"
         required: false
         type: string
       source_types_input:
@@ -116,7 +116,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.windows_overwrite_artifact_run }}
-          pattern: GEA-Desktop-*-win-x64-complete
+          pattern: "{GEA-Desktop,Synear-GEA}-*-win-x64-complete"
           path: ${{ runner.temp }}/signed-overwrite-package
       - uses: actions/download-artifact@v4
         if: inputs.windows_online_update
@@ -126,6 +126,7 @@ jobs:
           name: GEA-Desktop-0.2.0-rc.2.20261030.2-win-x64-complete
           path: ${{ runner.temp }}/online-update-baseline
       - name: Recheck installed package version and preserved user files
+        if: inputs.native_acceptance_bundle_url == ''
         shell: bash
         env:
           GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
@@ -148,6 +149,40 @@ jobs:
             execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
           }
           NODE
+      - name: Prepare artifact acceptance dependencies
+        if: inputs.native_acceptance_bundle_url != ''
+        shell: pwsh
+        run: |
+          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 yaml@2.9.0 semver@7.7.4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path gea/node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
+      - name: Select GNU tar for Native artifact recheck
+        if: inputs.native_acceptance_bundle_url != ''
+        shell: pwsh
+        run: |
+          $tarDirectory = 'C:\Program Files\Git\usr\bin'
+          if (!(Test-Path (Join-Path $tarDirectory 'tar.exe'))) { throw 'DELIVERY_GNU_TAR_REQUIRED' }
+          $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
+          'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Recheck Native recovery using the original installer artifact
+        if: inputs.native_acceptance_bundle_url != ''
+        shell: bash
+        env:
+          GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
+          NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
+          NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
+        run: |
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File gea/desktop/build/install-certificate.ps1 -CertificatePath gea/desktop/build/codesign.cer -StoreLocation CurrentUser
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readdirSync,readFileSync} from 'node:fs';
+          import {join,dirname} from 'node:path';
+          import {execFileSync} from 'node:child_process';
+          function walk(root){return readdirSync(root,{withFileTypes:true}).flatMap(entry=>{const path=join(root,entry.name);return entry.isDirectory()?walk(path):[path]});}
+          const files=walk(join(process.env.RUNNER_TEMP,'signed-overwrite-package')).filter(path=>path.endsWith(join('gea-local','result.json')) && JSON.parse(readFileSync(path)).status==='packaged-and-runtime-smoke-passed');
+          assert.equal(files.length,1);
+          execFileSync(process.execPath,['gea/scripts/windows-complete-local/run-bundle.mjs','--bundle-url',process.env.NATIVE_BUNDLE_URL,'--bundle-sha256',process.env.NATIVE_BUNDLE_SHA256,'--build-receipt',files[0],'--input',join(dirname(files[0]),'fixed-input.json'),'--output',join(process.env.RUNNER_TEMP,'native-artifact-recheck')],{stdio:'inherit'});
+          NODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -158,6 +193,8 @@ jobs:
             ${{ runner.temp }}/signed-overwrite-result/*.log
             ${{ runner.temp }}/signed-overwrite-result/*.png
             ${{ runner.temp }}/signed-overwrite-result/journal/**
+            ${{ runner.temp }}/native-artifact-recheck/*.json
+            ${{ runner.temp }}/native-artifact-recheck/public/**
   windows-certificate-fixture:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_certificate_test
     runs-on: windows-2025
@@ -195,146 +232,11 @@ jobs:
       - run: node --test scripts/windows-complete-local/core-cache.test.mjs
 
   mac-complete-package:
-    if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && inputs.mac_complete_input != ''
-    runs-on: macos-15
-    timeout-minutes: 90
-    env:
-      DSH_DESKTOP_TARGET_PLATFORM: darwin
-      DSH_DESKTOP_TARGET_ARCH: arm64
-      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
-      DSH_DESKTOP_UNSIGNED: "1"
-      DSH_DESKTOP_BUILD_DIRTY: "0"
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: gea
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        id: node
-        with:
-          node-version: "24.14.1"
-      - name: Select required desktop Core
-        id: desktop-core
-        shell: bash
-        run: |
-          node --input-type=module <<'NODE'
-          import { appendFileSync } from 'node:fs';
-          import { ciCores } from './gea/scripts/ci-core-policy.mjs';
-          const core = ciCores('required')[0];
-          appendFileSync(process.env.GITHUB_OUTPUT, 'head=' + core.head + '\n');
-          appendFileSync(process.env.GITHUB_ENV, 'DSH_DESKTOP_BUILD_COMMIT=' + core.head + '\n');
-          NODE
-      - uses: actions/checkout@v4
-        with:
-          repository: CleverC2200/deepseek-harness
-          ref: ${{ steps.desktop-core.outputs.head }}
-          path: core
-          persist-credentials: false
-      - name: Initialize isolated delivery download paths
-        run: node --input-type=module -e "import { appendFileSync } from 'node:fs'; import { join } from 'node:path'; for (const [name, directory] of [['COREPACK_HOME', 'corepack'], ['ELECTRON_CACHE', 'electron'], ['ELECTRON_BUILDER_CACHE', 'electron-builder']]) appendFileSync(process.env.GITHUB_ENV, name + '=' + join(process.env.RUNNER_TEMP, 'delivery-downloads', directory) + '\n')"
-      - name: Validate fixed input before preparing Core
-        working-directory: gea
-        env:
-          DESKTOP_INPUT_JSON: ${{ inputs.mac_complete_input }}
-        run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
-          mkdir node_modules
-          ln -s "$PWD/.runtime/fixture-dependencies/node_modules/semver" node_modules/semver
-          inputPath="$RUNNER_TEMP/gea-desktop-input.json"
-          printenv DESKTOP_INPUT_JSON > "$inputPath"
-          node scripts/windows-complete-local/input.mjs --input "$inputPath" --source-sha "$GITHUB_SHA" --mac-baseline
-          echo "DSH_DESKTOP_BUILD_VERSION=$(node -p 'JSON.parse(process.env.DESKTOP_INPUT_JSON).desktopVersion')" >> "$GITHUB_ENV"
-          echo "GEA_DESKTOP_INPUT=$inputPath" >> "$GITHUB_ENV"
-      - name: Locate declared tool download cache
-        id: delivery-tool-path
-        working-directory: core
-        run: |
-          corepack enable
-          echo "store=$(corepack pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
-        id: delivery-downloads
-        with:
-          path: |
-            ${{ env.COREPACK_HOME }}
-            ${{ env.ELECTRON_CACHE }}
-            ${{ env.ELECTRON_BUILDER_CACHE }}
-            core/apps/desktop/.desktop-build/downloads
-            ${{ steps.delivery-tool-path.outputs.store }}
-          key: delivery-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('core/package.json', 'core/pnpm-lock.yaml') }}
-      - name: Prepare declared Core toolchain
-        working-directory: core
-        run: |
-          corepack pnpm install --frozen-lockfile --prefer-offline
-      - name: Preflight cold packaging tools
-        run: node gea/scripts/windows-complete-local/core-cache.mjs preflight core host
-      - name: Plan compiled Core cache
-        id: delivery-core-plan
-        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core host
-      - uses: actions/cache/restore@v4
-        id: delivery-core-restore
-        with:
-          path: ${{ steps.delivery-core-plan.outputs.paths }}
-          key: ${{ steps.delivery-core-plan.outputs.key }}
-      - name: Verify restored Core output
-        id: delivery-core-verify
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core host
-      - name: Compile missing Core tools
-        if: steps.delivery-core-verify.outputs.hit != 'true'
-        working-directory: core
-        run: |
-          corepack pnpm run build:lib:host
-          node ../gea/scripts/windows-complete-local/core-cache.mjs seal . host
-      - name: Plan immutable macOS baseline cache
-        id: delivery-baseline-plan
-        run: node gea/scripts/windows-complete-local/core-cache.mjs plan core mac-baseline
-      - uses: actions/cache/restore@v4
-        id: delivery-baseline-restore
-        if: inputs.reuse_prepared_inputs
-        with:
-          path: ${{ steps.delivery-baseline-plan.outputs.paths }}
-          key: ${{ steps.delivery-baseline-plan.outputs.key }}
-      - name: Build full macOS package and verify isolated first installation
-        run: node gea/scripts/mac-complete-local/build.mjs core gea "$GEA_DESKTOP_INPUT"
-      - name: Verify Core output after packaging
-        id: delivery-core-after-package
-        if: "!cancelled() && steps.delivery-core-plan.outcome == 'success'"
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core host
-      - name: Save verified compiled Core
-        if: "!cancelled() && steps.delivery-core-after-package.outputs.hit == 'true' && steps.delivery-core-restore.outputs.cache-hit != 'true'"
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.delivery-core-plan.outputs.paths }}
-          key: ${{ steps.delivery-core-plan.outputs.key }}
-      - name: Verify macOS baseline after packaging
-        id: delivery-baseline-after-package
-        if: "!cancelled() && steps.delivery-baseline-plan.outcome == 'success'"
-        run: node gea/scripts/windows-complete-local/core-cache.mjs verify core mac-baseline
-      - name: Save verified macOS baseline
-        if: "!cancelled() && steps.delivery-baseline-after-package.outputs.hit == 'true' && steps.delivery-baseline-restore.outputs.cache-hit != 'true'"
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.delivery-baseline-plan.outputs.paths }}
-          key: ${{ steps.delivery-baseline-plan.outputs.key }}
-      - name: Keep installer and original build evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: GEA-Desktop-${{ env.DSH_DESKTOP_BUILD_VERSION }}-mac-arm64-complete
-          if-no-files-found: warn
-          compression-level: 0
-          path: |
-            ${{ runner.temp }}/gea-mac-complete/artifacts/*.dmg
-            ${{ runner.temp }}/gea-mac-complete/result.json
-            ${{ runner.temp }}/gea-mac-complete/first-install-receipt.json
-            ${{ runner.temp }}/gea-mac-complete/stages.json
-            ${{ runner.temp }}/gea-mac-complete/baseline-reuse.json
-            ${{ runner.temp }}/gea-mac-complete/*.log
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.prepare_windows_cache && inputs.mac_complete_input != ''
+    uses: ./.github/workflows/mac-source-package.yml
+    with:
+      desktop_input: ${{ inputs.mac_complete_input }}
+
   delivery-fixtures:
     if: (github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test && inputs.windows_overwrite_artifact_run == '') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
@@ -560,7 +462,7 @@ jobs:
             candidate-group.json
 
   windows-complete-package:
-    if: github.event_name == 'workflow_dispatch' && (inputs.prepare_windows_cache || inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_overwrite_artifact_run == '' && (inputs.prepare_windows_cache || inputs.windows_complete_input != '' || inputs.native_acceptance_bundle_url != '' || inputs.native_acceptance_bundle_sha256 != '')
     permissions:
       contents: read
       actions: write
@@ -621,7 +523,7 @@ jobs:
           NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
           NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
         run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
           $inputPath = Join-Path $env:RUNNER_TEMP 'gea-desktop-input.json'
@@ -774,11 +676,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GEA-Desktop-${{ inputs.prepare_windows_cache && 'cache-preparation' || env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
+          name: Synear-GEA-${{ inputs.prepare_windows_cache && 'cache-preparation' || env.DSH_DESKTOP_BUILD_VERSION }}-win-x64-complete
           if-no-files-found: warn
           compression-level: 0
           path: |
             ${{ runner.temp }}/windows-cache-preflight.json
+            core/.dsh-build/delivery-core-cache.json
+            core/.dsh-build/delivery-windows-runtime-cache.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-preparation/*.log
             core/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe

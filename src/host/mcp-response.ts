@@ -1,10 +1,8 @@
 import { throwIfAborted } from "../shared/abort.ts";
 import { readableMessage } from "./error-envelope.ts";
 
-// The wire can carry both structured JSON and its escaped text representation.
 export const DEFAULT_MCP_RESPONSE_BYTES = 320 * 1024 * 1024;
 
-/** Bound decoded UTF-8 response bytes before allocating or parsing the whole message. */
 export async function readMcpResponseText(
   response: Response,
   signal: AbortSignal,

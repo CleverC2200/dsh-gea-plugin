@@ -198,8 +198,20 @@ export function correctionService({ versionId = "v", monthlyApproved = true } = 
       const from = status;
       if (body.action === "REJECT") {
         assert.ok(body.remark?.trim());
-        assert.equal(body.adjustments, undefined);
         for (const suffix of suffixes) sku[node + suffix] = null;
+        if (body.adjustments?.length) {
+          assert.equal(body.adjustments.length, 1);
+          assert.equal(body.adjustments[0].skuCode, "123");
+          const quantity = baseline(index - 1) + Number(body.adjustments[0].adjustQty);
+          assert.ok(Number.isFinite(quantity) && quantity >= 0);
+          if (index === 0) {
+            sku.qty = String(quantity);
+            sku.amt = String(quantity * 2);
+          } else {
+            sku[roles[index - 1] + "ConfirmedQty"] = String(quantity);
+            sku[roles[index - 1] + "ConfirmedAmount"] = String(quantity * 2);
+          }
+        }
         status = index + 6;
       } else {
         assert.ok(!body.adjustments || body.adjustments.length === 1);

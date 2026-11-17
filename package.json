@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/gea-dsh-prototype",
-  "version": "0.0.213",
+  "version": "0.0.310",
   "private": true,
   "geaPluginUpdateStrategy": "suite",
   "packageManager": "pnpm@11.27.0",
@@ -26,8 +26,10 @@
     "test:observe": "node --test scripts/dev-observe.test.mjs",
     "test": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/*.test.mjs scripts/gea-error.test.mjs",
     "test:desktop:complete-input": "node --test scripts/windows-complete-local/input.test.mjs",
+    "release:desktop": "node scripts/desktop-release.mjs",
+    "test:desktop:release": "node --test scripts/desktop-release.test.mjs",
     "test:desktop": "pnpm run test:desktop:unit",
-    "test:desktop:unit": "node scripts/build-desktop-tools.mjs && node --test desktop/navigation.test.cjs desktop/packaging-config.test.cjs scripts/package-desktop.test.mjs desktop/config.test.cjs desktop/boot-watch.test.cjs desktop/onboarding.test.mjs desktop/permissions.test.mjs desktop/login-state.test.mjs desktop/company-resources.test.mjs desktop/company-bootstrap.test.mjs desktop/company-gea-refresh.test.mjs desktop/legacy-gea-cleanup.test.mjs desktop/official-startup.test.cjs desktop/html-plugins.test.mjs desktop/copy-graph.test.mjs desktop/graph-relocation.test.mjs desktop/plugin-store.test.mjs desktop/recovery.test.mjs desktop/updates.test.mjs desktop/client-installer.test.mjs desktop/installer-sdk-pruning.test.mjs desktop/installer-timing.test.cjs desktop/startup-copy.test.cjs desktop/verify-client-artifacts.test.cjs desktop/menu-localization.test.cjs desktop/runtime-cookies.test.cjs desktop/plugin-storage.test.mjs desktop/core-layer.test.mjs desktop/windows-directory-installer.test.cjs desktop/installer-cache.test.mjs desktop/installer-differential.test.mjs desktop/installer-signature.test.mjs desktop/runtime-resolution.test.mjs",
+    "test:desktop:unit": "node scripts/build-desktop-tools.mjs && node --test desktop/navigation.test.cjs desktop/packaging-config.test.cjs scripts/package-desktop.test.mjs desktop/config.test.cjs desktop/boot-watch.test.cjs desktop/onboarding.test.mjs desktop/permissions.test.mjs desktop/login-state.test.mjs desktop/company-resources.test.mjs desktop/company-bootstrap.test.mjs desktop/company-gea-refresh.test.mjs desktop/legacy-gea-cleanup.test.mjs desktop/official-startup.test.cjs desktop/html-plugins.test.mjs desktop/copy-graph.test.mjs desktop/graph-relocation.test.mjs desktop/plugin-store.test.mjs desktop/recovery.test.mjs desktop/updates.test.mjs desktop/client-installer.test.mjs desktop/installer-sdk-pruning.test.mjs desktop/installer-timing.test.cjs desktop/startup-copy.test.cjs desktop/verify-client-artifacts.test.cjs desktop/menu-localization.test.cjs desktop/runtime-cookies.test.cjs desktop/plugin-storage.test.mjs desktop/core-layer.test.mjs desktop/windows-directory-installer.test.cjs desktop/installer-cache.test.mjs desktop/installer-differential.test.mjs desktop/installer-signature.test.mjs desktop/runtime-resolution.test.mjs desktop/runtime-start.test.mjs",
     "test:desktop:electron": "node --test desktop/startup-state.test.mjs desktop/electron-recovery.test.mjs desktop/slow-login.test.mjs desktop/business-ready.test.mjs",
     "test:desktop:update-channel": "node desktop/update-speed-smoke.mjs",
     "build": "node scripts/build.mjs",
@@ -47,13 +49,15 @@
     "source:check": "node scripts/check-source-plugins.mjs",
     "source:build": "node scripts/check-source-plugins.mjs --build",
     "package:desktop": "node scripts/package-desktop.mjs",
-    "package:desktop:mac": "node scripts/package-desktop.mjs --target mac",
+    "package:desktop:mac": "node scripts/mac-complete-local/signing.mjs",
+    "package:desktop:mac:signed": "node scripts/mac-complete-local/signing.mjs",
+    "test:desktop:mac-signing": "node --test scripts/mac-complete-local/signing.test.mjs",
     "package:desktop:win": "node scripts/package-desktop.mjs --target win",
     "test:package:desktop": "node --test scripts/package-desktop.test.mjs",
-    "typecheck:official": "node ../dsh-agent-workbench/scripts/verify-official-input.mjs && node scripts/generate-plugin-package-version.mjs --check && tsc -p tsconfig.official.json",
+    "typecheck:official": "node scripts/check-workbench.mjs official-input && node scripts/generate-plugin-package-version.mjs --check && tsc -p tsconfig.official.json",
     "delivery:check": "node scripts/delivery-check.mjs --verify",
     "test:delivery": "node --test scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs",
-    "check:knowledge": "node ../dsh-agent-workbench/scripts/check-agent-knowledge.mjs --root . --config docs/agent-knowledge.json",
+    "check:knowledge": "node scripts/check-workbench.mjs knowledge",
     "delivery:packages": "node scripts/deliver-packages.mjs",
     "test:delivery:packages": "node --test scripts/deliver-packages.test.mjs scripts/plugin-reception.test.mjs",
     "delivery:reception": "node scripts/plugin-reception.mjs",
@@ -66,19 +70,20 @@
     "lint:audit": "node scripts/quality.mjs lint:audit",
     "format:check": "node scripts/quality.mjs format:check",
     "format:audit": "node scripts/quality.mjs format:audit",
-    "test:quality": "node --test scripts/run-quality-checks.test.mjs scripts/quality.test.mjs scripts/quality-policy.test.mjs scripts/run-quality-ci.test.mjs scripts/run-quality-ci-stages.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs scripts/run-quality-full.test.mjs",
+    "test:quality": "node --test scripts/run-quality-checks.test.mjs scripts/quality.test.mjs scripts/quality-policy.test.mjs scripts/run-quality-ci.test.mjs scripts/run-quality-ci-stages.test.mjs scripts/quality-upstreams.test.mjs scripts/quality-test-reporter.test.mjs scripts/quality-workbench.test.mjs scripts/run-quality-full.test.mjs scripts/check-workbench.test.mjs",
     "quality:fast": "node scripts/run-quality-fast.mjs",
     "quality:ci": "node scripts/run-quality-ci.mjs",
     "test:final-group": "node --test scripts/final-group-input.contract.mjs",
     "quality:upstreams": "node scripts/quality-upstreams.mjs",
     "test:contracts": "node --test --test-concurrency=1 --test-reporter=./scripts/quality-test-reporter.mjs tests/controlled-execution.test.mjs tests/plugin-sql-cancel.test.mjs tests/read-paging.test.mjs tests/business-page-grant.test.mjs tests/gateway-handshake.test.mjs tests/window-launch-admission.test.mjs tests/source-selection-start.test.mjs scripts/delivery-check.test.mjs scripts/delivery-integrity.test.mjs scripts/delivery-readiness.test.mjs scripts/delivery-runtime.test.mjs scripts/delivery-continuation.test.mjs && pnpm run test:plugin-updates",
     "test:profile-window": "node --test tests/profile-window.test.mjs",
-    "test:plugin-updates": "node --expose-internals --test --test-concurrency=1 tests/plugin-update-checks.test.mjs tests/plugin-update-controller.contract.mjs tests/plugin-update-integration.contract.mjs tests/plugin-update-install.contract.mjs tests/plugin-update-detail.browser.mjs tests/plugin-update-list.browser.mjs",
+    "test:plugin-updates": "node --expose-internals --test --test-concurrency=1 tests/plugin-update-checks.test.mjs tests/plugin-update-restart.test.mjs tests/plugin-update-controller.contract.mjs tests/plugin-update-integration.contract.mjs tests/plugin-update-install.contract.mjs tests/plugin-update-detail.browser.mjs tests/plugin-update-list.browser.mjs",
     "test:release-source": "node --test tests/plugin-release.test.mjs tests/plugin-release-source.test.mjs tests/optional-companion-manifest.test.mjs tests/plugin-release-preflight.test.mjs scripts/windows-complete-local/input.test.mjs",
     "typecheck:plugin-updates": "node scripts/check-plugin-updates-types.mjs",
     "test:package-version": "node --test scripts/package-version-gate.test.mjs scripts/plugin-package-version.test.mjs",
     "test:plugin-updates:desktop": "node --expose-internals --test tests/acceptance/plugin-update-desktop.mjs",
-    "test:full": "node scripts/run-quality-full.mjs"
+    "test:full": "node scripts/run-quality-full.mjs",
+    "check:comments": "node scripts/check-workbench.mjs comments"
   },
   "dependencies": {
     "@changfenhuang/dsh-genui": "link:../../upstream-inputs/genui",
@@ -87,10 +92,12 @@
     "dsh-better-sidebar": "link:../../upstream-inputs/sidebar",
     "esbuild": "0.25.9",
     "eventsource-parser": "3.1.1",
+    "fflate": "0.8.2",
     "qrcode": "1.5.4",
     "semver": "7.7.4",
+    "tar": "7.5.22",
     "yaml": "2.9.0",
-    "tar": "7.5.22"
+    "zod": "4.6.6"
   },
   "dsh": {
     "client": {
@@ -127,17 +134,20 @@
     "@deepseek-ai/dsh-client-ui-renderer": "link:../../official-latest-standard/packages/client/ui-renderer",
     "@deepseek-ai/dsh-client-ui-session": "link:../../official-latest-standard/packages/client/ui-session",
     "@deepseek-ai/dsh-client-ui-settings": "link:../../official-latest-standard/packages/client/ui-settings",
+    "@deepseek-ai/dsh-client-ui-settings-general": "link:../../official-latest-standard/packages/client/ui-settings-general",
     "@deepseek-ai/dsh-client-ui-sidebar": "link:../../official-latest-standard/packages/client/ui-sidebar",
     "@deepseek-ai/dsh-client-ui-slots": "link:../../official-latest-standard/packages/client/ui-slots",
     "@deepseek-ai/dsh-client-ui-theme": "link:../../official-latest-standard/packages/client/ui-theme",
     "@deepseek-ai/dsh-client-ui-workspace": "link:../../official-latest-standard/packages/client/ui-workspace",
     "@deepseek-ai/dsh-cmdline": "link:../../official-latest-standard/packages/boot/cmdline",
+    "@deepseek-ai/dsh-command-feedback": "link:../../official-latest-standard/packages/feedback/command-feedback",
     "@deepseek-ai/dsh-fs": "link:../../official-latest-standard/packages/fs/fs",
     "@deepseek-ai/dsh-llm": "link:../../official-latest-standard/packages/llm/llm",
     "@deepseek-ai/dsh-llm-pi-ai": "link:../../official-latest-standard/packages/llm/llm-pi-ai",
     "@deepseek-ai/dsh-persona": "link:../../official-latest-standard/packages/preset/persona",
     "@deepseek-ai/dsh-plugin-manager": "link:../../official-latest-standard/packages/boot/plugin-manager",
     "@deepseek-ai/dsh-session": "link:../../official-latest-standard/packages/core/session",
+    "@deepseek-ai/dsh-session-log-export": "link:../../official-latest-standard/packages/session-query/session-log-export",
     "@deepseek-ai/dsh-skill": "link:../../official-latest-standard/packages/skill/skill",
     "@deepseek-ai/dsh-timeout": "link:../../official-latest-standard/packages/util/timeout",
     "@deepseek-ai/dsh-tools": "link:../../official-latest-standard/packages/core/tools",
@@ -163,7 +173,10 @@
     "react-dom": "18.3.1",
     "react-grab": "0.2.0",
     "typescript": "5.9.3",
-    "xlsx-republish": "0.20.3"
+    "xlsx-republish": "0.20.3",
+    "parse5": "7.3.0",
+    "postcss": "8.5.26",
+    "highlight.js": "11.11.1"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -203,25 +216,29 @@
     "presets/inventory-fc.skill.md",
     "presets/inventory-qll.skill.md",
     "locale/",
+    "src/shared/memory-gateway.js",
     "src/shared/service-accounts.js"
   ],
   "workspaces": [
     "packages/*"
   ],
   "peerDependencies": {
-    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17 || 0.1.18 || 0.1.19 || 0.1.20 || 0.1.21 || 0.1.22 || 0.1.23 || 0.1.24 || 0.1.25 || 0.1.26 || 0.1.27 || 0.1.28 || 0.1.29 || 0.1.30 || 0.1.31 || 0.1.32 || 0.1.33 || 0.1.34 || 0.1.35 || 0.1.36 || 0.1.37 || 0.1.38 || 0.1.39 || 0.1.40 || 0.1.41 || 0.1.42 || 0.1.43 || 0.1.44 || 0.1.45 || 0.1.46 || 0.1.47 || 0.1.48",
+    "@changfenhuang/dsh-genui": "0.11.3 || 0.16.0-company.1",
+    "@cleverc2200/dsh-agent-workbench": "0.1.9 || 0.1.10 || 0.1.11 || 0.1.12 || 0.1.13 || 0.1.14 || 0.1.15 || 0.1.13-sales.1 || 0.1.14-sales.1 || 0.1.15-sales.1 || 0.1.16-sales.1 || 0.1.16-resubmit.1 || 0.1.16-resubmit.2 || 0.1.16-resubmit.3 || 0.1.17 || 0.1.18 || 0.1.19 || 0.1.20 || 0.1.21 || 0.1.22 || 0.1.23 || 0.1.24 || 0.1.25 || 0.1.26 || 0.1.27 || 0.1.28 || 0.1.29 || 0.1.30 || 0.1.31 || 0.1.32 || 0.1.33 || 0.1.34 || 0.1.35 || 0.1.36 || 0.1.37 || 0.1.38 || 0.1.39 || 0.1.40 || 0.1.41 || 0.1.42 || 0.1.43 || 0.1.44 || 0.1.45 || 0.1.46 || 0.1.47 || 0.1.48 || 0.1.49 || 0.1.50 || 0.1.51 || 0.1.52 || 0.1.53 || 0.1.54 || 0.1.55 || 0.1.56 || 0.1.57 || 0.1.58 || 0.1.59 || 0.1.60 || 0.1.61 || 0.1.62 || 0.1.63 || 0.1.64 || 0.1.65 || 0.1.66 || 0.1.67 || 0.1.68 || 0.1.69 || 0.1.70 || 0.1.71 || 0.1.72 || 0.1.73 || 0.1.74 || 0.1.75 || 0.1.76 || 0.1.77 || 0.1.78 || 0.1.79 || 0.1.80 || 0.1.81 || 0.1.82 || 0.1.83 || 0.1.84 || 0.1.85 || 0.1.86 || 0.1.87 || 0.1.88 || 0.1.89 || 0.1.90 || 0.1.91 || 0.1.92 || 0.1.93 || 0.1.94 || 0.1.95 || 0.1.96 || 0.1.97 || 0.1.98 || 0.1.99 || 0.1.100 || 0.1.101 || 0.1.103 || 0.1.102 || 0.1.104 || 0.1.105 || 0.1.106 || 0.1.108 || 0.1.107 || 0.1.109 || 0.1.110 || 0.1.112 || 0.1.111 || 0.1.113 || 0.1.114 || 0.1.115 || 0.1.116 || 0.1.117 || 0.1.118 || 0.1.119 || 0.1.120 || 0.1.121 || 0.1.122 || 0.1.123 || 0.1.124 || 0.1.125 || 0.1.126 || 0.1.127 || 0.1.128 || 0.1.129 || 0.1.130",
     "@deepseek-ai/cordis": "4.0.4 || 4.0.5-alpha.1",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-atomic-write": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-brand": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-command-feedback": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-persona": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-plugin-manager": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-session-log-export": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-timeout": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1",
     "@deepseek-ai/schemastery": "3.18.4 || 3.18.5-alpha.1",
-    "dsh-agent-manage": "0.6.3-company.16 || 0.6.3-company.17 || 0.6.3-company.18 || 0.6.3-company.19 || 0.6.3-company.20 || 0.6.3-company.21 || 0.6.3-company.21.workbench.1 || 0.6.3-company.22 || 0.6.3-company.23 || 0.6.3-company.24 || 0.6.3-company.25 || 0.6.3-company.26 || 0.6.3-company.27 || 0.6.3-company.28 || 0.6.3-company.29 || 0.6.3-company.30 || 0.6.3-company.31 || 0.6.3-company.32 || 0.6.3-company.33 || 0.6.3-company.34 || 0.6.3-company.35 || 0.6.3-company.36 || 0.6.3-company.37 || 0.6.3-company.38 || 0.6.3-company.39 || 0.6.3-company.40 || 0.6.3-company.41 || 0.6.3-company.42 || 0.6.3-company.43 || 0.6.3-company.44 || 0.6.3-company.45"
+    "dsh-agent-manage": "0.6.3-company.16 || 0.6.3-company.17 || 0.6.3-company.18 || 0.6.3-company.19 || 0.6.3-company.20 || 0.6.3-company.21 || 0.6.3-company.21.workbench.1 || 0.6.3-company.22 || 0.6.3-company.23 || 0.6.3-company.24 || 0.6.3-company.25 || 0.6.3-company.26 || 0.6.3-company.27 || 0.6.3-company.28 || 0.6.3-company.29 || 0.6.3-company.30 || 0.6.3-company.31 || 0.6.3-company.32 || 0.6.3-company.33 || 0.6.3-company.34 || 0.6.3-company.35 || 0.6.3-company.36 || 0.6.3-company.37 || 0.6.3-company.38 || 0.6.3-company.39 || 0.6.3-company.40 || 0.6.3-company.41 || 0.6.3-company.42 || 0.6.3-company.43 || 0.6.3-company.44 || 0.6.3-company.45 || 0.6.3-company.46 || 0.6.3-company.47 || 0.6.3-company.48 || 0.6.3-company.49 || 0.6.3-company.50 || 0.6.3-company.51 || 0.6.3-company.52 || 0.6.3-company.53 || 0.6.3-company.54 || 0.6.3-company.55 || 0.6.3-company.56 || 0.6.3-company.57 || 0.6.3-company.58 || 0.6.3-company.59 || 0.6.3-company.60 || 0.6.3-company.61 || 0.6.3-company.62 || 0.6.3-company.63 || 0.6.3-company.64 || 0.6.3-company.65 || 0.6.3-company.66 || 0.6.3-company.67 || 0.6.3-company.68 || 0.6.3-company.69 || 0.6.3-company.70 || 0.6.3-company.71 || 0.6.3-company.72 || 0.6.3-company.73 || 0.6.3-company.74 || 0.6.3-company.75 || 0.6.3-company.76 || 0.6.3-company.77 || 0.6.3-company.78 || 0.6.3-company.79 || 0.6.3-company.80 || 0.6.3-company.81"
   }
 }

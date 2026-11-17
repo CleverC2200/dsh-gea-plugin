@@ -1,4 +1,3 @@
-/** Offline validation of the current isolated source composition. */
 import {
   mkdir,
   mkdtemp,
@@ -18,6 +17,7 @@ import { parseArgs } from "node:util";
 
 import { corePackages } from "./source-composition.mjs";
 import { readSupportedCore } from "./supported-cores.mjs";
+import { verifyRuntimeModules } from "./runtime-environment.mjs";
 
 import { admitSourceWindow } from "./window-admission.mjs";
 import { readDeployment } from "./deployment.mjs";
@@ -31,7 +31,6 @@ const digest = async (path) =>
     .update(await readFile(path))
     .digest("hex");
 
-/** Boot the official profile from artifacts built in the pinned source checkout. */
 import { resolveSourceInputs, readSourceSelection } from "./source-profile.mjs";
 
 export async function runSourceProfile(
@@ -64,6 +63,7 @@ export async function runSourceProfile(
     if (selected === undefined) await resolveSourceInputs(sources, { requireEntries: true });
   }
   const supported = await readSupportedCore(core);
+  verifyRuntimeModules({ core });
   const coreSha = supported.head;
   if (config) deployment = await readDeployment(config);
   await mkdir(join(runtime, "home"), { recursive: true, mode: 0o700 });
@@ -329,8 +329,7 @@ async function launch() {
           logError ??= error;
           stop("SIGTERM");
         });
-      // The fresh local authentication URL is needed to open this isolated profile.
-      // Raw logs are private (0600); no inherited credentials reach this process.
+
       process.stdout.write(data);
     });
   let stoppedBy = null;
