@@ -76,4 +76,6 @@
 
 日期验收、研究与发行记录保留其原提交、输入和环境范围。只有追溯对应业务缺口时才读取，不作为日常实现入口，也不能证明当前服务、安装或发布状态。
 
+- 测试记忆出现 `PROXY_FORBIDDEN` 或需追溯本次双环境验收时，读 [2026-11-17 记忆入口故障与恢复记录](memory/test-memory-403-maintainer-note.md)。
+
 历史资料通过文件名或 Git 提交检索。旧工程 AGENTS/README 快照已从工作树退场，需要还原时读取[清理前固定提交](https://github.com/CleverC2200/dsh-gea-plugin/tree/b5feb8a1f33cdc683c012f8292c328cac17276b8/docs/history)。原始失败、未完成业务要求与实际测试输入继续保留。
