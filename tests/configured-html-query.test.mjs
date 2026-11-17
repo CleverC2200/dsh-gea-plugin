@@ -402,3 +402,61 @@ test("expired page Cube reads discard only the rejected cached connection and ne
   assert.equal(calls, 1);
   assert.deepEqual(cleared, [["mps", expired]]);
 });
+
+test("base warehouse templates fit the FC registry and preserve stock recovery and Consumer binding", async (t) => {
+  const r = await resource(t, "fc"),
+    calls = [];
+  const business = {
+    pluginSql: async (request, _signal, configured, _write, recover) => {
+      calls.push({ request, configured, recover });
+      return { rows: [{ day: "2026-11-17" }], returnedColumns: ["day"], rejectedColumns: [] };
+    },
+  };
+  const result = await readConfiguredHtmlQuery(
+    r,
+    {
+      queryId: "base-warehouse.source.branch-stock-date",
+      parameters: { as_of: "2026-11-17", warehouse_code: "Y204" },
+    },
+    business,
+    signal(),
+  );
+  assert.equal(result.success, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].request.consumerCode, "branch-inventory");
+  assert.equal(calls[0].recover, true);
+  assert.equal(calls[0].configured, true);
+  const rejected = await readConfiguredHtmlQuery(
+    r,
+    {
+      queryId: "base-warehouse.source.branch-stock-date",
+      parameters: { as_of: "2026-11-17", warehouse_code: "A540" },
+    },
+    business,
+    signal(),
+  );
+  assert.equal(rejected.success, false);
+  assert.equal(calls.length, 1);
+});
+
+test("FC registry has a bounded eight MB budget while other agents retain five MB", async (t) => {
+  for (const [id, bytes] of [
+    ["fc", 8_000_001],
+    ["qll", 5_000_001],
+  ]) {
+    const r = await resource(t, id);
+    await writeFile(join(r.directory, "sql.config.json"), " ".repeat(bytes));
+    const result = await readConfiguredHtmlQuery(
+      r,
+      { queryId: "source.stock-date", parameters: {} },
+      {
+        pluginSql: async () => {
+          throw Error("oversized config must not execute");
+        },
+      },
+      signal(),
+    );
+    assert.equal(result.success, false);
+    assert.match(result.message, /SQL_CONFIG_TOO_LARGE/);
+  }
+});
