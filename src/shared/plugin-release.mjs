@@ -199,7 +199,8 @@ export function parsePluginRelease(value) {
     fail();
   if (
     value.updateStrategy !== undefined &&
-    (value.updateStrategy !== "suite" || value.name !== companyPackageNames[2])
+    (!["suite", "managed-suite"].includes(value.updateStrategy) ||
+      value.name !== companyPackageNames[2])
   )
     fail();
   const artifact = value.artifact;
@@ -285,7 +286,8 @@ function parseManifest(value, publication) {
     fail();
   if (
     value.geaPluginUpdateStrategy !== undefined &&
-    (value.geaPluginUpdateStrategy !== "suite" || value.name !== companyPackageNames[2])
+    (!["suite", "managed-suite"].includes(value.geaPluginUpdateStrategy) ||
+      value.name !== companyPackageNames[2])
   )
     fail();
   if (!record(value.dependencies ?? {})) fail();

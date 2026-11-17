@@ -19,7 +19,7 @@ async function directory(path) {
 }
 function protect(state, ids, depth = 0) {
   if (!state || typeof state !== "object" || depth > 8) return;
-  for (const key of ["active", "previous", "verified", "booting"])
+  for (const key of ["active", "previous", "verified", "booting", "pending"])
     if (typeof state[key] === "string") ids.add(state[key]);
   protect(state.upgradedFrom, ids, depth + 1);
 }
@@ -31,174 +31,175 @@ export async function collectPluginStorage(
   let plan;
   try {
     plan = await store.withLock(
-      async () => {
-        await directory(store.root);
-        const state = await store.status();
-        if (state.booting || state.error || state.active !== state.verified)
-          return { skipped: "boot-not-verified" };
+      async () =>
+        store.withSelectionLock(async () => {
+          await directory(store.root);
+          const state = await store.status();
+          if (state.booting || state.error || state.active !== state.verified)
+            return { skipped: "boot-not-verified" };
 
-        await store.selected();
-        const update = await optional(join(store.root, "update-state.json"));
-        if (["downloading", "installing", "restarting"].includes(update?.phase))
-          return { skipped: "update-in-progress" };
-        const ids = new Set(["baseline"]);
-        protect(state, ids);
-        if (typeof update?.pending === "string" && update.phase === "pending")
-          ids.add(update.pending);
-        const versions = join(store.root, "versions"),
-          trash = join(store.root, "trash");
-        try {
-          await directory(versions);
-        } catch (error) {
-          if (error.code === "ENOENT") return { skipped: "no-versions" };
-          throw error;
-        }
-        if (!dryRun) {
-          await mkdir(trash, { recursive: true, mode: 0o700 });
-          await directory(trash);
-        }
-        const candidates = [];
-        const retained = [];
-        for (const entry of await readdir(versions, { withFileTypes: true })) {
-          const id = entry.name;
-          if (
-            ids.has(id) ||
-            !automatic.test(id) ||
-            !entry.isDirectory() ||
-            entry.isSymbolicLink()
-          ) {
-            retained.push(id);
-            continue;
-          }
-          const path = join(versions, id);
+          await store.selected();
+          const update = await optional(join(store.root, "update-state.json"));
+          if (["downloading", "installing", "restarting"].includes(update?.phase))
+            return { skipped: "update-in-progress" };
+          const ids = new Set(["baseline"]);
+          protect(state, ids);
+          if (typeof update?.pending === "string" && update.phase === "pending")
+            ids.add(update.pending);
+          const versions = join(store.root, "versions"),
+            trash = join(store.root, "trash");
           try {
-            await directory(path);
-            const receiptPath = join(path, "version.json");
-            const meta = await lstat(receiptPath);
-            if (!meta.isFile() || meta.isSymbolicLink()) throw Error("INVALID_RECEIPT");
-            const receipt = await optional(receiptPath);
+            await directory(versions);
+          } catch (error) {
+            if (error.code === "ENOENT") return { skipped: "no-versions" };
+            throw error;
+          }
+          if (!dryRun) {
+            await mkdir(trash, { recursive: true, mode: 0o700 });
+            await directory(trash);
+          }
+          const candidates = [];
+          const retained = [];
+          for (const entry of await readdir(versions, { withFileTypes: true })) {
+            const id = entry.name;
             if (
-              receipt?.id !== id ||
-              receipt.state !== "prepared" ||
-              receipt.pinned === true ||
-              !(await canCollect(path, id, receipt))
+              ids.has(id) ||
+              !automatic.test(id) ||
+              !entry.isDirectory() ||
+              entry.isSymbolicLink()
             ) {
               retained.push(id);
               continue;
             }
-            if (dryRun) {
-              candidates.push({ id });
-              continue;
-            }
-            const token = randomUUID(),
-              target = join(trash, "gc-" + token),
-              marker = target + ".json";
-            await writeFile(marker, JSON.stringify({ schema: 1, id, token }), {
-              flag: "wx",
-              mode: 0o600,
-            });
+            const path = join(versions, id);
             try {
-              await rename(path, target);
-              candidates.push({ id, path: target, marker });
-            } catch (error) {
-              await rm(marker, { force: true });
-              throw error;
-            }
-          } catch {
-            retained.push(id);
-          }
-        }
-        const coreIds = new Set();
-        let coreInventoryValid = true;
-        try {
-          if ((await readdir(store.root)).some((name) => name.startsWith("staging-")))
-            coreInventoryValid = false;
-          for (const entry of await readdir(versions, { withFileTypes: true })) {
-            if (!entry.isDirectory() || entry.isSymbolicLink()) {
-              coreInventoryValid = false;
-              continue;
-            }
-            const receipt = await optional(join(versions, entry.name, "version.json"));
-            if (!receipt || receipt.id !== entry.name) {
-              coreInventoryValid = false;
-              continue;
-            }
-            if (receipt.coreId) coreIds.add(receipt.coreId);
-          }
-          const preparedCore = await store.corePromise;
-          if (preparedCore) coreIds.add(preparedCore.id);
-          const cores = join(store.root, "cores");
-          try {
-            await directory(cores);
-          } catch (error) {
-            if (error.code !== "ENOENT") throw error;
-          }
-          if (!dryRun && collectCores && coreInventoryValid)
-            for (const entry of await readdir(cores).catch((error) => {
-              if (error.code === "ENOENT") return [];
-              throw error;
-            })) {
-              if (!/^[a-f0-9]{64}$/.test(entry) || coreIds.has(entry)) continue;
-              const path = join(cores, entry);
               await directory(path);
-              const metadata = await optional(join(path, "core.json"));
+              const receiptPath = join(path, "version.json");
+              const meta = await lstat(receiptPath);
+              if (!meta.isFile() || meta.isSymbolicLink()) throw Error("INVALID_RECEIPT");
+              const receipt = await optional(receiptPath);
               if (
-                metadata?.schema !== 1 ||
-                metadata.id !== entry ||
-                !/^[a-f0-9]{64}$/.test(metadata.archiveSha256 ?? "")
-              )
+                receipt?.id !== id ||
+                receipt.state !== "prepared" ||
+                receipt.pinned === true ||
+                !(await canCollect(path, id, receipt))
+              ) {
+                retained.push(id);
                 continue;
+              }
+              if (dryRun) {
+                candidates.push({ id });
+                continue;
+              }
               const token = randomUUID(),
                 target = join(trash, "gc-" + token),
                 marker = target + ".json";
-              await writeFile(
-                marker,
-                JSON.stringify({ schema: 1, kind: "core", id: entry, token }),
-                { flag: "wx", mode: 0o600 },
-              );
+              await writeFile(marker, JSON.stringify({ schema: 1, id, token }), {
+                flag: "wx",
+                mode: 0o600,
+              });
               try {
                 await rename(path, target);
-                candidates.push({ id: entry, kind: "core", path: target, marker });
-              } catch {
+                candidates.push({ id, path: target, marker });
+              } catch (error) {
                 await rm(marker, { force: true });
+                throw error;
               }
+            } catch {
+              retained.push(id);
             }
-        } catch {
-          coreInventoryValid = false;
-        }
-
-        for (const entry of dryRun ? [] : await readdir(trash, { withFileTypes: true })) {
-          if (!trashName.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink())
-            continue;
-          const path = join(trash, entry.name);
-          if (candidates.some((c) => c.path === path)) continue;
+          }
+          const coreIds = new Set();
+          let coreInventoryValid = true;
           try {
-            await directory(path);
-            const marker = path + ".json";
-            const stat = await lstat(marker);
-            if (!stat.isFile() || stat.isSymbolicLink()) continue;
-            const owner = await optional(marker);
-            if (owner?.schema === 1 && entry.name === "gc-" + owner.token) {
-              if (
-                owner.kind === "core" &&
-                collectCores &&
-                coreInventoryValid &&
-                /^[a-f0-9]{64}$/.test(owner.id) &&
-                !coreIds.has(owner.id)
-              )
-                candidates.push({ id: owner.id, kind: "core", path, marker });
-              else if (
-                owner.kind === undefined &&
-                automatic.test(owner.id) &&
-                !ids.has(owner.id) &&
-                (await canCollect(path, owner.id, await optional(join(path, "version.json"))))
-              )
-                candidates.push({ id: owner.id, path, marker });
+            if ((await readdir(store.root)).some((name) => name.startsWith("staging-")))
+              coreInventoryValid = false;
+            for (const entry of await readdir(versions, { withFileTypes: true })) {
+              if (!entry.isDirectory() || entry.isSymbolicLink()) {
+                coreInventoryValid = false;
+                continue;
+              }
+              const receipt = await optional(join(versions, entry.name, "version.json"));
+              if (!receipt || receipt.id !== entry.name) {
+                coreInventoryValid = false;
+                continue;
+              }
+              if (receipt.coreId) coreIds.add(receipt.coreId);
             }
-          } catch {}
-        }
-        return { candidates, retained };
-      },
+            const preparedCore = await store.corePromise;
+            if (preparedCore) coreIds.add(preparedCore.id);
+            const cores = join(store.root, "cores");
+            try {
+              await directory(cores);
+            } catch (error) {
+              if (error.code !== "ENOENT") throw error;
+            }
+            if (!dryRun && collectCores && coreInventoryValid)
+              for (const entry of await readdir(cores).catch((error) => {
+                if (error.code === "ENOENT") return [];
+                throw error;
+              })) {
+                if (!/^[a-f0-9]{64}$/.test(entry) || coreIds.has(entry)) continue;
+                const path = join(cores, entry);
+                await directory(path);
+                const metadata = await optional(join(path, "core.json"));
+                if (
+                  metadata?.schema !== 1 ||
+                  metadata.id !== entry ||
+                  !/^[a-f0-9]{64}$/.test(metadata.archiveSha256 ?? "")
+                )
+                  continue;
+                const token = randomUUID(),
+                  target = join(trash, "gc-" + token),
+                  marker = target + ".json";
+                await writeFile(
+                  marker,
+                  JSON.stringify({ schema: 1, kind: "core", id: entry, token }),
+                  { flag: "wx", mode: 0o600 },
+                );
+                try {
+                  await rename(path, target);
+                  candidates.push({ id: entry, kind: "core", path: target, marker });
+                } catch {
+                  await rm(marker, { force: true });
+                }
+              }
+          } catch {
+            coreInventoryValid = false;
+          }
+
+          for (const entry of dryRun ? [] : await readdir(trash, { withFileTypes: true })) {
+            if (!trashName.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink())
+              continue;
+            const path = join(trash, entry.name);
+            if (candidates.some((c) => c.path === path)) continue;
+            try {
+              await directory(path);
+              const marker = path + ".json";
+              const stat = await lstat(marker);
+              if (!stat.isFile() || stat.isSymbolicLink()) continue;
+              const owner = await optional(marker);
+              if (owner?.schema === 1 && entry.name === "gc-" + owner.token) {
+                if (
+                  owner.kind === "core" &&
+                  collectCores &&
+                  coreInventoryValid &&
+                  /^[a-f0-9]{64}$/.test(owner.id) &&
+                  !coreIds.has(owner.id)
+                )
+                  candidates.push({ id: owner.id, kind: "core", path, marker });
+                else if (
+                  owner.kind === undefined &&
+                  automatic.test(owner.id) &&
+                  !ids.has(owner.id) &&
+                  (await canCollect(path, owner.id, await optional(join(path, "version.json"))))
+                )
+                  candidates.push({ id: owner.id, path, marker });
+              }
+            } catch {}
+          }
+          return { candidates, retained };
+        }),
       { purpose: "maintenance" },
     );
   } catch (error) {

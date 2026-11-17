@@ -138,6 +138,8 @@ export async function cleanupLegacyGea({ data, home, apply = false, isInUse = le
       root,
       withLock: (action, options) =>
         apply ? withPluginStoreLock(root, action, options) : action(),
+      withSelectionLock: (action) =>
+        apply ? withPluginStoreLock(join(root, "selection"), action) : action(),
       status: () => json(join(root, "selection.json")),
       selected: async () => {
         const state = await store.status();

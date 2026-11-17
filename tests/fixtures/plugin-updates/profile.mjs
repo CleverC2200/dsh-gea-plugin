@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createPluginReleaseSource } from "../../../src/host/plugin-release-source.ts";
 import { companyPackageNames, projectPluginRelease } from "../../../src/shared/plugin-release.mjs";
+import { CompanyInstallation } from "../../../desktop/company-installation.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
 export async function controllerFixture(
   t,
@@ -15,15 +16,19 @@ export async function controllerFixture(
     fileCommit,
     allUpdates = false,
     releasePeers = {},
+    releaseDependencies = {},
     companyVersions = false,
     memory = false,
     memoryBootstrap = false,
+    managed = true,
   } = {},
 ) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "plugin-update-real-profile-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, "profile"),
     anchor = join(root, "anchor");
+  const evidence = join(root, "observations");
+  await mkdir(evidence);
   await mkdir(join(dir, "node_modules"), { recursive: true });
   const store = join(root, "profile-store", "v11");
   await mkdir(store, { recursive: true });
@@ -70,7 +75,7 @@ export async function controllerFixture(
     const manifest = {
       name,
       version,
-      dependencies: {},
+      dependencies: releaseDependencies[name] ?? {},
       peerDependencies:
         releasePeers[name] ??
         (index === 2
@@ -121,7 +126,7 @@ export async function controllerFixture(
     if (allUpdates || index >= 2) {
       await writeFile(
         join(target, "package.json"),
-        JSON.stringify({ ...manifest, version: oldVersion }),
+        JSON.stringify({ ...manifest, version: oldVersion, dependencies: {} }),
       );
       await writeFile(
         join(target, "lib/host.js"),
@@ -203,8 +208,9 @@ export async function controllerFixture(
       args: [fileURLToPath(new URL("./package-manager.cjs", import.meta.url)), "--fixture-prefix"],
       env: {
         FIXTURE_MODE: mode,
+        FIXTURE_OBSERVATION_DIR: evidence,
         FIXTURE_LAUNCHER_MARKER: "launcher-provided",
-        FIXTURE_LATE_FILE: join(dir, "late-write"),
+        FIXTURE_LATE_FILE: join(evidence, "late-write"),
       },
     },
   };
@@ -227,17 +233,33 @@ export async function controllerFixture(
       },
     },
   }));
+  const installation = new CompanyInstallation(dir, "a".repeat(40));
+  const initializeInstallation = async () => {
+    await installation.initialize();
+    await installation.beginBoot();
+    await installation.confirmRuntime(proofs);
+  };
+  if (managed) await initializeInstallation();
   return {
     root,
+    evidence,
     files,
     dir,
     profile,
     source,
     proofs,
+    installation,
+    initializeInstallation,
+    candidateDirectory: async () => {
+      const state = await installation.store.status();
+      return state.pending
+        ? join(installation.store.root, "versions", state.pending)
+        : installation.store.baseline;
+    },
     options: {
       profile,
       core: { head: "a".repeat(40), version: "0.2.0-rc.2", sdk: {} },
-      runtimeDirectory: join(root, "updates"),
+      runtimeDirectory: join(dir, "gea/plugin-updates"),
       source,
       readRuntimeProofs: async () => structuredClone(proofs),
       idleTimeoutMs: 2000,

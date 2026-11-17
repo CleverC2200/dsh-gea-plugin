@@ -37,6 +37,7 @@ export function parseUpdateProblem(value: unknown) {
         "release-not-published",
         "plan-unconfirmed",
         "conditions",
+        "desktop-installation",
         "migration-required",
         "channel-older",
         "content-mismatch",

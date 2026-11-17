@@ -83,11 +83,11 @@ preflight 使用以下文件合同，所有路径为绝对路径。sources、tar
 
 门禁核实际 source HEAD 与源码修改范围，复用普通交付对 lib/client 生成输出的允许规则，生成输出仍须逐字节匹配构建回执与最终 TGZ。它读取 `deliveryManifest`，将每包的 archive 路径、sha256、name/version、source.head/path、锁和 buildReceipt 摘要绑定到实际文件。构建回执沿[普通交付合同](package-delivery.md)，每个输出同时核当前源码目录和 tar 内字节；相同版本的旧包不能借新 HEAD 的声明通过。
 
-每个目标版本必须不低于已部署版本和当前环境中的版本；同版本必须使用相同归档字节。门禁只用当前 `environment` 调用 `planPluginSuiteUpdate` 校验完整目标组合，保留非公司消费者与 Core SDK 约束，不枚举历史起点或逐包顺序。安装包用 `geaPluginUpdateStrategy: "suite"` 声明整组更新能力，该字段随归档投影并在下载时交叉核对。当前安装若仍为旧更新器，只检查本次 GEA 过渡包可独立安装；重启加载后由新更新器处理整组。Core 不支持、需要数据迁移或当前过渡包不可安装时继续阻断。
+每个目标版本必须不低于已部署版本和当前环境中的版本；同版本必须使用相同归档字节。门禁只用当前 `environment` 调用 `planPluginSuiteUpdate` 校验完整目标组合，保留非公司消费者与 Core SDK 约束，不枚举历史起点或逐包顺序。当前托管发行使用 `geaPluginUpdateStrategy: "managed-suite"`，字段随归档投影并在下载时交叉核对。旧 reader 拒绝新策略，先通过原生更新取得受管桌面及其内置 Host。`suite` 的独立过渡包检查只保留旧协议兼容用途。运行合同见[更新与启动恢复](plugin-update-controller.md)。
 
 metadata 只提供 artifactUrl、已登记 supportedCores、dataCompatibility 和 notes；版本、requires、完整 peer/dependency 图、size/hash 来自最终归档。destination 必须不存在。输出包含 release 文件路径、摘要、preflight 输入与交付清单摘要、目标组合及 published=false，不上传 OSS、不更新频道。`test:release-contract` 将公开 CLI 的来源、身份和路径回归纳入 `quality:fast --source-only` 与现有 source CI。`release:preflight --desktop --base-tag <tag>` 保留桌面安装包原有版本准备职责，不代替插件发行门禁。
 
-发布方使用 [createPluginSuiteChannel](../scripts/plugin-channel.mjs)，输入 previous、preflightInput、三个最终 release 引用及新 revision/时间。该入口重新执行发布门禁，将三个 release 引用摘要绑定到门禁实际投影的 JSON 字节，一次生成完整 payload。旧起点还须证明 GEA 可作为第一步。生成结果带 `suite: true`，以 GEA `releases` 加 Workbench/Manage `companionReleases` 保持旧 reader 可读。`mergePluginChannelRelease` 拒绝修改已标记整组的频道，避免单包发布产生混装目标。发布方使用 `encodePluginChannel({payload})` 生成无签名 envelope，再按发布 owner 约定替换频道。以上函数只生成本地对象，正式发布仍须有相应授权。
+发布方使用 [createPluginSuiteChannel](../scripts/plugin-channel.mjs)，输入 previous、preflightInput、三个最终 release 引用及新 revision/时间。该入口重新执行发布门禁，将三个 release 引用摘要绑定到门禁实际投影的 JSON 字节，一次生成完整 payload。生成结果带 `suite: true`，使用 GEA `releases` 和 Workbench/Manage `companionReleases`；旧 reader 不认识 `managed-suite` 时停在检查阶段。`mergePluginChannelRelease` 拒绝修改已标记整组的频道，避免单包发布产生混装目标。发布方使用 `encodePluginChannel({payload})` 生成无签名 envelope，再按发布 owner 约定替换频道。以上函数只生成本地对象，正式发布仍须有相应授权。
 
 本地 `test:release-source` 使用真实 tar 和受控 fetch；它验证无签名来源、摘要不符/回退、完整 peers、固定 Core、持久回执与实际 conditional exports。fixture 测试不证明真实 OSS、官方安装器、Native 自替换、发布或业务验收。
 

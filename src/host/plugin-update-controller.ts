@@ -9,7 +9,7 @@ import { withFileLock } from "@deepseek-ai/dsh-atomic-write";
 import { runProfilePnpm } from "@deepseek-ai/dsh-plugin-manager/operations";
 import { resolveBundleDir } from "@deepseek-ai/dsh-app-boot";
 import type { ProfileContext } from "@deepseek-ai/dsh-app-boot";
-import { mkdir, open, readFile, realpath, rename, rm } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, realpath, rename, rm } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -48,6 +48,8 @@ import {
   observeProfilePackageProcesses,
 } from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun, type PluginUpdateFileCommit } from "./plugin-update-windows.ts";
+import { openCompanyInstallation } from "../../desktop/company-installation.mjs";
+import { companyPnpmNetworkArguments } from "../../desktop/company-pnpm.mjs";
 
 export const pluginUpdateProcessIdentity = `${process.pid}:${performance.timeOrigin}`;
 type Source = Pick<
@@ -88,6 +90,20 @@ function fail(code: string): never {
 }
 const code = (error: unknown, fallback: string) =>
   error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message) ? error.message : fallback;
+const packageFailure = (
+  outcome: Awaited<ReturnType<typeof runProfilePnpm>> | null,
+  cancelled: boolean,
+) => {
+  if (cancelled) return "HOST_CANCELLED";
+  if (outcome?.timedOut) return "PACKAGE_INSTALL_TIMEOUT";
+  if (
+    /\b(?:ERR_PNPM_)?(?:FETCH_5\d\d|ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND)\b/.test(
+      outcome?.output ?? "",
+    )
+  )
+    return "PACKAGE_DEPENDENCY_NETWORK_FAILED";
+  return "PACKAGE_INSTALL_FAILED";
+};
 const activeHost = (proof: RuntimePackageProof | undefined) =>
   proof?.host.kind === "active" ||
   (proof?.name === personalMemoryPackageName && proof.host.kind === "unversioned");
@@ -130,6 +146,8 @@ async function durableJson(path: string, value: unknown, commit?: PluginUpdateFi
 }
 function parseOperation(raw: unknown): PluginUpdateOperation {
   const value = object(raw);
+  if (value.installationId !== undefined && value.installationId !== value.id)
+    return fail("UPDATE_JOURNAL_INVALID");
   if (
     (value.schema !== 1 && value.schema !== 2) ||
     !updatablePackageNames.some((name) => name === value.packageName) ||
@@ -293,10 +311,10 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   let initialized = false,
     closed = false,
     journalBroken = false,
+    isolatedInstallation = false,
     checking = 0,
     active: Promise<void> | null = null;
-  let startup: RuntimePackageProof[] = [],
-    mutationInThisController = false;
+  let startup: RuntimePackageProof[] = [];
   let plans = new Map<UpdatablePackageName, Plan>();
   let suiteReleases: PluginRelease[] = [];
   let currentMonitor: Pick<
@@ -322,7 +340,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     publish();
   }
   function captureStartup(proofs: RuntimePackageProof[]) {
-    if (mutationInThisController) return;
     for (const proof of proofs) {
       const previous = startup.find((row) => row.name === proof.name);
       if (previous?.host.kind === "active" || proof.host.kind !== "active") continue;
@@ -412,6 +429,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     });
   }
   async function reconcileRuntime() {
+    const installation = await openCompanyInstallation(options.profile.dir);
+    if (installation)
+      await installation.confirmRuntime(
+        await options.readRuntimeProofs(pluginUpdateProcessIdentity),
+      );
     if (!initialized || active || closed || journalBroken) return snapshot();
     const currentProofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
     captureStartup(currentProofs);
@@ -505,6 +527,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   async function initializeState() {
     await mkdir(operations, { recursive: true, mode: 0o700 });
     try {
+      isolatedInstallation = Boolean(await openCompanyInstallation(options.profile.dir));
       await withFileLock(
         join(options.profile.dir, "package.json"),
         async () => {
@@ -526,6 +549,12 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             )
               await stage("failed", "PREVIOUS_OPERATION_INTERRUPTED");
             else if (
+              state.operation.installationId &&
+              ["accepted", "installing", "verifying", "unknown"].includes(state.operation.stage) &&
+              state.operation.processIdentity !== pluginUpdateProcessIdentity
+            )
+              await stage("failed", "PREVIOUS_PREPARATION_INTERRUPTED");
+            else if (
               ["accepted", "installing", "verifying", "restoring"].includes(state.operation.stage)
             )
               await stage("unknown", "PREVIOUS_OPERATION_INTERRUPTED");
@@ -539,7 +568,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         ...state,
         items: state.items.map((item) => ({
           ...item,
-          state: "unknown",
+          state: isolatedInstallation ? "failed" : "unknown",
           diagnostic: "UPDATE_JOURNAL_UNREADABLE",
         })),
       };
@@ -625,6 +654,16 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         return snapshot();
       }
       if (generation !== checking || closed) return snapshot();
+      if (!(await openCompanyInstallation(options.profile.dir))) {
+        for (const release of releases)
+          row(release.name, {
+            candidateVersion: release.version,
+            state: "blocked",
+            diagnostic: "UPDATE_DESKTOP_INSTALLATION_REQUIRED",
+            problem: { kind: "policy", code: "desktop-installation" },
+          });
+        return snapshot();
+      }
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
         row(release.name, { candidateVersion: release.version });
@@ -754,7 +793,6 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       reject = no;
     });
     const operationTask = async () => {
-      let mutationStarted = false;
       try {
         const downloads: { release: PluginRelease; archivePath: string }[] = [];
         for (const selectedPlan of selected) {
@@ -818,27 +856,21 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
               fail("UPDATE_COMBINATION_CHANGED");
             if (!profilePackageRunStopped(options.profile.dir)) fail("PROFILE_WRITER_UNCONFIRMED");
             const store = await pluginProfileStoreDirectory(options.profile.dir);
+            if (
+              process.platform === "win32" &&
+              !options.profile.packageManager?.command.toLowerCase().endsWith(".exe")
+            )
+              fail("UPDATE_WINDOWS_LAUNCHER_UNSUPPORTED");
             const id = randomUUID(),
               operationDirectory = join(operations, id);
             await mkdir(operationDirectory, { mode: 0o700 });
-            const windowsRun =
-              process.platform === "win32"
-                ? await prepareWindowsPackageRun(
-                    operationDirectory,
-                    options.profile.dir,
-                    options.profile.installAnchor,
-                    options.core.version,
-                    options.profile.packageManager,
-                    async (observation) => {
-                      await stage("installing", null, { processes: [observation] });
-                    },
-                  )
-                : null;
-            currentMonitor = windowsRun;
+            const installation = await openCompanyInstallation(options.profile.dir);
+            if (!installation) fail("UPDATE_DESKTOP_INSTALLATION_REQUIRED");
             lifetime.signal.throwIfAborted();
             for (const release of selectedSuite) options.source.assertCurrentRelease(release);
             const operation: PluginUpdateOperation = {
               schema: 2,
+              installationId: id,
               ...(downloads.length > 1
                 ? {
                     targets: downloads.map(({ release, archivePath }) => ({
@@ -883,129 +915,147 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             publish();
             accept(structuredClone(operation));
             await stage("installing");
-            currentMonitor ??= await observeProfilePackageProcesses(options.profile.dir);
             lifetime.signal.throwIfAborted();
             for (const release of selectedSuite) options.source.assertCurrentRelease(release);
-            mutationStarted = true;
-            mutationInThisController = true;
-            let outcome: Awaited<ReturnType<typeof runProfilePnpm>> | null = null,
-              installationError: unknown = null;
-            try {
-              outcome = await runProfilePnpm(
-                {
-                  profile: options.profile.name,
-                  dir: options.profile.dir,
-                  installAnchor: options.profile.installAnchor,
-                  cwd: options.profile.cwd,
-                  home: options.profile.home,
-                },
-                [
-                  "add",
-                  ...downloads.map(({ archivePath }) => "file:" + archivePath),
-                  "--store-dir=" + store,
-                  "--save-exact",
-                  "--ignore-scripts",
-                  "--ignore-pnpmfile",
-                  "--config.auto-install-peers=false",
-                  "--config.update-notifier=false",
-                ],
-                {
-                  ...(windowsRun?.packageManager ?? options.profile.packageManager),
-                  execution: "service",
-                  signal: lifetime.signal,
-                  outputBytes: 16_000,
-                  activateNewBundles: false,
-                  idleTimeoutMs: options.idleTimeoutMs ?? 30_000,
-                  lookupTimeoutMs: 20_000,
-                  onOutput: () => currentMonitor?.capture(),
-                },
-              );
-            } catch (error) {
-              installationError = error;
-            }
-            currentMonitor.capture();
-            const processes = currentMonitor.snapshot();
-            if (outcome?.logPath) operation.logs.push(outcome.logPath);
-            const stopped = await currentMonitor.waitForQuiescence(
-              options.quiescenceWaitMs ?? 2_000,
-            );
-            await stage("verifying", null, { logs: operation.logs, processes });
-            if (!stopped) await stage("unknown", "PACKAGE_WRITERS_UNCONFIRMED");
-            else {
-              const after = await readPluginProfile(options.profile.dir);
-              reflectProfile(after, await options.readRuntimeProofs(pluginUpdateProcessIdentity));
-              if (!retainsUnmanagedManifestFields(baseline, after))
-                await stage("failed", "PROFILE_SETTINGS_OWNERSHIP_UNCONFIRMED");
-              else if (
-                installationError ||
-                !outcome ||
-                outcome.exitCode !== 0 ||
-                outcome.timedOut ||
-                lifetime.signal.aborted
-              )
-                await stage(
-                  "failed",
-                  lifetime.signal.aborted ? "HOST_CANCELLED" : "PACKAGE_INSTALL_FAILED",
+            await installation.prepare(
+              id,
+              async (directory, { registerProcess }) => {
+                const baseline = await readPluginProfile(directory);
+                const windowsRun =
+                  process.platform === "win32"
+                    ? await prepareWindowsPackageRun(
+                        operationDirectory,
+                        directory,
+                        options.profile.installAnchor,
+                        options.core.version,
+                        options.profile.packageManager,
+                        async (observation) => {
+                          await registerProcess(observation.pid);
+                          await stage("installing", null, { processes: [observation] });
+                        },
+                      )
+                    : null;
+                currentMonitor = windowsRun ?? (await observeProfilePackageProcesses(directory));
+                let outcome: Awaited<ReturnType<typeof runProfilePnpm>> | null = null,
+                  installationError: unknown = null;
+                try {
+                  outcome = await runProfilePnpm(
+                    {
+                      profile: options.profile.name,
+                      dir: directory,
+                      installAnchor: options.profile.installAnchor,
+                      cwd: options.profile.cwd,
+                      home: options.profile.home,
+                    },
+                    [
+                      "add",
+                      ...downloads.map(({ archivePath }) => "file:" + archivePath),
+                      "--store-dir=" + store,
+                      "--save-exact",
+                      "--ignore-scripts",
+                      "--ignore-pnpmfile",
+                      "--config.auto-install-peers=false",
+                      "--config.update-notifier=false",
+                      ...companyPnpmNetworkArguments,
+                    ],
+                    {
+                      ...(windowsRun?.packageManager ?? options.profile.packageManager),
+                      execution: "service",
+                      signal: lifetime.signal,
+                      outputBytes: 16_000,
+                      activateNewBundles: false,
+                      idleTimeoutMs: options.idleTimeoutMs ?? 90_000,
+                      lookupTimeoutMs: 20_000,
+                      onOutput: () => currentMonitor?.capture(),
+                    },
+                  );
+                } catch (error) {
+                  installationError = error;
+                }
+                await currentMonitor.capture();
+                const processes = currentMonitor.snapshot();
+                if (outcome?.logPath) {
+                  const saved = join(operationDirectory, "pnpm.log");
+                  await writeFile(saved, await readFile(outcome.logPath), { mode: 0o600 });
+                  operation.logs = [saved];
+                }
+                let stopped = await currentMonitor.waitForQuiescence(
+                  options.quiescenceWaitMs ?? 2_000,
                 );
-              else if (
-                !retainsProfileUpdates(baseline, after, downloads) ||
-                downloads.some(
-                  ({ release }) =>
-                    !after.packages.some(
-                      (pkg) => pkg.name === release.name && pkg.version === release.version,
-                    ),
-                )
-              )
-                await stage("failed", "PACKAGE_POSTCHECK_FAILED");
-              else await stage("pending-restart");
-            }
+                if (!stopped) {
+                  currentMonitor.cancelObserved();
+                  stopped = await currentMonitor.waitForQuiescence(
+                    options.quiescenceWaitMs ?? 2_000,
+                  );
+                  throw Error(
+                    stopped ? "PACKAGE_WRITERS_INTERRUPTED" : "PACKAGE_WRITERS_UNCONFIRMED",
+                  );
+                }
+                await stage("verifying", null, { logs: operation.logs, processes });
+                if (!stopped) throw Error("PACKAGE_WRITERS_UNCONFIRMED");
+                else {
+                  const after = await readPluginProfile(directory);
+                  if (!retainsUnmanagedManifestFields(baseline, after))
+                    throw Error("PROFILE_SETTINGS_OWNERSHIP_UNCONFIRMED");
+                  else if (
+                    installationError ||
+                    !outcome ||
+                    outcome.exitCode !== 0 ||
+                    outcome.timedOut ||
+                    lifetime.signal.aborted
+                  )
+                    throw Error(packageFailure(outcome, lifetime.signal.aborted));
+                  else if (
+                    !retainsProfileUpdates(baseline, after, downloads) ||
+                    downloads.some(
+                      ({ release }) =>
+                        !after.packages.some(
+                          (pkg) => pkg.name === release.name && pkg.version === release.version,
+                        ),
+                    )
+                  )
+                    throw Error("PACKAGE_POSTCHECK_FAILED");
+                }
+              },
+              lifetime.signal,
+            );
+            await stage("pending-restart", null, { logs: operation.logs });
           },
           { waitMs: options.lockWaitMs ?? 30_000 },
         );
       } catch (error) {
-        if (mutationStarted) {
+        plans.clear();
+        state = {
+          ...state,
+          items: state.items.map((item) => ({ ...item, planId: null })),
+        };
+        for (const selectedPlan of selected)
+          row(selectedPlan.release.name, {
+            state: "failed",
+            diagnostic: code(
+              error,
+              lifetime.signal.aborted ? "HOST_CANCELLED" : "UPDATE_PREPARATION_FAILED",
+            ),
+            planId: null,
+          });
+        if (
+          state.operation &&
+          ["accepted", "installing", "verifying"].includes(state.operation.stage)
+        )
           try {
-            await stage("unknown", code(error, "UPDATE_RESULT_UNKNOWN"));
+            await stage("failed", code(error, "UPDATE_PREPARATION_FAILED"));
           } catch {
             journalBroken = true;
-            if (state.operation)
-              state = {
-                ...state,
-                operation: {
-                  ...state.operation,
-                  stage: "unknown",
-                  diagnostic: "UPDATE_RECEIPT_WRITE_FAILED",
-                },
-              };
-            for (const selectedPlan of selected)
-              row(selectedPlan.release.name, {
-                state: "unknown",
+            state = {
+              ...state,
+              operation: {
+                ...state.operation!,
+                stage: "failed",
                 diagnostic: "UPDATE_RECEIPT_WRITE_FAILED",
-              });
+              },
+            };
           }
-        } else {
-          plans.clear();
-          state = {
-            ...state,
-            items: state.items.map((item) => ({ ...item, planId: null })),
-          };
-          for (const selectedPlan of selected)
-            row(selectedPlan.release.name, {
-              state: "failed",
-              diagnostic: code(
-                error,
-                lifetime.signal.aborted ? "HOST_CANCELLED" : "UPDATE_PREPARATION_FAILED",
-              ),
-              planId: null,
-            });
-          if (state.operation && ["accepted", "installing"].includes(state.operation.stage))
-            try {
-              await stage("failed", code(error, "UPDATE_PREPARATION_FAILED"));
-            } catch {
-              journalBroken = true;
-            }
-          reject(error);
-        }
+        reject(error);
       } finally {
         if (state.operation?.stage !== "unknown") {
           currentMonitor?.close();
@@ -1192,6 +1242,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       const operation = state.operation;
       if (operationId && operation?.id !== operationId) return { operationId, state: "unknown" };
       const id = operation?.id ?? null;
+      if (journalBroken && isolatedInstallation) return { operationId: id, state: "failed" };
       if (closed || journalBroken || operation?.stage === "unknown")
         return { operationId: id, state: "unknown" };
       if (active) return { operationId: id, state: "running" };

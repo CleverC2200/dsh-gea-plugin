@@ -9,7 +9,8 @@ import { build } from "esbuild";
 import { parse as parseYaml } from "yaml";
 import { projectPluginRelease, companyPackageNames } from "../../../src/shared/plugin-release.mjs";
 import { preservedSession } from "./preserved-session.mjs";
-import { refreshCompanyStartup } from "../../../desktop/company-bootstrap.mjs";
+import { CompanyInstallation } from "../../../desktop/company-installation.mjs";
+import { createRequire } from "node:module";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const repository = fileURLToPath(new URL("../../../", import.meta.url));
 const ownFile = fileURLToPath(import.meta.url);
@@ -204,7 +205,7 @@ async function observeFresh(input) {
     if (input.startupRecovery)
       assert.deepEqual(
         before.items.map((row) => row.state),
-        Array(3).fill("pending-restart"),
+        ["pending-restart", "pending-restart", "idle"],
       );
     const observed = await clientObservations(input, host);
     client = observed.client;
@@ -215,14 +216,16 @@ async function observeFresh(input) {
       modules: observed.modules,
     });
     const after = await host.route("status", { pageIdentity: "fresh-page" });
-    const row = after.items.find((item) => item.packageName === companyPackageNames[2]);
+    const row = after.items.find(
+      (item) => item.packageName === companyPackageNames[input.startupRecovery ? 0 : 2],
+    );
     assert.equal(row.state, "completed", JSON.stringify(after));
-    assert.equal(row.runningHostVersion, input.expectedVersions[2]);
-    assert.equal(row.runningClientVersion, input.expectedVersions[2]);
+    assert.equal(row.runningHostVersion, input.expectedVersions[input.startupRecovery ? 0 : 2]);
+    assert.equal(row.runningClientVersion, input.expectedVersions[input.startupRecovery ? 0 : 2]);
     if (input.allUpdates) {
       assert.deepEqual(
         after.items.map((item) => item.state),
-        Array(3).fill("completed"),
+        input.startupRecovery ? ["completed", "completed", "idle"] : Array(3).fill("completed"),
       );
       assert.deepEqual(
         after.items.map((item) => item.runningHostVersion),
@@ -300,7 +303,9 @@ export async function installedScenario(
     await writeFile(join(personalData, name), value);
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = startupRecovery ? join(root, "profiles/desktop") : join(root, "profile"),
-    pnpm = join(repository, "node_modules/pnpm/bin/pnpm.cjs");
+    pnpm =
+      process.env.GEA_PLUGIN_UPDATE_PNPM ??
+      join(dirname(createRequire(import.meta.url).resolve("pnpm")), "bin/pnpm.cjs");
   await mkdir(dir, { recursive: true });
   const oldVersions = startupRecovery
       ? ["0.1.50", "0.6.3-company.46", "0.0.216"]
@@ -314,7 +319,7 @@ export async function installedScenario(
       )
     : {};
   const expectedVersions = startupRecovery
-    ? ["0.1.53", "0.6.3-company.48", "0.0.221"]
+    ? ["0.1.51", "0.6.3-company.47", "0.0.216"]
     : ["1.1.0", "2.1.0", "3.1.0"];
   const updateVersions = startupRecovery
     ? ["0.1.51", "0.6.3-company.47", "0.0.216"]
@@ -403,6 +408,10 @@ export async function installedScenario(
       env: { PATH: process.env.PATH, HOME: root },
     },
   );
+  const installation = new CompanyInstallation(dir, proof.head);
+  await installation.initialize();
+  await installation.beginBoot();
+  await installation.store.confirmBoot();
   const initializedStore = parseYaml(
     await readFile(join(dir, "node_modules/.modules.yaml"), "utf8"),
   ).storeDir;
@@ -575,7 +584,7 @@ export async function installedScenario(
     } while (Date.now() < deadline);
     const installed = pending.items.find((item) => item.packageName === row.packageName);
     assert.equal(installed.state, "pending-restart", JSON.stringify(pending));
-    assert.equal(installed.installedVersion, startupRecovery ? "0.1.51" : "3.1.0");
+    assert.equal(installed.installedVersion, startupRecovery ? "0.1.50" : "3.0.0");
     assert.equal(
       parseYaml(await readFile(join(dir, "node_modules/.modules.yaml"), "utf8")).storeDir,
       initializedStore,
@@ -585,81 +594,7 @@ export async function installedScenario(
     await host.ctx.fiber.dispose();
     restoreFetch();
   }
-  let startup;
-  if (startupRecovery) {
-    const pointer = JSON.parse(
-      await readFile(join(input.deployment.runtimeDir, "plugin-updates/latest.json")),
-    );
-    const operationDirectory = join(
-      input.deployment.runtimeDir,
-      "plugin-updates/operations",
-      pointer.id,
-    );
-    const original = await readFile(join(operationDirectory, "receipt.json"));
-    assert.equal(JSON.parse(original).targets.length, 2);
-    const seed = join(root, "replacement/company-seed");
-    await mkdir(join(seed, "archives"), { recursive: true });
-    const gea = await makeArchive(
-      root,
-      companyPackageNames[2],
-      expectedVersions[2],
-      Object.fromEntries(
-        companyPackageNames.slice(0, 2).map((name, index) => [name, expectedVersions[index]]),
-      ),
-      true,
-    );
-    const replacements = await Promise.all(
-      companyPackageNames
-        .slice(0, 2)
-        .map((name, index) => makeArchive(root, name, expectedVersions[index])),
-    );
-    const packages = [];
-    for (const artifact of [...replacements, gea]) {
-      const file =
-        artifact.manifest.name.replace(/^@/, "").replace("/", "-") +
-        "-" +
-        artifact.manifest.version +
-        ".tgz";
-      await writeFile(join(seed, "archives", file), artifact.bytes);
-      packages.push({
-        name: artifact.manifest.name,
-        version: artifact.manifest.version,
-        sha256: sha(artifact.bytes),
-        file,
-      });
-    }
-    await writeFile(join(seed, "manifest.json"), JSON.stringify({ schema: 1, packages }));
-    await mkdir(join(root, "dsh"));
-    await symlink(join(root, "node_modules"), join(root, "dsh/node_modules"), "dir");
-    await symlink(join(repository, "node_modules/yaml"), join(root, "node_modules/yaml"), "dir");
-    const support = join(root, "support");
-    await mkdir(join(support, "pnpm/bin"), { recursive: true });
-    await writeFile(
-      join(support, "pnpm/bin/pnpm.mjs"),
-      `import ${JSON.stringify(pathToFileURL(pnpm).href)};`,
-    );
-    startup = await refreshCompanyStartup({
-      root,
-      support,
-      seed,
-      home: root,
-      manifest: { packages },
-    });
-    assert.equal(startup.refresh.changed, true, JSON.stringify(startup));
-    assert.equal(startup.refresh.status, "pending-restart-preserved");
-    const recovered = JSON.parse(await readFile(join(operationDirectory, "receipt.json")));
-    assert.equal(recovered.stage, "pending-restart");
-    assert.equal(recovered.completionProof, null);
-    assert.equal(recovered.targets.length, 3);
-    const refreshDirectory = join(root, "profiles/desktop/gea/bootstrap/gea-refresh");
-    const refreshReceipt = JSON.parse(await readFile(join(refreshDirectory, "receipt.json")));
-    assert.equal(dirname(refreshReceipt.backup), refreshDirectory);
-    assert.equal(refreshReceipt.status, "completed");
-    assert.deepEqual(
-      await readFile(join(refreshReceipt.backup, "pending-update-receipt.json")),
-      original,
-    );
-  }
+  await installation.beginBoot();
   const inputFile = join(root, "input.json");
   await writeFile(inputFile, JSON.stringify(input));
   const fresh = JSON.parse(
@@ -686,8 +621,8 @@ export async function installedScenario(
   for (const [name, value] of Object.entries(personalFiles))
     assert.equal(await readFile(join(personalData, name), "utf8"), value);
   if (allUpdates) {
-    assert.equal(operation.targets.length, 3);
-    assert.equal(operation.completionProofs.length, 3);
+    assert.equal(operation.targets.length, startupRecovery ? 2 : 3);
+    assert.equal(operation.completionProofs.length, startupRecovery ? 2 : 3);
   }
   return {
     core: { kind: proof.kind, head: proof.head, version: proof.version },
@@ -716,16 +651,14 @@ export async function installedScenario(
     fresh,
     packageManager: {
       file: pnpm,
-      version: JSON.parse(
-        await readFile(join(repository, "node_modules/pnpm/package.json"), "utf8"),
-      ).version,
+      version: JSON.parse(await readFile(createRequire(import.meta.url).resolve("pnpm"), "utf8"))
+        .version,
     },
     profileRetained: JSON.parse(await readFile(join(dir, "package.json"), "utf8")).retained,
     personalAgentPreserved: true,
     pluginCustomizationPreserved: true,
     completeSkillAssetsPreserved: true,
     sessionPreserved: true,
-    ...(startup ? { startup } : {}),
   };
 }
 if (process.argv[1] === ownFile && process.argv[2] === "observe") {

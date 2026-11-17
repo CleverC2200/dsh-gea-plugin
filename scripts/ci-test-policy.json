@@ -31,6 +31,8 @@
     "desktop/client-installer.test.mjs",
     "desktop/company-bootstrap.test.mjs",
     "desktop/company-gea-refresh.test.mjs",
+    "desktop/company-installation.test.mjs",
+    "desktop/company-desktop.test.mjs",
     "desktop/company-update.test.mjs",
     "desktop/company-resources.test.mjs",
     "desktop/config.test.cjs",
@@ -558,7 +560,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/company-(?:archives|bootstrap|gea-refresh)\\.mjs$",
+      "pattern": "^desktop/(?:company-(?:archives|bootstrap|gea-refresh|installation|desktop|pnpm)|windows-job|plugin-store|plugin-storage|copy-graph|core-file-mode|official-(?:branding|main))\\.(?:mjs|cjs|d\\.mts)$",
       "tests": ["scripts/desktop-gea-upgrade.test.mjs"],
       "sourceTests": ["scripts/desktop-gea-upgrade.test.mjs"]
     },
@@ -600,7 +602,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^tests/fixtures/plugin-updates/package-manager\\.cjs$",
+      "pattern": "^tests/fixtures/plugin-updates/(?:package-manager\\.cjs|download-registry\\.mjs)$",
       "tests": ["tests/plugin-update-controller.contract.mjs"]
     },
     {
@@ -907,12 +909,16 @@
     "desktop/plugin-storage.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/plugin-store.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/recovery.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
-    "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
+    "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/company-installation.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/company-desktop.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/graph-relocation.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
     "scripts/desktop-release.test.mjs": ["semver", "yaml"],
     "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
-    "scripts/run-quality-ci.test.mjs": ["yaml"]
+    "scripts/run-quality-ci.test.mjs": ["yaml"],
+    "scripts/desktop-gea-upgrade.test.mjs": ["yaml"]
   }
 }

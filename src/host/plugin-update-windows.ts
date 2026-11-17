@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { join, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
+import { windowsJobStopped } from "../../desktop/windows-job.mjs";
 import type { PluginUpdateOperation } from "../shared/plugin-update-state.ts";
 
 export const windowsPackageRunner = String.raw`
@@ -174,11 +175,9 @@ export async function prepareWindowsPackageRun(
         });
         renameSync(acknowledgement + ".tmp", acknowledgement);
       }
-      if (value.stage === "empty") {
-        if (!("exitCode" in value) || !Number.isInteger(value.exitCode))
-          throw Error("WINDOWS_JOB_EXIT_INVALID");
-        empty = true;
-      }
+      if (value.stage === "empty" && (!("exitCode" in value) || !Number.isInteger(value.exitCode)))
+        throw Error("WINDOWS_JOB_EXIT_INVALID");
+      empty = windowsJobStopped(value, observed);
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
         unreliable = true;
