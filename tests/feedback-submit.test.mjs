@@ -7,10 +7,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unzipSync, strFromU8 } from "fflate";
-import {
-  GeaRequestCapture,
-  GeaApiLogCenter,
-} from "./helpers/feedback-capture.mjs";
+import { GeaRequestCapture, GeaApiLogCenter } from "./helpers/feedback-capture.mjs";
 const { outputFiles } = await build({
   entryPoints: ["src/host/feedback-submit.ts"],
   bundle: true,
@@ -21,13 +18,10 @@ const { outputFiles } = await build({
     {
       name: "official-log-port",
       setup(b) {
-        b.onResolve(
-          { filter: /^@deepseek-ai\/dsh-session-log-export$/ },
-          () => ({
-            path: "official",
-            namespace: "test",
-          }),
-        );
+        b.onResolve({ filter: /^@deepseek-ai\/dsh-session-log-export$/ }, () => ({
+          path: "official",
+          namespace: "test",
+        }));
         b.onLoad({ filter: /.*/, namespace: "test" }, () => ({
           contents:
             "export const sessionLogExportDeps=ctx=>ctx;export const flushLiveSessionLog=(ctx,id)=>ctx.flush(id);export const readSessionLogText=(port,id)=>port.read(id);",
@@ -37,8 +31,7 @@ const { outputFiles } = await build({
   ],
 });
 const { FeedbackSubmitter, mountFeedbackSubmit } = await import(
-  "data:text/javascript;base64," +
-    Buffer.from(outputFiles[0].contents).toString("base64")
+  "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
 test("legacy feedback service keeps the host available without submission support", () => {
   const ctx = {
@@ -47,9 +40,7 @@ test("legacy feedback service keeps the host available without submission suppor
       register();
     },
   };
-  assert.doesNotThrow(() =>
-    mountFeedbackSubmit(ctx, {}, 120000, 20 * 1024 * 1024),
-  );
+  assert.doesNotThrow(() => mountFeedbackSubmit(ctx, {}, 120000, 20 * 1024 * 1024));
 });
 
 test("submission-capable feedback service registers and releases its provider", () => {
@@ -89,8 +80,7 @@ async function bench(t) {
   };
   const ctx = {
     sessionPersistence: {
-      read: async (id) =>
-        JSON.stringify({ type: "session", id, version: 4 }) + "\n",
+      read: async (id) => JSON.stringify({ type: "session", id, version: 4 }) + "\n",
     },
     flush: async () => {},
   };
@@ -165,17 +155,11 @@ test("manual retry uses original archive and submission id; description edit fre
       .sort(),
   );
   assert.equal(zip["gea-requests.jsonl"].byteLength, 0);
-  assert.equal(
-    (await b.submitter.submit({ ...request, description: "changed" })).ok,
-    false,
-  );
+  assert.equal((await b.submitter.submit({ ...request, description: "changed" })).ok, false);
   assert.equal(b.snapshots(), 2);
   assert.notEqual(b.sent[1].id, b.sent[2].id);
   b.succeed();
-  assert.equal(
-    (await b.submitter.submit({ ...request, description: "changed" })).ok,
-    true,
-  );
+  assert.equal((await b.submitter.submit({ ...request, description: "changed" })).ok, true);
   assert.deepEqual(b.sent[2].bytes, b.sent[3].bytes);
 });
 test("missing official log prevents upload even when optional evidence exists", async (t) => {
@@ -223,17 +207,14 @@ test("reused business IDs cannot pull another Session's API record into a feedba
   b.business.apiLogSnapshot = () => apiLog.snapshot();
   for (const session of ["session-one", "session-two"]) {
     await capture.run(session, "approval", async () => {
-      const response = await apiLog.fetch(
-        identity.base + "/sales-plan/plans/versions/v1/actions",
-        {
-          method: "POST",
-          headers: {
-            "X-Request-Id": "same-business-command",
-            "Content-Type": "application/json",
-          },
-          body: '{"action":"SAVE"}',
+      const response = await apiLog.fetch(identity.base + "/sales-plan/plans/versions/v1/actions", {
+        method: "POST",
+        headers: {
+          "X-Request-Id": "same-business-command",
+          "Content-Type": "application/json",
         },
-      );
+        body: '{"action":"SAVE"}',
+      });
       await response.text();
     });
   }
@@ -249,10 +230,7 @@ test("reused business IDs cannot pull another Session's API record into a feedba
     true,
   );
   const files = unzipSync(b.sent[0].bytes);
-  const records = strFromU8(files["gea-api-logs.jsonl"])
-    .trim()
-    .split("\n")
-    .map(JSON.parse);
+  const records = strFromU8(files["gea-api-logs.jsonl"]).trim().split("\n").map(JSON.parse);
   assert.equal(records.length, 1);
   assert.equal(records[0].request.headers["x-trace-id"], traces[0]);
 });
@@ -312,29 +290,18 @@ test("current login uploads historical official logs with only its own captured 
   assert.equal(b.sent[0].owner.tenantId, "current-tenant");
   const zip = unzipSync(b.sent[0].bytes);
   assert.equal(strFromU8(zip["session.v4.jsonl"]), official);
-  const rows = strFromU8(zip["gea-requests.jsonl"])
-    .trim()
-    .split("\n")
-    .map(JSON.parse);
-  assert.deepEqual(
-    [...new Set(rows.map((row) => row.requestId))],
-    [currentRequest],
-  );
+  const rows = strFromU8(zip["gea-requests.jsonl"]).trim().split("\n").map(JSON.parse);
+  assert.deepEqual([...new Set(rows.map((row) => row.requestId))], [currentRequest]);
   const diagnostics = strFromU8(zip["gea-diagnostics.jsonl"]);
   assert.ok(diagnostics.includes("current-owner-diagnostic"));
   assert.ok(!diagnostics.includes("old-owner-diagnostic"));
-  const api = strFromU8(zip["gea-api-logs.jsonl"])
-    .trim()
-    .split("\n")
-    .map(JSON.parse);
+  const api = strFromU8(zip["gea-api-logs.jsonl"]).trim().split("\n").map(JSON.parse);
   assert.deepEqual(
     api.map((row) => row.request.headers["x-request-id"]),
     [currentRequest],
   );
   const manifest = JSON.parse(strFromU8(zip["manifest.json"]));
-  assert.ok(
-    manifest.missing.some((item) => item.reason.includes("其他登录身份")),
-  );
+  assert.ok(manifest.missing.some((item) => item.reason.includes("其他登录身份")));
 });
 
 test("switching login replaces a failed snapshot while same-login retries reuse its bytes", async (t) => {
