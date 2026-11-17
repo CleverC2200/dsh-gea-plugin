@@ -144,7 +144,7 @@ const { parsePluginManifest } = await import(
 const snapshots = await json(join(tool, "deployed-local.json"));
 const previous = {},
   references = [];
-let publishedManage;
+const published = new Map();
 async function download(url, path, expected) {
   const u = new URL(url);
   if (u.origin !== origin || u.username || u.password) throw Error("UNREGISTERED_DOWNLOAD");
@@ -178,29 +178,35 @@ for (const channel of ["test", "stable"]) {
       execFileSync("tar", ["-xOf", archive, "package/package.json"], { encoding: "utf8" }),
     );
     installed.push({ ...parsePluginManifest(manifest), artifactSha256: release.artifact.sha256 });
-    if (channel === "test" && release.name === "dsh-agent-manage")
-      publishedManage = { archive, release, releaseBytes, ref };
+    if (channel === "test") published.set(release.name, { archive, release, releaseBytes, ref });
   }
   snapshots.push({ id: "channel-" + channel + "-" + payload.revision, installed });
 }
-if (!publishedManage) throw Error("PUBLISHED_MANAGE_REQUIRED");
 const deliveryManifestPath = join(delivery, "manifest.json"),
   manifest = await json(deliveryManifestPath);
-const row = manifest.packages.find((p) => p.name === "dsh-agent-manage");
-if (
-  row.version !== publishedManage.release.version ||
-  git(manage, "rev-parse", `v${row.version}^{commit}`) !== input.repositories["dsh-agent-manage"]
-)
-  throw Error("PUBLISHED_MANAGE_SOURCE_MISMATCH");
-await rename(join(delivery, "packages", row.filename), join(out, "rebuilt-manage-unused.tgz"));
-await copyFile(publishedManage.archive, join(delivery, "packages", row.filename));
-row.sha256 = publishedManage.release.artifact.sha256;
-row.size = publishedManage.release.artifact.size;
-row.source = {
-  kind: "immutable-published-archive",
-  path: manage,
-  head: input.repositories["dsh-agent-manage"],
-};
+const reused = new Map(),
+  requiredPublished = new Set(input.reusePublished);
+for (const row of manifest.packages) {
+  const old = published.get(row.name);
+  if (old?.release.version !== row.version) continue;
+  if (git(row.source.path, "rev-parse", `v${row.version}^{commit}`) !== row.source.head)
+    throw Error("PUBLISHED_ARCHIVE_SOURCE_MISMATCH: " + row.name);
+  await rename(
+    join(delivery, "packages", row.filename),
+    join(out, "rebuilt-unused-" + row.filename),
+  );
+  await copyFile(old.archive, join(delivery, "packages", row.filename));
+  row.sha256 = old.release.artifact.sha256;
+  row.size = old.release.artifact.size;
+  row.source = {
+    kind: "immutable-published-archive",
+    path: row.source.path,
+    head: row.source.head,
+  };
+  reused.set(row.name, old);
+}
+for (const name of requiredPublished)
+  if (!reused.has(name)) throw Error("PUBLISHED_COMPANION_REQUIRED: " + name);
 await put(deliveryManifestPath, manifest);
 await writeFile(
   join(delivery, "SHA256SUMS"),
@@ -225,7 +231,7 @@ for (const row of manifest.packages) {
   });
   const archive = join(delivery, "packages", row.filename),
     metadata = join(out, row.name.replaceAll("/", "_") + ".metadata.json");
-  const old = row.name === "dsh-agent-manage" ? publishedManage.release : undefined;
+  const old = reused.get(row.name)?.release;
   await put(metadata, {
     artifactUrl:
       old?.artifact.url ?? origin + "/plugin-release/packages/" + row.sha256 + "/" + row.filename,
@@ -272,14 +278,15 @@ await run(process.execPath, [join(gea, "scripts/release-preflight.mjs"), "--inpu
 for (const [i, target] of targets.entries()) {
   const row = manifest.packages[i],
     destination = join(out, "release-" + i);
-  if (row.name === "dsh-agent-manage") {
+  const old = reused.get(row.name);
+  if (old) {
     await mkdir(destination);
-    const filename = publishedManage.ref.sha256 + ".release.json";
-    await writeFile(join(destination, filename), publishedManage.releaseBytes);
+    const filename = old.ref.sha256 + ".release.json";
+    await writeFile(join(destination, filename), old.releaseBytes);
     references.push({
       name: row.name,
-      url: publishedManage.ref.url,
-      sha256: publishedManage.ref.sha256,
+      url: old.ref.url,
+      sha256: old.ref.sha256,
     });
   } else {
     await run(process.execPath, [

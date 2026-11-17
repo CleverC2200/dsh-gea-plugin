@@ -3,8 +3,8 @@
   "core": "8cc49e9b5c5ddf3751af2f6fb21276513a14bf9b",
   "repositories": {
     "dsh-gea-plugin": "6c73a7bb91ad5801103c6cde0b3e716677f39dda",
-    "dsh-agent-workbench": "17ba786743f3a119cbeb8c5a13ab45351c2fc142",
-    "dsh-agent-manage": "6e7f5cb14113e745e2b0772914ea165e512f3cff"
+    "dsh-agent-workbench": "54afeb0416bb430f60921a024d1e51e8ee30e8ac",
+    "dsh-agent-manage": "797e4c480bf2ebb05b7ccc6ede82594dde324216"
   },
   "requiredCommits": {
     "dsh-gea-plugin": [
@@ -14,11 +14,14 @@
     ],
     "dsh-agent-workbench": [
       "ce8fed7561e1741502686cb051229dd256a8b9f3",
-      "6007f1c5b3a6a77dc707c701a1b6a45a9d64c2c2"
+      "6007f1c5b3a6a77dc707c701a1b6a45a9d64c2c2",
+      "54afeb0416bb430f60921a024d1e51e8ee30e8ac"
     ],
     "dsh-agent-manage": [
-      "181c68090ca8ac45f628248da7d7a6e8f1f5c117"
+      "181c68090ca8ac45f628248da7d7a6e8f1f5c117",
+      "797e4c480bf2ebb05b7ccc6ede82594dde324216"
     ]
   },
-  "taskId": "environment-isolation-final-304-124-79-20261117"
+  "taskId": "environment-isolation-final-304-125-80-20261117",
+  "reusePublished": ["@cleverc2200/dsh-agent-workbench", "dsh-agent-manage"]
 }
