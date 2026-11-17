@@ -374,7 +374,10 @@ export async function developmentTask(action, values = {}, cwd = process.cwd()) 
   }
   throw Error("DEVELOPMENT_ACTION_UNKNOWN");
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))
+) {
   const { values, positionals } = parseArgs({
     options: {
       target: { type: "string" },

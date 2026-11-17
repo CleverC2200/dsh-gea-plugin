@@ -17,6 +17,7 @@ import { parseArgs } from "node:util";
 
 import { corePackages } from "./source-composition.mjs";
 import { readSupportedCore } from "./supported-cores.mjs";
+import { verifyRuntimeModules } from "./runtime-environment.mjs";
 
 import { admitSourceWindow } from "./window-admission.mjs";
 import { readDeployment } from "./deployment.mjs";
@@ -62,6 +63,7 @@ export async function runSourceProfile(
     if (selected === undefined) await resolveSourceInputs(sources, { requireEntries: true });
   }
   const supported = await readSupportedCore(core);
+  verifyRuntimeModules({ core });
   const coreSha = supported.head;
   if (config) deployment = await readDeployment(config);
   await mkdir(join(runtime, "home"), { recursive: true, mode: 0o700 });
