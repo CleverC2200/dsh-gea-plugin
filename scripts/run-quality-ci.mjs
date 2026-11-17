@@ -613,6 +613,8 @@ try {
     )
       await prepareWorkbenchGeaAuthority({ workbench: workbench.path, gea: own.path });
     profileTestsSelected = plan.runtime;
+    const fullWorkbench =
+      plan.runtime || plan.files.includes("scripts/page-interaction-package.test.mjs");
 
     const needsCoreWeb =
       values.phase === "macos-isolation" ||
@@ -868,7 +870,7 @@ try {
         ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
         preparedWorkbench,
       );
-      if (plan.runtime)
+      if (fullWorkbench)
         run(
           "npm",
           ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
@@ -893,7 +895,7 @@ try {
       if (values.stage === "full") stages.start("build");
     }
     if (building && values["prepare-inputs"]) {
-      if (plan.runtime)
+      if (fullWorkbench)
         run("npm", ["run", "build:plugin"], preparedWorkbench, {
           DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
           APS_BUILD_MODE: "mock",
@@ -929,7 +931,7 @@ try {
       }
       run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", ["pnpm", "build:plugin"]);
-      if (plan.runtime) {
+      if (fullWorkbench) {
         const prepared = await readPreparedWorkbench({
           source: workbench.path,
           prepared: preparedWorkbench,
@@ -948,7 +950,7 @@ try {
         });
       }
     }
-    if (plan.runtime) {
+    if (fullWorkbench) {
       const workbenchAssets = await verifyPreparedWorkbench({
         source: workbench.path,
         prepared: preparedWorkbench,
