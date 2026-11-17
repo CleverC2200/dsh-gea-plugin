@@ -1,17 +1,20 @@
 {
-  "mode": "candidate",
+  "mode": "formal",
   "core": "8cc49e9b5c5ddf3751af2f6fb21276513a14bf9b",
   "repositories": {
-    "dsh-gea-plugin": "b544f20c74c0e758fdebe88a1492aec783917956",
-    "dsh-agent-workbench": "3dea96d00a107918933cb022811597a588897d10",
+    "dsh-gea-plugin": "6c73a7bb91ad5801103c6cde0b3e716677f39dda",
+    "dsh-agent-workbench": "17ba786743f3a119cbeb8c5a13ab45351c2fc142",
     "dsh-agent-manage": "6e7f5cb14113e745e2b0772914ea165e512f3cff"
   },
   "requiredCommits": {
     "dsh-gea-plugin": [
-      "c871256a91b26d9750326858f5840fbc56b57ca6"
+      "c871256a91b26d9750326858f5840fbc56b57ca6",
+      "9c1847478b4611f14c2699ecc880aeca3d7562eb",
+      "fe683bcc0ef21cb7d21dec896888832dcaa024f9"
     ],
     "dsh-agent-workbench": [
-      "ce8fed7561e1741502686cb051229dd256a8b9f3"
+      "ce8fed7561e1741502686cb051229dd256a8b9f3",
+      "6007f1c5b3a6a77dc707c701a1b6a45a9d64c2c2"
     ],
     "dsh-agent-manage": [
       "181c68090ca8ac45f628248da7d7a6e8f1f5c117"
