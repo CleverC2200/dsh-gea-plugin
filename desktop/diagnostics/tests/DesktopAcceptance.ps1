@@ -5,7 +5,7 @@ $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 if(([Security.Principal.WindowsPrincipal]::new($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'ORDINARY_TOKEN_REQUIRED'}
 New-Item -ItemType Directory -Path $OutputDirectory -Force|Out-Null
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing,UIAutomationClient,UIAutomationTypes,System.IO.Compression.FileSystem
-Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class GeaCapture{[StructLayout(LayoutKind.Sequential)]public struct Rect{public int left,top,right,bottom;}[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out Rect r);[DllImport("user32.dll")]public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);}'
+Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class GeaCapture{[StructLayout(LayoutKind.Sequential)]public struct Rect{public int left,top,right,bottom;}[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out Rect r);[DllImport("user32.dll")]public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);[DllImport("user32.dll",SetLastError=true)]public static extern IntPtr SendMessageTimeout(IntPtr h,uint message,IntPtr w,IntPtr l,uint flags,uint timeout,out IntPtr result);}'
 $executable=[IO.Path]::GetFullPath($Executable)
 $assembly=[Reflection.Assembly]::LoadFrom($executable)
 if($assembly.GetManifestResourceNames().Length -ne 0){throw 'EMBEDDED_ENGINE_PRESENT'}
@@ -25,6 +25,7 @@ $process=$null
 function Assert($ok,[string]$message){if(!$ok){throw $message}}
 function Root { [Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle) }
 function Find([string]$name) { (Root).FindFirst([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$name)) }
+function Click($element){$handle=[IntPtr]$element.Current.NativeWindowHandle;Assert ($handle -ne [IntPtr]::Zero) 'BUTTON_HANDLE_MISSING';$reply=[IntPtr]::Zero;Assert ([GeaCapture]::SendMessageTimeout($handle,0xF5,[IntPtr]::Zero,[IntPtr]::Zero,2,5000,[ref]$reply) -ne [IntPtr]::Zero) 'BUTTON_CLICK_FAILED'}
 function Wait-For([scriptblock]$predicate,[int]$seconds=90){$clock=[Diagnostics.Stopwatch]::StartNew();while($clock.Elapsed.TotalSeconds -lt $seconds){if(&$predicate){return};$process.Refresh();if($process.HasExited){throw 'CLIENT_EARLY_EXIT'};Start-Sleep -Milliseconds 150};throw 'UI_ACCEPTANCE_TIMEOUT'}
 try {
  $start=[Diagnostics.ProcessStartInfo]::new($executable);$start.UseShellExecute=$true
@@ -43,20 +44,20 @@ try {
   Assert (-not $system.elevated) 'COLLECTOR_ELEVATED'
   foreach($entry in $zip.Entries){$reader=[IO.StreamReader]::new($entry.Open());try{$text=$reader.ReadToEnd();Assert ($text -notmatch 'sensitive-fixture-') 'PRIVACY_CANARY_LEAKED'}finally{$reader.Dispose()}}
  }finally{$zip.Dispose()}
- $copy=Find '复制摘要';Assert ($null -ne $copy) 'COPY_BUTTON_MISSING'
- $copy.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
- Start-Sleep -Milliseconds 300
- $summary=[Windows.Forms.Clipboard]::GetText();Assert ($summary.Contains($archive[0].Name)) 'SUMMARY_NOT_COPIED'
- $folder=Find '打开文件夹';Assert ($null -ne $folder) 'FOLDER_BUTTON_MISSING'
- $folder.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
- $shell=New-Object -ComObject Shell.Application
- $folderVerified=$false;$clock=[Diagnostics.Stopwatch]::StartNew()
- while(!$folderVerified -and $clock.Elapsed.TotalSeconds -lt 20){foreach($window in @($shell.Windows())){try{foreach($item in @($window.Document.SelectedItems())){if($item.Path -eq $archive[0].FullName){$folderVerified=$true}}}catch{}};if(!$folderVerified){Start-Sleep -Milliseconds 200}}
- Assert $folderVerified 'ARCHIVE_NOT_SELECTED_IN_EXPLORER'
  $box=[GeaCapture+Rect]::new();$null=[GeaCapture]::GetWindowRect($process.MainWindowHandle,[ref]$box)
  $bitmap=[Drawing.Bitmap]::new($box.right-$box.left,$box.bottom-$box.top);$graphics=[Drawing.Graphics]::FromImage($bitmap);$dc=$graphics.GetHdc()
  try{$null=[GeaCapture]::PrintWindow($process.MainWindowHandle,$dc,2)}finally{$graphics.ReleaseHdc($dc)}
  $bitmap.Save((Join-Path $OutputDirectory 'default-window.png'));$graphics.Dispose();$bitmap.Dispose()
+ $copy=Find '复制摘要';Assert ($null -ne $copy) 'COPY_BUTTON_MISSING'
+ Click $copy
+ Start-Sleep -Milliseconds 300
+ $summary=[Windows.Forms.Clipboard]::GetText();Assert ($summary.Contains($archive[0].Name)) 'SUMMARY_NOT_COPIED'
+ $folder=Find '打开文件夹';Assert ($null -ne $folder) 'FOLDER_BUTTON_MISSING'
+ Click $folder
+ $shell=New-Object -ComObject Shell.Application
+ $folderVerified=$false;$clock=[Diagnostics.Stopwatch]::StartNew()
+ while(!$folderVerified -and $clock.Elapsed.TotalSeconds -lt 20){foreach($window in @($shell.Windows())){try{foreach($item in @($window.Document.SelectedItems())){if($item.Path -eq $archive[0].FullName){$folderVerified=$true}}}catch{}};if(!$folderVerified){Start-Sleep -Milliseconds 200}}
+ Assert $folderVerified 'ARCHIVE_NOT_SELECTED_IN_EXPLORER'
  $render=Join-Path $OutputDirectory 'RenderValidation.exe'
  $compiler=Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
  & $compiler /nologo /target:exe /main:RenderValidation /codepage:65001 /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:$render (Join-Path $PSScriptRoot 'Render.cs')
