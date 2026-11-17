@@ -568,4 +568,36 @@ test("local preflight runs on dirty source without a Core, package manager or de
   assert.match(checked.knowledge.missingInputs[0], /official-latest-standard/);
   assert.equal(fs.existsSync(join(path, "node_modules")), false);
   assert.equal(fs.existsSync(join(path, "lib")), false);
+  const linked = join(path, "..", "linked-scripts");
+  fs.symlinkSync(import.meta.dirname, linked, "junction");
+  for (const entry of [
+    join(import.meta.dirname, "development-tasks.mjs"),
+    join(linked, "development-tasks.mjs"),
+  ]) {
+    const result = cp.spawnSync(process.execPath, [entry, "preflight"], {
+      cwd: path,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(JSON.parse(result.stdout).status, "passed");
+    fs.writeFileSync(join(path, "new.mjs"), "export const broken = ;");
+    const rejected = cp.spawnSync(process.execPath, [entry, "preflight"], {
+      cwd: path,
+      encoding: "utf8",
+    });
+    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
+    assert.match(rejected.stderr, /DEVELOPMENT_PREFLIGHT_FAILED/);
+    fs.writeFileSync(join(path, "new.mjs"), "export const value = 1;");
+  }
+  const imported = cp.spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `await import(${JSON.stringify(new URL("development-tasks.mjs", import.meta.url).href)})`,
+    ],
+    { cwd: path, encoding: "utf8" },
+  );
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(imported.stdout, "");
 });
