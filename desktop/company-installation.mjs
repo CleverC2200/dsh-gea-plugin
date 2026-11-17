@@ -109,7 +109,7 @@ export class CompanyInstallation {
     await this.store.queueActivation(id);
     return receipt;
   }
-  async beginBoot() {
+  async beginBoot({ activatePending = true } = {}) {
     if ((await this.store.recoverPreparation(join(this.store.root, "selection"))) === "busy")
       throw Error("GEA_INSTALLATION_SELECTION_BUSY");
     await this.store.recoverPreparation();
@@ -132,7 +132,7 @@ export class CompanyInstallation {
           }
         });
     }
-    const selected = await this.store.beginBoot({ activatePending: true });
+    const selected = await this.store.beginBoot({ activatePending });
     if (before.booting && before.active !== selected.id)
       await this.failOperation(before.active, "PREVIOUS_BOOT_INTERRUPTED");
     await this.mount(selected);

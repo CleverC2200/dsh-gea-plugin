@@ -1,5 +1,5 @@
 import { applyCompanyUpdate } from "./company-update.mjs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readFile, writeFile, lstat, rm, mkdtemp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -835,6 +835,7 @@ export async function prepareCompanyBoot({
   home,
   manifest,
   install = installCompanyPackages,
+  retry = false,
 }) {
   const profile = join(home, "profiles/desktop");
   if (!existsSync(join(profile, "package.json")))
@@ -884,6 +885,9 @@ export async function prepareCompanyBoot({
       await installBundled(directory);
     }
   });
+  const previousBoot = await installation.store.status();
+  if (previousBoot.booting && previousBoot.active !== previousBoot.verified)
+    await installation.beginBoot({ activatePending: false });
   const company = await readCompanyUpdate(profile);
   const selection = await installation.store.status();
   if (
@@ -927,9 +931,11 @@ export async function prepareCompanyBoot({
     !(await installation.store.status()).pending &&
     (await plan((await installation.store.selected()).path)).status === "ready"
   ) {
-    const id = "bundled-" + digest(Buffer.from(JSON.stringify(bundled))).slice(0, 32);
-    const attempt = join(installation.directory, id + ".json");
-    if (!existsSync(attempt)) {
+    const bundle = "bundled-" + digest(Buffer.from(JSON.stringify(bundled))).slice(0, 32);
+    const id = retry ? bundle + "-" + randomUUID() : bundle;
+    const attempt = join(installation.directory, bundle + ".json");
+    if (retry || !existsSync(attempt)) {
+      if (existsSync(attempt)) await cp(attempt, attempt + ".before-retry-" + randomUUID(), { force: false, errorOnExist: true });
       await writePluginStoreJson(attempt, { id, stage: "preparing" });
       try {
         await installation.prepare(id, installBundled);
@@ -980,6 +986,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       graphId: selected.id,
       trial: false,
     };
-  } else boot = await prepareCompanyBoot({ root, support, seed, home, manifest });
+  } else boot = await prepareCompanyBoot({ root, support, seed, home, manifest, retry: process.argv.includes("--retry-installation") });
   console.log("GEA_INSTALLATION_BOOT", JSON.stringify(boot));
 }

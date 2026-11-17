@@ -11,6 +11,8 @@ export async function startCompanyDesktop({
   runBootstrap,
   trialTimeoutMs = 90_000,
 }) {
+  const retryInstallation = process.env.GEA_RETRY_INSTALLATION === "1";
+  delete process.env.GEA_RETRY_INSTALLATION;
   const bootstrap =
     runBootstrap ??
     ((recover) => {
@@ -23,6 +25,7 @@ export async function startCompanyDesktop({
           join(resources, "runtime"),
           join(resources, "company-seed"),
           ...(recover ? ["--recover-installation"] : []),
+        ...(!recover && retryInstallation ? ["--retry-installation"] : []),
         ],
         {
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },

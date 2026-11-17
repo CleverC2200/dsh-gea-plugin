@@ -14,7 +14,7 @@ export class CompanyInstallation {
     ) => Promise<void>,
     signal?: AbortSignal,
   ): Promise<unknown>;
-  beginBoot(): Promise<{ id: string; path: string }>;
+  beginBoot(options?: { activatePending?: boolean }): Promise<{ id: string; path: string }>;
   confirmRuntime(proofs: RuntimePackageProof[]): Promise<boolean>;
   failOperation(id: string, diagnostic: string): Promise<void>;
   ownsModules(path: string): Promise<boolean>;

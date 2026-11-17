@@ -282,6 +282,7 @@ for (const failure of [false, true, "partial"])
       );
     }
     let calls = 0;
+    let shouldFail = failure === true;
     const options = {
       home,
       root: "unused",
@@ -308,7 +309,7 @@ for (const failure of [false, true, "partial"])
           );
         }
         await writeFile(join(candidate, "package.json"), JSON.stringify(current));
-        if (failure === true) throw Error("PREPARATION_INTERRUPTED");
+        if (shouldFail) throw Error("PREPARATION_INTERRUPTED");
       },
     };
     if (failure === "partial")
@@ -335,6 +336,14 @@ for (const failure of [false, true, "partial"])
     );
     assert.equal(JSON.parse(await readFile(join(profile, "package.json"))).userSetting, "keep");
     assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");
+    if (failure !== "partial") {
+      shouldFail = false;
+      const retried = await prepareCompanyBoot({ ...options, retry: true });
+      assert.equal(retried.trial, true);
+      assert.notEqual(retried.graphId, boot.graphId);
+      assert.equal(calls, 2);
+      assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");
+    }
     await assert.rejects(readFile(join(installation.store.baseline, "draft.json")), {
       code: "ENOENT",
     });

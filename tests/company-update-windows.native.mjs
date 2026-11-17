@@ -209,14 +209,18 @@ if (process.argv[2] === "prepare-worker") {
                 )?.[1],
             );
             const origin = new URL(endpoint).origin;
+            const cookie = await until(async () => {
+              const exchange = await fetch(endpoint, { redirect: "manual" });
+              if (exchange.status !== 303) throw Error("LEGACY_TOKEN_EXCHANGE_" + exchange.status);
+              return exchange.headers.get("set-cookie")?.split(";", 1)[0];
+            });
             const status = await until(async () => {
-              const cookies = await browser.contexts()[0].cookies(origin);
               const response = await fetch(origin + "/api/gea/plugin-updates/status", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
                   Origin: origin,
-                  Cookie: cookies.map(({ name, value }) => name + "=" + value).join("; "),
+                  Cookie: cookie,
                 },
                 body: JSON.stringify({ pageIdentity: "windows-legacy-fallback" }),
               });
