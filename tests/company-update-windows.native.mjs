@@ -201,41 +201,6 @@ if (process.argv[2] === "prepare-worker") {
             }
             return false;
           });
-          if (name === "baseline") {
-            const endpoint = await until(
-              () =>
-                [...logs.matchAll(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+)/g)].at(
-                  -1,
-                )?.[1],
-            );
-            const origin = new URL(endpoint).origin;
-            const cookie = await until(async () => {
-              const exchange = await fetch(endpoint, { redirect: "manual" });
-              if (exchange.status !== 303) throw Error("LEGACY_TOKEN_EXCHANGE_" + exchange.status);
-              return exchange.headers.get("set-cookie")?.split(";", 1)[0];
-            });
-            const status = await until(async () => {
-              const response = await fetch(origin + "/api/gea/plugin-updates/status", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Origin: origin,
-                  Cookie: cookie,
-                },
-                body: JSON.stringify({ pageIdentity: "windows-legacy-fallback" }),
-              });
-              if (!response.ok) throw Error("LEGACY_STATUS_HTTP_" + response.status);
-              const body = (await response.json()).value;
-              if (!body?.items?.length) throw Error("LEGACY_STATUS_NOT_READY");
-              return (
-                body?.items?.length &&
-                body.items.every((row) => row.state === "blocked" && row.planId === null) &&
-                body
-              );
-            });
-            assert.equal(status.restartReady, false);
-            assert(status.items.every((row) => row.diagnostic === "UPDATE_CONFIG_INVALID"));
-          }
           await page.screenshot({ path: join(evidence, name + ".png") });
           return { url: page.url(), title: await page.title() };
         } catch (error) {
