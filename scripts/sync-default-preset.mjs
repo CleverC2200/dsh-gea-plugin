@@ -1,4 +1,3 @@
-/** 用当前锁定的 DSH 标准预设刷新 default-presets/（只改显示名，组合字节不变）。 */
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";

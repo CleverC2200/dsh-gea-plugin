@@ -81,7 +81,7 @@ for (const mode of ["logout", "new-user"])
         );
         assert.match(receipt.text, /REFERENCE_UNAVAILABLE/);
         assert.notEqual(outcome.status, 200);
-        // A direct POST cannot evade the protected Session by claiming a different page surface.
+
         const currentBinding = await (
           await fetch(app.origin + "/api/page-interaction/binding", {
             headers: { Cookie: app.cookie },

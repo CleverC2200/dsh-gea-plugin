@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "./fixtures/source-test.mjs";
 import assert from "node:assert/strict";
 import { resolveEnvironments } from "../src/shared/environments.js";
@@ -21,6 +22,7 @@ async function loginHost(t) {
     module.exports,
   );
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: {
       production: "https://production.example/gea",
       test: "https://test.example/gea",

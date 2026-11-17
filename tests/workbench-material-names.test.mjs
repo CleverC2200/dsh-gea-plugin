@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -20,6 +21,7 @@ new Function("require", "module", "exports", bundle.outputFiles[0].text)(
 
 function fixture(t, rows) {
   const business = new module.exports.Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://gea.test",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,

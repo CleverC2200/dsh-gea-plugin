@@ -1,3 +1,4 @@
+import { GeaRequestCapture, GeaApiLogCenter } from "./helpers/feedback-capture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -31,7 +32,22 @@ function fixture(t, fetch, { mockTimers = true, access } = {}) {
   if (mockTimers) t.mock.timers.enable({ apis: ["setTimeout"] });
   t.mock.method(console, "info", () => {});
   const identity = new AbortController();
+  const capture = new GeaRequestCapture(
+    "",
+    () => undefined,
+    () => "https://fixture.invalid",
+  );
+  const apiLog = new GeaApiLogCenter(
+    () => "test",
+    undefined,
+    fetch,
+    undefined,
+    undefined,
+    undefined,
+    capture,
+  );
   const business = {
+    capture,
     config: {
       modelRequestTimeoutMs: 1000,
       maxSnapshotBytes: 100000,
@@ -45,7 +61,7 @@ function fixture(t, fetch, { mockTimers = true, access } = {}) {
       secret: "fixture-secret",
       agentCode: "fixture",
     }),
-    fetchExternal: fetch,
+    fetchExternal: apiLog.fetch,
   };
   return { adapter: new GeaModelAdapter(business, access), identity };
 }
@@ -156,7 +172,7 @@ test("an idle stream times out, preserves partial output and closes its reader",
   const { adapter } = fixture(t, async () => stream.value);
   const chunks = [];
   const result = assert.rejects(collect(adapter.stream(options), chunks), (error) => {
-    assert.equal(error.code, "GEA_NETWORK_TIMEOUT");
+    assert.equal(error.code, "TIMEOUT");
     assert.match(error.message, /心跳/);
     return true;
   });
@@ -186,7 +202,7 @@ test("waiting for response headers uses the same idle timeout", async (t) => {
       }),
   );
   const result = assert.rejects(collect(adapter.stream(options)), {
-    code: "GEA_NETWORK_TIMEOUT",
+    code: "TIMEOUT",
   });
   await settled();
   t.mock.timers.tick(1000);
@@ -209,7 +225,7 @@ test("managed source resolution retains the existing model idle timeout", async 
         );
       }),
   });
-  const pending = assert.rejects(collect(adapter.stream(options)), { code: "GEA_NETWORK_TIMEOUT" });
+  const pending = assert.rejects(collect(adapter.stream(options)), { code: "TIMEOUT" });
   await settled();
   t.mock.timers.tick(1000);
   await pending;
@@ -360,7 +376,7 @@ test("an unterminated finish continues pulsing on heartbeats and then obeys the 
   }
   t.mock.timers.tick(1001);
   const outcome = await result;
-  assert.equal(outcome.error.code, "GEA_NETWORK_TIMEOUT");
+  assert.equal(outcome.error.code, "TIMEOUT");
   assert.equal(stream.cancelled(), 1);
 });
 

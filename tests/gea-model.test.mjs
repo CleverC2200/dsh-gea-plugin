@@ -357,7 +357,8 @@ test(
           })
           .find((row) => row?.sessionId === id);
         assert.ok(failure, log.slice(-3000));
-        assert.equal(failure.code, "GEA_NETWORK_TIMEOUT");
+        assert.equal(failure.code, "TIMEOUT");
+        assert.equal(failure.geaCode, "GEA_NETWORK_TIMEOUT");
         assert.equal(failure.stage, "流式读取");
         assert.ok(failure.responseReceivedMs >= 0);
         assert.ok(failure.elapsedMs >= 900);

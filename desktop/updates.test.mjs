@@ -152,7 +152,7 @@ test("a check that cannot read the selected graph drops the stale release list i
     { settings: { automatic: false, intervalHours: 24, channel: "stable" }, releases: [stale] },
   );
   const manifest = JSON.parse(await readFile(join(data, "baseline/package.json"), "utf8"));
-  manifest.dependencies["dsh-agent-plugins-market"] = "0.6.2"; // declared by an older graph, no longer on disk
+  manifest.dependencies["dsh-agent-plugins-market"] = "0.6.2";
   await writeFile(join(data, "baseline/package.json"), JSON.stringify(manifest));
   await updates.check().catch(() => {});
   const failed = JSON.parse(await readFile(join(data, "plugins/update-state.json"), "utf8"));
@@ -437,7 +437,7 @@ test("interval settings validate and persist; the plugin owns the schedule", asy
     );
   await assert.rejects(updates.settings(null), /INVALID_UPDATE_SETTINGS/);
   await updates.settings({ automatic: true, intervalHours: 3, channel: "stable" });
-  // 中文：宿主不再自带定时器，只持久化设置；节奏（默认值/随机错开）由插件中心排期。
+
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(counts().checks, 0);
   assert.equal((await updates.status()).settings.intervalHours, 3);
@@ -476,7 +476,6 @@ test("core upgrade discards old pending actions while retaining update preferenc
   await assert.rejects(updates.restart(), /NO_PREPARED_UPDATE/);
 });
 
-// Compatibility must hold both before preparation and after the selected upgrades.
 test("rejects a batch whose resulting host combination is incompatible before downloads", async (t) => {
   const hosts = [];
   let downloads = 0;
@@ -500,7 +499,6 @@ test("rejects a batch whose resulting host combination is incompatible before do
   assert.equal((await store.selected()).id, "baseline");
 });
 
-// 兼容版频道来源：一个频道可以有多个地址，按顺序尝试，前一个读不到才用下一个。
 test("prefers the first channel source and falls back to the next one only when it fails", async (t) => {
   const candidates = [
     "https://oss.example/dsh-0.1.6-stable.json",
@@ -583,7 +581,6 @@ test("a single channel address still works without a fallback list", async (t) =
   assert.equal(state.channelSource, "stable");
 });
 
-// 内置基线高于频道时不能把降级当成升级：频道是唯一真相，但“本地更新”不是更新。
 test("a channel release older than the installed package is never offered as an update", async (t) => {
   const stale = { package: "dsh-plugin", version: "1.4.3-company.0" };
   const { updates, store, counts } = await fixture(t, {
@@ -614,7 +611,6 @@ test("an equal channel release is not an update, a higher one is, and pre-releas
   }
 });
 
-// 随包发出去的频道配置必须真的做到“公网来源优先、公司 GitLab 兜底”。
 test("the shipped channel configuration keeps a public source ahead of the company GitLab fallback", async () => {
   const sources = JSON.parse(
     await readFile(new URL("./release-sources.json", import.meta.url), "utf8"),

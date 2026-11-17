@@ -183,3 +183,16 @@ test("atomic empty-page markers and zero-source aggregates cannot hide a later r
   cache.set(scope, "selected-warehouse", zero);
   assert.deepEqual(cache.get(scope, "selected-warehouse", 0), zero);
 });
+
+test("branch snapshots expire at five minutes while other inventory snapshots retain twenty minutes", () => {
+  let now = 1000;
+  const cache = new InventoryReadCache(() => now),
+    scope = new AbortController().signal;
+  cache.set(scope, "branch", { rows: [{ qty: 12 }] });
+  cache.set(scope, "base", { rows: [{ qty: 20 }] });
+  now += 5 * 60 * 1000 - 1;
+  assert.equal(cache.get(scope, "branch", 0, 5 * 60 * 1000).rows[0].qty, 12);
+  now++;
+  assert.equal(cache.get(scope, "branch", 0, 5 * 60 * 1000), undefined);
+  assert.equal(cache.get(scope, "base", 0).rows[0].qty, 20);
+});

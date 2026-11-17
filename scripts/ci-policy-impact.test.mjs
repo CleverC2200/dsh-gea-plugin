@@ -63,6 +63,17 @@ test("desktop wrapper children have one execution owner instead of a second inde
   assert.equal(plan.executedBy[child], owner);
 });
 
+test("desktop development launch changes select the existing runtime parity regression", (t) => {
+  const regression = "scripts/desktop-dev.test.mjs";
+  const fixture = resourceImpactFixture(t, [regression]);
+  fixture.change(
+    fixture.own,
+    "scripts/desktop-dev.mjs",
+    readFileSync(new URL("./desktop-dev.mjs", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(fixture.plan({ sourceOnly: true }).files, [regression]);
+});
+
 test("bundled suite source changes select their complete upgrade owner once and keep full window admission in integration checks", (t) => {
   const owner = "scripts/desktop-gea-upgrade.test.mjs";
   const fixture = resourceImpactFixture(t, [owner], { desktop: true });
@@ -81,6 +92,18 @@ test("bundled suite source changes select their complete upgrade owner once and 
   for (const change of source.changes)
     assert.deepEqual(source.reasons[`${change.repo}/${change.file}`], [owner]);
   assert.ok(fixture.plan().files.includes("tests/window-launch-admission.test.mjs"));
+});
+
+test("environment transport changes select credential and DMS isolation behavior in source-only CI", (t) => {
+  const fixture = resourceImpactFixture(t, [
+    "tests/deployment-transport.test.mjs",
+    "tests/fc-dms-default.test.mjs",
+  ]);
+  fixture.change(fixture.own, "src/host/deployment-transport.ts", "export const changed = true;\n");
+  const plan = fixture.plan({ sourceOnly: true });
+  assert.ok(plan.files.includes("tests/deployment-transport.test.mjs"));
+  assert.ok(plan.files.includes("tests/fc-dms-default.test.mjs"));
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
 });
 
 test("a docs-only change declares no source, browser or runtime obligation", (t) => {
@@ -264,6 +287,12 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ],
     ],
     [0, "scripts/check-agent-knowledge.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+    [0, "scripts/inventory_warehouse_scope.py", []],
+    [0, "scripts/test_fc_plan_template_snapshot.py", []],
+    [0, "scripts/test_fc_summary.py", []],
+    [0, "scripts/test_inventory_warehouse_scope.py", []],
+    [0, "scripts/update-fc-warehouse-exceptions.py", []],
+
     [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
   ];
@@ -335,7 +364,7 @@ function resourceImpactFixture(
     ...Object.keys(policy.sourceFixtures ?? {}),
     ...(policy.versionTests ?? []),
     ...(policy.companionPeerTests ?? []),
-    ...policy.tests.filter((file) => file.startsWith("desktop/")),
+    ...policy.tests.filter((file) => !file.includes("*")),
     ...policy.rules.flatMap((rule) => rule.tests),
     ...policy.browserFixtures,
     "scripts/ci-policy-impact.test.mjs",
@@ -402,6 +431,22 @@ const workbenchBuildContracts = [
   "scripts/quality-workbench.test.mjs",
   "scripts/run-quality-ci-stages.test.mjs",
 ];
+
+test("official input changes select the real consumer for peer plans and local source plans", (t) => {
+  for (const repo of ["dsh-agent-workbench", "dsh-gea-plugin"]) {
+    const fixture = resourceImpactFixture(t);
+    const entry = fixture.repositories.find((entry) => entry.repo === repo);
+    const file =
+      repo === "dsh-agent-workbench"
+        ? "scripts/verify-official-input.mjs"
+        : "scripts/check-workbench.mjs";
+    fixture.change(entry, file, "export const changed = true;\n");
+    for (const sourceOnly of repo === "dsh-gea-plugin" ? [false, true] : [false]) {
+      const plan = fixture.plan({ sourceOnly });
+      assert.ok(plan.files.includes("scripts/check-workbench.test.mjs"), JSON.stringify(plan));
+    }
+  }
+});
 
 test("Workbench compiled version changes select loaded Host and client identity contracts", (t) => {
   const fixture = resourceImpactFixture(t);
@@ -791,28 +836,36 @@ test("a package-only change retains affected tool and configuration contracts", 
   assert.deepEqual(plan.files, [...fixture.policy.required, ...expected].sort());
 });
 
-test("detail contributions select the built browser and actual installer contracts", (t) => {
-  const fixture = resourceImpactFixture(t);
-  for (const file of [
-    "tests/plugin-update-controller.contract.mjs",
-    "tests/plugin-update-integration.contract.mjs",
-    "tests/plugin-update-install.contract.mjs",
-    "tests/plugin-update-detail.browser.mjs",
-    "tests/plugin-release-source.test.mjs",
-    "tests/plugin-release.test.mjs",
-  ])
-    writeFileSync(
-      join(fixture.own.path, file),
-      file.endsWith(".browser.mjs")
-        ? "import { chromium } from '@playwright/test'; await chromium.launch();"
-        : "export const fixture = true;\n",
+for (const changed of [
+  "src/plugin-detail-updates.tsx",
+  "src/desktop-updates-client.ts",
+  "src/host/plugin-update-desktop.ts",
+])
+  test(`${changed} selects the built browser and actual installer contracts`, (t) => {
+    const fixture = resourceImpactFixture(t);
+    for (const file of [
+      "tests/plugin-update-controller.contract.mjs",
+      "tests/plugin-update-integration.contract.mjs",
+      "tests/plugin-update-install.contract.mjs",
+      "tests/plugin-update-detail.browser.mjs",
+      "tests/plugin-release-source.test.mjs",
+      "tests/plugin-release.test.mjs",
+    ])
+      writeFileSync(
+        join(fixture.own.path, file),
+        file.endsWith(".browser.mjs")
+          ? "import { chromium } from '@playwright/test'; await chromium.launch();"
+          : "export const fixture = true;\n",
+      );
+    fixture.change(fixture.own, changed, "export const changed = true;\n");
+    const plan = fixture.plan();
+    assert.ok(
+      plan.files.includes("tests/plugin-update-install.contract.mjs"),
+      JSON.stringify(plan),
     );
-  fixture.change(fixture.own, "src/plugin-detail-updates.tsx", "export const changed = true;\n");
-  const plan = fixture.plan();
-  assert.ok(plan.files.includes("tests/plugin-update-install.contract.mjs"), JSON.stringify(plan));
-  assert.ok(plan.files.includes("tests/plugin-update-detail.browser.mjs"), JSON.stringify(plan));
-  assert.equal(plan.browser, true);
-});
+    assert.ok(plan.files.includes("tests/plugin-update-detail.browser.mjs"), JSON.stringify(plan));
+    assert.equal(plan.browser, true);
+  });
 
 test("the package-manager subprocess fixture selects its update controller consumer", (t) => {
   const fixture = resourceImpactFixture(t);
@@ -1079,6 +1132,9 @@ test("complete package inputs select existing release and platform contracts", a
   ];
   for (const source of [
     "scripts/mac-complete-local/build.mjs",
+    "scripts/mac-complete-local/full-source.mjs",
+    "scripts/mac-complete-local/ad-hoc.mjs",
+    "scripts/mac-complete-local/ad-hoc.test.mjs",
     "scripts/windows-complete-local/build.mjs",
     "scripts/windows-complete-local/compile.mjs",
     "scripts/windows-complete-local/prepare.mjs",
@@ -1101,6 +1157,17 @@ test("complete package inputs select existing release and platform contracts", a
         );
       assert.deepEqual(plan.required, businessCore);
     });
+});
+
+test("desktop update data helper changes select the release regression without live device acceptance", (t) => {
+  const fixture = resourceImpactFixture(t);
+  const source = "scripts/desktop-update-data.mjs";
+  fixture.change(fixture.own, source);
+  const plan = fixture.plan();
+  assert.ok(
+    plan.reasons[fixture.own.repo + "/" + source].includes("scripts/desktop-release.test.mjs"),
+  );
+  assert.ok(!plan.files.includes("desktop/startup-state.test.mjs"));
 });
 
 test("gateway transport and session changes retain real consumers while unrelated Profile work stays in integration", async (t) => {

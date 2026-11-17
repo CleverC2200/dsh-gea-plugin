@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { mkdir, mkdtemp, readFile, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { until } from "./profile.mjs";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
-// Verify the unchanged public installation and locking source used by this SDK lane.
+
 for (const [path, expected] of Object.entries({
   "packages/boot/plugin-manager/src/operations.ts":
     "16d141f794041d06122ce9f8ab7bae6f55b4a78feefb620f9cb6c7ba5efac547",
@@ -36,7 +38,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileUpdates, readPluginProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export {mountDesktopUpdateOperations} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-desktop.ts", import.meta.url)))};export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileUpdates, readPluginProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -66,11 +68,180 @@ await build({
 });
 const {
   createPluginUpdateController,
+  mountDesktopUpdateOperations,
   readPluginProfile,
   parseUpdateClientStatus,
   pluginProfileStoreDirectory,
   retainsProfileUpdates,
 } = await import(pathToFileURL(modulePath));
+
+test("legacy personal memory updates alone and requires a new stamped Host and client after restart", async (t) => {
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { memory: true });
+  const name = "@cleverc2200/dsh-personal-memory";
+  const memory = f.proofs.find((proof) => proof.name === name);
+  const ledger = join(f.dir, "personal-memory-sessions.json");
+  await writeFile(ledger, '{"fixture":"preserved-session-binding"}\n');
+  memory.host = { kind: "unversioned", identity: "legacy-memory-host" };
+  memory.client = { kind: "unverified", reason: "legacy-memory-client" };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const row = controller.snapshot().items.find((row) => row.packageName === name);
+  assert.equal(row.state, "available");
+  assert.equal(row.runningHostVersion, null);
+  assert.equal(row.candidateVersion, "0.1.2");
+  assert.equal(controller.snapshot().items.filter((row) => row.state === "current").length, 3);
+  parseUpdateClientStatus({
+    revision: 1,
+    items: controller.snapshot().items,
+    hostProcessIdentity: "host",
+    challenge: "nonce",
+    checkTimeoutMs: 1000,
+    pollIntervalMs: 1000,
+  });
+  await controller.submit({ packageName: name, planId: row.planId });
+  await waitForStage(controller, ["pending-restart"]);
+  assert.equal(controller.snapshot().operation.packageName, name);
+  assert.equal(controller.snapshot().operation.targets, undefined);
+  await controller.dispose();
+  const script = join(f.root, "memory-restart.mjs");
+  await writeFile(
+    script,
+    `import{createPluginUpdateController}from${JSON.stringify(pathToFileURL(modulePath).href)};import{readFile}from'node:fs/promises';const o=JSON.parse(await readFile(process.argv[2],'utf8'));const proofs=o.proofs;delete o.proofs;o.source={check:async()=>[],download:async()=>{throw Error('unused')},assertCurrentRelease:()=>{}};o.readRuntimeProofs=async id=>proofs.map(p=>({...p,client:p.client.kind==='observed'?{...p.client,binding:{...p.client.binding,hostProcessIdentity:id}}:p.client}));const c=createPluginUpdateController(o);await c.initialize();console.log(JSON.stringify(c.snapshot()));await c.dispose();`,
+  );
+  memory.host = { kind: "active", stamp: { name, version: "0.1.2" }, identity: "new-memory-host" };
+  memory.client = {
+    ...f.proofs[0].client,
+    stamp: { name, version: "0.1.2" },
+    identity: "new-memory-client",
+  };
+  const input = join(f.root, "memory-restart.json");
+  await writeFile(
+    input,
+    JSON.stringify({
+      ...f.options,
+      source: undefined,
+      readRuntimeProofs: undefined,
+      proofs: f.proofs,
+    }),
+  );
+  const result = JSON.parse(execFileSync(process.execPath, [script, input], { encoding: "utf8" }));
+  assert.equal(result.operation.stage, "completed");
+  assert.equal(await readFile(ledger, "utf8"), '{"fixture":"preserved-session-binding"}\n');
+  assert.equal(result.items.find((row) => row.packageName === name).runningHostVersion, "0.1.2");
+});
+
+test("a receipt from the previous three-package updater completes after GEA first upgrades", async (t) => {
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { memory: true, memoryBootstrap: true });
+  const oldModule = join(work, "previous-controller.mjs");
+  const repository = fileURLToPath(new URL("..", import.meta.url));
+  await build({
+    entryPoints: [join(repository, "src/host/plugin-update-controller.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    packages: "external",
+    outfile: oldModule,
+    logLevel: "silent",
+    plugins: [
+      {
+        name: "previous-shipped-updater",
+        setup(b) {
+          const aliases = {
+            "@deepseek-ai/dsh-plugin-manager/operations":
+              "packages/boot/plugin-manager/lib/types/operations.js",
+            "@deepseek-ai/dsh-atomic-write": "packages/util/atomic-write/lib/index.js",
+            "@deepseek-ai/dsh-app-boot": "packages/boot/app-boot/lib/index.js",
+          };
+          b.onResolve({ filter: /^@deepseek-ai\// }, (args) =>
+            aliases[args.path]
+              ? { path: join(sdk, aliases[args.path]), external: true }
+              : undefined,
+          );
+          b.onLoad({ filter: /\.(?:ts|mjs)$/ }, (args) => ({
+            contents: execFileSync(
+              "git",
+              [
+                "show",
+                "9f3875b835a022d39bf9cf827787cad39a3dfeb9:" + relative(repository, args.path),
+              ],
+              { cwd: repository, encoding: "utf8" },
+            ),
+            loader: args.path.endsWith(".ts") ? "ts" : "js",
+            resolveDir: dirname(args.path),
+          }));
+        },
+      },
+    ],
+  });
+  const previous = await import(pathToFileURL(oldModule));
+  const controller = previous.createPluginUpdateController({
+    ...f.options,
+    source: {
+      ...f.source,
+      check: async (signal) =>
+        (await f.source.check(signal)).filter((r) => r.name !== "@cleverc2200/dsh-personal-memory"),
+    },
+  });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const target = controller.snapshot().items.find((row) => row.state === "available");
+  assert.equal(target.packageName, "@cleverc2200/gea-dsh-prototype");
+  await controller.submit({ packageName: target.packageName, planId: target.planId });
+  await waitForStage(controller, ["pending-restart"]);
+  await controller.dispose();
+  const proof = f.proofs.find((row) => row.name === target.packageName);
+  proof.host.stamp.version = proof.client.stamp.version = "3.1.0";
+  const memory = f.proofs.find((row) => row.name === "@cleverc2200/dsh-personal-memory");
+  memory.host = { kind: "unversioned", identity: "legacy-memory" };
+  memory.client = { kind: "unverified", reason: "legacy-memory" };
+  const script = join(f.root, "gea-bootstrap-restart.mjs"),
+    input = join(f.root, "gea-bootstrap.json");
+  await writeFile(
+    script,
+    `import{createPluginUpdateController}from${JSON.stringify(pathToFileURL(modulePath).href)};import{readFile}from'node:fs/promises';const o=JSON.parse(await readFile(process.argv[2],'utf8'));const proofs=o.proofs;delete o.proofs;o.source={check:async()=>[],download:async()=>{throw Error('unused')},assertCurrentRelease:()=>{}};o.readRuntimeProofs=async id=>proofs.map(p=>({...p,client:p.client.kind==='observed'?{...p.client,binding:{...p.client.binding,hostProcessIdentity:id}}:p.client}));const c=createPluginUpdateController(o);await c.initialize();console.log(JSON.stringify(c.snapshot()));await c.dispose();`,
+  );
+  await writeFile(
+    input,
+    JSON.stringify({
+      ...f.options,
+      source: undefined,
+      readRuntimeProofs: undefined,
+      proofs: f.proofs,
+    }),
+  );
+  const result = JSON.parse(execFileSync(process.execPath, [script, input], { encoding: "utf8" }));
+  assert.equal(result.operation.stage, "completed");
+  assert.equal(
+    result.items.find((row) => row.packageName === memory.name).installedVersion,
+    "0.1.1",
+  );
+});
+
+test("an absent or disabled personal memory plugin does not block the existing suite", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  for (const mode of ["absent", "disabled"]) {
+    const f = await controllerFixture(t, { memory: true });
+    const memory = f.proofs.find((proof) => proof.name === "@cleverc2200/dsh-personal-memory");
+    memory.host = { kind: "unverified", reason: "HOST_MODULE_NOT_ACTIVE" };
+    if (mode === "absent") {
+      const file = join(f.dir, "package.json"),
+        manifest = JSON.parse(await readFile(file, "utf8"));
+      delete manifest.dependencies[memory.name];
+      await writeFile(file, JSON.stringify(manifest));
+    }
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    assert.equal(controller.snapshot().items.length, 3);
+    assert.ok(controller.snapshot().items.every((row) => row.state === "current"));
+  }
+});
 
 test("accepted updates preserve personal Agents, customizations and complete Skill assets without backups", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
@@ -1178,12 +1349,73 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
       .snapshot()
       .items.map(({ packageName, planId }) => ({ packageName, planId }));
     assert.equal(requests.length, 3);
-    assert.ok(requests.every((row) => row.planId));
-    const accepted = await controller.submitBatch(requests);
+    assert.ok(
+      requests.every((row) => row.planId),
+      JSON.stringify(controller.snapshot()),
+    );
+    const { Context } = await import(pathToFileURL(join(sdk, "vendor/cordis/lib/index.js")));
+    const { HostConnectionService } = await import(
+      pathToFileURL(join(sdk, "packages/client/connection/lib/index.js"))
+    );
+    const ctx = new Context();
+    t.after(() => ctx.fiber.dispose());
+    const connection = new HostConnectionService(ctx, [], {});
+    const release = mountDesktopUpdateOperations(ctx, async () => controller);
+    t.after(release);
+    const invoke = async (payload) => {
+      const response = await connection.createSharedFetchHandler("/api").fetch(
+        new Request("http://localhost/api/desktop/update", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+      );
+      return response.json();
+    };
+    assert.deepEqual(
+      await invoke({ action: "plugins-install", plans: requests, url: "http://evil" }),
+      { ok: false, error: { code: "UPDATE_REQUEST_INVALID" } },
+    );
+    const started = await invoke({ action: "plugins-install", plans: requests });
+    assert.equal(started.ok, true);
+    const accepted = controller.snapshot().operation;
+    assert.equal(started.value.operationId, accepted.id);
     assert.equal(accepted.targets.length, 3);
+    assert.equal(controller.restartReady(), false);
+    assert.deepEqual(controller.operationStatus(accepted.id), {
+      operationId: accepted.id,
+      state: "running",
+    });
+    const pendingDuringWrite = [];
+    const stopObserving = controller.subscribe((snapshot) => {
+      if (snapshot.operation?.stage === "pending-restart")
+        pendingDuringWrite.push(controller.restartReady());
+    });
+    t.after(stopObserving);
     await assert.rejects(controller.submitBatch(requests), /UPDATE_OPERATION_BLOCKED/);
     const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
     assert.equal(operation.stage, mode === "success" ? "pending-restart" : "failed");
+    await until(
+      () => controller.operationStatus(accepted.id),
+      (status) => status.state !== "running",
+    );
+    assert.equal(controller.restartReady(), mode === "success");
+    assert.deepEqual(await invoke({ action: "plugins-status", operationId: accepted.id }), {
+      ok: true,
+      value: { operationId: accepted.id, state: mode === "success" ? "ready" : "failed" },
+    });
+
+    assert.deepEqual(controller.operationStatus(operation.id), {
+      operationId: operation.id,
+      state: mode === "success" ? "ready" : "failed",
+    });
+    assert.deepEqual(controller.operationStatus("11111111-1111-4111-8111-111111111111"), {
+      operationId: "11111111-1111-4111-8111-111111111111",
+      state: "unknown",
+    });
+    if (mode === "success") {
+      assert.ok(pendingDuringWrite.includes(false));
+      assert.equal(pendingDuringWrite.at(-1), true);
+    }
     const calls = (await readFile(join(f.dir, "invocations.ndjson"), "utf8"))
       .trim()
       .split("\n")
@@ -1252,6 +1484,36 @@ test("an inactive companion blocks all plans and disabling a companion after che
   });
 });
 
+test("an already running current suite does not require installation readiness again", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const name = f.proofs[2].name;
+  const path = join(f.dir, "node_modules", name, "package.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  manifest.version = "3.1.0";
+  await writeFile(path, JSON.stringify(manifest));
+  const profilePath = join(f.dir, "package.json");
+  const profile = JSON.parse(await readFile(profilePath, "utf8"));
+  profile.dependencies[name] = "3.1.0";
+  await writeFile(profilePath, JSON.stringify(profile));
+  f.proofs[2].host.stamp.version = "3.1.0";
+  f.proofs[2].client.stamp.version = "3.1.0";
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  f.proofs[2].host = { kind: "unverified", reason: "HOST_MODULE_PROOF_UNAVAILABLE" };
+  await controller.check();
+  assert.ok(
+    controller
+      .snapshot()
+      .items.every(
+        (row) => row.state === "current" && row.planId === null && row.diagnostic === null,
+      ),
+    JSON.stringify(controller.snapshot()),
+  );
+  assert.equal(controller.snapshot().operation, null);
+});
+
 test("same-version inactive package reports its load diagnosis before current status", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t);
@@ -1268,4 +1530,97 @@ test("same-version inactive package reports its load diagnosis before current st
   assert.equal(row.planId, null);
   assert.equal(row.diagnostic, "UPDATE_PACKAGE_INACTIVE");
   assert.deepEqual(row.problem, { kind: "policy", code: "inactive" });
+});
+
+test("combined updates cache the approved suite without installation, serialize against plugin updates and preserve cancellation", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { companyVersions: true, releasePeers: {} });
+  const before = await readFile(join(f.dir, "package.json"));
+  const original = process.env.GEA_DESKTOP_VERSION;
+  process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261104.1";
+  t.after(() => {
+    if (original === undefined) delete process.env.GEA_DESKTOP_VERSION;
+    else process.env.GEA_DESKTOP_VERSION = original;
+  });
+  const controller = createPluginUpdateController({
+    ...f.options,
+    runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+  });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.prepareDesktop("0.2.0-rc.2.20261105.1");
+  assert.deepEqual(await controller.companyStatus(), {
+    phase: "prepared",
+    desktopVersion: "0.2.0-rc.2.20261105.1",
+  });
+  assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
+  await assert.rejects(controller.submitBatch([]), /UPDATE_OPERATION_BLOCKED/);
+  await controller.cancelDesktop();
+  assert.equal((await controller.companyStatus()).phase, "cancelled");
+});
+
+test("a prepared desktop update wins the profile lock over a plugin install still downloading", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, {
+    companyVersions: true,
+    allUpdates: true,
+    releasePeers: { "@cleverc2200/gea-dsh-prototype": {} },
+  });
+  const before = await readFile(join(f.dir, "package.json"));
+  const original = process.env.GEA_DESKTOP_VERSION;
+  process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261104.1";
+  t.after(() => {
+    if (original === undefined) delete process.env.GEA_DESKTOP_VERSION;
+    else process.env.GEA_DESKTOP_VERSION = original;
+  });
+  const reached = Promise.withResolvers(),
+    resume = Promise.withResolvers();
+  let held = false;
+  const slow = createPluginUpdateController({
+    ...f.options,
+    runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+    source: {
+      ...f.source,
+      download: async (...args) => {
+        const archive = await f.source.download(...args);
+        if (!held) {
+          held = true;
+          reached.resolve();
+          await resume.promise;
+        }
+        return archive;
+      },
+    },
+  });
+  const preparing = createPluginUpdateController({
+    ...f.options,
+    runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+  });
+  let settled = Promise.resolve([]);
+  try {
+    await slow.initialize();
+    await preparing.initialize();
+    await slow.check();
+    const plans = slow
+      .snapshot()
+      .items.filter((row) => row.state === "available")
+      .map((row) => ({ packageName: row.packageName, planId: row.planId }));
+    assert.equal(plans.length, 3);
+    const pending = slow.submitBatch(plans);
+    const rejected = assert.rejects(pending, /UPDATE_OPERATION_BLOCKED/);
+    settled = Promise.allSettled([rejected]);
+    await Promise.race([
+      reached.promise,
+      pending.then(() => assert.fail("plugin installation reached acceptance before the barrier")),
+    ]);
+    await preparing.prepareDesktop("0.2.0-rc.2.20261105.1");
+    resume.resolve();
+    await rejected;
+    assert.equal((await preparing.companyStatus()).phase, "prepared");
+    assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
+    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  } finally {
+    resume.resolve();
+    await Promise.all([settled, slow.dispose(), preparing.dispose()]);
+  }
 });

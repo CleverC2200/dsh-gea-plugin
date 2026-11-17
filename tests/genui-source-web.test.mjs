@@ -137,7 +137,7 @@ test(
     const input = page.getByPlaceholder("填写验收备注");
     await input.fill("刷新后保留");
     await input.blur();
-    // GenUI debounces durable state writes; reload only after the save is observable.
+
     await expect
       .poll(() =>
         page.evaluate(() => {

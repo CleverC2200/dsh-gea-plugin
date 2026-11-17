@@ -7,6 +7,7 @@ import {
   currentShortageResult,
 } from "../src/host/current-shortage-tool.ts";
 import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
+import { currentShortageRankingResult } from "../src/host/current-shortage-ranking.ts";
 const definitions = [
   ["aqkc", "base-safety-stock"],
   ["fc", "branch-inventory"],
@@ -33,13 +34,212 @@ const row = {
   shortage: "5",
   invalid: 0,
 };
+const rankingColumns = [
+  ...columns,
+  "sku",
+  "material_name",
+  "scope_invalid",
+  "scope_shortage",
+  "snapshot_count",
+  "page_scope_total",
+  "page_row_present",
+];
+const ranked = (sku, shortage) => ({
+  ...row,
+  sku,
+  material_name: sku,
+  shortage,
+  scope_invalid: 0,
+  scope_shortage: 20,
+  snapshot_count: 1,
+  page_scope_total: 2,
+  page_row_present: 1,
+});
+const summarySnapshot = {
+  rows: [
+    {
+      batch_id: "B1",
+      business_date: "2026-10-22",
+      stock_date: "2026-10-22",
+      target_month: "2026-10-01",
+      default_inventory_version: "月初",
+    },
+  ],
+  returnedColumns: [
+    "batch_id",
+    "business_date",
+    "stock_date",
+    "target_month",
+    "default_inventory_version",
+  ],
+  rejectedColumns: [],
+};
+test("base summary, locations, detail and SKU ranking use one authorized daily batch", async () => {
+  const config = JSON.parse(
+    await readFile("../dsh-agent-workbench/business/inventory-aqkc/sql.config.json", "utf8"),
+  );
+  for (const view of ["summary", "locations", "detail", "sku-ranking"]) {
+    const id = "current-shortage." + view;
+    const fields = config.queries[id].resultColumns;
+    const f = fixture("aqkc", async (request) =>
+      request.sql.includes("AS batch_id")
+        ? summarySnapshot
+        : {
+            rows: [
+              {
+                ...row,
+                sku: "S1",
+                material_name: "商品",
+                category: "汤圆",
+                material_group: "商品组",
+                location_code: "郑州",
+                location_name: "郑州",
+                base: "郑州",
+                warehouse_code: null,
+                page_scope_total: 1,
+                page_row_present: 1,
+                scope_invalid: 0,
+                scope_shortage: 5,
+                snapshot_count: 1,
+              },
+            ],
+            returnedColumns: fields,
+            rejectedColumns: [],
+          },
+    );
+    const result = JSON.parse(await f.call({ view, base: "郑州" }));
+    assert.equal(result.success, undefined, JSON.stringify(result));
+    assert.equal(result.rows[0].shortage, "5");
+    assert.ok(
+      f.calls[0].request.sql ===
+        config.queries[config.dailySummary.bundle.bootstrapQueryId].request.sql,
+      "daily batch must be selected first",
+    );
+    assert.ok(
+      f.calls.at(-1).request.sql === config.queries["snapshot." + id].request.sql,
+      view + " must read the selected daily batch",
+    );
+    assert.equal(f.calls.at(-1).request.parameters.gea_p90001, "B1");
+    assert.ok(f.calls.every((c) => !c.request.sql.includes("FROM agents_scm_execute_detail_d")));
+  }
+});
+test("SKU ranking returns distinct positive SKU counts and same-scope page shares", async () => {
+  const f = fixture("aqkc", async (request) =>
+    request.sql.includes("AS batch_id")
+      ? summarySnapshot
+      : {
+          rows: [ranked("S1", 12), ranked("S2", 8)],
+          returnedColumns: rankingColumns,
+          rejectedColumns: [],
+        },
+  );
+  const result = JSON.parse(await f.call({ view: "sku-ranking", base: "郑州" }));
+  assert.equal(result.shortageSkuCount, 2);
+  assert.equal(result.totalShortage, "20");
+  assert.equal(result.pageShortage, "20");
+  assert.equal(result.pageSharePercent, "100.00");
+  assert.deepEqual(
+    result.rows.map((r) => r.rank),
+    [1, 2],
+  );
+  assert.equal(result.coverage, "cross-base-sku-ranking-page");
+  assert.equal(f.calls.length, 2);
+  const request = f.calls.at(-1).request;
+  assert.equal(request.parameters.gea_p1, "郑州");
+  assert.equal(request.parameters.gea_p4, 10);
+  assert.equal(request.parameters.gea_p90001, "B1");
+  assert.match(request.sql, /GROUP BY f\.sku/);
+  assert.match(request.sql, /agents_inv_order_summary_day/);
+  assert.ok(!request.sql.includes("GROUP BY f.base"));
+});
+test("base shortage views never fall back to raw orders after missing or denied snapshot", async () => {
+  for (const view of ["summary", "locations", "detail", "sku-ranking"]) {
+    for (const response of [
+      {
+        rows: [],
+        returnedColumns: summarySnapshot.returnedColumns,
+        rejectedColumns: [],
+      },
+      {
+        success: false,
+        errorCode: "AI_GATEWAY_DATA_PERMISSION_DENIED",
+        message: "denied",
+        failure: { reasonCode: "ROW_SCOPE_DENIED" },
+      },
+    ]) {
+      const f = fixture("aqkc", async () => response);
+      const result = JSON.parse(await f.call({ view }));
+      assert.equal(result.success, false);
+      assert.equal(f.calls.length, 1);
+    }
+  }
+});
+test("SKU ranking rejects duplicates, zero rows, missing permissions and mixed scope totals", () => {
+  const good = [ranked("S1", 12), ranked("S2", 8)];
+  for (const rows of [
+    [good[0], { ...good[1], sku: "S1" }],
+    [good[0]],
+    [good[0], { ...good[1], shortage: 0 }],
+    [good[0], { ...good[1], scope_shortage: 21 }],
+    good.map((r) => ({ ...r, scope_invalid: 1 })),
+    good.map((r) => ({ ...r, snapshot_count: 2 })),
+    [...good].reverse(),
+  ])
+    assert.throws(
+      () => currentShortageRankingResult({ rows, returnedColumns: rankingColumns }, 1),
+      /CURRENT_SHORTAGE_/,
+    );
+  assert.throws(
+    () => currentShortageRankingResult({ rows: good, returnedColumns: rankingColumns.slice(1) }, 1),
+    /INCOMPLETE/,
+  );
+  assert.throws(
+    () =>
+      currentShortageRankingResult(
+        {
+          rows: good,
+          returnedColumns: rankingColumns,
+          rejectedColumns: ["material_name"],
+        },
+        1,
+      ),
+    /INCOMPLETE/,
+  );
+  const denied = {
+    success: false,
+    failure: { reasonCode: "ROW_SCOPE_DENIED" },
+  };
+  assert.deepEqual(currentShortageRankingResult(denied, 1), denied);
+});
+test("SKU ranking supports a verified empty scope and never borrows another Agent resource", async () => {
+  const empty = {
+    ...ranked("S1", 0),
+    sku: null,
+    page_scope_total: 0,
+    scope_shortage: 0,
+    page_row_present: null,
+  };
+  const result = currentShortageRankingResult(
+    { rows: [empty], returnedColumns: rankingColumns },
+    1,
+  );
+  assert.equal(result.shortageSkuCount, 0);
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.pageSharePercent, null);
+  const f = fixture("fc");
+  await assert.rejects(f.call({ view: "sku-ranking" }), /BASE_ONLY/);
+  assert.equal(f.calls.length, 0);
+});
 function fixture(
   agent = "aqkc",
-  execute = async () => ({
-    rows: [row],
-    returnedColumns: columns,
-    rejectedColumns: [],
-  }),
+  execute = async (request) =>
+    request.sql.includes("AS batch_id")
+      ? summarySnapshot
+      : {
+          rows: [row],
+          returnedColumns: columns,
+          rejectedColumns: [],
+        },
 ) {
   let tool,
     preset = "gea-html-inventory-" + agent,
@@ -134,7 +334,8 @@ test("orchestration selects the explicit fixed location scope without borrowing 
     assert.equal(f.calls.at(-1).request.consumerCode, "workbench");
     assert.equal(
       f.calls.at(-1).request.sql,
-      config.queries["current-shortage.summary"].request.sql,
+      config.queries[(agent === "aqkc" ? "snapshot." : "") + "current-shortage.summary"].request
+        .sql,
     );
   }
   await assert.rejects(f.call({}), /LOCATION_TYPE_REQUIRED/);
@@ -150,17 +351,21 @@ test("four Session profiles reuse their installed page SQL without a page or Cub
     assert.equal(result.rows[0].shortage, "5");
     assert.equal(result.unit, "箱");
     assert.equal(result.coverage, "complete-scope-summary");
-    assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0].request.consumerCode, consumer);
-    assert.equal(f.calls[0].request.parameters.gea_p1, "郑州");
-    assert.equal(f.calls[0].configured, true);
+    assert.equal(f.calls.length, agent === "aqkc" ? 2 : 1);
+    assert.equal(f.calls.at(-1).request.consumerCode, consumer);
+    assert.equal(f.calls.at(-1).request.parameters.gea_p1, "郑州");
+    assert.equal(f.calls.at(-1).configured, true);
     const config = JSON.parse(
       await readFile(
         "../dsh-agent-workbench/business/inventory-" + agent + "/sql.config.json",
         "utf8",
       ),
     );
-    assert.equal(f.calls[0].request.sql, config.queries["current-shortage.summary"].request.sql);
+    assert.equal(
+      f.calls.at(-1).request.sql,
+      config.queries[(agent === "aqkc" ? "snapshot." : "") + "current-shortage.summary"].request
+        .sql,
+    );
     assert.ok(allowedTools(PROFILES["gea-html-inventory-" + agent]).has("gea_current_shortage"));
   }
   assert.equal(allowedTools(PROFILES["gea-readonly"]).has("gea_current_shortage"), false);
@@ -194,7 +399,11 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   const f = fixture("fc", async (request) =>
     request.sql === config.queries["current-shortage.locations"].request.sql
       ? {
-          rows: locations,
+          rows: locations.map((row) => ({
+            ...row,
+            page_scope_total: 2,
+            page_row_present: 1,
+          })),
           returnedColumns: locationColumns,
           rejectedColumns: [],
           hasMorePages: false,
@@ -214,9 +423,10 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
         },
   );
   const ranking = JSON.parse(await f.call({ view: "locations" }));
+  assert.ok(f.calls.length, JSON.stringify(ranking));
   assert.equal(f.calls[0].request.sql, config.queries["current-shortage.locations"].request.sql);
-  assert.equal(f.calls[0].request.parameters.gea_p49901, 50);
-  assert.equal(f.calls[0].request.parameters.gea_p49902, 0);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p49901, 50);
+  assert.equal(f.calls.at(-1).request.parameters.gea_p49902, 0);
   assert.equal(ranking.coverage, "complete-location-ranking");
   assert.deepEqual(
     ranking.rows.map((r) => r.location_code),
@@ -232,17 +442,87 @@ test("branch ranking and a follow-up SKU page reuse one Session with explicit wa
   assert.equal(f.calls[1].request.parameters.gea_p2, "W1");
   assert.ok(f.calls.every((c) => c.request.consumerCode === "branch-inventory"));
 });
+test("paginated branch rankings collect every location and reject an incomplete later page", async (t) => {
+  const config = JSON.parse(
+    await readFile("../dsh-agent-workbench/business/inventory-fc/sql.config.json", "utf8"),
+  );
+  const query = config.queries["current-shortage.locations"];
+  if (!query.pagination) return t.skip("installed peer uses the earlier unpaged contract");
+  const offsetKey = Object.entries(query.parameterSpec).find(
+    ([, spec]) => spec.name === "offset",
+  )[0];
+  const locations = Array.from({ length: 51 }, (_, i) => ({
+    ...row,
+    location_type: "分仓",
+    location_code: `W${i}`,
+    location_name: `分仓${i}`,
+    warehouse_code: `W${i}`,
+    base: "郑州",
+    shortage: i,
+    page_scope_total: 51,
+    page_row_present: 1,
+  }));
+  const run = (truncate) =>
+    fixture("fc", async (request) => {
+      const offset = request.parameters[offsetKey];
+      return {
+        rows: truncate && offset > 0 ? [] : locations.slice(offset, offset + 50),
+        returnedColumns: query.resultColumns,
+        rejectedColumns: [],
+      };
+    });
+  const complete = run(false);
+  const ranking = JSON.parse(await complete.call({ view: "locations" }));
+  assert.equal(ranking.coverage, "complete-location-ranking");
+  assert.equal(ranking.rows.length, 51);
+  assert.equal(ranking.rows[0].location_code, "W50");
+  assert.deepEqual(
+    complete.calls.map((c) => c.request.parameters[offsetKey]),
+    [0, 50],
+  );
+  const incomplete = JSON.parse(await run(true).call({ view: "locations" }));
+  assert.equal(incomplete.success, false);
+  assert.equal(incomplete.coverage, undefined);
+});
 test("location ranking uses the installed pagination contract for each profile", async () => {
   for (const [agent] of definitions) {
-    const f = fixture(agent, async () => ({
-      rows: [],
-      returnedColumns: [...columns, "location_code", "location_name", "base", "warehouse_code"],
-      rejectedColumns: [],
-    }));
-    const result = JSON.parse(await f.call({ view: "locations" }));
-    assert.equal(result.coverage, "complete-location-ranking");
-    assert.equal(f.calls[0].request.parameters.gea_p49901, agent === "apsplan" ? undefined : 50);
-    assert.equal(f.calls[0].request.parameters.gea_p49902, agent === "apsplan" ? undefined : 0);
+    const config = JSON.parse(
+      await readFile(`../dsh-agent-workbench/business/inventory-${agent}/sql.config.json`, "utf8"),
+    );
+    const query = config.queries["current-shortage.locations"];
+    const f = fixture(agent, async (request) =>
+      request.sql.includes("AS batch_id")
+        ? summarySnapshot
+        : {
+            rows: query.pagination?.atomicQuery
+              ? [
+                  {
+                    ...Object.fromEntries(query.resultColumns.map((key) => [key, null])),
+                    page_scope_total: 0,
+                    page_row_present: null,
+                  },
+                ]
+              : [],
+            returnedColumns: query.resultColumns,
+            rejectedColumns: [],
+          },
+    );
+    const result = JSON.parse(
+      await f.call({
+        view: "locations",
+        ...(agent === "aqkc" ? { base: "郑州" } : {}),
+      }),
+    );
+    assert.equal(
+      result.coverage,
+      "complete-location-ranking",
+      JSON.stringify({ agent, result, pagination: query.pagination }),
+    );
+    assert.equal(
+      f.calls.at(-1).request.parameters.gea_p49901,
+      agent === "apsplan" ? undefined : 50,
+    );
+    assert.equal(f.calls.at(-1).request.parameters.gea_p49902, agent === "apsplan" ? undefined : 0);
   }
 });
 test("a truncated location collection cannot claim a complete ranking", () => {
@@ -304,7 +584,9 @@ for (const change of ["disable and re-enable", "replace with the same ID"]) {
         started.resolve();
         await held.promise;
       }
-      return { rows: [row], returnedColumns: columns };
+      return _request.sql.includes("AS batch_id")
+        ? summarySnapshot
+        : { rows: [row], returnedColumns: columns };
     });
     const pending = assert.rejects(f.call({}), { name: "AbortError" });
     await started.promise;

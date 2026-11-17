@@ -5,7 +5,6 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
     ? (value as Record<string, unknown>)
     : undefined;
 
-/** Reject incomplete member references without guessing or changing the published mapping. */
 export function validateCubeQueryMembers(arguments_: Record<string, unknown>): void {
   const check = (member: unknown, path: string) => {
     if (
@@ -75,7 +74,6 @@ export function cubeQueryResultError(
   );
 }
 
-/** Validate the gateway's original artifact bytes before publishing any business evidence. */
 export function cubeNewArtifact(
   result: unknown,
   link: { uri: string; sha256?: string },
@@ -99,7 +97,6 @@ export function cubeNewArtifact(
   return item.text;
 }
 
-/** Direct pages use row/pagination evidence; legacy artifacts also require their delivery flags. */
 export function validateCubeQueryResult(
   result: unknown,
   arguments_: unknown,

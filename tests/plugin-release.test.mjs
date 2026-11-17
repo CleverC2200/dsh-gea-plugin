@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import semver from "semver";
 import { readFile } from "node:fs/promises";
 import { productionManifest } from "../scripts/production-manifest.mjs";
 import {
@@ -8,6 +9,7 @@ import {
   planPluginSuiteVersions,
   planPluginSuiteUpdate,
   projectPluginRelease,
+  parsePluginChannel,
 } from "../src/shared/plugin-release.mjs";
 const W = "@cleverc2200/dsh-agent-workbench",
   M = "dsh-agent-manage",
@@ -26,6 +28,108 @@ const graph = [
     peerDependencies: { [W]: "1.0.0", [M]: "2.0.0" },
   },
 ];
+test("personal memory is an optional update alongside the unchanged three-package suite", () => {
+  const memory = projectPluginRelease({
+    manifest: { name: "@cleverc2200/dsh-personal-memory", version: "0.1.2" },
+    artifact: {
+      url: `https://fixture.invalid/${"b".repeat(64)}/memory.tgz`,
+      size: 1,
+      sha256: "b".repeat(64),
+    },
+    supportedCores: [core],
+    dataCompatibility: { kind: "preserve" },
+    notes: "memory",
+  });
+  const releases = graph.map((manifest) =>
+    projectPluginRelease({
+      manifest,
+      artifact: memory.artifact,
+      supportedCores: [core],
+      dataCompatibility: { kind: "preserve" },
+      notes: "suite",
+    }),
+  );
+  const installed = [...graph, { name: memory.name, version: "0.1.1" }];
+  assert.equal(planPluginSuiteVersions({ releases, core, installed }).kind, "current");
+  const plan = planPluginSuiteVersions({ releases: [...releases, memory], core, installed });
+  assert.equal(plan.kind, "ready");
+  assert.deepEqual(
+    plan.releases.map((row) => row.name),
+    [memory.name],
+  );
+  assert.equal(planPluginSuiteVersions({ releases: [memory], core, installed }).kind, "blocked");
+  const ref = (name) => ({
+    name,
+    url: `https://fixture.invalid/${"b".repeat(64)}/release.json`,
+    sha256: "b".repeat(64),
+  });
+  const old = {
+    schema: 1,
+    suite: true,
+    channel: "test",
+    revision: 1,
+    issuedAt: "2026-11-11T00:00:00.000Z",
+    expiresAt: "2026-11-12T00:00:00.000Z",
+    releases: [ref(G)],
+    companionReleases: [ref(W), ref(M)],
+  };
+  assert.equal(parsePluginChannel(old).optionalReleases, undefined);
+  assert.deepEqual(
+    parsePluginChannel({ ...old, optionalReleases: [ref(memory.name)] }).optionalReleases,
+    [ref(memory.name)],
+  );
+  assert.throws(() => parsePluginChannel({ ...old, optionalReleases: [ref(W)] }));
+  assert.throws(() =>
+    parsePluginChannel({ ...old, optionalReleases: [ref(memory.name), ref(memory.name)] }),
+  );
+});
+test("the production declaration accepts published Workbench versions and retains explicit boundaries", async () => {
+  const source = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const manifest = productionManifest(source, {
+    [W]: "0.1.73",
+    [M]: "0.6.3-company.54",
+    "@changfenhuang/dsh-genui": "0.11.3",
+    "dsh-better-sidebar": "0.24.1",
+  });
+  const issues = (version) =>
+    validatePluginCombination({
+      core,
+      manifests: [
+        { name: W, version },
+        {
+          name: G,
+          version: manifest.version,
+          peerDependencies: { [W]: manifest.peerDependencies[W] },
+        },
+      ],
+    });
+  assert.deepEqual(issues("0.1.72"), []);
+  assert.deepEqual(issues("0.1.73"), []);
+  assert.deepEqual(issues("0.1.76"), []);
+  assert.deepEqual(issues("0.1.77"), []);
+  assert.deepEqual(issues("0.1.78"), []);
+  assert.deepEqual(issues("0.1.79"), []);
+  assert.deepEqual(issues("0.1.80"), []);
+  assert.deepEqual(issues("0.1.81"), []);
+  assert.deepEqual(issues("0.1.82"), []);
+  assert.deepEqual(issues("0.1.83"), []);
+  assert.deepEqual(issues("0.1.84"), []);
+  assert.deepEqual(issues("0.1.85"), []);
+  assert.deepEqual(issues("0.1.86"), []);
+  assert.deepEqual(issues("0.1.87"), []);
+  assert.deepEqual(issues("0.1.88"), []);
+  assert.deepEqual(issues("0.1.89"), []);
+  assert.deepEqual(issues("0.1.91"), []);
+  assert.deepEqual(issues("0.1.92"), []);
+  const accepted = manifest.peerDependencies[W].split(" || ");
+  assert.ok(accepted.every((version) => semver.valid(version)));
+  const latest = semver.rsort(accepted)[0];
+  assert.deepEqual(issues(latest), []);
+  assert.ok(
+    issues(semver.inc(latest, "patch")).some((issue) => issue.code === "PEER_INCOMPATIBLE"),
+  );
+  assert.ok(issues("0.999.0").some((issue) => issue.code === "PEER_INCOMPATIBLE"));
+});
 test("single-package update validates existing consumers and permits independently compatible versions", () => {
   assert.deepEqual(validatePluginCombination({ core, manifests: graph }), []);
   assert.equal(

@@ -119,3 +119,42 @@ test("denied or incomplete staging never commits over an existing report", async
     );
   }
 });
+
+test("large report reads use at most four concurrent batches and preserve every part", async () => {
+  const db = database();
+  const large = {
+    ...report,
+    facts: { complete: true, rows: randomBytes(1800000).toString("base64") },
+  };
+  await orderReportStore(
+    {
+      operation: "save",
+      period,
+      report: large,
+      expectedVersion: 0,
+      requestId: "concurrent-parts-request-0001",
+    },
+    identity,
+    db.execute,
+  );
+  let active = 0,
+    maximum = 0,
+    batches = 0;
+  const execute = async (sql, parameters) => {
+    if (!parameters.partScopes) return db.execute(sql, parameters);
+    assert.ok(parameters.partScopes.length <= 8);
+    batches++;
+    maximum = Math.max(maximum, ++active);
+    try {
+      await new Promise((resolve) => setImmediate(resolve));
+      const result = await db.execute(sql, parameters);
+      return { rows: result.rows.reverse() };
+    } finally {
+      active--;
+    }
+  };
+  const result = await orderReportStore({ operation: "load", period }, identity, execute);
+  assert.deepEqual(result.report, large);
+  assert.equal(maximum, 4);
+  assert.equal(batches, Math.ceil((db.writes.length - 1) / 8));
+});

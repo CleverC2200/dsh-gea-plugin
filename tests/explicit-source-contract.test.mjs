@@ -25,7 +25,7 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function fixture(t, firstProjectPaths) {
   const dir = await mkdtemp(resolve(".scratch/explicit-inputs-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  // The mapping contract needs a declared Core type, not a sibling SDK checkout.
+
   const core = join(dir, "core");
   await mkdir(join(core, "vendor/cordis/lib/types"), { recursive: true });
   await writeFile(

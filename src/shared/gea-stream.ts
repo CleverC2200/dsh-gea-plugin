@@ -1,4 +1,3 @@
-/** 将 GEA SSE 增量转换为 DSH 流块；只接受声明过的工具，并拒绝歧义格式。 */
 import { createParser } from "eventsource-parser";
 import { brandString } from "@deepseek-ai/dsh-brand";
 import type { ToolCallId } from "@deepseek-ai/dsh-llm/brand";
@@ -7,16 +6,13 @@ import {
   isContextWindowExceededError,
   type StreamChunk,
 } from "@deepseek-ai/dsh-llm";
+import { modelCorrelationId, type ModelFailureDetails } from "./model-failure.ts";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("GEA_MODEL_INVALID_SSE");
   return value as Record<string, unknown>;
 }
 
-/**
- * 模型流失败的统一错误：错误码保留在消息最前面（便于检索与既有断言），
- * 后面跟一句人能看懂的话，界面上不再只显示一个裸代号。
- */
 const STREAM_FAILURES: Record<string, string> = {
   GEA_MODEL_TOOL_TEXT: "模型把工具调用写成了文本；这些调用未执行，本轮业务答复未完成",
   GEA_MODEL_INCOMPLETE_STREAM: "模型这一轮没返回结束标记就断流了，本轮已中止，请重发一次",
@@ -26,7 +22,7 @@ const STREAM_FAILURES: Record<string, string> = {
   GEA_MODEL_UNSUPPORTED_FINISH_REASON: "模型返回了无法识别的结束原因，本轮已中止",
   GEA_MODEL_EMPTY_RESPONSE: "模型这一轮没有给出任何内容，请重发一次",
   GEA_MODEL_INVALID_SSE: "模型返回的数据格式无法解析，本轮已中止",
-  GEA_MODEL_GATEWAY_ERROR: "模型网关在流里回了错误，本轮已中止",
+  GEA_MODEL_GATEWAY_ERROR: "模型网关在流里返回了错误",
   GEA_MODEL_CONTEXT_TOO_LONG: "模型上下文超出模型上限，由 Core 按现有压缩策略决定能否恢复",
 };
 
@@ -41,8 +37,11 @@ function invalid(code: string, detail?: string): never {
   throw streamFailure(code, detail);
 }
 
-/** Classify gateway failures without copying response text into diagnostics. */
-function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boolean } {
+function gatewayErrorDetail(value: unknown): {
+  detail: string;
+  contextLimit: boolean;
+  diagnostics: ModelFailureDetails;
+} {
   const error = record(value);
   const codes = new Set([
     "invalid_request",
@@ -73,6 +72,11 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
     "rate_limit_error",
   ]);
   return {
+    diagnostics: {
+      upstreamCode: safeCode(error.code),
+      requestId: modelCorrelationId(error.requestId),
+      traceId: modelCorrelationId(error.traceId),
+    },
     detail: [
       safeCode(error.code),
       typeof error.type === "string" && types.has(error.type) ? error.type : undefined,
@@ -80,7 +84,7 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
       .filter(Boolean)
       .join(" | "),
     contextLimit:
-      !["authentication_error", "permission_error", "rate_limit_error", "server_error"].includes(
+      !["authentication_error", "permission_error", "rate_limit_error"].includes(
         String(error.type),
       ) &&
       ![
@@ -91,6 +95,7 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
         "MODEL_UPSTREAM_RATE_LIMITED",
         "MODEL_UPSTREAM_UNAVAILABLE",
       ].includes(String(error.code)) &&
+      (error.code === "context_length_exceeded" || error.type !== "server_error") &&
       isContextWindowExceededError(
         [error.code, error.type, error.message]
           .filter((value) => typeof value === "string")
@@ -99,7 +104,6 @@ function gatewayErrorDetail(value: unknown): { detail: string; contextLimit: boo
   };
 }
 
-/** Provider counters are authoritative; missing usage is not zero usage. */
 export function geaUsage(value: unknown): import("@deepseek-ai/dsh-llm").TokenUsage | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const raw = value as Record<string, unknown>;
@@ -143,16 +147,19 @@ function completion(data: string): {
     );
   }
   const payload = record(parsed);
-  // 网关用 SSE 回错误对象时（上下文超限、上游模型报错、限流…），要把它的话原样带出来：
-  // 一律报"格式无法解析"等于把真因吞掉（线上就是这么被误导的）。
   if (payload.error != null) {
     const detail = gatewayErrorDetail(payload.error);
     if (detail.contextLimit) {
       const error = streamFailure("GEA_MODEL_CONTEXT_TOO_LONG", detail.detail);
-      Object.assign(error, { code: CONTEXT_WINDOW_EXCEEDED_CODE });
+      Object.assign(error, {
+        code: CONTEXT_WINDOW_EXCEEDED_CODE,
+        details: detail.diagnostics,
+      });
       throw error;
     }
-    invalid("GEA_MODEL_GATEWAY_ERROR", detail.detail);
+    throw Object.assign(streamFailure("GEA_MODEL_GATEWAY_ERROR", detail.detail), {
+      details: detail.diagnostics,
+    });
   }
   if (!Array.isArray(payload.choices)) invalid("GEA_MODEL_INVALID_SSE", "choices 不是数组");
   if (payload.choices.length > 1)
@@ -181,25 +188,32 @@ function completion(data: string): {
   invalid("GEA_MODEL_UNSUPPORTED_FINISH_REASON");
 }
 
-/**
- * 将流式文本保留在权威的最终块中，并要求收到终止完成事件。
- * @param body 此次模型调用拥有的成功 SSE 响应体。
- * @param signal 同时取消待读取和所属请求。
- * @param offered 所属请求提供的工具名；省略时仅允许文本。
- * @returns Harness 流块；不完整或不支持的完成会抛错，交由 LlmRuntime 分类。
- */
 export async function* geaTextStream(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
   offered?: { names: readonly string[] },
   activity?: () => void,
+  capture?: {
+    received(text: string): void;
+    assembled(value: {
+      text: string;
+      reasoning: string;
+      tools: { id: string; name: string; arguments: string }[];
+      complete: boolean;
+    }): void;
+    terminal(state: "completed" | "failed" | "cancelled", error?: unknown): void;
+  },
 ): AsyncGenerator<StreamChunk> {
+  const observe = (action: () => void) => {
+    try {
+      action();
+    } catch {}
+  };
   const reader = body.getReader();
   let cancellation: Promise<void> | undefined;
+  let completed = false;
   const cancel = () => {
-    cancellation ??= reader.cancel().catch(() => {
-      // 已报错或已中止的响应可能拒绝取消；其读取过程已经报告了失败。
-    });
+    cancellation ??= reader.cancel().catch(() => {});
     return cancellation;
   };
   const onAbort = () => {
@@ -232,22 +246,23 @@ export async function* geaTextStream(
       signal?.throwIfAborted();
       const read = await reader.read();
       signal?.throwIfAborted();
-      parser.feed(read.done ? decoder.decode() : decoder.decode(read.value, { stream: true }));
+      const received = read.done ? decoder.decode() : decoder.decode(read.value, { stream: true });
+      if (received) observe(() => capture?.received(received));
+      parser.feed(received);
       for (const data of events.splice(0)) {
         signal?.throwIfAborted();
         if (data.trim() === "[DONE]" && terminal) {
+          completed = true;
+          observe(() => capture?.terminal("completed"));
           if (usage) yield { type: "usage", usage };
           yield finishChunk(terminal);
           return;
         }
         try {
           usage = geaUsage(record(JSON.parse(data)).usage) ?? usage;
-        } catch {
-          /* completion reports malformed frames. */
-        }
+        } catch {}
         const chunk = completion(data);
-        // completion still checks error envelopes. Late successful deltas do not
-        // mutate blocks which have already completed.
+
         if (terminal) continue;
         if (chunk.reasoning) {
           reasoning += chunk.reasoning;
@@ -290,7 +305,7 @@ export async function* geaTextStream(
         }
         if (chunk.text) {
           text += chunk.text;
-          // Reject raw protocol before yielding its completed marker, including split SSE chunks.
+
           if (/^\s*<[|｜]{2}DSML[|｜]{2}\s*(?:tool_calls|calls|invoke)\b/.test(text))
             invalid("GEA_MODEL_TOOL_TEXT");
           yield { type: "text-delta", index: 0, text: chunk.text };
@@ -320,7 +335,11 @@ export async function* geaTextStream(
             invalid("GEA_MODEL_EMPTY_RESPONSE");
           yield { type: "block-end", index: 0, block: { type: "text", text } };
           if (reasoningStarted)
-            yield { type: "block-end", index: 1, block: { type: "reasoning", text: reasoning } };
+            yield {
+              type: "block-end",
+              index: 1,
+              block: { type: "reasoning", text: reasoning },
+            };
           let index = reasoningStarted ? 2 : 1;
           for (const call of calls.values()) {
             signal?.throwIfAborted();
@@ -351,12 +370,21 @@ export async function* geaTextStream(
       }
       if (read.done) {
         if (!terminal) invalid("GEA_MODEL_INCOMPLETE_STREAM");
+        completed = true;
+        observe(() => capture?.terminal("completed"));
         if (usage) yield { type: "usage", usage };
         yield finishChunk(terminal);
         return;
       }
     }
+  } catch (error) {
+    observe(() => capture?.terminal(signal?.aborted ? "cancelled" : "failed", error));
+    throw error;
   } finally {
+    observe(() =>
+      capture?.assembled({ text, reasoning, tools: [...calls.values()], complete: completed }),
+    );
+    if (!completed) observe(() => capture?.terminal("cancelled", signal?.reason));
     signal?.removeEventListener("abort", onAbort);
     await cancel();
     reader.releaseLock();

@@ -24,8 +24,20 @@ test(
       currentAmount: "10",
       targetAmount: "10",
       targetQty: "1",
-      skuCount: 0,
+      skuCount: 1,
     }));
+    const skusFor = (row) => [
+      {
+        id: row.versionId + "-sku",
+        versionId: row.versionId,
+        skuCode: "123",
+        qty: "1",
+        baseQty: "1",
+        amt: "10",
+        amtBase: "10",
+        price: "10",
+      },
+    ];
     const writes = [];
     app.route((req, res, reply) => {
       const path = req.url.pathname;
@@ -90,7 +102,7 @@ test(
             : {
                 currentVersion: version,
                 versions: [version],
-                skus: [],
+                skus: skusFor(plan),
                 logs: [],
                 ...(plan.status === 2
                   ? {
@@ -107,7 +119,7 @@ test(
               },
         );
       }
-      if (path.endsWith("/versions/v2/skus")) return send([]);
+      if (path.endsWith("/versions/v2/skus")) return send(skusFor(plans[2]));
       if (path.endsWith("/versions/v2/actions")) {
         const body = JSON.parse(req.body);
         writes.push(body);
@@ -153,10 +165,10 @@ test(
     await expect(options).toHaveText(["2026年9月"]);
     await expect(options).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Escape");
-    // 节点条默认收起（V1.8 #05），先展开才能看到各节点。
+
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();
-    // 节点条始终展示全部五个节点：角色决定能进哪个节点，没权限的节点置灰不可点。
+
     await expect(frame.locator('[data-testid^="regional-approval-stage-"]')).toHaveCount(5);
     const region = frame.getByTestId("regional-approval-stage-region");
     await expect(region).toHaveAttribute("aria-pressed", "true");
@@ -171,7 +183,7 @@ test(
       "当前节点：全部节点",
     );
     const table = frame.locator("tbody").first();
-    // 切到「全部节点」后队列按数据权限重取；表里出现的行都能直接提交或退回，不再卡在「轮到哪个节点」。
+
     await expect(table.getByText("scope-1-row", { exact: true })).toBeVisible({ timeout: 15000 });
     for (const status of [1, 2, 3, 4, 5, 6, 7, 10])
       await expect(table.getByText(`scope-${status}-row`, { exact: true })).toBeVisible();
@@ -215,6 +227,7 @@ test(
     assert.equal(writes[0].approvalPolicy, "role-visible-v1");
     assert.equal(writes[0].expectedSnapshot, "a".repeat(64));
     assert.equal(writes[0].expectedStatus, 2);
+    await expect(regionCanReview.getByRole("checkbox")).not.toBeChecked();
     await expect(regionCanReview.locator("label.arco-checkbox")).toBeVisible();
     await regionCanReview.locator("label.arco-checkbox").click();
     await frame.getByRole("button", { name: "退回", exact: true }).click();
@@ -223,8 +236,8 @@ test(
       rejectDialog.getByRole("textbox", { name: "退回原因（必填）", exact: true }),
     ).toBeVisible();
     await expect(rejectDialog.getByTestId("regional-approval-live-action-checksum")).toHaveCount(0);
-    await frame.getByRole("button", { name: "取消", exact: true }).click();
-    // 类型切换入口恢复，原来的角色节点权限保持不变。
+    await rejectDialog.getByRole("button", { name: "取消", exact: true }).click();
+
     await expect(frame.getByRole("tab", { name: "纠偏", exact: true })).toBeVisible();
     await expect(frame.getByTestId("regional-approval-workbench")).toBeVisible();
   },

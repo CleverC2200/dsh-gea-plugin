@@ -319,7 +319,7 @@ test("owner-scoped DMS receipt archives against the page intent and replays with
     submit: async (order) => {
       sends++;
       assert.notEqual(order.aiPreOrderCode, req.entityId);
-      return { orderCode: "DMS1", aiPreOrderCode: order.aiPreOrderCode };
+      return { orderCode: "DMS1", aiPreOrderCode: order.aiPreOrderCode, dmsMessage: "暂存成功" };
     },
   };
   const order = {

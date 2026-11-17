@@ -24,11 +24,13 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 完整 build 也仅构建 GEA host/client；页面在同组 Workbench 按自己的工具链构建。watch 只编译，不启动应用，勿并发写同一输出。官方类型检查需要明确准备的只读 SDK 与 peer 声明，不能以旧 SDK 或历史产物代替当前输入。
 
-插件更新使用官方 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section` 扩展位，等待公开 slots、locale 与 modules 服务就绪后向三个公司 bundle 贡献内容。定向类型检查只需将 `GEA_PLUGIN_UPDATE_SDK` 指向未修改、已准备的官方 SDK 绝对路径，再运行 `typecheck:plugin-updates`。该检查包含实际详情 TSX、公共组件与本地样式声明；部署配置和分层验证见 [插件来源](plugin-release-source.md)。
+公司更新入口通过公开的 `settings.update` 显示紧凑版本信息与“重启更新”动作，`sidebar.toggle.badge` 汇总折叠提示。点击后由 main 接管安装与重启，阻断普通操作；页面关闭或刷新不影响已接受的更新。页面共用一个插件更新 owner 和一个原生 updates 观察器，保留公开 status/check/observed 与新 Host/client 实际版本确认。写者状态不明时，由原生重查恢复 Host 并核对原操作，确认写入结束的失败才恢复普通操作。缺少原生接管能力时明确提示升级客户端。插件详情保留版本和兼容性诊断，其动作与列表动作使用同一接管入口。当前安装客户端版本只读 `dshDesktop.appVersion()`，缺失或失败保持未确认。公开槽位与状态源接线由 `tests/plugin-update-{detail,list}.browser.mjs` 和同组 Workbench 的 `tests/sidebar-reopen.browser.mjs` 核验；运行不代表原生安装或真实网络验收。
 
 只读交付一致性检查使用 `pnpm run delivery:check --input request.json`，failed/unknown 返回非零；人工浏览报告使用 `pnpm run delivery:report --input request.json`，短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。报告命令退出0只表示生成成功，检查命令退出0只证明一致性；两者都不授予业务验收、不启动应用或恢复自动化。
 
 按授权启动与切换时复用 [源码组合说明](plugin-split-validation.md) 的明确五源和自有 runtime。可构建不等于窗口已获授权。旧 desktop:dev 使用已安装公司壳，属于历史入口，不作为当前官方客户端协议。
+
+`check:comments` 默认检查全仓自有 JS/TS、HTML/SVG 及内嵌脚本和样式、CSS、JSONC、YAML、Python、Shell、PowerShell、NSIS、SQL、Java、TOML、CMD 与行式配置；工作流的 Shell/PowerShell `run` 脚本一并检查。字符串、Prompt、Python docstring 和 heredoc 数据保留。解析失败拒绝通过；Shell 等格式使用固定版本词法器，不代表执行验收。`--base <完整提交>` 或显式文件只用于局部反馈，CI 和静态门禁默认执行全仓检查。`source-comments.json` 登记第三方、生成物、fixture 与历史证据来源；收到的业务原件复用现有 `SOURCE.json` 文件清单与摘要核对，已改写的资源继续按自有源码检查；`--report <路径>` 输出完整排除与违规清单。工具指令先消除依赖，许可证按分发要求保全。
 
 ## Window fixture 的固定输入
 
@@ -79,7 +81,7 @@ GEA 的 [公开 Config schema](../src/host.ts) 为空配置提供 [公司产品�
 
 未设置 `runtimeDir` 时，Host 从官方 `profileContext.dir` 派生 `gea/` 专用持久目录。显式目录必须是可创建的绝对目录。普通插件登录由 GEA Host 在此目录写入权限为 0600 的 `web-login.json`，默认不依赖旧启动器变量；`GEA_WEB_LOGIN_PERSIST=0` 仍可明确关闭，旧公司桌面的私有凭据通道保留其原归属。
 
-发行 manifest 保留 Workbench/Manage 已有 peer 约束；未声明的源码 companion link 才从明确输入投影 exact peer。完整组合与独立 release 见 [插件来源](plugin-release-source.md)。GenUI/Sidebar 维持 exact optional peers，不随三主插件自动启用。未安装或停用辅助插件时，只报告其真实缺席状态；官方 standard 和已配置业务授权保护保持原接口。
+发行 manifest 保留 Workbench/Manage 已有 peer 约束；未声明的源码 companion link 才从明确输入投影 exact peer。完整组合与独立 release 见 [插件来源](plugin-release-source.md)。GenUI/Sidebar 维持明确版本的 optional peers，不随三主插件自动启用。未安装或停用辅助插件时，只报告其真实缺席状态；官方 standard 和已配置业务授权保护保持原接口。
 
 `node --run test:fixture-inputs` 是无 SDK 的输入拒绝回归，也由现有 delivery fixture CI 执行。它不代替需要固定官方输入的 `test:window`；远端 workflow 的配置与实际执行结果分别记录。
 
@@ -141,3 +143,5 @@ Profile 准备在一次调用内复用已准入的 Core 身份与资产摘要，
 `installer-timing.test.cjs`、`windows-directory-installer.test.cjs` 与 `installer-differential.test.mjs` 需要显式固定的 GEA_BUILDER_LIB，保留在原手动 desktop unit 入口，不纳入普通候选池。Electron、layered smoke、installer-portability 同样保留实际产物前置，不能用条件 skip 产生源码 CI 通过。
 
 依赖审查只对 PR 中实际消费的 GEA manifest/lock 变化运行，与 Manage 使用同版 dependency-review-action v5 和 high 阻断级别。适用性来自同一实际变化计划并绑定正式 plan，最终聚合在适用时要求成功，无关文档/CSS 的明确不适用不能借用缺失或取消的适用结果。
+
+共享 Workbench 检查通过本仓 `scripts/check-workbench.mjs` 调用。`check:comments`、`check:knowledge` 和 `typecheck:official` 使用同一 `DSH_WORKBENCH_CHECKOUT`；未设置时使用同级 Workbench。官方类型检查显式验证本仓的 `tsconfig.official.json` 与 `scripts/supported-cores.json`，再编译本仓；缺材料直接失败，不准备或切换 Core。

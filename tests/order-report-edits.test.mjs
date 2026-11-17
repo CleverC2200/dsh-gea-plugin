@@ -1,12 +1,77 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { orderReportWithEdits } from "../src/host/order-report-edits.ts";
+import { encodeOrderReport } from "../src/host/order-report-codec.ts";
 const identity = {
   tenantId: "0",
   id: "editor",
   reportScope: { key: "order:base:郑州", base: "郑州" },
 };
 const period = { type: "WEEK", start: "2099-10-01", end: "2099-10-08" };
+
+test("fresh facts skip multipart snapshot bodies while keeping exact saved edits, revisions and scope", async () => {
+  const queries = [];
+  const edits = { summary: { risk: "人工结论" }, imports: [{ batchId: "existing" }] };
+  const execute = async (sql, p) => {
+    queries.push(sql);
+    const edit = p.scope.startsWith("order:edits:");
+    const row = { version: edit ? 4 : 9, last_request_id: "saved-request-0001", schema_version: 1 };
+    if (sql.includes("report_data")) {
+      assert.ok(edit, "fresh reads must not download old snapshot or parts");
+      row.report_data = await encodeOrderReport(
+        JSON.stringify({
+          schemaVersion: 1,
+          facts: { complete: true, kind: "editor-content" },
+          edits,
+        }),
+      );
+    }
+    return { rows: [row] };
+  };
+  const result = await orderReportWithEdits(
+    { operation: "load", period, includeFacts: false },
+    identity,
+    execute,
+  );
+  assert.equal(queries.length, 2);
+  assert.deepEqual(result.report, { schemaVersion: 1, facts: null, edits });
+  assert.equal(result.version, 9);
+  assert.equal(result.editVersion, 4);
+  assert.deepEqual(result.scope, identity.reportScope);
+});
+
+test("fresh facts preserve legacy manual content when no independent edits exist", async () => {
+  const legacy = {
+    schemaVersion: 1,
+    facts: { complete: true },
+    edits: { summary: { risk: "旧人工结论" } },
+  };
+  const encoded = await encodeOrderReport(JSON.stringify(legacy));
+  const execute = async (sql, p) => ({
+    rows: p.scope.startsWith("order:edits:")
+      ? []
+      : [
+          {
+            report_data: encoded,
+            version: 3,
+            last_request_id: "saved-request-0001",
+            schema_version: 1,
+          },
+        ],
+  });
+  const result = await orderReportWithEdits(
+    { operation: "load", period, includeFacts: false },
+    identity,
+    execute,
+  );
+  assert.deepEqual(result.report, legacy);
+  assert.equal(result.version, 3);
+  assert.equal(result.editVersion, 0);
+  await assert.rejects(
+    orderReportWithEdits({ operation: "load", period, includeFacts: "false" }, identity, execute),
+    /REQUEST_INVALID/,
+  );
+});
 test("separate edits preserve snapshot and independent versions with exact reopen", async () => {
   const rows = new Map(),
     writes = [];

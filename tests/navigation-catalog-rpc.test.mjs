@@ -31,6 +31,7 @@ async function host(t, readonlyValidation) {
     await rm(runtimeDir, { recursive: true, force: true });
   });
   const ctx = {
+    sessionFeedback: { registerSubmit: () => () => {} },
     profileContext: { dir: runtimeDir },
     get: () => undefined,
     effect(fn) {
@@ -43,7 +44,7 @@ async function host(t, readonlyValidation) {
     workbenchPages: { packages: () => [], registerBusinessPage: () => dispose },
     agentResources: { register: async () => dispose, watch: () => dispose },
     tools: { register: () => dispose, guard: () => dispose },
-    agents: { list: () => [] },
+    agents: { list: () => [], get: () => undefined, currentInitiator: () => undefined },
     llm: { registerAdapter: () => Object.assign(() => {}, { replace: () => {} }) },
     connection: {
       fetch: {

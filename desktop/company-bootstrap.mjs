@@ -1,3 +1,4 @@
+import { applyCompanyUpdate } from "./company-update.mjs";
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, writeFile, lstat, rm, mkdtemp } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -17,7 +18,8 @@ import {
 import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
 import { ciCores } from "../scripts/ci-core-policy.mjs";
 
-const names = [...companyPackageNames, "@changfenhuang/dsh-genui"];
+const memory = "@cleverc2200/dsh-personal-memory";
+const names = [...companyPackageNames, "@changfenhuang/dsh-genui", memory];
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const recoveringInstallation = (receipt) =>
@@ -186,10 +188,13 @@ async function assertCompletedInstallation(record, profile, { allowInterrupted =
     receipt?.status === "installing" &&
     Object.keys(receipt).every((key) => ["status", "packages"].includes(key)) &&
     Array.isArray(receipt.packages) &&
-    receipt.packages.length === companyPackageNames.length &&
-    companyPackageNames.every(
-      (name) => receipt.packages.filter((item) => item === name).length === 1,
-    )
+    receipt.packages.length <= names.length &&
+    new Set(receipt.packages).size === receipt.packages.length &&
+    receipt.packages.every((name) => names.includes(name)) &&
+    ((receipt.packages.length === 1 && receipt.packages[0] === memory) ||
+      companyPackageNames.every(
+        (name) => receipt.packages.filter((item) => item === name).length === 1,
+      ))
   )
     return receipt;
   try {
@@ -230,7 +235,8 @@ async function assertCompletedInstallation(record, profile, { allowInterrupted =
     )
       throw Error("NOT_RECOVERABLE");
     const current = await json(join(profile, "package.json"));
-    if (names.every((name) => current.dependencies?.[name])) throw Error("NOT_RECOVERABLE");
+    if (names.filter((name) => name !== memory).every((name) => current.dependencies?.[name]))
+      throw Error("NOT_RECOVERABLE");
     for (const file of [
       "package.json",
       "cordis.patch.yml",
@@ -260,7 +266,8 @@ export async function readCompanySeed(seed) {
     throw Error("GEA_SEED_INVALID");
   for (const [index, row] of manifest.packages.entries()) {
     if (
-      row.name !== names[index] ||
+      (index < 3 ? row.name !== names[index] : !names.slice(3).includes(row.name)) ||
+      manifest.packages.filter((item) => item.name === row.name).length !== 1 ||
       typeof row.version !== "string" ||
       !row.version ||
       typeof row.file !== "string" ||
@@ -526,6 +533,7 @@ export async function bootstrapCompanyProfile({
   seed,
   home,
   install = installCompanyPackages,
+  includePersonalMemory = true,
 }) {
   const profile = join(home, "profiles/desktop");
   const record = join(profile, "gea/bootstrap");
@@ -537,13 +545,19 @@ export async function bootstrapCompanyProfile({
   const current = existsSync(join(profile, "package.json"))
     ? await json(join(profile, "package.json"))
     : undefined;
-  let missing = names
-    .slice(0, 3)
-    .filter(
-      (name) =>
-        !current?.dependencies?.[name] &&
-        (name !== "@changfenhuang/dsh-genui" || receipt?.status !== "installed"),
-    );
+  const hasBundledMemory =
+    includePersonalMemory &&
+    existsSync(join(seed, "manifest.json")) &&
+    (await readCompanySeed(seed)).packages.some((row) => row.name === memory);
+  const preserveRemoval = (name, record) =>
+    name === "@changfenhuang/dsh-genui"
+      ? record?.status === "installed"
+      : name === memory &&
+        record?.status === "installed" &&
+        record.packages?.some((row) => row.name === memory);
+  let missing = [...companyPackageNames, ...(hasBundledMemory ? [memory] : [])].filter(
+    (name) => !current?.dependencies?.[name] && !preserveRemoval(name, receipt),
+  );
   if (!missing.length && receipt?.status !== "failed" && !recovering)
     return { status: "existing-profile-preserved", ...encoding };
   const manifest = await readCompanySeed(seed);
@@ -564,12 +578,12 @@ export async function bootstrapCompanyProfile({
         : undefined;
       missing = manifest.packages
         .map((row) => row.name)
-        .filter(
-          (name) =>
-            !latest?.dependencies?.[name] &&
-            (name !== "@changfenhuang/dsh-genui" || latestReceipt?.status !== "installed"),
-        );
-      if (recoveringInstallation(latestReceipt)) missing = manifest.packages.map((row) => row.name);
+        .filter((name) => !latest?.dependencies?.[name] && !preserveRemoval(name, latestReceipt));
+      if (recoveringInstallation(latestReceipt))
+        missing =
+          latestReceipt.packages?.length === 1 && latestReceipt.packages[0] === memory
+            ? [memory]
+            : manifest.packages.map((row) => row.name);
       if (!missing.length) {
         if (latestReceipt?.status === "failed") throw Error("GEA_COMPANY_INSTALL_INCOMPLETE");
         return { status: "existing-profile-preserved", changed: false };
@@ -780,12 +794,18 @@ export async function bootstrapCompanyProfile({
 }
 
 export async function refreshCompanyStartup({ legacyData, ...options }) {
-  const refresh = await refreshBundledCompanySuite({
-    ...options,
-    install: options.install ?? installCompanyPackages,
-  });
+  const refresh =
+    (await applyCompanyUpdate({
+      ...options,
+      install: options.install ?? installCompanyPackages,
+    })) ??
+    (await refreshBundledCompanySuite({
+      ...options,
+      install: options.install ?? installCompanyPackages,
+    }));
   const cleanup =
-    legacyData && refresh.status !== "pending-restart-preserved"
+    legacyData &&
+    !["pending-restart-preserved", "company-update-verifying"].includes(refresh.status)
       ? await cleanupLegacyGea({
           data: legacyData,
           home: options.home,
@@ -807,6 +827,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     support,
     seed,
     home,
+    includePersonalMemory: false,
   });
   await refreshCompanyCore({ root, seed, home });
   const manifest = await readCompanySeed(seed);
@@ -818,6 +839,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     manifest,
     legacyData,
   });
+  if (["completed", "current-company-suite-preserved"].includes(refresh.status))
+    await bootstrapCompanyProfile({ root, support, seed, home });
   console.log("GEA_BUNDLED_REFRESH", JSON.stringify(refresh));
   if (cleanup) console.log("GEA_LEGACY_CLEANUP", JSON.stringify(cleanup));
 }

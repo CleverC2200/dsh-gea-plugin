@@ -1,4 +1,3 @@
-/** Freeze only an explicitly prepared, disposable loopback engineering profile. */
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve, basename } from "node:path";
 import { createHash } from "node:crypto";

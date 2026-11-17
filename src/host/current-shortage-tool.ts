@@ -10,6 +10,7 @@ import {
   CURRENT_SHORTAGE_DESCRIPTION,
   currentShortageResource,
 } from "./current-shortage-contract.ts";
+import { currentShortageRankingResult } from "./current-shortage-ranking.ts";
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -20,7 +21,6 @@ const quantity = (value: unknown): boolean =>
   String(value).trim() !== "" &&
   Number.isFinite(Number(value));
 
-/** Failed or partially authorized queries never become a zero-valued business answer. */
 export function currentShortageResult(input: unknown, view: boolean | "locations", page: number) {
   const detail = view === true;
   const locations = view === "locations";
@@ -111,7 +111,6 @@ export function currentShortageResult(input: unknown, view: boolean | "locations
   };
 }
 
-/** Only trusted installed IDs are resolved; no arbitrary SQL or caller-selected identity is exposed. */
 export function registerCurrentShortageTool(
   ctx: Context,
   business: Business,
@@ -130,9 +129,9 @@ export function registerCurrentShortageTool(
           },
           view: {
             type: "string",
-            enum: ["summary", "locations", "detail"],
+            enum: ["summary", "locations", "detail", "sku-ranking"],
             description:
-              "默认summary为完整范围汇总；locations按当前缺货量降序返回完整地点排行；detail为地点+SKU分页。",
+              "默认summary为完整范围汇总；locations为地点排行；detail为地点+SKU分页；基地SKU缺货排行必须用sku-ranking，先跨基地合并同一SKU，再按缺口件数降序，每页10个。",
           },
           base: {
             type: "string",
@@ -194,7 +193,10 @@ export function registerCurrentShortageTool(
           try {
             const detail = args.view === "detail",
               locations = args.view === "locations",
+              skuRanking = args.view === "sku-ranking",
               page = args.page ?? 1;
+            if (skuRanking && id !== "inventory-aqkc")
+              throw Error("CURRENT_SHORTAGE_SKU_RANKING_BASE_ONLY");
             if (!Number.isSafeInteger(page) || page < 1 || page > 1000000)
               throw Error("CURRENT_SHORTAGE_PAGE_INVALID");
             const parameters = {
@@ -202,22 +204,26 @@ export function registerCurrentShortageTool(
               warehouse_code: args.warehouseCode ?? null,
               sku: args.sku ?? null,
               category: args.category ?? null,
-              ...(detail ? { page_size: 10, offset: (page - 1) * 10 } : {}),
+              ...(detail || skuRanking ? { page_size: 10, offset: (page - 1) * 10 } : {}),
               ...(locations && id !== "inventory-apsplan" ? { page_size: 50, offset: 0 } : {}),
             };
             const result = await readConfiguredHtmlQuery(
               resource,
               {
-                queryId: detail
-                  ? "current-shortage.detail"
-                  : locations
-                    ? "current-shortage.locations"
-                    : "current-shortage.summary",
+                queryId: skuRanking
+                  ? "current-shortage.sku-ranking"
+                  : detail
+                    ? "current-shortage.detail"
+                    : locations
+                      ? "current-shortage.locations"
+                      : "current-shortage.summary",
                 parameters,
               },
               business,
               signal,
               consumer,
+              false,
+              locations,
             );
             signal.throwIfAborted();
             await assertSessionResourceAvailable(ctx, session, signal);
@@ -229,7 +235,9 @@ export function registerCurrentShortageTool(
                 throw Error("GEA_INVENTORY_SOURCE_CHANGED");
             }
             return JSON.stringify(
-              currentShortageResult(result, locations ? "locations" : detail, page),
+              skuRanking
+                ? currentShortageRankingResult(result, page)
+                : currentShortageResult(result, locations ? "locations" : detail, page),
             );
           } finally {
             unwatch();

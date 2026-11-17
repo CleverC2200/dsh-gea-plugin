@@ -1,3 +1,5 @@
+import { httpAttempt, type AttemptInit } from "./http-attempt.ts";
+import type { GeaRequestCapture } from "./request-capture.ts";
 import type {
   ApiCatalogEntry,
   ApiLogRecord,
@@ -24,6 +26,9 @@ const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;
 
 const METADATA_ONLY = new Set([
+  "auth.password",
+  "auth.captcha",
+  "auth.logout",
   "memory.personal",
   "plans.resubmit",
   "service.submit",
@@ -75,6 +80,41 @@ const CATALOG: CatalogDefinition[] = [
       replayNote: METADATA_REPLAY_NOTE,
     },
     /^\/v1\/memory\/(?:state|settings|list|get|recall|generate|update|delete|clear|operations)$/,
+  ),
+  ...[
+    {
+      id: "auth.password",
+      name: "账号密码登录",
+      method: "POST",
+      path: "/sys/login",
+      pattern: /^\/sys\/login$/,
+    },
+    {
+      id: "auth.captcha",
+      name: "获取图形验证码",
+      method: "GET",
+      path: "/sys/randomImage/{key}",
+      pattern: /^\/sys\/randomImage\/[^/]+$/,
+    },
+    {
+      id: "auth.logout",
+      name: "退出登录",
+      method: "POST",
+      path: "/sys/logout",
+      pattern: /^\/sys\/logout$/,
+    },
+  ].map(({ pattern, ...entry }) =>
+    endpoint(
+      {
+        ...entry,
+        group: "登录与身份",
+        description: "仅保留认证请求状态，不保存凭据或正文。",
+        requestFields: [],
+        replayPolicy: "blocked",
+        replayNote: blocked,
+      },
+      pattern,
+    ),
   ),
   endpoint(
     {
@@ -508,6 +548,8 @@ function sanitizeUrl(raw: string): {
   query: Record<string, string>;
 } {
   const parsed = new URL(raw);
+  parsed.username = "";
+  parsed.password = "";
   const query: Record<string, string> = {};
   for (const [key, value] of parsed.searchParams) {
     const safeValue = SENSITIVE_KEY.test(key) ? "[已脱敏]" : sanitizeString(value);
@@ -548,7 +590,6 @@ async function responsePreview(response: Response): Promise<unknown> {
       if (done) break;
       size += value.byteLength;
       if (size > BODY_LIMIT) {
-        // clone() 使用 tee；等待这一支 cancel 会等原响应也结束，形成返回前死锁。
         void reader.cancel();
         return BODY_OMITTED;
       }
@@ -572,9 +613,17 @@ async function responsePreview(response: Response): Promise<unknown> {
   }
 }
 
-function auditMetadata(value: unknown): Record<string, string> {
+function auditMetadata(
+  value: unknown,
+  authentication = false,
+): Record<string, string | number | boolean> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const data = value as Record<string, unknown>;
+  if (authentication)
+    return {
+      ...(typeof data.success === "boolean" ? { success: data.success } : {}),
+      ...(typeof data.code === "number" && Number.isFinite(data.code) ? { code: data.code } : {}),
+    };
   const result =
     data.result && typeof data.result === "object" && !Array.isArray(data.result)
       ? (data.result as Record<string, unknown>)
@@ -641,10 +690,23 @@ export class GeaApiLogCenter {
       signal: AbortSignal | undefined,
     ) => (response: Response) => void,
     private readonly currentScope: () => string | undefined = () => undefined,
+    private readonly capture?: GeaRequestCapture,
   ) {}
 
   readonly fetch = (input: RequestInfo | URL, init?: RequestInit, purpose?: string) =>
     this.fetchRequest(input, init, undefined, undefined, purpose);
+
+  metadataFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return this.fetchRequest(
+      input,
+      init,
+      undefined,
+      undefined,
+      undefined,
+      { source: "daily" },
+      true,
+    );
+  }
 
   scopedFetch(context: ApiLogContext, onRecord?: (id: string) => void): typeof fetch {
     return (input, init) => this.fetchRequest(input, init, undefined, onRecord, undefined, context);
@@ -657,7 +719,9 @@ export class GeaApiLogCenter {
     onRecord?: (id: string) => void,
     purpose?: string,
     context: ApiLogContext = { source: "daily" },
+    forceMetadata = false,
   ): Promise<Response> {
+    const environment = this.environment();
     const ownerScope = this.currentScope();
     const acceptRequest = this.beforeRequest
       ? await this.beforeRequest(input, init, purpose)
@@ -676,10 +740,28 @@ export class GeaApiLogCenter {
         ? this.observeReplay?.(rawUrl, requestHeaders, init?.signal ?? undefined)
         : undefined;
     const requestBody = init?.body;
+    let operation: string | undefined;
+    if (this.capture && typeof requestBody === "string" && /\/mcp\//.test(rawUrl)) {
+      try {
+        const rpc = JSON.parse(requestBody);
+        if (rpc?.method === "tools/call" && typeof rpc.params?.name === "string")
+          operation = "tools/call:" + rpc.params.name;
+      } catch {}
+    }
+    const captured = this.capture?.begin(
+      rawUrl,
+      method,
+      requestHeaders,
+      purpose,
+      (init as AttemptInit | undefined)?.[httpAttempt],
+      operation,
+    );
     const safeUrl = sanitizeUrl(rawUrl);
     const catalog = CATALOG.find((entry) => entry.matches(method, safeUrl.path));
-    const metadataOnly = catalog && METADATA_ONLY.has(catalog.id);
-    const loggedUrl = metadataOnly ? { url: catalog.path, path: catalog.path, query: {} } : safeUrl;
+    const metadataOnly = forceMetadata || !!(catalog && METADATA_ONLY.has(catalog.id));
+    const loggedUrl = metadataOnly
+      ? { url: catalog?.path ?? safeUrl.path, path: catalog?.path ?? safeUrl.path, query: {} }
+      : safeUrl;
     const started = Date.now();
     const record: PrivateRecord = {
       ...context,
@@ -689,7 +771,7 @@ export class GeaApiLogCenter {
       catalogId: catalog?.id ?? null,
       catalogName: catalog?.name ?? "未登记接口",
       group: catalog?.group ?? "未登记",
-      environment: this.environment(),
+      environment,
       startedAt: new Date(started).toISOString(),
       outcome: "pending",
       replayPolicy: catalog?.replayPolicy ?? "blocked",
@@ -697,6 +779,7 @@ export class GeaApiLogCenter {
       ...(replayedFrom ? { replayedFrom } : {}),
       request: {
         method,
+        origin: new URL(rawUrl).origin,
         ...loggedUrl,
         headers: metadataOnly ? auditHeaders(requestHeaders) : sanitizeHeaders(requestHeaders),
         body: metadataOnly
@@ -742,26 +825,49 @@ export class GeaApiLogCenter {
     acceptRequest?.();
     this.prepend(record);
     onRecord?.(record.id);
+    if (captured) captured.row.apiLogId = record.id;
     try {
-      // 未注入实现时在调用时读取全局 fetch，保留测试、代理和运行时替换能力。
-      const response = await (this.fetchImpl ?? globalThis.fetch)(input, init);
+      const originalResponse = await (this.fetchImpl ?? globalThis.fetch)(
+        input,
+        captured ? { ...init, headers: requestHeaders } : init,
+      );
+      const response = captured
+        ? (this.capture?.response(
+            originalResponse,
+            captured,
+            init?.signal ?? (input instanceof Request ? input.signal : undefined),
+          ) ?? originalResponse)
+        : originalResponse;
       record.response = {
         status: response.status,
         statusText: response.statusText,
         headers: metadataOnly ? auditHeaders(response.headers) : sanitizeHeaders(response.headers),
         body: metadataOnly
-          ? auditMetadata(await responsePreview(response))
+          ? auditMetadata(await responsePreview(response), catalog?.group === "登录与身份")
           : catalog?.id === "model.chat"
             ? response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")
               ? STREAM_OMITTED
               : "[模型响应正文未保存]"
             : await responsePreview(response),
       };
+      const preview = record.response.body;
+      if (captured && preview && typeof preview === "object") {
+        const body = preview as Record<string, unknown>;
+        const code = body.errorCode ?? (body.success === false ? body.code : undefined);
+        if (
+          (typeof code === "string" || typeof code === "number") &&
+          /^[A-Za-z0-9._:-]{1,100}$/.test(String(code))
+        ) {
+          captured.row.errorCode = String(code);
+          this.capture?.update(captured);
+        }
+      }
       record.outcome = response.ok ? "success" : "error";
       this.finish(record, started);
       observeResponse?.(response);
       return response;
     } catch (error) {
+      this.capture?.fail(captured, error, init?.signal);
       record.outcome = "error";
       record.error = {
         name: error instanceof Error ? error.name : "Error",
@@ -770,8 +876,7 @@ export class GeaApiLogCenter {
           : sanitizeString(error instanceof Error ? error.message : String(error)),
       };
       this.finish(record, started);
-      // 线上实测：这类失败原样抛出去，界面只有 `fetch failed` + UNKNOWN（真实原因在 cause 里）。
-      // 统一翻成可读、带 code 的错误，并把"在连哪个接口"写进去。
+
       throw new CapturedRequestError(
         record.id,
         networkError(error, {
@@ -782,7 +887,6 @@ export class GeaApiLogCenter {
     }
   }
 
-  // 私有第三个参数只由重发闭包使用；保持公开调用仍兼容 typeof fetch。
   private async fetchWithSource(
     input: RequestInfo | URL,
     init: RequestInit | undefined,

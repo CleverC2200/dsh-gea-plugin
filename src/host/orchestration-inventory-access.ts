@@ -3,7 +3,6 @@ import type { Business } from "./business.ts";
 import { resolveCubeAccess } from "./cube-access.ts";
 import { WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 
-/** Installed orchestration sources may reuse fixed inventory definitions, keeping their own Consumer. */
 export function orchestrationInventoryAccess(ctx: Context, business: Business, sessionId: string) {
   const agent = ctx.agents.get(sessionId as Parameters<typeof ctx.agents.get>[0]);
   if (!agent || ctx.sessionProjections.stateOf(agent.session, "agentPreset") !== "auto-negotiation")

@@ -39,7 +39,7 @@ test(
     assert.equal(JSON.parse(maintained["capability.json"]).data.consumerCode, "base-safety-stock");
     const oldSkill =
       "---\nname: inventory-aqkc\ndescription: 安全库存\n---\n先调用 inventory_aqkc_page，name=context；必须保持页面打开。\n";
-    // Preserve the original input separately; no current resource registers this historical Skill.
+
     await writeFile(join(root, "history", "skills", "aqkc", "SKILL.md"), oldSkill);
     await writeFile(join(root, "index.html"), "<!doctype html><body>安全库存</body>");
     await writeFile(
@@ -201,11 +201,10 @@ test(
       );
       return true;
     });
-    // Discovery needs an actual eligible Core Session; login does not grant one.
+
     await createBusinessSession(app);
     await app.login();
     if (process.env.GEA_TEST_SOURCE_CORE === "1") {
-      // The combined profile also connects Agent Manage's default MCP bridge at login.
       await until(
         () => catalogConsumers,
         (values) => values.length > 0,
@@ -352,7 +351,7 @@ test(
     loadSkill = true;
     const loaded = await ask("gea-html-inventory-aqkc");
     const skillReply = JSON.stringify(loaded.messages.filter((x) => x.role === "tool"));
-    // Consumer identity is verified by the stock gateway receipt above, not invented in Skill prose.
+
     assert.equal(catalogConsumers.length, handshakesBeforeSkill);
     assert.deepEqual(inspections, ["base-safety-stock", "sales_forecast"]);
     assert.match(skillReply, /action=context/);

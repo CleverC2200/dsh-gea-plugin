@@ -72,7 +72,7 @@ test(
       };
     });
     assert.equal(layout.columns.length, 3, JSON.stringify(layout));
-    // 公共 main 面板保留 Core 默认导航栏，不隐藏宿主框架。
+
     assert.deepEqual(
       await page
         .locator('[class*="sidebarCol"], [data-rightbar-col]')

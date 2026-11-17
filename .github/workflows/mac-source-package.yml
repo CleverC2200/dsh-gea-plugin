@@ -1,0 +1,152 @@
+name: Signed macOS source package
+
+on:
+  workflow_dispatch:
+    inputs:
+      desktop_input:
+        description: "Existing annotated desktop tag input; product source, company suite and personal memory stay frozen"
+        required: false
+        default: ""
+        type: string
+      signing_check_only:
+        description: "Validate the retained signing identity without building or submitting an App"
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      desktop_input:
+        required: true
+        type: string
+      signing_check_only:
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  mac-source-package:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    environment: macos-release
+    timeout-minutes: 120
+    env:
+      DESKTOP_INPUT_JSON: ${{ inputs.desktop_input }}
+      DSH_DESKTOP_TARGET_PLATFORM: darwin
+      DSH_DESKTOP_TARGET_ARCH: arm64
+      DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
+      DSH_DESKTOP_UNSIGNED: "0"
+      DSH_DESKTOP_BUILD_DIRTY: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - name: Read immutable checkout identities
+        id: input
+        env:
+          SIGNING_CHECK_ONLY: ${{ inputs.signing_check_only }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const { ciCores } = await import('./tools/scripts/ci-core-policy.mjs');
+          const input = process.env.SIGNING_CHECK_ONLY === 'true'
+            ? { geaSourceSha: process.env.GITHUB_SHA, seed: { core: ciCores('required')[0] } }
+            : JSON.parse(process.env.DESKTOP_INPUT_JSON);
+          for (const [name, value] of [['gea', input.geaSourceSha], ['core', input.seed?.core?.head]]) {
+            if (!/^[a-f0-9]{40}$/.test(value ?? '')) throw Error('DESKTOP_SOURCE_INVALID');
+            appendFileSync(process.env.GITHUB_OUTPUT, name + '=' + value + '\n');
+          }
+          const path = join(process.env.RUNNER_TEMP, 'desktop-input.json');
+          writeFileSync(path, process.env.DESKTOP_INPUT_JSON);
+          appendFileSync(process.env.GITHUB_ENV, 'DESKTOP_INPUT_PATH=' + path + '\n');
+          NODE
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.input.outputs.gea }}
+          path: gea
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.input.outputs.core }}
+          path: core
+          persist-credentials: false
+      - name: Validate the reserved product input
+        if: ${{ !inputs.signing_check_only }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/input-dependencies" --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0
+          mkdir gea/node_modules
+          ln -s "$RUNNER_TEMP/input-dependencies/node_modules/semver" gea/node_modules/semver
+          mkdir tools/node_modules
+          ln -s "$RUNNER_TEMP/input-dependencies/node_modules/semver" tools/node_modules/semver
+          ln -s "$RUNNER_TEMP/input-dependencies/node_modules/yaml" tools/node_modules/yaml
+          ln -s "$RUNNER_TEMP/input-dependencies/node_modules/yaml" gea/node_modules/yaml
+          node tools/scripts/mac-complete-local/full-source.mjs core gea "$DESKTOP_INPUT_PATH" --plan
+      - name: Prepare declared Core dependencies
+        working-directory: core
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile --prefer-offline
+      - name: Prepare private signing configuration
+        env:
+          GEA_MACOS_SIGNING_ENV: ${{ secrets.GEA_MACOS_SIGNING_ENV }}
+          GEA_MACOS_SIGNING_P12_BASE64: ${{ secrets.GEA_MACOS_SIGNING_P12_BASE64 }}
+          GEA_MACOS_NOTARY_KEY_BASE64: ${{ secrets.GEA_MACOS_NOTARY_KEY_BASE64 }}
+        run: |
+          node tools/scripts/mac-complete-local/ci-signing.mjs prepare
+          echo "GEA_MAC_SIGNING_CONFIG_DIR=$RUNNER_TEMP/gea-macos-signing" >> "$GITHUB_ENV"
+      - name: Verify notarization credentials
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { parseEnv } from 'node:util';
+          import { execFileSync } from 'node:child_process';
+          const directory = process.env.GEA_MAC_SIGNING_CONFIG_DIR;
+          const config = parseEnv(readFileSync(join(directory, '.env.macos'), 'utf8'));
+          execFileSync('/usr/bin/xcrun', ['notarytool', 'history', '--key', join(directory, config.APPLE_API_KEY),
+            '--key-id', config.APPLE_API_KEY_ID, '--issuer', config.APPLE_API_ISSUER, '--output-format', 'json'],
+            { stdio: 'ignore', timeout: 60000 });
+          console.log('Apple notarization credentials verified');
+          NODE
+      - name: Verify the retained signing identity
+        if: inputs.signing_check_only
+        run: node tools/scripts/mac-complete-local/signing.mjs core --check
+      - name: Build sign notarize and verify the complete macOS client
+        if: ${{ !inputs.signing_check_only }}
+        run: node tools/scripts/mac-complete-local/signing.mjs core gea "$DESKTOP_INPUT_PATH"
+      - name: Remove private signing configuration
+        if: always()
+        run: node tools/scripts/mac-complete-local/ci-signing.mjs cleanup
+      - name: Keep verified installers and updater files
+        if: success() && !inputs.signing_check_only
+        uses: actions/upload-artifact@v4
+        with:
+          name: Synear-GEA-mac-arm64-signed-${{ github.run_id }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/gea-mac-source/*.dmg
+            ${{ runner.temp }}/gea-mac-source/*.zip
+            ${{ runner.temp }}/gea-mac-source/*.blockmap
+            ${{ runner.temp }}/gea-mac-source/*.yml
+            ${{ runner.temp }}/gea-mac-source/result.json
+            ${{ runner.temp }}/gea-mac-source/release-plan.json
+      - name: Keep build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Synear-GEA-mac-arm64-diagnostics-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/gea-mac-source/*.json
+            ${{ runner.temp }}/gea-mac-source/*.log

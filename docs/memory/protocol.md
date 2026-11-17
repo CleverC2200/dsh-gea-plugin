@@ -30,7 +30,7 @@ generate 和 recall 只暴露为 Host-only geaMemory 方法；浏览器不能提
 
 服务端模型配置仅从 MEMORY_MODEL_URL、MEMORY_MODEL_KEY、MEMORY_MODEL_NAME 读取，不下发客户端。提取只产出 background/preference/habit 的最多五个短条目，要求原文证据；引用、假设、凭据和不稳定任务排除。无候选不写 document。topic_key 是稳定主题元数据，用于更新未手编条目。手编条目作为只读约束，再做独立保护判断，只有明确与全部手编事实无矛盾的候选允许保存；新 ID 不能绕过，同类无关新事实仍可保存。unknown/processing 的手编请求阻止新自动准入。
 
-只有模型连接建立时的 URLError(ConnectionRefusedError) 会在当前模型调用内重试一次，每次沿用原请求超时。HTTP 响应失败、已接收请求后断连、身份及 Hindsight 请求都不进入该重试；整个生成操作和已提交写入不重放。再次被拒绝时保留原失败回执，未来新回合可重新准入。
+只有模型连接建立时的 URLError(ConnectionRefusedError) 会在当前模型调用内重试，最多尝试三次，重连前分别等待 250、500 毫秒，每次沿用原请求超时。HTTP 响应失败、已接收请求后断连、身份及 Hindsight 请求都不进入该重试；整个生成操作和已提交写入不重放。持续被拒绝时保留原失败回执，未来新回合可重新准入。生成失败的服务端日志仅记录操作编号、阶段、错误类型、HTTP 状态、耗时与是否提交，不记录正文、身份或凭据。
 
 每个自动 operation 保存请求 SHA256，禁止保存原始输入和记忆正文。pending_retains 在后端提交前持久化 document、bank代次、稳定后端 UUID 与条目元数据；正文仅在 Hindsight。异步 ACK 后查询 operation completed 才登记可召回条目。明确失败返回 failed，提交后状态不明返回 unknown，重复请求和重启回读不重发 retain。关闭生成会隔离未确认候选，保留此前确认的当前版本；清理完成才确认关闭。API 日志仅保留调用审计元数据，禁止保存输入、记忆或编辑正文与重放请求。
 update 在 scope 锁内比对条目 version、scope revision 与 bankGeneration，先提高 revision，再以稳定后端 operation ID 写入独立候选物理 document。pending_edits 只保存候选与原当前物理 ID、分类、标题、版本、来源、时间、控制版本和后端操作 ID，operations.request 保存请求指纹，不保存编辑正文。后端回执未知或 not_found 保持 unknown；operations 只核查，不重发 retain。显式 update 重试必须匹配原请求指纹，重新核当前版本、物理指针、代次、清理归属及原操作未终止，才以原后端 UUID 和原物理候选幂等重发客户端提供的正文。processing 只查询；完成、失败、被控制操作放弃或已进入清理的请求不能重发。提交在途登记阻止清理提前删除该后端操作，关闭、删除、清空先把候选标为放弃，再等待既有 IO 结束。只有 completed 且控制版本仍有效时才切换当前指针、增加条目版本并设置人工编辑标记；旧物理版本在同一事务进入持久清理。失败或被放弃的候选保留原当前版本的内容、版本、来源和人工标记。未知编辑期间仍可读取和召回已确认的原当前版本，新自动生成和其他人工编辑保持阻断。失败和冲突保留 UI 草稿，清理后可用新操作 ID 重试。

@@ -53,7 +53,14 @@ test("order and customer pages register their complete Agent profiles without wi
     );
     assert.deepEqual(definition.profile.skills, profile.skills);
     assert.deepEqual(profile.skills, capability.skills);
-    assert.equal(profile.skills.length, item.manifest.id === "inventory-customer" ? 6 : 12);
+    assert.equal(
+      profile.skills.length,
+      item.manifest.id === "inventory-customer"
+        ? 6
+        : item.manifest.id === "inventory-orderworkbench"
+          ? 13
+          : 12,
+    );
     if (item.manifest.id !== "inventory-customer")
       assert.ok(definition.profile.skills.includes("operations-order-kpi-details"));
     assert.equal(definition.presetName, item.manifest.name + "Agent");

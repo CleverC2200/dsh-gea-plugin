@@ -1,4 +1,3 @@
-/** Only these diagnostic headers may enter model-visible knowledge results. */
 export type GatewayTrace = Partial<Record<"requestId" | "traceId" | "auditId", string>>;
 
 export function readMcpTrace(headers: Headers): GatewayTrace {

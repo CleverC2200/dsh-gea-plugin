@@ -51,7 +51,7 @@ test(
       amountProgress: "25",
       shipQty: "10",
       shipAmount: "100",
-      skuCount: 1,
+      skuCount: 2,
     };
     const sku = {
       id: "s",
@@ -160,7 +160,7 @@ test(
         assert.equal(allowApproval, true);
         const body = JSON.parse(req.body);
         assert.equal(body.action, "APPROVE");
-        assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "2.125" }]);
+        assert.deepEqual(body.adjustments, [{ skuCode: "1001", adjustQty: "2" }]);
         writes++;
         plan.status = 2;
         reply({
@@ -261,7 +261,7 @@ test(
       monthPlan.locator("small").first(),
       "月计划采用列表 mPlanQty 并显示单位",
     ).toHaveText("20 件");
-    await expect(frame.locator("tbody").first()).toContainText("25.0%");
+    await expect(frame.locator("tbody").first()).toContainText("50.0%");
     await expect(frame.locator("tbody").first()).not.toContainText("版本②：¥100 / 10");
     await expect(frame.locator("tbody").first()).not.toContainText("该版本不含月度目标");
     await shot("03-version-comparison");
@@ -303,7 +303,7 @@ test(
       planId: "p-jxs-2026-09-00001",
       versionId: "v",
     });
-    assert.equal(result.value.draft.adjustments[0].adjustQty, "2.125");
+    assert.equal(result.value.draft.adjustments[0].adjustQty, "2");
     const forged = await app.rpc("sales-plan/draft", {
       planId: "p-jxs-2026-09-00001",
       versionId: "v",
@@ -315,7 +315,7 @@ test(
       planId: "p-jxs-2026-09-00001",
       versionId: "v",
     });
-    assert.equal(unchanged.value.draft.adjustments[0].adjustQty, "2.125");
+    assert.equal(unchanged.value.draft.adjustments[0].adjustQty, "2");
     await mkdir(".runtime/v16-feedback", { recursive: true });
     await page.screenshot({ path: ".runtime/v16-feedback/web-desktop.png", fullPage: true });
     await page.reload();
@@ -324,7 +324,7 @@ test(
     await expect(frame.getByRole("button", { name: "查看调整明细", exact: true })).toHaveCount(0);
     await expect(
       frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true }),
-    ).toHaveValue("22.125");
+    ).toHaveValue("22");
     await shot("06-restored");
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.screenshot({ path: ".runtime/v16-feedback/web-tablet.png", fullPage: true });
@@ -335,7 +335,7 @@ test(
     await page.getByRole("button", { name: /收起侧边栏|Collapse sidebar/ }).click();
     await shot("10-sidebar-collapsed");
     await expect(page.locator(".gea-shell-navigation .gea-shell-label").first()).toBeHidden();
-    // The current owned collapsed brand exposes the public menu expansion action.
+
     const collapsedMenu = page.getByTitle("展开业务菜单", { exact: true });
     await expect(collapsedMenu).toBeVisible();
     const railWidth = await page

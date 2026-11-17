@@ -1,4 +1,3 @@
-/** The registered authoritative task-ticket rule, shared by target and prerequisite observations. */
 const statuses = new Set(["ready-for-agent", "in-progress", "blocked", "done"]);
 export function observeTaskTicket(input, taskId) {
   const text = input?.bytes?.toString("utf8") ?? "";

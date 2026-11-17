@@ -1,4 +1,5 @@
 import test from "node:test";
+import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -33,6 +34,11 @@ test("the received packages preserve governed login and their declared report or
     },
   };
   const business = {
+    capture: new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => "https://fixture.invalid",
+    ),
     status: () => ({ authenticated: false }),
     pageSessionScope: () => undefined,
     setSurface(id, value) {

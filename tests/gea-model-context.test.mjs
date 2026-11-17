@@ -1,4 +1,5 @@
 import test from "node:test";
+import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
@@ -20,6 +21,21 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   mod.exports,
 );
 const { GeaModelAdapter } = mod.exports;
+
+test("GEA model recovery uses a bounded Core policy without retrying protocol or permanent failures", () => {
+  const policy = new GeaModelAdapter({}).providerRetryPolicy("gea-analysis");
+  assert.equal(policy.mode, "normal");
+  assert.equal(policy.maxRetries, 2);
+  for (const code of ["SERVER", "TIMEOUT", "TRANSPORT", "RATE_LIMIT"])
+    assert.ok(policy.retryableCodes.includes(code));
+  for (const code of [
+    "GEA_MODEL_GATEWAY_ERROR",
+    "GEA_MODEL_HTTP_403",
+    "GEA_MODEL_INVALID_TOOL_CALL",
+    "PROVIDER_PROTOCOL",
+  ])
+    assert.ok(!policy.retryableCodes.includes(code));
+});
 
 test("actual LlmRuntime receives route capacity and leaves unknown model capacity unknown", async (t) => {
   const ctx = new Context();
@@ -48,7 +64,15 @@ test("the default catalog, model metadata and inference use workbench while scop
   const transported = [];
   const identity = new AbortController();
   const business = {
-    config: { analysisAgentCode: "sales_forecast", modelRequestTimeoutMs: 1000 },
+    capture: new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => "https://fixture.invalid",
+    ),
+    config: {
+      analysisAgentCode: "sales_forecast",
+      modelRequestTimeoutMs: 1000,
+    },
     identitySignal: () => identity.signal,
     assertExecutionAllowed: (consumer) => authorized.push(consumer),
     modelRoute: async (_signal, consumer) => {
@@ -62,7 +86,7 @@ test("the default catalog, model metadata and inference use workbench while scop
       };
     },
     fetchExternal: async (_url, init) => {
-      transported.push(init.headers["X-GEA-Agent-Code"]);
+      transported.push(new Headers(init.headers).get("X-GEA-Agent-Code"));
       return new Response(
         'data: {"choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
         { headers: { "Content-Type": "text/event-stream" } },

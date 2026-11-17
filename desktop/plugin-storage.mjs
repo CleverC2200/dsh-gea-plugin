@@ -1,4 +1,3 @@
-/** Reclaim only owned, unreferenced automatic graphs after a verified boot. */
 import { lstat, readFile, readdir, mkdir, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -37,7 +36,7 @@ export async function collectPluginStorage(
         const state = await store.status();
         if (state.booting || state.error || state.active !== state.verified)
           return { skipped: "boot-not-verified" };
-        // Validate the active receipt before considering any other graph for removal.
+
         await store.selected();
         const update = await optional(join(store.root, "update-state.json"));
         if (["downloading", "installing", "restarting"].includes(update?.phase))
@@ -167,7 +166,7 @@ export async function collectPluginStorage(
         } catch {
           coreInventoryValid = false;
         }
-        // Retry only quarantines created by this collector; never sweep unknown folders.
+
         for (const entry of dryRun ? [] : await readdir(trash, { withFileTypes: true })) {
           if (!trashName.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink())
             continue;
@@ -217,7 +216,7 @@ export async function collectPluginStorage(
       candidates: plan.candidates.map((item) => item.id),
       retained: plan.retained,
     };
-  // The writer lock is released before slow recursive removal. Updates may continue.
+
   const removed = [],
     coresRemoved = [],
     failed = [];
@@ -233,7 +232,6 @@ export async function collectPluginStorage(
   return { removed, coresRemoved, failed, retained: plan.retained };
 }
 
-/** New graphs need only archives referenced by their final manifest/workspace/lock. */
 export async function pruneUnreferencedArchives(graph) {
   let declarations = "";
   for (const name of ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml"]) {
@@ -254,7 +252,6 @@ export async function pruneUnreferencedArchives(graph) {
   await directory(root);
   const removed = [];
   for (const entry of entries) {
-    // Only content-addressed plugin downloads, never named core archives or user files.
     if (
       entry.isFile() &&
       /^[a-f0-9]{64}\.tgz$/.test(entry.name) &&

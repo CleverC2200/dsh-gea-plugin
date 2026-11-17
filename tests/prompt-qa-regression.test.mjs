@@ -19,7 +19,7 @@ const out = new URL("../.runtime/prompt-qa-regression/", import.meta.url);
 await mkdir(out, { recursive: true });
 const findings = [];
 const observations = [];
-// Original native schema capture before business display compression, excluding descriptions only.
+
 const nativeConstraints = JSON.parse(
   await readFile(
     new URL("./fixtures/native-business-tool-constraints.json", import.meta.url),
@@ -89,7 +89,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     t,
     {
       config: (base) => ({
-        geaEnvironments: { production: base, test: base },
+        geaEnvironments: { production: base + "/production", test: base + "/test" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",

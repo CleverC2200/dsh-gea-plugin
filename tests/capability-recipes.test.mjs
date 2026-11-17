@@ -1,7 +1,3 @@
-// 只读配方：常见问题不再靠模型现拼 SQL。
-//
-// 线上现象：模型有 describe、也知道表名，但自己拼的 SQL 在与网关受控契约对齐时
-// 不稳，一轮连试二十多次后整轮空答。配方把"这类问题怎么查"收回契约。
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -26,7 +22,7 @@ test("库存类模块都有配方，且配方是参数化的只读语句", () =>
   for (const recipe of recipes) {
     assert.match(recipe.id, /^[a-z][a-z0-9-]+$/);
     assert.ok(recipe.title.length > 0);
-    // 只读、参数化、不写分页（分页由宿主统一加）。
+
     assert.match(recipe.sql, /^SELECT|^WITH/, `配方必须是只读查询: ${recipe.id}`);
     assert.ok(!/;\s*\S/.test(recipe.sql), "配方不能是多条语句");
     assert.equal(/\bLIMIT\b|\bOFFSET\b/i.test(recipe.sql), false, "配方不写分页");

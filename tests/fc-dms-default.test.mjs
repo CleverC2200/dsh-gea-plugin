@@ -8,6 +8,7 @@ import { build } from "esbuild";
 import { DmsClient } from "../src/host/dms-orders.ts";
 import {
   resolveFcDmsDeployment,
+  dmsSigningSecret,
   FC_DMS_TEST_GATEWAY,
   FC_DMS_PRODUCTION_GATEWAY,
 } from "../src/host/fc-dms-default.ts";
@@ -32,6 +33,7 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
 const { Business, createCapabilityRegistry } = module.exports;
 function fixture(t, dms) {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://formal-gea.fixture",
     requestTimeoutMs: 1000,
     ...(dms ? { dms } : {}),
@@ -87,7 +89,7 @@ test("production uses the current verified GEA employee for every login", async 
     requests = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
     if (String(url).endsWith("/sys/user/getUserInfo")) {
-      assert.equal(init.headers["X-Tenant-Id"], "0");
+      assert.equal(new Headers(init.headers).get("X-Tenant-Id"), "0");
       return profile(business.auth.id);
     }
     requests.push({
@@ -129,11 +131,10 @@ test("legacy test deployments and static user mappings cannot select the product
     secretEnv: "GEA_DMS_TEST_SECRET",
     users: [{ tenantId: "0", userId: "current", username: "fixed-test" }],
   };
-  const config = resolveFcDmsDeployment({ production: old }, "production", identity);
-  assert.equal(config.gatewayUrl, FC_DMS_PRODUCTION_GATEWAY);
-  assert.equal(config.secretEnv, "GEA_DMS_PRODUCTION_SECRET");
-  assert.equal(config.credentialSource, undefined);
-  assert.deepEqual(config.users, [{ tenantId: "0", userId: "current", workcode: "current-work" }]);
+  assert.throws(
+    () => resolveFcDmsDeployment({ production: old }, "production", identity),
+    /DMS_ENVIRONMENT_TARGET_MISMATCH/,
+  );
   const custom = resolveFcDmsDeployment(
     {
       production: {
@@ -145,27 +146,63 @@ test("legacy test deployments and static user mappings cannot select the product
     "production",
     identity,
   );
-  assert.deepEqual(custom.users, config.users);
+  assert.deepEqual(custom.users, [{ tenantId: "0", userId: "current", workcode: "current-work" }]);
   assert.equal(custom.secretEnv, "PROD_KEY");
 });
-test("missing production signing secret never falls back to bundled sandbox credentials", async (t) => {
+test("default production signs without machine configuration and environment can override it", async (t) => {
   const previous = process.env.GEA_DMS_PRODUCTION_SECRET;
   delete process.env.GEA_DMS_PRODUCTION_SECRET;
   t.after(() => {
-    if (previous !== undefined) process.env.GEA_DMS_PRODUCTION_SECRET = previous;
+    if (previous === undefined) delete process.env.GEA_DMS_PRODUCTION_SECRET;
+    else process.env.GEA_DMS_PRODUCTION_SECRET = previous;
   });
   const config = resolveFcDmsDeployment(undefined, "production", {
     tenantId: "0",
     id: "current",
     username: "account",
   });
-  let calls = 0;
-  const client = new DmsClient(config, config.users[0], async () => {
-    calls++;
-    throw Error("unexpected");
+  assert.equal(config.credentialSource, "fc-bundled-dms-production");
+  assert.ok(dmsSigningSecret(config).length > 32);
+  const client = new DmsClient(config, config.users[0], async (_url, init) => {
+    const body = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
+    assert.equal(body.username, "account");
+    assert.match(body.sign, /^[a-f0-9]{32}$/);
+    return Response.json({
+      success: true,
+      code: 200,
+      result: {
+        access_token: "fixture",
+        redirect: "https://dms.fixture/user/loginSSO?token=fixture",
+      },
+    });
   });
-  await assert.rejects(client.login(new AbortController().signal), /密钥未配置/);
-  assert.equal(calls, 0);
+  await client.login(new AbortController().signal);
+  process.env.GEA_DMS_PRODUCTION_SECRET = "override-fixture";
+  assert.ok(dmsSigningSecret(config) === "override-fixture");
+});
+test("bundled production credential cannot reach another gateway or the test environment", () => {
+  const identity = { tenantId: "0", id: "current", username: "account" };
+  const config = resolveFcDmsDeployment(undefined, "production", identity);
+  assert.throws(
+    () => dmsSigningSecret({ ...config, gatewayUrl: "https://other.fixture" }),
+    /固定正式网关/,
+  );
+  assert.throws(
+    () => resolveFcDmsDeployment({ test: config }, "test", identity),
+    /DMS_ENVIRONMENT_TARGET_MISMATCH/,
+  );
+  const custom = resolveFcDmsDeployment(
+    {
+      production: {
+        gatewayUrl: "https://custom.fixture",
+        secretEnv: "DMS_MISSING_CUSTOM_FIXTURE",
+        users: [],
+      },
+    },
+    "production",
+    identity,
+  );
+  assert.throws(() => new DmsClient(custom, custom.users[0]).assertConfigured(), /密钥未配置/);
 });
 test("mismatched profile or changed login blocks DMS before sending", async (t) => {
   secret(t);
@@ -253,6 +290,22 @@ test("production submission preserves the current form and uses current user; id
       result: { aiPreOrderCode: order.aiPreOrderCode, orderCode: "fixture-order" },
     });
   });
+  t.mock.method(business, "pluginSql", async ({ parameters }) => {
+    assert.equal(parameters.gea_p1, "selected-warehouse");
+    return {
+      rows: [
+        {
+          warehouse_code: "selected-warehouse",
+          warehouse_name: "Selected warehouse",
+          customer_code: "entered-customer",
+          address_code: "entered-address",
+          pup_code: "07",
+          address_name: "Selected address",
+        },
+      ],
+      rejectedColumns: [],
+    };
+  });
   const payload = {
     operation: "submit",
     warehouseCode: "selected-warehouse",
@@ -269,4 +322,34 @@ test("production submission preserves the current form and uses current user; id
   assert.equal(first.orderCode, "fixture-order");
   assert.equal(again.orderCode, first.orderCode);
   assert.equal(orders.length, 1);
+});
+
+test("direct DMS submission cannot send an order outside governed warehouse routing", async (t) => {
+  secret(t);
+  const business = fixture(t);
+  let dmsRequests = 0;
+  t.mock.method(business, "pluginSql", async () => ({ rows: [], rejectedColumns: [] }));
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (String(url).endsWith("/sys/user/getUserInfo")) return profile("user-a");
+    dmsRequests++;
+    throw Error("unexpected DMS transport");
+  });
+  await assert.rejects(
+    business.branchDms(
+      {
+        operation: "submit",
+        warehouseCode: "hidden-warehouse",
+        order: {
+          aiPreOrderCode: "AI1",
+          customerCode: "C1",
+          addressCode: "A1",
+          pupCode: "01",
+          itemList: [{ productCode: "SKU1", quantity: 1 }],
+        },
+      },
+      new AbortController().signal,
+    ),
+    /收货信息/,
+  );
+  assert.equal(dmsRequests, 0);
 });

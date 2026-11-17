@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  yearMonthHint,
-  yearMonthValues,
-} from "../src/host/cube-query-guard.ts";
+import { yearMonthHint, yearMonthValues } from "../src/host/cube-query-guard.ts";
 
 test("filters 里的年月值会被拦下（含 or/and 嵌套）", () => {
   const hits = yearMonthValues([
@@ -12,10 +9,18 @@ test("filters 里的年月值会被拦下（含 or/and 嵌套）", () => {
       query: {
         dimensions: ["agents_scm_safety_stock.base_name"],
         filters: [
-          { member: "agents_scm_safety_stock.target_month", operator: "equals", values: ["2026-10"] },
+          {
+            member: "agents_scm_safety_stock.target_month",
+            operator: "equals",
+            values: ["2026-10"],
+          },
           {
             or: [
-              { member: "agents_scm_safety_stock.target_month", operator: "equals", values: ["2026-11", "2026-11-01"] },
+              {
+                member: "agents_scm_safety_stock.target_month",
+                operator: "equals",
+                values: ["2026-11", "2026-11-01"],
+              },
             ],
           },
         ],
@@ -59,9 +64,6 @@ test("提示里给出两种正确写法，并说明本次没有发出", () => {
   assert.match(hint, /本次调用没有发出/);
 });
 
-// 关键回归（2026-10-19）：agents_sales_plan_detail_mi.plane_date 声明类型是 string、
-// 真实值就是 2026-01…2026-08 这种文本年月，拿 2026-10 过滤它完全合法。
-// 只有确认是时间成员才拦；类型拿不到时也不拦（误拦会把人推向 0 行的写法）。
 test("只有时间成员才拦；文本年月列与未知类型都不拦", () => {
   const queries = [
     {
@@ -85,7 +87,11 @@ test("只有时间成员才拦；文本年月列与未知类型都不拦", () =>
         {
           query: {
             filters: [
-              { member: "agents_sales_plan_detail_mi.load_time", operator: "equals", values: ["2026-10"] },
+              {
+                member: "agents_sales_plan_detail_mi.load_time",
+                operator: "equals",
+                values: ["2026-10"],
+              },
             ],
           },
         },

@@ -29,6 +29,7 @@ class IdentityObservationError extends Error {
 
 export type IdentitySnapshot = Readonly<{
   state: "unknown" | "confirmed" | "error";
+  pagesReady?: boolean;
   scope: string | null;
   subject: string | null;
   status: IdentityStatus | null;
@@ -55,10 +56,10 @@ export interface BusinessIdentityProjection {
   readScope(signal?: AbortSignal): Promise<string | null>;
 }
 
-/** Read the Host-owned authority; clients never derive a scope from user labels. */
 async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
   scope: string | null;
   subject: string | null;
+  pagesReady?: boolean;
   status: IdentityStatus | null;
   customerInventory: CustomerInventoryIdentity | null;
 }> {
@@ -140,6 +141,7 @@ async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
             typeof user.tenantId !== "string") ||
           ("username" in user && typeof user.username !== "string"))) ||
       ("subject" in value && value.subject !== null && typeof value.subject !== "string") ||
+      ("pagesReady" in value && typeof value.pagesReady !== "boolean") ||
       ("environments" in status &&
         (!Array.isArray(status.environments) ||
           !status.environments.every((item: unknown) => typeof item === "string")))
@@ -151,6 +153,9 @@ async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
       );
     return {
       scope: value.scope,
+      ...("pagesReady" in value && typeof value.pagesReady === "boolean"
+        ? { pagesReady: value.pagesReady }
+        : {}),
       subject: "subject" in value && typeof value.subject === "string" ? value.subject : null,
       status: {
         environment: status.environment === "test" ? "test" : "production",
@@ -188,7 +193,6 @@ async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
   }
 }
 
-/** One read-only projection per GEA client. The Host remains the authority. */
 export function createBusinessIdentityReader() {
   let snapshot: IdentitySnapshot = {
     state: "unknown",
@@ -248,6 +252,7 @@ export function createBusinessIdentityReader() {
       if (
         previous.state !== "confirmed" ||
         previous.error ||
+        previous.pagesReady !== next.pagesReady ||
         previous.scope !== next.scope ||
         previous.subject !== next.subject ||
         previous.status?.authenticated !== next.status?.authenticated ||
@@ -333,9 +338,7 @@ export function createBusinessIdentityReader() {
     const poll = async () => {
       try {
         await reader(controller.signal);
-      } catch {
-        /* Keep the last Host confirmation. */
-      }
+      } catch {}
       if (!controller.signal.aborted) timer = setTimeout(poll, 1000);
     };
     void poll();

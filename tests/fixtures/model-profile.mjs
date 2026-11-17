@@ -1,7 +1,6 @@
 import { profile } from "../profile.mjs";
 import { fixtureEnvironment } from "./business-session.mjs";
 
-/** Explicit caller-owned fake keys must reach the public parent preflight as well as its child. */
 export async function modelProfile(t, options = {}) {
   const keys = Object.fromEntries(
     Object.entries(options.env ?? {}).filter(([name]) =>

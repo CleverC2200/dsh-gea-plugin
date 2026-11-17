@@ -1,6 +1,3 @@
-/**
- * 通用"业务词 → 标识"排序：不针对任何具体词，换成任何业务词都要成立。
- */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -50,7 +47,9 @@ test("字面命中优先：相等 > 前缀 > 子串 > 只像", () => {
   assert.equal(textSimilarity("inventoryage", "inventoryage"), 1);
   assert.ok(textSimilarity("inventory", "inventoryage") > textSimilarity("age", "inventoryage"));
   assert.equal(textSimilarity("库存", "经销商库存货龄日快照"), 0.8);
-  assert.ok(textSimilarity("库存", "经销商库存货龄日快照") > textSimilarity("库龄", "经销商库存货龄日快照"));
+  assert.ok(
+    textSimilarity("库存", "经销商库存货龄日快照") > textSimilarity("库龄", "经销商库存货龄日快照"),
+  );
 });
 
 test("标识本身命中排在「只在说明里像」的前面", () => {
@@ -60,7 +59,6 @@ test("标识本身命中排在「只在说明里像」的前面", () => {
 });
 
 test("同义不同字也能落到正确的候选（不靠同义词表）", () => {
-  // 库龄 / 货龄：一个字一样、bigram 完全不一致，只能靠覆盖率兜。
   const ranked = rankByName("库龄", candidates);
   assert.equal(ranked.length, 1);
   assert.equal(ranked[0].id, "agents_scm_inventory_age");

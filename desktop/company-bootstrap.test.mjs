@@ -790,6 +790,72 @@ test("a bare interrupted three-plugin installation resumes without losing disabl
   assert.equal(f.calls(), 1);
 });
 
+test("a new bundled personal memory plugin installs into an existing profile and respects later removal", async (t) => {
+  const f = await interruptedProfile(t);
+  const name = "@cleverc2200/dsh-personal-memory";
+  const manifest = JSON.parse(await readFile(join(f.seed, "manifest.json"), "utf8"));
+  const bytes = Buffer.from("independent memory archive");
+  const row = {
+    name,
+    version: "0.1.0",
+    file: "memory.tgz",
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+  manifest.packages.push(row);
+  await writeFile(join(f.seed, "archives", row.file), bytes);
+  await writeFile(join(f.seed, "manifest.json"), JSON.stringify(manifest));
+  await writeFile(
+    join(f.record, "receipt.json"),
+    JSON.stringify({ status: "installed", packages: manifest.packages.slice(0, 3) }),
+  );
+  const before = await readFile(join(f.profile, "package.json"), "utf8");
+  const patch = await readFile(join(f.profile, "cordis.patch.yml"), "utf8");
+  let calls = 0;
+  const install = async ({ packages, beforeInstall, complete }) => {
+    assert.deepEqual(
+      packages.map((path) => path.split(/[\\/]/).at(-1)),
+      ["memory.tgz"],
+    );
+    const atomic = await import(
+      pathToFileURL(join(f.root, "dsh/node_modules/@deepseek-ai/dsh-atomic-write/index.mjs"))
+    );
+    await beforeInstall();
+    calls++;
+    const current = JSON.parse(await readFile(join(f.profile, "package.json"), "utf8"));
+    current.dependencies[name] = row.version;
+    current.dsh.profile.bundles.push(name);
+    await mkdir(join(f.profile, "node_modules", name), { recursive: true });
+    await writeFile(join(f.profile, "node_modules", name, "package.json"), JSON.stringify(row));
+    await writeFile(join(f.profile, "package.json"), JSON.stringify(current));
+    await complete(atomic);
+  };
+  assert.deepEqual((await bootstrapCompanyProfile({ ...f, install })).packages, [
+    { name, version: "0.1.0" },
+  ]);
+  const current = JSON.parse(await readFile(join(f.profile, "package.json"), "utf8"));
+  assert.deepEqual(current.dependencies, { ...JSON.parse(before).dependencies, [name]: "0.1.0" });
+  assert.deepEqual(current.dsh.profile.bundles, [...JSON.parse(before).dsh.profile.bundles, name]);
+  assert.equal(await readFile(join(f.profile, "cordis.patch.yml"), "utf8"), patch);
+  assert.equal(
+    await readFile(join(f.profile, "sessions/old.jsonl"), "utf8"),
+    "existing user history\n",
+  );
+  delete current.dependencies[name];
+  current.dsh.profile.bundles = current.dsh.profile.bundles.filter((bundle) => bundle !== name);
+  await writeFile(join(f.profile, "package.json"), JSON.stringify(current));
+  await bootstrapCompanyProfile({ ...f, install });
+  assert.equal(calls, 1);
+  await writeFile(
+    join(f.record, "receipt.json"),
+    JSON.stringify({ status: "installing", packages: [name] }),
+  );
+  await writeFile(join(f.record, "before-package.json"), JSON.stringify({ dependencies: {} }));
+  await bootstrapCompanyProfile({ ...f, install });
+  const resumed = JSON.parse(await readFile(join(f.profile, "package.json"), "utf8"));
+  assert.deepEqual(resumed.dsh.profile.bundles, [...current.dsh.profile.bundles, name]);
+  assert.equal(calls, 2);
+});
+
 test("an offline dependency failure resumes the suite and retains its failed receipt and log", async (t) => {
   const f = await interruptedProfile(t);
   const log = join(f.profile, ".plugin-manager/logs/operation-offline/pnpm.log");

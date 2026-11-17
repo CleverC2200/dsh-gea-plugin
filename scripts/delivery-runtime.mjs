@@ -1,5 +1,5 @@
 import { isObservationTime as timestamp } from "./delivery-time.mjs";
-/** Interprets bounded, sanitized formal records; never observes a live service. */
+
 const id = (v) => typeof v === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(v);
 
 const sha = (v) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
@@ -84,8 +84,7 @@ export async function assessRuntime({
     const matches = records.filter((v) => v.input.id === sourceId);
     const record = matches[0],
       d = record?.data;
-    // Historical document replay is limited to repair declarations. It cannot
-    // supply execution ownership, authorization, run facts or human item IDs.
+
     if (kind === "technical-repair" && d?.observation === "document-capture") {
       const original = inputs.filter((v) => v.id === d.provenance?.sourceId);
       const text = original[0]?.bytes?.toString("utf8") ?? "";
@@ -207,9 +206,7 @@ export async function assessRuntime({
           proof: "recorded-formal-ownership",
         };
       }
-    } catch {
-      /* Scope failures remain unknown without exposing raw paths. */
-    }
+    } catch {}
   }
   const list = (field, kind) => {
     const refs = root.data[field] ?? [];

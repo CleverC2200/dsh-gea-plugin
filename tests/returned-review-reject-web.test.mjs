@@ -22,7 +22,7 @@ test(
     await frame.getByRole("button", { name: "确认批量退回", exact: true }).click();
     const result = frame.getByTestId("regional-approval-batch-result");
     await expect(result).toContainText("成功 2 笔", { timeout: 30000 });
-    await expect(result.locator("ul")).toHaveCount(0);
+    await expect(result.getByRole("listitem")).toHaveCount(2);
     assert.deepEqual(rejected.map(({ planId }) => planId).sort(), [PLAN_A, PLAN_C]);
     assert.deepEqual(rejected.map(({ body }) => body.expectedStatus).sort(), [1, 7]);
     assert.ok(

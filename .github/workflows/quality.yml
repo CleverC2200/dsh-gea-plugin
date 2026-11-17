@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   candidate-scope:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       cores: ${{ steps.cores.outputs.cores }}
       node-version: ${{ steps.node.outputs.node-version }}
@@ -151,6 +151,34 @@ jobs:
           npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 semver@7.7.4 yaml@2.9.0 @electron/asar@4.0.1 tar@7.5.22
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
           node scripts/check-windows-plugin-update.mjs
+      - uses: actions/checkout@v7
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ needs.candidate-scope.outputs.workbench-sha }}
+          path: environment-peer/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - name: Prepare browser tools for Windows environment isolation
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        shell: pwsh
+        run: |
+          npm install --prefix .runtime/native-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund react@18.3.1 react-dom@18.3.1 @icon-park/react@1.4.2 @playwright/test@1.58.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path environment-peer/dsh-agent-workbench/node_modules -Target "$PWD/.runtime/native-dependencies/node_modules" | Out-Null
+          node node_modules/@playwright/test/cli.js install chromium
+          exit $LASTEXITCODE
+      - name: Verify Windows environment boundary and request log UI
+        if: needs.candidate-scope.outputs.windows-applicable == 'true'
+        shell: bash
+        env:
+          DSH_TEST_GEA_CHECKOUT: ${{ github.workspace }}
+        run: |
+          mkdir -p windows-result
+          node --test tests/deployment-boundary.test.mjs tests/api-log.test.mjs | tee windows-result/environment-host.tap
+          cd environment-peer/dsh-agent-workbench
+          node --test tests/api-log-center.browser.mjs tests/warning-executor.test.mjs tests/warning-feishu-service.test.mjs | tee ../../windows-result/environment-ui.tap
       - name: Preserve Windows scope and native outcome
         if: always()
         shell: bash
@@ -174,7 +202,7 @@ jobs:
       dependency-review-applicable: ${{ steps.quality-plan.outputs.dependency-review-applicable }}
     name: source-plan-${{ matrix.core }}
     needs: candidate-scope
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -278,7 +306,7 @@ jobs:
     if: needs.source-plan.outputs.applicability == 'source'
     name: prepare-${{ matrix.core }}
     needs: [candidate-scope, source-plan]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -525,7 +553,7 @@ jobs:
   plan-test-shards:
     if: ${{ always() && !cancelled() && needs.candidate-scope.result == 'success' && needs.source-plan.result == 'success' && needs.gates.result == 'success' && needs.source-plan.outputs.applicability == 'source' }}
     needs: [candidate-scope, source-plan, gates]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has-shards: ${{ steps.plan.outputs.has-shards }}
@@ -570,7 +598,7 @@ jobs:
     name: ${{ matrix.core && format('test-{0}-{1}', matrix.core, matrix.shard) || 'test-shards' }}
     if: ${{ always() && !cancelled() && needs.gates.result == 'success' && needs.plan-test-shards.result == 'success' && needs.plan-test-shards.outputs.has-shards == 'true' }}
     needs: [candidate-scope, gates, plan-test-shards]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -806,7 +834,7 @@ jobs:
     name: Dependency review
     needs: source-plan
     if: github.event_name == 'pull_request' && needs.source-plan.outputs.dependency-review-applicable == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -838,7 +866,7 @@ jobs:
         windows-plugin-update,
         dependency-review,
       ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:

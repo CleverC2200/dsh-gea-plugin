@@ -14,7 +14,7 @@ import {
 import { runQualityChecks } from "./run-quality-checks.mjs";
 import { sourceCheckShard } from "./source-check-shards.mjs";
 import { installCommands, browserPreparationBudget } from "./quality-worker-inputs.mjs";
-/** Public source-event admission and fail-closed workflow aggregation. */
+
 import { parseArgs, isDeepStrictEqual } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
@@ -398,7 +398,7 @@ try {
   } else {
     if (!candidatePhases.has(values.phase)) refuse("QUALITY_PHASE_REQUIRED", values.phase);
     const input = values.input;
-    // The public Workbench reader owns exact source, identity, lock and Core admission.
+
     const { readFinalGroup } = await import(
       pathToFileURL(resolve(values["final-group-workbench"], "scripts/candidate-input.mjs"))
     );
@@ -613,7 +613,7 @@ try {
     )
       await prepareWorkbenchGeaAuthority({ workbench: workbench.path, gea: own.path });
     profileTestsSelected = plan.runtime;
-    // The window contract traverses Core's complete dependency tree, including Web assets.
+
     const needsCoreWeb =
       values.phase === "macos-isolation" ||
       plan.runtime ||
@@ -659,7 +659,7 @@ try {
         resolve(jobRoot, "quality-test-execution-plan.json"),
         JSON.stringify(executionPlan, null, 2) + "\n",
       );
-    // Stage processes reconstruct these values from the admitted tuple, never a prior shell.
+
     for (const key of [
       "GEA_TEST_SOURCE_INPUTS",
       "GEA_TEST_CANDIDATE",
@@ -711,6 +711,19 @@ try {
       run(
         "npm",
         ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
+        preparedWorkbench,
+      );
+      run(
+        process.execPath,
+        [
+          "node_modules/esbuild/bin/esbuild",
+          "src/sales-plan.ts",
+          "--bundle",
+          "--format=esm",
+          "--platform=node",
+          "--packages=external",
+          "--outfile=lib/sales-plan.js",
+        ],
         preparedWorkbench,
       );
       run("corepack", [
@@ -882,13 +895,11 @@ try {
     }
     if (building && values["prepare-inputs"]) {
       if (plan.runtime)
-        run("npm", ["run", "build:core"], preparedWorkbench, {
+        run("npm", ["run", "build:plugin"], preparedWorkbench, {
           DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
           APS_BUILD_MODE: "mock",
         });
       else {
-        // Static GEA checks consume Workbench's public declarations too. Emit them
-        // from the admitted source instead of trusting checked-in build outputs.
         run(
           process.execPath,
           [
@@ -902,8 +913,7 @@ try {
           ],
           preparedWorkbench,
         );
-        // Node-only Host tests import this public pure-model entry at runtime.
-        // Keep it on the same source as the declarations without building the UI.
+
         run(
           process.execPath,
           [
@@ -968,7 +978,7 @@ try {
           repo: "dsh-genui",
           source: resolve(upstream, "upstream-reference/dsh-genui"),
           commit: upstreamRecord.genui.head,
-          assets: resolve(upstream, "upstream-assets/genui-0.11.3"),
+          assets: resolve(upstream, "upstream-assets/genui-0.16.0-company.1"),
           files: upstreamRecord.genui.files,
           dependencies: resolve(process.cwd(), "node_modules"),
         },
@@ -1103,7 +1113,6 @@ try {
     }
     if (stagedPhase) {
       if (building) {
-        // Freeze the prepared package outputs before later processes can execute checks.
         stages.record.artifacts = {};
         for (const { root } of qualityBuildOutputs(jobRoot))
           stages.record.artifacts[root] = await resourceDigests(root);

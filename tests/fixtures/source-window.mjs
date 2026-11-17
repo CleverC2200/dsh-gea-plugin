@@ -1,4 +1,3 @@
-/** Disposable source checkouts and a process observer; the fixed Core is read-only. */
 import { readFile, writeFile, mkdir, cp, symlink, mkdtemp, rm, readdir } from "node:fs/promises";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -67,6 +66,7 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
       for (const name of [
         "start.mjs",
         "start-isolated-validation.mjs",
+        "runtime-environment.mjs",
         "window-admission.mjs",
         "source-profile.mjs",
         "source-composition.mjs",
@@ -293,13 +293,13 @@ export async function sourceWindow(t, mode, { inputFile } = {}) {
     observation = join(temporary, "effects.json");
   await writeFile(
     probe,
-    `import fs from 'node:fs'; import child from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; const original=child.spawn; const save=fs.writeFileSync; const writes=[]; const processes=[]; const network=[]; const credentialReads=[]; const credentialEnvReads=[]; const env=process.env; process.env=new Proxy(env,{get(target,key){if(key==="GEA_FIXTURE_DIRECT_KEY")credentialEnvReads.push(key);return Reflect.get(target,key);}}); const execute=child.execFileSync; child.execFileSync=function(command,args,...rest){if(String(command).includes("security")){credentialReads.push({command,args});throw Error("UNEXPECTED_KEYCHAIN_READ");}return execute.call(this,command,args,...rest);}; const keys=['DSH_HOME','DSH_TELEMETRY_DISABLED','GEA_WEB_LOGIN_PERSIST','GEA_HTML_PLUGIN_ROOTS','GEA_FIXTURE_ID','GEA_FIXTURE_SECRET']; const before=Object.fromEntries(keys.map(k=>[k,process.env[k]??null])); for(const key of ['mkdir','mkdtemp','writeFile','rename','symlink','unlink','open']){const fn=fs.promises[key]; fs.promises[key]=function(...args){if(key!=='open'||/[wax+]/.test(args[1]))writes.push({operation:key,path:String(args[0])});return fn.apply(this,args);};} child.spawn=function(command,args,options){processes.push({command,args,cwd:options.cwd});return original(process.execPath,[${JSON.stringify(fixture)}],{...options,detached:false});}; globalThis.fetch=(...args)=>{network.push(String(args[0]));throw Error('UNEXPECTED_NETWORK');}; syncBuiltinESMExports(); process.on('exit',()=>save(${JSON.stringify(observation)},JSON.stringify({writes,processes,network,credentialReads,credentialEnvReads,before,after:Object.fromEntries(keys.map(k=>[k,process.env[k]??null]))})));`,
+    `import fs from 'node:fs'; import child from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; const original=child.spawn; const save=fs.writeFileSync; const writes=[]; const processes=[]; const network=[]; const credentialReads=[]; const credentialEnvReads=[]; const env=process.env; process.env=new Proxy(env,{get(target,key){if(key==="GEA_FIXTURE_DIRECT_KEY")credentialEnvReads.push(key);return Reflect.get(target,key);}}); const execute=child.execFileSync; child.execFileSync=function(command,args,...rest){if(String(command).includes("security")){credentialReads.push({command,args});throw Error("UNEXPECTED_KEYCHAIN_READ");}return execute.call(this,command,args,...rest);}; const runtimeProbe=child.spawnSync; child.spawnSync=function(command,args,options){if(process.env.FIXTURE_CORE_RUNTIME_ERROR==="1"&&command===process.execPath&&args?.[0]==="--input-type=module"&&args[2]?.includes("RUNTIME_ENVIRONMENT_RESULT=")){const result={ready:false,entry:"packages/boot/app-boot/lib/index.js",code:"ERR_MODULE_NOT_FOUND",dependency:"js-yaml"};return {status:1,stdout:"RUNTIME_ENVIRONMENT_RESULT="+JSON.stringify(result)+"\\n",stderr:""};}return runtimeProbe.call(this,command,args,options);}; const keys=['DSH_HOME','DSH_TELEMETRY_DISABLED','GEA_WEB_LOGIN_PERSIST','GEA_HTML_PLUGIN_ROOTS','GEA_FIXTURE_ID','GEA_FIXTURE_SECRET']; const before=Object.fromEntries(keys.map(k=>[k,process.env[k]??null])); for(const key of ['mkdir','mkdtemp','writeFile','rename','symlink','unlink','open']){const fn=fs.promises[key]; fs.promises[key]=function(...args){if(key!=='open'||/[wax+]/.test(args[1]))writes.push({operation:key,path:String(args[0])});return fn.apply(this,args);};} child.spawn=function(command,args,options){processes.push({command,args,cwd:options.cwd});return original(process.execPath,[${JSON.stringify(fixture)}],{...options,detached:false});}; globalThis.fetch=(...args)=>{network.push(String(args[0]));throw Error('UNEXPECTED_NETWORK');}; syncBuiltinESMExports(); process.on('exit',()=>save(${JSON.stringify(observation)},JSON.stringify({writes,processes,network,credentialReads,credentialEnvReads,before,after:Object.fromEntries(keys.map(k=>[k,process.env[k]??null]))})));`,
   );
   const run = (entry = "start.mjs", extra = [], environment = {}) => {
     let args;
     if (entry === "runSourceProfile") {
       const runner = join(temporary, "call-profile.mjs");
-      // The runner uses only the existing public function; admission has no test-only interface.
+
       fsWrite(
         runner,
         `import {runSourceProfile} from ${JSON.stringify(pathToFileURL(join(gea, "scripts/start-isolated-validation.mjs")).href)}; await runSourceProfile(${JSON.stringify(fixedCore)},${JSON.stringify(runtime)},${mode !== "isolated-core-host"},${mode === "source-host" ? JSON.stringify(deployment) : "undefined"},0,${JSON.stringify({ window: request, mode, ...extra })});`,

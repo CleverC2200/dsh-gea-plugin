@@ -25,9 +25,21 @@ test(
       currentAmount: "10",
       targetAmount: "10",
       targetQty: "1",
-      skuCount: 0,
+      skuCount: 1,
     };
 
+    const skus = [
+      {
+        id: "sku",
+        versionId: plan.versionId,
+        skuCode: "123",
+        qty: "1",
+        baseQty: "1",
+        amt: "10",
+        amtBase: "10",
+        price: "10",
+      },
+    ];
     const writes = [];
     app.route((req, _res, reply) => {
       const path = req.url.pathname;
@@ -62,7 +74,7 @@ test(
         return send({
           currentVersion: { ...plan, id: plan.versionId, effective: true },
           versions: [],
-          skus: [],
+          skus,
           logs: [],
           actionContext: {
             versionId: plan.versionId,
@@ -76,7 +88,7 @@ test(
       if (path.endsWith("/notifications")) return send({ items: [], total: 0 });
       if (path.endsWith("/versions"))
         return send([{ ...plan, id: plan.versionId, effective: true }]);
-      if (path.endsWith("/skus")) return send([]);
+      if (path.endsWith("/skus")) return send(skus);
       if (path.endsWith(`/versions/${plan.versionId}/actions`)) {
         writes.push(JSON.parse(req.body));
         return send({
@@ -113,12 +125,12 @@ test(
     await page.goto(app.origin);
 
     const frame = await openSalesPlan(page);
-    // V1.8 #05：流程图默认收起，先展开再操作节点。
+
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();
     const region = frame.getByTestId("regional-approval-stage-region");
     await expect(region).toHaveAttribute("aria-pressed", "true");
-    await region.click(); // Include tracking rows, not only this role's pending queue.
+    await region.click();
     const row = frame.locator("tbody tr").filter({ hasText: plan.belong_base }).first();
     await expect(row).toBeVisible();
     await row.locator("label.arco-checkbox").click();

@@ -1,5 +1,5 @@
 import { isObservationTime as timestamp } from "./delivery-time.mjs";
-// Pure interpretation of already-read, controlled metadata. No IO or execution.
+
 import { observeTaskTicket } from "./delivery-ticket.mjs";
 const id = (value) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(value);
 const parse = (input) => {

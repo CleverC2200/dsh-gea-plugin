@@ -1,4 +1,3 @@
-/** Validate calendar dates once while preserving each receipt format contract. */
 export function normalizeReceiptTime(value) {
   if (
     typeof value !== "string" ||

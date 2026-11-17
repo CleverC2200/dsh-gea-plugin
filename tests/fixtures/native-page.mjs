@@ -1,4 +1,3 @@
-/** Read the current public presentation record; this helper never writes Session or identity state. */
 export function nativeAssociation(page, id) {
   return page.evaluate((id) => {
     const presentation = JSON.parse(
@@ -9,7 +8,6 @@ export function nativeAssociation(page, id) {
   }, id);
 }
 
-/** Observe the natural Host receipt after the current Core Session owns the loaded Native frame. */
 export async function waitForNativeOwner(page, id, resourceId) {
   return page.waitForResponse(async (response) => {
     if (new URL(response.url()).pathname !== "/api/agent-workbench/page") return false;

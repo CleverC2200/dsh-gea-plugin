@@ -1,4 +1,3 @@
-/** Start the unchanged official Electron shell with local inventory plugins; no installer build. */
 import { mkdir, readFile, writeFile, symlink, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -15,8 +14,7 @@ const electron =
     "Desktop/GEAUI/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
   );
 const installed =
-  process.env.GEA_DESKTOP_BASE_PAYLOAD ||
-  "/Applications/GEA Desktop.app/Contents/Resources/payload";
+  process.env.GEA_DESKTOP_BASE_PAYLOAD || "/Applications/Synear GEA.app/Contents/Resources/payload";
 if (!existsSync(electron) || !existsSync(join(installed, "node/bin/node")))
   throw Error("请设置 GEA_ELECTRON_EXECUTABLE 和 GEA_DESKTOP_BASE_PAYLOAD");
 await mkdir(payload, { recursive: true, mode: 0o700 });
@@ -28,7 +26,7 @@ await writeFile(
   JSON.stringify({ name: "dsh-inventory-local-desktop", private: true, type: "module" }),
 );
 await copyFile(join(desktop, "inventory-dev-runtime.mjs"), join(payload, "start.mjs"));
-// Carry deployment choices only; never copy browser cookies or login credentials.
+
 if (!existsSync(join(data, "gea.config.json"))) {
   const patch = JSON.parse(
     await readFile(

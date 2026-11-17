@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import {
   fixture,
+  pendingResultButton,
   PLAN_A,
   PLAN_B,
   PLAN_C,
@@ -33,7 +34,7 @@ for (const mixed of [false, true])
           name: "确认计划量 789",
           exact: true,
         });
-        await expect(quantity).toHaveValue("1.250");
+        await expect(quantity).toHaveValue("1");
         await quantity.fill("3.000");
         await expect(quantity).toHaveValue("3.000");
         await expect
@@ -141,12 +142,14 @@ test(
     await frame.getByRole("button", { name: "提交所选", exact: true }).click();
     const dialog = frame.getByRole("dialog");
     await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
-    await expect(dialog).toContainText("重提已成功");
+    await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await pendingResultButton(frame).click();
+    await expect(dialog.getByRole("button", { name: "核对提交结果", exact: true })).toBeEnabled();
     allowReadback();
-    await dialog.getByRole("button", { name: "刷新权威状态", exact: true }).click();
+    await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
     assert.equal(submitted.length, 1);
     assert.equal(approved.length, 1);
@@ -154,10 +157,10 @@ test(
 );
 
 test(
-  "mixed batch retries only unknown intent and never repeats approved items",
+  "mixed batch only reads unknown results and never repeats submitted or approved items",
   { timeout: 90000 },
   async (t) => {
-    const { frame, submitted, approved, state } = await fixture(t, {
+    const { frame, submitted, approved, state, allowReadback } = await fixture(t, {
       unknownOnce: true,
     });
     await selectPlan(frame);
@@ -165,15 +168,17 @@ test(
     await frame.getByRole("button", { name: "提交所选", exact: true }).click();
     const dialog = frame.getByRole("dialog");
     await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
-    await expect(dialog).toContainText("结果暂时未知");
+    await expect(dialog).toContainText("尚未查到能确认本次提交结果的记录");
     await expect.poll(() => approved.length).toBe(1);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    await frame.getByRole("button", { name: "恢复待处理重提", exact: true }).click();
-    await dialog.getByRole("button", { name: "以原幂等键重试", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await pendingResultButton(frame).click();
+    await expect(dialog.getByRole("button", { name: "核对提交结果", exact: true })).toBeEnabled();
+    allowReadback();
+    await dialog.getByRole("button", { name: "核对提交结果", exact: true }).click();
     await expect(dialog).toContainText("成功 2 笔", { timeout: 30000 });
     assert.equal(approved.length, 1);
-    assert.equal(submitted.length, 2);
-    assert.deepEqual(submitted[1], submitted[0]);
+    assert.equal(submitted.length, 1);
     assert.equal(state.get(PLAN_A).seq, 2);
   },
 );

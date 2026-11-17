@@ -1,4 +1,5 @@
 import test from "node:test";
+import { GeaRequestCapture } from "./helpers/feedback-capture.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, cp, readFile, writeFile, rm, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -122,6 +123,11 @@ for (const mock of [false, true])
       ctx.agentResources = new BusinessResources(ctx, join(root, "selected.json"));
       t.after(() => ctx.agentResources.dispose());
       const business = {
+        capture: new GeaRequestCapture(
+          "",
+          () => undefined,
+          () => "https://fixture.invalid",
+        ),
         status: () => ({ authenticated: false }),
         pageSessionScope: () => undefined,
         setSurface(id, value) {

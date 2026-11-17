@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -75,13 +76,19 @@ test("MCP HTTP sends carry distinct request IDs through handshake, reconnect and
       }),
   );
   const signal = new AbortController().signal;
-  const connection = await prepareGatewayMcp(
-    `http://127.0.0.1:${server.address().port}`,
-    auth,
-    consumer,
-    signal,
-    3000,
+  const { GeaRequestCapture } = await import("./helpers/feedback-capture.mjs");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const capture = new GeaRequestCapture(
+    "/unused",
+    () => ({ environment: "test", userId: "u", tenantId: "0", base }),
+    () => base,
   );
+  const sender = (input, init) => {
+    const headers = new Headers(init.headers);
+    capture.begin(String(input), init.method, headers);
+    return fetch(input, { ...init, headers });
+  };
+  const connection = await prepareGatewayMcp(base, auth, consumer, signal, 3000, sender);
   const rpc = async (id, method, params) => {
     const response = await connection.fetch(connection.url, {
       method: "POST",
@@ -189,7 +196,7 @@ test("creates authorized session and isolates trusted meta from business argumen
     1000,
     fake,
   );
-  assert.equal(calls[0].init.headers["X-Access-Token"], "login-secret");
+  assert.equal(new Headers(calls[0].init.headers).get("X-Access-Token"), "login-secret");
   const create = JSON.parse(calls[0].init.body);
   assert.equal(create.consumerCode, "test-agent");
   assert.equal(create.tenantId, undefined);
@@ -229,7 +236,6 @@ test("creates authorized session and isolates trusted meta from business argumen
 });
 
 test("rejects denied, incomplete and wrong-consumer sessions despite HTTP success", async () => {
-  // 权限没开是业务状态（AGENT_ACCESS_DENIED），其余是协议级拒绝（SESSION_REJECTED）。
   const cases = [
     [(p) => (p.result.accessDecision.allowed = false), /AGENT_ACCESS_DENIED/],
     [(p) => (p.result.delegationToken = ""), /SESSION_REJECTED/],
@@ -317,6 +323,7 @@ test("Business login notifications and transport capabilities follow logout and 
   )(createRequire(import.meta.url), module, module.exports);
   const { Business } = module.exports;
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: {
       production: "https://gea.test",
       test: "https://test.gea.test",
@@ -740,7 +747,7 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
     ),
     (error) => error.code === "AGENT_ACCESS_DENIED" && /无权访问/.test(error.message),
   );
-  // 会话"形状不对"（不是权限问题）仍然是协议级错误。
+
   await assert.rejects(
     prepareGatewayMcp(
       "https://gea.test",
@@ -766,8 +773,6 @@ test("网关拒绝 MCP 会话时给出稳定错误码，宿主据此止损", asy
 });
 
 test("HTTP 429 按 Retry-After 给出等待建议，不当作连接坏了", async () => {
-  // 规约 §14：限流要么回 429 + Retry-After（REST /call），要么在 200 的业务信封里回；
-  // 两种情况都要给"等多久"，并且明确不能原样立刻重试。
   let calls = 0;
   const connection = await prepareGatewayMcp(
     "https://gea.test",
@@ -809,12 +814,12 @@ test("HTTP 429 按 Retry-After 给出等待建议，不当作连接坏了", asyn
       assert.match(error.message, /GEA_MCP_RATE_LIMITED/);
       assert.match(error.message, /等 3 秒再试/);
       assert.equal(error.message.includes("upstream-secret"), false);
-      // 限流不是"重新登录"能修的，别给那条误导建议。
+
       assert.equal(error.message.includes("请检查连接或重新登录"), false);
       assert.equal(error.retryable, true);
       return true;
     },
   );
-  // 429 不做传输层自动重试（规约：不原样立刻重试，由调用方按等待时间决定）。
+
   assert.equal(calls, 1);
 });

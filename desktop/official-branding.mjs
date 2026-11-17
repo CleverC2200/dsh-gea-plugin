@@ -1,26 +1,54 @@
 import { fileURLToPath } from "node:url";
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { dirname, basename, join } from "node:path";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 
-export function officialGeaBranding(config, { companySeed } = {}) {
+export const companyWindowsExecutableName = "GEA Desktop";
+
+export async function prepareOfficialGeaMain(desktop, output) {
+  const source = await readFile(join(desktop, "lib/main.js"), "utf8");
+  if (!source.includes("DeepSeek Harness")) throw Error("COMPANY_DESKTOP_BRANDING_DRIFT");
+  const directory = join(output, "company-main");
+  await mkdir(directory, { recursive: true });
+  const main = join(directory, "main.js");
+  await writeFile(main, source.replaceAll("DeepSeek Harness", "Synear GEA"));
+  return main;
+}
+
+export function officialGeaBranding(config, { companySeed, brandedMain } = {}) {
   const icon = fileURLToPath(new URL("./build/icon.png", import.meta.url));
   const welcome = fileURLToPath(new URL("./official-welcome", import.meta.url));
   return {
     ...config,
     appId: "com.cleverc2200.gea.desktop",
-    productName: "GEA Desktop",
-    artifactName: "GEA-Desktop-${version}-mac-${arch}-local.${ext}",
+    productName: "Synear GEA",
+    artifactName: "Synear-GEA-${version}-mac-${arch}-local.${ext}",
     extraMetadata: {
       ...config.extraMetadata,
-      productName: "GEA Desktop",
+      productName: "Synear GEA",
       dshDesktopAppId: "com.cleverc2200.gea.desktop",
       ...(companySeed ? { main: "official-main.cjs" } : {}),
     },
-    mac: { ...config.mac, icon },
+    mac: {
+      ...config.mac,
+      icon,
+      extendInfo: {
+        ...config.mac?.extendInfo,
+        NSMicrophoneUsageDescription:
+          "Synear GEA uses your microphone to transcribe speech into message drafts.",
+      },
+    },
+    win: { ...config.win, executableName: companyWindowsExecutableName },
+    protocols: config.protocols?.map((protocol) => ({
+      ...protocol,
+      name: protocol.name === "DeepSeek Harness" ? "Synear GEA" : protocol.name,
+    })),
     files: [
-      ...config.files,
+      ...config.files.filter((file) => !brandedMain || file !== "lib/main.js"),
+      ...(brandedMain
+        ? [{ from: dirname(brandedMain), to: "lib", filter: [basename(brandedMain)] }]
+        : []),
       "!renderer/welcome.html",
       { from: welcome, to: "renderer", filter: ["**/*"] },
       {
@@ -37,6 +65,7 @@ export function officialGeaBranding(config, { companySeed } = {}) {
                 "official-main.cjs",
                 "company-bootstrap.mjs",
                 "company-gea-refresh.mjs",
+                "company-update.mjs",
                 "company-archives.mjs",
                 "legacy-gea-cleanup.mjs",
                 "plugin-storage.mjs",

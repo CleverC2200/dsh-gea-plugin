@@ -1,10 +1,3 @@
-/**
- * Keep spec and required-skip policy while showing actual file execution order.
- * Node 24: https://nodejs.org/docs/latest-v24.x/api/test.html#event-testdequeue
- * File starts/completions use execution events, never buffered test:start/pass.
- * Heartbeats run every 5s. Explicit CLI files supply the initial total; discovery
- * stays unknown until the stream ends. File completion does not mean success.
- */
 import { once } from "node:events";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -36,7 +29,7 @@ export default async function* report(source) {
       return false;
     }
   };
-  // Test fixtures can start their own reporters. Only this invocation owns the machine receipt.
+
   const receipt = matchingInvocation() ? process.env.QUALITY_TEST_RECEIPT : undefined;
   const record = receipt
     ? {
@@ -59,8 +52,7 @@ export default async function* report(source) {
   persist();
   const running = [];
   const output = new PassThrough();
-  // Node consumes its flags before constructing reporter argv. Only an explicit
-  // list of real files gives a denominator; discovery and globs stay unknown.
+
   const total =
     args.length &&
     args.every((file) => {
@@ -81,7 +73,7 @@ export default async function* report(source) {
     const cases = running.slice(-3).map((item) => `${item.entry} :: ${item.name}`);
     return [...activeFiles, ...cases].join("; ") || "none";
   };
-  // Fixed cadence bounds log volume; unref prevents this observer holding Node open.
+
   const timer = setInterval(() => {
     if (!output.writableNeedDrain)
       progress(`heartbeat ${counts()} elapsed=${elapsed()}ms running=${current()}`);
@@ -90,8 +82,7 @@ export default async function* report(source) {
   const checked = (async function* () {
     for await (const event of source) {
       const data = event.data;
-      // The wrapper name preserves the CLI path, while file/entryFile is absolute.
-      // Normalize paths before matching its 1:1 process source location.
+
       const entry = data.entryFile ?? data.file;
       const wrapper =
         entry &&
@@ -137,8 +128,6 @@ export default async function* report(source) {
         } else summary = data;
       }
       if (!wrapper && (event.type === "test:dequeue" || event.type === "test:complete")) {
-        // New Node 24 provides process-local testId. Earlier versions need a
-        // multiset: concurrent cases may share every source coordinate and name.
         const key = JSON.stringify(
           data.testId === undefined
             ? [entry, data.file, data.line, data.column, data.nesting, data.name]

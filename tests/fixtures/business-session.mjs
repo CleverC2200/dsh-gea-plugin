@@ -10,7 +10,6 @@ export async function readPluginAgent(app, id) {
   return agent;
 }
 
-/** Exercise the authenticated public HTTP surface of this test's isolated profile. */
 export async function fixtureRequest(app, path, body) {
   const response = await fetch(app.origin + path, {
     method: "POST",
@@ -20,7 +19,6 @@ export async function fixtureRequest(app, path, body) {
   return { ok: response.ok, value: await response.json() };
 }
 
-/** Select an installed resource through Manage without creating or binding a Session privately. */
 export async function selectBusinessResource(app, resourceId = "gea-readonly") {
   const selected = await fixtureRequest(app, "/api/agent-manage/resources/select", {
     id: resourceId,
@@ -30,7 +28,6 @@ export async function selectBusinessResource(app, resourceId = "gea-readonly") {
   return selected.value;
 }
 
-/** Business resources are mounted by selection before the official Session is created. */
 export async function createBusinessSession(app, resourceId = "gea-readonly") {
   const selected = await selectBusinessResource(app, resourceId);
   const created = await app.remote("session/create", {
@@ -41,7 +38,6 @@ export async function createBusinessSession(app, resourceId = "gea-readonly") {
   return created.value.sessionId;
 }
 
-/** Bind this existing official Session to a registered page; only Host returns the owner. */
 export async function openBusinessPageSession(
   app,
   sessionId,
@@ -72,7 +68,7 @@ export async function openBusinessPageSession(
 }
 
 const environments = new WeakMap();
-/** Keep fake process credentials in one test lifetime; repeated profiles retain the first snapshot. */
+
 export function fixtureEnvironment(t, values) {
   let snapshots = environments.get(t);
   if (!snapshots) {
@@ -92,7 +88,6 @@ export function fixtureEnvironment(t, values) {
   }
 }
 
-/** Edit only this plugin Agent's Skill configuration through the current authenticated UI contract. */
 export async function configurePluginSkills(app, configure, preset = "gea-readonly") {
   const response = await fetch(app.origin + "/api/agent-manage/agents/plugins", {
     headers: { Cookie: app.cookie, Origin: app.origin },

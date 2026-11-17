@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -27,6 +28,7 @@ test(
   { timeout: 60000 },
   async (t) => {
     const business = new Business({
+      runtimeDir: tmpdir(),
       geaBaseUrl: "https://gea.example.test",
       requestTimeoutMs: 1000,
       analysisAgentCode: "sales_forecast",

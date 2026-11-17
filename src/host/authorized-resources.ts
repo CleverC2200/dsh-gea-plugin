@@ -1,4 +1,3 @@
-/** Resource discovery is an authorization snapshot, not a business-data result. */
 export type AuthorizedResource = {
   capabilityCode: string;
   resourceCode: string;

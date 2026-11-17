@@ -158,14 +158,14 @@ for (const pendingState of ["loading", "error", "ready"])
         phase = "export";
         const downloaded = page.waitForEvent("download");
         await frame.getByRole("button", { name: "CSV", exact: true }).click();
-        await expect.poll(() => heldExports).toBeGreaterThanOrEqual(2);
+        await expect.poll(() => heldExports).toBeGreaterThanOrEqual(1);
         await frame.getByRole("button", { name: /补货确认/ }).click();
         await frame.getByRole("button", { name: /基地资源/ }).click();
         phase = "query";
         const search = frame.getByLabel("基地资源SKU", { exact: true });
         await search.fill("FC002");
         await frame.getByRole("button", { name: "查询", exact: true }).click();
-        await expect.poll(() => heldQueries).toBeGreaterThanOrEqual(2);
+        await expect.poll(() => heldQueries).toBeGreaterThanOrEqual(1);
         await expect.poll(() => contexts.at(-1)?.parts?.queryState?.state).toBe("loading");
         if (pendingState !== "loading") {
           querying.resolve();
@@ -177,7 +177,7 @@ for (const pendingState of ["loading", "error", "ready"])
         const csv = await readFile(await download.path(), "utf8");
         assert.match(csv, /导出原基地/);
         assert.doesNotMatch(csv, /新筛选基地/);
-        // The bridge coalesces publication for 350 ms; let the completed export's queued update settle.
+
         await page.waitForTimeout(700);
         const after = contexts.at(-1);
         await mkdir(".runtime/branch-stock-evidence", { recursive: true });

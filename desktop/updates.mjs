@@ -1,4 +1,3 @@
-/** Desktop owner coordinates channel checks and immutable preparation; never reloads a live Agent. */
 import { readFile, writeFile, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -11,11 +10,7 @@ const OPTIONAL_PLUGINS = {
 const code = (value) => typeof value === "string" && /^[A-Z][A-Z_0-9]+$/.test(value);
 const errorCode = (error) =>
   code(error?.message) ? error.message : code(error?.code) ? error.code : "UPDATE_FAILED";
-/**
- * 判断频道版本是否比本地更新（含 `1.4.3-company.33` 这类预发布后缀）。
- * 频道是唯一真相，但“本地比频道新”不是更新——内置基线高于频道时不能把降级当成升级。
- * 本地没装过这个包时按“需要安装”处理，保持既有行为。
- */
+
 const versionParts = (value) => {
   const [core, pre] = String(value ?? "").split("-", 2);
   return { core: core.split(".").map(Number), pre: pre === undefined ? null : pre.split(".") };
@@ -47,7 +42,7 @@ export const isNewer = (candidate, current) => {
   return false;
 };
 const CHANNEL_ATTEMPT_TIMEOUT_MS = 30000;
-/** 兼容版频道来源：单个地址，或按优先级排列的地址列表。 */
+
 const channelCandidates = (value) =>
   Array.isArray(value)
     ? value.filter((item) => typeof item === "string" && item.length > 0)
@@ -77,8 +72,7 @@ export async function createUpdates({
     releases: [],
     channelSource: null,
   };
-  // The release list is session state: only a check that completed in this run may offer a version.
-  // A list restored from disk could otherwise outlive the channel it came from and be re-installed forever.
+
   try {
     state = { ...state, ...JSON.parse(await readFile(path, "utf8")), releases: [] };
   } catch (error) {
@@ -177,8 +171,7 @@ export async function createUpdates({
       },
     };
   };
-  // 兼容版频道读取：一个频道可以有多个来源，按顺序尝试，前一个读不到才用下一个。
-  // 只在“读取频道”这一步回退；来源一旦成功，就用它返回的清单，不再混用其他来源。
+
   const fetchChannel = async (channel, host) => {
     const candidates = channelCandidates(sources?.[channel]);
     if (!candidates.length) throw Error("INVALID_RELEASE_URL");
@@ -195,7 +188,7 @@ export async function createUpdates({
         return { result, source };
       } catch (error) {
         failure = error;
-        // 主动取消（关闭应用）不算来源不可用，不再继续尝试后面的来源。
+
         if (checkAbort.signal.aborted) break;
       }
     }
@@ -212,8 +205,6 @@ export async function createUpdates({
         .then(() => checkDesktop?.({ channel }))
         .catch(() => {});
       try {
-        // Reading the selected graph is part of the check: if it fails, the previous release list
-        // must be dropped too, otherwise the client keeps re-offering a version it cannot install.
         const current = await versions();
         const { result, source } = await fetchChannel(channel, {
           dsh: current["@deepseek-ai/dsh"],
@@ -225,9 +216,7 @@ export async function createUpdates({
         state.channelSource = source;
         state.lastCheck = new Date().toISOString();
         state.checkError = null;
-        // Keep the failure notice only while a retry would repeat exactly the batch that failed. A batch that
-        // changed — even when one package kept its version — is a different operation, so the page must not
-        // keep reporting "update needs attention" from the previous attempt.
+
         const key = (entry) => entry.package + "@" + entry.version;
         const attempted = (state.targets ?? []).map(key).sort().join(",");
         const offered = state.releases
@@ -258,8 +247,7 @@ export async function createUpdates({
     });
     return checking;
   };
-  // 自动检查的节奏（默认间隔、随机错开、启动补查）由插件中心的桌面更新服务负责，
-  // 宿主只保留「启动时查一次」和按请求执行检查，调整节奏不必重打客户端。
+
   const finishHistory = (success) => {
     const items = Array.isArray(state.pendingHistory) ? state.pendingHistory : [];
     if (success && items.length) {
@@ -336,7 +324,7 @@ export async function createUpdates({
     if (closed || preparing || checking || ["pending", "restarting"].includes(state.phase))
       return { error: "UPDATE_BUSY" };
     autoRestart = value.restart === true;
-    // Reserve before asynchronous download; duplicate requests share one operation.
+
     state.phase = "downloading";
     state.targets = targets.map(({ package: name, version }) => ({ package: name, version }));
     state.pendingHistory = targets.map(({ package: name, version }) => ({

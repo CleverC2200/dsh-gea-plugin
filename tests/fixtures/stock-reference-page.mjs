@@ -127,7 +127,6 @@ export async function stockReferencePage(
   page.setDefaultTimeout(20000);
   if (holdMessage)
     await page.addInitScript((messageType) => {
-      // Control delivery order while keeping the real iframe event and HTTP response.
       const held = [];
       let hold = true,
         replaying = false;

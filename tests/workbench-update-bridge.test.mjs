@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -85,6 +86,7 @@ test("GEA Host exports remain loadable before Workbench adds new sales and confi
 
 function businessFixture(t, Business, serviceAccounts) {
   const business = new Business({
+    runtimeDir: tmpdir(),
     geaBaseUrl: "https://fixture.invalid",
     requestTimeoutMs: 2000,
     inputByteBudget: 32000,

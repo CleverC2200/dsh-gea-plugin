@@ -123,6 +123,7 @@ test("suite channel replaces all references only after validating the bound arch
     issuedAt: "2026-10-21T00:00:00.000Z",
     expiresAt: "2026-10-22T00:00:00.000Z",
     releases: references,
+    optionalReleases: [{ ...references[0], name: "@cleverc2200/dsh-personal-memory" }],
   };
   const input = {
     previous,
@@ -139,6 +140,16 @@ test("suite channel replaces all references only after validating the bound arch
     [G],
   );
   assert.equal(channel.companionReleases.length, 2);
+  assert.deepEqual(channel.optionalReleases, previous.optionalReleases);
+  const memoryChannel = mergePluginChannelRelease({
+    previous: channel,
+    release: previous.optionalReleases[0],
+    revision: 3,
+    issuedAt: "2026-10-23T00:00:00.000Z",
+    expiresAt: "2026-10-24T00:00:00.000Z",
+  });
+  assert.deepEqual(memoryChannel.releases, channel.releases);
+  assert.deepEqual(memoryChannel.companionReleases, channel.companionReleases);
   const envelope = encodePluginChannel({
     payload: channel,
   });

@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -26,6 +27,7 @@ const { Business, createCapabilityRegistry } = module.exports;
 const consumer = { consumerType: "AGENT", consumerCode: "test-agent" };
 const makeBusiness = (config = {}) => {
   const b = new Business({
+    runtimeDir: tmpdir(),
     geaEnvironments: { production: "https://gea.test", test: "https://test.gea.test" },
     requestTimeoutMs: 5,
     inputByteBudget: 32000,

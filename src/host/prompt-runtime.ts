@@ -1,4 +1,7 @@
 import { CURRENT_SHORTAGE_ROUTING, currentShortageResource } from "./current-shortage-contract.ts";
+import { ORDER_AMENDMENT_ROUTING } from "./order-amendment-tool.ts";
+import { ORDER_KPI_ROUTING } from "./order-kpi-tool.ts";
+import { ORDER_ONTIME_ROUTING } from "./order-ontime-tool.ts";
 import { BASE_INVENTORY_ROUTING } from "./base-inventory-tool.ts";
 import { BRANCH_INVENTORY_ROUTING } from "./branch-inventory-tool.ts";
 import { hasPageReferences } from "@cleverc2200/dsh-agent-workbench/page-interaction/reference";
@@ -41,7 +44,6 @@ type AdmissionState = {
   mask: string;
 };
 
-/** Session-scoped prompt composition and execution gates share the same capability set. */
 export function mountBusinessPrompts(
   ctx: Context,
   business: Business,
@@ -116,7 +118,7 @@ export function mountBusinessPrompts(
       .filter((name) => businessMethod(name) && !names.has(name));
     const signature = deny.sort().join("|");
     if (signature === state.mask) return;
-    // Business masks do not choose official or optional plugin capabilities.
+
     const next = deny.length ? agent.ctx.tools.restrict({ deny }) : undefined;
     state.dispose?.();
     state.dispose = next;
@@ -213,7 +215,6 @@ export function mountBusinessPrompts(
         profileOf(exec.agent) &&
         (businessMethod(exec.name) || exec.name === "forecast_compute")
       ) {
-        // Capture before resource admission awaits; old calls never acquire a new turn's owner.
         executionState.begin(exec.agent, exec.token, exec);
       }
       try {
@@ -221,7 +222,6 @@ export function mountBusinessPrompts(
         executionState.admitted(executionState.execution(exec.token));
         return await next();
       } catch (error) {
-        // Official around-dispatch failures bypass post-execute; retire this execution's metadata here.
         executionState.take(exec.token);
         throw error;
       }
@@ -229,7 +229,6 @@ export function mountBusinessPrompts(
   );
   offs.push(
     ctx.on("tools/post-execute", async (exec, result, next) => {
-      // Tool dispatch has ended. This hook is the sole consumer of these receipts, even if a later policy throws.
       const execution = executionState.take(exec.token);
       const decision = await next();
       return executionState.finish(execution, result, decision);
@@ -489,10 +488,19 @@ export function mountBusinessPrompts(
             },
           ]
         : assembled.sections;
+      const metricSections =
+        profile.consumerCode === "order"
+          ? [
+              ...baseSections,
+              { name: "gea-order-kpi", text: ORDER_KPI_ROUTING },
+              { name: "gea-order-amendment", text: ORDER_AMENDMENT_ROUTING },
+              { name: "gea-order-ontime", text: ORDER_ONTIME_ROUTING },
+            ]
+          : baseSections;
       const answerPolicy = moduleAnswerPolicy(presetOf(agent) ?? undefined);
       const sections = answerPolicy
-        ? [...baseSections, { name: "module-answer-evidence", text: answerPolicy }]
-        : baseSections;
+        ? [...metricSections, { name: "module-answer-evidence", text: answerPolicy }]
+        : metricSections;
       const measurement = promptMeasurement(
         sections.map((section) => section.text).join("\n\n"),
         tools,

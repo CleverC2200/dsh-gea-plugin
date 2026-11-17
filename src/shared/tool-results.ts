@@ -1,4 +1,3 @@
-/** Normalize tool receipts across retained 0.1 messages and 0.2 tool-role messages. */
 export function toolResults(
   message: unknown,
 ): Array<{ callId: string; isError: boolean; text: string }> {

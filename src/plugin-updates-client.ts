@@ -1,7 +1,8 @@
+import type { RestartUpdateRequest } from "./desktop-updates-client.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-client-modules/client";
-import { companyPackageNames } from "./shared/plugin-release.mjs";
+import { companyPackageNames, updatablePackageNames } from "./shared/plugin-release.mjs";
 import {
   compiledPackageStamp,
   parseUpdateClientStatus,
@@ -11,12 +12,11 @@ import {
 } from "./shared/plugin-update-wire.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 
-/** Observe compiled exports that the public client Loader has actually activated. */
 export function readClientPluginModules(ctx: Context): UpdateClientReport["modules"] {
   const modules = ctx.get("modules");
   if (!modules || modules.entries.state.getSnapshot().syncing) return [];
   const observed: UpdateClientReport["modules"] = [];
-  for (const name of companyPackageNames) {
+  for (const name of updatablePackageNames) {
     const matches = [...ctx.loader.entries()].filter(
       (entry) => entry.options.name === name && !entry.disabled,
     );
@@ -41,18 +41,19 @@ export function readClientPluginModules(ctx: Context): UpdateClientReport["modul
           identity: `${entry.id}:${fiber.uid}`,
           desiredArtifactRevision: revision,
         });
-    } catch {
-      /* An unversioned or failed module remains an absent client observation. */
-    }
+    } catch {}
   }
   return observed;
 }
 
 export type PluginDetailUpdateSnapshot = {
+  companyUpdate?: UpdateClientStatus["companyUpdate"];
   items: PluginUpdateRow[];
   checking: boolean;
   submitting: string | null;
   transportError: "check" | "status" | "unknown" | null;
+  restart: "idle" | "restarting" | "requested" | "failed" | "unsupported";
+  restartReady?: boolean;
   notice: {
     kind: "progress" | "pending-restart" | "completed" | "restored" | "failed" | "unconfirmed";
     sequence: number;
@@ -86,16 +87,30 @@ export const pluginUpdateBusy = (items: PluginUpdateRow[]) =>
   items.some((row) => activeStages.includes(row.state));
 
 export const pluginSuiteReady = (items: PluginUpdateRow[]) =>
-  items.length === companyPackageNames.length &&
+  items.length >= companyPackageNames.length &&
+  items.length <= updatablePackageNames.length &&
   items.every((row) => row.state === "available" || row.state === "current");
 
-export function createPluginDetailUpdates(ctx: Context) {
+export class PluginUpdateRequestError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "PluginUpdateRequestError";
+  }
+}
+
+export function createPluginDetailUpdates(
+  ctx: Context,
+  desktop?: {
+    restartUpdate?: (request: RestartUpdateRequest) => Promise<unknown>;
+  },
+) {
   const listeners = new Set<() => void>();
   let snapshot: PluginDetailUpdateSnapshot = {
     items: [],
     checking: false,
     submitting: null,
     transportError: null,
+    restart: "idle",
     notice: null,
   };
   let status: UpdateClientStatus | undefined;
@@ -143,7 +158,18 @@ export function createPluginDetailUpdates(ctx: Context) {
     });
     const result = updateObject(await response.json());
     signal.throwIfAborted();
-    if (!response.ok || result.ok !== true) throw Error("UPDATE_TRANSPORT_FAILED");
+    if (!response.ok || result.ok !== true) {
+      const failure = result.error;
+      const code =
+        failure !== null &&
+        typeof failure === "object" &&
+        "code" in failure &&
+        typeof failure.code === "string" &&
+        /^[A-Z][A-Z0-9_]{0,79}$/.test(failure.code)
+          ? failure.code
+          : "UPDATE_TRANSPORT_FAILED";
+      throw new PluginUpdateRequestError(code);
+    }
     return result.value;
   };
   const signalFor = (owner: NonNullable<typeof page>) =>
@@ -172,6 +198,20 @@ export function createPluginDetailUpdates(ctx: Context) {
         endObservation(owner);
       }, pluginUpdateObservationMs),
     };
+  };
+  const restart = async () => {
+    if (disposed || snapshot.restart === "restarting" || snapshot.restart === "requested") return;
+    if (!desktop?.restartUpdate) {
+      publish({ restart: "unsupported" });
+      return;
+    }
+    publish({ restart: "restarting" });
+    try {
+      await desktop.restartUpdate({ kind: "plugins-restart" });
+      publish({ restart: "requested" });
+    } catch {
+      publish({ restart: "failed" });
+    }
   };
   const reflectObservation = (owner: NonNullable<typeof page>) => {
     if (!owner.observation || page !== owner) return;
@@ -211,7 +251,12 @@ export function createPluginDetailUpdates(ctx: Context) {
       next.revision >= status.revision
     ) {
       status = next;
-      publish({ items: next.items, transportError: null });
+      publish({
+        items: next.items,
+        companyUpdate: next.companyUpdate,
+        restartReady: next.restartReady,
+        transportError: null,
+      });
       return true;
     }
     return false;
@@ -327,17 +372,23 @@ export function createPluginDetailUpdates(ctx: Context) {
           Number(right.packageName === requestedName) - Number(left.packageName === requestedName),
       );
     const names = selected.map((row) => row.packageName);
-    publish({ submitting: names.join(","), transportError: null });
+    const restartUpdate = desktop?.restartUpdate;
+    if (!restartUpdate) {
+      publish({ restart: "unsupported" });
+      return Promise.resolve();
+    }
+    publish({ submitting: names.join(","), transportError: null, restart: "idle" });
     observe(page, names);
     notify(page, "progress");
     const run = async () => {
       try {
-        await request(
-          "update-all",
-          { plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })) },
-          AbortSignal.timeout(status?.checkTimeoutMs ?? 5000),
-        );
+        await restartUpdate({
+          kind: "plugins",
+          plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })),
+        });
+        publish({ restart: "requested" });
       } catch {
+        publish({ restart: "failed" });
         if (page?.observation) notify(page, "unconfirmed");
         publish({
           transportError: "unknown",
@@ -437,10 +488,9 @@ export function createPluginDetailUpdates(ctx: Context) {
       };
     },
     check,
+    restart,
     update: (name: string) => submitRows(name),
-    async updateAll() {
-      if (await check()) return submitRows();
-    },
+    updateAll: () => submitRows(),
     async dispose() {
       disposed = true;
       listeners.clear();

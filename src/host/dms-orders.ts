@@ -1,14 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, rename, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { withFileLock, writeFileAtomic } from "@deepseek-ai/dsh-atomic-write";
 import { dmsSigningSecret } from "./fc-dms-default.ts";
 
-/** Host-owned identity bindings; custom deployments resolve secrets from their environment. */
 export interface DmsConfig {
   gatewayUrl: string;
   manageUrl?: string;
   secretEnv: string;
-  credentialSource?: "fc-bundled-dms-test";
+  credentialSource?: "fc-bundled-dms-test" | "fc-bundled-dms-production";
   users: {
     tenantId: string;
     userId: string;
@@ -19,6 +19,9 @@ export interface DmsConfig {
 export type DmsEnvironments = Partial<Record<"production" | "test", DmsConfig>>;
 type Order = Record<string, unknown> & {
   aiPreOrderCode: string;
+  customerCode: string;
+  addressCode: string;
+  pupCode: string;
   itemList: { productCode: string; quantity: number }[];
 };
 const required = (value: unknown, field: string): string => {
@@ -26,7 +29,7 @@ const required = (value: unknown, field: string): string => {
     throw Error(`DMS 参数无效：${field}`);
   return value.trim();
 };
-/** Only documented fields cross the DMS boundary; quantities are in pieces. */
+
 export function parseDmsOrder(input: unknown): Order {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw Error("DMS 订单参数无效");
   const source = input as Record<string, unknown>;
@@ -86,6 +89,26 @@ export function parseDmsOrder(input: unknown): Order {
   });
   return order;
 }
+class DmsRequestRejection extends Error {}
+class DmsRequestNotSent extends Error {}
+
+function dmsResponseMessage(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  for (const field of ["message", "msg"]) {
+    if (!(field in body)) continue;
+    const value = Reflect.get(body, field);
+    if (typeof value === "string" && value.trim()) return value.trim().slice(0, 1000);
+  }
+  return undefined;
+}
+
+function savedDmsRejection(saved: unknown): string {
+  if (!saved || typeof saved !== "object" || !("dmsRejectionMessage" in saved)) return "";
+  return typeof saved.dmsRejectionMessage === "string"
+    ? saved.dmsRejectionMessage.slice(0, 1100) + "。"
+    : "";
+}
+
 function baseUrl(raw: string) {
   const url = new URL(raw);
   if (
@@ -99,7 +122,6 @@ function baseUrl(raw: string) {
   return url;
 }
 
-/** Credentials never leave this transport. DMS owns redemption on its loginSSO page. */
 export class DmsClient {
   private readonly config: DmsConfig;
   private readonly identity: { username?: string; workcode?: string };
@@ -114,6 +136,8 @@ export class DmsClient {
     this.transport = transport;
   }
   private async request(path: string, init: RequestInit, signal: AbortSignal): Promise<any> {
+    if (signal.aborted && path === "/dms/order/dmsOrderHead/submitZcOrderDirect")
+      throw new DmsRequestNotSent("订单尚未发送至DMS，可重新暂存");
     signal.throwIfAborted();
     const base = baseUrl(this.config.gatewayUrl);
     const response = await this.transport(base.href.replace(/\/$/, "") + path, {
@@ -121,12 +145,25 @@ export class DmsClient {
       signal,
       redirect: "error",
     });
-    if (!response.ok) throw Error(`DMS 请求失败（HTTP ${response.status}）`);
-    const body = await response.json();
+    const body = await response.json().catch(() => null);
     signal.throwIfAborted();
-    if (body?.success !== true || body?.code !== 200)
-      throw Error("DMS 拒绝请求，请在DMS核查账号、订单字段及业务配置");
-    return body.result;
+    let message = dmsResponseMessage(body);
+    if (message) {
+      const authorization = new Headers(init.headers).get("Authorization");
+      for (const credential of [
+        dmsSigningSecret(this.config),
+        authorization?.replace(/^Bearer\s+/i, ""),
+      ])
+        if (credential) message = message.split(credential).join("[已隐藏]");
+    }
+    message = message?.slice(0, 1000);
+    if (!response.ok || body?.success !== true || body?.code !== 200) {
+      if (message) throw new DmsRequestRejection(`DMS返回：${message}`);
+      if (!response.ok) throw Error(`DMS 请求失败（HTTP ${response.status}）`);
+      if (!body) throw Error("DMS未返回可解析的JSON回执");
+      throw new DmsRequestRejection("DMS 拒绝请求，未返回具体原因，请在DMS核查");
+    }
+    return { result: body.result, message };
   }
   assertConfigured() {
     baseUrl(this.config.gatewayUrl);
@@ -145,7 +182,7 @@ export class DmsClient {
     const sign = createHash("md5")
       .update(key + time + secret)
       .digest("hex");
-    const result = await this.request(
+    const { result } = await this.request(
       "/auth/oauthout/ssoLogin",
       {
         method: "POST",
@@ -184,11 +221,11 @@ export class DmsClient {
       redirect: redirect.href,
     };
   }
-  /** Server-side adapter for clients that own the DMS login callback; never expose token maps to GEA pages. */
+
   async exchange(key: string, menu: string | undefined, signal: AbortSignal) {
     const query = new URLSearchParams({ key: required(key, "key") });
     if (menu !== undefined) query.set("menu", required(menu, "menu"));
-    const result = await this.request(
+    const { result } = await this.request(
       "/auth/oauthout/getOauth2Token?" + query,
       { method: "GET" },
       signal,
@@ -198,7 +235,7 @@ export class DmsClient {
     return result;
   }
   async submit(order: Order, accessToken: string, signal: AbortSignal) {
-    const result = await this.request(
+    const { result, message } = await this.request(
       "/dms/order/dmsOrderHead/submitZcOrderDirect",
       {
         method: "POST",
@@ -220,11 +257,11 @@ export class DmsClient {
     return {
       orderCode: result.orderCode as string,
       aiPreOrderCode: order.aiPreOrderCode,
+      ...(message ? { dmsMessage: message } : {}),
     };
   }
 }
 
-/** Preserve the page intent alongside the globally scoped DMS preorder identifier. */
 export async function submitOwnedDmsOrder(
   directory: string,
   owner: string,
@@ -241,14 +278,12 @@ export async function submitOwnedDmsOrder(
       .update(JSON.stringify([owner, requestAiPreOrderCode]))
       .digest("hex")
       .slice(0, 30);
-  const saved = await readDmsIntent(directory, owner, order.aiPreOrderCode);
-  if (saved) {
-    // The existing intent remains authoritative, including an unresolved write.
-    const receipt = await submitDmsOrder(directory, owner, order, client, signal);
-    return { ...receipt, requestAiPreOrderCode };
-  }
-  await claimDmsBatch(directory, owner, warehouseCode ?? String(order.customerCode), order, signal);
-  const receipt = await submitDmsOrder(directory, owner, order, client, signal);
+  const lane = batchLane(directory, owner, warehouseCode ?? String(order.customerCode));
+  const receipt = await submitDmsOrder(directory, owner, order, client, signal, {
+    lockFile: join(lane, "admission"),
+    claim: () =>
+      claimDmsBatch(directory, owner, warehouseCode ?? String(order.customerCode), order, signal),
+  });
   return { ...receipt, requestAiPreOrderCode };
 }
 
@@ -269,7 +304,15 @@ async function readDmsIntent(directory: string, owner: string, id: string) {
   }
 }
 
-/** Append-only slots serialize new batches across processes; only a durable receipt releases the next slot. */
+const batchLane = (directory: string, owner: string, warehouse: string) =>
+  join(
+    directory,
+    "batches",
+    createHash("sha256")
+      .update(JSON.stringify([owner, warehouse]))
+      .digest("hex"),
+  );
+
 async function claimDmsBatch(
   directory: string,
   owner: string,
@@ -277,13 +320,7 @@ async function claimDmsBatch(
   order: Order,
   signal: AbortSignal,
 ) {
-  const lane = join(
-    directory,
-    "batches",
-    createHash("sha256")
-      .update(JSON.stringify([owner, warehouse]))
-      .digest("hex"),
-  );
+  const lane = batchLane(directory, owner, warehouse);
   await mkdir(lane, { recursive: true, mode: 0o700 });
   const fingerprint = createHash("sha256").update(JSON.stringify(order)).digest("hex");
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -292,22 +329,24 @@ async function claimDmsBatch(
     const last = slots.at(-1);
     if (last) {
       const previous = JSON.parse(await readFile(join(lane, last), "utf8"));
-      if (previous.aiPreOrderCode === order.aiPreOrderCode) {
-        if (previous.fingerprint !== fingerprint)
-          throw Error("同一补货批次内容已变化，请核对原订单");
-        return;
-      }
       const saved = await readDmsIntent(directory, owner, previous.aiPreOrderCode);
-      if (
-        !saved?.receipt ||
-        typeof saved.receipt.orderCode !== "string" ||
-        !saved.receipt.orderCode.trim() ||
-        saved.receipt.aiPreOrderCode !== previous.aiPreOrderCode ||
-        saved.fingerprint !== previous.fingerprint
-      )
-        throw Error(
-          `DMS订单 ${previous.aiPreOrderCode} 处理中或结果未知，请先核对原批次；禁止新批次下单`,
-        );
+      if (saved && saved.state !== "not-sent") {
+        if (previous.aiPreOrderCode === order.aiPreOrderCode) {
+          if (previous.fingerprint !== fingerprint)
+            throw Error("同一补货批次内容已变化，请核对原订单");
+          return;
+        }
+        if (
+          !saved.receipt ||
+          typeof saved.receipt.orderCode !== "string" ||
+          !saved.receipt.orderCode.trim() ||
+          saved.receipt.aiPreOrderCode !== previous.aiPreOrderCode ||
+          saved.fingerprint !== previous.fingerprint
+        )
+          throw Error(
+            `${savedDmsRejection(saved)}本地未确认DMS订单 ${previous.aiPreOrderCode} 的结果，结果未知，请先到DMS核对原批次；禁止新批次下单`,
+          );
+      }
     }
     const next = String(last ? Number(last.slice(0, 12)) + 1 : 1).padStart(12, "0") + ".json";
     try {
@@ -325,13 +364,13 @@ async function claimDmsBatch(
   throw Error("补货批次正在并发确认，请稍后核对原批次");
 }
 
-/** Persist intent before sending: absent upstream idempotency, unknown writes must never be replayed. */
 export async function submitDmsOrder(
   directory: string,
   owner: string,
   order: Order,
   client: DmsClient,
   signal: AbortSignal,
+  admission?: { lockFile: string; claim: () => Promise<void> },
 ) {
   const hash = (value: string) => createHash("sha256").update(value).digest("hex");
   const file = intentPath(directory, owner, order.aiPreOrderCode);
@@ -339,30 +378,57 @@ export async function submitDmsOrder(
   const existing = async () => {
     const saved = JSON.parse(await readFile(file, "utf8"));
     signal.throwIfAborted();
+    if (saved.state === "not-sent") return null;
     if (saved.fingerprint !== fingerprint) throw Error("预订单号已用于另一份订单，请核查原订单");
-    if (saved.receipt) return saved.receipt as { orderCode: string; aiPreOrderCode: string };
-    throw Error(`DMS订单 ${order.aiPreOrderCode} 处理中或结果未知，请在DMS核查；禁止重复提交`);
+    if (saved.receipt) return saved.receipt as Awaited<ReturnType<DmsClient["submit"]>>;
+    throw Error(
+      `${savedDmsRejection(saved)}本地未确认DMS订单 ${order.aiPreOrderCode} 的结果，结果未知，请先到DMS核对；禁止重复提交`,
+    );
   };
+  const readExisting = async () => {
+    try {
+      return await existing();
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+      return null;
+    }
+  };
+  const saved = await readExisting();
+  if (saved) return saved;
+  let login: Awaited<ReturnType<DmsClient["login"]>>;
   try {
-    return await existing();
+    login = await client.login(signal);
+    signal.throwIfAborted();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    throw Error(
+      `订单尚未发送至DMS，可修正后重新暂存。${error instanceof Error ? error.message : "登录失败"}`,
+    );
   }
-  const login = await client.login(signal);
-  signal.throwIfAborted();
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  try {
-    await writeFile(file, JSON.stringify({ fingerprint, state: "unknown" }), {
-      flag: "wx",
+  const reserve = async () => {
+    const previous = await readExisting();
+    if (previous) return previous;
+    signal.throwIfAborted();
+    await admission?.claim();
+    signal.throwIfAborted();
+    await writeFileAtomic(file, JSON.stringify({ fingerprint, state: "unknown" }), { mode: 0o600 });
+    return null;
+  };
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  if (admission) await mkdir(dirname(admission.lockFile), { recursive: true, mode: 0o700 });
+  const reserveIntent = () => withFileLock(file, reserve);
+  const previous = admission
+    ? await withFileLock(admission.lockFile, reserveIntent)
+    : await reserveIntent();
+  if (previous) return previous;
+  if (signal.aborted) {
+    await writeFileAtomic(file, JSON.stringify({ fingerprint, state: "not-sent" }), {
       mode: 0o600,
     });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return existing();
-    throw error;
+    throw new DmsRequestNotSent("订单尚未发送至DMS，可重新暂存");
   }
   try {
     const receipt = await client.submit(order, login.accessToken, signal);
-    // Store an acknowledged result even if the owning page disappears during persistence.
+
     const temp = file + "." + randomUUID();
     await writeFile(temp, JSON.stringify({ fingerprint, receipt }), {
       mode: 0o600,
@@ -370,7 +436,26 @@ export async function submitDmsOrder(
     await rename(temp, file);
     signal.throwIfAborted();
     return receipt;
-  } catch {
-    throw Error(`DMS订单 ${order.aiPreOrderCode} 未取得可确认回执，请在DMS核查；禁止重复提交`);
+  } catch (error) {
+    if (error instanceof DmsRequestNotSent) {
+      await writeFileAtomic(file, JSON.stringify({ fingerprint, state: "not-sent" }), {
+        mode: 0o600,
+      });
+      throw error;
+    }
+    if (error instanceof DmsRequestRejection)
+      await writeFileAtomic(
+        file,
+        JSON.stringify({
+          fingerprint,
+          state: "unknown",
+          dmsRejectionMessage: error.message,
+        }),
+        { mode: 0o600 },
+      );
+    const reason = error instanceof DmsRequestRejection ? `${error.message}。` : "";
+    throw Error(
+      `${reason}DMS订单 ${order.aiPreOrderCode} 未取得可确认回执，请在DMS核查；禁止重复提交`,
+    );
   }
 }

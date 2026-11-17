@@ -1,3 +1,4 @@
+import { mountFeedbackSubmit } from "./host/feedback-submit.ts";
 import { DEFAULT_MEMORY_GATEWAY_URL } from "./shared/memory-gateway.js";
 import { mountMemorySessionGuard } from "./host/memory-session-guard.ts";
 import {
@@ -18,7 +19,7 @@ import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from "./host/desktop-navigation.ts";
 import { attachWebLogin } from "./host/web-login.ts";
-/** GEA 外部 Fetch 能力和显式本地回执提供者的 DSH 插件入口。 */
+
 import { appendFile, mkdir } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import companyDefaults from "../desktop/company.config.json" with { type: "json" };
@@ -74,6 +75,7 @@ export { pluginPackageVersion } from "./plugin-package-version.ts";
 
 export const inject = [
   "profileContext",
+  "sessionFeedback",
   "workbenchPages",
   "agentResources",
   "userAgents",
@@ -90,10 +92,33 @@ export const inject = [
 const environmentSchema = z.union(["production", "test"]);
 export const Config = z.object({
   memoryGatewayUrl: z.string().default(DEFAULT_MEMORY_GATEWAY_URL),
+  feedbackCapture: z
+    .object({
+      sessionBytes: z.natural().default(8 * 1024 * 1024),
+      profileBytes: z
+        .natural()
+        .min(1024)
+        .default(64 * 1024 * 1024),
+      retentionMs: z
+        .natural()
+        .min(1000)
+        .default(7 * 86400000),
+    })
+    .default({
+      sessionBytes: 8 * 1024 * 1024,
+      profileBytes: 64 * 1024 * 1024,
+      retentionMs: 7 * 86400000,
+    }),
+  feedbackUploadTimeoutMs: z.natural().min(1000).default(120000),
+  feedbackMaxZipBytes: z
+    .natural()
+    .min(1024)
+    .default(20 * 1024 * 1024),
   memoryGatewayAllowPrivateHttp: z.boolean().default(false),
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
   serviceAccounts: z.any(),
   dms: z.any<Deployment["dms"]>(),
+  warningSchedulerEnvironments: z.object({ production: z.string(), test: z.string() }),
   orderFulfillmentConfirmation: z.any<Deployment["orderFulfillmentConfirmation"]>(),
   fcStorage: z.any<Deployment["fcStorage"]>(),
   environment: environmentSchema.default(
@@ -120,7 +145,7 @@ export const Config = z.object({
   modelRequestTimeoutMs: z.natural().min(1000).max(600000).default(600000),
   maxSnapshotBytes: z.natural().min(1000).max(5000000).default(companyDefaults.maxSnapshotBytes),
   runtimeDir: z.string(),
-  // The feature validates this optional deployment input and stays blocked on incomplete configuration.
+
   pluginUpdates: z.any<unknown>(),
   analysisMode: z.union(["receipt", "model"]).default("model"),
   analysisModel: z.string().default(companyDefaults.analysis.model),
@@ -135,10 +160,7 @@ export const Config = z.object({
         companyDefaults.analysis.contextWindow - companyDefaults.analysis.maxTokens - 1000,
       ),
     ),
-  /**
-   * 问答侧是否允许调用受管只读 SQL（`/ai/gateway/sql/execute`）。
-   * 默认关闭：问答取数只走模块 MCP + 页面证据，模型不再自己写 SQL。
-   */
+
   agentSqlRead: z.boolean().default(false),
   workbenchCapability: z
     .object({
@@ -167,7 +189,6 @@ export const Config = z.object({
   ]),
 });
 
-/** 执行标准模型调用，但不发起外部推理请求。 */
 class ReceiptAdapter extends LlmAdapter {
   constructor(
     private readonly config: Deployment,
@@ -207,12 +228,13 @@ class ReceiptAdapter extends LlmAdapter {
   }
 }
 
-/** 注册需要身份验证的 Web 路由；浏览器授权由标准 DSH connection 负责。 */
 export async function apply(
   ctx: Context,
   input: Omit<Deployment, "runtimeDir"> & {
     runtimeDir?: string;
     pluginUpdates?: unknown;
+    feedbackUploadTimeoutMs?: number;
+    feedbackMaxZipBytes?: number;
   },
 ): Promise<void> {
   const runtimeDir = input.runtimeDir ?? resolve(ctx.profileContext.dir, "gea");
@@ -230,23 +252,51 @@ export async function apply(
   validateServiceAccounts(config.serviceAccounts);
   ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config));
   const business = new Business(config);
+  business.capture.session = (id) => {
+    const agent = id ? ctx.agents.get(brandString<SessionId>(id)) : ctx.agents.currentInitiator();
+    const session =
+      agent?.session ?? (id ? ctx.get("sessions")?.get(brandString<SessionId>(id)) : undefined);
+    if (!session) return id ? { sessionId: id, rootSessionId: id } : undefined;
+    let root = session;
+    const visited = new Set<string>();
+    while (
+      root.header.origin === "subagent" &&
+      root.header.parentSession &&
+      !visited.has(root.id)
+    ) {
+      visited.add(root.id);
+      const parent = ctx.get("sessions")?.get(root.header.parentSession);
+      if (!parent) break;
+      root = parent;
+    }
+    return { sessionId: session.id, rootSessionId: root.id, createdAt: root.header.createdAt };
+  };
+  mountFeedbackSubmit(
+    ctx,
+    business,
+    input.feedbackUploadTimeoutMs ?? 120000,
+    input.feedbackMaxZipBytes ?? 20 * 1024 * 1024,
+  );
   const desktopLogin = await attachDesktopLogin(business);
   const webLogin = await attachWebLogin(business);
   ctx.effect(() => async () => {
     await desktopLogin.dispose();
     await webLogin.dispose();
     business.dispose();
+    await business.capture.dispose();
   });
-  mountBusinessIdentity(ctx, business);
+  let pagesReady = false;
+  mountBusinessIdentity(ctx, business, () => pagesReady);
   registerEndpoints([
     "navigation/catalog",
     "environment/select",
     "logout",
     "login/start",
     "login/poll",
+    "login/password/prepare",
+    "login/password",
   ]);
 
-  // 只装载 Workbench 已登记的 v2 HTML 包；缺少分离声明由装载校验拒绝。
   const htmlPackages = ctx.workbenchPages
     .packages()
     .filter((item) => item.manifest.gea?.contract === "gea-html-v2");
@@ -278,7 +328,7 @@ export async function apply(
   ]);
   ctx.effect(() => releaseOriginalResources);
   const htmlPlugins = await registerHtmlPlugins(ctx, business, htmlPackages);
-  // 能力契约注册表：页面白名单、草稿白名单、只读模块清单全部由它产出，宿主不再按模块写分支。
+
   const capability = createCapabilityRegistry([
     sharedAgentCapability,
     ...htmlPlugins.capabilityContracts,
@@ -289,9 +339,9 @@ export async function apply(
       keywords: ["区域计划", "审批", "销售计划", "计划量"],
     }),
   ]);
-  // 受管只读的模块白名单也来自契约：不再在业务代码里维护一份模块清单。
+
   business.setCapabilities(capability);
-  // The official stream seam also covers retained direct-provider selections.
+
   ctx.effect(() =>
     ctx.on("llm/stream", async function* (options, next) {
       business.assertModelAllowed();
@@ -369,7 +419,7 @@ export async function apply(
       },
     ),
   );
-  // Sidebar 工具遵循其公开 Document 条件；业务 profile 不再整体屏蔽官方通用能力。
+
   ctx.effect(() => mountSidebarToolVisibility(ctx, business));
   const desktopNavigation = createDesktopNavigation(business);
   ctx.effect(() => () => desktopNavigation.dispose());
@@ -386,8 +436,7 @@ export async function apply(
     business.clearTurnReplays(scope);
     business.clearTurnStops(scope);
   };
-  // native pre-step.messages 是本步新领取的消息，不是全历史。领取新问题时（提示组装前）清理，
-  // 不能只按消息数组里的用户条数判断换轮；同一句重问也有新的领取事件。
+
   ctx.effect(() =>
     ctx.on("agent/inbox/claimed", ({ agent, message }) => {
       if (message.source.kind !== "user") return;
@@ -435,8 +484,7 @@ export async function apply(
           });
       };
       updateRegistration();
-      // 官方模型菜单通过路由变更刷新目录。只观察 Host 身份代际和有效性，
-      // 头像等展示变化不能重新发现模型，也不改 Session 的模型选择。
+
       const unwatch = business.watchIdentity(() => {
         const nextIdentity = business.identitySignal();
         const nextAuthenticated = business.status().authenticated;
@@ -495,7 +543,7 @@ export async function apply(
       });
       signal.throwIfAborted();
       business.prepared(preview.previewId);
-      // selectModel 同样是整体覆盖，不带上档位会把它清掉。
+
       const keptEffort =
         config.analysisMode === "model" && config.analysisSource === "gea"
           ? geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection())
@@ -528,7 +576,6 @@ export async function apply(
       );
       return session;
     })().catch((error: unknown) => {
-      // admission 可能已在失败前成功，因此保留已生成的身份标识。
       attempt.result = undefined;
       throw error;
     });
@@ -550,7 +597,7 @@ export async function apply(
     "status",
     "notifications",
     "workflow/config",
-    // 界面刷新时重新解析账号角色（管理员刚改完权限不必重新登录）。
+
     "approval/roles",
     "sales-plan/action",
     "sales-plan/draft",
@@ -566,17 +613,21 @@ export async function apply(
     "submit",
     "workbench/query",
     "plugin/sql",
+    "people/search",
+    "warning/storage",
+    "warning/scheduler",
     "workbench/prepare",
-    // 前端上报"这个对话现在停在哪一页菜单"（默认主对话，点菜单时带菜单名）。
+
     "api-log/snapshot",
     "api-log/replay",
     "api-log/clear",
     "api-log/batch/start",
     "api-log/batch/read",
     "api-log/batch/stop",
-    // 只在显式打开调试开关时注册：逐个模块真跑一遍 MCP，并把原始报文带回来。
+
     ...(process.env.GEA_DEBUG_PROBE === "1" ? ["debug/mcp-probe"] : []),
   ]);
+  pagesReady = true;
   function registerEndpoints(endpoints: readonly string[]): void {
     for (const endpoint of endpoints)
       ctx.effect(() =>
@@ -585,318 +636,341 @@ export async function apply(
           methods: ["POST"],
           requestBody: "buffered",
           fetch: async (request: Request) => {
+            const pageOwner = request.headers.get("X-Workbench-Page-Owner");
             try {
-              business.assertOperation(endpoint);
-              const payload = object(await request.json());
-              let value: unknown;
-              switch (endpoint) {
-                case "memory/state":
-                  keys(payload, []);
-                  value = await business.memory.state(request.signal);
-                  break;
-                case "memory/list":
-                  keys(payload, ["query", "category"]);
-                  value = await business.memory.list(payload, request.signal);
-                  break;
-                case "memory/update":
-                  keys(payload, [
-                    "operationId",
-                    "id",
-                    "expectedVersion",
-                    "expectedRevision",
-                    "bankGeneration",
-                    "category",
-                    "content",
-                  ]);
-                  value = await business.memory.update(
-                    z.resolve(payload, memoryUpdateInputSchema, {}, true)[0],
-                    request.signal,
-                  );
-                  break;
-                case "memory/delete":
-                  keys(payload, [
-                    "operationId",
-                    "id",
-                    "expectedVersion",
-                    "expectedRevision",
-                    "bankGeneration",
-                  ]);
-                  value = await business.memory.delete(
-                    z.resolve(payload, memoryDeleteInputSchema, {}, true)[0],
-                    request.signal,
-                  );
-                  break;
-                case "memory/clear":
-                  keys(payload, [
-                    "operationId",
-                    "expectedRevision",
-                    "bankGeneration",
-                    "confirmation",
-                  ]);
-                  value = await business.memory.clear(
-                    z.resolve(payload, memoryClearInputSchema, {}, true)[0],
-                    request.signal,
-                  );
-                  break;
-                case "memory/source":
-                  keys(payload, ["id"]);
-                  if (typeof payload.id !== "string") throw Error("MEMORY_INVALID_REQUEST");
-                  value = await memory.source(payload.id, request.signal);
-                  break;
-                case "memory/get":
-                  keys(payload, ["id"]);
-                  if (typeof payload.id !== "string") throw Error("MEMORY_INVALID_REQUEST");
-                  value = await business.memory.get(payload.id, request.signal);
-                  break;
-                case "memory/settings":
-                  keys(payload, ["generationEnabled", "expectedRevision", "operationId"]);
-                  if (
-                    typeof payload.generationEnabled !== "boolean" ||
-                    !Number.isSafeInteger(payload.expectedRevision) ||
-                    typeof payload.operationId !== "string"
-                  )
-                    throw Error("MEMORY_INVALID_REQUEST");
-                  value = await business.memory.settings(
-                    {
-                      generationEnabled: payload.generationEnabled,
-                      expectedRevision: Number(payload.expectedRevision),
-                      operationId: payload.operationId,
-                    },
-                    request.signal,
-                  );
-                  break;
-                case "memory/operations":
-                  keys(payload, ["operationId"]);
-                  if (typeof payload.operationId !== "string")
-                    throw Error("MEMORY_INVALID_REQUEST");
-                  value = await business.memory.operation(payload.operationId, request.signal);
-                  break;
-                case "navigation/catalog":
-                  value = await business.navigationCatalog(payload, request.signal);
-                  break;
-                case "navigation/poll":
-                case "navigation/retry":
-                  if (Object.keys(payload).length) throw Error("NAVIGATION_REQUEST_INVALID");
-                  value =
-                    endpoint === "navigation/poll"
-                      ? await desktopNavigation.poll()
-                      : await desktopNavigation.retry();
-                  break;
-                case "navigation/finish":
-                  value = await desktopNavigation.finish(payload);
-                  break;
-                case "api-log/snapshot":
-                  value = business.apiLogSnapshot(payload);
-                  break;
-                case "api-log/replay":
-                  value = await business.apiLogReplay(payload, request.signal);
-                  break;
-                case "api-log/clear":
-                  value = business.apiLogClear(payload);
-                  break;
-                case "api-log/batch/start":
-                  value = business.apiLogBatchStart(payload, request.signal);
-                  break;
-                case "api-log/batch/read":
-                  value = business.apiLogBatchRead(payload);
-                  break;
-                case "api-log/batch/stop":
-                  value = business.apiLogBatchStop(payload);
-                  break;
-                case "debug/mcp-probe":
-                  value = await business.debugProbeModuleMcp(
-                    String(payload.consumerCode ?? ""),
-                    request.signal,
-                  );
-                  break;
-                case "workbench/query":
-                  value = await business.workbenchQuery(payload, request.signal);
-                  break;
-                case "plugin/sql":
-                  value = await business.pluginSql(payload, request.signal);
-                  break;
-                case "workbench/prepare":
-                  value = await business.prepareWorkbench(payload, request.signal);
-                  break;
-                case "sales-plan/submit":
-                  value = await business.salesPlanSubmit(payload, request.signal);
-                  break;
-                case "sales-plan/draft":
-                  value = await business.salesPlanDraft(payload, request.signal);
-                  break;
-                case "sales-plan/action":
-                  value = await business.salesPlanAction(payload, request.signal);
-                  break;
-                case "workflow/config":
-                  value = await business.workflowConfig(payload, request.signal);
-                  break;
-                // 界面上的「刷新」会走这里：重新解析当前账号角色，管理员刚改完权限的人也
-                // 不用重新登录就能看到新的可审批节点。
-                case "approval/roles":
-                  business.assertExecutionAllowed(config.analysisAgentCode);
-                  await business.refreshApprovalRoles(request.signal, {
-                    force: true,
-                  });
-                  value = { roles: business.status().roles ?? [] };
-                  break;
-                case "notifications":
-                  value = await business.notifications(payload, request.signal);
-                  break;
-                case "status":
-                  if (!business.status().readonlyValidation) {
-                    await Promise.all([
-                      business.refreshMissingAvatar(request.signal),
-                      business.refreshPermissions(request.signal),
-                      business.refreshApprovalRoles(request.signal),
+              const page = pageOwner ? ctx.workbenchPages.requestContext(pageOwner) : undefined;
+              if (page)
+                request = new Request(request, {
+                  signal: AbortSignal.any([request.signal, page.signal]),
+                });
+              return await business.capture.run(page?.sessionId, endpoint, async () => {
+                business.assertOperation(endpoint);
+                const payload = object(await request.json());
+                let value: unknown;
+                switch (endpoint) {
+                  case "memory/state":
+                    keys(payload, []);
+                    value = await business.memory.state(request.signal);
+                    break;
+                  case "memory/list":
+                    keys(payload, ["query", "category"]);
+                    value = await business.memory.list(payload, request.signal);
+                    break;
+                  case "memory/update":
+                    keys(payload, [
+                      "operationId",
+                      "id",
+                      "expectedVersion",
+                      "expectedRevision",
+                      "bankGeneration",
+                      "category",
+                      "content",
                     ]);
-                  }
-                  // 前端不写死"哪个页面属于哪个模块"：模块索引由能力契约产出。
-                  value = {
-                    ...business.status(),
-                    htmlPlugins: htmlPackages.length > 0,
-                    modules: capability.modules(),
-                  };
-                  break;
-                case "model/advice": {
-                  business.assertExecutionAllowed(WORKBENCH_AGENT_CODE);
-                  if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
-                  if (config.analysisMode !== "model") throw new Error("GEA_ADVICE_MODEL_REQUIRED");
-                  if (
-                    typeof payload.question !== "string" ||
-                    !payload.question.trim() ||
-                    Buffer.byteLength(payload.question) > config.inputByteBudget
-                  )
-                    throw new Error("INVALID_ADVICE_INPUT");
-                  const signal = AbortSignal.any([request.signal, business.identitySignal()]);
-                  let model = config.analysisModel;
-                  if (config.analysisSource === "gea") {
-                    const route = await business.modelRoute(signal, WORKBENCH_AGENT_CODE);
-                    model = route.models.includes(model) ? model : route.models[0]!;
-                  }
-                  let answer = "";
-                  let finished = false;
-                  for await (const chunk of ctx.llm.stream({
-                    provider: "gea-analysis",
-                    model,
-                    messages: [
-                      createUserMessage({
-                        source: { kind: "user" },
-                        content: [{ type: "text", text: payload.question }],
-                      }),
-                    ],
-                    maxTokens: 4096,
-                    signal,
-                  })) {
-                    signal.throwIfAborted();
-                    if (chunk.type === "text-delta") answer += chunk.text;
-                    if (Buffer.byteLength(answer) > config.maxSnapshotBytes)
-                      throw new Error("GEA_ADVICE_TOO_LARGE");
-                    if (chunk.type === "finish") finished = chunk.reason.kind === "stop";
-                  }
-                  signal.throwIfAborted();
-                  if (!finished) throw new Error("GEA_ADVICE_INCOMPLETE");
-                  value = {
-                    status: answer.trim() ? "ok" : "noAnswer",
-                    provider_id: "gea-analysis",
-                    model,
-                    answer,
-                  };
-                  break;
-                }
-                case "model/discover": {
-                  if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
-                  const requestedPreset = payload.agentPreset;
-                  if (
-                    requestedPreset !== undefined &&
-                    (typeof requestedPreset !== "string" || !profileFor(requestedPreset))
-                  )
-                    throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
-                  await assertBusinessResourceAvailable(
-                    ctx,
-                    typeof requestedPreset === "string" ? requestedPreset : undefined,
-                    request.signal,
-                  );
-                  const discoveryConsumer =
-                    requestedPreset === undefined
-                      ? WORKBENCH_AGENT_CODE
-                      : requestedPreset === "gea-readonly"
-                        ? config.analysisAgentCode
-                        : profileFor(requestedPreset)!.consumerCode;
-                  const route =
-                    config.analysisSource === "direct"
-                      ? {
-                          models: [config.analysisModel],
-                          names: {
-                            [config.analysisModel]: config.analysisModel,
-                          },
-                        }
-                      : await business.modelRoute(request.signal, discoveryConsumer);
-                  const selected = route.models.includes(config.analysisModel)
-                    ? config.analysisModel
-                    : route.models[0]!;
-                  request.signal.throwIfAborted();
-                  // saveSelection 是整体覆盖：不带上已选档位就会把用户的档位选择清掉。
-                  const kept = geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection());
-                  if (requestedPreset === undefined)
-                    await ctx.agentDefaultModel.saveSelection({
-                      provider: "gea-analysis",
-                      model: selected,
-                      ...(kept === undefined ? {} : { reasoningEffort: kept }),
+                    value = await business.memory.update(
+                      z.resolve(payload, memoryUpdateInputSchema, {}, true)[0],
+                      request.signal,
+                    );
+                    break;
+                  case "memory/delete":
+                    keys(payload, [
+                      "operationId",
+                      "id",
+                      "expectedVersion",
+                      "expectedRevision",
+                      "bankGeneration",
+                    ]);
+                    value = await business.memory.delete(
+                      z.resolve(payload, memoryDeleteInputSchema, {}, true)[0],
+                      request.signal,
+                    );
+                    break;
+                  case "memory/clear":
+                    keys(payload, [
+                      "operationId",
+                      "expectedRevision",
+                      "bankGeneration",
+                      "confirmation",
+                    ]);
+                    value = await business.memory.clear(
+                      z.resolve(payload, memoryClearInputSchema, {}, true)[0],
+                      request.signal,
+                    );
+                    break;
+                  case "memory/source":
+                    keys(payload, ["id"]);
+                    if (typeof payload.id !== "string") throw Error("MEMORY_INVALID_REQUEST");
+                    value = await memory.source(payload.id, request.signal);
+                    break;
+                  case "memory/get":
+                    keys(payload, ["id"]);
+                    if (typeof payload.id !== "string") throw Error("MEMORY_INVALID_REQUEST");
+                    value = await business.memory.get(payload.id, request.signal);
+                    break;
+                  case "memory/settings":
+                    keys(payload, ["generationEnabled", "expectedRevision", "operationId"]);
+                    if (
+                      typeof payload.generationEnabled !== "boolean" ||
+                      !Number.isSafeInteger(payload.expectedRevision) ||
+                      typeof payload.operationId !== "string"
+                    )
+                      throw Error("MEMORY_INVALID_REQUEST");
+                    value = await business.memory.settings(
+                      {
+                        generationEnabled: payload.generationEnabled,
+                        expectedRevision: Number(payload.expectedRevision),
+                        operationId: payload.operationId,
+                      },
+                      request.signal,
+                    );
+                    break;
+                  case "memory/operations":
+                    keys(payload, ["operationId"]);
+                    if (typeof payload.operationId !== "string")
+                      throw Error("MEMORY_INVALID_REQUEST");
+                    value = await business.memory.operation(payload.operationId, request.signal);
+                    break;
+                  case "navigation/catalog":
+                    value = await business.navigationCatalog(payload, request.signal);
+                    break;
+                  case "navigation/poll":
+                  case "navigation/retry":
+                    if (Object.keys(payload).length) throw Error("NAVIGATION_REQUEST_INVALID");
+                    value =
+                      endpoint === "navigation/poll"
+                        ? await desktopNavigation.poll()
+                        : await desktopNavigation.retry();
+                    break;
+                  case "navigation/finish":
+                    value = await desktopNavigation.finish(payload);
+                    break;
+                  case "api-log/snapshot":
+                    value = business.apiLogSnapshot(payload);
+                    break;
+                  case "api-log/replay":
+                    value = await business.apiLogReplay(payload, request.signal);
+                    break;
+                  case "api-log/clear":
+                    value = business.apiLogClear(payload);
+                    break;
+                  case "api-log/batch/start":
+                    value = business.apiLogBatchStart(payload, request.signal);
+                    break;
+                  case "api-log/batch/read":
+                    value = business.apiLogBatchRead(payload);
+                    break;
+                  case "api-log/batch/stop":
+                    value = business.apiLogBatchStop(payload);
+                    break;
+                  case "debug/mcp-probe":
+                    value = await business.debugProbeModuleMcp(
+                      String(payload.consumerCode ?? ""),
+                      request.signal,
+                    );
+                    break;
+                  case "workbench/query":
+                    value = await business.workbenchQuery(payload, request.signal);
+                    break;
+                  case "people/search":
+                    value = await business.searchPeople(payload, request.signal);
+                    break;
+                  case "warning/scheduler":
+                    value = await business.warningScheduler(payload, request.signal);
+                    break;
+                  case "warning/storage":
+                    value = await business.warningStorage(payload, request.signal);
+                    break;
+                  case "plugin/sql":
+                    value = await business.pluginSql(payload, request.signal);
+                    break;
+                  case "workbench/prepare":
+                    value = await business.prepareWorkbench(payload, request.signal);
+                    break;
+                  case "sales-plan/submit":
+                    value = await business.salesPlanSubmit(payload, request.signal);
+                    break;
+                  case "sales-plan/draft":
+                    value = await business.salesPlanDraft(payload, request.signal);
+                    break;
+                  case "sales-plan/action":
+                    value = await business.salesPlanAction(payload, request.signal);
+                    break;
+                  case "workflow/config":
+                    value = await business.workflowConfig(payload, request.signal);
+                    break;
+
+                  case "approval/roles":
+                    business.assertExecutionAllowed(config.analysisAgentCode);
+                    await business.refreshApprovalRoles(request.signal, {
+                      force: true,
                     });
-                  value = {
-                    ...(requestedPreset === undefined ? {} : { consumerCode: discoveryConsumer }),
-                    models: route.models,
-                    selected,
-                    names: route.names,
-                    selectedName: route.names[selected],
-                  };
-                  break;
+                    value = { roles: business.status().roles ?? [] };
+                    break;
+                  case "notifications":
+                    value = await business.notifications(payload, request.signal);
+                    break;
+                  case "status":
+                    if (!business.status().readonlyValidation) {
+                      await Promise.all([
+                        business.refreshMissingAvatar(request.signal),
+                        business.refreshPermissions(request.signal),
+                        business.refreshApprovalRoles(request.signal),
+                      ]);
+                    }
+
+                    value = {
+                      ...business.status(),
+                      htmlPlugins: htmlPackages.length > 0,
+                      modules: capability.modules(),
+                    };
+                    break;
+                  case "model/advice": {
+                    business.assertExecutionAllowed(WORKBENCH_AGENT_CODE);
+                    if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
+                    if (config.analysisMode !== "model")
+                      throw new Error("GEA_ADVICE_MODEL_REQUIRED");
+                    if (
+                      typeof payload.question !== "string" ||
+                      !payload.question.trim() ||
+                      Buffer.byteLength(payload.question) > config.inputByteBudget
+                    )
+                      throw new Error("INVALID_ADVICE_INPUT");
+                    const signal = AbortSignal.any([request.signal, business.identitySignal()]);
+                    let model = config.analysisModel;
+                    if (config.analysisSource === "gea") {
+                      const route = await business.modelRoute(signal, WORKBENCH_AGENT_CODE);
+                      model = route.models.includes(model) ? model : route.models[0]!;
+                    }
+                    let answer = "";
+                    let finished = false;
+                    for await (const chunk of ctx.llm.stream({
+                      provider: "gea-analysis",
+                      model,
+                      messages: [
+                        createUserMessage({
+                          source: { kind: "user" },
+                          content: [{ type: "text", text: payload.question }],
+                        }),
+                      ],
+                      maxTokens: 4096,
+                      signal,
+                    })) {
+                      signal.throwIfAborted();
+                      if (chunk.type === "text-delta") answer += chunk.text;
+                      if (Buffer.byteLength(answer) > config.maxSnapshotBytes)
+                        throw new Error("GEA_ADVICE_TOO_LARGE");
+                      if (chunk.type === "finish") finished = chunk.reason.kind === "stop";
+                    }
+                    signal.throwIfAborted();
+                    if (!finished) throw new Error("GEA_ADVICE_INCOMPLETE");
+                    value = {
+                      status: answer.trim() ? "ok" : "noAnswer",
+                      provider_id: "gea-analysis",
+                      model,
+                      answer,
+                    };
+                    break;
+                  }
+                  case "model/discover": {
+                    if (!business.status().authenticated) throw new Error("LOGIN_REQUIRED");
+                    const requestedPreset = payload.agentPreset;
+                    if (
+                      requestedPreset !== undefined &&
+                      (typeof requestedPreset !== "string" || !profileFor(requestedPreset))
+                    )
+                      throw Error("GEA_AGENT_PRESET_UNSUPPORTED");
+                    await assertBusinessResourceAvailable(
+                      ctx,
+                      typeof requestedPreset === "string" ? requestedPreset : undefined,
+                      request.signal,
+                    );
+                    const discoveryConsumer =
+                      requestedPreset === undefined
+                        ? WORKBENCH_AGENT_CODE
+                        : requestedPreset === "gea-readonly"
+                          ? config.analysisAgentCode
+                          : profileFor(requestedPreset)!.consumerCode;
+                    const route =
+                      config.analysisSource === "direct"
+                        ? {
+                            models: [config.analysisModel],
+                            names: {
+                              [config.analysisModel]: config.analysisModel,
+                            },
+                          }
+                        : await business.modelRoute(request.signal, discoveryConsumer);
+                    const selected = route.models.includes(config.analysisModel)
+                      ? config.analysisModel
+                      : route.models[0]!;
+                    request.signal.throwIfAborted();
+
+                    const kept = geaKeptReasoningEffort(ctx.agentDefaultModel.currentSelection());
+                    if (requestedPreset === undefined)
+                      await ctx.agentDefaultModel.saveSelection({
+                        provider: "gea-analysis",
+                        model: selected,
+                        ...(kept === undefined ? {} : { reasoningEffort: kept }),
+                      });
+                    value = {
+                      ...(requestedPreset === undefined ? {} : { consumerCode: discoveryConsumer }),
+                      models: route.models,
+                      selected,
+                      names: route.names,
+                      selectedName: route.names[selected],
+                    };
+                    break;
+                  }
+                  case "environment/select":
+                    value = business.selectEnvironment(payload);
+                    break;
+                  case "logout":
+                    value = await business.logout(payload, request.signal);
+                    break;
+                  case "login/start":
+                    value = await business.loginStart(request.signal, payload);
+                    break;
+                  case "login/password/prepare":
+                    value = await business.passwordLoginPrepare(request.signal, payload);
+                    break;
+                  case "login/password":
+                    value = await business.passwordLogin(payload, request.signal);
+                    break;
+                  case "login/poll":
+                    value = await business.loginPoll(payload, request.signal);
+                    break;
+                  case "plans":
+                    value = await business.plans(payload, request.signal);
+                    break;
+                  case "periods":
+                    value = await business.periods(request.signal);
+                    break;
+                  case "detail":
+                    value = await business.detail(payload, request.signal);
+                    break;
+                  case "versions":
+                    value = await business.versions(payload, request.signal);
+                    break;
+                  case "skus":
+                    value = await business.skus(payload, request.signal);
+                    break;
+                  case "prepare":
+                    value = business.prepare(payload);
+                    break;
+                  case "submit":
+                    value = await submit(payload, request.signal);
+                    break;
+                  default:
+                    throw new Error("UNKNOWN_ENDPOINT");
                 }
-                case "environment/select":
-                  value = business.selectEnvironment(payload);
-                  break;
-                case "logout":
-                  value = business.logout(payload);
-                  break;
-                case "login/start":
-                  value = await business.loginStart(request.signal, payload);
-                  break;
-                case "login/poll":
-                  value = await business.loginPoll(payload, request.signal);
-                  break;
-                case "plans":
-                  value = await business.plans(payload, request.signal);
-                  break;
-                case "periods":
-                  value = await business.periods(request.signal);
-                  break;
-                case "detail":
-                  value = await business.detail(payload, request.signal);
-                  break;
-                case "versions":
-                  value = await business.versions(payload, request.signal);
-                  break;
-                case "skus":
-                  value = await business.skus(payload, request.signal);
-                  break;
-                case "prepare":
-                  value = business.prepare(payload);
-                  break;
-                case "submit":
-                  value = await submit(payload, request.signal);
-                  break;
-                default:
-                  throw new Error("UNKNOWN_ENDPOINT");
-              }
-              await desktopLogin.flush();
-              await webLogin.flush();
-              return Response.json(
-                { ok: true, value },
-                { headers: { "Cache-Control": "no-store" } },
-              );
+                await desktopLogin.flush();
+                await webLogin.flush();
+                return Response.json(
+                  { ok: true, value },
+                  { headers: { "Cache-Control": "no-store" } },
+                );
+              });
             } catch (caughtError) {
               let error = caughtError;
-              // 业务操作失败时也可能同时发现登录过期并清除身份。
+
               try {
                 await desktopLogin.flush();
                 await webLogin.flush();

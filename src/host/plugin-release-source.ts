@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
-  companyPackageNames,
+  updatablePackageNames,
   parsePluginRelease,
   parsePluginManifest,
   comparePluginVersions,
@@ -54,7 +54,6 @@ export type PluginReleaseSourceDependencies = {
   now?: () => number;
 };
 
-/** Configuration and credentials stay in Host; only verified release projections cross to the client. */
 export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
   const value = object(raw);
   if (!Array.isArray(value.allowed) || !value.allowed.length) return fail("SOURCE_CONFIG_INVALID");
@@ -129,7 +128,6 @@ async function boundedBytes(
   }
 }
 
-/** tar only lists or streams named files; no archive content is extracted to disk. */
 export async function inspectPluginArchive(
   path: string,
   signal?: AbortSignal,
@@ -163,7 +161,7 @@ export async function inspectPluginArchive(
     JSON.parse((await run("tar", ["-xOf", path, "package/package.json"], options)).stdout),
   );
   const name = text(value.name);
-  if (!companyPackageNames.some((company) => company === name))
+  if (!updatablePackageNames.some((company) => company === name))
     return fail("SOURCE_ARCHIVE_IDENTITY_INVALID");
   const exports = object(value.exports),
     dsh = object(value.dsh),
@@ -257,7 +255,7 @@ export function createPluginReleaseSource(
         receipt.channel !== config.channel ||
         !Array.isArray(receipt.releases) ||
         receipt.releases.length === 0 ||
-        receipt.releases.length > companyPackageNames.length
+        receipt.releases.length > updatablePackageNames.length
       )
         return fail("SOURCE_TRUST_INVALID");
       sha(receipt.payloadSha256);
@@ -356,12 +354,16 @@ export function createPluginReleaseSource(
       )
         return fail("SOURCE_CHANNEL_REPLAY");
       const releases: PluginRelease[] = [];
-      for (const row of [...channel.releases, ...(channel.companionReleases ?? [])]) {
+      for (const row of [
+        ...channel.releases,
+        ...(channel.companionReleases ?? []),
+        ...(channel.optionalReleases ?? []),
+      ]) {
         const reference = object(row),
           name = text(reference.name),
           releaseHash = sha(reference.sha256);
         if (
-          !companyPackageNames.some((company) => company === name) ||
+          !updatablePackageNames.some((company) => company === name) ||
           releases.some((release) => release.name === name)
         )
           return fail("SOURCE_CHANNEL_INVALID");
@@ -378,7 +380,7 @@ export function createPluginReleaseSource(
           if (old) {
             if (typeof old.version !== "string" || typeof old.sha256 !== "string")
               return fail("SOURCE_TRUST_INVALID");
-            // A temporarily absent release keeps its durable version and digest approval.
+
             const comparison = comparePluginVersions(release.version, old.version);
             if (comparison < 0) return fail("SOURCE_VERSION_ROLLBACK");
             if (comparison === 0 && release.artifact.sha256 !== old.sha256)

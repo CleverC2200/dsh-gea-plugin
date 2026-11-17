@@ -84,7 +84,7 @@ const skuFor = (versionId) => ({
   amtBase: "100",
   price: "10",
 });
-/** 回执必须带真实身份：客户端会按 planId/versionId/状态链逐项核对，拼接错就会被判成“结果未知”。 */
+
 const planIdForVersion = (versionId) => "p-jxs-2026-09-0000" + versionId.slice(1);
 
 const openWorkbench = async (t) => {
@@ -137,7 +137,7 @@ const openWorkbench = async (t) => {
     if (action) {
       const body = JSON.parse(req.body);
       writes.push(body);
-      // 通过走到下一节点（1→2）；退回回到上一个节点对应的退回码（1→6）。
+
       const toStatus = body.action === "REJECT" ? 6 : 2;
       statuses.set(action[1], toStatus);
       return send({
@@ -253,7 +253,7 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
     const action = /\/versions\/(v\d)\/actions$/.exec(path);
     if (action) {
       writes.push({ versionId: action[1], body: JSON.parse(req.body) });
-      // 第二笔已经被别人推到下一节点：并发冲突。
+
       if (action[1] === "v2") {
         reply({ message: "状态已变化", errorCode: "SALES_PLAN_CONFLICT", requestId: "r" }, 409);
         return true;
@@ -306,7 +306,7 @@ test("批量里一笔冲突不影响其它笔，结果逐笔说明原因", { tim
   const result = dialog;
   await expect(result).toContainText("成功 1 笔");
   await expect(result).toContainText("失败 1 笔");
-  // 失败的那笔要能看出是哪一个，并且不能只给技术错误码。
+
   await expect(result).toContainText("宝阳销售组");
   const text = await result.innerText();
   for (const leak of ["GEA_HTTP", "payload", "SALES_PLAN_CONFLICT"])
@@ -324,7 +324,7 @@ test("多选批量退回：共用一个退回原因，逐笔带上", { timeout: 
   const dialog = frame.getByTestId("regional-approval-batch-action-dialog");
   await expect(dialog).toBeVisible();
   const confirm = frame.getByRole("button", { name: "确认批量退回", exact: true });
-  // 退回原因必填。
+
   await expect(confirm).toBeDisabled();
   await expect(frame.getByTestId("regional-approval-batch-summary")).toContainText(
     "其中 2 笔可提交",

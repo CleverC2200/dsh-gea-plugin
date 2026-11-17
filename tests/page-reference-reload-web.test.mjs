@@ -29,7 +29,7 @@ test(
       (iframe) =>
         new Promise((resolve) => {
           iframe.addEventListener("load", resolve, { once: true });
-          // Reload the retained frame without changing its declared relative address.
+
           const source = iframe.getAttribute("src");
           if (!source) throw Error("HTML_FRAME_SOURCE_REQUIRED");
           iframe.src = source;

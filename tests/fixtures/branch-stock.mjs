@@ -1,4 +1,3 @@
-/** Fixed non-production rows; every external data/model endpoint stays on loopback. */
 export const stock = [
   {
     snapshot_date: "2026-09-29",
@@ -153,12 +152,17 @@ export function installStockRoutes(app, state, model) {
       if (state.mode === "error")
         reply({ success: false, code: 500, message: "固定样本查询失败" }, 503);
       else {
-        const rows = stockRows(body.sql, state.mode, body.parameters, state.sample);
+        const configured = state.configuredSql?.(body);
+        const rows =
+          configured?.rows ?? stockRows(body.sql, state.mode, body.parameters, state.sample);
         reply({
           success: true,
           code: 200,
           result: {
             requestId: req.headers["x-request-id"],
+            ...(configured
+              ? { returnedColumns: configured.returnedColumns, rejectedColumns: [] }
+              : {}),
             operation: "SELECT",
             tables: ["agents_scm_branch_inventory_snapshot"],
             total: rows.length,
@@ -222,7 +226,6 @@ export const stockState = (sample) => ({
   models: [],
 });
 
-/** Current Cube-New protocol over the caller-owned loopback server. */
 export function stockMcpRoute(req, res, reply, state) {
   const path = req.url.pathname;
   if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {

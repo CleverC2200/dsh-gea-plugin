@@ -94,7 +94,7 @@ test(
     await openRegisteredWorkbenchPage(page, "销售计划");
     const businessFrame = salesPlanFrame(page);
     await businessFrame.getByRole("button", { name: "刷新二维码", exact: true }).waitFor();
-    // Login belongs to the current business Document; it never replaces the Core shell.
+
     await expect(salesPlanFrameElement(page)).toBeVisible();
     await expect(page.locator(".agent-workbench-document")).toHaveCount(1);
     allowLogin = true;
@@ -109,20 +109,27 @@ test(
     const second = await context.newPage();
     await second.goto(app.origin);
     await preparePageStartup(second);
-    // The second tab restores the already-open sales Document.
+
     await expect(salesPlanFrameElement(second)).toBeVisible();
     await second.getByRole("button", { name: "账户菜单", exact: true }).click();
     await expect(second.getByRole("menuitem", { name: "退出登录", exact: true })).toBeVisible();
     await page.bringToFront();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-    // The brand no longer switches pages; open a fresh conversation for the second shell.
+
     await page
       .getByRole("button", { name: "新会话", exact: true })
       .filter({ hasText: "AI工作台" })
       .click();
-    // Current Workbench retains visited Documents while the main Conversation becomes active.
-    await expect(salesPlanFrameElement(page)).toBeHidden();
+
+    try {
+      await expect(salesPlanFrameElement(page)).toBeHidden();
+    } catch (error) {
+      const alerts = await page.getByRole("alert").allTextContents();
+      throw new Error(`Conversation did not replace Document: ${JSON.stringify(alerts)}`, {
+        cause: error,
+      });
+    }
     await expect(
       page.getByRole("heading", { name: "AI不止于对话，更融入工作", exact: true }),
     ).toBeVisible();

@@ -79,6 +79,7 @@ test(
             versionId: "v",
             fromStatus: 4,
             toStatus: 4,
+            approvalRole: "category",
             requestId: req.headers["x-request-id"],
             traceId: "t",
             auditId: "sales-plan-log:1",

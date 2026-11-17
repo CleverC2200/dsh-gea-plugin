@@ -1,3 +1,4 @@
+import { httpAttempt, type HttpAttempt, type AttemptInit } from "./http-attempt.ts";
 import { GeaResponseError } from "../shared/gea-error.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -11,7 +12,6 @@ import {
 } from "../shared/workflow-query.js";
 import { SalesReadonlyError } from "../shared/sales-readonly.js";
 
-/** 通过固定 SQL 分页读取工作流；调用方不能提供 SQL、身份或凭证，重复 ID、分页不完整或配置非法时拒绝默默降级。 */
 export async function readSalesPlanWorkflowConfig(
   base: string,
   accessToken: string,
@@ -23,6 +23,7 @@ export async function readSalesPlanWorkflowConfig(
   const secrets = [accessToken];
   const post = async (path: string, body: unknown, headers: Record<string, string>) => {
     const requestId = headers["X-Request-Id"] ?? randomUUID();
+    const attempt: HttpAttempt = {};
     const stage = path.endsWith("/agent/session") ? "session" : "sql";
     const failure = (status: number, payload: any, reason: string) => {
       const error = new GeaResponseError(status >= 400 ? status : 502, payload, secrets);
@@ -33,7 +34,7 @@ export async function readSalesPlanWorkflowConfig(
         path,
         reason,
         ...(typeof payload?.code === "number" ? { businessCode: payload.code } : {}),
-        requestId: error.details.requestId ?? requestId,
+        requestId: error.details.requestId ?? attempt.requestId ?? requestId,
       };
       return error;
     };
@@ -50,7 +51,8 @@ export async function readSalesPlanWorkflowConfig(
           "X-Request-Id": requestId,
         },
         body: JSON.stringify(body),
-      });
+        [httpAttempt]: attempt,
+      } as AttemptInit);
     } catch (error) {
       if (error instanceof SalesReadonlyError) throw error;
       signal.throwIfAborted();
@@ -67,11 +69,11 @@ export async function readSalesPlanWorkflowConfig(
     signal.throwIfAborted();
     if (payload?.success !== true || payload.code !== 200 || !payload.result)
       throw failure(response.status, payload, "envelope");
-    return payload.result;
+    return { result: payload.result, requestId: attempt.requestId ?? requestId };
   };
   {
     const sessionRequestId = randomUUID();
-    const session = await post(
+    const { result: session } = await post(
       "/ai/gateway/agent/session",
       {
         agentCode: "sales_forecast",
@@ -91,9 +93,8 @@ export async function readSalesPlanWorkflowConfig(
     let total: number | undefined;
     for (let page = 1; page <= 10; page++) {
       const requestId = randomUUID();
-      // 每一页都依赖第一页已校验的总数。
-      // eslint-disable-next-line no-await-in-loop
-      const result = await post(
+
+      const { result, requestId: sentRequestId } = await post(
         "/ai/gateway/sql/execute",
         {
           sql: SQL,
@@ -105,7 +106,7 @@ export async function readSalesPlanWorkflowConfig(
         { "X-Delegation-Token": session.delegationToken, "X-Request-Id": requestId },
       );
       if (
-        result.requestId !== requestId ||
+        result.requestId !== sentRequestId ||
         result.operation !== "SELECT" ||
         !Array.isArray(result.tables) ||
         result.tables.length !== 1 ||

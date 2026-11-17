@@ -29,6 +29,19 @@ test("月初与纠偏入口恢复，重提不依赖服务配置", { timeout: 600
     orgName: "Returned plan",
     skuCount: 1,
   };
+  const sku = {
+    id: "sku",
+    versionId: "v1",
+    skuCode: "789",
+    productCategName: "Fixture SKU",
+    baseQty: "1",
+    qty: "1",
+    price: "12.34",
+    amt: "12.34",
+    amtBase: "12.34",
+    adjAddQty: "0",
+    adjCutQty: "0",
+  };
   app.route((req, res, reply) => {
     const path = req.url.pathname;
     if (path.endsWith("/periods")) {
@@ -52,8 +65,6 @@ test("月初与纠偏入口恢复，重提不依赖服务配置", { timeout: 600
       return true;
     }
     if (path.endsWith("/plans")) {
-      // 纠偏列表会按当前角色的可见状态逐个 status 查询再合并；上游 mock 必须认 status，
-      // 否则同一条会被每个状态各返回一次，页面上就出现重复行。
       const status = req.url.searchParams.get("status");
       const orderType = req.url.searchParams.get("orderType");
       const records =
@@ -72,7 +83,7 @@ test("月初与纠偏入口恢复，重提不依赖服务配置", { timeout: 600
         success: true,
         result: {
           currentVersion: { ...plan, id: "v1", effective: true },
-          skus: [],
+          skus: [sku],
           versions: [],
           logs: [],
         },
@@ -89,21 +100,7 @@ test("月初与纠偏入口恢复，重提不依赖服务配置", { timeout: 600
     if (path.endsWith("/versions/v1/skus")) {
       reply({
         success: true,
-        result: [
-          {
-            id: "sku",
-            versionId: "v1",
-            skuCode: "789",
-            productCategName: "Fixture SKU",
-            baseQty: "1",
-            qty: "1",
-            price: "12.34",
-            amt: "12.34",
-            amtBase: "12.34",
-            adjAddQty: "0",
-            adjCutQty: "0",
-          },
-        ],
+        result: [sku],
       });
       return true;
     }
