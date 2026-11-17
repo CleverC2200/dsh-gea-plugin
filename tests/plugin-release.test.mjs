@@ -30,7 +30,7 @@ const graph = [
 ];
 test("managed installation strategy survives signed release projection", () => {
   const release = projectPluginRelease({
-    manifest: { name: G, version: "0.0.306", geaPluginUpdateStrategy: "managed-suite" },
+    manifest: { name: G, version: "0.0.307", geaPluginUpdateStrategy: "managed-suite" },
     artifact: {
       url: `https://fixture.invalid/${"a".repeat(64)}/gea.tgz`,
       size: 1,

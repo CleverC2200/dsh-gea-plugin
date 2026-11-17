@@ -2,7 +2,7 @@
 
 公司更新把依赖安装与用户资料分开：官方 `runProfilePnpm` 在候选目录安装，现有 `PluginStore` 管理准备、选择、试启动与上一可用版本。实际公司桌面入口为 `official-main.cjs` → `company-desktop.mjs` → `prepareCompanyBoot`，完成选择后加载原官方桌面主程序。Core、身份和凭据 owner 不变。
 
-GEA 0.0.306 起使用 `managed-suite` 发行策略。旧读取器拒绝该策略，不能继续原位安装；双端桌面打包也拒绝旧 `suite` Host。新入口在既有更新配置中写入 `installationProtocol: 1`，旧 Host 因不支持新合同而阻断更新；业务与原来源仍保留，新 Host 接收此合同。
+受管发行使用 `managed-suite` 发行策略。旧读取器拒绝该策略，不能继续原位安装；双端桌面打包也拒绝旧 `suite` Host。新入口在既有更新配置中写入 `installationProtocol: 1`，旧 Host 因不支持新合同而阻断更新；业务与原来源仍保留，新 Host 接收此合同。
 
 ## 安装与确认
 
