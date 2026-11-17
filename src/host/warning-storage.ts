@@ -140,6 +140,10 @@ export async function warningStorage(owner: Owner, input: unknown, execute: Exec
     const next = {
       id,
       kind: directoryKind,
+      metric: "预警负责人配置",
+      scope: "品类",
+      enabled: false,
+      deletedAt: prior?.deletedAt ?? new Date().toISOString(),
       owner,
       revision: request.revision + 1,
       owners: request.owners,
