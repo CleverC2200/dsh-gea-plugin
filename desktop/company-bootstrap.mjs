@@ -121,7 +121,7 @@ async function verifyCompanyCore(root, core) {
   return { ...core, root, kind: "desktop" };
 }
 
-export async function refreshCompanyCore({ root, seed, home, apply = true }) {
+export async function refreshCompanyCore({ root, seed, home, apply = true, installationProtocol }) {
   const profile = join(home, "profiles/desktop");
   const patch = join(profile, "cordis.patch.yml");
   if (!existsSync(patch)) return { status: "no-update-configuration", changed: false };
@@ -147,7 +147,10 @@ export async function refreshCompanyCore({ root, seed, home, apply = true }) {
       const core = await verifyCompanyCore(root, manifest.core);
       if (updates?.source === undefined && manifest.source === undefined)
         throw Error("GEA_SEED_UPDATE_SOURCE_MISSING");
-      const next = planCompanyCoreRefresh(updates, core, manifest.source);
+      const next = {
+        ...planCompanyCoreRefresh(updates, core, manifest.source),
+        ...(installationProtocol === undefined ? {} : { installationProtocol }),
+      };
       if (JSON.stringify(next) === JSON.stringify(updates))
         return { status: "current-core-proof", changed: false };
       if (!apply) return { status: "ready", changed: false };
@@ -168,6 +171,11 @@ export async function refreshCompanyCore({ root, seed, home, apply = true }) {
           if (updates[key] === undefined)
             document.setIn([index, "config", "pluginUpdates", key], next[key]);
       }
+      if (installationProtocol !== undefined)
+        document.setIn(
+          [index, "config", "pluginUpdates", "installationProtocol"],
+          installationProtocol,
+        );
       await writeFileAtomic(patch, document.toString(), { mode: 0o600 });
       return {
         status: updates?.source === undefined ? "update-source-configured" : "core-proof-refreshed",
@@ -938,7 +946,7 @@ export async function prepareCompanyBoot({
     }
   }
   const selected = await installation.beginBoot();
-  await refreshCompanyCore({ root, seed, home });
+  await refreshCompanyCore({ root, seed, home, installationProtocol: 1 });
   return {
     schema: 1,
     profile,
@@ -964,7 +972,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     );
     await installation.rollback("BOOTSTRAP_FAILED");
     const selected = await installation.beginBoot();
-    await refreshCompanyCore({ root, seed, home });
+    await refreshCompanyCore({ root, seed, home, installationProtocol: 1 });
     boot = {
       schema: 1,
       profile: installation.profile,

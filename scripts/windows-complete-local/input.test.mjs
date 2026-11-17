@@ -5,7 +5,7 @@ import {
   readDesktopInput,
   readDesktopPluginSource,
   desktopCoreHead,
-  verifyPersonalMemoryArchive,
+  verifyDesktopPluginArchive,
 } from "./input.mjs";
 import { assertMacBaseline, macBaseline } from "../mac-complete-local/baseline.mjs";
 import { readFile, mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
@@ -75,20 +75,35 @@ test("personal memory must contain its settings client and match the installed G
   const archive = join(dir, "memory.tgz");
   const pack = () => execFileSync("tar", ["-czf", archive, "-C", dir, "package"]);
   pack();
-  assert.throws(
-    () => verifyPersonalMemoryArchive(archive, row, baseline),
-    /MEMORY_ARCHIVE_INVALID/,
-  );
+  assert.throws(() => verifyDesktopPluginArchive(archive, row, baseline), /MEMORY_ARCHIVE_INVALID/);
   await writeFile(join(dir, "package/lib/client.js"), "compiled settings client");
   pack();
-  assert.doesNotThrow(() => verifyPersonalMemoryArchive(archive, row, baseline));
+  assert.doesNotThrow(() => verifyDesktopPluginArchive(archive, row, baseline));
   manifest.peerDependencies[gea.name] = "0.0.1";
   await writeFile(join(dir, "package/package.json"), JSON.stringify(manifest));
   pack();
-  assert.throws(
-    () => verifyPersonalMemoryArchive(archive, row, baseline),
-    /MEMORY_ARCHIVE_INVALID/,
-  );
+  assert.throws(() => verifyDesktopPluginArchive(archive, row, baseline), /MEMORY_ARCHIVE_INVALID/);
+});
+
+test("desktop packaging requires a GEA Host that owns managed installation", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "gea-managed-host-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await mkdir(join(dir, "package"));
+  const row = baseline.seed.packages.find((row) => row.name === "@cleverc2200/gea-dsh-prototype");
+  const archive = join(dir, "gea.tgz");
+  for (const strategy of ["suite", "managed-suite"]) {
+    await writeFile(
+      join(dir, "package/package.json"),
+      JSON.stringify({ name: row.name, version: row.version, geaPluginUpdateStrategy: strategy }),
+    );
+    execFileSync("tar", ["-czf", archive, "-C", dir, "package"]);
+    if (strategy === "suite")
+      assert.throws(
+        () => verifyDesktopPluginArchive(archive, row, baseline),
+        /DESKTOP_MANAGED_INSTALLATION_HOST_REQUIRED/,
+      );
+    else assert.doesNotThrow(() => verifyDesktopPluginArchive(archive, row, baseline));
+  }
 });
 
 async function check(t, input, source = baseline.geaSourceSha) {

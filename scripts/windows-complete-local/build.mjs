@@ -5,7 +5,7 @@ import {
   readDesktopPluginSource,
   desktopCoreHead,
   personalMemoryPackage,
-  verifyPersonalMemoryArchive,
+  verifyDesktopPluginArchive,
 } from "./input.mjs";
 import { inspectPluginArchive } from "../../src/host/plugin-release-source.ts";
 import { cp, readFile, writeFile, mkdir, readdir, stat, symlink } from "node:fs/promises";
@@ -211,10 +211,8 @@ for (const row of seedInput.packages) {
     throw Error("PACKAGE_DOWNLOAD_HASH_MISMATCH");
   row.path = join(output, "packages", new URL(row.url).pathname.split("/").at(-1));
   await writeFile(row.path, bytes, { flag: "wx" });
-  if (row.name === personalMemoryPackage) {
-    verifyPersonalMemoryArchive(row.path, row, input);
-    continue;
-  }
+  verifyDesktopPluginArchive(row.path, row, input);
+  if (row.name === personalMemoryPackage) continue;
   const manifest = await inspectPluginArchive(row.path);
   if (manifest.name !== row.name || manifest.version !== row.version)
     throw Error("PACKAGE_DOWNLOAD_IDENTITY_MISMATCH");

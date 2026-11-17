@@ -178,6 +178,31 @@ test("activation preserves a dependency change made after preparation", async (t
   await f.preserved();
 });
 
+test("rollback retains installation edits made during an unconfirmed trial in recovery materials", async (t) => {
+  const f = await fixture(t);
+  await f.installation.prepare("trial-with-edit", f.update);
+  await f.installation.beginBoot();
+  const current = JSON.parse(await readFile(join(f.profile, "package.json")));
+  current.dependencies["user-plugin"] = "3.0.0";
+  const bytes = JSON.stringify(current);
+  await writeFile(join(f.profile, "package.json"), bytes);
+  await f.installation.rollback("GEA_TRIAL_STARTUP_TIMEOUT");
+  assert.equal((await f.installation.beginBoot()).id, "baseline");
+  const recoveries = (await readdir(f.installation.directory)).filter((name) =>
+    name.startsWith("mount-before-"),
+  );
+  assert(
+    (
+      await Promise.all(
+        recoveries.map((name) =>
+          readFile(join(f.installation.directory, name, "package.json"), "utf8"),
+        ),
+      )
+    ).includes(bytes),
+  );
+  await f.preserved();
+});
+
 test("boot rollback also fails a combined update receipt and preserves its original bytes", async (t) => {
   const f = await fixture(t);
   const id = "12345678-1234-1234-1234-123456789abc";

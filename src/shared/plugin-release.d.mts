@@ -10,7 +10,7 @@ export type FixedCore = CoreIdentity & { sdk: Record<string, string> };
 export type PluginManifest = {
   name: string;
   version: string;
-  geaPluginUpdateStrategy?: "suite";
+  geaPluginUpdateStrategy?: "suite" | "managed-suite";
   peerDependencies?: Record<string, string>;
   peerDependenciesMeta?: Record<string, { optional: boolean }>;
   dependencies?: Record<string, string>;
@@ -18,7 +18,7 @@ export type PluginManifest = {
 };
 export type PluginRelease = {
   schema: 1;
-  updateStrategy?: "suite";
+  updateStrategy?: "suite" | "managed-suite";
   name: UpdatablePackageName;
   version: string;
   artifact: { url: string; size: number; sha256: string };

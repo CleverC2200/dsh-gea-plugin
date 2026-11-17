@@ -11,7 +11,19 @@ const desktopCore = ciCores("required")[0];
 export const personalMemoryPackage = "@cleverc2200/dsh-personal-memory";
 export const desktopPackageNames = [...companyPackageNames, personalMemoryPackage];
 
-export function verifyPersonalMemoryArchive(path, row, input) {
+export function verifyDesktopPluginArchive(path, row, input) {
+  if (row.name === "@cleverc2200/gea-dsh-prototype") {
+    const manifest = JSON.parse(
+      execFileSync("tar", ["-xOf", path, "package/package.json"], {
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      }),
+    );
+    if (manifest.geaPluginUpdateStrategy !== "managed-suite")
+      throw Error("DESKTOP_MANAGED_INSTALLATION_HOST_REQUIRED");
+    return;
+  }
   if (row.name !== personalMemoryPackage) return;
   const options = { encoding: "utf8", timeout: 30000, maxBuffer: 16 * 1024 * 1024 };
   const entries = execFileSync("tar", ["-tzf", path], options).trim().split(/\r?\n/);

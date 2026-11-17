@@ -157,6 +157,15 @@ export class CompanyInstallation {
       JSON.parse(marker.toString("utf8")).graphId === selected.id
     )
       return;
+    const current = await optional(join(this.profile, "package.json"));
+    const previousLock = await optional(join(this.profile, "pnpm-lock.yaml"));
+    const recovery = join(this.directory, "mount-before-" + randomUUID());
+    await mkdir(recovery, { mode: 0o700 });
+    for (const [name, bytes] of [
+      ["package.json", current],
+      ["pnpm-lock.yaml", previousLock],
+    ])
+      if (bytes) await writeFile(join(recovery, name), bytes, { flag: "wx", mode: 0o600 });
     if (actual !== (await realpath(target))) {
       const next = join(this.profile, ".node_modules-" + randomUUID());
       await symlink(target, next, process.platform === "win32" ? "junction" : "dir");
@@ -172,7 +181,6 @@ export class CompanyInstallation {
       }
       await rename(next, modules);
     }
-    const current = await optional(join(this.profile, "package.json"));
     const manifest = current ? JSON.parse(current.toString("utf8").replace(/^\uFEFF/, "")) : {};
     const graph = await json(join(directory, "package.json"));
     const merged = { ...manifest };

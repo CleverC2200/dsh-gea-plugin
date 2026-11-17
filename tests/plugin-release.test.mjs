@@ -28,6 +28,20 @@ const graph = [
     peerDependencies: { [W]: "1.0.0", [M]: "2.0.0" },
   },
 ];
+test("managed installation strategy survives signed release projection", () => {
+  const release = projectPluginRelease({
+    manifest: { name: G, version: "0.0.306", geaPluginUpdateStrategy: "managed-suite" },
+    artifact: {
+      url: `https://fixture.invalid/${"a".repeat(64)}/gea.tgz`,
+      size: 1,
+      sha256: "a".repeat(64),
+    },
+    supportedCores: [core],
+    dataCompatibility: { kind: "preserve" },
+    notes: "managed installation",
+  });
+  assert.equal(release.updateStrategy, "managed-suite");
+});
 test("personal memory is an optional update alongside the unchanged three-package suite", () => {
   const memory = projectPluginRelease({
     manifest: { name: "@cleverc2200/dsh-personal-memory", version: "0.1.2" },

@@ -2,6 +2,8 @@
 
 公司更新把依赖安装与用户资料分开：官方 `runProfilePnpm` 在候选目录安装，现有 `PluginStore` 管理准备、选择、试启动与上一可用版本。实际公司桌面入口为 `official-main.cjs` → `company-desktop.mjs` → `prepareCompanyBoot`，完成选择后加载原官方桌面主程序。Core、身份和凭据 owner 不变。
 
+GEA 0.0.306 起使用 `managed-suite` 发行策略。旧读取器拒绝该策略，不能继续原位安装；双端桌面打包也拒绝旧 `suite` Host。新入口在既有更新配置中写入 `installationProtocol: 1`，旧 Host 因不支持新合同而阻断更新；业务与原来源仍保留，新 Host 接收此合同。
+
 ## 安装与确认
 
 `check` 校验签名频道、Core 支持范围和整组兼容；`submit` 与 `submitBatch` 持官方 profile 锁重核计划、活动 Host、来源与 writer。安装沿用官方 pnpm、既有 store 和现有进程监督，禁用生命周期脚本、pnpmfile、自动 peer 安装和新 bundle 激活。候选图通过版本及非安装字段检查后排队，当前进程继续使用原图。

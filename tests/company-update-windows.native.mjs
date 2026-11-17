@@ -78,6 +78,13 @@ if (process.argv[2] === "prepare-worker") {
       );
       const installation = new CompanyInstallation(profile, windowsCompanyInput.coreHead);
       const load = createRequire(join(process.env.GEA_WINDOWS_RUNTIME, "dsh/package.json"));
+      const configured = load("yaml").parse(
+        await readFile(join(profile, "cordis.patch.yml"), "utf8"),
+      );
+      assert.equal(
+        configured.find((row) => row.id === "gea-proof").config.pluginUpdates.installationProtocol,
+        1,
+      );
       const { Context } = await import(pathToFileURL(load.resolve("@deepseek-ai/cordis")));
       const { default: Persistence } = await import(
         pathToFileURL(load.resolve("@deepseek-ai/dsh-session-persistence-jsonl"))
@@ -194,6 +201,36 @@ if (process.argv[2] === "prepare-worker") {
             }
             return false;
           });
+          if (name === "baseline") {
+            const endpoint = await until(
+              () =>
+                [...logs.matchAll(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+)/g)].at(
+                  -1,
+                )?.[1],
+            );
+            const origin = new URL(endpoint).origin;
+            const status = await until(async () => {
+              const cookies = await browser.contexts()[0].cookies(origin);
+              const response = await fetch(origin + "/api/gea/plugin-updates/status", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Origin: origin,
+                  Cookie: cookies.map(({ name, value }) => name + "=" + value).join("; "),
+                },
+                body: JSON.stringify({ pageIdentity: "windows-legacy-fallback" }),
+              });
+              if (!response.ok) return false;
+              const body = (await response.json()).value;
+              return (
+                body?.items?.length &&
+                body.items.every((row) => row.state === "blocked" && row.planId === null) &&
+                body
+              );
+            });
+            assert.equal(status.restartReady, false);
+            assert(status.items.every((row) => row.diagnostic === "UPDATE_CONFIG_INVALID"));
+          }
           await page.screenshot({ path: join(evidence, name + ".png") });
           return { url: page.url(), title: await page.title() };
         } catch (error) {

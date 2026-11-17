@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { parse } from "yaml";
 import { extractAll, createPackageWithOptions } from "@electron/asar";
 import {
   windowsNativeEntrypoints,
@@ -18,6 +19,19 @@ import { officialGeaBranding } from "../desktop/official-branding.mjs";
 if (process.platform !== "win32") throw Error("WINDOWS_NATIVE_REQUIRED");
 const companyDesktop = process.argv.includes("--company-desktop");
 const input = companyDesktop ? windowsCompanyInput : windowsNativeInput;
+if (companyDesktop) {
+  const feed = await fetch(
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/nightly.yml",
+    { redirect: "error" },
+  );
+  if (!feed.ok) throw Error("WINDOWS_COMPANY_CHANNEL_UNREADABLE");
+  const release = parse(await feed.text());
+  if (
+    release.version !== input.desktopVersion ||
+    !release.files?.some((file) => input.installerUrl.endsWith("/" + file.url))
+  )
+    throw Error("WINDOWS_COMPANY_BASELINE_STALE");
+}
 const root = resolve(".runtime/windows-update-native"),
   installer = join(root, "gea157.exe");
 await mkdir(root, { recursive: true });
