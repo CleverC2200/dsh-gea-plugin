@@ -13,8 +13,6 @@ jobs:
   delivery:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      APS_BUILD_MODE: mock
     steps:
       - uses: actions/checkout@v7
         with:

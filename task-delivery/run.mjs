@@ -43,6 +43,9 @@ for (const [repo, head] of Object.entries(input.repositories)) {
   for (const required of input.requiredCommits[repo])
     git(source(repo), "merge-base", "--is-ancestor", required, head);
   if (input.mode === "formal") {
+    const version = (await json(join(source(repo), "package.json"))).version;
+    if (git(source(repo), "cat-file", "-t", `refs/tags/v${version}`) !== "tag")
+      throw Error("ANNOTATED_VERSION_TAG_REQUIRED");
     const manifest = await json(join(source(repo), "package.json"));
     if (git(source(repo), "rev-parse", `v${manifest.version}^{commit}`) !== head)
       throw Error("FORMAL_VERSION_TAG_REQUIRED");
@@ -55,6 +58,7 @@ await run(
     join(manage, "scripts/prepare-official-sdk.mjs"),
     "--prepare",
     "--reuse-prepared",
+    "--with-flock",
     "--core",
     sdk,
     "--core-head",
@@ -64,6 +68,12 @@ await run(
   ],
   manage,
 );
+const { prepareQualityUpstreams, bindQualityUpstreamInputs } = await import(
+  pathToFileURL(join(gea, "scripts/quality-upstreams.mjs"))
+);
+await prepareQualityUpstreams(root);
+await bindQualityUpstreamInputs(root, join(root, "upstream-inputs"), { prepare: true });
+if (process.env.APS_BUILD_MODE) throw Error("PRODUCTION_APS_MODE_REQUIRED");
 for (const path of [manage, wb, gea])
   await run(process.execPath, [join(gea, "scripts/development-tasks.mjs"), "prepare"], path);
 const aps = join(wb, "business/inventory-apsplan/source");
@@ -206,7 +216,13 @@ for (const row of manifest.packages) {
       (repo) => request.repositories.find((r) => r.repo === repo)?.path === row.source.path,
     ),
   );
-  sources.push({ name: row.name, path, head: row.source.head, requiredCommits: [row.source.head] });
+  sources.push({
+    name: row.name,
+    path,
+    head: row.source.head,
+    requiredCommits:
+      input.requiredCommits[Object.keys(input.repositories).find((repo) => source(repo) === path)],
+  });
   const archive = join(delivery, "packages", row.filename),
     metadata = join(out, row.name.replaceAll("/", "_") + ".metadata.json");
   const old = row.name === "dsh-agent-manage" ? publishedManage.release : undefined;
