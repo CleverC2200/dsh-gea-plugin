@@ -12,7 +12,7 @@ if($assembly.GetManifestResourceNames().Length -ne 0){throw 'EMBEDDED_ENGINE_PRE
 $flags=[Reflection.BindingFlags]'Public,NonPublic,Static,Instance'
 $collection=$assembly.GetType('GeaDiagnostics.Collection')
 $fixture=Join-Path $env:TEMP ('GEA-default-fixture-'+[Guid]::NewGuid().ToString('N'))
-$plan=$collection.GetMethod('Create',$flags).Invoke($null,[object[]]@($fixture))
+$plan=$collection.GetMethod('Create',$flags).Invoke($null,[object[]]@([string]$fixture))
 $customHome=Join-Path $fixture 'home'
 $profile=Join-Path $customHome 'profiles/desktop'
 New-Item -ItemType Directory -Path (Split-Path $profile -Parent) -Force|Out-Null
