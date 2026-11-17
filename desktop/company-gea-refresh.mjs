@@ -3,6 +3,7 @@ import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import { companyPackageNames, companyReleaseIndex } from "./company-archives.mjs";
+import { windowsJobStopped } from "./windows-job.mjs";
 
 const gea = "@cleverc2200/gea-dsh-prototype";
 const files = ["package.json", "cordis.patch.yml", "pnpm-lock.yaml", "pnpm-workspace.yaml"];
@@ -105,16 +106,7 @@ async function stoppedUpdateProcesses(profile, receipt) {
       if (!entry.isFile() || entry.isSymbolicLink()) return false;
       const proof = JSON.parse(await readFile(proofPath));
       const [row] = processes;
-      if (proof?.nonce !== row.startIdentity || proof?.pid !== row.pid) return false;
-      if (proof.stage === "empty") return Number.isInteger(proof.exitCode);
-      return (
-        proof.stage === "running" &&
-        Number.isSafeInteger(proof.targetPid) &&
-        proof.targetPid > 0 &&
-        proof.targetPid !== row.pid &&
-        processExited(row.pid) &&
-        processExited(proof.targetPid)
-      );
+      return windowsJobStopped(proof, row);
     } catch {
       return false;
     }

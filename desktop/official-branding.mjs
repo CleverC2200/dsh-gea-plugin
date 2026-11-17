@@ -66,6 +66,7 @@ export function officialGeaBranding(config, { companySeed, brandedMain } = {}) {
                 "company-desktop.mjs",
                 "company-installation.mjs",
                 "company-pnpm.mjs",
+                "windows-job.mjs",
                 "company-bootstrap.mjs",
                 "company-gea-refresh.mjs",
                 "company-update.mjs",

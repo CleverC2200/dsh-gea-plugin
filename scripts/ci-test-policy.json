@@ -551,7 +551,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:company-(?:archives|bootstrap|gea-refresh|installation|desktop|pnpm)|plugin-store|plugin-storage|copy-graph|core-file-mode|official-(?:branding|main))\\.(?:mjs|cjs|d\\.mts)$",
+      "pattern": "^desktop/(?:company-(?:archives|bootstrap|gea-refresh|installation|desktop|pnpm)|windows-job|plugin-store|plugin-storage|copy-graph|core-file-mode|official-(?:branding|main))\\.(?:mjs|cjs|d\\.mts)$",
       "tests": ["scripts/desktop-gea-upgrade.test.mjs"],
       "sourceTests": ["scripts/desktop-gea-upgrade.test.mjs"]
     },

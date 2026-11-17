@@ -90,6 +90,7 @@ test("the company desktop packages every module used by cleanup and refresh", as
     "company-desktop.mjs",
     "company-installation.mjs",
     "company-pnpm.mjs",
+    "windows-job.mjs",
     "company-bootstrap.mjs",
     "company-gea-refresh.mjs",
     "company-update.mjs",
