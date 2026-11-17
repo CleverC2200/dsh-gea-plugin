@@ -455,7 +455,7 @@ test("replacement identity cannot read or replay earlier or late-completing logs
   f.business.logout({});
   f.business.restoreDesktopLogin(saved);
   complete();
-  await (await pending).text();
+  await assert.rejects(pending, /abort|STALE/i);
   globalThis.fetch = originalFetch;
   assert.deepEqual(f.business.apiLogSnapshot({}).records, []);
   const replay = await f.business.apiLogReplay({ id: old.id, confirmed: false }, signal());

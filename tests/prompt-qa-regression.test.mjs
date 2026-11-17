@@ -89,7 +89,7 @@ test("independent acceptance, no production writes", { timeout: 150000 }, async 
     t,
     {
       config: (base) => ({
-        geaEnvironments: { production: base, test: base },
+        geaEnvironments: { production: base + "/production", test: base + "/test" },
         analysis: {
           mode: "model",
           baseUrl: base + "/v1",
