@@ -57,7 +57,6 @@ function expand(value: any, depth = 0): any {
   );
 }
 
-/** Column grouping is lossless: preserve every field, row, order, null and numeric value. */
 export async function encodeOrderReport(json: string, targetBytes = 60_000) {
   if (Buffer.byteLength(json) > limit) throw Error("ORDER_REPORT_TOO_LARGE");
   const legacy = JSON.stringify({

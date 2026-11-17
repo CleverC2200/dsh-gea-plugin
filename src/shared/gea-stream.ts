@@ -1,4 +1,3 @@
-/** 将 GEA SSE 增量转换为 DSH 流块；只接受声明过的工具，并拒绝歧义格式。 */
 import { createParser } from "eventsource-parser";
 import { brandString } from "@deepseek-ai/dsh-brand";
 import type { ToolCallId } from "@deepseek-ai/dsh-llm/brand";
@@ -14,10 +13,6 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-/**
- * 模型流失败的统一错误：错误码保留在消息最前面（便于检索与既有断言），
- * 后面跟一句人能看懂的话，界面上不再只显示一个裸代号。
- */
 const STREAM_FAILURES: Record<string, string> = {
   GEA_MODEL_TOOL_TEXT: "模型把工具调用写成了文本；这些调用未执行，本轮业务答复未完成",
   GEA_MODEL_INCOMPLETE_STREAM: "模型这一轮没返回结束标记就断流了，本轮已中止，请重发一次",
@@ -42,7 +37,6 @@ function invalid(code: string, detail?: string): never {
   throw streamFailure(code, detail);
 }
 
-/** Classify gateway failures without copying response text into diagnostics. */
 function gatewayErrorDetail(value: unknown): {
   detail: string;
   contextLimit: boolean;
@@ -110,7 +104,6 @@ function gatewayErrorDetail(value: unknown): {
   };
 }
 
-/** Provider counters are authoritative; missing usage is not zero usage. */
 export function geaUsage(value: unknown): import("@deepseek-ai/dsh-llm").TokenUsage | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const raw = value as Record<string, unknown>;
@@ -195,13 +188,6 @@ function completion(data: string): {
   invalid("GEA_MODEL_UNSUPPORTED_FINISH_REASON");
 }
 
-/**
- * 将流式文本保留在权威的最终块中，并要求收到终止完成事件。
- * @param body 此次模型调用拥有的成功 SSE 响应体。
- * @param signal 同时取消待读取和所属请求。
- * @param offered 所属请求提供的工具名；省略时仅允许文本。
- * @returns Harness 流块；不完整或不支持的完成会抛错，交由 LlmRuntime 分类。
- */
 export async function* geaTextStream(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
@@ -227,9 +213,7 @@ export async function* geaTextStream(
   let cancellation: Promise<void> | undefined;
   let completed = false;
   const cancel = () => {
-    cancellation ??= reader.cancel().catch(() => {
-      // 已报错或已中止的响应可能拒绝取消；其读取过程已经报告了失败。
-    });
+    cancellation ??= reader.cancel().catch(() => {});
     return cancellation;
   };
   const onAbort = () => {
@@ -276,12 +260,9 @@ export async function* geaTextStream(
         }
         try {
           usage = geaUsage(record(JSON.parse(data)).usage) ?? usage;
-        } catch {
-          /* completion reports malformed frames. */
-        }
+        } catch {}
         const chunk = completion(data);
-        // completion still checks error envelopes. Late successful deltas do not
-        // mutate blocks which have already completed.
+
         if (terminal) continue;
         if (chunk.reasoning) {
           reasoning += chunk.reasoning;
@@ -324,7 +305,7 @@ export async function* geaTextStream(
         }
         if (chunk.text) {
           text += chunk.text;
-          // Reject raw protocol before yielding its completed marker, including split SSE chunks.
+
           if (/^\s*<[|｜]{2}DSML[|｜]{2}\s*(?:tool_calls|calls|invoke)\b/.test(text))
             invalid("GEA_MODEL_TOOL_TEXT");
           yield { type: "text-delta", index: 0, text: chunk.text };

@@ -1,4 +1,3 @@
-/** Source-only scheduling controls and bounded same-attempt producer rendezvous. */
 import { setTimeout } from "node:timers/promises";
 import {
   readFileSync,
@@ -25,7 +24,6 @@ const equal = isDeepStrictEqual;
 const sources = (entries) =>
   entries.map(({ repo, head }) => ({ repo, head })).sort((a, b) => a.repo.localeCompare(b.repo));
 
-/** Inventory only the supported shipped Playwright CLI closure, never unrelated modules. */
 export function readBrowserDependencyClosure({ directory, version }) {
   const modules = realpathSync(join(directory, "node_modules"));
   if (modules !== join(directory, "node_modules")) reject("browser dependency modules redirected");
@@ -106,8 +104,7 @@ export function readBrowserDependencyClosure({ directory, version }) {
       }
       if (!found) reject("browser dependency lookup missing");
     }
-    // These exact manager-created shims are never executed or added to PATH.
-    // The caller uses absolute Node plus the declared CLI; retain local bytes before/after.
+
     const generated = (file) => {
       const info = lstatSync(file),
         mode = modeOf(info);
@@ -157,7 +154,7 @@ export function readBrowserDependencyClosure({ directory, version }) {
     };
     const visit = (relative) => {
       const file = join(root, relative);
-      // Deeper vendored directories with this name remain shipped resources.
+
       if (relative === "node_modules") {
         generated(file);
         return;

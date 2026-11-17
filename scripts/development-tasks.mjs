@@ -120,7 +120,7 @@ function command(owner, script) {
 }
 async function build(owner, target) {
   const scripts = {
-    "dsh-agent-workbench": { plugin: "build:core", all: "build" },
+    "dsh-agent-workbench": { plugin: "build:plugin", all: "build" },
     "dsh-agent-manage": { plugin: "build", client: "build:client" },
     "dsh-gea-plugin": { plugin: "build:plugin", host: "build:host", client: "build:client" },
   };
@@ -374,7 +374,10 @@ export async function developmentTask(action, values = {}, cwd = process.cwd()) 
   }
   throw Error("DEVELOPMENT_ACTION_UNKNOWN");
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))
+) {
   const { values, positionals } = parseArgs({
     options: {
       target: { type: "string" },

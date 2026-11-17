@@ -7,7 +7,6 @@ import { dirname, join } from "node:path";
 import { sourcePlugins } from "../scripts/source-composition.mjs";
 import { runWorkbenchContracts } from "./fixtures/workbench-contract.mjs";
 
-// This independent Git layout tests runner admission, not Workbench's HTML contracts.
 async function fixture(t, body) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "gea-workbench-subrunner-")));
   t.after(() => rm(root, { recursive: true, force: true }));

@@ -63,7 +63,7 @@ export const fixture = async (
   ]);
   const submitted = [];
   const logs = [];
-  let readbackBlocked = readbackFailure;
+  let readbackBlocked = readbackFailure || unknownOnce;
   const submittedQuantities = new Map();
   const returnedSkus = new Map();
   const submitReceipts = new Map();
@@ -488,7 +488,6 @@ export const selectPlan = (frame, name = "乌鲁木齐退回区域") =>
     .locator("label.arco-checkbox")
     .click();
 
-/** Quantities are edited in the row; submission dialogs only review the resulting draft. */
 export async function editReturnedQuantity(
   frame,
   quantity,
@@ -501,3 +500,8 @@ export async function editReturnedQuantity(
   await input.fill(quantity);
   await expect(input).toHaveValue(quantity);
 }
+
+export const pendingResultButton = (frame) =>
+  frame
+    .getByRole("button", { name: "核对提交结果", exact: true })
+    .and(frame.locator('button:not([role="dialog"] *)'));

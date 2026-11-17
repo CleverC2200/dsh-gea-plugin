@@ -47,6 +47,7 @@ syncBuiltinESMExports();
       "lint",
       "format:check",
       "check:knowledge",
+      "check:comments",
       "check:prompt-execution",
       "test:environment",
       "test:release-contract",
@@ -61,7 +62,7 @@ syncBuiltinESMExports();
   assert.deepEqual(source.commands[0], ["pnpm", "lint", "scripts/example.mjs"]);
   assert.deepEqual(source.commands[1], ["pnpm", "format:check", "scripts/example.mjs"]);
   assert.ok(source.checks.every((entry) => entry.status === "passed"));
-  assert.equal(source.commands.length, 6);
+  assert.equal(source.commands.length, 7);
 });
 
 test("a failed early gate preserves later behavioral observations and final failure", () => {
@@ -134,7 +135,7 @@ syncBuiltinESMExports();\n`,
   const input = "a".repeat(64);
   const receipt = ".runtime/source.json";
   let serial = 0;
-  const run = (args, { sha = input, fail = "" } = {}) => {
+  const run = (args, { sha = input, fail = "", base = "" } = {}) => {
     const log = join(owned, `commands-${++serial}.jsonl`);
     const child = spawnSync(
       process.execPath,
@@ -149,7 +150,7 @@ syncBuiltinESMExports();\n`,
       {
         cwd: root,
         encoding: "utf8",
-        env: { ...process.env, CHECK_LOG: log, FAIL_CHECK: fail },
+        env: { ...process.env, CHECK_LOG: log, FAIL_CHECK: fail, QUALITY_BASE_SHA: base },
       },
     );
     return {
@@ -161,17 +162,21 @@ syncBuiltinESMExports();\n`,
   const reuse = ["--checks-only", "--source-receipt-in", receipt];
   const first = run(source);
   assert.equal(first.status, 0, first.stderr);
-  assert.equal(first.commands.length, 4);
+  assert.equal(first.commands.length, 5);
   assert.ok(first.commands.every((args) => !args[1].startsWith("test:")));
   const repeated = run(reuse);
   assert.equal(repeated.status, 0, repeated.stderr);
   assert.deepEqual(repeated.commands, [["pnpm", "typecheck:official"]]);
   assert.ok(
     JSON.parse(readFileSync(join(root, ".runtime/quality-fast.json")))
-      .slice(0, 4)
+      .slice(0, 5)
       .every((check) => check.evidence === "same-frozen-source-receipt"),
   );
-  for (const outcome of [run(reuse, { sha: "b".repeat(64) }), run([...source, "source.mjs"])]) {
+  for (const outcome of [
+    run(reuse, { sha: "b".repeat(64) }),
+    run(reuse, { base: "b".repeat(40) }),
+    run([...source, "source.mjs"]),
+  ]) {
     assert.equal(outcome.status, 1);
     assert.equal(outcome.commands.length, 0);
   }

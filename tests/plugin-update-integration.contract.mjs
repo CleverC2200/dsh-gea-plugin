@@ -838,7 +838,7 @@ test("explicit Core deployment input is cross-checked against Git, launcher, SDK
     "fixture",
   ]);
   const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-  // Only the external public package metadata resolver is supplied by this fixture; no runtime claim is made for these files.
+
   const ctx = {
     profileContext: { installAnchor: join(root, "apps/cli/package.json") },
     fiber: { entry: { parent: { tree: { ctx: { baseUrl: "fixture" } } } } },

@@ -223,7 +223,6 @@ test("unsupported platform and unavailable manifest produce actionable state wit
   assert.equal(f.manager.status().checking, false);
 });
 
-// 兼容版频道来源：一个频道可以有多个地址，按顺序尝试，前一个读不到才用下一个。
 test("installer channel prefers the first source and falls back to the next one only when it fails", async (t) => {
   const candidates = ["https://oss.test/client-release/raw/channels/desktop-stable.json", source];
   const seen = [];
@@ -265,7 +264,6 @@ test("a single installer channel address still works without a fallback list", a
   assert.equal(manager.status().checkSource, source);
 });
 
-// OSS 上的安装包沿用“不可变 raw 路径”，客户端校验规则不用放宽。
 test("an oss installer channel keeps the immutable raw layout that binds artifacts to its own origin", () => {
   const ossSource =
     "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/channels/desktop-stable.json";

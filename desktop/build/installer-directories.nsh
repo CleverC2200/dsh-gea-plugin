@@ -1,4 +1,4 @@
-# Adapted from DeepSeek 477b4f4, MIT; see THIRD_PARTY_DESKTOP_NOTICES.txt.
+
 !include "LogicLib.nsh"
 
 Var geaFinalDirectory
@@ -70,7 +70,7 @@ Function geaCleanupDirectories
   ${EndIf}
 FunctionEnd
 
-; Only directories created or renamed by this installer are removed during rollback.
+
 Function geaRollbackDirectories
   !insertmacro GEA_INSTALL_TIMING_LOG "directory-rollback"
   SetOutPath $PLUGINSDIR
@@ -82,7 +82,7 @@ Function geaRollbackDirectories
     ClearErrors
     Rename $geaOldDirectory $geaFinalDirectory
     ${If} ${Errors}
-      ; Leave the complete backup in place if another process prevents restoration.
+
       DetailPrint $geaOldDirectory
       Return
     ${EndIf}
@@ -99,7 +99,7 @@ Function geaPromoteDirectories
   !ifmacrodef InstallerPublishStage
     !insertmacro InstallerPublishStage 2
   !endif
-  ; SetOutPath opens a directory handle; release it before either rename.
+
   SetOutPath $PLUGINSDIR
   ClearErrors
   ${If} ${FileExists} "$geaFinalDirectory\*.*"
@@ -111,7 +111,7 @@ Function geaPromoteDirectories
     ${EndIf}
     StrCpy $geaOldMoved "1"
   ${Else}
-    ; NSIS can create the destination before the install section starts.
+
     RMDir $geaFinalDirectory
   ${EndIf}
   ClearErrors

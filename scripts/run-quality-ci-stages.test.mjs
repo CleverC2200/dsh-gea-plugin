@@ -88,6 +88,7 @@ function fixture(
     docsWhitespace = false,
     macos = false,
     browser = false,
+    runtime = false,
     platform,
   } = {},
 ) {
@@ -123,7 +124,7 @@ function fixture(
     manage = join(job, "candidate/dsh-agent-manage"),
     workbench = join(job, "source/dsh-agent-workbench"),
     core = join(job, "source/official-core");
-  // Copy only this fixture's authored inputs; parallel quality tests own transient scripts directories.
+
   for (const file of fixtureSourceFiles)
     write(join(gea, "scripts", file), readFileSync(join(sourceRoot, "scripts", file)));
   const workbenchSource =
@@ -143,6 +144,7 @@ function fixture(
     packageManager: "pnpm@11.11.0",
     ...(docs ? { scripts: { "fixture:core": "node --version" } } : {}),
   });
+  if (runtime) write(join(core, ".gitignore"), "apps/web/dist/\n");
   const coreHead = commit(core);
   json(join(gea, "scripts/supported-cores.json"), [
     {
@@ -254,9 +256,10 @@ function fixture(
     tests: ["scripts/stage-fixture.test.mjs", ...additionalTests],
     rules: [],
   });
+  if (runtime) write(join(gea, "tests/profile.mjs"), "export const profile = true;\n");
   write(
     join(gea, "scripts/stage-fixture.test.mjs"),
-    `${browser ? "import '@playwright/test';" : ""}import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.GEA_SOURCE_CHECK_SHARD, undefined); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
+    `${runtime ? "import '../tests/profile.mjs';" : ""}${browser ? "import '@playwright/test';" : ""}import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, appendFileSync } from 'node:fs'; test('fixed environment reaches a real test process', {skip: process.env.FIXTURE_SKIP === 'true'}, async () => { assert.equal(process.env.GEA_SOURCE_CHECK_SHARD, undefined); for (const key of ['GEA_PLUGIN_UPDATE_SDK', 'GEA_TEST_CANDIDATE_INPUTS']) { assert.ok(existsSync(process.env[key]), key); assert.ok(!process.env[key].includes('stale')); } assert.equal(JSON.parse(readFileSync(process.env.GEA_TEST_CANDIDATE_INPUTS)).core, ${JSON.stringify(coreHead)}); appendFileSync(${JSON.stringify(join(job, "tests-executed"))}, 'test ran\\n'); if (process.env.FIXTURE_FAIL === 'tests') assert.fail('controlled test failure'); });`,
   );
   for (const file of additionalTests)
     write(
@@ -327,7 +330,7 @@ function fixture(
   }
   const input = join(job, "candidate-input.json");
   json(input, manifest);
-  // Only OS command boundaries are controlled. Admission, Git, plan, receipts and tests execute real code.
+
   const preload = join(gea, "scripts/fixtures/quality-ci-commands.mjs");
   const summary = join(job, "summary.md");
   const run = (stage, extra = {}, args = [], execution = {}) => {
@@ -628,10 +631,44 @@ test("static quality builds current Workbench types and pure model, rejecting ei
     if (failure) assert.equal(geaBuild, -1);
     else assert.ok(geaBuild > model);
     assert.equal(
-      commands.some((entry) => entry.args.includes("build:core")),
+      commands.some(
+        (entry) =>
+          entry.cwd === join(f.job, "candidate/dsh-agent-workbench") &&
+          entry.args.includes("build:plugin"),
+      ),
       false,
     );
   }
+});
+
+test("runtime consumers request the Workbench plugin target and stop before downstream builds on failure", (t) => {
+  const f = fixture(t, { runtime: true });
+  const prepared = f.run("prepare");
+  assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+  const result = f.run("build", { FIXTURE_FAIL: "workbench-plugin" });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /QUALITY_COMMAND_FAILED/);
+  const commands = readFileSync(join(f.job, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  const builds = commands.filter(
+    (entry) =>
+      entry.cwd &&
+      dirname(entry.cwd) === join(f.job, "candidate") &&
+      entry.args.some((arg) => /^build(?::|$)/.test(arg)),
+  );
+  assert.deepEqual(
+    builds.map(({ command, args, cwd }) => ({ command, args, cwd })),
+    [
+      {
+        command: "npm",
+        args: ["run", "build:plugin"],
+        cwd: join(f.job, "candidate/dsh-agent-workbench"),
+      },
+    ],
+  );
+  assert.equal(existsSync(join(f.job, "tests-executed")), false);
 });
 
 test("the public macOS task prepares only fixed Host dependencies before executing both native contracts", (t) => {
@@ -656,15 +693,21 @@ test("the public macOS task prepares only fixed Host dependencies before executi
     (entry) => entry.command === "corepack" && entry.args.includes("install"),
   );
   const host = commands.findIndex((entry) => entry.command === "host-build");
-  assert.ok(install >= 0 && host > install);
+  const model = commands.findIndex((entry) => entry.command === "workbench-model");
+  assert.ok(model >= 0 && install > model && host > install);
+  assert.equal(commands[model].cwd, join(f.job, "candidate/dsh-agent-workbench"));
+  assert.deepEqual(commands[model].args, [
+    "node_modules/esbuild/bin/esbuild",
+    "src/sales-plan.ts",
+    "--bundle",
+    "--format=esm",
+    "--platform=node",
+    "--packages=external",
+    "--outfile=lib/sales-plan.js",
+  ]);
   assert.deepEqual(commands[host].args, ["scripts/build.mjs", "--target", "host"]);
   assert.equal(
-    commands.some(
-      (entry) =>
-        entry.args.includes("build:plugin") ||
-        entry.args.includes("build:core") ||
-        entry.args.includes("build"),
-    ),
+    commands.some((entry) => entry.args.includes("build:plugin") || entry.args.includes("build")),
     false,
   );
   const blocked = fixture(t, { macos: true });

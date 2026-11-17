@@ -11,7 +11,6 @@ export const updatablePackageNames = Object.freeze([
   personalMemoryPackageName,
 ]);
 
-/** Validate the whole resulting graph, including consumers that are not being replaced. */
 export function validatePluginCombination({ core, manifests }) {
   const failures = [];
   const versions = new Map(Object.entries(core.sdk));
@@ -149,7 +148,6 @@ export function findPluginUpdatePath({ core, installed, releases, firstStep }) {
   return search(installed, releases, []);
 }
 
-/** Release metadata is a projection of the final packed manifest, never a rewritten peer graph. */
 export function projectPluginRelease({
   manifest,
   artifact,
@@ -270,7 +268,6 @@ export function parsePluginRelease(value) {
   };
 }
 
-/** Parse final publication graph once; unknown wire objects do not enter planning. */
 export function parsePluginManifest(value) {
   return parseManifest(value, true);
 }
@@ -424,7 +421,7 @@ export function parsePluginChannel(value) {
     ...(optionalReleases ? { optionalReleases } : {}),
   };
 }
-/** Produce the complete next signed payload locally; publishing owns the atomic channel replacement. */
+
 export function mergePluginChannelRelease({ previous, release, revision, issuedAt, expiresAt }) {
   const channel = parsePluginChannel(previous);
   if (!Number.isSafeInteger(revision) || revision <= channel.revision)

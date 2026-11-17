@@ -31,7 +31,7 @@ const cases = [
   ],
   [
     "authorized-cube-loop.test.mjs",
-    "native queries preserve successful reads, server denial, expiry and next-turn recovery",
+    "native queries preserve successful reads, server denial and bounded expiry recovery",
   ],
   [
     "dealer-prompt.test.mjs",
@@ -39,7 +39,7 @@ const cases = [
   ],
   [
     "detail-summary-web.test.mjs",
-    "Dashboard shows current SKU totals while monthly baseline and categories retain their own basis",
+    "Sales plan waits for its real Session owner and keeps detail interaction read-only across resize",
   ],
   [
     "genui-source-web.test.mjs",

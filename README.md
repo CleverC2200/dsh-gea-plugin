@@ -20,6 +20,8 @@ GEA Host 管唯一业务身份、凭据、Consumer 授权、执行额度与受�
 
 会话反馈接线、材料边界及维护入口见[会话反馈与请求材料](docs/feedback-capture.md)。
 
+Windows 独立日志采集的覆盖范围、构建与验收见 [GEA日志采集](desktop/diagnostics/README.md)。
+
 ## 完成边界
 
 登录、退出、过期、切用户/租户/环境由 GEA Host 统一处理。页面、Skill 与界面登录展示均不授予服务端权限。凭据留在 Host；身份变化撤销旧执行条件，Core Session、历史与草稿保留。真实读取、缺字段、拒权、不完整结果、取消与 unknown 不能补成零或成功。

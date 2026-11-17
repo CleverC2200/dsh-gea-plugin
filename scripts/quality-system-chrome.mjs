@@ -1,4 +1,3 @@
-/** Freeze one system Chrome distribution; mount it only in this job's hosted Linux VM. */
 import { createHash } from "node:crypto";
 import {
   readFileSync,
@@ -254,7 +253,7 @@ export function readSystemChrome({ root, expected, verifyBytes = true, verifiedH
     reject("Chrome snapshot bytes/mode/link changed");
   return result;
 }
-/** Rebuild authenticated 0755 directories, including empty ones; tar still admits files/symlinks only. */
+
 export function restoreSystemChromeDirectories({ root, expected }) {
   readSystemChrome({ root, expected, verifyBytes: false });
   const receipt = json(join(root, RECEIPT));
@@ -435,7 +434,7 @@ export function mountSystemChrome({ root, expected }) {
   write(join(root, "quality-system-chrome-mount.json"), marker);
   return marker;
 }
-// Diagnostic observations never grant ownership or authorize unmount/termination.
+
 function mountReferences(prepared, deadline) {
   const started = performance.now(),
     limits = {

@@ -159,7 +159,7 @@ export function createInstallerCache(data, { isInUse = inUse } = {}) {
           const s = await lstat(join(directory, e.name));
           files.push({ name: e.name, time: s.mtimeMs });
         }
-      // Legacy downloads have no receipt. Keep the newest two as well as pins.
+
       for (const f of files.sort((a, b) => b.time - a.time).slice(0, 2)) keep.add(f.name);
       const removed = [],
         failed = [];

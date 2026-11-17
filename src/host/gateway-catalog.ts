@@ -1,4 +1,3 @@
-/** 解析第一段完整 JSON 对象：工具结果常常是 JSON + 尾部提示文本。 */
 export function parseFirstJsonObject(
   text: string,
   parse: (text: string) => unknown = JSON.parse,
@@ -32,7 +31,6 @@ export function parseFirstJsonObject(
   throw new Error("GEA_CATALOG_TRUNCATED");
 }
 
-/** Small factual reminder drawn only from a successful catalog, not from model guesses. */
 export function catalogFactSummary(text: string): string {
   if (!text.startsWith("GEA 网关语义模型成员")) return "";
   const skuMembers = [

@@ -449,11 +449,14 @@ test("Workbench keeps its copied Manage resources, compute sources and provenanc
   t.mock.method(cp, "execFileSync", (file, args, options) =>
     args.join(" ") === "pnpm --version" ? "1.0.0\n" : original(file, args, options),
   );
-  t.mock.method(cp, "spawnSync", () => {
+  const commands = [];
+  t.mock.method(cp, "spawnSync", (file, args) => {
+    commands.push({ file, args });
     compile();
     return { status: 0 };
   });
   assert.equal((await developmentTask("build", {}, path)).status, "built");
+  assert.deepEqual(commands[0], { file: "corepack", args: ["pnpm", "run", "build:plugin"] });
   gea.write("business-resources/unrelated/SKILL.md", "changed resource");
   assert.equal((await developmentTask("build", {}, path)).status, "reused");
   manage.write("business-resources/unrelated/SKILL.md", "changed copied resource");
@@ -463,6 +466,11 @@ test("Workbench keeps its copied Manage resources, compute sources and provenanc
   manage.manifest.description = "changed provenance";
   manage.write("package.json", JSON.stringify(manage.manifest));
   assert.equal((await developmentTask("build", {}, path)).status, "built");
+  const all = await developmentTask("build", { target: "all" }, path);
+  assert.equal(all.status, "built");
+  assert.deepEqual(commands.at(-1), { file: "corepack", args: ["pnpm", "run", "build"] });
+  assert.equal(JSON.parse(fs.readFileSync(all.receipt)).input.target, "all");
+  assert.ok(all.receipt.endsWith("build-all.json"));
 });
 
 test("dependency preparation still binds complete linked peer manifests and commits", async (t) => {
@@ -560,4 +568,36 @@ test("local preflight runs on dirty source without a Core, package manager or de
   assert.match(checked.knowledge.missingInputs[0], /official-latest-standard/);
   assert.equal(fs.existsSync(join(path, "node_modules")), false);
   assert.equal(fs.existsSync(join(path, "lib")), false);
+  const linked = join(path, "..", "linked-scripts");
+  fs.symlinkSync(import.meta.dirname, linked, "junction");
+  for (const entry of [
+    join(import.meta.dirname, "development-tasks.mjs"),
+    join(linked, "development-tasks.mjs"),
+  ]) {
+    const result = cp.spawnSync(process.execPath, [entry, "preflight"], {
+      cwd: path,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(JSON.parse(result.stdout).status, "passed");
+    fs.writeFileSync(join(path, "new.mjs"), "export const broken = ;");
+    const rejected = cp.spawnSync(process.execPath, [entry, "preflight"], {
+      cwd: path,
+      encoding: "utf8",
+    });
+    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
+    assert.match(rejected.stderr, /DEVELOPMENT_PREFLIGHT_FAILED/);
+    fs.writeFileSync(join(path, "new.mjs"), "export const value = 1;");
+  }
+  const imported = cp.spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `await import(${JSON.stringify(new URL("development-tasks.mjs", import.meta.url).href)})`,
+    ],
+    { cwd: path, encoding: "utf8" },
+  );
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(imported.stdout, "");
 });

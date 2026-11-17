@@ -38,7 +38,7 @@ test("published DSH loads the replacement workbench", { timeout: 90000 }, async 
   }
   const entries = await page.evaluate(() => window.__DSH_BOOT__.entries.map((row) => row.id));
   assert.ok(entries.includes("@cleverc2200/dsh-agent-workbench"));
-  // Current Workbench contributes company UI through the official layout and slot libraries.
+
   assert.ok(entries.includes("@deepseek-ai/dsh-client-ui-layout"));
   assert.equal(entries.filter((id) => id === "@cleverc2200/dsh-agent-workbench").length, 1);
   assert.deepEqual(errors, []);

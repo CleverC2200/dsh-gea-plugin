@@ -14,7 +14,7 @@ if target.exists() or target.is_relative_to(source) or source.is_relative_to(tar
     raise SystemExit('Use a new destination outside the source payload')
 started = time.time()
 target.parent.mkdir(parents=True, exist_ok=True)
-# APFS clones avoid duplicating blocks during local release preparation.
+
 if subprocess.run(['cp', '-cR', str(source), str(target)], capture_output=True).returncode:
     if target.exists():
         raise SystemExit('Copy failed; inspect the new destination before retrying')
@@ -51,7 +51,6 @@ for item in list(target.rglob('*')):
         removed.append({'path': str(relative), 'reason': reason, 'bytes': item.stat().st_size})
         item.unlink()
 
-# node-pty ships a helper whose executable bit can be lost with ignored install scripts.
 permission_fixes = []
 if args.platform == 'mac':
     for helper in (target / 'node_modules').rglob('spawn-helper'):

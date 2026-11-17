@@ -10,7 +10,6 @@ import { ToolRuntime, validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
 import { LlmRuntime, LlmAdapter } from "@deepseek-ai/dsh-llm";
 import { fixtureEnvironment } from "./fixtures/business-session.mjs";
 
-// Exercise Host's registered public routes and adapter. No profile, Task or HTTP server starts.
 async function fixture(
   t,
   enabled,
@@ -117,7 +116,7 @@ async function fixture(
     cleanups = [],
     guards = [];
   const preset = "gea-html-inventory-dealer";
-  // A pre-existing Session's persisted preset projection survives resource changes.
+
   const agent = {
     id: "session-11111111-1111-4111-8111-111111111111",
     session: {
@@ -174,8 +173,6 @@ async function fixture(
       ],
     },
     agentPresets: {
-      // This route-only fixture supplies the registry's public declaration document.
-      // Actual standard composition and Agent scopes run in the source-profile tests.
       readDocument: async () => ({
         agentPreset: "standard",
         content: JSON.stringify([{ name: "@deepseek-ai/dsh-persona" }]),

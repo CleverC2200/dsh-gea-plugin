@@ -1,4 +1,3 @@
-/** Start the current source composition in an isolated, configured DSH profile. */
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 import { readDeployment } from "./deployment.mjs";

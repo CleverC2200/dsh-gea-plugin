@@ -17,8 +17,6 @@ import {
   htmlFrameElement,
 } from "./fixtures/business-page.mjs";
 
-// Only external GEA and model endpoints are fixtures. Workbench, Agent Manage,
-// GEA, page bridge, registry, session loop and browser all run their built source.
 test(
   "两份临时分离声明在真实工作台显示，Agent 管理装载能力，调用保持受控",
   {
@@ -51,7 +49,7 @@ test(
       await writeFile(join(directory, "historical-SKILL.md"), originalSkill);
       await writeFile(join(directory, "SKILL.md"), activeSkill);
       const consumerCode = originalId === "inventory-aqkc" ? "probe-consumer" : "legacy-consumer";
-      // This temporary Prompt is derived from the original Skill, not a maintained business Prompt.
+
       await writeFile(
         join(directory, "prompt.json"),
         JSON.stringify({ label: name, consumerCode, persona: instructions, skills: [id] }),

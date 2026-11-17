@@ -1,5 +1,5 @@
 import { testBrowser } from "./fixtures/test-browser.mjs";
-/** Real source composition: settings, native conversation and shared shell. */
+
 import { fileURLToPath } from "node:url";
 import { changeThemeSetting } from "./theme-settings.mjs";
 import test from "./fixtures/source-test.mjs";
@@ -142,7 +142,7 @@ test(
       await expect.poll(async () => (await sample()).axis).toBe(`${size}px`);
       await composer.fill("输入框字号与焦点验收");
       await expect(composer).toBeFocused();
-      // Sample the declared Core model control, rather than relying on the preceding tab-order item.
+
       const focusControl = page.locator('[data-slot="conversation.input.model"] button').first();
       await page.keyboard.press("Tab");
       await focusControl.focus();
@@ -179,7 +179,7 @@ test(
         path: fileURLToPath(new URL(`${baseline ? "before" : "after"}-${size}.png`, output)),
         fullPage: true,
       });
-      // Reinsert the shared sheet first and the upstream base sheet last.
+
       await page.evaluate(() => {
         const shared = document.querySelector('style[data-agent-workbench-theme="1.1.1"]');
         if (!shared) throw Error("Shared theme stylesheet is missing");
@@ -198,7 +198,7 @@ test(
     await page.reload();
     await expect.poll(async () => (await sample()).axis).toBe("17px");
     assert.equal((await sample()).dark, true);
-    // GEA may land on its default page; reopen the persisted conversation through history.
+
     if (!(await page.getByText("主题验收回复", { exact: true }).isVisible())) {
       const history = page.getByRole("button", { name: "历史会话", exact: true });
       if ((await history.getAttribute("aria-expanded")) !== "true") await history.click();

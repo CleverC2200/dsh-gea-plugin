@@ -8,7 +8,6 @@ import { SHELL_FILES, stagedManifest, validateDesktopPackage, main } from "./pac
 const desktop = join(import.meta.dirname, "..", "desktop");
 
 test("every module the Electron main process requires ships in app.asar", async () => {
-  // prepareStaging writes its own package.json next to the shell files.
   const shipped = new Set([...SHELL_FILES, "package.json"]);
   const missing = [];
   for (const name of SHELL_FILES) {

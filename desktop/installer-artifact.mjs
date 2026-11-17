@@ -1,4 +1,3 @@
-/** Describe final signed bytes; never append a blockmap to or rewrite an EXE. */
 import { createReadStream } from "node:fs";
 import { readFile, lstat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";

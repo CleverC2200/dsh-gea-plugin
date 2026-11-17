@@ -1,4 +1,3 @@
-/** Official read-only source-combination validation, shared with preparation. */
 import { readFile, readdir, realpath, lstat } from "node:fs/promises";
 import { readFile as readFileCallback } from "node:fs";
 import { promisify } from "node:util";
@@ -71,7 +70,6 @@ export const fileDigest = async (file, readScope) =>
     .update(await readBytes(file, readScope))
     .digest("hex");
 
-/** Hash shipped resources, excluding dependency links and their writable stores. */
 export async function resourceDigests(directory, prefix = "", readScope) {
   return digestResources(directory, prefix, readScope, false);
 }
@@ -129,7 +127,6 @@ function sameDigests(actual, expected) {
   return true;
 }
 
-/** Reject incomplete snapshots before changing the selected combination. */
 export const readSourceCombination = sourcePhase("read-combination", readCombination);
 
 async function readCombination(runtime, id, core, { readScope } = {}) {
@@ -195,7 +192,6 @@ async function readCombination(runtime, id, core, { readScope } = {}) {
   return record.composition;
 }
 
-/** Fix the resolved dependency graph, including built core files and transitive links. */
 export async function dependencyDigests(directories, readScope) {
   const files = {},
     visited = new Set(),

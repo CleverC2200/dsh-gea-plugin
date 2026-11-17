@@ -21,11 +21,7 @@ export type InventoryRoleProfile = Readonly<{
   roleCodes: string[];
   roleNames: string[];
   roles: Array<{ code: string; name: string | null }>;
-  /**
-   * The gateway may omit this until the customer-inventory authorization
-   * contract is deployed. An omitted scope is deliberately not treated as
-   * broad access by presentation code.
-   */
+
   customerInventoryScope: {
     status: "granted" | "unconfigured";
     regions: string[];
@@ -36,11 +32,6 @@ export type InventoryRoleProfile = Readonly<{
   };
 }>;
 
-/**
- * Verify that a gateway role/scope receipt belongs to exactly this delegated
- * session. The browser receives only this projection, never the delegation
- * token or the raw gateway receipt.
- */
 export function verifiedRoleProfile(
   payload: any,
   expected: { sessionId: string; conversationId: string; agentCode?: string },

@@ -1,12 +1,5 @@
 import { CAPABILITY_LAYERS, layersForContract, type CapabilityLayer } from "./layers.ts";
 
-/**
- * 原生销售与 HTML 模块使用同一能力形状，声明页面、数据、最大影响等级和路由。
- * 当前 HTML 装载要求分离的 page/capability 声明，不扫描页面 SQL 或 Skill 正文。
- * contractFromPlugin 提供已校验安装元数据的基础形状，不能代替缺失的声明文件。
- */
-
-/** 能力的影响等级：页面看得见 < 页面草稿 < 会提交 < 会审批。 */
 export const CAPABILITY_EFFECTS = ["view", "draft", "submit", "approve"] as const;
 export type CapabilityEffect = (typeof CAPABILITY_EFFECTS)[number];
 
@@ -21,55 +14,47 @@ export function effectRank(effect: CapabilityEffect): number {
   return EFFECT_RANK[effect];
 }
 
-/** Pages publish their own elements through the current protocol. */
 export type CapabilityViewProtocol = "self-report";
 
 export type CapabilityView = {
-  /** 页面桥用的页面标识，例如 `gea-workbench`、`gea-html-inventory-fc`。 */
   surface: string;
   protocol: CapabilityViewProtocol;
-  /** 这个模块会注册成工作台的哪几个页面。 */
+
   pageIds: string[];
 };
 
 export type CapabilityData = {
   consumerCode: string;
-  /** 安装能力声明提供的受管业务表；不授予服务端数据权限。 */
+
   tables: string[];
-  /** 安装能力声明提供的业务口径，进入只读工具说明。 */
+
   rules: string[];
-  /** 演示（mock）模块：页面里的数字是原型数据，也没有真实数据通道。 */
+
   mock?: boolean;
 };
 
 export type CapabilityRouting = {
-  /** 首页路由用的关键词（用户话里出现就落到这个模块）。 */
   keywords: string[];
 
   summary: string;
 };
 
 export type CapabilityContract = {
-  /** Installed capability availability, independent of page menu visibility. */
   enabled?: boolean;
-  /** Installed declaration files for load diagnostics; never used as authority. */
+
   source?: string;
   id: string;
   label: string;
   view?: CapabilityView;
   data?: CapabilityData;
-  /** 这个模块允许被对话改到的最大等级。 */
+
   maxEffect: CapabilityEffect;
-  /**
-   * 这个模块实际上有哪几层能力（读 / 改草稿 / 提交 / 审批 / 导出）。
-   * 未显式提供时从页面、数据与最大等级派生；声明仍受安装模块允许等级约束。
-   */
+
   layers?: CapabilityLayer[];
   skills: string[];
   routing: CapabilityRouting;
 };
 
-/** CTE 名字（`WITH x AS (`、`…)`），它们不是业务表。 */
 function commonTableExpressions(sql: string): Set<string> {
   const names = new Set<string>();
   for (const match of sql.matchAll(/([a-z_][a-z0-9_]*)\s+as\s*\(/gi))
@@ -77,7 +62,6 @@ function commonTableExpressions(sql: string): Set<string> {
   return names;
 }
 
-/** SQL 里明显不是表的词（函数、集合构造）。 */
 const NOT_A_TABLE = new Set([
   "select",
   "values",
@@ -90,13 +74,6 @@ const NOT_A_TABLE = new Set([
   "format",
 ]);
 
-/**
- * 从模块自己的 SQL 里提取受管业务表。
- *
- * 只认两种形态：带 `data_service.` 前缀的（GEA 受管表的标准写法），以及不带前缀但
- * 以 `agent` / `agents` 开头的业务表；CTE 名与函数名一律排掉，避免把查询中间结果
- * 当成"可以读的表"写进给模型的说明里。
- */
 export function tablesFromSource(...sources: readonly string[]): string[] {
   const tables = new Set<string>();
   for (const source of sources) {
@@ -107,7 +84,7 @@ export function tablesFromSource(...sources: readonly string[]): string[] {
     )) {
       const schema = match[1]?.toLowerCase();
       const name = match[3].toLowerCase();
-      // 带 schema 前缀的只认 GEA 受管 schema；别的 schema 不是业务表。
+
       if (schema !== undefined && schema !== "data_service") continue;
       if (NOT_A_TABLE.has(name) || cte.has(name)) continue;
       if (!/^agents?_/.test(name)) continue;
@@ -117,12 +94,6 @@ export function tablesFromSource(...sources: readonly string[]): string[] {
   return [...tables].sort();
 }
 
-/**
- * 从 SKILL.md 里摘"必须保留的口径"。
- *
- * 模块的 SKILL.md 是给它自己的 agent 看的完整提示词，直接整段塞进只读工具说明会
- * 把工具说明撑爆；这里只取标题里带口径/规则/边界的小节，且每节有长度上限。
- */
 export function rulesFromSkill(
   skill: string,
   options: {
@@ -179,17 +150,16 @@ export type PluginContractInput = {
   consumerCode: string;
   pageIds: readonly string[];
   skill?: string;
-  /** Parsed by the Agent resource owner; GEA does not parse Skill metadata. */
+
   description?: string;
-  /** 模块自己的文本资源（index.html、脚本等），用来静态提取可读表。 */
+
   sources?: readonly string[];
-  /** 该模块允许被对话改到的最大等级，默认只改页面草稿。 */
+
   maxEffect?: CapabilityEffect;
-  /** 演示（mock）模块：页面数字是原型数据，也没有真实数据通道。 */
+
   mock?: boolean;
 };
 
-/** Derive the installed identity and permission bounds checked against required declarations. */
 export function contractFromPlugin(input: PluginContractInput): CapabilityContract {
   const tables = tablesFromSource(...(input.sources ?? []));
   const rules = rulesFromSkill(input.skill ?? "");
@@ -199,7 +169,6 @@ export function contractFromPlugin(input: PluginContractInput): CapabilityContra
     id: input.id,
     label: input.label,
     view: {
-      // 页面标识只允许小写字母/数字/点/横线（工具名的同一套约束），所以用横线连接。
       surface: `gea-html-${input.id}`,
       protocol: "self-report",
       pageIds: [...input.pageIds],
@@ -220,7 +189,6 @@ export function contractFromPlugin(input: PluginContractInput): CapabilityContra
   };
 }
 
-/** 宿主自带的原生工作台（页面自述元素）。 */
 export function workbenchContract(input: {
   enabled?: boolean;
   surface: string;
@@ -256,7 +224,6 @@ export function workbenchContract(input: {
 
 const NAME_PATTERN = /^[a-z][a-z0-9._:-]*$/i;
 
-/** 校验模块自己交上来的契约（不可信输入）：形状不对就整份丢掉，不猜。 */
 export function normalizeContract(value: unknown): CapabilityContract {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("INVALID_CAPABILITY_CONTRACT");
@@ -331,7 +298,7 @@ export function normalizeContract(value: unknown): CapabilityContract {
     typeof raw.routing === "object" && raw.routing !== null
       ? (raw.routing as Record<string, unknown>)
       : {};
-  // layersForContract 统一归一化显式层与页面、数据和影响等级，安装声明另受装载上限约束。
+
   const declaredLayers = Array.isArray(raw.layers)
     ? (raw.layers as unknown[]).filter(
         (layer): layer is CapabilityLayer =>

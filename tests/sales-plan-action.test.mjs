@@ -1052,10 +1052,7 @@ for (const [customerCode, returnedStatus, orderType] of [
     assert.equal(receipt.status, request.status);
     assert.deepEqual(await business.salesPlanSubmit(command("first"), signal), receipt);
     assert.equal(writes, 1);
-    assert.deepEqual(JSON.parse(sentBodies.get("first")).notification, {
-      title: "需求预测重新提报待审批",
-      content: `一份2026年10月${orderType === "Z" ? "纠偏" : "月初"}需求预测已修改并重新提报，请查看并按最新内容处理。`,
-    });
+    assert.equal(Object.hasOwn(JSON.parse(sentBodies.get("first")), "notification"), false);
     await assert.rejects(
       business.salesPlanSubmit(
         { ...command("first"), request: { ...request, targetQty: "2.000" } },

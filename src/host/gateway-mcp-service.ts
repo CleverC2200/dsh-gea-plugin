@@ -1,4 +1,3 @@
-/** GEA selects the Consumer from the real Core Session, never from tool arguments. */
 import type { Context } from "@deepseek-ai/cordis";
 import type { Business } from "./business.ts";
 import { cubeAllowed, resolveCubeAccess, sameCubeAccess } from "./cube-access.ts";

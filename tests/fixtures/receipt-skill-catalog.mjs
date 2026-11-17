@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { profile } from "../profile.mjs";
 import { findSupportedCore } from "../../scripts/supported-cores.mjs";
 
-// Independent author metadata shared with the complete catalog scene; only this fixture's canary differs.
 const declaration = JSON.parse(
   await readFile(new URL("./catalog-scene-expectations.json", import.meta.url), "utf8"),
 );
@@ -20,7 +19,6 @@ const expectedEntries = [
 ].sort((a, b) => a.name.localeCompare(b.name));
 const bodyCanary = "RECEIPT_SKILL_BODY_MUST_NOT_AUTOLOAD_R39_6d341cbf";
 
-/** Retain the business profile and give every filesystem Skill source a private root. */
 export async function receiptProfile(t) {
   const { core } = JSON.parse(await readFile(process.env.GEA_TEST_CANDIDATE, "utf8"));
   assert.ok(
@@ -52,7 +50,6 @@ export async function receiptProfile(t) {
   return Object.assign(app, { receiptCore: core });
 }
 
-/** A directory is durable metadata; it must not load Skill instructions or dispatch them. */
 export function assertReceiptCatalog(rows) {
   const messages = rows.filter((row) => row.type === "user/message");
   const catalogs = messages.filter((row) => row.data.source.kind === "skill-catalog");
@@ -93,7 +90,6 @@ function assertSnapshot(source, names) {
   }
 }
 
-/** Validate the Core-declared metadata and retain exactly one receipt proof. */
 export function assertReceiptMessages(rows, core) {
   assert.ok(
     core === alpha || findSupportedCore({ head: core, version: "0.2.0-rc.2" }),

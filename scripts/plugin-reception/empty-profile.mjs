@@ -2,7 +2,7 @@ import { verifyRuntimeModules } from "../runtime-environment.mjs";
 import { artifactSetSha256 } from "./contract.mjs";
 import { readSupportedCore } from "../supported-cores.mjs";
 import { selectDownloadStore } from "./download-store.mjs";
-/** Install only three ordinary artifacts in a new explicit profile, then observe in a clean child. */
+
 import assert from "node:assert/strict";
 import { parseArgs } from "node:util";
 import { isAbsolute, join, dirname, basename, relative, sep } from "node:path";
@@ -88,7 +88,7 @@ try {
   if (v.mode === "install") {
     for (const key of ["pnpm", "workbench", "manage", "gea"])
       assert(isAbsolute(v[key] ?? ""), `${key.toUpperCase()}_ABSOLUTE_REQUIRED`);
-    // Exclusive home acquisition prevents using real Home, historical profiles or an earlier failed run.
+
     await mkdir(v.home, { recursive: false });
     await writeFile(join(v.home, "empty.npmrc"), "", { mode: 0o600 });
     await mkdir(join(v.home, "profiles"));
@@ -128,7 +128,7 @@ try {
       JSON.stringify({ core: v.core, profile: v.profile, artifacts }, null, 2) + "\n",
       { mode: 0o600 },
     );
-    // Installation child receives no inherited credential/token/proxy configuration.
+
     const installInput = v.receipt + ".input.json";
     await writeFile(
       installInput,
@@ -222,7 +222,6 @@ try {
   }
   base.success = true;
 } catch (error) {
-  // External diagnostics can contain URL tokens. Preserve only our stable uppercase failure code.
   base.failure = String(error.message).match(/[A-Z][A-Z_]{4,}/)?.[0] ?? "RECEPTION_FAILED";
   process.exitCode = 1;
 } finally {
@@ -249,7 +248,7 @@ async function child(script, args, environment) {
       env: environment,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    // Raw startup diagnostics can contain a fresh Web token. They stay private and are excluded from delivery.
+
     proc.stdout.on("data", (chunk) => stdoutLog.write(chunk));
     proc.stderr.on("data", (chunk) => stderrLog.write(chunk));
     let finished = false,

@@ -1,7 +1,6 @@
 import { DmsClient, parseDmsOrder, type DmsConfig } from "./dms-orders.ts";
 import type { FcDmsTarget } from "./fc-dms-target.ts";
 
-/** Local checks only: no SQL, login, order or intent write occurs here. */
 export function checkFcSubmissionReadiness(
   dms: DmsConfig | undefined,
   identity: { tenantId: string; userId: string },
@@ -18,7 +17,6 @@ export function checkFcSubmissionReadiness(
   return { ready: true, scope: "dms-direct" as const };
 }
 
-/** A submitted order must still match the current account's governed warehouse routing. */
 export function checkFcDmsOrderTarget(warehouseCode: string, order: unknown, target: FcDmsTarget) {
   const parsed = parseDmsOrder(order);
   if (

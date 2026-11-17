@@ -1,4 +1,3 @@
-/** The desktop owns installer downloads; the renderer never chooses URLs or local paths. */
 import { createHash, randomUUID } from "node:crypto";
 import { open, rename, rm } from "node:fs/promises";
 import { createReadStream } from "node:fs";
@@ -10,7 +9,7 @@ import { verifyInstallerSignature } from "./installer-signature.mjs";
 const MAX_BYTES = 1024 * 1024 * 1024;
 const version = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const CHANNEL_ATTEMPT_TIMEOUT_MS = 15000;
-/** 兼容版频道来源：单个地址，或按优先级排列的地址列表。 */
+
 const channelCandidates = (value) =>
   Array.isArray(value)
     ? value.filter((item) => typeof item === "string" && item.length > 0)
@@ -203,7 +202,6 @@ export function createClientInstaller({
     controller = new AbortController();
     work = (async () => {
       try {
-        // 兼容版频道读取：一个频道可以有多个来源，按顺序尝试；清单里的产物地址按命中的那个来源校验。
         let next, failure;
         for (const candidate of candidates) {
           try {
@@ -229,7 +227,7 @@ export function createClientInstaller({
             break;
           } catch (error) {
             failure = error;
-            // 主动取消（关闭应用）不算来源不可用，不再继续尝试后面的来源。
+
             if (controller.signal.aborted) break;
           }
         }

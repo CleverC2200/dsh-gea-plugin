@@ -37,7 +37,7 @@ test(
       }
     });
     const sql = "SELECT COUNT(*) AS records FROM agents_scm_safety_stock";
-    // Public prepare builds the actual APS package in mock mode. It has no SQL channel.
+
     const aps = await app.rpc("plugin/sql", {
       consumerCode: "aps",
       sql,
@@ -47,7 +47,7 @@ test(
     assert.equal(aps.error?.code, "GEA_CAPABILITY_MOCK_ONLY", JSON.stringify(aps));
     assert.equal(delegated, undefined);
     assert.equal(queries, 0);
-    // Keep the authenticated Agent/SQL-success assertions on an actual readable package.
+
     const result = await app.rpc("plugin/sql", {
       consumerCode: "full-chain-inventory",
       sql,

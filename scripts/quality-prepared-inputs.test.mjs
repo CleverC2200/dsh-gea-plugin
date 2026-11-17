@@ -213,7 +213,7 @@ test("the CLI preserves internal generated symlinks and refuses an equally reada
   const stages = JSON.parse(readFileSync(join(f.root, "quality-stages.json")));
   stages.artifacts[join(f.root, "candidate/dsh-gea-plugin/lib")]["entry.js"] =
     "link:" + join(f.root, "candidate/dsh-gea-plugin/lib/host.js");
-  // Existing producer inventories compare maps by keys, not filesystem enumeration order.
+
   f.json("quality-stages.json", stages);
   assert.equal(f.run("export").status, 0);
   const digest = hash(readFileSync(f.manifest));

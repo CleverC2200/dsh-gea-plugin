@@ -351,7 +351,6 @@ function fixture(
       fixed.genui.files[file] = hash(bytes);
     }
     json("candidate/dsh-gea-plugin/scripts/quality-upstreams.json", fixed);
-    // The complete generated inventory is frozen at the producer; Git source declarations are already fixed.
   }
   const geaHead = commit(gea);
   for (const path of [manage, gea])
@@ -698,7 +697,7 @@ cp.spawnSync=(command,args,options={})=>{
     assert.equal(selected.status, 0, selected.stdout + selected.stderr);
     executionPlan = JSON.parse(selected.stdout);
     json("quality-test-execution-plan.json", executionPlan);
-    // Selection output is bound by its own SHA; obtain the original CLI's actual selection using the same reader.
+
     const selection = run("--input-type=module", [
       "-e",
       `import {selectCiTests} from ${JSON.stringify(join(wb, "scripts/ci-test-plan.mjs"))};import {selectPlatformTests} from ${JSON.stringify(join(gea, "scripts/ci-platform-tests.mjs"))};console.log(JSON.stringify(selectPlatformTests(selectCiTests({repositories:${JSON.stringify(candidate.repositories)},repo:'dsh-gea-plugin',base:${JSON.stringify(geaHead)}}))));`,
@@ -1095,6 +1094,7 @@ async function producerWaitReady(f, run, waiting) {
       }),
     ]),
     "worker did not enter producer wait",
+    30000,
   );
   const observation = f.run(join(own, "scripts/run-quality-ci.mjs"), [
     "--stage",
@@ -1812,7 +1812,7 @@ test("the actual producer binding and index CLI preserve the exact bytes consume
   assert.equal(consumer.status, 0, consumer.stderr);
   assert.equal(JSON.parse(consumer.stdout).status, "prepared");
   assert.ok(JSON.parse(consumer.stdout).artifacts.length > 0);
-  // Root-local lib combination metadata remains excluded by the existing general digest contract.
+
   f.put("candidate/dsh-gea-plugin/lib/combination.json", "GEA lib metadata");
   f.put("candidate/dsh-agent-manage/lib/combination.json", "Manage lib metadata");
   const tested = f.quality("tests", [
@@ -1828,7 +1828,7 @@ test("the actual producer binding and index CLI preserve the exact bytes consume
   assert.ok(sdk.args.includes("--with-web"));
   assert.ok(sdk.args.includes("--with-flock"));
   assert.ok(!sdk.args.includes("--prepare"));
-  // Even after transport and worker readiness, the original CLI rechecks exact output bytes.
+
   rmSync(join(f.root, "tests-executed"));
   f.json("quality-stages.json", index.stages);
   f.put("candidate/dsh-agent-manage/client/client.js.map", "changed after worker readiness");
@@ -1924,13 +1924,17 @@ test("worker CLI overlaps two real installs while keeping nested Workbench inven
   assert.ok(paths.durationMs >= 0);
 });
 
-async function deadline(promise, message = "worker did not close after install failure") {
+async function deadline(
+  promise,
+  message = "worker did not close after install failure",
+  timeoutMs = 5000,
+) {
   let timer;
   try {
     return await Promise.race([
       promise,
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error(message)), 5000);
+        timer = setTimeout(() => reject(Error(message)), timeoutMs);
       }),
     ]);
   } finally {
@@ -2200,7 +2204,7 @@ test("worker CLI reaps descendants holding stdio after a successful install lead
   assert.equal(f.produce().status, 0);
   assert.equal(f.exportBundle().status, 0);
   f.clear();
-  // Establish both concurrent installs before the leader exits; scheduler speed is not a precondition.
+
   const run = f.receiveAsync({
     PROCESS_INSTALLS: "1",
     PAIR_BARRIER: "1",

@@ -1,5 +1,5 @@
 import { holdBuildAdmission } from "./build-admission.mjs";
-/** Prepare an ordinary plugin artifact without installing SDK peers or touching source dependencies. */
+
 import { parseArgs } from "node:util";
 import { resolve, join, dirname } from "node:path";
 import { readFile, writeFile, mkdir, cp, lstat } from "node:fs/promises";
@@ -38,7 +38,7 @@ for (const file of [
   });
 }
 await writeFile(join(target, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
-// This is the official out-of-tree profile dependency protocol, not a peer override.
+
 await writeFile(
   join(target, "pnpm-workspace.yaml"),
   "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n",

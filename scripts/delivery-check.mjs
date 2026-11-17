@@ -1,5 +1,5 @@
 import { isObservationTime as time } from "./delivery-time.mjs";
-/** Read-only, bounded delivery observations. Never prepares or verifies a runtime. */
+
 import { readFile, realpath, stat } from "node:fs/promises";
 import { resolve, relative, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
@@ -135,7 +135,6 @@ function stageResult(
   };
 }
 
-/** Input references are root-relative controlled files. Output contains no raw source text or paths. */
 export async function checkDelivery(input, { observedAt = new Date().toISOString() } = {}) {
   if (
     !identifier(input?.projectId) ||
@@ -497,7 +496,7 @@ export async function checkDelivery(input, { observedAt = new Date().toISOString
       ? delivery.notApplicable
       : []) {
       const index = stages.indexOf(entry?.stage);
-      // Source and offline proof cannot be waived through report metadata.
+
       if (index < 2) continue;
       if (index === 2 && task.assembly) {
         results[index] = stageResult(

@@ -1,5 +1,5 @@
--- PROPOSED PostgreSQL migration. Administrator only; never execute via /ai/sql/execute.
--- Not evidence that these tables exist or have been whitelisted. No triggers or cascading FKs.
+
+
 
 CREATE TABLE agent_branch_plan_version (
   tenant_key VARCHAR(128) NOT NULL,

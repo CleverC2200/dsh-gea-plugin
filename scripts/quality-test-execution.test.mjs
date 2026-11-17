@@ -429,7 +429,7 @@ test("libuv budgets use each actual shard and single-shard receipts cannot prove
     ],
   );
   assert.equal(verifyExecutionResults(result).files, 3);
-  // The existing hosted aggregator retains worker results, not each parent receipt's capacity.
+
   const aggregate = {
     schemaVersion: 1,
     scope: "platform",

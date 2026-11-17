@@ -1,4 +1,3 @@
-/** Fixed non-production rows; every external data/model endpoint stays on loopback. */
 export const stock = [
   {
     snapshot_date: "2026-09-29",
@@ -227,7 +226,6 @@ export const stockState = (sample) => ({
   models: [],
 });
 
-/** Current Cube-New protocol over the caller-owned loopback server. */
 export function stockMcpRoute(req, res, reply, state) {
   const path = req.url.pathname;
   if (path.endsWith("/ai/gateway/mcp/proxy/mcp")) {

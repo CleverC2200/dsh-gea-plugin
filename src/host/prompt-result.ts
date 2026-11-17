@@ -107,7 +107,6 @@ function tablePage(page: Row): Row {
   };
 }
 
-/** Presentation only. The store retains the original bytes; rows and unknown JSON columns are never rewritten. */
 export function resultView(value: unknown, depth = 0): unknown {
   if (depth > 10) return value;
   value = parsed(value);
@@ -123,7 +122,7 @@ export function resultView(value: unknown, depth = 0): unknown {
     return {
       source: value.source,
       delivery: value.delivery ?? { sourceReadComplete: null },
-      // Missing delivery metadata cannot be upgraded to a complete result.
+
       ...(!record(value.delivery) ? { presentation: value.presentation } : {}),
       payloads: value.payloads.map((item) => resultView(item, depth + 1)),
     };
@@ -144,7 +143,7 @@ export function resultView(value: unknown, depth = 0): unknown {
         });
       }
     }
-    // Preserve every non-body field, including status/error/coverage; redundant rendered bodies stay in the original.
+
     const { queryArtifact, ...metadata } = value;
     const { resources: _resources, ...artifactMetadata } = queryArtifact as Row;
     if (Array.isArray(metadata.datasets))
@@ -168,7 +167,6 @@ export function resultView(value: unknown, depth = 0): unknown {
   return value;
 }
 
-/** Results without a reusable authorization receipt get bounded one-time excerpts. */
 export function transientResult(text: string, limit = 6000): string {
   if (text.length <= limit) return text;
 
@@ -184,7 +182,6 @@ export function transientResult(text: string, limit = 6000): string {
   return JSON.stringify(result);
 }
 
-/** A short, factual receipt. It does not infer business completion from successful transport. */
 export function resultReceipt(
   tool: string,
   args: Row,
@@ -214,7 +211,6 @@ export function resultReceipt(
   const pages = datasetPages(raw);
   if (pages.length)
     facts.businessFacts = pages.slice(0, 4).map((page) => {
-      // System receipts retain state only; business values stay in their authorized tool result.
       const { observedValues: _observedValues, ...status } = datasetBusinessFacts(page.rows);
       return { name: page.name, ...status };
     });
@@ -232,7 +228,7 @@ export function resultReceipt(
 }
 
 type DatasetPage = { key: string; name: string; rows: Row[]; source: Row };
-/** Decode only documented envelopes and keep source identity through every batch and artifact. */
+
 function datasetPages(raw: unknown, depth = 0, path = "root", provenance: Row = {}): DatasetPage[] {
   if (depth > 10) return [];
   const value = parsed(raw);
@@ -343,9 +339,7 @@ export function datasetIndex(raw: string, evidenceId: string) {
     };
   });
 }
-/** Business rows first; retain coverage and exact values, with the original available for audit.
- * Mixed failures keep the existing envelope projection so no rejected query disappears.
- */
+
 export function compactDatasetProjection(
   raw: string,
   evidenceId: string,
@@ -382,7 +376,6 @@ export function compactDatasetProjection(
   return undefined;
 }
 
-/** Facts about displayed rows only; no model-created aggregates or inferred status dictionaries. */
 export function datasetBusinessFacts(rows: Row[]) {
   const nullWithRows = rows.some(
     (row) =>

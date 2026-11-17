@@ -49,7 +49,7 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
   }
   const gea = roots["dsh-gea-plugin"],
     workbench = roots["dsh-agent-workbench"];
-  // The private fixture commits the current public entry under review. All other source is real Git.
+
   for (const file of [
     "scripts/run-quality-ci.mjs",
     "scripts/final-group-input.contract.mjs",
@@ -58,8 +58,7 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     "package.json",
   ])
     copyFileSync(join(root, file), join(gea, file));
-  // Freeze this disposable fixture's peer baseline to the actual cold sources under test.
-  // Admission cases should not accidentally test unrelated historical affected-source differences.
+
   const baselineFile = join(gea, "scripts/quality-peer-baseline.json");
   const baseline = JSON.parse(readFileSync(baselineFile));
   for (const entry of baseline.repositories)
@@ -257,7 +256,7 @@ test("GEA unique hashed admission admits actual cold Git sources and refuses bad
     "quality-test-plan.json",
   ])
     assert.equal(existsSync(join(job, file)), false, "SDK failure must not execute tests: " + file);
-  rmSync(planFile); // A preparation failure still preserves the required pre-preparation plan.
+  rmSync(planFile);
   rmSync(stageReceipt);
   unchangedEffects();
   for (const [repo, badHead] of [

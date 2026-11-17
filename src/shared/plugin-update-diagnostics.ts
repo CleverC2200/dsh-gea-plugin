@@ -26,7 +26,7 @@ const record = (value: unknown): Record<string, unknown> => {
     throw Error("UPDATE_STATUS_INVALID");
   return value as Record<string, unknown>;
 };
-/** The only wire representation permitted for detailed update failures; never a raw exception. */
+
 export function parseUpdateProblem(value: unknown) {
   if (value === undefined) return undefined;
   const row = record(value);
@@ -111,7 +111,7 @@ export function parseUpdateProblem(value: unknown) {
       throw Error("UPDATE_STATUS_INVALID");
   }
 }
-/** Safe facts owned by GEA; the optional UI capability is checked separately against its public contract. */
+
 export type PluginUpdateProblem = NonNullable<ReturnType<typeof parseUpdateProblem>>;
 
 export function sourceUpdateProblem(code: string): PluginUpdateProblem {
@@ -122,7 +122,7 @@ export function sourceUpdateProblem(code: string): PluginUpdateProblem {
     code: code === "SOURCE_HTTP_FAILED" ? "http" : "unavailable",
   };
 }
-/** Retain compatible version facts, excluding synthetic owner ids and file/transport details. */
+
 export function planUpdateProblem(
   plan: Extract<PluginUpdatePlan, { kind: "blocked" }>,
   release: PluginRelease,

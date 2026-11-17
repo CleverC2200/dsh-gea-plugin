@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { stock } from "./branch-stock.mjs";
 
-/** The source-update fixture serves the installed fixed SQL, including its daily bundle. */
 export async function configuredBranchStockFixture() {
   const config = JSON.parse(
     await readFile("../dsh-agent-workbench/business/inventory-fc/sql.config.json", "utf8"),

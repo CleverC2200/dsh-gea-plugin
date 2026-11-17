@@ -131,11 +131,10 @@ test("legacy test deployments and static user mappings cannot select the product
     secretEnv: "GEA_DMS_TEST_SECRET",
     users: [{ tenantId: "0", userId: "current", username: "fixed-test" }],
   };
-  const config = resolveFcDmsDeployment({ production: old }, "production", identity);
-  assert.equal(config.gatewayUrl, FC_DMS_PRODUCTION_GATEWAY);
-  assert.equal(config.secretEnv, "GEA_DMS_PRODUCTION_SECRET");
-  assert.equal(config.credentialSource, "fc-bundled-dms-production");
-  assert.deepEqual(config.users, [{ tenantId: "0", userId: "current", workcode: "current-work" }]);
+  assert.throws(
+    () => resolveFcDmsDeployment({ production: old }, "production", identity),
+    /DMS_ENVIRONMENT_TARGET_MISMATCH/,
+  );
   const custom = resolveFcDmsDeployment(
     {
       production: {
@@ -147,7 +146,7 @@ test("legacy test deployments and static user mappings cannot select the product
     "production",
     identity,
   );
-  assert.deepEqual(custom.users, config.users);
+  assert.deepEqual(custom.users, [{ tenantId: "0", userId: "current", workcode: "current-work" }]);
   assert.equal(custom.secretEnv, "PROD_KEY");
 });
 test("default production signs without machine configuration and environment can override it", async (t) => {
@@ -188,7 +187,10 @@ test("bundled production credential cannot reach another gateway or the test env
     () => dmsSigningSecret({ ...config, gatewayUrl: "https://other.fixture" }),
     /固定正式网关/,
   );
-  assert.throws(() => resolveFcDmsDeployment({ test: config }, "test", identity), /测试环境不能/);
+  assert.throws(
+    () => resolveFcDmsDeployment({ test: config }, "test", identity),
+    /DMS_ENVIRONMENT_TARGET_MISMATCH/,
+  );
   const custom = resolveFcDmsDeployment(
     {
       production: {

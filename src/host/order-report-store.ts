@@ -13,7 +13,6 @@ type Execute = (
   requestId?: string,
 ) => Promise<any>;
 
-/** Fixed report statements only. Tenant, author and Consumer come from the authenticated Host. */
 export async function orderReportStore(
   input: any,
   identity: {
@@ -163,7 +162,7 @@ export async function orderReportStore(
     : `INSERT INTO ${table} (tenant_id, scope_key, period_type, period_start, period_end_exclusive, scope_name, scope_refs, consumer_code, report_data, schema_version, calculation_version, version, last_request_id, create_by, create_time, update_by, update_time) VALUES (:tenant, :scope, :kind, :start, :end, :scopeName, :scopeRefs, :consumer, :report, 1, 'order-report-v1', :next, :request, :actor, :now, :actor, :now)`;
   const available = 65_536 - Buffer.byteLength(JSON.stringify({ ...params, report: "" })) - 16;
   if (available <= 0) throw fail("ORDER_REPORT_PARAMETERS_TOO_LARGE");
-  // Stop recompressing once the existing atomic SQL/parameter split can hold the full envelope.
+
   const targetBytes = available + Math.max(0, 65_536 - sql.length - 32);
   const encodedReport = await encodeOrderReport(reportJson, targetBytes);
   const storedReport =
@@ -183,7 +182,7 @@ export async function orderReportStore(
   params.report = storedReport;
   if (Buffer.byteLength(JSON.stringify(params)) > 65_536) {
     const prefix = String(storedReport).slice(0, -available);
-    // Only our ASCII compression envelope may enter a SQL literal, never report text.
+
     if (!prefix || /[^A-Za-z0-9+/=,:{}"-]/.test(prefix)) throw fail("ORDER_REPORT_FORMAT_INVALID");
     sql = sql.replace(":report", `CONCAT('${prefix}', :report)`);
     params.report = String(storedReport).slice(-available);

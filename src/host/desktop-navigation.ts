@@ -1,4 +1,3 @@
-/** 桌面导航交付器：Reference 保留在 Host，浏览器只能消费绑定当前身份的一次性回执。 */
 import { randomUUID } from "node:crypto";
 import type { Business } from "./business.ts";
 import {
@@ -30,7 +29,6 @@ type Active = {
 import type { NavigationView } from "@cleverc2200/dsh-agent-workbench/client";
 export type { NavigationView } from "@cleverc2200/dsh-agent-workbench/client";
 
-/** 原始异常可能包含网络地址，只有受控机器码可离开此模块。 */
 function errorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
   return /^(NAVIGATION|NOTIFICATION)_[A-Z_]{1,64}$/.test(message)
@@ -38,7 +36,6 @@ function errorCode(error: unknown): string {
     : "NAVIGATION_REQUEST_FAILED";
 }
 
-/** 私有端点 404 表示旧客户端壳，不阻断普通插件业务。 */
 async function desktopRequest(path: string, body?: unknown): Promise<unknown> {
   const address = process.env.GEA_DESKTOP_CONTROL_URL;
   const token = process.env.GEA_DESKTOP_CONTROL_TOKEN;
@@ -78,7 +75,6 @@ async function desktopRequest(path: string, body?: unknown): Promise<unknown> {
   }
 }
 
-/** 串行交付与回执，重复读取合并；身份变化立即废弃已解析目标。 */
 export function createDesktopNavigation(
   business: BusinessPort,
   request: ControlRequest = desktopRequest,

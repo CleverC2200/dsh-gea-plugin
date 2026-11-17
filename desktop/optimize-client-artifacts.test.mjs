@@ -1,4 +1,3 @@
-/** Browser registrations execute together; helper variables must remain package-local. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";

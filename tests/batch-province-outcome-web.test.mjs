@@ -4,13 +4,6 @@ import { chromium, expect } from "@playwright/test";
 import { profile } from "./profile.mjs";
 import { openSalesPlan } from "./fixtures/business-page.mjs";
 
-/**
- * 线上现象：同一个批量通过动作，省区 0013 的两笔成功，省区 0055 / 0034 / 0041 的三笔
- * 被上游以 409 NOTIFICATION_PAYLOAD_INVALID（payload.plan_month 为必填字段）拒绝。
- *
- * 这里在本地把两种上游结果都摆出来，验证「客户端发出的报文是否一致」以及
- * 「混合结果是否逐笔如实呈现」——用来把差异范围收敛到服务端。
- */
 const plan = (id, province_region_code) => ({
   planId: id,
   versionId: "v" + id.slice(-1),
@@ -54,7 +47,6 @@ const skuFor = (versionId) => ({
   price: "10",
 });
 
-/** 上游真实响应：通知 payload 里缺 plan_month，被服务端的通知 schema 拦下。 */
 const UPSTREAM_NOTIFICATION_PAYLOAD_INVALID = {
   success: false,
   message: "payload.plan_month 为必填字段",
@@ -81,7 +73,7 @@ const openWorkbench = async (t) => {
       const records = status === null || status === "1" ? plans : [];
       return send({ records, total: records.length, pages: 1, current: 1, size: 20 });
     }
-    // 服务端把每一笔都派给了当前用户：Host 读详情时会来通知中心匹配这一条。
+
     const notifications = plans.map((row) => ({
       id: "n-" + row.planId,
       approval: {
@@ -110,7 +102,7 @@ const openWorkbench = async (t) => {
         skus: [skuFor(row.versionId)],
         versions: [],
         logs: [],
-        // 服务端把这一笔派给当前用户：这是本账号唯一的审批身份来源。
+
         workflowApproval: {
           versionId: row.versionId,
           notificationId: "n-" + row.planId,
@@ -189,13 +181,11 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
   const ctx = await openWorkbench(t);
   const { frame, writes } = ctx;
 
-  // 第一轮：省区 0013 的两笔——上游接受。
   await batchApprove(ctx, ["p-jxs-2026-09-00001", "p-jxs-2026-09-00002"], "456");
   await expect(frame.getByRole("dialog")).toContainText("成功 2 笔");
   await frame.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(frame.getByRole("dialog")).toBeHidden();
 
-  // 第二轮：另外三个省区的三笔——上游以通知 payload 校验失败拒绝。
   await batchApprove(
     ctx,
     ["p-jxs-2026-09-00003", "p-jxs-2026-09-00004", "p-jxs-2026-09-00005"],
@@ -206,7 +196,6 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
   await expect(result).toContainText("失败 3 笔");
   for (const name of ["组织3", "组织4", "组织5"]) await expect(result).toContainText(name);
 
-  // 关键结论：客户端五次提交的报文完全一致，唯一差别是目标版本（在 URL 上）。
   assert.equal(writes.length, 5);
   const bodies = new Set(writes.map((item) => JSON.stringify(item.body)));
   assert.equal(bodies.size, 1, `客户端报文应完全一致，实际: ${[...bodies].join(" | ")}`);
@@ -224,7 +213,6 @@ test("同一请求在不同省区得到不同上游结果时，客户端逐笔�
     }),
   );
 
-  // 上游的技术文案不进界面。
   const text = await result.innerText();
   for (const leak of [
     "GEA_HTTP",

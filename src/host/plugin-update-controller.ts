@@ -49,7 +49,6 @@ import {
 } from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun, type PluginUpdateFileCommit } from "./plugin-update-windows.ts";
 
-/** Stable for the lifetime of this Node process, including Controller recreation in the same process. */
 export const pluginUpdateProcessIdentity = `${process.pid}:${performance.timeOrigin}`;
 type Source = Pick<
   ReturnType<typeof createPluginReleaseSource>,
@@ -64,7 +63,7 @@ export type PluginUpdateControllerOptions = {
   fileCommit?: PluginUpdateFileCommit;
   runtimeDirectory: string;
   source: Source;
-  /** Trusted startup Loader namespace and materialized client proof reader supplied by 04. */
+
   readRuntimeProofs(processIdentity: string): Promise<RuntimePackageProof[]>;
   idleTimeoutMs?: number;
   lockWaitMs?: number;
@@ -312,9 +311,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     for (const listener of listeners) {
       try {
         listener(snapshot());
-      } catch {
-        /* A view subscriber cannot cancel accepted Host work. */
-      }
+      } catch {}
     }
   }
   function row(name: UpdatablePackageName, patch: Partial<PluginUpdateRow>) {

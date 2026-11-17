@@ -73,7 +73,6 @@ test(
       if (path.endsWith("/versions")) return send([{ ...plan, id: "v", effective: true }]);
       if (path.endsWith("/versions/v/skus")) return send([sku]);
       if (path.endsWith("/versions/v/actions")) {
-        // 服务端原始报错：带错误码 + 字段名，绝不能出现在界面上。
         reply(
           {
             message: "payload.plan_month 为必填字段",
@@ -118,13 +117,13 @@ test(
       frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).toBeChecked();
     await expect(frame.getByRole("button", { name: "退回", exact: true })).toBeEnabled();
-    // 退回弹窗不会在失败时自动关闭，正好用来核对失败提示文案。
+
     await frame.getByRole("button", { name: "退回", exact: true }).click();
     const dialog = frame.getByRole("dialog");
     await expect(dialog.getByLabel("退回原因（必填）", { exact: true })).toBeVisible();
     await dialog.getByLabel("退回原因（必填）", { exact: true }).fill("测试退回原因");
     await dialog.getByRole("button", { name: "确认退回", exact: true }).click();
-    // 上游 409 带着原因码时，不能统一说成"并发冲突、请刷新"——这条是服务端通知载荷被拒，
+
     await expect(
       dialog.getByText("审批通知未能发送，请联系管理员核对通知配置。", {
         exact: false,
@@ -146,7 +145,7 @@ test(
 
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    // 退回请求失败后这一笔没被受理，勾选已经清掉；再点「通过」要重新勾一次。
+
     await expect(
       frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"]) input'),
     ).not.toBeChecked();

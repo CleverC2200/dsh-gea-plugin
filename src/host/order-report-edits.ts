@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { orderReportStore } from "./order-report-store.ts";
 import { orderReportImport } from "./order-report-import.ts";
-/** Edits retain the exact parent's tenant and base references, in the existing report table. */
+
 export async function orderReportWithEdits(
   input: any,
   identity: Parameters<typeof orderReportStore>[1],
@@ -59,9 +59,7 @@ export async function orderReportWithEdits(
   const { includeFacts, ...load } = input;
   if (includeFacts !== undefined && typeof includeFacts !== "boolean")
     throw Error("ORDER_REPORT_REQUEST_INVALID");
-  // Fresh governed facts do not need the legacy snapshot's large multipart body.
-  // An independent edits record remains authoritative; without it, read legacy
-  // content in full so pre-migration manual edits are never dropped.
+
   const loadFresh = async () => {
     const edited = await orderReportStore(load, editIdentity, execute);
     if (!("report" in edited)) throw Error("ORDER_REPORT_FORMAT_INVALID");

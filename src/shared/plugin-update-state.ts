@@ -5,7 +5,7 @@ export type CompiledModuleProof =
   | { kind: "active"; stamp: PluginPackageStamp; identity: string }
   | { kind: "unversioned"; identity: string }
   | { kind: "unverified"; reason: string };
-/** Constructed by the trusted public Loader/module readers, never a raw client POST. */
+
 export type ClientModuleObservation =
   | {
       kind: "observed";

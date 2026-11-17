@@ -1,4 +1,3 @@
-/** Fixed page-query routes; the calling Session still owns the Consumer and authorization. */
 export function currentShortageResource(consumer: string): string | undefined {
   switch (consumer) {
     case "base-safety-stock":

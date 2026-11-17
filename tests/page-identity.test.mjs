@@ -1,9 +1,3 @@
-/**
- * 当前页身份：对话这一刻"人正看着哪个业务页"。
- *
- * 线上现象：用户在「经销商库存」页提问，会话却还绑着「客户库存」，模型手上一屏页面
- * 工具、没有任何权威信号，于是读了别的模块的页面、拿到空上下文、最后拒答。
- */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -49,11 +43,8 @@ test("身份按最近一次页面活动过期：还在轮询就是当前页，�
   const at = Date.now();
   assert.equal(pageIdentityFresh({ ...dealer, at }, at + 1000), true);
   assert.equal(pageIdentityFresh({ ...dealer, at }, at + PAGE_IDENTITY_TTL_MS), true);
-  assert.equal(
-    pageIdentityFresh({ ...dealer, at }, at + PAGE_IDENTITY_TTL_MS + 1),
-    false,
-  );
-  // 页面桥每秒轮询，TTL 必须明显大于一轮轮询，否则会把打开的页面判成没打开。
+  assert.equal(pageIdentityFresh({ ...dealer, at }, at + PAGE_IDENTITY_TTL_MS + 1), false);
+
   assert.ok(PAGE_IDENTITY_TTL_MS >= 60_000);
 });
 

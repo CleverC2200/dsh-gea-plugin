@@ -1,4 +1,3 @@
-/** Native DSH profile proves theme resources do not depend on company plugins. */
 import { profile } from "./profile.mjs";
 import { prepareCoreDocuments } from "./fixtures/core-documents.mjs";
 import { changeThemeSetting } from "./theme-settings.mjs";
@@ -86,7 +85,7 @@ test(
     await page.reload();
     await expect(page.locator("body")).toHaveCSS("background-color", "rgb(21, 21, 23)");
     await expect(composer).toHaveCSS("font-size", "15px");
-    // An unconfigured Core may offer setup again after reload; defer through its current public UI.
+
     await deferSetup();
     await expect(setup).toHaveCount(0);
     await page.screenshot({ path: ".runtime/theme-evidence/native-dark.png", fullPage: true });

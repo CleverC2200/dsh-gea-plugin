@@ -1,4 +1,3 @@
-/** Unsupported packages fail before registering any runtime effects. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";

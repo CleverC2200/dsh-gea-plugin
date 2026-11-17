@@ -1,4 +1,3 @@
-/** Execute the original fixture up to deployment admission without starting a Host or browser. */
 import { registerHooks } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
@@ -139,7 +138,9 @@ const selected = cases.find((entry) => entry.title === name);
 if (!selected) throw Error("PROBE_FIXTURE_CASE_MISSING");
 try {
   await selected.fn({
+    name: selected.title,
     signal: selected.options.signal ?? new AbortController().signal,
+    diagnostic() {},
     after(fn) {
       hooks.push(fn);
     },

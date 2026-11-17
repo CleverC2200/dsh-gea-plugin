@@ -77,7 +77,7 @@ test("the actual declared client builder exposes the compiled stamp in its mater
       },
     },
   });
-  // This namespace-only contract does not render UI; the browser contract loads actual SDK controls.
+
   const externals = {
     react: await import("react"),
     "react/jsx-runtime": await import("react/jsx-runtime"),

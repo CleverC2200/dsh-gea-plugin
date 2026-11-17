@@ -1,4 +1,3 @@
-/** Source preparation has its own finite deadline; action and Node cancellation stay authoritative. */
 import nodeTest from "node:test";
 const contexts = new WeakMap();
 const setupLimit = 90000;

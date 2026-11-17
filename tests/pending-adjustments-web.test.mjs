@@ -5,7 +5,6 @@ import { profile } from "./profile.mjs";
 import { openReadySalesPlan } from "./fixtures/business-page.mjs";
 import { testBrowser } from "./fixtures/test-browser.mjs";
 
-/** 建一条可审批、可内联改数的计划，并把动作报文收集起来。 */
 const fixture = async (t) => {
   const app = await profile(t);
   const plan = {
@@ -51,7 +50,7 @@ const fixture = async (t) => {
     };
     if (path.endsWith("/getPermCode"))
       return send({ codeList: ["sales-plan:plan:region-approve"] });
-    // 队列按节点状态分别取数，同一条计划只能出现一次。
+
     if (path.endsWith("/plans")) {
       const status = req.url.searchParams.get("status");
       const records = status === null || status === "1" ? [plan] : [];
@@ -113,11 +112,6 @@ const fixture = async (t) => {
   return { app, frame, writes, errors, page };
 };
 
-/**
- * 上一节点改完数量立刻通过时，这次调整必须进动作报文。
- * 曾经的缺陷：通过弹窗只读本地草稿，而草稿有 500ms 防抖，改完马上点通过会读不到，
- * 结果「改了 13，下一节点还是 8」，而且服务端连调整量字段都是空的。
- */
 test(
   "inline edit right before approval still reaches the action body",
   { timeout: 90000 },
@@ -132,7 +126,6 @@ test(
     await expect(input).toBeVisible();
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
 
-    // 改完不等自动暂存（500ms 防抖）就直接通过。
     await input.fill("22.125");
     await expect(input.locator("xpath=ancestor::td[1]").locator("small")).toHaveText("¥220.00");
     await frame.getByRole("button", { name: "通过", exact: true }).click();
@@ -161,11 +154,11 @@ test(
     const input = frame.getByRole("spinbutton", { name: "确认计划量 1001", exact: true });
     await expect(input).toBeVisible();
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
-    // 先改成 22.125 并等它真正落盘（本地草稿里会留下 +2）。
+
     await input.fill("22.125");
     await expect(frame.getByText("正在暂存…", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(frame.locator("td").getByRole("status")).toHaveCount(0, { timeout: 10000 });
-    // 再改回原值，然后立刻通过：这次不该带任何调整量。
+
     await input.fill("20");
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-09-00001"])').click();
     await frame.getByRole("button", { name: "通过", exact: true }).click();

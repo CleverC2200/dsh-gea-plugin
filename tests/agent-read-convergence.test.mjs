@@ -85,5 +85,3 @@ test("success evidence survives a whole-turn stop but is cleared on a new questi
   f.business.logout({});
   assert.equal(f.business.successfulPlanEvidence("one").length, 0);
 });
-
-// Current MCP execution and server-shaped requests are verified by current-mcp-tools.test.mjs.

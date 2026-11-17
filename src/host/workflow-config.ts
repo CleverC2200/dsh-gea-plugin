@@ -12,7 +12,6 @@ import {
 } from "../shared/workflow-query.js";
 import { SalesReadonlyError } from "../shared/sales-readonly.js";
 
-/** 通过固定 SQL 分页读取工作流；调用方不能提供 SQL、身份或凭证，重复 ID、分页不完整或配置非法时拒绝默默降级。 */
 export async function readSalesPlanWorkflowConfig(
   base: string,
   accessToken: string,
@@ -94,8 +93,7 @@ export async function readSalesPlanWorkflowConfig(
     let total: number | undefined;
     for (let page = 1; page <= 10; page++) {
       const requestId = randomUUID();
-      // 每一页都依赖第一页已校验的总数。
-      // eslint-disable-next-line no-await-in-loop
+
       const { result, requestId: sentRequestId } = await post(
         "/ai/gateway/sql/execute",
         {

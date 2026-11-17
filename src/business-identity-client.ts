@@ -56,7 +56,6 @@ export interface BusinessIdentityProjection {
   readScope(signal?: AbortSignal): Promise<string | null>;
 }
 
-/** Read the Host-owned authority; clients never derive a scope from user labels. */
 async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
   scope: string | null;
   subject: string | null;
@@ -194,7 +193,6 @@ async function requestBusinessIdentityScope(signal?: AbortSignal): Promise<{
   }
 }
 
-/** One read-only projection per GEA client. The Host remains the authority. */
 export function createBusinessIdentityReader() {
   let snapshot: IdentitySnapshot = {
     state: "unknown",
@@ -340,9 +338,7 @@ export function createBusinessIdentityReader() {
     const poll = async () => {
       try {
         await reader(controller.signal);
-      } catch {
-        /* Keep the last Host confirmation. */
-      }
+      } catch {}
       if (!controller.signal.aborted) timer = setTimeout(poll, 1000);
     };
     void poll();

@@ -14,7 +14,7 @@ const criticalSdk = [
   "@deepseek-ai/dsh-plugin-manager",
   "@deepseek-ai/dsh-atomic-write",
 ];
-// Node selects the first matching condition in manifest order. Type-only and require entries do not run here.
+
 function runtimeExportTarget(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -28,7 +28,6 @@ const contained = (root: string, path: string) => {
   return !isAbsolute(local) && local !== ".." && !local.startsWith("../");
 };
 
-/** Verify an explicitly admitted deployment against its actual installation and artifact bytes. */
 export async function readPluginUpdateCore(ctx: Context, raw: unknown): Promise<FixedCore> {
   const proof = updateObject(raw);
   if (
@@ -121,7 +120,7 @@ export async function readPluginUpdateCore(ctx: Context, raw: unknown): Promise<
   const packages = ctx.get("pluginPackages"),
     base = ctx.fiber.entry?.parent.tree.ctx.baseUrl;
   if (!packages || !base) throw Error("UPDATE_CORE_RESOLUTION_REQUIRED");
-  // These services govern runtime package resolution, namespace identity and installation.
+
   for (const name of criticalSdk) {
     const actual = packages.packageOf(name, base);
     if (!actual || !contained(root, await realpath(actual.dir)))

@@ -1,10 +1,5 @@
-/** Plugins declare their navigation using the standard DSH main-slot label/order. */
 type Entry = { options: { key?: string; label?: (() => string) | string; order?: number } };
 
-/**
- * 业务菜单显示名覆盖表：HTML 插件的 `plugin.json` 由别的仓库发布，改菜单文案不必重发插件包。
- * 只影响侧边栏菜单名，插件内部页面自己的标题仍由插件包决定。
- */
 const BUSINESS_MENU_LABELS: Readonly<Record<string, string>> = {
   "inventory-aqkc": "基地库存",
   "inventory-qll": "全链库存",
@@ -36,12 +31,6 @@ export function isGeaBusinessPanel(
   );
 }
 
-/**
- * 由 GEA 外壳自己接管右栏布局的面板：原生主对话、业务工作台、待办，以及内嵌原型的工作台页。
- * 这些页面共用「欢迎区在上、输入区在下」的右栏，DSH 原生欢迎区（品牌标题、工作区/Agent 预设
- * 选择器）要一并让开；漏登记一个 id，那一页就会退回原生落地页样式（鲸鱼 + 两个选择器都冒出来）。
- * `inventory-*` 的 HTML 插件页不写在这里：它们按注册上来的面板动态判定。
- */
 export const GEA_SHELL_PANELS: readonly string[] = [
   "gea-proof",
   "gea-regional-plan",
@@ -52,13 +41,8 @@ export const GEA_SHELL_PANELS: readonly string[] = [
 
 export type BusinessPanel = { id: string; title: string; order: number };
 
-/**
- * 菜单状态字段里的"主对话"。宿主（host/workbench-surface.ts）与会话侧共用这一个值：
- * 默认就是它，用户点业务菜单时才换成对应菜单 id。
- */
 export const MAIN_MENU = "main";
 
-/** 菜单 id → 菜单名：优先用已注册页面自己的标题，其次用原型目录里的名字。 */
 export function businessMenuTitle(
   id: string,
   panels: readonly BusinessPanel[] = [],
@@ -74,11 +58,6 @@ export function businessMenuTitle(
   return id;
 }
 
-/**
- * 左侧业务菜单的分组与顺序以原型（GEA_AI工作台_右侧目录.html）为准：
- * 产销协同 → 计划管理 → 库存管理 → 订单管理。
- * 原型中尚未接入的页面也保留为禁用占位，避免不同账号看到的目录结构跳动。
- */
 export type BusinessMenuSection = "supply" | "plan" | "inventory" | "orders" | "prototypes";
 export type BusinessMenuItem = { id: string; title: string };
 export type BusinessMenuGroup = {
@@ -127,7 +106,7 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
       { id: "inventory-customer", title: "客户库存(开发中)" },
     ],
   },
-  // 保留开发中页面入口；页面仍遵守 mock 数据限制。
+
   {
     key: "orders",
     title: "订单管理",
@@ -145,7 +124,6 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
   },
 ];
 
-/** 固定展示原型目录；没有接入页面的条目显示为禁用占位。 */
 export function resolveBusinessMenu(
   preset: readonly BusinessMenuGroup[],
   available: ReadonlyMap<string, string>,
@@ -164,7 +142,7 @@ export function resolveBusinessMenu(
     }))
     .filter((group) => group.entries.length > 0);
 }
-/** Actual Native quote consumers and their existing Host menu context. HTML pages use their own leases. */
+
 export const NATIVE_REFERENCE_MENUS: Readonly<Record<string, string>> = {
   "gea-workbench": "gea-proof",
   "gea-regional-plan": "gea-regional-plan",

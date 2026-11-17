@@ -37,7 +37,7 @@ test(
     );
     const page = await context.newPage();
     page.setDefaultTimeout(25000);
-    // 夹具默认让登录轮询停在 pending；二维码出现后放行一次，把登录走完。
+
     let allowLogin = false;
     await page.route("**/api/gea-proof/login/poll", (route) =>
       allowLogin
@@ -51,7 +51,6 @@ test(
     allowLogin = true;
     await frame.getByRole("heading", { name: "销售计划审批", exact: true }).waitFor();
 
-    // 本地 receipt 不调用模型；通过公开模型菜单选择它，再让实际会话生成统计。
     const conversation = page.getByRole("complementary", { name: "AI对话", exact: true });
     await expect(conversation).toBeVisible();
     await page.getByRole("button", { name: /^选择模型，当前/ }).click();
@@ -85,7 +84,7 @@ test(
       };
     }, contract.stats);
     assert.ok(boxes.stats && boxes.card && boxes.seat, JSON.stringify(boxes));
-    // 当前 Core dock 在输入卡下方；保留同一对话列内的精确中心线约束。
+
     assert.ok(
       boxes.stats.top >= boxes.card.bottom,
       `统计胶囊必须在输入卡下方: ${JSON.stringify(boxes)}`,
@@ -94,13 +93,12 @@ test(
     const rightInset = boxes.card.right - boxes.stats.right;
     assert.equal(leftInset, rightInset, "统计与输入卡应保持相同中心线");
     assert.ok(leftInset >= 0 && rightInset >= 0, JSON.stringify(boxes));
-    // 下方 dock 属于完整输入 seat；底部仍保留原 12px 上界。
+
     assert.ok(
       boxes.seat.bottom - boxes.stats.bottom <= 12,
       `完整输入seat必须贴底: ${JSON.stringify(boxes)}`,
     );
 
-    // 登记 37：调整工作台宽度时，宿主右栏的分隔线不能继续压进对话框输入区。
     const railBoundary = await conversation.evaluate((rail) => {
       const seat = rail.querySelector("[data-composer-seat]");
       if (!seat) return null;
@@ -114,8 +112,7 @@ test(
       };
     });
     assert.ok(railBoundary, "右侧对话栏和输入区必须存在");
-    // 当前 split 边界由公开「AI对话」列持有，Core inspector 不是这条线的所有者。
-    // 原 1px 分隔线必须存在，原生输入 seat 的内边距不能使它侵入这条线。
+
     assert.equal(railBoundary.borderLeftWidth, "1px", JSON.stringify(railBoundary));
     assert.equal(railBoundary.seatLeft, railBoundary.railLeft + 1, JSON.stringify(railBoundary));
   },

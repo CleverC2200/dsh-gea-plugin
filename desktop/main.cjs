@@ -1,4 +1,3 @@
-/** Desktop shell owns a bundled Node process and isolated per-user deployment data. */
 const { app, BrowserWindow, Menu, shell, dialog, safeStorage, session } = require("electron");
 const { spawn } = require("node:child_process");
 const { mkdir, readFile, writeFile, appendFile } = require("node:fs/promises");
@@ -12,7 +11,7 @@ const { createNavigationQueue, attachNavigation } = require("./navigation.cjs");
 async function showStartup(error) {
   if (window && !window.isDestroyed()) await window.loadURL(startupUrl(error, startupReason));
 }
-// Chromium 补充的自动填充、听写、表情等原生菜单项也使用简体中文。
+
 app.commandLine.appendSwitch("lang", "zh-CN");
 const userData = process.env.DSH_GEA_DESKTOP_DATA || join(app.getPath("appData"), "GEA Desktop");
 mkdirSync(userData, { recursive: true });
@@ -29,7 +28,7 @@ let window,
   updates,
   clientInstaller;
 const navigation = createNavigationQueue();
-// 启动早期的链接和错误等窗口就绪后再交付，日志中只写稳定事件码。
+
 const navigationErrors = new Set();
 function navigationError(code) {
   navigationErrors.add(code);
@@ -174,7 +173,7 @@ async function start(recovered = false, reason = "startup") {
   );
   await stop();
   if (quitting) return;
-  // OS credential prompts must finish before the backend's private request timeout starts.
+
   loginSnapshot = await readDesktopLogin();
   if (quitting) return;
   let selected;
@@ -218,7 +217,6 @@ async function start(recovered = false, reason = "startup") {
   backend = child;
   let pending = "";
   const ready = new Promise((resolve, reject) => {
-    // 首启的准备阶段长时间不输出，按“还在不在输出”判活，别把慢启动判成失败。
     const watch = watchBoot({ onTimeout: reject });
     const fail = (error) => {
       watch.stop();
@@ -261,7 +259,7 @@ async function start(recovered = false, reason = "startup") {
     const url = await ready;
     origin = new URL(url).origin;
     await bounded(window.loadURL(url), 15000, "LOCAL_PAGE_TIMEOUT");
-    // This local status call does not contact GEA and accepts authenticated=false.
+
     const healthy = await bounded(
       window.webContents.executeJavaScript(
         `fetch('/api/gea-proof/status',{method:'POST',headers:{'Content-Type':'application/json','X-GEA-Desktop-Health':'1'},body:'{}',signal:AbortSignal.timeout(10000)}).then(r=>r.json()).then(r=>r.ok===true)`,
@@ -345,8 +343,6 @@ function report(error) {
   else dialog.showErrorBox("Synear GEA", text);
 }
 function createWindow() {
-  // 最小窗口按 1024×640：再小的话工作台会退化成图标列 + 横向滚动。
-  // 不设 1280 是为了照顾 1366×768 笔记本在 125% 缩放下的 1093px 可用宽度。
   window = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -355,7 +351,7 @@ function createWindow() {
     title: "Synear GEA",
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
-  // 左上角标题固定成品牌名：页面标题（会话主题「xxx — DSH 本地构建」）不再改写窗口标题。
+
   window.on("page-title-updated", (event) => event.preventDefault());
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
@@ -403,7 +399,7 @@ if (owned) {
       await pluginStore.recoverPreparation();
       const { createControlServer } = await import("./control-server.mjs");
       const { createClientInstaller } = await import("./client-installer.mjs");
-      // 下载完成后只在文件管理器中定位安装包，由用户自己决定何时安装；不替用户直接拉起安装器。
+
       clientInstaller = createClientInstaller({
         data,
         currentVersion: require("./package.json").version,

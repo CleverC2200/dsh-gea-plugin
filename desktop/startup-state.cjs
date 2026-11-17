@@ -1,4 +1,3 @@
-/** Local waiting screens distinguish opening the workspace from applying an update. */
 const states = {
   startup: {
     title: "正在打开 GEA 工作台",
@@ -27,12 +26,6 @@ const escape = (value) =>
     (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
   );
 
-/**
- * Render a script-free waiting or failure page.
- * @param {string | undefined} error Displayable startup failure, if any.
- * @param {'startup' | 'update' | 'restart' | 'recovery'} reason Operation being performed.
- * @returns {string} Encoded local document URL.
- */
 exports.startupUrl = (error, reason = "startup") => {
   const state = error
     ? {

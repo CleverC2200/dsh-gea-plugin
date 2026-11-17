@@ -29,9 +29,9 @@ const { readDeployment, deploymentPatch, prepareNativePreset } = await import(
 const config = await readDeployment(configPath);
 await mkdir(runtime, { recursive: true });
 await mkdir(join(runtime, "workspace"), { recursive: true });
-// 首启的准备阶段很慢又没有别的输出，这里留下进度：桌面端据此判活，日志里也能看出卡在哪一步。
+
 console.log("[startup] 准备默认预设");
-// 默认 preset 用和 web 开发态同一套发布逻辑：组合沿用 DSH 标准，只把显示名改成 DEFAULT_PRESET_NAME。
+
 await prepareNativePreset(
   runtime,
   join(core, "node_modules/@deepseek-ai/dsh-agent-presets/presets/standard"),
@@ -47,7 +47,7 @@ await provisionCompanyResources(process.env.DSH_DESKTOP_BASELINE || root, home);
 await configureWelcomeNotice(join(home, "settings.yaml"));
 const profileDir = join(home, "profiles/full");
 await mkdir(profileDir, { recursive: true });
-// The writable profile resolves the immutable bundled plugin graph explicitly.
+
 const modules = join(profileDir, "node_modules");
 const target = join(root, "node_modules");
 try {
@@ -83,7 +83,7 @@ const bundles = [
   "@cleverc2200/gea-dsh-prototype",
   ...optional.filter((name) => graphManifest.dependencies?.[name] && (optionalState[name] ?? true)),
 ];
-// Preserve profile settings while updating only the graph-owned dependency/bundle inventory.
+
 const existing = existsSync(manifestPath) ? JSON.parse(await readFile(manifestPath, "utf8")) : {};
 await writeFile(
   manifestPath,
@@ -107,8 +107,6 @@ await writeFile(
   ),
 );
 
-// Business navigation entries come from the published HTML plugins; a missing or
-// unreachable channel only drops those entries and must not block startup.
 const htmlPlugins = await prepareHtmlPlugins({ runtime });
 const htmlPluginEnv = Object.keys(htmlPlugins.roots).length
   ? { GEA_HTML_PLUGIN_ROOTS: JSON.stringify(htmlPlugins.roots) }

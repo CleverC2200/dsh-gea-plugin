@@ -1,4 +1,3 @@
-/** Receive an existing three-package delivery in one new official profile. Never rebuild or publish. */
 import assert from "node:assert/strict";
 import { verifyRuntimeModules } from "./runtime-environment.mjs";
 import { readFile, writeFile, mkdir, lstat, realpath } from "node:fs/promises";
@@ -159,7 +158,7 @@ export async function receiveDelivery(input) {
         timeout: mode === "install" ? 265000 : 145000,
         maxBuffer: 1024 * 1024,
       });
-      // Child diagnostics are already private. Do not copy stdout, stderr or external errors into the result.
+
       assert(!child.error && child.status === 0, `RECEPTION_${mode.toUpperCase()}_FAILED`);
     }
     const installBytes = await readFile(installPath),

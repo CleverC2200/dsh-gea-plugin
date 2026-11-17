@@ -1,4 +1,3 @@
-// MSIX pilot configuration. Never used by the normal NSIS build.
 process.env.GEA_DESKTOP_TARGET = "win";
 const base = require("./electron-builder.cjs");
 const publisher = process.env.GEA_MSIX_PUBLISHER;

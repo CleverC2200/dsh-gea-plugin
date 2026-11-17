@@ -1,4 +1,3 @@
-/** Compile a fixed source into fixture-owned output while retaining its declared dependency graph. */
 import { build } from "esbuild";
 import { mkdtemp, realpath, symlink, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";

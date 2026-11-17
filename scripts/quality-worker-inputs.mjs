@@ -1,4 +1,3 @@
-/** Prepare an independent worker's fixed inputs; quality and tests remain with the quality CLI. */
 import { createHash } from "node:crypto";
 import {
   readFileSync,
@@ -46,7 +45,7 @@ export function browserPreparationBudget(value) {
     throw Error("QUALITY_BROWSER_BUDGET_REQUIRED: 1..600000 ms");
   return Number(value);
 }
-/** Own only this invocation's POSIX install groups, including ordinary inherited descendants. */
+
 export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) {
   const running = new Set();
   const cancellation = new AbortController();
@@ -166,8 +165,6 @@ export function installCommands({ errorCode = "QUALITY_WORKER_REJECTED" } = {}) 
           commandError ??= failure(sig ?? "exit " + code + (stderr ? ": " + stderr : ""));
           stop(commandError);
         } else {
-          // Descendants can hold stdio open after a successful leader exits,
-          // so group cleanup must start without waiting for close.
           try {
             if (child.pid && alive(child.pid, entry.rootGroupCleanup)) {
               commandError ??= failure("install left an owned process group");
@@ -418,7 +415,7 @@ export function createWorkerBinding({ root, executionPlan, stages }) {
     },
   };
 }
-/** Scheduling/source material only: no installed dependencies or build authority. */
+
 export function createWorkerSourceControl({ root, executionPlan }) {
   const p = paths(root);
   execution.verifyExecutionPlan(executionPlan);
@@ -886,8 +883,7 @@ export async function prepareWorkerInputs(values) {
         prefix: source.packageManager.startsWith("npm@") ? [] : ["pnpm"],
       };
     });
-    // Frozen projects have no npmrc/hooks or redirected dependency/lock stores.
-    // Inspect only owned paths and named non-secret overrides; never dump user config/env.
+
     const configuration = new Map();
     const redirect =
       /(?:^|\n)\s*(?:modulesDir|modules-dir|virtualStoreDir|virtual-store-dir|lockfileDir|lockfile-dir|storeDir|store-dir|globalVirtualStoreDir|global-virtual-store-dir|enableGlobalVirtualStore|enable-global-virtual-store|nodeLinker|node-linker)\s*[:=]/i;
@@ -1004,9 +1000,6 @@ export async function prepareWorkerInputs(values) {
             reject("effective install path changed: " + task.name + " modulesDir");
           const current = { name: task.name, modulesDir: modules, unset: [] };
           if (task.binary !== "npm") {
-            // Fixed pnpm 11 getters normalize kebab/camel names and omit unset keys.
-            // Read the module root directly; the install flag enforces a local store
-            // instead of treating an empty global-store getter as proof of safety.
             for (const [key, fallback] of Object.entries({
               virtualStoreDir: "node_modules/.pnpm",
               enableGlobalVirtualStore: false,

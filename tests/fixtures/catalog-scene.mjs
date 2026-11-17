@@ -6,7 +6,6 @@ import { modelProfile } from "./model-profile.mjs";
 import { fixtureCubeTools } from "./cube-wire.mjs";
 import { readProfileSources } from "./profile-inputs.mjs";
 
-// Literal declarations come from fixed registrations and resource headers, not model output.
 const fixture = JSON.parse(
   await readFile(new URL("./catalog-scene-expectations.json", import.meta.url), "utf8"),
 );
@@ -34,7 +33,6 @@ async function hasPath(path) {
   }
 }
 
-/** Match assembled owners to the explicitly admitted candidate, retaining fixed fallback inputs. */
 export async function assertCatalogSceneOwners(
   owners,
   { input, sha256, sourcesFile } = {
@@ -89,9 +87,7 @@ export async function assertCatalogSceneOwners(
     assert.equal(owners[name].commit, peers[repos[owner]], `${owner} scene input`);
 }
 
-/** Check full installed Skill bytes against independently frozen author sources. */
 export async function assertCatalogSceneSources(readSource) {
-  // Full source bytes bind the unchanged rules as well as independently frozen metadata.
   for (const source of fixture.provenance.metadataSources) {
     const bytes = await readSource(source);
     assert.equal(
@@ -102,7 +98,6 @@ export async function assertCatalogSceneSources(readSource) {
   }
 }
 
-/** Keep all owner providers; only this scene's filesystem roots and native mode are fixed. */
 export async function catalogSceneProfile(t, options, scene = "model") {
   assert.ok(["linux", "darwin"].includes(process.platform), "catalog scene requires bash platform");
   for (const name of ["GEA_HTML_PLUGIN_ROOTS", "GEA_HTML_LOCAL_QUERY_CONFIG", "DSH_PLUGIN_GRAPH"])
@@ -121,7 +116,6 @@ export async function catalogSceneProfile(t, options, scene = "model") {
     }),
     env,
     async beforeStart({ runtime }) {
-      // Fresh HOME prevents implicit personal layouts; all existing business providers remain.
       env.HOME = join(runtime, "catalog-user-home");
       env.DSH_AGENTS_HOME = join(runtime, "catalog-agents-home");
       env.DSH_BUNDLED_SKILL_DIR = join(runtime, "catalog-bundled-skills");
@@ -131,8 +125,7 @@ export async function catalogSceneProfile(t, options, scene = "model") {
           mkdir(path, { recursive: true }),
         ),
       );
-      // Core and Manage find the nearest .git ancestor. Reject an undeclared project;
-      // do not disable their project discovery or silently assume its MCP catalog is empty.
+
       for (let current = runtime; ; current = dirname(current)) {
         assert.equal(
           await hasPath(join(current, ".git")),
@@ -176,8 +169,7 @@ export async function catalogSceneProfile(t, options, scene = "model") {
   await assertCatalogSceneSources((source) =>
     readFile(join(combination, "node_modules", packages[source.owner], source.file)),
   );
-  // With no inherited override, the existing launcher derives precisely these roots
-  // from this selected combination, retaining Workbench's other built-in providers.
+
   const htmlRoots = ["inventory-fc", "inventory-aqkc"].map((id) =>
     join(combination, "node_modules", packages.workbench, "lib/business", id),
   );
@@ -197,7 +189,7 @@ export async function catalogSceneProfile(t, options, scene = "model") {
     }),
     { flag: "wx" },
   );
-  // Every scene declares the same local MCP server schemas, independent of model output.
+
   const setRoute = app.route;
   app.route = (route) =>
     setRoute(async (req, res, reply) => {
@@ -235,7 +227,6 @@ export async function catalogSceneProfile(t, options, scene = "model") {
   return app;
 }
 
-/** Compare the complete catalog and metadata, and prove summaries did not load the body. */
 export function assertCatalogScene(app, body, rows) {
   const names = body.tools.map((tool) => tool.function.name);
   assert.equal(new Set(names).size, names.length, "complete catalog has no duplicate names");

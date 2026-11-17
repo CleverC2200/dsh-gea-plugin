@@ -44,7 +44,6 @@ type AdmissionState = {
   mask: string;
 };
 
-/** Session-scoped prompt composition and execution gates share the same capability set. */
 export function mountBusinessPrompts(
   ctx: Context,
   business: Business,
@@ -119,7 +118,7 @@ export function mountBusinessPrompts(
       .filter((name) => businessMethod(name) && !names.has(name));
     const signature = deny.sort().join("|");
     if (signature === state.mask) return;
-    // Business masks do not choose official or optional plugin capabilities.
+
     const next = deny.length ? agent.ctx.tools.restrict({ deny }) : undefined;
     state.dispose?.();
     state.dispose = next;
@@ -216,7 +215,6 @@ export function mountBusinessPrompts(
         profileOf(exec.agent) &&
         (businessMethod(exec.name) || exec.name === "forecast_compute")
       ) {
-        // Capture before resource admission awaits; old calls never acquire a new turn's owner.
         executionState.begin(exec.agent, exec.token, exec);
       }
       try {
@@ -224,7 +222,6 @@ export function mountBusinessPrompts(
         executionState.admitted(executionState.execution(exec.token));
         return await next();
       } catch (error) {
-        // Official around-dispatch failures bypass post-execute; retire this execution's metadata here.
         executionState.take(exec.token);
         throw error;
       }
@@ -232,7 +229,6 @@ export function mountBusinessPrompts(
   );
   offs.push(
     ctx.on("tools/post-execute", async (exec, result, next) => {
-      // Tool dispatch has ended. This hook is the sole consumer of these receipts, even if a later policy throws.
       const execution = executionState.take(exec.token);
       const decision = await next();
       return executionState.finish(execution, result, decision);

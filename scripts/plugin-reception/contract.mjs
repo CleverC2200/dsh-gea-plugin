@@ -35,7 +35,6 @@ export function artifactSetSha256(artifacts) {
   );
 }
 
-/** Validate runtime semantics separately from receipt provenance, so past failures can be replayed. */
 export function validateRuntimeObservation(runtime, packageManifests, core) {
   for (const id of businessIds) {
     const rows = runtime?.resources?.filter((row) => row.id === id) ?? [];
@@ -118,8 +117,7 @@ export function validateRuntimeObservation(runtime, packageManifests, core) {
           const observed = runtime.sdk.find(
             (row) => row.plugin === manifest.name && row.name === name,
           );
-          // The worker runs the installation's real semver.satisfies and package router.
-          // Bind its checked range and the selected Core's exact SDK identity to this manifest.
+
           assert(
             range === sdkPeerRange(name) &&
               observed.peerRange === range &&
@@ -144,7 +142,6 @@ export function validateRuntimeObservation(runtime, packageManifests, core) {
   );
 }
 
-/** The sole acceptance projection: observed behavior must belong to the packaged artifact set. */
 export function bindReception(manifest, install, observe, bindings = {}) {
   assert(
     deliveryStates.includes(manifest.status) &&

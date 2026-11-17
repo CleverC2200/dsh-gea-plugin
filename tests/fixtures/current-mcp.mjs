@@ -1,4 +1,3 @@
-/** Run current Manage registrations and GEA execution against a caller-owned HTTP fixture. */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";

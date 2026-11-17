@@ -115,8 +115,7 @@ test("a scenario can omit Cube configuration without inventing business tool res
       async beforeStart({ config }) {
         const settings = JSON.parse(await readFile(config, "utf8"));
         assert.equal(Object.hasOwn(settings, "cubeMcpCodes"), false);
-        // Knowledge can use the shared gateway without Cube. Omitting Cube must
-        // still leave this fixture's business tool response unavailable.
+
         assert.deepEqual(
           await wire(settings.geaBaseUrl, "tools/call", {
             name: "query_business_data",

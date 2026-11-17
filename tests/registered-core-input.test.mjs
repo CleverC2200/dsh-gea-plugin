@@ -6,7 +6,6 @@ import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { readSupportedCore, supportedCores } from "../scripts/supported-cores.mjs";
 
-// The CI matrix supplies its real registered checkout; no fixture replaces the fixed source identity.
 test("isolated admission accepts the actual selected registered Core without changing the current pointer", async () => {
   const core = process.env.GEA_TEST_REGISTERED_CORE ?? resolve("../../official-latest-standard");
   const actualHead = execFileSync("git", ["-C", core, "rev-parse", "HEAD"], {

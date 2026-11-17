@@ -1,5 +1,3 @@
-// Build-only interception of template includes. Keep electron-builder's normal
-// two-pass installer/uninstaller generation; never mutate its shared cache.
 const { join, resolve } = require("node:path");
 const { existsSync, readdirSync } = require("node:fs");
 const assert = require("node:assert/strict");
@@ -11,7 +9,7 @@ const builder = require(join(modules, "electron-builder"));
 const { NsisTarget } = require(join(modules, "app-builder-lib/out/targets/nsis/NsisTarget.js"));
 const original = NsisTarget.prototype.executeMakensis;
 const fastMove = existsSync(join(templates, "include/installer-transfer.nsh"));
-// Historical candidate kept only for A/B diagnostics, never the ordinary build.
+
 process.env.GEA_LEGACY_NSIS_DIAGNOSTIC = "1";
 const maxRelativePath = fastMove
   ? readdirSync(prepackaged, { recursive: true }).reduce(

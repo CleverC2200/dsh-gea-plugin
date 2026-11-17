@@ -6,7 +6,6 @@ import { updatablePackageNames, personalMemoryPackageName } from "../shared/plug
 import { compiledPackageStamp, updateObject } from "../shared/plugin-update-wire.ts";
 import type { RuntimePackageProof } from "../shared/plugin-update-state.ts";
 
-/** Read already-mounted namespaces using their public Loader import and callback identity. */
 export async function readHostPluginModules(ctx: Context): Promise<RuntimePackageProof[]> {
   const proofs: RuntimePackageProof[] = [];
   for (const name of updatablePackageNames) {

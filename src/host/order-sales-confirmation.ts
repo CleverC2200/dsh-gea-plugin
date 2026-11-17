@@ -24,7 +24,6 @@ function selectionValue(value: unknown) {
   return Object.fromEntries(names.map((name) => [name, selection[name]]));
 }
 
-/** 页面仅选择后台已授权人选；Consumer、路由、机器人、SQL 和业务动作不可覆盖。 */
 export async function orderSalesConfirmation(
   payload: unknown,
   scope: {

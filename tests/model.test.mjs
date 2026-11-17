@@ -86,7 +86,7 @@ test(
     assert.ok(instructions.includes("query_business_data"));
     assert.equal(instructions.includes("默认就该出 UI"), false);
     assertCatalogScene(app, body, rows);
-    // 默认不允许模型自己写 SQL：受管只读工具不能出现在工具清单里。
+
     assert.equal(
       body.tools.some((tool) => tool.function.name === "gea_plugin_read"),
       false,
@@ -184,7 +184,7 @@ test("显式打开 agentSqlRead 时，受管只读 SQL 工具才回到工具清�
   );
   const names = JSON.parse(modelRequests[0].body).tools.map((tool) => tool.function.name);
   assert.ok(names.includes("gea_plugin_read"), "显式打开后 SQL 工具应存在");
-  // 索引只挂一份：SQL 通道开着时挂在 gea_plugin_read，不再重复挂在 MCP 说明里。
+
   const mcp = JSON.parse(modelRequests[0].body).tools.find(
     (tool) => tool.function.name === "mcp__gea-gateway__query_business_data",
   );

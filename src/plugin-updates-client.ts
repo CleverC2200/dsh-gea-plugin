@@ -12,7 +12,6 @@ import {
 } from "./shared/plugin-update-wire.ts";
 import type { PluginUpdateRow } from "./shared/plugin-update-state.ts";
 
-/** Observe compiled exports that the public client Loader has actually activated. */
 export function readClientPluginModules(ctx: Context): UpdateClientReport["modules"] {
   const modules = ctx.get("modules");
   if (!modules || modules.entries.state.getSnapshot().syncing) return [];
@@ -42,9 +41,7 @@ export function readClientPluginModules(ctx: Context): UpdateClientReport["modul
           identity: `${entry.id}:${fiber.uid}`,
           desiredArtifactRevision: revision,
         });
-    } catch {
-      /* An unversioned or failed module remains an absent client observation. */
-    }
+    } catch {}
   }
   return observed;
 }

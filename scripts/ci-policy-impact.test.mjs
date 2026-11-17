@@ -94,6 +94,18 @@ test("bundled suite source changes select their complete upgrade owner once and 
   assert.ok(fixture.plan().files.includes("tests/window-launch-admission.test.mjs"));
 });
 
+test("environment transport changes select credential and DMS isolation behavior in source-only CI", (t) => {
+  const fixture = resourceImpactFixture(t, [
+    "tests/deployment-transport.test.mjs",
+    "tests/fc-dms-default.test.mjs",
+  ]);
+  fixture.change(fixture.own, "src/host/deployment-transport.ts", "export const changed = true;\n");
+  const plan = fixture.plan({ sourceOnly: true });
+  assert.ok(plan.files.includes("tests/deployment-transport.test.mjs"));
+  assert.ok(plan.files.includes("tests/fc-dms-default.test.mjs"));
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});
+
 test("a docs-only change declares no source, browser or runtime obligation", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "README.md", "Changed documentation\n");
@@ -275,6 +287,12 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ],
     ],
     [0, "scripts/check-agent-knowledge.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+    [0, "scripts/inventory_warehouse_scope.py", []],
+    [0, "scripts/test_fc_plan_template_snapshot.py", []],
+    [0, "scripts/test_fc_summary.py", []],
+    [0, "scripts/test_inventory_warehouse_scope.py", []],
+    [0, "scripts/update-fc-warehouse-exceptions.py", []],
+
     [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
   ];
@@ -413,6 +431,22 @@ const workbenchBuildContracts = [
   "scripts/quality-workbench.test.mjs",
   "scripts/run-quality-ci-stages.test.mjs",
 ];
+
+test("official input changes select the real consumer for peer plans and local source plans", (t) => {
+  for (const repo of ["dsh-agent-workbench", "dsh-gea-plugin"]) {
+    const fixture = resourceImpactFixture(t);
+    const entry = fixture.repositories.find((entry) => entry.repo === repo);
+    const file =
+      repo === "dsh-agent-workbench"
+        ? "scripts/verify-official-input.mjs"
+        : "scripts/check-workbench.mjs";
+    fixture.change(entry, file, "export const changed = true;\n");
+    for (const sourceOnly of repo === "dsh-gea-plugin" ? [false, true] : [false]) {
+      const plan = fixture.plan({ sourceOnly });
+      assert.ok(plan.files.includes("scripts/check-workbench.test.mjs"), JSON.stringify(plan));
+    }
+  }
+});
 
 test("Workbench compiled version changes select loaded Host and client identity contracts", (t) => {
   const fixture = resourceImpactFixture(t);

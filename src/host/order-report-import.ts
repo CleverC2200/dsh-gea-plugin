@@ -29,7 +29,6 @@ const text = (value: unknown, max = 1600) => {
 const digest = (value: unknown, encoding: "hex" | "base64url" = "hex") =>
   createHash("sha256").update(JSON.stringify(value)).digest(encoding);
 
-/** Import content is a separate namespace; no imported row can replace manual edits or KPI facts. */
 export function normalizeOrderImport(input: any, period: any, scope: Identity["reportScope"]) {
   const value = object(input, [
     "schemaVersion",

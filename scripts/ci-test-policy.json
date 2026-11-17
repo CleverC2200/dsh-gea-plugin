@@ -152,9 +152,38 @@
     },
     "tests/aps-default-policy.test.mjs": {
       "dependencies": false
+    },
+    "scripts/check-workbench.test.mjs": {
+      "dependencies": false
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:host/(?:deployment-transport|fc-dms-default|business)\\.ts|shared/environments\\.(?:js|d\\.ts))$",
+      "tests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ],
+      "sourceTests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^(?:src/detection-(?:backend|whitelist)\\.mjs$|services/warning-executor/)",
+      "tests": ["tests/warning-storage.test.mjs", "tests/business-page-grant.test.mjs"],
+      "sourceTests": ["tests/warning-storage.test.mjs", "tests/business-page-grant.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/warning-storage\\.ts$",
+      "tests": ["tests/warning-storage.test.mjs"],
+      "sourceTests": ["tests/warning-storage.test.mjs"]
+    },
     {
       "repo": "dsh-gea-plugin",
       "pattern": "^src/host/gateway-(?:mcp|session)\\.ts$",
@@ -780,6 +809,83 @@
       "pattern": "^scripts/(?:desktop-release(?:\\.test)?|desktop-update-data)\\.mjs$|^scripts/(?:mac-complete-local/full-source|windows-complete-local/build)\\.mjs$",
       "tests": ["scripts/desktop-release.test.mjs"],
       "sourceTests": ["scripts/desktop-release.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/(?:cube-business-summary\\.py|deploy-cube-business-summary\\.py|test-cube-business-summary\\.cjs|probe-gea\\.mjs)$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/sync-default-preset\\.mjs$",
+      "tests": ["tests/preset-modes.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/verify\\.mjs$",
+      "tests": ["tests/verify-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^source-comments\\.json$",
+      "tests": ["scripts/source-quality.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/host/cube-operators\\.ts$",
+      "tests": ["tests/cube-query-guard.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/shared/environments\\.d\\.ts$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/e2e/sidebar\\.spec\\.ts$",
+      "tests": ["tests/sidebar-source-web.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/(?:current-source-loader|native-web-prompt|stock-pages|theme-client)\\.mjs$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^tests/fixtures/profile-configuration-probe\\.mjs$",
+      "tests": ["tests/model-profile-fixture.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/check-workbench\\.mjs$",
+      "tests": ["scripts/check-workbench.test.mjs"],
+      "sourceTests": ["scripts/check-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/verify-official-input\\.mjs$",
+      "tests": ["scripts/check-workbench.test.mjs"],
+      "sourceTests": ["scripts/check-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:inventory_warehouse_scope|test_fc_plan_template_snapshot|test_fc_summary|test_inventory_warehouse_scope|update-fc-warehouse-exceptions)\\.py$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/feishu-warning-transport\\.mjs$",
+      "tests": ["tests/deployment-transport.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/html-bridge\\.ts$",
+      "tests": ["tests/html-gateway.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/warning-people-request\\.ts$",
+      "tests": ["tests/deployment-transport.test.mjs"]
     }
   ],
   "testOwners": {

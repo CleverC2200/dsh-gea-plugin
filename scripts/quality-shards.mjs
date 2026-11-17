@@ -111,7 +111,7 @@ function verifyIndex(index, expected) {
     "assigned coverage",
   );
 }
-/** Historical weights route work; unknown files keep null estimates in the execution plan. */
+
 export function plannedShardCount({ selection, timings }) {
   if (!(selection.runtimeFiles ?? []).length) return 1;
   const samples = new Map((timings?.files ?? []).map((entry) => [entry.file, entry.durationMs]));

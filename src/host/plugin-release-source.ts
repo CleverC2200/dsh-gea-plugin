@@ -54,7 +54,6 @@ export type PluginReleaseSourceDependencies = {
   now?: () => number;
 };
 
-/** Configuration and credentials stay in Host; only verified release projections cross to the client. */
 export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
   const value = object(raw);
   if (!Array.isArray(value.allowed) || !value.allowed.length) return fail("SOURCE_CONFIG_INVALID");
@@ -129,7 +128,6 @@ async function boundedBytes(
   }
 }
 
-/** tar only lists or streams named files; no archive content is extracted to disk. */
 export async function inspectPluginArchive(
   path: string,
   signal?: AbortSignal,
@@ -382,7 +380,7 @@ export function createPluginReleaseSource(
           if (old) {
             if (typeof old.version !== "string" || typeof old.sha256 !== "string")
               return fail("SOURCE_TRUST_INVALID");
-            // A temporarily absent release keeps its durable version and digest approval.
+
             const comparison = comparePluginVersions(release.version, old.version);
             if (comparison < 0) return fail("SOURCE_VERSION_ROLLBACK");
             if (comparison === 0 && release.artifact.sha256 !== old.sha256)

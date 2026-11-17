@@ -26,7 +26,6 @@ import {
 } from "../shared/plugin-update-wire.ts";
 import type { ClientModuleObservation, PluginUpdateRow } from "../shared/plugin-update-state.ts";
 
-/** The authenticated page reports materialized exports; Host verifies binding and its own ACTIVE facts. */
 export function validateClientObservation(
   raw: unknown,
   binding: { hostProcessIdentity: string; pageIdentity: string; nonce: string; expires: number },
@@ -55,7 +54,6 @@ export function validateClientObservation(
   return report;
 }
 
-/** Mount only authenticated transport routes; GEA business identity is unrelated to plugin installation. */
 export function mountPluginUpdates(
   ctx: Context,
   raw: unknown,

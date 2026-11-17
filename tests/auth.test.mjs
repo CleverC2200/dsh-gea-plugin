@@ -196,8 +196,7 @@ test(
     assert.equal((await app.rpc("status")).value.authenticated, true);
     app.route(undefined);
     assert.equal((await app.rpc("plans")).ok, true);
-    // 审批身份要走网关会话解析当前用户角色：这两条是身份查询（POST 只为带 body），
-    // 不是业务写入；可见 MCP 目录只允许初始化与列工具，不能发送工具执行。
+
     const identityLookups = [
       "/sys/logout",
       "/ai/gateway/session",
@@ -246,7 +245,6 @@ test(
   async (t) => {
     let saved;
     const control = createServer((req, res) => {
-      // The desktop fixture owns login only; other mounted plugins may probe updates.
       if (req.url !== "/login") {
         res.statusCode = 404;
         res.end(JSON.stringify({ error: "DESKTOP_ACTION_UNSUPPORTED" }));

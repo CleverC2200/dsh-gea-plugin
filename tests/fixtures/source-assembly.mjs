@@ -1,4 +1,3 @@
-/** Isolated published-source fixtures for the public source assembler. */
 import assert from "node:assert/strict";
 import {
   mkdtemp,

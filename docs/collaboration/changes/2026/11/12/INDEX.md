@@ -14,3 +14,5 @@
 - [MPS入库修复兼容组合](mps-inbound-release.md)
 
 - [销售预测提交退回清理](sales-plan-submit-return-cleanup.md)
+
+- [GEA预警白名单与调度接线](aps-warning-whitelist.md)
