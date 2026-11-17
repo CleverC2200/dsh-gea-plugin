@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, copyFile, rename, readdir } from "node:fs/p
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { join, resolve, dirname } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 const tool = dirname(fileURLToPath(import.meta.url));
 const root = process.env.GITHUB_WORKSPACE;
