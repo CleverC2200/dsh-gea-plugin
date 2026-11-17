@@ -5,8 +5,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,44 +16,7 @@ namespace GeaDiagnostics {
         public string Summary;
         public object[] Coverage;
     }
-    internal sealed class OwnedJob : IDisposable {
-        IntPtr handle;
-        [StructLayout(LayoutKind.Sequential)] struct Basic { public long processTime, jobTime; public uint flags; public UIntPtr minWorking, maxWorking; public uint active; public UIntPtr affinity; public uint priority, scheduling; }
-        [StructLayout(LayoutKind.Sequential)] struct Io { public ulong read, write, other, readBytes, writeBytes, otherBytes; }
-        [StructLayout(LayoutKind.Sequential)] struct Limits { public Basic basic; public Io io; public UIntPtr processMemory, jobMemory, peakProcessMemory, peakJobMemory; }
-        [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes, string name);
-        [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job, int type, IntPtr info, uint length);
-        [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
-        [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr value);
-        internal OwnedJob() {
-            handle = CreateJobObject(IntPtr.Zero, null);
-            if (handle == IntPtr.Zero) throw new IOException("PROCESS_JOB_UNAVAILABLE");
-            var limits = new Limits(); limits.basic.flags = 0x2000;
-            IntPtr data = Marshal.AllocHGlobal(Marshal.SizeOf(limits));
-            try { Marshal.StructureToPtr(limits, data, false); if (!SetInformationJobObject(handle, 9, data, (uint)Marshal.SizeOf(limits))) { Dispose(); throw new IOException("PROCESS_JOB_SETUP_FAILED"); } }
-            finally { Marshal.FreeHGlobal(data); }
-        }
-        internal void Add(Process process) { if (!AssignProcessToJobObject(handle, process.Handle)) { process.Kill(); throw new IOException("PROCESS_JOB_ASSIGN_FAILED"); } }
-        public void Dispose() { if (handle != IntPtr.Zero) { CloseHandle(handle); handle = IntPtr.Zero; } }
-    }
     internal static class Collection {
-        internal static string Digest(string path) { using (var stream = File.OpenRead(path)) using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant(); }
-        internal static string Engine() {
-            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GEA Diagnostics", "engine", BuildInfo.EngineHash);
-            Directory.CreateDirectory(directory);
-            for (var parent = new DirectoryInfo(directory); parent != null; parent = parent.Parent) if ((parent.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("ENGINE_LINKED_DIRECTORY");
-            string path = Path.Combine(directory, "support-bundle.exe");
-            if (!File.Exists(path)) {
-                string temporary = path + "." + Guid.NewGuid().ToString("N") + ".partial";
-                try {
-                    using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream("Troubleshoot.Engine")) using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) source.CopyTo(output);
-                    if (Digest(temporary) != BuildInfo.EngineHash) throw new IOException("ENGINE_INTEGRITY_FAILED");
-                    try { File.Move(temporary, path); } catch (IOException) { if (!File.Exists(path) || Digest(path) != BuildInfo.EngineHash) throw; }
-                } finally { if (File.Exists(temporary)) File.Delete(temporary); }
-            }
-            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 || Digest(path) != BuildInfo.EngineHash) throw new IOException("ENGINE_INTEGRITY_FAILED");
-            return path;
-        }
         internal static CollectionPlan Create(string acceptance) {
             string run = acceptance ?? Path.Combine(Path.GetTempPath(), "GEA-Diagnostics-" + Guid.NewGuid().ToString("N"));
             if (acceptance != null) {
@@ -68,86 +29,88 @@ namespace GeaDiagnostics {
             if (acceptance != null) Fixtures.Prepare(plan);
             plan.Save(); return plan;
         }
-        internal static CollectionResult Collect(CollectionPlan plan, Action<string, int> progress, CancellationToken cancel) {
-            string engine = Engine();
-            string executable = Assembly.GetExecutingAssembly().Location;
-            var env = new List<string> {
-                "USERPROFILE=" + Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "APPDATA=" + Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "LOCALAPPDATA=" + Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "SystemRoot=" + Environment.GetEnvironmentVariable("SystemRoot")
-            };
-            var collectors = Probe.Groups.Select(group => new { run = new {
-                collectorName = group, command = executable, args = new [] { "--probe", group, "--run", plan.Run }, timeout = "25s", ignoreParentEnvs = true, env = env.ToArray()
-            }}).ToArray();
-            string spec = Path.Combine(plan.Run, "collect.yaml");
-            File.WriteAllText(spec, Privacy.Json.Serialize(new { apiVersion = "troubleshoot.sh/v1beta2", kind = "SupportBundle", metadata = new { name = "gea-windows-diagnostics" }, spec = new { hostCollectors = collectors } }), new UTF8Encoding(false));
-            string redactor = Path.Combine(plan.Run, "redact.yaml");
-            File.WriteAllText(redactor, Privacy.Json.Serialize(new { apiVersion = "troubleshoot.sh/v1beta2", kind = "Redactor", metadata = new { name = "gea-private-fields" }, spec = new { redactors = new [] { new { name = "private-fields", removals = new { regex = new [] {
-                new { redactor = @"(?i)(\\{1,2}Users\\{1,2})(?P<mask>[^\\""\s]+)" },
-                new { redactor = @"(/Users/)(?P<mask>[^/""\s]+)" },
-                new { redactor = @"(?i)(Bearer\s+)(?P<mask>[^\s"";,]+)" },
-                new { redactor = @"(?i)((?:access[_-]?token|refresh[_-]?token|password|secret|cookie|csrf|employeeId)[""\s:=]+)(?P<mask>[^\s"";,}]+)" }
-            }}}}}}), new UTF8Encoding(false));
-            string bundleBase = Path.Combine(plan.Run, "support");
-            var args = new [] { spec, "--redactors", redactor, "--auto-update=false", "--auto-upload=false", "--interactive=false", "--load-cluster-specs=false", "--redact=true", "--output", bundleBase };
-            progress("正在收集排障信息，通常需要十几秒。", 5);
-            var start = new ProcessStartInfo(engine, String.Join(" ", args.Select(Quote))) { WorkingDirectory = plan.Run, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        internal static ProcessStartInfo ProbeStart(CollectionPlan plan, string group) {
+            var start = new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, "--probe " + group + " --run \"" + plan.Run + "\"") { WorkingDirectory = plan.Run, UseShellExecute = false, CreateNoWindow = true };
             start.EnvironmentVariables.Clear();
             foreach (var pair in new Dictionary<string, string> {
                 { "SystemRoot", Environment.GetEnvironmentVariable("SystemRoot") }, { "WINDIR", Environment.GetEnvironmentVariable("SystemRoot") },
                 { "PATH", Path.Combine(Environment.GetEnvironmentVariable("SystemRoot"), "System32") }, { "TEMP", plan.Run }, { "TMP", plan.Run },
-                { "USERPROFILE", Path.Combine(plan.Run, "isolated-profile") }, { "APPDATA", Path.Combine(plan.Run, "isolated-profile", "AppData", "Roaming") },
-                { "TROUBLESHOOT_AUTO_UPDATE", "false" }
+                { "USERPROFILE", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) },
+                { "APPDATA", Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) },
+                { "LOCALAPPDATA", Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) }
             }) start.EnvironmentVariables[pair.Key] = pair.Value;
-            int exit;
-            using (var job = new OwnedJob()) using (var process = new Process { StartInfo = start }) {
-                process.Start(); job.Add(process);
-                Task<string> stdout = process.StandardOutput.ReadToEndAsync(), stderr = process.StandardError.ReadToEndAsync();
-                var clock = Stopwatch.StartNew();
-                while (!process.WaitForExit(200)) {
-                    cancel.ThrowIfCancellationRequested(); if (clock.Elapsed.TotalSeconds > 90) throw new IOException("COLLECTION_TIMEOUT");
-                    int done = Probe.Groups.Count(g => File.Exists(Path.Combine(plan.Run, g + "-result.json")));
-                    progress("正在收集排障信息（" + done + "/" + Probe.Groups.Length + "）。", 5 + done * 11);
+            return start;
+        }
+        internal static void RunGroup(CollectionPlan plan, string group, ProcessStartInfo start, TimeSpan timeout, CancellationToken cancel) {
+            try {
+                var execution = ProbeProcess.Run(start, timeout, cancel);
+                if (execution.TimedOut) GroupFailure(plan, group, "PROBE_TIMEOUT", execution);
+                else if (!File.Exists(Path.Combine(plan.Run, group + "-result.json"))) GroupFailure(plan, group, "PROBE_RESULT_MISSING", execution);
+                else if (execution.ExitCode != 0) {
+                    var result = Privacy.Json.DeserializeObject(File.ReadAllText(Path.Combine(plan.Run, group + "-result.json"))) as IDictionary<string, object>;
+                    if (result == null || Convert.ToString(result["state"]) != "partial") GroupFailure(plan, group, "PROBE_EXIT_FAILED", execution);
                 }
-                exit = process.ExitCode;
-                if (!Task.WaitAll(new Task[] { stdout, stderr }, 3000)) throw new IOException("ENGINE_OUTPUT_TIMEOUT");
-                File.WriteAllText(Path.Combine(plan.Run, "engine-output.txt"), Privacy.Clean(stdout.Result + "\n" + stderr.Result), new UTF8Encoding(false));
-            }
+            } catch (OperationCanceledException) { throw; }
+            catch (ProbeStopException) { throw; }
+            catch (Exception error) { GroupFailure(plan, group, error is System.ComponentModel.Win32Exception ? "PROBE_START_FAILED" : "PROBE_UNAVAILABLE", null); }
+        }
+        internal static void GroupFailure(CollectionPlan plan, string group, string code, ProbeExecution execution) {
+            string directory = Path.Combine(plan.Run, group + "-data"); Directory.CreateDirectory(directory);
+            var issue = new { source = group, state = "unavailable", code = code, timedOut = execution != null && execution.TimedOut, exitCode = execution == null ? (int?)null : execution.ExitCode };
+            Privacy.Save(Path.Combine(directory, "execution.json"), issue);
+            if (!File.Exists(Path.Combine(directory, "coverage.json"))) Privacy.Save(Path.Combine(directory, "coverage.json"), new { group = group, status = "partial", items = new [] { issue } });
+            Privacy.Save(Path.Combine(plan.Run, group + "-result.json"), new { group = group, state = "partial", found = Directory.GetFiles(directory).Length, unavailable = 1, code = code, timedOut = execution != null && execution.TimedOut, exitCode = execution == null ? (int?)null : execution.ExitCode });
+        }
+        internal static CollectionResult Collect(CollectionPlan plan, Action<string, int> progress, CancellationToken cancel) {
             cancel.ThrowIfCancellationRequested();
-            string archive = bundleBase + ".tar.gz";
-            if (exit != 0 || !File.Exists(archive)) throw new IOException("ENGINE_COLLECTION_FAILED");
+            progress("正在收集排障信息，通常需要十几秒。", 5);
+            var tasks = Probe.Groups.Select(group => Task.Run(() => RunGroup(plan, group, ProbeStart(plan, group), TimeSpan.FromSeconds(25), cancel))).ToArray();
+            var all = Task.WhenAll(tasks); int previous = -1;
+            while (!all.IsCompleted) {
+                int done = tasks.Count(task => task.IsCompleted);
+                if (done != previous) { progress("正在收集排障信息（" + done + "/" + Probe.Groups.Length + "）。", 5 + done * 11); previous = done; }
+                Thread.Sleep(100);
+            }
+            all.GetAwaiter().GetResult();
+            cancel.ThrowIfCancellationRequested();
+            return Package(plan, progress, cancel);
+        }
+        internal static CollectionResult Package(CollectionPlan plan, Action<string, int> progress, CancellationToken cancel) {
             progress("正在检查报告并生成压缩包。", 80);
             cancel.ThrowIfCancellationRequested();
             var coverage = new List<object>(); bool partial = false;
             foreach (string group in Probe.Groups) {
-                string result = Path.Combine(plan.Run, group + "-result.json");
-                if (!File.Exists(result)) { partial = true; coverage.Add(new { group = group, state = "unavailable" }); }
-                else {
-                    var value = Privacy.Json.DeserializeObject(File.ReadAllText(result)) as IDictionary<string, object>;
-                    if (value == null || Convert.ToString(value["state"]) != "collected" || Convert.ToInt32(value["found"]) == 0) partial = true;
-                    coverage.Add(value);
-                }
+                string path = Path.Combine(plan.Run, group + "-result.json");
+                if (!File.Exists(path)) { GroupFailure(plan, group, "PROBE_RESULT_MISSING", null); partial = true; }
+                var value = Privacy.Json.DeserializeObject(File.ReadAllText(path)) as IDictionary<string, object>;
+                if (value == null || Convert.ToString(value["state"]) != "collected" || Convert.ToInt32(value["found"]) == 0) partial = true;
+                coverage.Add(value);
             }
-            string packaging = Path.Combine(plan.Run, "package"); Directory.CreateDirectory(packaging);
-            File.Copy(archive, Path.Combine(packaging, "诊断数据.tar.gz"));
             string summary = "GEA日志采集\r\n生成时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\r\n工具版本：" + BuildInfo.Version + "\r\n" + (partial ? "部分记录未获取，请结合收集清单判断。" : "已完成所有采集项目。") + "\r\n将整个 ZIP 文件发给技术支持，并补充故障大致时间和操作步骤。\r\n";
-            File.WriteAllText(Path.Combine(packaging, "请先阅读.txt"), summary, new UTF8Encoding(true));
-            Privacy.Save(Path.Combine(packaging, "收集清单.json"), new { version = BuildInfo.Version, timeUtc = DateTime.UtcNow.ToString("o"), partial = partial, groups = coverage, sourceLogWindowHours = 24, durableUpdateStateAgeLimited = false, credentialFilesCollected = false, sessionBodiesCollected = false });
-            using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream("Troubleshoot.License")) using (var output = File.Create(Path.Combine(packaging, "Troubleshoot-LICENSE.txt"))) source.CopyTo(output);
             string target = Path.Combine(plan.Output, "GEA日志采集-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 4) + ".zip");
             Directory.CreateDirectory(plan.Output);
-            string partialArchive = target + ".partial";
+            string temporary = target + ".partial";
             try {
-                ZipFile.CreateFromDirectory(packaging, partialArchive, CompressionLevel.Optimal, false);
-                cancel.ThrowIfCancellationRequested(); File.Move(partialArchive, target);
-            } finally { if (File.Exists(partialArchive)) File.Delete(partialArchive); }
+                using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) using (var zip = new ZipArchive(file, ZipArchiveMode.Create, false, Encoding.UTF8)) {
+                    AddText(zip, "请先阅读.txt", summary, cancel);
+                    AddText(zip, "收集清单.json", Privacy.Json.Serialize(new { version = BuildInfo.Version, timeUtc = DateTime.UtcNow.ToString("o"), partial = partial, groups = coverage, sourceLogWindowHours = 24, durableUpdateStateAgeLimited = false, credentialFilesCollected = false, sessionBodiesCollected = false }), cancel);
+                    foreach (string group in Probe.Groups) foreach (string source in Directory.GetFiles(Path.Combine(plan.Run, group + "-data")).OrderBy(Path.GetFileName)) {
+                        if ((File.GetAttributes(source) & FileAttributes.ReparsePoint) != 0) throw new IOException("LINKED_OUTPUT_SKIPPED");
+                        AddText(zip, "诊断数据/" + group + "/" + Path.GetFileName(source), File.ReadAllText(source, Encoding.UTF8), cancel);
+                    }
+                }
+                cancel.ThrowIfCancellationRequested(); File.Move(temporary, target);
+            } finally { if (File.Exists(temporary)) File.Delete(temporary); }
             progress("日志包已保存。", 100);
-            var completed = new CollectionResult { Archive = target, Partial = partial, Summary = summary + "文件名：" + Path.GetFileName(target) + "\r\n", Coverage = coverage.ToArray() };
             Privacy.Save(Path.Combine(plan.Run, "result.json"), new { status = "completed", partial = partial, archive = target, groups = coverage });
-            return completed;
+            return new CollectionResult { Archive = target, Partial = partial, Summary = summary + "文件名：" + Path.GetFileName(target) + "\r\n", Coverage = coverage.ToArray() };
         }
-        static string Quote(string value) { return "\"" + value.Replace("\"", "\\\"") + "\""; }
+        static void AddText(ZipArchive zip, string name, string text, CancellationToken cancel) {
+            cancel.ThrowIfCancellationRequested();
+            var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
+            byte[] bytes = Encoding.UTF8.GetBytes(Privacy.Clean(text));
+            using (var output = entry.Open()) for (int offset = 0; offset < bytes.Length; offset += 16384) { cancel.ThrowIfCancellationRequested(); output.Write(bytes, offset, Math.Min(16384, bytes.Length - offset)); }
+        }
     }
     internal static class Fixtures {
         internal static void Prepare(CollectionPlan plan) {

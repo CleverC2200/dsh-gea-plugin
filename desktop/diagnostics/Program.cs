@@ -15,11 +15,7 @@ namespace GeaDiagnostics {
                 if (args.Length == 4 && args[0] == "--probe" && args[2] == "--run") {
                     if (!Probe.Groups.Contains(args[1])) return 2;
                     string directory = Path.Combine(args[3], args[1] + "-data");
-                    new Probe(CollectionPlan.Load(args[3]), args[1], directory).Run();
-                    var files = Directory.GetFiles(directory).ToDictionary(Path.GetFileName, File.ReadAllText);
-                    byte[] payload = new System.Text.UTF8Encoding(false).GetBytes(Privacy.Json.Serialize(files) + "\n");
-                    using (var stdout = Console.OpenStandardOutput()) stdout.Write(payload, 0, payload.Length);
-                    return 0;
+                    return new Probe(CollectionPlan.Load(args[3]), args[1], directory).Run();
                 }
                 string acceptance = args.Length >= 2 && args[0] == "--acceptance" ? args[1] : null;
                 if (args.Contains("--headless") && acceptance != null) {
