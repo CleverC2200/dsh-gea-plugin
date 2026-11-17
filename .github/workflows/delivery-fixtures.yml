@@ -89,7 +89,7 @@ jobs:
         run: |
           $compiler = Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
           $runner = Join-Path $env:RUNNER_TEMP 'ordinary-runner.exe'
-          & $compiler /nologo /target:exe /codepage:65001 /out:$runner desktop/diagnostics/tests/OrdinaryRunner.cs
+          & $compiler /nologo /target:exe /codepage:65001 /out:$runner (Join-Path $PWD 'desktop/diagnostics/tests/OrdinaryRunner.cs')
           if ($LASTEXITCODE -ne 0) { throw 'ORDINARY_RUNNER_COMPILE_FAILED' }
           & $runner (Join-Path $PWD 'desktop/diagnostics/tests/DesktopAcceptance.ps1') (Join-Path $env:RUNNER_TEMP 'diagnostics-build/GEA日志采集.exe') (Join-Path $env:RUNNER_TEMP 'diagnostics-ui')
           if ($LASTEXITCODE -ne 0) { throw 'ORDINARY_UI_ACCEPTANCE_FAILED' }

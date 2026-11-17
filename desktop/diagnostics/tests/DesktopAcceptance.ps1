@@ -57,7 +57,12 @@ try {
  $bitmap=[Drawing.Bitmap]::new($box.right-$box.left,$box.bottom-$box.top);$graphics=[Drawing.Graphics]::FromImage($bitmap);$dc=$graphics.GetHdc()
  try{$null=[GeaCapture]::PrintWindow($process.MainWindowHandle,$dc,2)}finally{$graphics.ReleaseHdc($dc)}
  $bitmap.Save((Join-Path $OutputDirectory 'default-window.png'));$graphics.Dispose();$bitmap.Dispose()
- $result=[ordered]@{passed=$true;elevated=$false;defaultLaunchWithoutArguments=$true;nativeWindow=$true;zipReadable=$true;groups=$manifest.groups.Count;partial=$manifest.partial;privacyCanariesAbsent=$true;clipboardSummary=$true;explorerSelectedArchive=$true;embeddedResources=$assembly.GetManifestResourceNames().Length}
+ $render=Join-Path $OutputDirectory 'RenderValidation.exe'
+ $compiler=Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+ & $compiler /nologo /target:exe /main:RenderValidation /codepage:65001 /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:$render (Join-Path $PSScriptRoot 'Render.cs')
+ Assert ($LASTEXITCODE -eq 0) 'RENDER_HELPER_COMPILE_FAILED'
+ foreach($mode in @('cancel','close')){& $render $executable $OutputDirectory $mode;Assert ($LASTEXITCODE -eq 0) ('UI_'+$mode+'_FAILED')}
+ $result=[ordered]@{passed=$true;elevated=$false;defaultLaunchWithoutArguments=$true;nativeWindow=$true;zipReadable=$true;groups=$manifest.groups.Count;partial=$manifest.partial;privacyCanariesAbsent=$true;clipboardSummary=$true;explorerSelectedArchive=$true;cancelWindow=$true;closeWaitsForCancellation=$true;embeddedResources=$assembly.GetManifestResourceNames().Length}
  $result|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $OutputDirectory 'ordinary-ui-result.json') -Encoding UTF8
  Copy-Item -LiteralPath $archive[0].FullName -Destination (Join-Path $OutputDirectory 'acceptance-report.zip')
 } catch {

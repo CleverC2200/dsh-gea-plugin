@@ -16,7 +16,8 @@ internal static class ExecutionRegression {
         if (args[0] == "--leaf") { Thread.Sleep(Timeout.Infinite); return 0; }
         if (args[0] == "--hang") {
             using (var child = Process.Start(Child("--leaf", args[1]))) {
-                File.WriteAllText(args[1], Process.GetCurrentProcess().Id + "," + child.Id);
+                File.WriteAllText(args[1] + ".partial", Process.GetCurrentProcess().Id + "," + child.Id);
+                File.Move(args[1] + ".partial", args[1]);
                 Thread.Sleep(Timeout.Infinite);
             }
             return 0;
