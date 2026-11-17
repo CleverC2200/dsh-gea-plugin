@@ -165,6 +165,11 @@ test("owner directory is shared through the whitelist, can remain empty and does
     owners: [ownerRow],
   });
   assert.equal(saved.revision, 1);
+  const legacy = f.records.get(initial.directoryId);
+  assert.equal(legacy.metric, "预警负责人配置");
+  assert.equal(legacy.scope, "品类");
+  assert.equal(legacy.enabled, false);
+  assert.ok(Number.isFinite(Date.parse(legacy.deletedAt)));
   assert.deepEqual(
     (await warningStorage(owner, { operation: "directory-load" }, f.execute)).owners,
     [ownerRow],
