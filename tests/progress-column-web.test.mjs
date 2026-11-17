@@ -109,7 +109,7 @@ const otherSku = {
 };
 
 test(
-  "monthly submission progress uses selected version amounts while category targets retain their weighted basis",
+  "monthly submission progress uses confirmed quantities and prices while category targets retain their weighted basis",
   { timeout: 30000 },
   async (t) => {
     const page = await openSalesPlanPresentation(t, [plan], {
@@ -125,7 +125,7 @@ test(
       page.locator("header").first().getByRole("tab", { name: "月初", exact: true }),
     ).toBeVisible();
     const monthPlan = page.getByTestId("regional-approval-month-plan-p-jxs-2026-09-00001");
-    await expect(monthPlan.locator("span").first()).toHaveText("¥150");
+    await expect(monthPlan.locator("span").first()).toHaveText("¥500");
     await expect(page.locator("tbody").first()).toContainText("125.0%");
     await expect(page.locator("tbody").first()).toContainText("¥500 / ¥400");
     await expect(page.getByText(/数量 .*%/)).toHaveCount(0);
