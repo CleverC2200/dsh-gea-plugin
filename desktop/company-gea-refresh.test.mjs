@@ -130,7 +130,7 @@ test("the refresh installs one complete suite, keeps user configuration and save
     install: async (options) => {
       assert.deepEqual(
         options.packages,
-        bundledSuite.map((row) => "/bundled/archives/" + row.file),
+        bundledSuite.map((row) => join(f.seed, "archives", row.file)),
       );
       await options.beforeInstall();
       await writeFile(
@@ -1367,7 +1367,7 @@ test("desktop replacement refreshes the whole bundled suite when GEA is already 
     install: async (options) => {
       assert.deepEqual(
         options.packages,
-        packages.map((row) => "/bundled/archives/" + row.file),
+        packages.map((row) => join(f.seed, "archives", row.file)),
       );
       await options.beforeInstall();
       const after = structuredClone(before);
