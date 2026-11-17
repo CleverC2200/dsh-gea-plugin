@@ -14,3 +14,5 @@ GEA 0.0.309 修复普通安装下保存检测任务报 WARNING_SCHEDULER_NOT_CON
 GEA 0.0.309 已通过 [PR #446](https://github.com/CleverC2200/dsh-gea-plugin/pull/446) 合并，固定发布源码为 `a7d9d030c57fa300410d06294d3082d45be393a9`；[发行记录](https://github.com/CleverC2200/dsh-gea-plugin/releases/tag/v0.0.309) 已读回。test 140、stable 132 整组三包生产来源下载与摘要核验通过；Workbench 0.1.129、Manage company.81 复用原归档。49项相关回归、正式 Core 类型、静态检查、固定输入构建、三包预检与隔离 Host 安装加载通过。
 
 正式客户端已安装 309 并正常退出、重新启动，Core 保持原版。Native 页面已验证人员搜索结果及14条负责人清单；原值保存尝试未观察到完成反馈，已取消，不能据此声称页面保存通过。没有创建、执行真实检测任务或发送通知。实际 Host 配置解析及调度服务连接、轮询、XXL无写入参数校验已验证；真实任务保存与定时执行仍待业务重试确认。登录和配置文件、其他数据开发工作树保持不变。
+
+后续负责人保存无反馈的沙箱边界已在Workbench130/GEA310修复并通过正式客户端原值保存与回读，见[配套发行](warning-owner-sandbox-companion.md)。309原验收记录按当时事实保留。
