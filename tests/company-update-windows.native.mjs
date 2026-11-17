@@ -220,8 +220,9 @@ if (process.argv[2] === "prepare-worker") {
                 },
                 body: JSON.stringify({ pageIdentity: "windows-legacy-fallback" }),
               });
-              if (!response.ok) return false;
+              if (!response.ok) throw Error("LEGACY_STATUS_HTTP_" + response.status);
               const body = (await response.json()).value;
+              if (!body?.items?.length) throw Error("LEGACY_STATUS_NOT_READY");
               return (
                 body?.items?.length &&
                 body.items.every((row) => row.state === "blocked" && row.planId === null) &&

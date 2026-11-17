@@ -24,7 +24,12 @@ export function compareDesktopUpdateData(before, after, installedCore) {
     isDeepStrictEqual(gea(patch).config.pluginUpdates.core, installedCore),
     "DESKTOP_UPDATE_CORE_PROOF_MISMATCH",
   );
-  gea(patch).config.pluginUpdates.core = gea(before.patch).config.pluginUpdates.core;
+  const previousUpdates = gea(before.patch).config.pluginUpdates;
+  const nextUpdates = gea(patch).config.pluginUpdates;
+  const protocolAdded =
+    previousUpdates.installationProtocol === undefined && nextUpdates.installationProtocol === 1;
+  if (protocolAdded) delete nextUpdates.installationProtocol;
+  nextUpdates.core = previousUpdates.core;
   assert.ok(isDeepStrictEqual(patch, before.patch), "DESKTOP_UPDATE_USER_CONFIGURATION_CHANGED");
   let events = 0;
   for (const original of before.sessions) {
@@ -46,6 +51,7 @@ export function compareDesktopUpdateData(before, after, installedCore) {
       allUserPatchValuesPreserved: true,
       onlyExpectedCoreProofRefreshed: true,
       coreProofMatchesVerifiedInstalledSeed: true,
+      ...(protocolAdded ? { managedInstallationProtocol: 1 } : {}),
     },
     history: {
       status: "passed",
