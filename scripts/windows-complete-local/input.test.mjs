@@ -9,9 +9,10 @@ import {
   verifyPersonalMemoryArchive,
 } from "./input.mjs";
 import { assertMacBaseline, macBaseline } from "../mac-complete-local/baseline.mjs";
-import { readFile, mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { readFile, mkdtemp, writeFile, rm, mkdir, cp, symlink } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 const cli = fileURLToPath(new URL("./input.mjs", import.meta.url));
 const released = JSON.parse(
@@ -268,6 +269,50 @@ test("native acceptance bundle input refuses mutable, foreign or incomplete iden
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DESKTOP_NATIVE_BUNDLE_INVALID/);
   }
+});
+
+test("Native artifact validation loads from a clean checkout through the fixture dependency root", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "gea-native-dependencies-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const file of [
+    "scripts/windows-complete-local/input.mjs",
+    "scripts/windows-complete-local/run-bundle.mjs",
+    "scripts/mac-complete-local/baseline.mjs",
+    "scripts/ci-core-policy.mjs",
+    "scripts/ci-core-policy.json",
+    "scripts/supported-cores.json",
+    "src/shared/plugin-release.mjs",
+  ]) {
+    await mkdir(dirname(join(directory, file)), { recursive: true });
+    await cp(file, join(directory, file));
+  }
+  const sha = "1".repeat(64);
+  const args = [
+    join(directory, "scripts/windows-complete-local/run-bundle.mjs"),
+    "--bundle-url",
+    `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/verification/${sha}/native.tgz`,
+    "--bundle-sha256",
+    sha,
+    "--validate-only",
+  ];
+  const run = () =>
+    spawnSync(process.execPath, args, {
+      cwd: directory,
+      encoding: "utf8",
+      env: { ...process.env, NODE_PATH: "" },
+    });
+  assert.match(run().stderr, /ERR_MODULE_NOT_FOUND/);
+  const dependencies = join(directory, ".runtime/fixture-dependencies/node_modules");
+  await mkdir(dependencies, { recursive: true });
+  await symlink(
+    dirname(createRequire(import.meta.url).resolve("semver/package.json")),
+    join(dependencies, "semver"),
+    "junction",
+  );
+  await symlink(dependencies, join(directory, "node_modules"), "junction");
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).status, "input-validated");
 });
 
 test("Native artifact rechecks bind an ancestor build to the actual qualification checkout", async (t) => {

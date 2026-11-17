@@ -25,6 +25,13 @@ test("Native artifact rechecks use a fresh runner without installing the target 
   assert.equal(native.env.GEA_QUALIFICATION_SOURCE_SHA, "${{ steps.original.outputs.source }}");
   assert.match(native.run, /fixed-input\.json/);
   assert.match(native.run, /run-bundle\.mjs/);
+  const dependencies = steps.find(
+    (step) => step.name === "Prepare artifact acceptance dependencies",
+  );
+  assert.ok(dependencies);
+  assert.ok(steps.indexOf(dependencies) < steps.indexOf(native));
+  assert.match(dependencies.run, /semver@7\.7\.4/);
+  assert.match(dependencies.run, /New-Item -ItemType Junction -Path gea\/node_modules/);
 });
 
 test("Windows installed upgrade qualification requires explicit signed packaging", () => {

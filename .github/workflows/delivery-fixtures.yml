@@ -129,6 +129,13 @@ jobs:
           assert.equal(files.length,1);
           execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),join(process.env.RUNNER_TEMP,'signed-overwrite-result'),'overwrite-only'],{stdio:'inherit'});
           NODE
+      - name: Prepare artifact acceptance dependencies
+        if: inputs.native_acceptance_bundle_url != ''
+        shell: pwsh
+        run: |
+          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 yaml@2.9.0 semver@7.7.4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path gea/node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
       - name: Select GNU tar for Native artifact recheck
         if: inputs.native_acceptance_bundle_url != ''
         shell: pwsh
@@ -145,7 +152,6 @@ jobs:
           NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
           NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
         run: |
-          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 yaml@2.9.0
           powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File gea/desktop/build/install-certificate.ps1 -CertificatePath gea/desktop/build/codesign.cer -StoreLocation CurrentUser
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
