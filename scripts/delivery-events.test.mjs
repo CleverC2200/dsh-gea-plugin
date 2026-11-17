@@ -25,6 +25,7 @@ test("Native artifact rechecks use a fresh runner without installing the target 
   assert.equal(native.env.GEA_QUALIFICATION_SOURCE_SHA, "${{ steps.original.outputs.source }}");
   assert.match(native.run, /fixed-input\.json/);
   assert.match(native.run, /run-bundle\.mjs/);
+  assert.match(native.run, /install-certificate\.ps1.*-StoreLocation LocalMachine/);
   const dependencies = steps.find(
     (step) => step.name === "Prepare artifact acceptance dependencies",
   );
