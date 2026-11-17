@@ -12,7 +12,12 @@ import { windowsCompanyInput } from "../scripts/ci-windows-update.mjs";
 
 const app = process.env.GEA_WINDOWS_APP;
 const evidence = process.env.GEA_WINDOWS_EVIDENCE;
-if (process.platform !== "win32" || !app || !evidence)
+if (
+  process.platform !== "win32" ||
+  !app ||
+  !evidence ||
+  !/^[a-f0-9]{40}$/.test(process.env.GEA_WINDOWS_SOURCE_HEAD ?? "")
+)
   throw Error("WINDOWS_COMPANY_INPUT_REQUIRED");
 const executable = join(app, "GEA Desktop.exe");
 const root = join(app, "resources/app.asar");
@@ -290,7 +295,7 @@ if (process.argv[2] === "prepare-worker") {
           JSON.stringify(
             {
               input: windowsCompanyInput,
-              sourceHead: process.env.GITHUB_SHA,
+              sourceHead: process.env.GEA_WINDOWS_SOURCE_HEAD,
               results,
               historyReadWithBundledCore: true,
               userDataPreserved: true,

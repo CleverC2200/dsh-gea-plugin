@@ -19,6 +19,7 @@ import { officialGeaBranding } from "../desktop/official-branding.mjs";
 if (process.platform !== "win32") throw Error("WINDOWS_NATIVE_REQUIRED");
 const companyDesktop = process.argv.includes("--company-desktop");
 const input = companyDesktop ? windowsCompanyInput : windowsNativeInput;
+const sourceHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 if (companyDesktop) {
   const feed = await fetch(
     "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/nightly.yml",
@@ -123,7 +124,7 @@ if (companyDesktop) {
   );
   await writeFile(
     join(root, "candidate-company-entry.json"),
-    JSON.stringify({ input, binding }, null, 2),
+    JSON.stringify({ sourceHead, input, binding }, null, 2),
   );
 }
 let exitCode = 0;
@@ -143,7 +144,7 @@ try {
       },
     },
   );
-  if (companyDesktop)
+  if (companyDesktop) {
     execFileSync(
       process.execPath,
       ["--test", "--test-concurrency=1", "tests/company-update-windows.native.mjs"],
@@ -155,9 +156,23 @@ try {
           GEA_WINDOWS_APP: app,
           GEA_WINDOWS_RUNTIME: runtime,
           GEA_WINDOWS_EVIDENCE: root,
+          GEA_WINDOWS_SOURCE_HEAD: sourceHead,
         },
       },
     );
+    const receipt = JSON.parse(await readFile(join(root, "company-desktop-result.json"), "utf8"));
+    if (
+      receipt.sourceHead !== sourceHead ||
+      receipt.input?.installerSha256 !== expected ||
+      receipt.input?.coreHead !== input.coreHead ||
+      receipt.historyReadWithBundledCore !== true ||
+      receipt.userDataPreserved !== true ||
+      receipt.productionDataTouched !== false ||
+      receipt.results?.map((row) => row.stage).join(",") !==
+        "baseline,killed-preparation,killed-trial,automatic-rollback"
+    )
+      throw Error("WINDOWS_COMPANY_RECEIPT_REJECTED");
+  }
 } catch (error) {
   exitCode = error.status ?? 1;
 }
@@ -166,12 +181,13 @@ await writeFile(
   JSON.stringify(
     {
       platform: process.platform,
-      sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      sourceHead,
       coreHead: manifest.dshBuildCommit,
       runtimeInstallerSha256: expected,
       acceptance: input.acceptance,
       exitCode,
       nativeUIAcceptance: false,
+      ...(companyDesktop ? { companyDesktopEntryAcceptance: exitCode === 0 } : {}),
     },
     null,
     2,
