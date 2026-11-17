@@ -33,11 +33,13 @@ export class DeploymentTransport {
       config.memoryGatewayUrl,
       config.memoryGatewayAllowPrivateHttp,
     );
+    const configuredWarning = config.warningSchedulerEnvironments;
     const warning =
-      config.warningSchedulerEnvironments ??
-      (config.environments.production === "https://gea.synear.cn/gea-boot"
-        ? { production: "https://gea.synear.cn:4443/gea-warning/client" }
-        : {});
+      configuredWarning && Object.keys(configuredWarning).length > 0
+        ? configuredWarning
+        : config.environments.production === "https://gea.synear.cn/gea-boot"
+          ? { production: "https://gea.synear.cn:4443/gea-warning/client" }
+          : {};
     for (const [environment, raw] of Object.entries(warning)) {
       if (environment !== "production" && environment !== "test")
         throw Error("INVALID_GEA_ENVIRONMENT");
