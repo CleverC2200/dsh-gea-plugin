@@ -13,4 +13,4 @@
 
 Windows 构建使用 `build.ps1 -OutputDirectory <产物目录>`，仅交付一个 EXE。脚本使用系统 .NET Framework 编译器并声明 4.8 运行目标，系统 TLS 默认值保持现代兼容行为。开发构建尚未公开可信签名，不代表真实互联网下载后的 SmartScreen 或其他设备安全软件验收通过。Mac 产品化保持待推进。
 
-合成验收使用 `GEA日志采集.exe --acceptance <当前用户TEMP下的新目录> --headless`；去掉 `--headless` 可查看真实窗体。`tests/run.ps1 -BuildDirectory <构建目录> -OutputDirectory <新测试目录>` 检查格式解析、脱敏、自定义数据目录、历史日志、文件筛选配额、采集超时、进程树取消、部分报告及打包取消。Windows CI 另用普通权限令牌从无参数默认入口打开单文件，检查可读 ZIP、复制摘要、资源管理器选中文件，以及取消和关闭窗口时等待清理。普通令牌下的 `tests/verify.ps1 -Executable <EXE> -OutputDirectory <新测试目录>` 检查真实系统接口、缺失提示和取消。合成资料不能替代原故障电脑的重跑验收。
+合成验收使用 `GEA日志采集.exe --acceptance <当前用户TEMP下的新目录> --headless`；去掉 `--headless` 可查看真实窗体。`tests/run.ps1 -BuildDirectory <构建目录> -OutputDirectory <新测试目录>` 检查格式解析、脱敏、自定义数据目录、历史日志、文件筛选配额、采集超时、进程树取消、部分报告及打包取消。Windows CI 另用普通权限令牌从无参数默认入口打开单文件，检查可读 ZIP、复制摘要、资源管理器打开目录并定位文件，以及取消和关闭窗口时等待清理。普通令牌下的 `tests/verify.ps1 -Executable <EXE> -OutputDirectory <新测试目录>` 检查真实系统接口、缺失提示和取消。合成资料不能替代原故障电脑的重跑验收。
