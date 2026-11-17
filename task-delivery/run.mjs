@@ -238,7 +238,7 @@ for (const row of manifest.packages) {
       old?.notes ??
       (row.name === "dsh-agent-manage"
         ? "同步已合并主线的产销协同昨日截止、预算进度与经营简报计算。"
-        : "月计划导出按当前节点确认计划量乘各 SKU 单价计算，包含当前编辑；当前页、区域及品类汇总与导出保持一致。"),
+        : "品类维度只从品类行展开和修改该品类 SKU，下级按原确认量比例分摊并保留整数合计；金额按各计划单价汇总，保留确认量金额、导出与预警负责人功能。"),
   });
   targets.push({ archive, metadata });
 }

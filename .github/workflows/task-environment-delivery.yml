@@ -1,5 +1,5 @@
-name: Sales confirmed amount delivery task
-run-name: "Sales confirmed amount delivery — ${{ github.sha }}"
+name: Sales category expansion delivery task
+run-name: "Sales category expansion delivery — ${{ github.sha }}"
 on:
   push:
     branches: [codex/sales-confirmed-delivery-20261117]
