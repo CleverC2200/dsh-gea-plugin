@@ -153,7 +153,7 @@ jobs:
           NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
           NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
         run: |
-          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File gea/desktop/build/install-certificate.ps1 -CertificatePath gea/desktop/build/codesign.cer -StoreLocation CurrentUser
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File gea/desktop/build/install-certificate.ps1 -CertificatePath gea/desktop/build/codesign.cer -StoreLocation LocalMachine
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import {readdirSync,readFileSync} from 'node:fs';
