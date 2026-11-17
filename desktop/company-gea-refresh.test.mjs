@@ -856,6 +856,7 @@ test("startup completes the accepted cached suite after partial installation and
       const userFiles = {
         "data/sessions/existing.json": "saved conversation",
         "data/drafts/existing.json": "unsent draft",
+        "profiles/desktop/sessions/existing.jsonl": "saved profile history",
         "credentials.encrypted": "encrypted credentials",
       };
       for (const [file, bytes] of Object.entries(userFiles)) {
@@ -888,6 +889,13 @@ test("startup completes the accepted cached suite after partial installation and
       };
       const original = JSON.stringify(receipt);
       await writeFile(join(operation, "receipt.json"), original);
+      if (runningJob) {
+        await mkdir(join(f.profile, ".plugin-manager"));
+        await writeFile(
+          join(f.profile, ".plugin-manager/run.json"),
+          JSON.stringify({ pid: runnerPid, grouped: false }),
+        );
+      }
       if (process.platform === "win32")
         await writeWindowsJob(operation, receipt.processes[0], {
           stage: runningJob || variant === "active" ? "running" : "empty",
@@ -952,7 +960,9 @@ test("startup completes the accepted cached suite after partial installation and
               ? /GEA_REFRESH_PROFILE_NOT_PRESERVED/
               : variant === "tampered"
                 ? /GEA_REFRESH_UPDATE_UNKNOWN/
-                : /GEA_REFRESH_UPDATE_PENDING/,
+                : variant === "windows-live-runner" || variant === "windows-inaccessible-runner"
+                  ? /GEA_REFRESH_PROFILE_BUSY|access denied/
+                  : /GEA_REFRESH_UPDATE_PENDING/,
         );
         assert.equal(
           installs,

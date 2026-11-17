@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: "24.22.0"
       - name: Verify coordinated startup and completion
-        run: node --test desktop/company-update.test.mjs
+        run: node --test desktop/company-update.test.mjs desktop/company-gea-refresh.test.mjs
   legacy-client:
     runs-on: windows-2025
     timeout-minutes: 20
