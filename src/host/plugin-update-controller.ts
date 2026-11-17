@@ -964,7 +964,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
                       signal: lifetime.signal,
                       outputBytes: 16_000,
                       activateNewBundles: false,
-                      idleTimeoutMs: options.idleTimeoutMs ?? 30_000,
+                      idleTimeoutMs: options.idleTimeoutMs ?? 90_000,
                       lookupTimeoutMs: 20_000,
                       onOutput: () => currentMonitor?.capture(),
                     },
