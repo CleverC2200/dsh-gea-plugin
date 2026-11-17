@@ -17,6 +17,26 @@ const businessCore = [
   "tests/optional-companion-manifest.test.mjs",
 ].sort();
 
+test("real package consumers declare their frozen candidate inputs before source-only execution", async (t) => {
+  for (const file of [
+    "scripts/package-smoke.test.mjs",
+    "scripts/page-interaction-package.test.mjs",
+  ])
+    await t.test(file, (t) => {
+      const fixture = resourceImpactFixture(t, [file, "tests/fixtures/source-window-inputs.mjs"]);
+      fixture.change(
+        fixture.own,
+        file,
+        readFileSync(new URL("../" + file, import.meta.url), "utf8") + "\n",
+      );
+      const plan = fixture.plan({ sourceOnly: true });
+      assert.ok(plan.files.includes(file));
+      assert.ok(plan.sourceWindowFiles.includes(file), JSON.stringify(plan));
+      assert.equal(plan.sourceWindow, true);
+      assert.equal(plan.sdk, true);
+    });
+});
+
 test("desktop unit changes select their real CJS or MJS behavior without enabling Electron acceptance", async (t) => {
   for (const [source, regression] of [
     ["desktop/runtime-cookies.cjs", "desktop/runtime-cookies.test.cjs"],
