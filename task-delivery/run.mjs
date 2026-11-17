@@ -76,6 +76,12 @@ await bindQualityUpstreamInputs(root, join(root, "upstream-inputs"), { prepare: 
 if (process.env.APS_BUILD_MODE) throw Error("PRODUCTION_APS_MODE_REQUIRED");
 for (const path of [manage, wb, gea])
   await run(process.execPath, [join(gea, "scripts/development-tasks.mjs"), "prepare"], path);
+const { parsePluginManifest, parseInstalledPluginManifest } = await import(
+  pathToFileURL(join(gea, "src/shared/plugin-release.mjs"))
+);
+const snapshots = await json(join(tool, "deployed-local.json"));
+for (const snapshot of snapshots)
+  for (const manifest of snapshot.installed) parseInstalledPluginManifest(manifest);
 const aps = join(wb, "business/inventory-apsplan/source");
 await run("npm", ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"], aps);
 for (const [path, target] of [
@@ -138,10 +144,6 @@ await run(process.execPath, [
   delivery,
 ]);
 const origin = "https://synear-gea.oss-cn-hangzhou.aliyuncs.com";
-const { parsePluginManifest } = await import(
-  pathToFileURL(join(gea, "src/shared/plugin-release.mjs"))
-);
-const snapshots = await json(join(tool, "deployed-local.json"));
 const previous = {},
   references = [];
 let publishedManage;
