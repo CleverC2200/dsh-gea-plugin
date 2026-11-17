@@ -31,6 +31,8 @@
     "desktop/client-installer.test.mjs",
     "desktop/company-bootstrap.test.mjs",
     "desktop/company-gea-refresh.test.mjs",
+    "desktop/company-installation.test.mjs",
+    "desktop/company-desktop.test.mjs",
     "desktop/company-update.test.mjs",
     "desktop/company-resources.test.mjs",
     "desktop/config.test.cjs",
@@ -900,12 +902,14 @@
     "desktop/recovery.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/company-installation.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
-    "desktop/company-desktop.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
+    "desktop/company-desktop.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/graph-relocation.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
     "scripts/desktop-release.test.mjs": ["semver", "yaml"],
     "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
-    "scripts/run-quality-ci.test.mjs": ["yaml"]
+    "scripts/run-quality-ci.test.mjs": ["yaml"],
+    "scripts/desktop-gea-upgrade.test.mjs": ["yaml"]
   }
 }

@@ -106,7 +106,7 @@ export async function relocateVirtualStore(
     throw error;
   }
   if (
-    metadata?.nodeLinker !== "hoisted" ||
+    !["hoisted", "isolated"].includes(metadata?.nodeLinker) ||
     metadata.layoutVersion !== 5 ||
     typeof metadata.virtualStoreDir !== "string"
   )
