@@ -129,3 +129,34 @@ test("shared memory validates environment and credentials before forwarding", as
   }
   assert.equal(calls, 2);
 });
+
+test("custom DMS collisions send no credentials before the environment is resolved", async () => {
+  let calls = 0;
+  for (const target of ["https://dms.fixture/base/", "https://dms.fixture/base/test"]) {
+    const deployment = (gatewayUrl) => ({ gatewayUrl, secretEnv: "DMS_FIXTURE", users: [] });
+    const transport = new DeploymentTransport(
+      {
+        environments,
+        dms: { production: deployment("https://dms.fixture/base"), test: deployment(target) },
+      },
+      () => ({
+        environment: "test",
+        base: environments.test,
+        signal: new AbortController().signal,
+        identity: { id: "u", token: "test-secret", tenantId: "0" },
+      }),
+      async () => {
+        calls++;
+        return Response.json({});
+      },
+    );
+    await assert.rejects(
+      transport.fetch(target.replace(/\/$/, "") + "/order/submit", {
+        method: "POST",
+        headers: { Authorization: "Bearer dms-secret" },
+      }),
+      /DMS_ENVIRONMENTS_NOT_DISTINCT/,
+    );
+  }
+  assert.equal(calls, 0);
+});

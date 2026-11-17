@@ -13,7 +13,7 @@ test(
     const app = await profile(t, {
       config: (base) => ({
         pageSize: 2,
-        geaEnvironments: { production: base, test: base + "/test" },
+        geaEnvironments: { production: base + "/production", test: base + "/test" },
       }),
     });
     let mode = "success";

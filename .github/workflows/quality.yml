@@ -157,6 +157,7 @@ jobs:
           repository: CleverC2200/dsh-agent-workbench
           ref: ${{ needs.candidate-scope.outputs.workbench-sha }}
           path: environment-peer/dsh-agent-workbench
+          fetch-depth: 0
           token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
           persist-credentials: false
       - name: Prepare browser tools for Windows environment isolation
@@ -175,7 +176,7 @@ jobs:
           DSH_TEST_GEA_CHECKOUT: ${{ github.workspace }}
         run: |
           mkdir -p windows-result
-          node --test tests/deployment-boundary.test.mjs tests/api-log.test.mjs tests/fc-dms-default.test.mjs | tee windows-result/environment-host.tap
+          node --test tests/deployment-boundary.test.mjs tests/api-log.test.mjs | tee windows-result/environment-host.tap
           cd environment-peer/dsh-agent-workbench
           node --test tests/api-log-center.browser.mjs tests/warning-executor.test.mjs tests/warning-feishu-service.test.mjs | tee ../../windows-result/environment-ui.tap
       - name: Preserve Windows scope and native outcome
