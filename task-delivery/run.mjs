@@ -187,20 +187,20 @@ if (!publishedManage) throw Error("PUBLISHED_MANAGE_REQUIRED");
 const deliveryManifestPath = join(delivery, "manifest.json"),
   manifest = await json(deliveryManifestPath);
 const row = manifest.packages.find((p) => p.name === "dsh-agent-manage");
-if (
-  row.version !== publishedManage.release.version ||
-  git(manage, "rev-parse", `v${row.version}^{commit}`) !== input.repositories["dsh-agent-manage"]
-)
+if (git(manage, "rev-parse", `v${row.version}^{commit}`) !== input.repositories["dsh-agent-manage"])
   throw Error("PUBLISHED_MANAGE_SOURCE_MISMATCH");
-await rename(join(delivery, "packages", row.filename), join(out, "rebuilt-manage-unused.tgz"));
-await copyFile(publishedManage.archive, join(delivery, "packages", row.filename));
-row.sha256 = publishedManage.release.artifact.sha256;
-row.size = publishedManage.release.artifact.size;
-row.source = {
-  kind: "immutable-published-archive",
-  path: manage,
-  head: input.repositories["dsh-agent-manage"],
-};
+const reusePublishedManage = row.version === publishedManage.release.version;
+if (reusePublishedManage) {
+  await rename(join(delivery, "packages", row.filename), join(out, "rebuilt-manage-unused.tgz"));
+  await copyFile(publishedManage.archive, join(delivery, "packages", row.filename));
+  row.sha256 = publishedManage.release.artifact.sha256;
+  row.size = publishedManage.release.artifact.size;
+  row.source = {
+    kind: "immutable-published-archive",
+    path: manage,
+    head: input.repositories["dsh-agent-manage"],
+  };
+}
 await put(deliveryManifestPath, manifest);
 await writeFile(
   join(delivery, "SHA256SUMS"),
@@ -225,7 +225,8 @@ for (const row of manifest.packages) {
   });
   const archive = join(delivery, "packages", row.filename),
     metadata = join(out, row.name.replaceAll("/", "_") + ".metadata.json");
-  const old = row.name === "dsh-agent-manage" ? publishedManage.release : undefined;
+  const old =
+    row.name === "dsh-agent-manage" && reusePublishedManage ? publishedManage.release : undefined;
   await put(metadata, {
     artifactUrl:
       old?.artifact.url ?? origin + "/plugin-release/packages/" + row.sha256 + "/" + row.filename,
@@ -233,7 +234,9 @@ for (const row of manifest.packages) {
     dataCompatibility: { kind: "preserve" },
     notes:
       old?.notes ??
-      "月计划统一按当前确认数量逐SKU乘单价汇总；列表、展开明细、组织、品类及顶部统计保持一致。",
+      (row.name === "dsh-agent-manage"
+        ? "同步已合并主线的产销协同昨日截止、预算进度与经营简报计算。"
+        : "月计划汇总加载时恢复当前角色的有效确认草稿；刷新、重新进入与展开收起保持相同确认金额。"),
   });
   targets.push({ archive, metadata });
 }
@@ -272,7 +275,7 @@ await run(process.execPath, [join(gea, "scripts/release-preflight.mjs"), "--inpu
 for (const [i, target] of targets.entries()) {
   const row = manifest.packages[i],
     destination = join(out, "release-" + i);
-  if (row.name === "dsh-agent-manage") {
+  if (row.name === "dsh-agent-manage" && reusePublishedManage) {
     await mkdir(destination);
     const filename = publishedManage.ref.sha256 + ".release.json";
     await writeFile(join(destination, filename), publishedManage.releaseBytes);
