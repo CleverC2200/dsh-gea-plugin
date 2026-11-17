@@ -8,3 +8,6 @@ import "../desktop/plugin-store.test.mjs";
 import "../desktop/recovery.test.mjs";
 import "../desktop/runtime-resolution.test.mjs";
 import "../desktop/company-update.test.mjs";
+import "../desktop/company-installation.test.mjs";
+import "../desktop/company-desktop.test.mjs";
+import "../desktop/graph-relocation.test.mjs";

@@ -18,7 +18,8 @@ export async function createPluginSuiteChannel({
   if (
     !checked.targets.some(
       ({ release }) =>
-        release.name === "@cleverc2200/gea-dsh-prototype" && release.updateStrategy === "suite",
+        release.name === "@cleverc2200/gea-dsh-prototype" &&
+        ["suite", "managed-suite"].includes(release.updateStrategy),
     )
   )
     throw Error("CHANNEL_SUITE_UPDATER_REQUIRED");

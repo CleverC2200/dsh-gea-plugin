@@ -36,6 +36,7 @@ export type PluginUpdateStage =
   | "unknown";
 export type PluginUpdateOperation = {
   schema: 2;
+  installationId?: string;
   targets?: {
     packageName: UpdatablePackageName;
     targetVersion: string;

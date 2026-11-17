@@ -4,6 +4,8 @@
 
 手动运行 `source-quality` workflow 时，`comparison_base` 必须填写本票已登记且当前 ref 可达的完整祖先 SHA。它按该基线到当前候选的差异选择受影响检查，具体基线沿用本票输入；不能将手动运行等同于自动全覆盖。
 
+手动验收的 `sdk_cache` 默认为 `reuse`，实际冷热状态以 SDK 准备回执为准。显式选 `cold` 只跳过 SDK 成品缓存的恢复与保存，保留包下载缓存、原准备流程及源码和产物校验，不删除已有共享缓存。冷热耗时对照使用同一候选和 `comparison_base`，并核对完整文件集合与逐例结果。
+
 `source-quality` worker 在固定 Core 检出和当前源码校验后、依赖策略恢复及 SDK 准备前运行 `source-preparation.mjs`。联合检查会在 checks 阶段运行独立的 final-group 合同，即使该文件不在逐文件测试集合中；前置检查按该执行路径及显式所选消费者核历史 Core 提交、树与准备元数据，不获取新输入、不切换 HEAD。历史准入案例与前置检查共用 `finalGroupHistoricalCore`；只读取当前提交的策略生产者不承担历史输入要求。
 
 最终门禁保留原严格分片聚合，并将结果保存为 `source-check-execution.json`。现有 `source-budget-<attempt>` 产物同时保存该结果及扩展的 `source-budget.json`，GitHub Summary 展示登记池、选择集合、平台暂缓项、已验证文件与用例数量，以及 job 耗时。JSON 保留未直接选中的入口、owner 对应、逐 worker 阶段及慢文件。轻量检查只记录公开入口完成，缺少严格逐例回执时用例数为未知；缺失、异轮或失败回执不能成为已验证覆盖。
@@ -12,7 +14,7 @@
 
 `quality-test-execution.mjs` 为 required/affected 完整集合生成计划并核验逐文件执行回执。分片数沿用 `plannedShardCount`：无 Profile 使用一片，其余按历史成本和未知文件保守权重计算，上限十四片，实际非空片数来自冻结计划。文件并发数不改变这个公式，也不减少选择集合。 Node 参考墙钟按220秒规划，两槽保守计费不随实际文件并发数变化。该参考来自旧完整 hosted 样本的350秒启动及准备预留、30秒收尾预留，从600秒目标中扣除；主线的单分片 producer 路径继续按原规则执行。固定预留不是本轮观测，也不保证额外分片必然更快，最终仍须核完整 hosted 实测。
 
-分配保持原先未知优先、已知耗时降序及空片先填。此后对每个候选片，将待加入文件按片内传入顺序排入固定数量的槽，选择预计最早完成的片，平局按片 ID。执行入口通过 `node:test` 的 `run({ files })` 按冻结片内顺序派发，使用独立进程隔离。直接调用 Node CLI 的 `--test` 会先按文件名排序，不能用该入口的顺序解释当前执行回执。未知文件只使用保守排序权重；包含未知文件的预计耗时仍为 `null`。
+分配保持原先未知优先、已知耗时降序及空片先填。Profile 文件只分配给尚未达到均摊上限的片，上限由当前平台的 Profile 文件总数与实际分片数确定，避免历史权重将多个 Profile 集中到少数片。此后对每个候选片，将待加入文件按片内传入顺序排入固定数量的槽，选择预计最早完成的片，平局按片 ID。执行入口通过 `node:test` 的 `run({ files })` 按冻结片内顺序派发，使用独立进程隔离。直接调用 Node CLI 的 `--test` 会先按文件名排序，不能用该入口的顺序解释当前执行回执。未知文件只使用保守排序权重；包含未知文件的预计耗时仍为 `null`。
 
 公共 CLI 接受 `--test-file-concurrency 2|3|4`，默认二；Mac 和普通调用保持默认。显式三或四并发的调用在 plan、prepare、build、checks、tests、summary 及回执校验阶段传相同参数。后续阶段重算的计划必须与 `--execution-plan FILE` 完全一致；省略显式并发参数或改为其他并发数会拒绝。Node 实际使用冻结计划中的 `--test-concurrency`。
 
@@ -21,6 +23,8 @@
 三并发计划通过本次真实容量校验后，`runExecutionPlan` 在每个非空片的子 Node 启动环境中设置 `UV_THREADPOOL_SIZE`。`active=min(3,片文件数)` 只记录分片文件数量，池预算按配置的三槽计算为 `min(4,max(1,floor(可用CPU/3)))`；四CPU时各分片均为1，稀疏分片保持相同预算，覆盖继承环境、调用方 environment 和 env-file 的同名值。二/四并发保留原环境协议。每片 result 同时保留本次 `capacity` 及 `libuvPool` 的 `declared` 大小、activeFiles、CPU及来源，汇总只保留 results 时仍可按各片实际容量独立重算，不能借一片容量解释其他片；这是启动声明，不是 native pool 实际线程观测或进程树CPU硬限制。该值也会被默认继承环境的测试文件及Host/launcher后代继承；启动后不动态改变，片尾只剩一文件时不会扩池。C3am 本机小语料不能证明两文件档、真实Linux/Profile或600秒收益，单片与全轮仍须 fresh hosted 实测。
 
 当前 `quality-test-timings.json` 的来源、提交、环境和文件集合以表内 `source`、`inputs` 和 `files` 为准。更新来自同一完整通过运行的回执；原始 CLI 导出保留，提交的长期参考表沿用 `historical-reference-only`、`not-acceptance` 约定。来源标签不改变测量值或使参考成为验收证据，不混轮回填。此前 [run 39095827120](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/39095827120) 的 176 文件样本及未达旧性能目标的结果仍保留在历史提交和原 artifact，不再指代当前表。
+
+本次参考取自 [run 44022899771](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/44022899771) 的同轮 40 个分片完整回执，保留该轮源码摘要。刷新参考不代表当前候选已完成 hosted 验收；当前输入变化后仍按下述规则撤销可信预测。
 
 [`quality-test-timings.mjs`](../scripts/quality-test-timings.mjs) 在准备前按实际 checkout 过滤样本。schema 2 将测试文件摘要与全局 `inputs` 摘要共同用于可信预测；全局输入任一改变或缺失，全部可信预测失效。Node、平台、Core、文件并发变化也会撤销预测和历史排序提示。没有字节绑定的旧格式视为未知。失效原因进入计划来源，可信预计耗时继续为 `null`。
 

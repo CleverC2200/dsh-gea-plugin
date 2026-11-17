@@ -100,6 +100,8 @@ export const en = {
   "source-not-configured": "Updates are not configured for this installation.",
   "release-not-published": "This channel has no release for this plugin.",
   "plan-unconfirmed": "Check for updates again before installing.",
+  "desktop-installation":
+    "Upgrade the company client first, then reopen Updates. Your data will be retained.",
   conditions: "This update does not meet the installation requirements.",
   "migration-required":
     "This combination requires a separate data migration. Keep the installed versions until migration is complete.",
@@ -221,6 +223,7 @@ export const zh: Record<keyof typeof en, string> = {
   "source-not-configured": "当前安装尚未配置更新来源。",
   "release-not-published": "此频道尚未发布该插件。",
   "plan-unconfirmed": "请重新检查更新后再安装。",
+  "desktop-installation": "请先升级公司客户端，重开后再更新插件。用户数据会保留。",
   conditions: "此更新不满足安装条件。",
   "migration-required": "此组合需要先完成独立的数据迁移。迁移完成前保留当前版本。",
   "channel-older": "频道版本早于已安装版本。请保留已安装版本，等待较新版本发布后重新检查。",
