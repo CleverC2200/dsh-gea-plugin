@@ -18,6 +18,10 @@ Windows job 实读两仓HEAD及clean、下载三TGZ并核SHA及manifest，再运
 
 bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativeUpdateAcceptance:true`，并绑定`buildReceiptSha256`原字节SHA和`inputSha256`。无bundle时仅构建，Native更新仍未验。artifact只留R9回执、bundle绑定及`public/`脱敏证据；raw请求和配置由验收目录的隐私合同单独保全。
 
+已完成构建的安装包可通过 `windows_overwrite_artifact_run` 配合这两个 bundle 输入，在新 Windows runner 重跑 Native 验收。该路径核原任务为主线发行、构建步骤成功，且构建源码是当前验证源码的祖先；继续使用原安装包、原构建回执字节和原固定输入，不重新打包或读取签名私钥。Native 路径跳过会先安装目标版本的普通覆盖测试，公钥证书在临时 runner 的 LocalMachine Root 中准备。
+
+归档输入按已验证原构建源码中的合同校验，包括当时的 Core、包数及输入投影，再核对原回执的输入摘要；不为当前要求补写旧输入。原合同文件或匹配依赖不可用时拒绝，不回退到当前校验。当前构建继续采用当前输入合同。
+
 ## Windows 首次安装证书与在线更新
 
 完整 Windows 构建默认 `windows_signed=true`。首次安装内置 `desktop/build/codesign.cer` 和公钥导入脚本。安装器保持 Core 的当前用户安装模式，在解压新程序前检查 `CurrentUser\Root`，缺少证书时向用户说明信任变更，经确认后导入。已信任时不再提示；首次静默安装缺少信任时直接失败。卸载不移除证书，避免破坏同一签名者的其他安装。
