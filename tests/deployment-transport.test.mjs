@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import z from "@deepseek-ai/schemastery";
+import companyDefaults from "../desktop/company.config.json" with { type: "json" };
 
 const built = await build({
   stdin: {
@@ -75,7 +80,9 @@ test("Host blocks a known wrong-environment gateway before sending credentials",
 });
 
 test("one shared memory deployment retains each login environment and identity", async (t) => {
-  const { business, login } = fixture(t, { memoryGatewayUrl: "https://shared-memory.fixture" });
+  const { business, login } = fixture(t, {
+    memoryGatewayUrl: "https://shared-memory.fixture",
+  });
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
     const headers = new Headers(init.headers),
@@ -106,7 +113,9 @@ test("one shared memory deployment retains each login environment and identity",
 
 test("warning scheduler uses the registered deployment and original login environment", async (t) => {
   const target = "https://scheduler.fixture/client";
-  const { business } = fixture(t, { warningSchedulerEnvironments: { production: target } });
+  const { business } = fixture(t, {
+    warningSchedulerEnvironments: { production: target },
+  });
   business.setCapabilities(
     createCapabilityRegistry([
       {
@@ -155,9 +164,16 @@ test("custom DMS environment collisions are rejected before any signed or bearer
     return Response.json({});
   });
   for (const testTarget of ["https://dms.fixture/base/", "https://dms.fixture/base/test"]) {
-    const deployment = (gatewayUrl) => ({ gatewayUrl, secretEnv: "DMS_FIXTURE", users: [] });
+    const deployment = (gatewayUrl) => ({
+      gatewayUrl,
+      secretEnv: "DMS_FIXTURE",
+      users: [],
+    });
     const { business, login } = fixture(t, {
-      dms: { production: deployment("https://dms.fixture/base"), test: deployment(testTarget) },
+      dms: {
+        production: deployment("https://dms.fixture/base"),
+        test: deployment(testTarget),
+      },
     });
     login("test");
     await assert.rejects(
@@ -168,5 +184,94 @@ test("custom DMS environment collisions are rejected before any signed or bearer
       /DMS_ENVIRONMENTS_NOT_DISTINCT/,
     );
   }
+  assert.equal(calls, 0);
+});
+
+test("company scheduler remains reachable after public Host schema resolves omitted configuration", async (t) => {
+  await mkdir(".runtime", { recursive: true });
+  const directory = await mkdtemp(resolve(".runtime/warning-host-config-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const result = await build({
+    entryPoints: ["src/host.ts"],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+    packages: "external",
+  });
+  const output = join(directory, "host.mjs");
+  await writeFile(output, result.outputFiles[0].text);
+  const { Config } = await import(pathToFileURL(output).href);
+  const defaults = z.resolve({}, Config, {})[0];
+  const business = new Business({
+    ...defaults,
+    runtimeDir: directory,
+    geaEnvironments: companyDefaults.geaEnvironments,
+  });
+  t.after(() => business.dispose());
+  business.restoreDesktopLogin({
+    schema: 1,
+    environment: "production",
+    base: companyDefaults.geaEnvironments.production,
+    auth: {
+      token: "fixture-token",
+      tenantId: "0",
+      id: "user",
+      name: "User",
+      username: "user",
+    },
+  });
+  business.setCapabilities(
+    createCapabilityRegistry([
+      {
+        id: "aps",
+        label: "APS",
+        enabled: true,
+        maxEffect: "view",
+        skills: [],
+        routing: { keywords: [], summary: "APS" },
+        data: { consumerCode: "aps", tables: [], rules: [] },
+      },
+    ]),
+  );
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls++;
+    assert.equal(String(url), "https://gea.synear.cn:4443/gea-warning/client");
+    assert.equal(new Headers(init.headers).get("X-Access-Token"), "fixture-token");
+    assert.equal(new Headers(init.headers).get("X-GEA-Environment"), "production");
+    return Response.json({ ok: true, value: { enabled: true } });
+  });
+  assert.deepEqual(
+    await business.warningScheduler({ operation: "feishu-status" }, new AbortController().signal),
+    { enabled: true },
+  );
+  assert.equal(calls, 1);
+});
+
+test("empty scheduler configuration never registers the company endpoint for a custom deployment", async (t) => {
+  const { business } = fixture(t, { warningSchedulerEnvironments: {} });
+  business.setCapabilities(
+    createCapabilityRegistry([
+      {
+        id: "aps",
+        label: "APS",
+        enabled: true,
+        maxEffect: "view",
+        skills: [],
+        routing: { keywords: [], summary: "APS" },
+        data: { consumerCode: "aps", tables: [], rules: [] },
+      },
+    ]),
+  );
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return Response.json({ ok: true });
+  });
+  await assert.rejects(
+    business.warningScheduler({ operation: "feishu-status" }, new AbortController().signal),
+    /WARNING_SCHEDULER_NOT_CONFIGURED/,
+  );
   assert.equal(calls, 0);
 });
