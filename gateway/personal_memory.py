@@ -179,10 +179,30 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def resolve_identity_environments(environments, allow_loopback=True):
+    if not isinstance(environments, dict) or not environments:
+        raise ValueError('INVALID_GEA_ENVIRONMENTS')
+    resolved = {}
+    for name, value in environments.items():
+        if name not in ('production', 'test') or not isinstance(value, str):
+            raise ValueError('INVALID_GEA_ENVIRONMENTS')
+        parsed = urllib.parse.urlparse(value)
+        local = allow_loopback and parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost', '::1')
+        if (parsed.scheme != 'https' and not local) or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError('INVALID_GEA_ENVIRONMENTS')
+        base = value.rstrip('/')
+        if (name == 'production' and base == 'https://gea.synear.cn:4443/gea-boot') or (name == 'test' and base == 'https://gea.synear.cn/gea-boot'):
+            raise ValueError('GEA_ENVIRONMENT_TARGET_MISMATCH')
+        resolved[name] = base
+    if len(set(resolved.values())) != len(resolved):
+        raise ValueError('GEA_ENVIRONMENTS_NOT_DISTINCT')
+    return resolved
+
+
 class Gateway:
     def __init__(self, metadata, environments, hindsight_url, hindsight_key, timeout=8, model_url=None, model_key=None, model_name=None):
         self.metadata = metadata
-        self.environments = environments
+        self.environments = resolve_identity_environments(environments)
         self.hindsight_url = hindsight_url.rstrip('/')
         self.hindsight_key = hindsight_key
         self.timeout = timeout
@@ -978,11 +998,7 @@ def make_server(address, gateway):
 
 
 if __name__ == '__main__':
-    environments = json.loads(os.environ['GEA_ENVIRONMENTS'])
-    for name, value in environments.items():
-        parsed = urllib.parse.urlparse(value)
-        if name not in ('production', 'test') or parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise SystemExit('INVALID_GEA_ENVIRONMENTS')
+    environments = resolve_identity_environments(json.loads(os.environ['GEA_ENVIRONMENTS']), allow_loopback=False)
     os.umask(0o077)
     gateway = Gateway(Metadata(os.environ['MEMORY_METADATA_PATH']), environments,
                       os.environ['HINDSIGHT_URL'], os.environ['HINDSIGHT_API_KEY'],

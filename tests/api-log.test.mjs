@@ -19,6 +19,27 @@ const json = (value, init = {}) =>
     headers: { "X-Trace-Id": "trace-1", ...init.headers },
   });
 
+test("audit keeps the original selected environment across admission waits and preserves target origin", async () => {
+  let environment = "production";
+  const center = new GeaApiLogCenter(
+    () => environment,
+    20,
+    async () => json({ success: true }),
+    async () => {
+      environment = "test";
+    },
+  );
+  const response = await center.fetch(
+    "https://production.fixture/gea-boot/sales-plan/plans?secret=hidden",
+  );
+  await response.body.cancel();
+  const [record] = center.snapshot().records;
+  assert.equal(record.environment, "production");
+  assert.equal(record.request.origin, "https://production.fixture");
+  assert.equal(record.request.url, "/sales-plan/plans");
+  assert.equal(JSON.stringify(record).includes("hidden"), false);
+});
+
 test("records known APIs and never exposes credentials", async () => {
   const calls = [];
   const center = new GeaApiLogCenter(
@@ -342,15 +363,10 @@ test("service submission and its detail reads retain only audit metadata and can
   }
   const snapshot = center.snapshot();
   const wire = JSON.stringify(snapshot.records);
-  for (const value of [
-    "private.example",
-    "private-plan",
-    "private-version",
-    "sku-private",
-    "private-key",
-  ])
+  for (const value of ["private-plan", "private-version", "sku-private", "private-key"])
     assert.equal(wire.includes(value), false, value);
   for (const record of snapshot.records) {
+    assert.equal(record.request.origin, "https://private.example");
     assert.equal(record.replayAvailable, false);
     assert.equal(
       snapshot.catalog.find((entry) => entry.id === record.catalogId).replayPolicy,

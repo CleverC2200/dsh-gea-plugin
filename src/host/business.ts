@@ -44,6 +44,7 @@ import { object, text, keys } from "./payload.ts";
 import { modelContextWindow, officialModelContextWindow } from "../shared/model-context.ts";
 export { object } from "./payload.ts";
 import { GatewayRequests } from "./gateway-requests.ts";
+import { DeploymentTransport } from "./deployment-transport.ts";
 import { navigationAgents, navigationDomains } from "./navigation-catalog.ts";
 import type { BusinessNavigationCatalog } from "@cleverc2200/dsh-agent-workbench/client";
 import { avatarUrl } from "./avatar.ts";
@@ -126,6 +127,7 @@ export interface Deployment {
   geaBaseUrl: string;
   environment?: "production" | "test";
   geaEnvironments?: { production: string; test: string };
+  warningSchedulerEnvironments?: Partial<Record<"production" | "test", string>>;
   pageSize: number;
   periodPageSize: number;
   requestTimeoutMs: number;
@@ -734,6 +736,7 @@ export class Business {
   private environment: "production" | "test";
   private readonly environments: Record<string, string>;
   private readonly apiLog: GeaApiLogCenter;
+  private readonly transport: DeploymentTransport;
   private readonly debugRuns = new DebugRunCoordinator();
   private readonly apiLogBatch: ApiLogBatch;
   private readonly gatewayRequests: GatewayRequests;
@@ -890,12 +893,24 @@ export class Business {
     validateServiceAccounts(config.serviceAccounts);
     const resolved = resolveEnvironments(config);
     this.selectedBase = resolved.baseUrl;
-    this.environment = resolved.environment as "production" | "test";
+    this.environment = resolved.environment;
     this.environments = resolved.environments;
+    this.transport = new DeploymentTransport(
+      {
+        ...config,
+        environments: resolved.environments,
+      },
+      () => ({
+        environment: this.environment,
+        base: this.base,
+        signal: this.epoch.signal,
+        identity: this.auth,
+      }),
+    );
     this.apiLog = new GeaApiLogCenter(
       () => this.environment,
       undefined,
-      undefined,
+      this.transport.fetch,
       this.salesReadonly?.beforeRequest,
       (url, headers, caller) => {
         const auth = this.auth;
@@ -1039,6 +1054,7 @@ export class Business {
     this.materialNames.clear();
     this.customerInventoryAccess = undefined;
     this.modelRoutes.clear();
+    this.transport.clearModels();
     this.modelMetadataRetries.clear();
     this.pluginDelegations.clear();
     this.moduleMcpCache.clear();
@@ -1682,7 +1698,7 @@ export class Business {
       )
     )
       throw Error("WARNING_SCHEDULER_OPERATION_INVALID");
-    const response = await this.apiLog.fetch("https://gea.synear.cn:4443/gea-warning/client", {
+    const response = await this.apiLog.fetch(this.transport.warningUrl(), {
       method: "POST",
       redirect: "error",
       signal,
@@ -1757,7 +1773,9 @@ export class Business {
     if (!config || bindings?.length !== 1)
       throw Error("DMS 当前环境或用户映射未配置，请联系管理员");
     keys(payload, ["operation", "order", "warehouseCode"]);
-    const client = new DmsClient(config, bindings[0]);
+    const client = new DmsClient(config, bindings[0], (input, init) =>
+      this.apiLog.metadataFetch(input, init),
+    );
     let result: unknown;
     if (payload.operation === "login") {
       if (payload.order !== undefined || payload.warehouseCode !== undefined)
@@ -2204,6 +2222,7 @@ export class Business {
       const baseUrl = base.href.replace(/\/$/, "");
       this.capture.allowModelBase(baseUrl);
       const secret = text(claimed.secret);
+      this.transport.allowModel(baseUrl, secret);
       let response: Response;
       try {
         response = await this.apiLog.fetch(baseUrl + "/models", {

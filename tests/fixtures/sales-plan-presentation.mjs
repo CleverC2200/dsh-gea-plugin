@@ -28,12 +28,12 @@ const i18n = i18next.createInstance();
 await i18n.init({lng:'zh-CN',resources:{'zh-CN':{translation:{common:zh}}},interpolation:{escapeValue:false}});
 const plans = window.fixturePlans;
 const versionSkus = versionId => window.fixtureVersionSkus[versionId] ?? [sku(versionId)];
-const sku = versionId => ({id:'s'+versionId,skuCode:'9001',versionId,productCategName:'汤圆',materialDescription:'黑芝麻汤圆 500g',qty:'10',baseQty:'10',amt:plans.find(p=>p.versionId===versionId).currentAmount,amtBase:'10',price:'1'});
+const sku = versionId => {const plan=plans.find(p=>p.versionId===versionId),qty=plan.currentQty??'10';return {id:'s'+versionId,skuCode:'9001',versionId,productCategName:'汤圆',materialDescription:'黑芝麻汤圆 500g',qty,baseQty:'10',amt:plan.currentAmount,amtBase:'10',price:String(Number(plan.currentAmount)/Number(qty))};};
 const forbidden = async () => { throw Error('PRESENTATION_WRITE_FORBIDDEN'); };
 const client = {
   periods:{invoke:async()=>({records:[{periodId:'period-1',periodMonth:'2026-09',planTypeCode:'Y',status:'OPEN'}],total:1,size:100,current:1,pages:1})},
   list:{invoke:async(q)=>{const records=q?.status===undefined||q.status===1?plans:[];return {records,total:records.length,size:200,current:1,pages:1}}},
-  detail:{invoke:async({planId})=>{const plan=plans.find(p=>p.planId===planId);return {currentVersion:{...plan,id:plan.versionId,effective:true},skus:[sku(plan.versionId)],versions:[],logs:[]}}},
+  detail:{invoke:async({planId})=>{const plan=plans.find(p=>p.planId===planId);return {currentVersion:{...plan,id:plan.versionId,effective:true},skus:versionSkus(plan.versionId),versions:[],logs:[]}}},
   versions:{invoke:async({planId})=>plans.filter(p=>p.planId===planId).map(p=>({...p,id:p.versionId,effective:true}))},
   versionSkus:{invoke:async({versionId})=>versionSkus(versionId)},
   draft:{invoke:async()=>({draft:null})},logs:{invoke:async()=>[]},
@@ -117,7 +117,7 @@ export async function openSalesPlanPresentation(t, rows, { versionSkus = {} } = 
       areaCode: "area-" + index,
       areaName: "大区" + index,
       status: 1,
-      skuCount: 1,
+      skuCount: versionSkus[row.versionId ?? "version-" + index]?.length ?? 1,
       ...row,
     })),
   );

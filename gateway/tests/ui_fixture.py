@@ -12,7 +12,7 @@ from test_cleanup import CleanupUpstream
 upstream = ThreadingHTTPServer(('127.0.0.1', 0), CleanupUpstream)
 threading.Thread(target=upstream.serve_forever, daemon=True).start()
 base = 'http://127.0.0.1:' + str(upstream.server_port)
-gateway = Gateway(Metadata(sys.argv[1]), {'production': base, 'test': base}, base, 'synthetic-backend-key',
+gateway = Gateway(Metadata(sys.argv[1]), {'production': base, 'test': base.replace('127.0.0.1', 'localhost')}, base, 'synthetic-backend-key',
                   model_url=base, model_key='synthetic-model-key', model_name='fixture')
 server = make_server(('127.0.0.1', 0), gateway)
 threading.Thread(target=server.serve_forever, daemon=True).start()

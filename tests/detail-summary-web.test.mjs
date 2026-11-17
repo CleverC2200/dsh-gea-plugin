@@ -82,7 +82,7 @@ test(
       amountProgress: "37.5",
       shipQty: "15",
       shipAmount: "150",
-      skuCount: 1,
+      skuCount: 2,
     };
     const sku = {
       id: "s",
