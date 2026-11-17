@@ -285,6 +285,7 @@ test("native acceptance bundle input refuses mutable, foreign or incomplete iden
 test("Native artifact validation loads from a clean checkout through the fixture dependency root", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "gea-native-dependencies-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
+  const checkout = join(directory, "gea");
   for (const file of [
     "scripts/windows-complete-local/input.mjs",
     "scripts/windows-complete-local/run-bundle.mjs",
@@ -295,12 +296,12 @@ test("Native artifact validation loads from a clean checkout through the fixture
     "scripts/supported-cores.json",
     "src/shared/plugin-release.mjs",
   ]) {
-    await mkdir(dirname(join(directory, file)), { recursive: true });
-    await cp(file, join(directory, file));
+    await mkdir(dirname(join(checkout, file)), { recursive: true });
+    await cp(file, join(checkout, file));
   }
   const sha = "1".repeat(64);
   const args = [
-    join(directory, "scripts/windows-complete-local/run-bundle.mjs"),
+    join(checkout, "scripts/windows-complete-local/run-bundle.mjs"),
     "--bundle-url",
     `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/verification/${sha}/native.tgz`,
     "--bundle-sha256",
@@ -309,22 +310,29 @@ test("Native artifact validation loads from a clean checkout through the fixture
   ];
   const run = () =>
     spawnSync(process.execPath, args, {
-      cwd: directory,
+      cwd: checkout,
       encoding: "utf8",
       env: { ...process.env, NODE_PATH: "" },
     });
   assert.match(run().stderr, /ERR_MODULE_NOT_FOUND/);
-  const dependencies = join(directory, ".runtime/fixture-dependencies/node_modules");
+  const dependencies = join(checkout, ".runtime/fixture-dependencies/node_modules");
   await mkdir(dependencies, { recursive: true });
-  await symlink(
-    dirname(createRequire(import.meta.url).resolve("semver/package.json")),
-    join(dependencies, "semver"),
-    "junction",
-  );
-  await symlink(dependencies, join(directory, "node_modules"), "junction");
+  for (const name of ["semver", "yaml"])
+    await symlink(
+      dirname(createRequire(import.meta.url).resolve(name + "/package.json")),
+      join(dependencies, name),
+      "junction",
+    );
+  await symlink(dependencies, join(checkout, "node_modules"), "junction");
   const result = run();
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).status, "input-validated");
+  const archivedCoreRequire = createRequire(
+    join(directory, "core/packages/boot/plugin-manager/package.json"),
+  );
+  assert.throws(() => archivedCoreRequire("yaml"), { code: "MODULE_NOT_FOUND" });
+  await symlink(dependencies, join(directory, "node_modules"), "junction");
+  assert.equal(archivedCoreRequire("yaml").parse("driver: ready").driver, "ready");
 });
 
 test("Native artifact rechecks bind an ancestor build to the actual qualification checkout", async (t) => {

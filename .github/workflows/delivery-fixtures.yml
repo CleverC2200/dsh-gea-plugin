@@ -136,6 +136,7 @@ jobs:
           npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 yaml@2.9.0 semver@7.7.4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path gea/node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
+          New-Item -ItemType Junction -Path node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
       - name: Select GNU tar for Native artifact recheck
         if: inputs.native_acceptance_bundle_url != ''
         shell: pwsh

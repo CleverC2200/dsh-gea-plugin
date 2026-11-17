@@ -32,6 +32,7 @@ test("Native artifact rechecks use a fresh runner without installing the target 
   assert.ok(steps.indexOf(dependencies) < steps.indexOf(native));
   assert.match(dependencies.run, /semver@7\.7\.4/);
   assert.match(dependencies.run, /New-Item -ItemType Junction -Path gea\/node_modules/);
+  assert.match(dependencies.run, /New-Item -ItemType Junction -Path node_modules/);
 });
 
 test("Windows installed upgrade qualification requires explicit signed packaging", () => {
