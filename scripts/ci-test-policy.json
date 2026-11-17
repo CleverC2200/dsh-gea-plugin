@@ -67,7 +67,9 @@
     "scripts/windows-complete-local/core-cache.test.mjs",
     "scripts/windows-complete-local/signing.test.mjs",
     "scripts/mac-complete-local/signing.test.mjs",
-    "scripts/desktop-release.test.mjs"
+    "scripts/desktop-release.test.mjs",
+    "scripts/windows-complete-local/r9/runtime.test.mjs",
+    "scripts/windows-complete-local/r9/evidence.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -161,6 +163,12 @@
     },
     "scripts/check-workbench.test.mjs": {
       "dependencies": false
+    },
+    "scripts/windows-complete-local/r9/runtime.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/windows-complete-local/r9/evidence.test.mjs": {
+      "dependencies": true
     }
   },
   "rules": [
@@ -900,6 +908,18 @@
       "repo": "dsh-agent-workbench",
       "pattern": "^src/warning-people-request\\.ts$",
       "tests": ["tests/deployment-transport.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/windows-complete-local/r9(?:\\.mjs|/[^/]+)$",
+      "tests": [
+        "scripts/windows-complete-local/r9/runtime.test.mjs",
+        "scripts/windows-complete-local/r9/evidence.test.mjs"
+      ],
+      "sourceTests": [
+        "scripts/windows-complete-local/r9/runtime.test.mjs",
+        "scripts/windows-complete-local/r9/evidence.test.mjs"
+      ]
     }
   ],
   "testOwners": {
@@ -922,6 +942,7 @@
     "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
     "scripts/run-quality-ci.test.mjs": ["yaml"],
-    "scripts/desktop-gea-upgrade.test.mjs": ["yaml"]
+    "scripts/desktop-gea-upgrade.test.mjs": ["yaml"],
+    "scripts/windows-complete-local/r9/evidence.test.mjs": ["tar"]
   }
 }
