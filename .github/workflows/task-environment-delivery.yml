@@ -1,13 +1,13 @@
-name: Environment isolation delivery task
-run-name: "Environment isolation delivery — ${{ github.sha }}"
+name: Sales confirmed amount delivery task
+run-name: "Sales confirmed amount delivery — ${{ github.sha }}"
 on:
   push:
-    branches: [codex/environment-delivery-runner-20261117]
+    branches: [codex/sales-confirmed-delivery-20261117]
     paths: [task-delivery/**, .github/workflows/task-environment-delivery.yml]
 permissions:
   contents: read
 concurrency:
-  group: environment-isolation-delivery-task
+  group: sales-confirmed-amount-delivery-task
   cancel-in-progress: false
 jobs:
   delivery:
@@ -90,7 +90,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: environment-plugin-delivery-${{ github.run_id }}
+          name: sales-confirmed-plugin-delivery-${{ github.run_id }}
           path: delivery-output/
           if-no-files-found: error
           retention-days: 30

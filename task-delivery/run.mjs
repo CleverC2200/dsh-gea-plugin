@@ -233,7 +233,7 @@ for (const row of manifest.packages) {
     dataCompatibility: { kind: "preserve" },
     notes:
       old?.notes ??
-      "业务接口按当前登录环境隔离；共享记忆保留环境、租户和用户归属；接口日志显示实际请求来源。",
+      "月计划统一按当前确认数量逐SKU乘单价汇总；列表、展开明细、组织、品类及顶部统计保持一致。",
   });
   targets.push({ archive, metadata });
 }
