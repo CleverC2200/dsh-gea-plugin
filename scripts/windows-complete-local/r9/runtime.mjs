@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
 export async function openNativeLog(path) {
@@ -80,6 +83,20 @@ export function trackNativeExit(child) {
   });
 }
 
+export async function requestNativeQuit({ send, disconnect, packagePath }) {
+  try {
+    const reply = await send("Runtime.evaluate", {
+      expression: `(() => { const {app} = process.getBuiltinModule('module').createRequire(${JSON.stringify(packagePath)})('electron'); setImmediate(() => app.quit()); return {quitScheduled:true}; })()`,
+      returnByValue: true,
+    });
+    assert.equal(reply.exceptionDetails, undefined, "R9_QUIT_EVALUATION_FAILED");
+    assert.equal(reply.result?.value?.quitScheduled, true, "R9_QUIT_NOT_SCHEDULED");
+    return reply;
+  } finally {
+    disconnect();
+  }
+}
+
 async function waitForExit(exited, timeoutMs) {
   let timer;
   try {
@@ -136,4 +153,17 @@ export async function stopNativeProcess({ pid, requestQuit, exited, force, timeo
     gracefulExit:
       !forcedTermination && !requestError && exit?.code === 0 && !exit.signal && !exit.error,
   };
+}
+
+export async function fileSha(path) {
+  const digest = createHash("sha256");
+  for await (const bytes of createReadStream(path)) digest.update(bytes);
+  return digest.digest("hex");
+}
+export async function download(url, hash, path) {
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(180000) });
+  assert.equal(response.status, 200);
+  await pipeline(Readable.fromWeb(response.body), createWriteStream(path, { flags: "wx" }));
+  assert.equal(await fileSha(path), hash);
+  return path;
 }

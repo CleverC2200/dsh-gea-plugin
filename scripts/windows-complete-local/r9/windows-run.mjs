@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { parseArgs, promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import {
+  fileSha,
+  download,
   openNativeLog,
   observeStableRuntime,
   trackNativeExit,
   stopNativeProcess,
+  requestNativeQuit,
 } from "./runtime.mjs";
 const execute = promisify(execFile),
   directory = import.meta.dirname;
@@ -67,18 +67,6 @@ const env = {
 for (const key of Object.keys(env))
   if (/TOKEN|SECRET|PASSWORD|ACCESS_KEY|NODE_OPTIONS|ELECTRON_RUN_AS_NODE/i.test(key))
     delete env[key];
-async function fileSha(path) {
-  const digest = createHash("sha256");
-  for await (const bytes of createReadStream(path)) digest.update(bytes);
-  return digest.digest("hex");
-}
-async function download(url, hash, path) {
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(180000) });
-  assert.equal(response.status, 200);
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(path, { flags: "wx" }));
-  assert.equal(await fileSha(path), hash);
-  return path;
-}
 async function command(name, file, args, extra = {}) {
   try {
     const result = await execute(file, args, {
@@ -466,8 +454,10 @@ async function native(version, repaired) {
       pid: child.pid,
       requestQuit: () => {
         assert(socket?.readyState === WebSocket.OPEN, "R9_QUIT_CONNECTION_REQUIRED");
-        return send("Runtime.evaluate", {
-          expression: `process.getBuiltinModule('module').createRequire(${JSON.stringify(join(appRoot, "package.json"))})('electron').app.quit()`,
+        return requestNativeQuit({
+          send,
+          disconnect: () => socket.close(),
+          packagePath: join(appRoot, "package.json"),
         });
       },
       exited: exit,

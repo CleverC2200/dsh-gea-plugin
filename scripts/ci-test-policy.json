@@ -68,7 +68,8 @@
     "scripts/windows-complete-local/signing.test.mjs",
     "scripts/mac-complete-local/signing.test.mjs",
     "scripts/desktop-release.test.mjs",
-    "scripts/windows-complete-local/r9/*.test.mjs"
+    "scripts/windows-complete-local/r9/runtime.test.mjs",
+    "scripts/windows-complete-local/r9/evidence.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",

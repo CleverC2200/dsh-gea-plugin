@@ -1143,6 +1143,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   ];
   for (const file of [
     "tests/required.test.mjs",
+    ...Object.keys(policy.sourceFixtures ?? {}),
     ...(policy.versionTests ?? []),
     ...(policy.companionPeerTests ?? []),
     ...policy.tests.filter((file) => !file.includes("*")),
