@@ -20,6 +20,8 @@ bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativ
 
 已完成构建的安装包可通过 `windows_overwrite_artifact_run` 配合这两个 bundle 输入，在新 Windows runner 重跑 Native 验收。该路径核原任务为主线发行、构建步骤成功，且构建源码是当前验证源码的祖先；继续使用原安装包、原构建回执字节和原固定输入，不重新打包或读取签名私钥。Native 路径跳过会先安装目标版本的普通覆盖测试，公钥证书在临时 runner 的 CurrentUser Root 中准备。
 
+归档输入按已验证原构建源码中的合同校验，包括当时的 Core、包数及输入投影，再核对原回执的输入摘要；不为当前要求补写旧输入。原合同文件或匹配依赖不可用时拒绝，不回退到当前校验。当前构建继续采用当前输入合同。
+
 `windows_online_update=true` 与 `windows_overwrite_artifact_run` 配合使用，不能同时提供 Native bundle。它从所选原构建回执冻结目标版本、安装包名和摘要，保留原签名基线，验证运行中客户端通过正式更新源下载并重启安装。安装前核对原包字节、公司证书及频道中的版本、文件名、大小和摘要；正式频道已前移时拒绝，不自动改用新版本。历史在线升级结果仅对应原固定版本，不代表当前候选已完成设备或业务验收。
 
 ## Windows 首次安装证书与在线更新
