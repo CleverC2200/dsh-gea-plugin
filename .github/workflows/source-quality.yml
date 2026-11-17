@@ -12,6 +12,11 @@ on:
         description: Full 40-character ancestor SHA for source acceptance comparison
         required: true
         type: string
+      sdk_cache:
+        description: Reuse SDK artifacts or prepare them cold for manual acceptance
+        type: choice
+        options: [reuse, cold]
+        default: reuse
 
 env:
   SOURCE_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.comparison_base || '' }}
@@ -329,7 +334,7 @@ jobs:
         id: sdk-paths
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs" --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
-        if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true'
+        if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true' && (github.event_name != 'workflow_dispatch' || inputs.sdk_cache != 'cold')
         id: sdk-cache
         with:
           path: ${{ steps.sdk-paths.outputs.paths }}
@@ -338,7 +343,7 @@ jobs:
         if: steps.affected.outputs.sdk == 'true' && steps.reuse.outputs.hit != 'true'
         run: node "$GITHUB_WORKSPACE/candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.core.outputs.head }}" --source "$GITHUB_WORKSPACE/source/official-core"
       - uses: actions/cache/save@v4
-        if: success() && steps.affected.outputs.sdk == 'true' && steps.sdk-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true'
+        if: success() && steps.affected.outputs.sdk == 'true' && steps.sdk-cache.outputs.cache-hit != 'true' && steps.reuse.outputs.hit != 'true' && (github.event_name != 'workflow_dispatch' || inputs.sdk_cache != 'cold')
         continue-on-error: true
         timeout-minutes: 1
         with:

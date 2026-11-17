@@ -4,6 +4,8 @@
 
 手动运行 `source-quality` workflow 时，`comparison_base` 必须填写本票已登记且当前 ref 可达的完整祖先 SHA。它按该基线到当前候选的差异选择受影响检查，具体基线沿用本票输入；不能将手动运行等同于自动全覆盖。
 
+手动验收的 `sdk_cache` 默认为 `reuse`，实际冷热状态以 SDK 准备回执为准。显式选 `cold` 只跳过 SDK 成品缓存的恢复与保存，保留包下载缓存、原准备流程及源码和产物校验，不删除已有共享缓存。冷热耗时对照使用同一候选和 `comparison_base`，并核对完整文件集合与逐例结果。
+
 `source-quality` worker 在固定 Core 检出和当前源码校验后、依赖策略恢复及 SDK 准备前运行 `source-preparation.mjs`。联合检查会在 checks 阶段运行独立的 final-group 合同，即使该文件不在逐文件测试集合中；前置检查按该执行路径及显式所选消费者核历史 Core 提交、树与准备元数据，不获取新输入、不切换 HEAD。历史准入案例与前置检查共用 `finalGroupHistoricalCore`；只读取当前提交的策略生产者不承担历史输入要求。
 
 最终门禁保留原严格分片聚合，并将结果保存为 `source-check-execution.json`。现有 `source-budget-<attempt>` 产物同时保存该结果及扩展的 `source-budget.json`，GitHub Summary 展示登记池、选择集合、平台暂缓项、已验证文件与用例数量，以及 job 耗时。JSON 保留未直接选中的入口、owner 对应、逐 worker 阶段及慢文件。轻量检查只记录公开入口完成，缺少严格逐例回执时用例数为未知；缺失、异轮或失败回执不能成为已验证覆盖。
