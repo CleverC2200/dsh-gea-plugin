@@ -19,6 +19,30 @@ import {
 import * as execution from "./quality-test-execution.mjs";
 import { spawnSync } from "node:child_process";
 
+test("historical costs cannot concentrate Profile files behind a light predicted wall clock", () => {
+  const profiles = Array.from({ length: 12 }, (_, index) => `tests/profile-${index}.test.mjs`);
+  const scripts = ["scripts/one.test.mjs", "scripts/two.test.mjs"];
+  const files = [...scripts, ...profiles];
+  const plan = createExecutionPlan({
+    selection: { files, runtimeFiles: profiles },
+    platformPlan: { files },
+    binding: {},
+    concurrency: 3,
+    shardCount: 4,
+    timings: {
+      source: { kind: "fixture" },
+      files: files.map((file) => ({ file, durationMs: scripts.includes(file) ? 1000 : 10 })),
+    },
+  });
+  assert.deepEqual(plan.shards.flatMap((shard) => shard.files).sort(), files.toSorted());
+  assert.equal(plan.concurrency, 3);
+  assert.equal(plan.shards.length, 4);
+  assert.ok(
+    plan.shards.every((shard) => shard.runtimeFiles.length <= 3),
+    JSON.stringify(plan.shards),
+  );
+});
+
 test("explicit three- and four-file execution overlaps real Node files while the default remains two", (t) => {
   for (const concurrency of [undefined, 3, 4]) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "gea-node-capacity-")));
