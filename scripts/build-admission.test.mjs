@@ -8,6 +8,7 @@ import {
   readBuildAdmissions,
   withBuildAdmission,
   buildPolicy,
+  readBuildCapacity,
 } from "./build-admission.mjs";
 
 function fixture(t, bytes = 100 * 1024 ** 3) {
@@ -66,6 +67,16 @@ test("capacity refusal occurs before the output or command is created", async (t
   assert.equal(ran, false);
   assert.equal(fs.existsSync(output), false);
   assert.deepEqual(readBuildAdmissions(a), []);
+});
+
+test("capacity inspection uses the admission budget without creating a reservation", (t) => {
+  const { a } = fixture(t, 85 * 1024 ** 3);
+  const capacity = readBuildCapacity({ operation: "sdk", output: a });
+  assert.equal(capacity.availableBytes, 85 * 1024 ** 3);
+  assert.equal(capacity.requiredBytes, 28 * 1024 ** 3);
+  assert.equal(capacity.reserveBytes, buildPolicy.reserveBytes.sdk);
+  assert.deepEqual(readBuildAdmissions(a), []);
+  assert.equal(process.env.DSH_BUILD_ADMISSION, undefined);
 });
 test("another heavy writer is refused while a nested owner reuses its reservation", (t) => {
   const { a, b } = fixture(t);

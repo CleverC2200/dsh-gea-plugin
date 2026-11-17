@@ -4,15 +4,16 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
+import { readSourceWindowInputs } from "../tests/fixtures/source-window-inputs.mjs";
 
 const root = resolve(import.meta.dirname, "..");
-const pnpm = process.env.GEA_PACKAGE_PNPM;
-if (!pnpm) throw Error("GEA_PACKAGE_PNPM_REQUIRED: current official pnpm entry");
 
 test(
   "ordinary GEA artifact locks only runtime dependencies and preserves Host-provided peer contracts",
   { timeout: 120000 },
   async (t) => {
+    const { core } = await readSourceWindowInputs();
+    const pnpm = resolve(core, "apps/desktop/node_modules/pnpm/bin/pnpm.mjs");
     const work = await mkdtemp(join(tmpdir(), "gea-production-package-"));
     t.after(() => rm(work, { recursive: true, force: true }));
     const source = JSON.parse(await readFile(join(root, "package.json"), "utf8"));

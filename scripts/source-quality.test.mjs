@@ -15,6 +15,56 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const cli = fileURLToPath(new URL("./source-quality.mjs", import.meta.url));
+test("manual cold SDK acceptance bypasses only the SDK artifact cache while ordinary runs keep reuse", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/source-quality.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /sdk_cache:\s+description: [^\n]+\s+type: choice\s+options: \[reuse, cold\]\s+default: reuse/,
+  );
+  const steps = workflow.split(/(?=^      - )/m);
+  const restore = steps.find((step) => step.includes("id: sdk-cache"));
+  const save = steps.find(
+    (step) =>
+      step.includes("uses: actions/cache/save@") &&
+      step.includes("steps.sdk-cache.outputs.cache-hit"),
+  );
+  const enabled = (step, event, mode, hit) => {
+    const expression = step
+      .match(/^        if: (.+)$/m)[1]
+      .replace(/\.([a-zA-Z_][\w-]*)/g, (_, key) => `[${JSON.stringify(key)}]`);
+    return Function(
+      "steps",
+      "github",
+      "inputs",
+      "success",
+      `return (${expression})`,
+    )(
+      {
+        affected: { outputs: { sdk: "true" } },
+        reuse: { outputs: { hit: "false" } },
+        "sdk-cache": { outputs: { "cache-hit": hit } },
+      },
+      { event_name: event },
+      { sdk_cache: mode },
+      () => true,
+    );
+  };
+  for (const event of ["pull_request", "push", "workflow_dispatch"])
+    for (const mode of [undefined, "reuse", "cold"])
+      for (const hit of ["true", "false"]) {
+        const reuse = event !== "workflow_dispatch" || mode !== "cold";
+        assert.equal(enabled(restore, event, mode, hit), reuse);
+        assert.equal(enabled(save, event, mode, hit), reuse && hit !== "true");
+      }
+  const prepare = steps.find((step) =>
+    step.includes("name: Prepare or verify SDK through existing cache contract"),
+  );
+  assert.ok(!prepare.includes("inputs.sdk_cache"));
+  assert.match(prepare, /--prepare --reuse-prepared --with-flock/);
+});
 function fixture(t, files, changed, { repoName } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "source-quality-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
