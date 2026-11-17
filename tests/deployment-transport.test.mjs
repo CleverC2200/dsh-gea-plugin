@@ -192,7 +192,7 @@ test("company scheduler remains reachable after public Host schema resolves omit
   const directory = await mkdtemp(resolve(".runtime/warning-host-config-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const result = await build({
-    entryPoints: ["src/host.ts"],
+    stdin: { contents: "export { Config } from './src/host.ts';", resolveDir: process.cwd() },
     bundle: true,
     write: false,
     platform: "node",
