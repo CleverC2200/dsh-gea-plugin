@@ -48,21 +48,25 @@ try {
  $bitmap=[Drawing.Bitmap]::new($box.right-$box.left,$box.bottom-$box.top);$graphics=[Drawing.Graphics]::FromImage($bitmap);$dc=$graphics.GetHdc()
  try{$null=[GeaCapture]::PrintWindow($process.MainWindowHandle,$dc,2)}finally{$graphics.ReleaseHdc($dc)}
  $bitmap.Save((Join-Path $OutputDirectory 'default-window.png'));$graphics.Dispose();$bitmap.Dispose()
+ Copy-Item -LiteralPath $archive[0].FullName -Destination (Join-Path $OutputDirectory 'acceptance-report.zip')
  $copy=Find '复制摘要';Assert ($null -ne $copy) 'COPY_BUTTON_MISSING'
  Click $copy
  Start-Sleep -Milliseconds 300
  $summary=[Windows.Forms.Clipboard]::GetText();Assert ($summary.Contains($archive[0].Name)) 'SUMMARY_NOT_COPIED'
- $folder=Find '打开文件夹';Assert ($null -ne $folder) 'FOLDER_BUTTON_MISSING'
- Click $folder
- $shell=New-Object -ComObject Shell.Application
- $folderVerified=$false;$clock=[Diagnostics.Stopwatch]::StartNew()
- while(!$folderVerified -and $clock.Elapsed.TotalSeconds -lt 20){foreach($window in @($shell.Windows())){try{foreach($item in @($window.Document.SelectedItems())){if($item.Path -eq $archive[0].FullName){$folderVerified=$true}}}catch{}};if(!$folderVerified){Start-Sleep -Milliseconds 200}}
- Assert $folderVerified 'ARCHIVE_NOT_SELECTED_IN_EXPLORER'
  $render=Join-Path $OutputDirectory 'RenderValidation.exe'
  $compiler=Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
  & $compiler /nologo /target:exe /main:RenderValidation /codepage:65001 /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:$render (Join-Path $PSScriptRoot 'Render.cs')
  Assert ($LASTEXITCODE -eq 0) 'RENDER_HELPER_COMPILE_FAILED'
  foreach($mode in @('cancel','close')){& $render $executable $OutputDirectory $mode;Assert ($LASTEXITCODE -eq 0) ('UI_'+$mode+'_FAILED')}
+ $folder=Find '打开文件夹';Assert ($null -ne $folder) 'FOLDER_BUTTON_MISSING'
+ Click $folder
+ $shell=New-Object -ComObject Shell.Application
+ $folderVerified=$false;$clock=[Diagnostics.Stopwatch]::StartNew()
+ while(!$folderVerified -and $clock.Elapsed.TotalSeconds -lt 20){foreach($window in @($shell.Windows())){try{foreach($item in @($window.Document.SelectedItems())){if($item.Path -eq $archive[0].FullName){$folderVerified=$true}}}catch{}};if(!$folderVerified){Start-Sleep -Milliseconds 200}}
+ $explorer=@(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'"|Select-Object ProcessId,ParentProcessId,SessionId,CommandLine)
+ $windows=@();foreach($window in @($shell.Windows())){try{$windows+=@{name=$window.Name;url=$window.LocationURL;hwnd=$window.HWND;selected=@($window.Document.SelectedItems()|ForEach-Object{$_.Path})}}catch{$windows+=@{error=$_.Exception.Message}}}
+ [ordered]@{expected=$archive[0].FullName;verified=$folderVerified;explorer=$explorer;windows=$windows;session=[Diagnostics.Process]::GetCurrentProcess().SessionId}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $OutputDirectory 'explorer-result.json') -Encoding UTF8
+ Assert $folderVerified 'ARCHIVE_NOT_SELECTED_IN_EXPLORER'
  $result=[ordered]@{passed=$true;elevated=$false;defaultLaunchWithoutArguments=$true;nativeWindow=$true;zipReadable=$true;groups=$manifest.groups.Count;partial=$manifest.partial;privacyCanariesAbsent=$true;clipboardSummary=$true;explorerSelectedArchive=$true;cancelWindow=$true;closeWaitsForCancellation=$true;embeddedResources=$assembly.GetManifestResourceNames().Length}
  $result|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $OutputDirectory 'ordinary-ui-result.json') -Encoding UTF8
  Copy-Item -LiteralPath $archive[0].FullName -Destination (Join-Path $OutputDirectory 'acceptance-report.zip')
