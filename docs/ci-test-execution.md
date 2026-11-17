@@ -22,6 +22,8 @@
 
 当前 `quality-test-timings.json` 的来源、提交、环境和文件集合以表内 `source`、`inputs` 和 `files` 为准。更新来自同一完整通过运行的回执；原始 CLI 导出保留，提交的长期参考表沿用 `historical-reference-only`、`not-acceptance` 约定。来源标签不改变测量值或使参考成为验收证据，不混轮回填。此前 [run 39095827120](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/39095827120) 的 176 文件样本及未达旧性能目标的结果仍保留在历史提交和原 artifact，不再指代当前表。
 
+本次参考取自 [run 44022899771](https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/44022899771) 的同轮 40 个分片完整回执，保留该轮源码摘要。刷新参考不代表当前候选已完成 hosted 验收；当前输入变化后仍按下述规则撤销可信预测。
+
 [`quality-test-timings.mjs`](../scripts/quality-test-timings.mjs) 在准备前按实际 checkout 过滤样本。schema 2 将测试文件摘要与全局 `inputs` 摘要共同用于可信预测；全局输入任一改变或缺失，全部可信预测失效。Node、平台、Core、文件并发变化也会撤销预测和历史排序提示。没有字节绑定的旧格式视为未知。失效原因进入计划来源，可信预计耗时继续为 `null`。
 
 每条记录可显式声明 `fixtures` 依赖。当前历史表和回执导出的逐文件 `fixtures` 均为空数组，不能据此声称测试没有共享依赖，或已经具备细粒度依赖保证。全局输入漂移后，测试正文和已声明 fixture 未变的记录仍可作为 `orderingFiles`，仅提示跨 job 分片安排，不成为当前耗时预测。测试正文、显式 fixture 改变或删除时撤销该提示；新文件不继承旧文件时长。刷新时须从同一冻结 run 的完整回执取样，并从该 run 的源码 HEAD 取摘要。

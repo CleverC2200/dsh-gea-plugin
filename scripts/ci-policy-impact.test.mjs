@@ -178,6 +178,7 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
     ],
     [2, "scripts/run-quality-checks.mjs", ["scripts/run-quality-checks.test.mjs"]],
+    [2, "scripts/hosted-sdk-capacity.mjs", ["scripts/hosted-sdk-capacity.test.mjs"]],
     [2, "scripts/quality.mjs", ["scripts/quality.test.mjs", "scripts/quality-policy.test.mjs"]],
     [
       2,

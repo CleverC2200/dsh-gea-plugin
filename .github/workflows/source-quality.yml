@@ -297,12 +297,9 @@ jobs:
             npm install --global npm@11.11.0
           fi
           corepack enable
-      - name: Reclaim unused hosted SDKs before native preparation
+      - name: Admit SDK capacity and reclaim hosted tools only when needed
         if: (steps.affected.outputs.core == 'true' || steps.affected.outputs.sdk == 'true') && steps.reuse.outputs.hit != 'true'
-        run: |
-          df -h "$GITHUB_WORKSPACE"
-          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /usr/local/.ghcup /opt/ghc
-          df -h "$GITHUB_WORKSPACE"
+        run: node scripts/hosted-sdk-capacity.mjs --output "$GITHUB_WORKSPACE/official-latest-standard" --report "$GITHUB_WORKSPACE/hosted-sdk-capacity.json"
       - name: Locate existing package download cache
         if: steps.affected.outputs.core == 'true' && steps.reuse.outputs.hit != 'true'
         id: cache-path
@@ -410,6 +407,7 @@ jobs:
             source-checks-scope.json
             source-preparation.json
             dependency-policy-receipt.json
+            hosted-sdk-capacity.json
           if-no-files-found: ignore
       - name: Keep source selection and executed check evidence
         if: always()
@@ -437,6 +435,7 @@ jobs:
             quality-test-results/
             profile-lifecycle.ndjson
             dependency-policy-receipt.json
+            hosted-sdk-capacity.json
           if-no-files-found: ignore
 
   dependency-review:
