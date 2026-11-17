@@ -6,6 +6,7 @@ import { PluginStore, writePluginStoreJson } from "./plugin-store.mjs";
 import { materializeGraph } from "./core-layer.mjs";
 import { relocateVirtualStore } from "./copy-graph.mjs";
 import { companyPackageNames } from "./company-archives.mjs";
+import { companyUpdatePath, readCompanyUpdate } from "./company-update.mjs";
 
 const graphFields = [
   "dependencies",
@@ -213,35 +214,42 @@ export class CompanyInstallation {
   }
   async failOperation(id, diagnostic) {
     const runtime = join(this.profile, "gea/plugin-updates");
-    const pointer = await optional(join(runtime, "latest.json"));
-    if (!pointer) return;
-    const latest = JSON.parse(pointer.toString("utf8"));
-    if (latest.id !== id) return;
-    const path = join(runtime, "operations", id, "receipt.json");
-    let original, receipt;
     try {
-      original = await readFile(path);
-      receipt = JSON.parse(original.toString("utf8"));
+      const company = await readCompanyUpdate(this.profile);
+      if (company && id === "desktop-" + company.id) {
+        const path = companyUpdatePath(this.profile);
+        await writeFile(path + ".before-boot-failure-" + randomUUID(), await readFile(path), {
+          flag: "wx",
+          mode: 0o600,
+        });
+        await writePluginStoreJson(path, { ...company, phase: "failed", diagnostic });
+      }
+      const pointer = await optional(join(runtime, "latest.json"));
+      if (!pointer) return;
+      const latest = JSON.parse(pointer.toString("utf8"));
+      if (latest.id !== id) return;
+      const path = join(runtime, "operations", id, "receipt.json");
+      const original = await readFile(path);
+      const receipt = JSON.parse(original.toString("utf8"));
+      if (receipt.installationId !== id) return;
+      await writeFile(
+        join(runtime, "operations", id, "receipt.before-boot-failure-" + randomUUID() + ".json"),
+        original,
+        { flag: "wx", mode: 0o600 },
+      );
+      await writePluginStoreJson(path, {
+        ...receipt,
+        stage: "failed",
+        diagnostic,
+        completionProof: null,
+        updatedAt: new Date().toISOString(),
+      });
     } catch (error) {
       await writePluginStoreJson(
         join(this.directory, "operation-failure-" + randomUUID() + ".json"),
         { id, diagnostic, receiptDiagnostic: error.code ?? "INVALID_RECEIPT" },
       );
-      return;
     }
-    if (receipt.installationId !== id) return;
-    await writeFile(
-      join(runtime, "operations", id, "receipt.before-boot-failure-" + randomUUID() + ".json"),
-      original,
-      { flag: "wx", mode: 0o600 },
-    );
-    await writePluginStoreJson(path, {
-      ...receipt,
-      stage: "failed",
-      diagnostic,
-      completionProof: null,
-      updatedAt: new Date().toISOString(),
-    });
   }
   async ownsModules(path) {
     const selected = await this.store.selected();

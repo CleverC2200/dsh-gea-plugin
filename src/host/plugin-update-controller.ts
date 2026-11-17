@@ -639,6 +639,16 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         return snapshot();
       }
       if (generation !== checking || closed) return snapshot();
+      if (!(await openCompanyInstallation(options.profile.dir))) {
+        for (const release of releases)
+          row(release.name, {
+            candidateVersion: release.version,
+            state: "blocked",
+            diagnostic: "UPDATE_DESKTOP_INSTALLATION_REQUIRED",
+            problem: { kind: "policy", code: "desktop-installation" },
+          });
+        return snapshot();
+      }
       for (const rawRelease of releases) {
         const release = parsePluginRelease(rawRelease);
         row(release.name, { candidateVersion: release.version });

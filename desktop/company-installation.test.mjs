@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CompanyInstallation, openCompanyInstallation } from "./company-installation.mjs";
 import { companyPackageNames } from "./company-archives.mjs";
+import { prepareCompanyBoot } from "./company-bootstrap.mjs";
+import { companyUpdatePath, readCompanyUpdate } from "./company-update.mjs";
 
 const core = "a".repeat(40);
 async function fixture(t) {
@@ -160,3 +162,116 @@ test("activation preserves a dependency change made after preparation", async (t
   );
   await f.preserved();
 });
+
+test("boot rollback also fails a combined update receipt and preserves its original bytes", async (t) => {
+  const f = await fixture(t);
+  const id = "12345678-1234-1234-1234-123456789abc";
+  const expected = companyPackageNames.map((name, index) => ({
+    name,
+    version: ["0.1.2", "0.6.3-company.2", "0.0.2"][index],
+  }));
+  const receipt = {
+    schema: 1,
+    id,
+    phase: "verifying",
+    desktopVersion: "0.2.0-rc.2.20261117.1",
+    processIdentity: "previous-host",
+    targets: expected.map((row) => ({
+      ...row,
+      sha256: "a".repeat(64),
+      supportedCores: [{ head: core, version: "0.2.0-rc.2" }],
+    })),
+    expected,
+  };
+  await mkdir(join(f.profile, "gea/plugin-updates"), { recursive: true });
+  const bytes = JSON.stringify(receipt);
+  await writeFile(companyUpdatePath(f.profile), bytes);
+  await f.installation.prepare("desktop-" + id, f.update);
+  await f.installation.beginBoot();
+  assert.equal((await f.installation.rollback("GEA_TRIAL_STARTUP_TIMEOUT")).changed, true);
+  assert.equal((await readCompanyUpdate(f.profile)).phase, "failed");
+  const backup = (await readdir(join(f.profile, "gea/plugin-updates"))).find((file) =>
+    file.startsWith("company-update.json.before-boot-failure-"),
+  );
+  assert.equal(await readFile(join(f.profile, "gea/plugin-updates", backup), "utf8"), bytes);
+  assert.equal((await f.installation.beginBoot()).id, "baseline");
+  await f.preserved();
+});
+
+for (const failure of [false, true])
+  test(`the shipped bootstrap retains the previous graph across bundled preparation and trial failure (${failure})`, async (t) => {
+    const home = await mkdtemp(join(tmpdir(), "gea bootstrap installation "));
+    t.after(() => rm(home, { recursive: true, force: true }));
+    const profile = join(home, "profiles/desktop");
+    const oldVersions = ["0.1.1", "0.6.3-company.1", "0.0.1"];
+    const versions = ["0.1.2", "0.6.3-company.2", "0.0.2"];
+    const packages = companyPackageNames.map((name, index) => ({
+      name,
+      version: versions[index],
+      file: `company-${index}.tgz`,
+    }));
+    await mkdir(profile, { recursive: true });
+    await writeFile(join(home, "draft.json"), "keep draft");
+    const manifest = {
+      dependencies: Object.fromEntries(
+        companyPackageNames.map((name, index) => [name, oldVersions[index]]),
+      ),
+      dsh: { profile: { bundles: companyPackageNames } },
+      userSetting: "keep",
+    };
+    await writeFile(join(profile, "package.json"), JSON.stringify(manifest));
+    for (const [index, name] of companyPackageNames.entries()) {
+      await mkdir(join(profile, "node_modules", name), { recursive: true });
+      await writeFile(
+        join(profile, "node_modules", name, "package.json"),
+        JSON.stringify({ name, version: oldVersions[index] }),
+      );
+    }
+    let calls = 0;
+    const options = {
+      home,
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      manifest: { packages, core: { head: core } },
+      install: async ({ profile: candidate }) => {
+        calls++;
+        assert.notEqual(candidate, profile);
+        const current = JSON.parse(await readFile(join(candidate, "package.json")));
+        for (const row of packages) {
+          current.dependencies[row.name] = row.version;
+          await writeFile(
+            join(candidate, "node_modules", row.name, "package.json"),
+            JSON.stringify({ name: row.name, version: row.version }),
+          );
+        }
+        await writeFile(join(candidate, "package.json"), JSON.stringify(current));
+        if (failure) throw Error("PREPARATION_INTERRUPTED");
+      },
+    };
+    const boot = await prepareCompanyBoot(options);
+    const installation = new CompanyInstallation(profile, core);
+    assert.equal(boot.trial, !failure);
+    assert.equal(
+      JSON.parse(
+        await readFile(
+          join(installation.store.baseline, "node_modules", companyPackageNames[2], "package.json"),
+        ),
+      ).version,
+      oldVersions[2],
+    );
+    const next = await prepareCompanyBoot(options);
+    assert.equal(next.graphId, "baseline");
+    assert.equal(calls, 1);
+    assert.equal(
+      JSON.parse(
+        await readFile(join(profile, "node_modules", companyPackageNames[2], "package.json")),
+      ).version,
+      oldVersions[2],
+    );
+    assert.equal(JSON.parse(await readFile(join(profile, "package.json"))).userSetting, "keep");
+    assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");
+    await assert.rejects(readFile(join(installation.store.baseline, "draft.json")), {
+      code: "ENOENT",
+    });
+  });

@@ -76,7 +76,6 @@ export function officialGeaBranding(config, { companySeed, brandedMain } = {}) {
                 "copy-graph.mjs",
                 "core-layer.mjs",
                 "core-file-mode.mjs",
-                "core-asar-reader.cjs",
                 "physical-fs.mjs",
               ],
             },

@@ -16,6 +16,7 @@ export class CompanyInstallation {
   ): Promise<unknown>;
   beginBoot(): Promise<{ id: string; path: string }>;
   confirmRuntime(proofs: RuntimePackageProof[]): Promise<boolean>;
+  failOperation(id: string, diagnostic: string): Promise<void>;
   ownsModules(path: string): Promise<boolean>;
   rollback(reason: string): Promise<{ changed: boolean; fallback: string }>;
 }

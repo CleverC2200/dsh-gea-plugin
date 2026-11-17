@@ -877,6 +877,12 @@ export async function prepareCompanyBoot({
     }
   });
   const company = await readCompanyUpdate(profile);
+  const selection = await installation.store.status();
+  if (
+    company?.phase === "verifying" &&
+    ![selection.active, selection.pending].includes("desktop-" + company.id)
+  )
+    await installation.failOperation("desktop-" + company.id, "PREVIOUS_PREPARATION_INTERRUPTED");
   if (company?.phase === "prepared" && company.desktopVersion === process.env.GEA_DESKTOP_VERSION) {
     try {
       await installation.prepare("desktop-" + company.id, async (directory) => {

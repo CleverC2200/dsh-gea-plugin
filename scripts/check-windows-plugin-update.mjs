@@ -89,25 +89,20 @@ if (companyDesktop) {
   const config = officialGeaBranding({ files: [], extraResources: [] }, { companySeed: "fixture" });
   const companyFiles = config.files.find((file) => typeof file === "object" && file.to === ".");
   for (const name of companyFiles.filter) {
-    if (name === "core-asar-reader.cjs") continue;
     await cp(resolve("desktop", name), join(runtime, name));
   }
-  for (const name of ["ci-core-policy.mjs", "ci-core-policy.json", "supported-cores.json"])
-    await cp(resolve("scripts", name), join(app, "resources/scripts", name));
   await rename(join(app, "resources/app.asar"), join(app, "resources/app.original.asar"));
   await createPackageWithOptions(runtime, join(app, "resources/app.asar"), {
     unpack: "**/*.{node,exe,dll}",
   });
   const binding = Object.fromEntries(
     await Promise.all(
-      companyFiles.filter
-        .filter((name) => name !== "core-asar-reader.cjs")
-        .map(async (name) => [
-          name,
-          createHash("sha256")
-            .update(await readFile(join(runtime, name)))
-            .digest("hex"),
-        ]),
+      companyFiles.filter.map(async (name) => [
+        name,
+        createHash("sha256")
+          .update(await readFile(join(runtime, name)))
+          .digest("hex"),
+      ]),
     ),
   );
   await writeFile(

@@ -1646,3 +1646,23 @@ test("a prepared desktop update wins the profile lock over a plugin install stil
     await Promise.all([settled, slow.dispose(), preparing.dispose()]);
   }
 });
+
+test("a client without managed startup cannot offer an in-place company update", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { managed: false });
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  assert(
+    controller
+      .snapshot()
+      .items.every(
+        (item) =>
+          item.state === "blocked" &&
+          item.diagnostic === "UPDATE_DESKTOP_INSTALLATION_REQUIRED" &&
+          !item.planId,
+      ),
+  );
+  assert.equal(controller.snapshot().operation, null);
+});
