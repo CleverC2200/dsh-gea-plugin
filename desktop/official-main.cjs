@@ -23,6 +23,7 @@ else {
     resources: process.resourcesPath,
     loadOfficial: () => require("./lib/main.js"),
   }).catch((error) => {
+    console.error("GEA_COMPANY_STARTUP_FAILED", error.stack);
     void app
       .whenReady()
       .then(() => dialog.showErrorBox("GEA 启动恢复失败", String(error.message).slice(-2000)));

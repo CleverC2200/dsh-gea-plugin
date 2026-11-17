@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { CompanyInstallation } from "./company-installation.mjs";
 
@@ -13,78 +13,52 @@ export async function startCompanyDesktop({
 }) {
   const bootstrap =
     runBootstrap ??
-    ((recover) =>
-      new Promise((resolve, reject) => {
-        const child = spawn(
-          process.execPath,
-          [
-            "--expose-internals",
-            join(root, "company-bootstrap.mjs"),
-            root,
-            join(resources, "runtime"),
-            join(resources, "company-seed"),
-            join(app.getPath("appData"), "dsh-gea-desktop"),
-            ...(recover ? ["--recover-installation"] : []),
-          ],
-          {
-            env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-            windowsHide: true,
-            stdio: ["ignore", "pipe", "pipe"],
-          },
+    ((recover) => {
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--expose-internals",
+          join(root, "company-bootstrap.mjs"),
+          root,
+          join(resources, "runtime"),
+          join(resources, "company-seed"),
+          ...(recover ? ["--recover-installation"] : []),
+        ],
+        {
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+          windowsHide: true,
+          stdio: ["ignore", "pipe", "pipe"],
+          encoding: "utf8",
+          maxBuffer: 256_000,
+          timeout: recover ? 20_000 : 150_000,
+        },
+      );
+      if (result.error || result.status !== 0)
+        throw Error(
+          result.error?.code === "ETIMEDOUT"
+            ? "GEA_BOOTSTRAP_TIMEOUT"
+            : result.stderr?.slice(-2000) || "GEA_BOOTSTRAP_FAILED",
         );
-        let output = "",
-          error = "",
-          timedOut = false;
-        child.stdout.on("data", (chunk) => {
-          output = (output + chunk.toString()).slice(-64000);
-        });
-        child.stderr.on("data", (chunk) => {
-          error = (error + chunk.toString()).slice(-64000);
-        });
-        const timer = setTimeout(
-          () => {
-            timedOut = true;
-            child.kill();
-          },
-          recover ? 20_000 : 150_000,
-        );
-        child.once("error", (failure) => {
-          clearTimeout(timer);
-          reject(failure);
-        });
-        child.once("exit", (code) => {
-          clearTimeout(timer);
-          if (code !== 0 || timedOut)
-            return reject(
-              Error(
-                timedOut ? "GEA_BOOTSTRAP_TIMEOUT" : error.slice(-2000) || "GEA_BOOTSTRAP_FAILED",
-              ),
-            );
-          try {
-            const line = output
-              .split(/\r?\n/)
-              .findLast((value) => value.startsWith("GEA_INSTALLATION_BOOT "));
-            const boot = JSON.parse(line?.slice("GEA_INSTALLATION_BOOT ".length) ?? "null");
-            if (
-              boot?.schema !== 1 ||
-              typeof boot.profile !== "string" ||
-              typeof boot.coreHead !== "string" ||
-              typeof boot.graphId !== "string" ||
-              typeof boot.trial !== "boolean"
-            )
-              throw Error("GEA_BOOTSTRAP_RECEIPT_INVALID");
-            resolve(boot);
-          } catch (failure) {
-            reject(failure);
-          }
-        });
-      }));
+      const line = result.stdout
+        .split(/\r?\n/)
+        .findLast((value) => value.startsWith("GEA_INSTALLATION_BOOT "));
+      const boot = JSON.parse(line?.slice("GEA_INSTALLATION_BOOT ".length) ?? "null");
+      if (
+        boot?.schema !== 1 ||
+        typeof boot.profile !== "string" ||
+        typeof boot.coreHead !== "string" ||
+        typeof boot.graphId !== "string" ||
+        typeof boot.trial !== "boolean"
+      )
+        throw Error("GEA_BOOTSTRAP_RECEIPT_INVALID");
+      return boot;
+    });
   let boot;
   try {
-    boot = await bootstrap(false);
+    boot = bootstrap(false);
   } catch (error) {
     try {
-      boot = await bootstrap(true);
+      boot = bootstrap(true);
     } catch {
       await app.whenReady();
       const result = await dialog.showMessageBox({

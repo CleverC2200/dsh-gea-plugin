@@ -180,20 +180,42 @@ if (process.argv[2] === "prepare-worker") {
         );
         try {
           const page = await until(async () => {
-            const page = browser
+            const pages = browser
               .contexts()
               .flatMap((context) => context.pages())
-              .find((page) => !page.url().startsWith("devtools:"));
-            return (
-              page &&
-              (await page
-                .locator("body")
-                .innerText()
-                .then((text) => text.includes("GEA") && !text.includes("安装或升级未完成") && page))
-            );
+              .filter(
+                (page) => !page.url().startsWith("devtools:") && page.url() !== "about:blank",
+              );
+            for (const page of pages) {
+              const text = await page.locator("body").innerText({ timeout: 1000 });
+              if (text.includes("GEA") && !text.includes("安装或升级未完成")) return page;
+            }
+            return false;
           });
           await page.screenshot({ path: join(evidence, name + ".png") });
           return { url: page.url(), title: await page.title() };
+        } catch (error) {
+          await writeFile(
+            join(evidence, name + "-windows.json"),
+            JSON.stringify(
+              await Promise.all(
+                browser
+                  .contexts()
+                  .flatMap((context) => context.pages())
+                  .map(async (page) => ({
+                    url: page.url(),
+                    title: await page.title().catch(() => ""),
+                    text: await page
+                      .locator("body")
+                      .innerText({ timeout: 1000 })
+                      .catch(() => ""),
+                  })),
+              ),
+              null,
+              2,
+            ),
+          );
+          throw error;
         } finally {
           await browser.close();
         }

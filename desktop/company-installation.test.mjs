@@ -27,7 +27,18 @@ async function fixture(t) {
     await mkdir(join(profile, "node_modules", name), { recursive: true });
     await writeFile(
       join(profile, "node_modules", name, "package.json"),
-      JSON.stringify({ name, version: "1.0.0" }),
+      JSON.stringify({
+        name,
+        version: "1.0.0",
+        exports: { ".": "./host.mjs", "./client": "./client.mjs" },
+      }),
+    );
+  }
+  for (const name of companyPackageNames) {
+    await writeFile(join(profile, "node_modules", name, "host.mjs"), "export function apply() {}");
+    await writeFile(
+      join(profile, "node_modules", name, "client.mjs"),
+      "export function apply() {}",
     );
   }
   const installation = new CompanyInstallation(profile, core);
@@ -65,7 +76,11 @@ async function fixture(t) {
       next.dependencies[name] = "2.0.0";
       await writeFile(
         join(stage, "node_modules", name, "package.json"),
-        JSON.stringify({ name, version: "2.0.0" }),
+        JSON.stringify({
+          name,
+          version: "2.0.0",
+          exports: { ".": "./host.mjs", "./client": "./client.mjs" },
+        }),
       );
     }
     await writeFile(join(stage, "package.json"), JSON.stringify(next));
@@ -198,7 +213,7 @@ test("boot rollback also fails a combined update receipt and preserves its origi
   await f.preserved();
 });
 
-for (const failure of [false, true])
+for (const failure of [false, true, "partial"])
   test(`the shipped bootstrap retains the previous graph across bundled preparation and trial failure (${failure})`, async (t) => {
     const home = await mkdtemp(join(tmpdir(), "gea bootstrap installation "));
     t.after(() => rm(home, { recursive: true, force: true }));
@@ -224,7 +239,21 @@ for (const failure of [false, true])
       await mkdir(join(profile, "node_modules", name), { recursive: true });
       await writeFile(
         join(profile, "node_modules", name, "package.json"),
-        JSON.stringify({ name, version: oldVersions[index] }),
+        JSON.stringify({
+          name,
+          version: oldVersions[index],
+          exports: { ".": "./host.mjs", "./client": "./client.mjs" },
+        }),
+      );
+    }
+    for (const name of companyPackageNames) {
+      await writeFile(
+        join(profile, "node_modules", name, "host.mjs"),
+        "export function apply() {}",
+      );
+      await writeFile(
+        join(profile, "node_modules", name, "client.mjs"),
+        "export function apply() {}",
       );
     }
     let calls = 0;
@@ -241,14 +270,24 @@ for (const failure of [false, true])
         for (const row of packages) {
           current.dependencies[row.name] = row.version;
           await writeFile(
+            join(candidate, "node_modules", row.name, "host.mjs"),
+            "export function apply() {}",
+          );
+          await writeFile(
             join(candidate, "node_modules", row.name, "package.json"),
-            JSON.stringify({ name: row.name, version: row.version }),
+            JSON.stringify({
+              name: row.name,
+              version: row.version,
+              exports: { ".": "./host.mjs", "./client": "./client.mjs" },
+            }),
           );
         }
         await writeFile(join(candidate, "package.json"), JSON.stringify(current));
-        if (failure) throw Error("PREPARATION_INTERRUPTED");
+        if (failure === true) throw Error("PREPARATION_INTERRUPTED");
       },
     };
+    if (failure === "partial")
+      await rm(join(profile, "node_modules", companyPackageNames[2], "host.mjs"));
     const boot = await prepareCompanyBoot(options);
     const installation = new CompanyInstallation(profile, core);
     assert.equal(boot.trial, !failure);
@@ -258,7 +297,7 @@ for (const failure of [false, true])
           join(installation.store.baseline, "node_modules", companyPackageNames[2], "package.json"),
         ),
       ).version,
-      oldVersions[2],
+      failure === "partial" ? versions[2] : oldVersions[2],
     );
     const next = await prepareCompanyBoot(options);
     assert.equal(next.graphId, "baseline");
@@ -267,7 +306,7 @@ for (const failure of [false, true])
       JSON.parse(
         await readFile(join(profile, "node_modules", companyPackageNames[2], "package.json")),
       ).version,
-      oldVersions[2],
+      failure === "partial" ? versions[2] : oldVersions[2],
     );
     assert.equal(JSON.parse(await readFile(join(profile, "package.json"))).userSetting, "keep");
     assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile, rename, lstat, realpath, symlink, rm } from
 import { join, relative, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { createRequire } from "node:module";
 import { PluginStore, writePluginStoreJson } from "./plugin-store.mjs";
 import { materializeGraph } from "./core-layer.mjs";
 import { relocateVirtualStore } from "./copy-graph.mjs";
@@ -69,10 +70,23 @@ export class CompanyInstallation {
   }
   async validate(directory) {
     const manifest = await json(join(directory, "package.json"));
+    const load = createRequire(join(directory, "package.json"));
     for (const name of companyPackageNames) {
       const pkg = await json(join(directory, "node_modules", name, "package.json"));
       if (!manifest.dependencies?.[name] || pkg.name !== name || typeof pkg.version !== "string")
         throw Error("GEA_INSTALLATION_INCOMPLETE");
+      for (const entry of [name, name + "/client"]) {
+        let resolved;
+        try {
+          resolved = await realpath(load.resolve(entry));
+        } catch (error) {
+          if (["MODULE_NOT_FOUND", "ERR_PACKAGE_PATH_NOT_EXPORTED", "ENOENT"].includes(error.code))
+            throw Error("GEA_INSTALLATION_INCOMPLETE");
+          throw error;
+        }
+        if (!inside(await realpath(join(directory, "node_modules")), resolved))
+          throw Error("GEA_INSTALLATION_INCOMPLETE");
+      }
     }
   }
   async prepare(id, install, signal) {

@@ -23,7 +23,18 @@ async function trial(t) {
     await mkdir(join(profile, "node_modules", name), { recursive: true });
     await writeFile(
       join(profile, "node_modules", name, "package.json"),
-      JSON.stringify({ name, version: "1.0.0" }),
+      JSON.stringify({
+        name,
+        version: "1.0.0",
+        exports: { ".": "./host.mjs", "./client": "./client.mjs" },
+      }),
+    );
+  }
+  for (const name of companyPackageNames) {
+    await writeFile(join(profile, "node_modules", name, "host.mjs"), "export function apply() {}");
+    await writeFile(
+      join(profile, "node_modules", name, "client.mjs"),
+      "export function apply() {}",
     );
   }
   const installation = new CompanyInstallation(profile, coreHead);
@@ -34,7 +45,11 @@ async function trial(t) {
     for (const name of companyPackageNames)
       await writeFile(
         join(stage, "node_modules", name, "package.json"),
-        JSON.stringify({ name, version: "2.0.0" }),
+        JSON.stringify({
+          name,
+          version: "2.0.0",
+          exports: { ".": "./host.mjs", "./client": "./client.mjs" },
+        }),
       );
   });
   await installation.beginBoot();
@@ -58,7 +73,7 @@ async function trial(t) {
     root: "unused",
     resources: "unused",
     loadOfficial() {},
-    runBootstrap: async () => ({ schema: 1, profile, coreHead, graphId: "candidate", trial: true }),
+    runBootstrap: () => ({ schema: 1, profile, coreHead, graphId: "candidate", trial: true }),
     trialTimeoutMs: 500,
   };
   return { profile, installation, app, options };
@@ -97,13 +112,13 @@ test("a confirmed Host and client prevent rollback, while a missing startup conf
 test("bootstrap failure starts a verified graph through the recovery entry without rerunning installation", async (t) => {
   const f = await trial(t);
   const calls = [];
+  await f.installation.rollback("BOOTSTRAP_FAILED");
+  await f.installation.beginBoot();
   await startCompanyDesktop({
     ...f.options,
-    runBootstrap: async (recover) => {
+    runBootstrap: (recover) => {
       calls.push(recover);
       if (!recover) throw Error("INSTALL_INTERRUPTED");
-      await f.installation.rollback("BOOTSTRAP_FAILED");
-      await f.installation.beginBoot();
       return {
         schema: 1,
         profile: f.profile,
@@ -116,4 +131,18 @@ test("bootstrap failure starts a verified graph through the recovery entry witho
   assert.deepEqual(calls, [false, true]);
   assert.equal(f.app.relaunches, 0);
   assert.equal((await f.installation.store.status()).active, "baseline");
+});
+
+test("official pre-ready registration runs before the first asynchronous turn", async (t) => {
+  const f = await trial(t);
+  let yielded = false;
+  queueMicrotask(() => {
+    yielded = true;
+  });
+  await startCompanyDesktop({
+    ...f.options,
+    loadOfficial() {
+      assert.equal(yielded, false);
+    },
+  });
 });
