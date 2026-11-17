@@ -66,6 +66,15 @@ export function planBundledCompanyRefresh(current, installed, bundled) {
   };
 }
 
+function processExited(pid) {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error.code === "ESRCH";
+  }
+}
+
 async function stoppedUpdateProcesses(profile, receipt) {
   const processes = receipt.processes;
   if (
@@ -96,26 +105,21 @@ async function stoppedUpdateProcesses(profile, receipt) {
       if (!entry.isFile() || entry.isSymbolicLink()) return false;
       const proof = JSON.parse(await readFile(proofPath));
       const [row] = processes;
+      if (proof?.nonce !== row.startIdentity || proof?.pid !== row.pid) return false;
+      if (proof.stage === "empty") return Number.isInteger(proof.exitCode);
       return (
-        proof?.nonce === row.startIdentity &&
-        proof?.pid === row.pid &&
-        proof?.stage === "empty" &&
-        Number.isInteger(proof?.exitCode)
+        proof.stage === "running" &&
+        Number.isSafeInteger(proof.targetPid) &&
+        proof.targetPid > 0 &&
+        proof.targetPid !== row.pid &&
+        processExited(row.pid) &&
+        processExited(proof.targetPid)
       );
     } catch {
       return false;
     }
   }
-  return processes.every((row) =>
-    [row.pid, -row.pid].every((pid) => {
-      try {
-        process.kill(pid, 0);
-        return false;
-      } catch (error) {
-        return error.code === "ESRCH";
-      }
-    }),
-  );
+  return processes.every((row) => [row.pid, -row.pid].every(processExited));
 }
 
 async function readProfileUpdateState(
@@ -330,6 +334,12 @@ async function completeInterruptedUpdate({
             .digest("hex") !== target.targetSha256
         )
           throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+      }
+      const backup = await mkdtemp(join(operation, "startup-recovery-"));
+      await writeFile(join(backup, "receipt.json"), original, { flag: "wx", mode: 0o600 });
+      for (const file of files) {
+        const bytes = await optional(join(profile, file));
+        if (bytes) await writeFile(join(backup, file), bytes, { flag: "wx", mode: 0o600 });
       }
     },
     complete: async ({ writeFileAtomic, result }) => {

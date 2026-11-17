@@ -79,7 +79,17 @@ test("disabled, linked, missing and differently named plugins are preserved", ()
   );
 });
 
-import { mkdtemp, mkdir, writeFile, readFile, rm, access, rename, symlink } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  readdir,
+  rm,
+  access,
+  rename,
+  symlink,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { refreshBundledCompanySuite, assertProfileIdle } from "./company-gea-refresh.mjs";
@@ -777,6 +787,9 @@ test("startup completes the accepted cached suite after partial installation and
   });
   const pid = child.pid;
   await once(child, "exit");
+  const packageChild = spawn(process.execPath, ["-e", ""]);
+  const targetPid = packageChild.pid;
+  await once(packageChild, "exit");
   for (const variant of [
     "success",
     "failure",
@@ -786,10 +799,33 @@ test("startup completes the accepted cached suite after partial installation and
     "unobserved",
     "windows-reused-pid",
     "windows-job-changed",
+    "windows-killed-runner",
+    "windows-killed-runner-install-failure",
+    "windows-package-reappeared",
+    "windows-live-runner",
+    "windows-live-package",
+    "windows-missing-target",
+    "windows-inaccessible-runner",
   ])
     await t.test(variant, async (t) => {
       const windows = variant.startsWith("windows-");
       if (windows) windowsPlatform(t);
+      const runningJob = [
+        "windows-killed-runner",
+        "windows-killed-runner-install-failure",
+        "windows-package-reappeared",
+        "windows-live-runner",
+        "windows-live-package",
+        "windows-missing-target",
+        "windows-inaccessible-runner",
+      ].includes(variant);
+      if (variant === "windows-inaccessible-runner") {
+        const kill = process.kill;
+        t.mock.method(process, "kill", (requested, signal) => {
+          if (requested === pid) throw Object.assign(Error("access denied"), { code: "EPERM" });
+          return kill.call(process, requested, signal);
+        });
+      }
       const f = await fixture(t);
       const id = "00000000-0000-4000-8000-000000000000";
       const operation = join(f.profile, "gea/plugin-updates/operations", id);
@@ -817,7 +853,19 @@ test("startup completes the accepted cached suite after partial installation and
       profile.dsh.profile.bundles = [name, "my-plugin"];
       await writeFile(join(f.profile, "package.json"), JSON.stringify(profile));
       const patch = await readFile(join(f.profile, "cordis.patch.yml"));
+      const userFiles = {
+        "data/sessions/existing.json": "saved conversation",
+        "data/drafts/existing.json": "unsent draft",
+        "credentials.encrypted": "encrypted credentials",
+      };
+      for (const [file, bytes] of Object.entries(userFiles)) {
+        await mkdir(join(f.home, file, ".."), { recursive: true });
+        await writeFile(join(f.home, file), bytes);
+      }
       await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+      let runnerPid = pid;
+      if (variant === "active" || (windows && (!runningJob || variant === "windows-live-runner")))
+        runnerPid = process.pid;
       const receipt = {
         schema: 2,
         id,
@@ -831,7 +879,7 @@ test("startup completes the accepted cached suite after partial installation and
         completionProof: null,
         processes: [
           {
-            pid: windows || variant === "active" ? process.pid : pid,
+            pid: runnerPid,
             grouped: process.platform !== "win32",
             startIdentity: "observed",
             sawAlive: variant !== "unobserved",
@@ -842,8 +890,11 @@ test("startup completes the accepted cached suite after partial installation and
       await writeFile(join(operation, "receipt.json"), original);
       if (process.platform === "win32")
         await writeWindowsJob(operation, receipt.processes[0], {
-          stage: variant === "active" ? "running" : "empty",
+          stage: runningJob || variant === "active" ? "running" : "empty",
           exitCode: windows ? 1 : 0,
+          ...(runningJob && variant !== "windows-missing-target"
+            ? { targetPid: variant === "windows-live-package" ? process.pid : targetPid }
+            : {}),
         });
       if (variant === "tampered") await writeFile(targets[0].archivePath, "changed");
       let installs = 0;
@@ -853,6 +904,11 @@ test("startup completes the accepted cached suite after partial installation and
         install: async (options) => {
           if (variant === "windows-job-changed")
             await writeWindowsJob(operation, receipt.processes[0], { stage: "running" });
+          if (variant === "windows-package-reappeared")
+            await writeWindowsJob(operation, receipt.processes[0], {
+              stage: "running",
+              targetPid: process.pid,
+            });
           await options.beforeInstall();
           installs++;
           assert.deepEqual(
@@ -861,7 +917,8 @@ test("startup completes the accepted cached suite after partial installation and
           );
           assert.equal(options.seed, undefined);
           assert.equal(options.activateNewBundles, false);
-          if (variant === "failure") throw Error("GEA_COMPANY_INSTALL_FAILED: retry-pnpm.log");
+          if (["failure", "windows-killed-runner-install-failure"].includes(variant))
+            throw Error("GEA_COMPANY_INSTALL_FAILED: retry-pnpm.log");
           const after = structuredClone(profile);
           for (const target of targets) {
             after.dependencies[target.packageName] = "file:" + target.archivePath;
@@ -886,10 +943,10 @@ test("startup completes the accepted cached suite after partial installation and
           });
         },
       };
-      if (!["success", "windows-reused-pid"].includes(variant)) {
+      if (!["success", "windows-reused-pid", "windows-killed-runner"].includes(variant)) {
         await assert.rejects(
           refreshCompanyStartup(options),
-          variant === "failure"
+          ["failure", "windows-killed-runner-install-failure"].includes(variant)
             ? /GEA_COMPANY_INSTALL_FAILED/
             : variant === "partial"
               ? /GEA_REFRESH_PROFILE_NOT_PRESERVED/
@@ -897,8 +954,22 @@ test("startup completes the accepted cached suite after partial installation and
                 ? /GEA_REFRESH_UPDATE_UNKNOWN/
                 : /GEA_REFRESH_UPDATE_PENDING/,
         );
-        assert.equal(installs, ["failure", "partial"].includes(variant) ? 1 : 0);
+        assert.equal(
+          installs,
+          ["failure", "partial", "windows-killed-runner-install-failure"].includes(variant) ? 1 : 0,
+        );
         assert.equal(await readFile(join(operation, "receipt.json"), "utf8"), original);
+        const backups = (await readdir(operation)).filter((file) =>
+          file.startsWith("startup-recovery-"),
+        );
+        assert.equal(backups.length, installs);
+        if (installs)
+          assert.equal(
+            await readFile(join(operation, backups[0], "receipt.json"), "utf8"),
+            original,
+          );
+        for (const [file, bytes] of Object.entries(userFiles))
+          assert.equal(await readFile(join(f.home, file), "utf8"), bytes);
         return;
       }
       const result = await refreshCompanyStartup(options);
@@ -914,8 +985,23 @@ test("startup completes the accepted cached suite after partial installation and
       assert.deepEqual(after.dsh, profile.dsh);
       assert.equal(after.dependencies["my-plugin"], "1.0.0");
       assert.deepEqual(await readFile(join(f.profile, "cordis.patch.yml")), patch);
+      const backups = (await readdir(operation)).filter((file) =>
+        file.startsWith("startup-recovery-"),
+      );
+      assert.equal(backups.length, 1);
+      const backup = join(operation, backups[0]);
+      assert.equal(await readFile(join(backup, "receipt.json"), "utf8"), original);
+      assert.deepEqual(await readFile(join(backup, "cordis.patch.yml")), patch);
+      assert.deepEqual(JSON.parse(await readFile(join(backup, "package.json"))), profile);
+      assert.equal(await readFile(join(backup, "pnpm-lock.yaml"), "utf8"), "old lock");
+      for (const [file, bytes] of Object.entries(userFiles))
+        assert.equal(await readFile(join(f.home, file), "utf8"), bytes);
       assert.equal((await refreshCompanyStartup(options)).refresh.changed, false);
       assert.equal(installs, 1);
+      assert.equal(
+        (await readdir(operation)).filter((file) => file.startsWith("startup-recovery-")).length,
+        1,
+      );
     });
 });
 
