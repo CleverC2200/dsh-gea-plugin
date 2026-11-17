@@ -1,0 +1,98 @@
+name: Environment isolation delivery task
+run-name: "Environment isolation delivery — ${{ github.sha }}"
+on:
+  push:
+    branches: [codex/environment-delivery-runner-20261117]
+    paths: [task-delivery/**, .github/workflows/task-environment-delivery.yml]
+permissions:
+  contents: read
+concurrency:
+  group: environment-isolation-delivery-task
+  cancel-in-progress: false
+jobs:
+  delivery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      APS_BUILD_MODE: mock
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: tool
+          persist-credentials: false
+      - name: Read frozen task input
+        id: input
+        working-directory: tool
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const i=JSON.parse(fs.readFileSync('task-delivery/input.json'));
+          if(!['candidate','formal'].includes(i.mode))throw Error('MODE_REQUIRED');
+          for(const [name,head] of Object.entries({...i.repositories,core:i.core})){
+            if(!/^[a-f0-9]{40}$/.test(head))throw Error('FROZEN_HEAD_REQUIRED');
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,`${name}=${head}\n`);
+          }
+          NODE
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.input.outputs.dsh-gea-plugin }}
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: ${{ steps.input.outputs.dsh-agent-workbench }}
+          path: candidate/dsh-agent-workbench
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: ${{ steps.input.outputs.dsh-agent-manage }}
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          token: ${{ secrets.PLUGIN_SPLIT_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: ${{ steps.input.outputs.core }}
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        id: node
+        with:
+          node-version: 24.22.0
+      - name: Enable owner toolchains
+        run: |
+          npm install --global npm@11.11.0
+          corepack enable
+      - name: Locate frozen SDK artifact cache
+        id: sdk
+        run: |
+          node candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head "${{ steps.input.outputs.core }}" --source "$GITHUB_WORKSPACE/source/official-core"
+          node candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.sdk.outputs.paths }}
+          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ steps.input.outputs.core }}-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/node/corepack
+            ~/.local/share/pnpm/store
+          key: delivery-downloads-${{ runner.os }}-${{ hashFiles('candidate/**/package-lock.json', 'candidate/**/pnpm-lock.yaml') }}
+          restore-keys: downloads-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build, receive and prepare immutable plugin delivery
+        run: node tool/task-delivery/run.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: environment-plugin-delivery-${{ github.run_id }}
+          path: delivery-output/
+          if-no-files-found: error
+          retention-days: 30
