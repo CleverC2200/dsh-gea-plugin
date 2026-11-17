@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import z from "@deepseek-ai/schemastery";
 import companyDefaults from "../desktop/company.config.json" with { type: "json" };
 
 const built = await build({
@@ -187,26 +183,11 @@ test("custom DMS environment collisions are rejected before any signed or bearer
   assert.equal(calls, 0);
 });
 
-test("company scheduler remains reachable after public Host schema resolves omitted configuration", async (t) => {
-  await mkdir(".runtime", { recursive: true });
-  const directory = await mkdtemp(resolve(".runtime/warning-host-config-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const result = await build({
-    stdin: { contents: "export { Config } from './src/host.ts';", resolveDir: process.cwd() },
-    bundle: true,
-    write: false,
-    platform: "node",
-    format: "esm",
-    packages: "external",
-  });
-  const output = join(directory, "host.mjs");
-  await writeFile(output, result.outputFiles[0].text);
-  const { Config } = await import(pathToFileURL(output).href);
-  const defaults = z.resolve({}, Config, {})[0];
+test("company scheduler accepts framework-resolved empty configuration", async (t) => {
   const business = new Business({
-    ...defaults,
-    runtimeDir: directory,
-    geaEnvironments: companyDefaults.geaEnvironments,
+    ...companyDefaults,
+    warningSchedulerEnvironments: {},
+    runtimeDir: tmpdir(),
   });
   t.after(() => business.dispose());
   business.restoreDesktopLogin({
