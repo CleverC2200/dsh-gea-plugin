@@ -57,6 +57,8 @@ extractAll(join(app, "resources/app.asar"), runtime);
 const manifest = JSON.parse(await readFile(join(runtime, "package.json"), "utf8"));
 if (manifest.dshBuildCommit !== input.coreHead || manifest.dshBuildDirty !== false)
   throw Error("WINDOWS_FIXED_CORE_MISMATCH");
+if (companyDesktop && manifest.version !== input.desktopVersion)
+  throw Error("WINDOWS_FIXED_DESKTOP_MISMATCH");
 const load = createRequire(join(runtime, "dsh/package.json")),
   controller = join(root, "controller.mjs");
 const sdk = new Set([

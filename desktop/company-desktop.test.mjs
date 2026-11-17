@@ -100,7 +100,12 @@ test("a confirmed Host and client prevent rollback, while a missing startup conf
       const f = await trial(t);
       await startCompanyDesktop(f.options);
       if (confirmed) await f.installation.store.confirmBoot("candidate");
-      await new Promise((resolve) => setTimeout(resolve, 850));
+      if (confirmed) await new Promise((resolve) => setTimeout(resolve, 850));
+      else {
+        const deadline = Date.now() + 5000;
+        while (!f.app.relaunches && Date.now() < deadline)
+          await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       assert.equal(f.app.relaunches, confirmed ? 0 : 1);
       assert.equal(
         (await f.installation.store.status()).active,

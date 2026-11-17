@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, readFile, writeFile, mkdtemp } from "node:fs/promises";
+import { mkdir, readFile, writeFile, mkdtemp, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createServer } from "node:net";
@@ -175,11 +175,13 @@ if (process.argv[2] === "prepare-worker") {
         return child;
       };
       const window = async (name) => {
-        const browser = await until(() =>
-          chromium.connectOverCDP("http://127.0.0.1:" + port, { timeout: 1500 }),
-        );
+        let browser;
         try {
           const page = await until(async () => {
+            if (!browser?.isConnected())
+              browser = await chromium.connectOverCDP("http://127.0.0.1:" + port, {
+                timeout: 1500,
+              });
             const pages = browser
               .contexts()
               .flatMap((context) => context.pages())
@@ -195,29 +197,30 @@ if (process.argv[2] === "prepare-worker") {
           await page.screenshot({ path: join(evidence, name + ".png") });
           return { url: page.url(), title: await page.title() };
         } catch (error) {
-          await writeFile(
-            join(evidence, name + "-windows.json"),
-            JSON.stringify(
-              await Promise.all(
-                browser
-                  .contexts()
-                  .flatMap((context) => context.pages())
-                  .map(async (page) => ({
-                    url: page.url(),
-                    title: await page.title().catch(() => ""),
-                    text: await page
-                      .locator("body")
-                      .innerText({ timeout: 1000 })
-                      .catch(() => ""),
-                  })),
+          if (browser?.isConnected())
+            await writeFile(
+              join(evidence, name + "-windows.json"),
+              JSON.stringify(
+                await Promise.all(
+                  browser
+                    .contexts()
+                    .flatMap((context) => context.pages())
+                    .map(async (page) => ({
+                      url: page.url(),
+                      title: await page.title().catch(() => ""),
+                      text: await page
+                        .locator("body")
+                        .innerText({ timeout: 1000 })
+                        .catch(() => ""),
+                    })),
+                ),
+                null,
+                2,
               ),
-              null,
-              2,
-            ),
-          );
+            );
           throw error;
         } finally {
-          await browser.close();
+          await browser?.close().catch(() => {});
         }
       };
       const results = [];
@@ -264,6 +267,11 @@ if (process.argv[2] === "prepare-worker") {
         start();
         await until(async () => (await installation.store.status()).active === "failed-startup");
         await until(async () => (await installation.store.status()).active === "baseline", 130000);
+        await until(
+          async () =>
+            (await realpath(join(profile, "node_modules"))) ===
+            (await realpath(join(installation.store.baseline, "node_modules"))),
+        );
         results.push({ stage: "automatic-rollback", window: await window("automatic-rollback") });
         assert.deepEqual(
           await readFile(join(profile, "node_modules", gea, "lib/host.js")),
@@ -286,7 +294,10 @@ if (process.argv[2] === "prepare-worker") {
           ),
         );
       } finally {
-        await writeFile(join(evidence, "company-desktop.log"), logs);
+        await writeFile(
+          join(evidence, "company-desktop.log"),
+          logs.replace(/([?&]token=)[^\s]+/g, "$1[redacted]"),
+        );
         stop();
       }
     },
