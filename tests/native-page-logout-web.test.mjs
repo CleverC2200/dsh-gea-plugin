@@ -18,6 +18,8 @@ for (const panel of ["gea-proof", "gea-inbox"])
       const { app, page } = await stockReferencePage(t);
       const binding = () => nativeAssociation(page, panel);
       if (panel === "gea-inbox") {
+        const expandNavigation = page.getByRole("button", { name: "展开业务菜单", exact: true });
+        if (await expandNavigation.isVisible()) await expandNavigation.click();
         const shortcut = page.getByRole("button", { name: "消息待办", exact: true });
         const button = await shortcut.boundingBox();
         const sidebar = await page

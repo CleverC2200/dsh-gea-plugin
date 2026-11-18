@@ -148,6 +148,8 @@ test(
 
     const openInbox = async () => {
       await preparePageStartup(ui);
+      const expandNavigation = ui.getByRole("button", { name: "展开业务菜单", exact: true });
+      if (await expandNavigation.isVisible()) await expandNavigation.click();
       await ui.getByRole("button", { name: "消息待办", exact: true }).click();
       const conversation = ui.locator(
         ".agent-workbench-document:has(.gea-inbox) .agent-workbench-native-conversation [data-conversation-session]",
