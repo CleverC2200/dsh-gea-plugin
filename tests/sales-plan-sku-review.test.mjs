@@ -1,9 +1,12 @@
 import { tmpdir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { setTimeout as delay } from "node:timers/promises";
 const bundle = await build({
   entryPoints: ["src/host/sales-plan-sku-review.ts"],
   bundle: true,
@@ -21,6 +24,59 @@ const detail = async () => ({
 });
 const signal = () => new AbortController().signal;
 
+test("history reads only the plan SKUs once and preserves missing months and partial nulls", async () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(
+    "CREATE TABLE agents_scm_cust_deliv_daily_di(cust_code TEXT, ship_month TEXT, material_code TEXT, act_dl_qty REAL)",
+  );
+  const insert = db.prepare("INSERT INTO agents_scm_cust_deliv_daily_di VALUES (?, ?, ?, ?)");
+  for (const row of [
+    ["customer1", "202511", "1001", 8],
+    ["customer1", "202511", "1001", 2],
+    ["customer1", "202609", "1001", null],
+    ["customer1", "202609", "1001", 5],
+    ["customer1", "202610", "1002", 7],
+    ["other-customer", "202610", "1002", 900],
+    ...Array.from({ length: 400 }, (_, index) => ["customer1", "202610", "unplanned-" + index, 99]),
+  ])
+    insert.run(...row);
+  let calls = 0;
+  try {
+    const result = await read(
+      query,
+      async () => ({
+        currentVersion: { id: "v1", planId: "p1", dealerCode: "customer1" },
+        skus: ["1001", "1002", "1003"].map((skuCode) => ({ skuCode, versionId: "v1" })),
+      }),
+      async (input) => {
+        calls++;
+        assert.equal(input.includeTotal, false);
+        const rows = db.prepare(input.sql).all(input.parameters);
+        return {
+          rows: rows.slice((input.pageNo - 1) * 200, input.pageNo * 200),
+        };
+      },
+      () => "2026-11",
+      signal(),
+    );
+    assert.equal(result.shipmentUnavailable, true);
+    assert.deepEqual(
+      result.rows.map((row) =>
+        row.shipments.map((value) => (value === null ? null : Number(value))),
+      ),
+      [
+        [10, null, 0],
+        [0, 0, 7],
+        [0, 0, 0],
+      ],
+    );
+    assert.deepEqual(result.rows[1].shipments.slice(0, 2), ["0", "0"]);
+    assert.equal(calls, 1);
+  } finally {
+    db.close();
+  }
+});
+
 test("historical shipment query binds only the authorized customer and three actual shipping months", async () => {
   const calls = [];
   const result = await read(
@@ -28,16 +84,17 @@ test("historical shipment query binds only the authorized customer and three act
     detail,
     async (input) => {
       calls.push(input);
-      assert.match(input.sql, /SUM\(act_dl_qty\)/);
+      assert.match(input.sql, /SUM\(CASE WHEN ship_month/);
       assert.match(input.sql, /WHERE cust_code = :customer AND ship_month IN/);
       assert.deepEqual(input.parameters, {
         customer: "customer1",
         month0: "202511",
         month1: "202609",
         month2: "202610",
+        sku0: "1001",
       });
       return {
-        rows: [{ material_code: "1001", ship_month: "202609", ship_qty: "31.5" }],
+        rows: [{ material_code: "1001", ship_qty0: "0", ship_qty1: "31.5", ship_qty2: "0" }],
         total: 1,
       };
     },
@@ -76,11 +133,15 @@ test("wrong version and denied detail fail before any SQL request", async () => 
 });
 
 test("partial pages, malformed facts and query failure never become zero shipments", async () => {
+  const row = { material_code: "1001", ship_qty0: "0", ship_qty1: "5", ship_qty2: "0" };
   for (const sql of [
     async () => {
       throw Error("403");
     },
     async () => ({ rows: [], total: 10 }),
+    async () => ({ rows: [], hasMore: true }),
+    async () => ({ rows: [row, row] }),
+    async () => ({ rows: [{ ...row, material_code: "outside-plan" }] }),
     async () => ({
       rows: [{ material_code: "1001", ship_month: "202609", ship_qty: null }],
       total: 1,
@@ -93,28 +154,35 @@ test("partial pages, malformed facts and query failure never become zero shipmen
   }
 });
 
-test("pagination consumes every row and explicit null remains unknown", async () => {
+test("bounded SKU batches consume every row and explicit null remains unknown", async () => {
   const pages = [];
   const result = await read(
     query,
-    detail,
-    async ({ pageNo }) => {
+    async () => ({
+      currentVersion: { id: "v1", planId: "p1", dealerCode: "customer1" },
+      skus: Array.from({ length: 201 }, (_, index) => ({
+        skuCode: String(1001 + index),
+        versionId: "v1",
+      })),
+    }),
+    async ({ pageNo, parameters }) => {
       pages.push(pageNo);
       return {
         rows: [
           {
-            material_code: "1001",
-            ship_month: pageNo === 1 ? "202511" : "202609",
-            ship_qty: pageNo === 1 ? null : "5",
+            material_code: parameters.sku0,
+            ship_qty0: null,
+            ship_qty1: "5",
+            ship_qty2: "0",
           },
         ],
-        total: 2,
+        total: 1,
       };
     },
     () => "2026-11",
     signal(),
   );
-  assert.deepEqual(pages, [1, 2]);
+  assert.deepEqual(pages, [1, 1]);
   assert.deepEqual(result.rows[0].shipments, [null, "5", "0"]);
 });
 
@@ -135,7 +203,7 @@ test("identity cancellation discards late SQL data", async () => {
   );
 });
 
-test("workbench route derives the customer and month from authorized detail and rejects model use", async (t) => {
+test("workbench SKU review derives authorized scope and reuses a validated draft detail once per page load", async (t) => {
   const bundled = await build({
     entryPoints: ["src/host/business.ts"],
     alias: {
@@ -156,8 +224,9 @@ test("workbench route derives the customer and month from authorized detail and 
     module,
     module.exports,
   );
+  const runtimeDir = await mkdtemp(resolve(tmpdir(), "sales-plan-sku-review-"));
   const business = new module.exports.Business({
-    runtimeDir: tmpdir(),
+    runtimeDir,
     geaBaseUrl: "https://gea.test",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,
@@ -169,33 +238,61 @@ test("workbench route derives the customer and month from authorized detail and 
     base: "https://gea.test",
     auth: { token: "fixture", tenantId: "1", id: "u", name: "Test", username: "test" },
   });
-  t.after(() => business.dispose());
+  t.after(async () => {
+    business.dispose();
+    await rm(runtimeDir, { recursive: true, force: true });
+  });
   const planId = "p-y-2026-11-00001";
   const sqlRequests = [];
+  let detailReads = 0;
+  let unnamedSku;
+  const namesStarted = Promise.withResolvers();
+  const historyStarted = Promise.withResolvers();
+  const releaseNames = Promise.withResolvers();
   t.mock.method(globalThis, "fetch", async (url, init) => {
     init.signal.throwIfAborted();
     const path = new URL(url).pathname;
     let result;
-    if (path.endsWith("/plans/" + planId))
+    if (path.endsWith("/plans/" + planId)) {
+      detailReads++;
       result = {
-        currentVersion: { id: "v1", planId, cust_code: 10001, orderType: "M" },
+        currentVersion: {
+          id: "v1",
+          planId,
+          cust_code: 10001,
+          orderType: "M",
+          planTypeCode: "Y",
+          status: 1,
+          effective: true,
+        },
         skus: [
           {
             versionId: "v1",
-            skuCode: "1001",
-            materialDescription: "水饺",
+            skuCode: unnamedSku ?? "1001",
+            materialDescription: unnamedSku ? undefined : "水饺",
             qty: "501.600",
             amt: "1234.50",
+            price: "2",
           },
         ],
         versions: [],
         logs: [],
       };
-    else if (path.endsWith("/agent/session"))
+    } else if (path.endsWith("/agent/session"))
       result = { accessDecision: { allowed: true }, delegationToken: "fixture-delegation" };
     else if (path.endsWith("/sql/execute")) {
-      sqlRequests.push(JSON.parse(init.body));
-      result = { rows: [], total: 0, rejectedColumns: [] };
+      const input = JSON.parse(init.body);
+      sqlRequests.push(input);
+      if (input.sql.includes("material_name")) {
+        namesStarted.resolve();
+        await releaseNames.promise;
+        assert.equal(input.includeTotal, true);
+        result = { rows: [{ material_code: unnamedSku, material_name: "汤圆" }], total: 1 };
+      } else {
+        if (unnamedSku) historyStarted.resolve();
+        assert.equal(input.includeTotal, false);
+        result = { rows: [], rejectedColumns: [] };
+      }
     } else throw Error("unexpected request " + path);
     return Response.json({ success: true, code: 200, result });
   });
@@ -206,8 +303,66 @@ test("workbench route derives the customer and month from authorized detail and 
   assert.equal(result.versionId, "v1");
   assert.equal(result.skus[0].amt, "1234.50");
   assert.equal(sqlRequests.length, 1);
+  assert.equal(result.shipmentUnavailable, false);
+  const load = { pageOwner: "page-a", generation: "current-load" };
+  const readDraft = () => business.salesPlanDraft({ planId, versionId: "v1" }, signal(), load);
+  const review = (scope) =>
+    business.workbenchQuery({ kind: "skuReview", query: { planId, versionId: "v1" } }, signal(), {
+      detailLoad: scope,
+    });
+  assert.equal((await readDraft()).draft, null);
+  assert.equal(detailReads, 2);
+  assert.deepEqual(await review({ ...load, pageOwner: "page-b" }), result);
+  assert.deepEqual(await review({ ...load, generation: "refresh" }), result);
+  assert.equal(detailReads, 4);
+  const cancelled = AbortSignal.abort();
+  await assert.rejects(
+    business.workbenchQuery({ kind: "skuReview", query: { planId, versionId: "v1" } }, cancelled, {
+      detailLoad: load,
+    }),
+    /Abort/i,
+  );
+  assert.deepEqual(await review(load), result);
+  assert.equal(detailReads, 4);
+  assert.deepEqual(await review(load), result);
+  assert.equal(detailReads, 5);
+
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  await readDraft();
+  t.mock.timers.tick(15_001);
+  assert.deepEqual(await review(load), result);
+  assert.equal(detailReads, 7);
+
   await assert.rejects(
     business.agentQuery({ kind: "skuReview", query: { planId, versionId: "v1" } }, signal()),
     /INVALID_QUERY/,
   );
+
+  unnamedSku = "1002";
+  const pending = review({ ...load, generation: "new-load" });
+  const timeout = new AbortController();
+  try {
+    assert.equal(
+      await Promise.race([
+        Promise.all([namesStarted.promise, historyStarted.promise]).then(() => "parallel"),
+        delay(500, "waiting for material names", { signal: timeout.signal }),
+      ]),
+      "parallel",
+    );
+  } finally {
+    timeout.abort();
+    releaseNames.resolve();
+    await Promise.allSettled([pending]);
+  }
+  const enriched = await pending;
+  assert.equal(enriched.skus[0].materialDescription, "汤圆");
+  assert.deepEqual(enriched.rows[0].shipments, ["0", "0", "0"]);
+
+  unnamedSku = "1003";
+  const previousSqlRequests = sqlRequests.length;
+  await assert.rejects(
+    business.workbenchQuery({ kind: "skuReview", query: { planId, versionId: "wrong" } }, signal()),
+    /GEA_IDENTITY_MISMATCH/,
+  );
+  assert.equal(sqlRequests.length, previousSqlRequests);
 });

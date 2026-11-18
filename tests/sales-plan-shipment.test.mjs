@@ -104,12 +104,67 @@ function fixture(t, sqlResult, planRows, groupMetrics) {
     else if (path.endsWith("/sql/execute")) {
       sqlRequests.push(JSON.parse(init.body));
       if (sqlResult instanceof Error) throw sqlResult;
-      result = typeof sqlResult === "function" ? sqlResult(sqlRequests.at(-1)) : sqlResult;
+      result = typeof sqlResult === "function" ? await sqlResult(sqlRequests.at(-1)) : sqlResult;
     } else throw Error("unexpected external request: " + path);
     return Response.json({ success: true, result });
   });
   return { business, sqlRequests };
 }
+
+test("independent monthly quantity and amount queries start before either completes", async (t) => {
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const { business, sqlRequests } = fixture(t, async (request) => {
+    if (request.sql.includes("qtyshipped")) await held;
+    return { rows: [], total: 0, rejectedColumns: [] };
+  });
+  const pending = business.workbenchQuery(
+    { kind: "list", query: { orderType: "Z" } },
+    new AbortController().signal,
+  );
+  let started;
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    started = sqlRequests.length;
+  } finally {
+    release();
+  }
+  await pending;
+  assert.equal(started, 2);
+});
+
+test("the owned list can publish its plan rows while shipment SQL is still pending", async (t) => {
+  const held = Promise.withResolvers();
+  const { business, sqlRequests } = fixture(t, async () => {
+    await held.promise;
+    return { rows: [], total: 0, rejectedColumns: [] };
+  });
+  const pages = [];
+  const finished = business.workbenchQuery(
+    { kind: "list", query: { orderType: "Z" } },
+    new AbortController().signal,
+    { onPlanPage: (page) => pages.push(page) },
+  );
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(sqlRequests.length, 2);
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0].records.length, 3);
+    assert.ok(
+      pages[0].records.every(
+        (row) => row.shipmentPending && row.shipQty == null && row.shipAmount == null,
+      ),
+    );
+    assert.equal(pages[0].groupMetrics[0].shipAmount, undefined);
+  } finally {
+    held.resolve();
+    await finished;
+  }
+  const result = await finished;
+  assert.ok(result.records.every((row) => !row.shipmentPending && row.shipmentError));
+});
 
 test("correction list adds monthly shipment quantities for visible customers without changing original plan values", async (t) => {
   const { business, sqlRequests } = fixture(t, (request) =>

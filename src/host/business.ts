@@ -96,6 +96,21 @@ import { sharedAgentCapability, WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean | null>;
+type SalesPlanPeriodPage = {
+  records: Row[];
+  total: number;
+  size: number;
+  current: number;
+  pages: number;
+};
+type WorkbenchQueryOptions = {
+  forModel?: boolean;
+  deferMaterialNames?: true;
+  detailLoad?: SalesPlanDetailLoad;
+  onPlanPage?: (page: unknown) => void;
+  periodIndex?: "refresh" | "reuse";
+};
+const SALES_PLAN_PERIOD_INDEX_TTL_MS = 60_000;
 
 export interface Deployment {
   memoryGatewayUrl?: string;
@@ -665,6 +680,11 @@ function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
   };
 }
 
+type SalesPlanDetailLoad = { pageOwner: string; generation: string };
+
+const salesPlanDetailKey = (load: SalesPlanDetailLoad, planId: string, versionId: string) =>
+  JSON.stringify([load.pageOwner, load.generation, planId, versionId]);
+
 export class Business {
   private readonly identityListeners = new Set<() => void>();
 
@@ -697,6 +717,14 @@ export class Business {
   private passwordChallenge?: { id: string; createdAt: number; submitting: boolean };
   private epoch = new AbortController();
   private pageIdentityGeneration = randomUUID();
+  private salesPlanPeriodRead = 0;
+  private salesPlanPeriodIndex?: {
+    epoch: AbortSignal;
+    roles: NonNullable<Business["auth"]>["roles"];
+    permissions: NonNullable<Business["auth"]>["permissionCodes"];
+    expiresAt: number;
+    page: SalesPlanPeriodPage;
+  };
   private queryEpoch = new AbortController();
   private page?: Page;
   private preview?: Preview;
@@ -713,6 +741,10 @@ export class Business {
   private readonly surfaces = new Map<string, WorkbenchSurface>();
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
+  private salesPlanDetailHandoffs = new Map<
+    string,
+    { detail: GeaSalesPlanDetail; expiresAt: number }
+  >();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly modelMetadataRetries = new Map<string, { at: number; ids: string[] }>();
   private readonly inventoryReads = new InventoryReadCache(Date.now, (value) =>
@@ -752,6 +784,17 @@ export class Business {
 
   pageSessionScope(): string | undefined {
     return this.auth ? `${this.runId}:${this.pageIdentityGeneration}` : undefined;
+  }
+
+  salesPlanStartupSignal(scope: string, endpoint: string, kind: unknown): AbortSignal {
+    if (
+      endpoint !== "workflow/config" &&
+      !(endpoint === "workbench/query" && (kind === "periods" || kind === "list"))
+    )
+      throw Error("GEA_SALES_PLAN_STARTUP_READ_ONLY");
+    this.authenticated();
+    if (scope !== this.pageSessionScope()) throw Error("PAGE_IDENTITY_CHANGED");
+    return this.epoch.signal;
   }
 
   customerInventoryIdentity(): InventoryRoleProfile | null {
@@ -1052,7 +1095,9 @@ export class Business {
     this.epoch = new AbortController();
     this.pageIdentityGeneration = randomUUID();
     this.auth = undefined;
+    this.salesPlanPeriodIndex = undefined;
     this.materialNames.clear();
+    this.salesPlanDetailHandoffs = new Map();
     this.customerInventoryAccess = undefined;
     this.modelRoutes.clear();
     this.transport.clearModels();
@@ -1438,7 +1483,11 @@ export class Business {
     return this.auth;
   }
 
-  async salesPlanDraft(payload: Record<string, unknown>, caller: AbortSignal) {
+  async salesPlanDraft(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+    detailLoad?: SalesPlanDetailLoad,
+  ) {
     this.assertExecutionAllowed(this.config.analysisAgentCode, "draft");
     keys(payload, ["planId", "versionId", "approvalRole", "draft"]);
     const auth = this.authenticated();
@@ -1458,10 +1507,12 @@ export class Business {
       .digest("hex");
     const dir = resolve(this.config.runtimeDir, "approval-drafts");
     const file = resolve(dir, owner + ".json");
-    const detail = (await this.workbenchQuery(
-      { kind: "detail", query: { planId } },
-      signal,
-    )) as GeaSalesPlanDetail;
+    const canHandoff = detailLoad && payload.draft === undefined;
+    const handoffs = this.salesPlanDetailHandoffs;
+    const readDetail = () => this.workbenchQuery({ kind: "detail", query: { planId } }, signal);
+    const detail = (await (canHandoff
+      ? this.capture.prepare(readDetail)
+      : readDetail())) as GeaSalesPlanDetail;
     const row = {
       planId,
       versionId,
@@ -1487,6 +1538,16 @@ export class Business {
       await rename(temp, file);
       return value;
     }
+    const completed = <T>(value: T) => {
+      signal.throwIfAborted();
+      if (canHandoff) {
+        const key = salesPlanDetailKey(detailLoad, planId, versionId);
+        handoffs.delete(key);
+        if (handoffs.size >= 200) handoffs.delete(handoffs.keys().next().value!);
+        handoffs.set(key, { detail, expiresAt: Date.now() + 15_000 });
+      }
+      return value;
+    };
     try {
       const stored = JSON.parse(await readFile(file, "utf8"));
       signal.throwIfAborted();
@@ -1494,13 +1555,13 @@ export class Business {
         salesPlanLocalDraftValid(stored.draft, planId, versionId) &&
         stored.draft.status !== row.status
       )
-        return { draft: null, sourceSnapshot };
+        return completed({ draft: null, sourceSnapshot });
       if (!salesPlanDraftMatches(stored.draft, row, detail))
-        return { draft: null, stale: true, sourceSnapshot };
-      return { ...stored, sourceSnapshot };
+        return completed({ draft: null, stale: true, sourceSnapshot });
+      return completed({ ...stored, sourceSnapshot });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      return { draft: null, sourceSnapshot };
+      return completed({ draft: null, sourceSnapshot });
     }
   }
 
@@ -1827,11 +1888,17 @@ export class Business {
   }
 
   async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    return this.salesTransactions.submit(payload, caller);
+    this.salesPlanDetailHandoffs = new Map();
+    return this.salesTransactions.submit(payload, caller).finally(() => {
+      this.salesPlanDetailHandoffs = new Map();
+    });
   }
 
   salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    return this.salesTransactions.action(payload, caller);
+    this.salesPlanDetailHandoffs = new Map();
+    return this.salesTransactions.action(payload, caller).finally(() => {
+      this.salesPlanDetailHandoffs = new Map();
+    });
   }
 
   async navigationCatalog(
@@ -3539,13 +3606,7 @@ export class Business {
   private async salesPlanPeriodPage(
     query: Record<string, unknown>,
     signal: AbortSignal,
-  ): Promise<{
-    records: Row[];
-    total: number;
-    size: number;
-    current: number;
-    pages: number;
-  }> {
+  ): Promise<SalesPlanPeriodPage> {
     if (query.status != null && query.status !== "")
       throw new Error(
         "INVALID_QUERY: period status was removed; filter visible plans by plan status instead.",
@@ -3625,6 +3686,51 @@ export class Business {
       current,
       pages: records.length === 0 ? 0 : Math.ceil(records.length / size),
     };
+  }
+
+  private async startupPeriodIndex(
+    query: Record<string, unknown>,
+    caller: AbortSignal,
+    mode: "refresh" | "reuse",
+  ): Promise<SalesPlanPeriodPage> {
+    const auth = this.authenticated();
+    const epoch = this.epoch.signal;
+    const signal = AbortSignal.any([caller, epoch]);
+    signal.throwIfAborted();
+    const roles = auth.roles;
+    const permissions = auth.permissionCodes;
+    const cached = this.salesPlanPeriodIndex;
+    const size = integer(query.pageSize ?? this.config.periodPageSize, 1, 1000);
+    if (
+      mode === "reuse" &&
+      cached?.epoch === epoch &&
+      cached.roles === roles &&
+      cached.permissions === permissions &&
+      cached.page.size === size &&
+      cached.expiresAt > Date.now()
+    )
+      return cached.page;
+
+    this.salesPlanPeriodIndex = undefined;
+    const revision = ++this.salesPlanPeriodRead;
+    const page = await this.salesPlanPeriodPage(query, signal);
+    signal.throwIfAborted();
+    if (
+      revision === this.salesPlanPeriodRead &&
+      auth.roles === roles &&
+      auth.permissionCodes === permissions &&
+      page.total > 0 &&
+      page.records.length === page.total
+    ) {
+      this.salesPlanPeriodIndex = {
+        epoch,
+        roles,
+        permissions,
+        page,
+        expiresAt: Date.now() + SALES_PLAN_PERIOD_INDEX_TTL_MS,
+      };
+    }
+    return page;
   }
 
   async periods(signal: AbortSignal): Promise<Collection> {
@@ -3833,10 +3939,14 @@ export class Business {
     return this.recordPreview(snapshot);
   }
 
-  async workbenchQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+  async workbenchQuery(
+    payload: Record<string, unknown>,
+    signal: AbortSignal,
+    options: Omit<WorkbenchQueryOptions, "forModel" | "deferMaterialNames"> = {},
+  ): Promise<unknown> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
-    return this.readWorkbenchQuery(payload, signal);
+    return this.readWorkbenchQuery(payload, signal, options);
   }
 
   private async fillMaterialNames(
@@ -3950,51 +4060,53 @@ export class Business {
             parameters: { month: month.replace("-", ""), ...customerParameters },
           },
         ];
-        for (const source of sources) {
-          try {
-            const result = object(
-              await this.pluginSql(
-                {
-                  consumerCode: this.config.analysisAgentCode,
-                  sql: source.sql,
-                  parameters: source.parameters,
-                  pageNo: 1,
-                  pageSize: 200,
-                },
-                signal,
-              ),
-            );
-            if (
-              !Array.isArray(result.rows) ||
-              result.total !== result.rows.length ||
-              (Array.isArray(result.rejectedColumns) && result.rejectedColumns.length)
-            )
-              throw new Error("发货数据读取不完整");
-            const received = new Map<string, string>();
-            for (const value of result.rows) {
-              const row = object(value);
-              const metric = row[source.field];
+        await Promise.all(
+          sources.map(async (source) => {
+            try {
+              const result = object(
+                await this.pluginSql(
+                  {
+                    consumerCode: this.config.analysisAgentCode,
+                    sql: source.sql,
+                    parameters: source.parameters,
+                    pageNo: 1,
+                    pageSize: 200,
+                  },
+                  signal,
+                ),
+              );
               if (
-                typeof row.cust_code !== "string" ||
-                !batch.includes(row.cust_code) ||
-                received.has(row.cust_code) ||
-                typeof metric !== "string" ||
-                !/^-?\d+(?:\.\d+)?$/.test(metric)
+                !Array.isArray(result.rows) ||
+                result.total !== result.rows.length ||
+                (Array.isArray(result.rejectedColumns) && result.rejectedColumns.length)
               )
-                throw new Error("发货数据格式不完整");
-              received.set(row.cust_code, metric);
+                throw new Error("发货数据读取不完整");
+              const received = new Map<string, string>();
+              for (const value of result.rows) {
+                const row = object(value);
+                const metric = row[source.field];
+                if (
+                  typeof row.cust_code !== "string" ||
+                  !batch.includes(row.cust_code) ||
+                  received.has(row.cust_code) ||
+                  typeof metric !== "string" ||
+                  !/^-?\d+(?:\.\d+)?$/.test(metric)
+                )
+                  throw new Error("发货数据格式不完整");
+                received.set(row.cust_code, metric);
+              }
+              for (const [customer, metric] of received)
+                source.values.set(`${month}\u0000${customer}`, metric);
+            } catch (error) {
+              signal.throwIfAborted();
+              for (const customer of batch) {
+                const key = `${month}\u0000${customer}`;
+                const message = `${source.label}读取失败：${error instanceof Error ? error.message : "查询失败"}`;
+                failures.set(key, [failures.get(key), message].filter(Boolean).join("；"));
+              }
             }
-            for (const [customer, metric] of received)
-              source.values.set(`${month}\u0000${customer}`, metric);
-          } catch (error) {
-            signal.throwIfAborted();
-            for (const customer of batch) {
-              const key = `${month}\u0000${customer}`;
-              const message = `${source.label}读取失败：${error instanceof Error ? error.message : "查询失败"}`;
-              failures.set(key, [failures.get(key), message].filter(Boolean).join("；"));
-            }
-          }
-        }
+          }),
+        );
       }
     }
     signal.throwIfAborted();
@@ -4148,7 +4260,7 @@ export class Business {
   private async readWorkbenchQuery(
     payload: Record<string, unknown>,
     signal: AbortSignal,
-    options: { forModel?: boolean } = {},
+    options: WorkbenchQueryOptions = {},
   ): Promise<unknown> {
     keys(payload, ["kind", "query"]);
     let query = object(payload.query ?? {});
@@ -4198,18 +4310,39 @@ export class Business {
       !["region", "province", "area", "category"].includes(String(query.approvalRole))
     )
       throw new Error("INVALID_QUERY");
-    if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
+    if (kind === "periods") {
+      if (
+        options.periodIndex &&
+        integer(query.pageNo ?? 1, 1) === 1 &&
+        (query.periodMonth == null || query.periodMonth === "") &&
+        (query.planType == null || query.planType === "")
+      )
+        return this.startupPeriodIndex(query, signal, options.periodIndex);
+      return this.salesPlanPeriodPage(query, signal);
+    }
     if (kind === "skuReview") {
       if (options.forModel) throw new Error("INVALID_QUERY");
       const active = AbortSignal.any([signal, this.epoch.signal]);
+      active.throwIfAborted();
+      const planId = text(query.planId);
+      const versionId = text(query.versionId);
+      const key = options.detailLoad && salesPlanDetailKey(options.detailLoad, planId, versionId);
+      const handoff = key && this.salesPlanDetailHandoffs.get(key);
+      if (key) this.salesPlanDetailHandoffs.delete(key);
+      const reusable = handoff && handoff.expiresAt > Date.now() ? handoff.detail : undefined;
       return readSalesPlanSkuReview(
-        { planId: text(query.planId), versionId: text(query.versionId) },
-        (planId, current) =>
-          this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current),
+        { planId, versionId },
+        async (planId, current) =>
+          reusable
+            ? this.capture.reuse(reusable)
+            : this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current, {
+                deferMaterialNames: true,
+              }),
         (input, current) =>
           this.pluginSql({ ...input, consumerCode: this.config.analysisAgentCode }, current),
         salesPlan.salesPlanPeriodMonthForPlanId,
         active,
+        reusable ? undefined : (skus, current) => this.fillMaterialNames(skus, current),
       );
     }
     if (kind === "aggregate")
@@ -4263,10 +4396,11 @@ export class Business {
           salesPlanQueryValue(key, key === "dealerCode" ? value : text(value)),
         );
     }
+    const active = AbortSignal.any([signal, this.epoch.signal]);
     const result = await this.gatewayRequests.read(
       paths[kind]() + (params.size ? "?" + params : ""),
       this.authenticated(),
-      AbortSignal.any([signal, this.epoch.signal]),
+      active,
       true,
       kind,
     );
@@ -4284,6 +4418,7 @@ export class Business {
       return page.records.map(object);
     };
     if (paged) {
+      active.throwIfAborted();
       const page = object(result);
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_COLLECTION");
       const total = integer(page.total, page.records.length);
@@ -4300,29 +4435,46 @@ export class Business {
         )
       )
         throw new Error("GEA_PLAN_PERIOD_MISMATCH");
-      return {
+      const orderType =
+        kind === "list" && (query.orderType === "M" || query.orderType === "Z")
+          ? query.orderType
+          : undefined;
+      const planPage = {
         ...page,
-        ...(kind === "list" &&
-        (query.orderType === "M" || query.orderType === "Z") &&
-        Array.isArray(page.groupMetrics)
+        ...(orderType && Array.isArray(page.groupMetrics)
           ? {
               groupMetrics: page.groupMetrics.map((value) => {
                 const metric = { ...object(value) };
                 for (const field of ["shipQty", "shipAmount", "amountProgress", "shipmentError"])
-                  if (query.orderType === "Z" || metric[field] == null) delete metric[field];
+                  if (orderType === "Z" || metric[field] == null) delete metric[field];
                 return metric;
               }),
             }
           : {}),
-        records:
-          kind === "list" && (query.orderType === "M" || query.orderType === "Z")
-            ? await this.salesPlanShipments(planRows, signal, query.orderType)
-            : planRows,
+        records: planRows,
         total,
         size: pageSize,
         current: integer(page.current ?? current, 1),
         pages: integer(page.pages ?? Math.ceil(total / pageSize), 0),
       };
+      if (!orderType) return planPage;
+      if (options.onPlanPage && query.summaryOnly !== "true") {
+        const records = planRows.map((row) =>
+          orderType === "M" && row.shipQty != null && row.shipAmount != null
+            ? row
+            : {
+                ...row,
+                shipQty: null,
+                shipAmount: null,
+                amountProgress: null,
+                shipmentError: null,
+                shipmentPending: true,
+              },
+        );
+        if (records.some((row) => row.shipmentPending))
+          options.onPlanPage({ ...planPage, records });
+      }
+      return { ...planPage, records: await this.salesPlanShipments(planRows, active, orderType) };
     }
     if (kind === "detail") {
       const detail = object(result);
@@ -4339,7 +4491,7 @@ export class Business {
         logs.some((log) => log.planId !== query.planId || !versionIds.has(text(log.versionId)))
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
-      await this.fillMaterialNames(skus, signal);
+      if (!options.deferMaterialNames) await this.fillMaterialNames(skus, signal);
       if (options.forModel) {
         const budget = Math.max(4096, Math.floor(this.config.inputByteBudget / 2));
         const cappedSkus = capRows(

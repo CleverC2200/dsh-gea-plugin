@@ -34,6 +34,33 @@ const makeBusiness = () => {
   return business;
 };
 
+test("sales plan startup authorizes current identity reads without an Agent and revokes them on environment change", (t) => {
+  const business = makeBusiness();
+  t.after(() => business.dispose());
+  const scope = business.pageSessionScope();
+  const signal = business.salesPlanStartupSignal(scope, "workbench/query", "periods");
+  assert.equal(business.salesPlanStartupSignal(scope, "workbench/query", "list"), signal);
+  assert.equal(business.salesPlanStartupSignal(scope, "workflow/config"), signal);
+  assert.throws(
+    () => business.salesPlanStartupSignal(scope, "workbench/query", "skuReview"),
+    /GEA_SALES_PLAN_STARTUP_READ_ONLY/,
+  );
+  assert.throws(
+    () => business.salesPlanStartupSignal(scope, "sales-plan/submit"),
+    /GEA_SALES_PLAN_STARTUP_READ_ONLY/,
+  );
+  assert.throws(
+    () => business.salesPlanStartupSignal("old-scope", "workbench/query", "list"),
+    /PAGE_IDENTITY_CHANGED/,
+  );
+  business.selectEnvironment({ environment: "test" });
+  assert.equal(signal.aborted, true);
+  assert.throws(
+    () => business.salesPlanStartupSignal(scope, "workbench/query", "list"),
+    /LOGIN_REQUIRED/,
+  );
+});
+
 test("period discovery uses visible plans after the period dependency was removed", async () => {
   const original = globalThis.fetch;
   const requests = [];
@@ -162,6 +189,41 @@ function visiblePlans(t, records) {
   });
   return { business, requests };
 }
+
+test("startup reuses only a fresh complete period index under the same identity and roles", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-18T00:00:00Z") });
+  const f = visiblePlans(t, [
+    { planId: "p-jxs-2026-10-00011", periodId: "17", planTypeCode: "Y", orderType: "M" },
+    { planId: "p-jxs-2026-11-00011", periodId: "20261101", planTypeCode: "Y", orderType: "M" },
+    { planId: "p-jxs-2026-11-00012", periodId: "20261102", planTypeCode: "DC", orderType: "M" },
+  ]);
+  const read = (periodIndex, query = {}) =>
+    f.business.workbenchQuery(
+      { kind: "periods", query: { pageNo: 1, pageSize: 100, ...query } },
+      new AbortController().signal,
+      { periodIndex },
+    );
+  const current = await read("reuse");
+  assert.equal(f.requests.length, 2);
+  assert.equal(current.total, 3);
+  assert.deepEqual(await read("reuse"), current);
+  assert.equal(f.requests.length, 2);
+  assert.equal((await read("reuse", { periodMonth: "2026-10" })).total, 1);
+  assert.equal(f.requests.length, 4);
+  assert.deepEqual(await read("refresh"), current);
+  assert.equal(f.requests.length, 6);
+  f.business.auth.roles = [{ code: "fixture-role", name: "Fixture" }];
+  assert.deepEqual(await read("reuse"), current);
+  assert.equal(f.requests.length, 8);
+  t.mock.timers.tick(60_000);
+  assert.deepEqual(await read("reuse"), current);
+  assert.equal(f.requests.length, 10);
+  f.business.selectEnvironment({ environment: "test" });
+  await assert.rejects(read("reuse"), /LOGIN_REQUIRED/);
+  f.business.auth = { token: "next-fixture", tenantId: "2", id: "next" };
+  assert.ok((await read("reuse")).records.every((row) => row.tenantId === "2"));
+  assert.equal(f.requests.length, 12);
+});
 
 test("monthly and correction tabs discover a shared period regardless of M/Z row order", async (t) => {
   const monthly = {

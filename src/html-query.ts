@@ -136,7 +136,9 @@ export async function readHtmlQuery(
 
   if (pageNo !== undefined) {
     if (input.packing) throw Error("PACKED_PAGING_UNSUPPORTED");
-    const page = await db.queryPage(query.sql, query.values, pageNo, pageSize);
+    const page = await db.queryPage(query.sql, query.values, pageNo, pageSize, {
+      includeTotal: input.includeTotal !== false,
+    });
     return finish({ ...page, rows: page.rows, records: page.rows, total: page.total });
   }
   let result = await db.queryWithOptions!(

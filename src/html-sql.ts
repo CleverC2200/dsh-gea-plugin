@@ -5,13 +5,18 @@ import { randomUUID } from "node:crypto";
 type Scalar = string | number | boolean | null;
 type Row = Record<string, unknown>;
 type ColumnMetadata = { returnedColumns?: unknown[]; rejectedColumns?: unknown[] };
-type SqlRows = ColumnMetadata & { rows: Row[]; total?: number | null };
+type SqlRows = ColumnMetadata & { rows: Row[]; total?: number | null; hasMore?: boolean };
 export type ConfiguredSqlRequest = {
   sql: string;
   parameters: Record<string, unknown>;
   includeTotal: false;
 };
-type QueryOptions = { pageSize: number; pageNo?: number; configured?: ConfiguredSqlRequest };
+type QueryOptions = {
+  pageSize: number;
+  pageNo?: number;
+  includeTotal?: boolean;
+  configured?: ConfiguredSqlRequest;
+};
 
 export type SqlReadLimit = { maxRows: number; maxPages: number; beforeRequest(): void };
 export type RowPacking = {
@@ -22,7 +27,13 @@ export type RowPacking = {
 export type BusinessDatabase = {
   queryConfigured?(request: ConfiguredSqlRequest): Promise<SqlRows>;
   query(sql: string, values?: unknown[]): Promise<SqlRows>;
-  queryPage(sql: string, values: unknown[], pageNo: number, pageSize: number): Promise<SqlRows>;
+  queryPage(
+    sql: string,
+    values: unknown[],
+    pageNo: number,
+    pageSize: number,
+    options?: Pick<QueryOptions, "includeTotal">,
+  ): Promise<SqlRows>;
   queryPackedRows?(sql: string, values: unknown[], packing: RowPacking): Promise<{ rows: Row[] }>;
   queryWithOptions?(
     sql: string,
@@ -394,8 +405,12 @@ export function createGeaSqlDatabase(
       const pageRows = rowsFrom(payload);
       if (!pageRows)
         throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 查询返回格式无效", 502, true);
-      if (options.configured && record(payload)) {
-        if (payload.complete === false || payload.truncated === true || payload.hasMore === true)
+      if ((options.configured || options.includeTotal === false) && record(payload)) {
+        if (
+          payload.complete === false ||
+          payload.truncated === true ||
+          (options.configured && payload.hasMore === true)
+        )
           throw new GeaSqlError(
             "GEA_SQL_RESULT_INCOMPLETE",
             "GEA SQL 返回被截断，未生成完整结果",
@@ -434,13 +449,20 @@ export function createGeaSqlDatabase(
           if (key in payload && (payload[key] === null || Number(payload[key]) !== expected))
             throw new GeaSqlError("GEA_SQL_RESPONSE_INVALID", "GEA SQL 分页位置不匹配", 502, true);
         }
-      return { rows: pageRows, total, ...metadata };
+      const hasMore = record(payload) && payload.hasMore === true;
+      return {
+        rows: pageRows,
+        total,
+        ...metadata,
+        ...(options.includeTotal === false && hasMore ? { hasMore } : {}),
+      };
     };
     if (options.configured) {
       const result = await fetchPage(1, false);
       return result;
     }
-    if (options.pageNo !== undefined) return fetchPage(options.pageNo, true);
+    if (options.pageNo !== undefined)
+      return fetchPage(options.pageNo, options.includeTotal !== false);
     const first = await fetchPage(1, true),
       total = first.total;
     if (total === null) {
@@ -516,6 +538,7 @@ export function createGeaSqlDatabase(
       execute(request.sql, [], { pageSize: 200, pageNo: 1, configured: request }),
     queryWithOptions: query,
     queryPackedRows,
-    queryPage: (sql, values, pageNo, pageSize) => execute(sql, values, { pageNo, pageSize }),
+    queryPage: (sql, values, pageNo, pageSize, options) =>
+      execute(sql, values, { ...options, pageNo, pageSize }),
   };
 }
