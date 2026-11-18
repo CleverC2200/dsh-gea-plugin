@@ -475,6 +475,11 @@
       "tests": ["scripts/quality-workbench.test.mjs", "tests/business-page-grant.test.mjs"]
     },
     {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/benchmark-sales-plan\\.mjs$",
+      "tests": ["scripts/benchmark-sales-plan.test.mjs"]
+    },
+    {
       "repo": "dsh-agent-workbench",
       "pattern": "^src/sales-plan\\.ts$",
       "tests": ["tests/sales-plan-action.test.mjs"]

@@ -30,6 +30,15 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 按授权启动与切换时复用 [源码组合说明](plugin-split-validation.md) 的明确五源和自有 runtime。可构建不等于窗口已获授权。旧 desktop:dev 使用已安装公司壳，属于历史入口，不作为当前官方客户端协议。
 
+销售计划性能验收使用 [真实点击脚本](../scripts/benchmark-sales-plan.mjs)。启动载入候选 Host 和 Workbench 的隔离桌面客户端，确认已登录且有销售计划读取权限。脚本通过 Playwright Chromium 打开该客户端提供的工作台，默认每个场景执行五次。重启脚本只操作该隔离实例，等待新启动地址写入日志后退出。
+
+```sh
+node scripts/benchmark-sales-plan.mjs --launch-log /absolute/client.log \
+  --restart /absolute/restart-isolated-client.sh --out /absolute/new-result.json
+```
+
+首次打开和周期索引过期重开的 SKU 耗时从销售计划入口点击计，多计划切换的 SKU 耗时从 SKU 标签点击计。列表耗时统一从销售计划入口点击计。结果保留计划数、实际周期扫描、请求耗时和可用的追踪 ID。用 `--min-plans` 指定多计划场景的覆盖要求，用 `--help` 查看参数。
+
 `check:comments` 默认检查全仓自有 JS/TS、HTML/SVG 及内嵌脚本和样式、CSS、JSONC、YAML、Python、Shell、PowerShell、NSIS、SQL、Java、TOML、CMD 与行式配置；工作流的 Shell/PowerShell `run` 脚本一并检查。字符串、Prompt、Python docstring 和 heredoc 数据保留。解析失败拒绝通过；Shell 等格式使用固定版本词法器，不代表执行验收。`--base <完整提交>` 或显式文件只用于局部反馈，CI 和静态门禁默认执行全仓检查。`source-comments.json` 登记第三方、生成物、fixture 与历史证据来源；收到的业务原件复用现有 `SOURCE.json` 文件清单与摘要核对，已改写的资源继续按自有源码检查；`--report <路径>` 输出完整排除与违规清单。工具指令先消除依赖，许可证按分发要求保全。
 
 ## Window fixture 的固定输入

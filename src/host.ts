@@ -39,6 +39,7 @@ import {
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
+import { salesPlanListResponse } from "./host/sales-plan-list-response.ts";
 import { lastUserQuestion } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
 import {
@@ -640,6 +641,14 @@ export async function apply(
             const pageOwner = request.headers.get("X-Workbench-Page-Owner");
             try {
               const page = pageOwner ? ctx.workbenchPages.requestContext(pageOwner) : undefined;
+              const generation = request.headers.get("X-Sales-Plan-Detail-Load");
+              const detailLoad =
+                page &&
+                pageOwner &&
+                generation &&
+                /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/.test(generation)
+                  ? { pageOwner, generation }
+                  : undefined;
               if (page)
                 request = new Request(request, {
                   signal: AbortSignal.any([request.signal, page.signal]),
@@ -647,6 +656,14 @@ export async function apply(
               return await business.capture.run(page?.sessionId, endpoint, async () => {
                 business.assertOperation(endpoint);
                 const payload = object(await request.json());
+                const scope = request.headers.get("X-GEA-Sales-Plan-Scope");
+                const startupSignal =
+                  scope === null
+                    ? undefined
+                    : business.salesPlanStartupSignal(scope, endpoint, payload.kind);
+                const readSignal = startupSignal
+                  ? AbortSignal.any([request.signal, startupSignal])
+                  : request.signal;
                 let value: unknown;
                 switch (endpoint) {
                   case "memory/state":
@@ -769,7 +786,34 @@ export async function apply(
                     );
                     break;
                   case "workbench/query":
-                    value = await business.workbenchQuery(payload, request.signal);
+                    if (
+                      (page || startupSignal) &&
+                      payload.kind === "list" &&
+                      request.headers.get("Accept") === "application/x-ndjson"
+                    )
+                      return salesPlanListResponse(
+                        readSignal,
+                        (signal, onPage) =>
+                          business.workbenchQuery(payload, signal, {
+                            detailLoad,
+                            onPlanPage: onPage,
+                          }),
+                        async () => {
+                          await desktopLogin.flush();
+                          await webLogin.flush();
+                        },
+                      );
+                    value = await business.workbenchQuery(payload, readSignal, {
+                      detailLoad,
+                      ...(startupSignal && payload.kind === "periods"
+                        ? {
+                            periodIndex:
+                              request.headers.get("X-GEA-Sales-Plan-Period-Index") === "reuse"
+                                ? "reuse"
+                                : "refresh",
+                          }
+                        : {}),
+                    });
                     break;
                   case "people/search":
                     value = await business.searchPeople(payload, request.signal);
@@ -790,13 +834,13 @@ export async function apply(
                     value = await business.salesPlanSubmit(payload, request.signal);
                     break;
                   case "sales-plan/draft":
-                    value = await business.salesPlanDraft(payload, request.signal);
+                    value = await business.salesPlanDraft(payload, request.signal, detailLoad);
                     break;
                   case "sales-plan/action":
                     value = await business.salesPlanAction(payload, request.signal);
                     break;
                   case "workflow/config":
-                    value = await business.workflowConfig(payload, request.signal);
+                    value = await business.workflowConfig(payload, readSignal);
                     break;
 
                   case "approval/roles":
@@ -823,6 +867,7 @@ export async function apply(
 
                     value = {
                       ...business.status(),
+                      salesPlanStartupReads: true,
                       htmlPlugins: htmlPackages.length > 0,
                       modules: capability.modules(),
                     };

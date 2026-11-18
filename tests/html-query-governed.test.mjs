@@ -99,6 +99,30 @@ test("partial field permissions survive the HTML query boundary", async () => {
   assert.deepEqual(result.rows, [{ sku: "A" }]);
 });
 
+test("explicitly uncounted pages reject truncation and preserve continuation metadata", async () => {
+  const rows = [{ sku: "A" }];
+  const query = { sql: "SELECT sku FROM inventory ORDER BY sku", pageNo: 1, includeTotal: false };
+  const read = (metadata) =>
+    readHtmlQuery(query, {
+      endpoint: "https://gea.test",
+      token: "test",
+      signal: new AbortController().signal,
+      fetch: async (_url, init) => {
+        assert.equal(JSON.parse(init.body).includeTotal, false);
+        return Response.json({ success: true, result: { rows, ...metadata } });
+      },
+    });
+  assert.deepEqual(await read({ hasMore: true, rowCount: 1 }), {
+    rows,
+    records: rows,
+    total: null,
+    hasMore: true,
+  });
+  for (const metadata of [{ truncated: true }, { complete: false }])
+    await assert.rejects(read(metadata), { code: "GEA_SQL_RESULT_INCOMPLETE" });
+  await assert.rejects(read({ rowCount: 2 }), { code: "GEA_SQL_RESPONSE_INVALID" });
+});
+
 for (const reasonCode of ["RESOURCE_NOT_PUBLISHED", "NO_RETURN_COLUMN_ALLOWED"]) {
   test(`${reasonCode} is an error, not empty data or retryable failure`, async () => {
     let calls = 0;
