@@ -34,6 +34,33 @@ const makeBusiness = () => {
   return business;
 };
 
+test("sales plan startup authorizes current identity reads without an Agent and revokes them on environment change", (t) => {
+  const business = makeBusiness();
+  t.after(() => business.dispose());
+  const scope = business.pageSessionScope();
+  const signal = business.salesPlanStartupSignal(scope, "workbench/query", "periods");
+  assert.equal(business.salesPlanStartupSignal(scope, "workbench/query", "list"), signal);
+  assert.equal(business.salesPlanStartupSignal(scope, "workflow/config"), signal);
+  assert.throws(
+    () => business.salesPlanStartupSignal(scope, "workbench/query", "skuReview"),
+    /GEA_SALES_PLAN_STARTUP_READ_ONLY/,
+  );
+  assert.throws(
+    () => business.salesPlanStartupSignal(scope, "sales-plan/submit"),
+    /GEA_SALES_PLAN_STARTUP_READ_ONLY/,
+  );
+  assert.throws(
+    () => business.salesPlanStartupSignal("old-scope", "workbench/query", "list"),
+    /PAGE_IDENTITY_CHANGED/,
+  );
+  business.selectEnvironment({ environment: "test" });
+  assert.equal(signal.aborted, true);
+  assert.throws(
+    () => business.salesPlanStartupSignal(scope, "workbench/query", "list"),
+    /LOGIN_REQUIRED/,
+  );
+});
+
 test("period discovery uses visible plans after the period dependency was removed", async () => {
   const original = globalThis.fetch;
   const requests = [];

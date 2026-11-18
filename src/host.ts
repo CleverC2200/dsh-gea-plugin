@@ -655,6 +655,14 @@ export async function apply(
               return await business.capture.run(page?.sessionId, endpoint, async () => {
                 business.assertOperation(endpoint);
                 const payload = object(await request.json());
+                const scope = request.headers.get("X-GEA-Sales-Plan-Scope");
+                const startupSignal =
+                  scope === null
+                    ? undefined
+                    : business.salesPlanStartupSignal(scope, endpoint, payload.kind);
+                const readSignal = startupSignal
+                  ? AbortSignal.any([request.signal, startupSignal])
+                  : request.signal;
                 let value: unknown;
                 switch (endpoint) {
                   case "memory/state":
@@ -778,12 +786,12 @@ export async function apply(
                     break;
                   case "workbench/query":
                     if (
-                      page &&
+                      (page || startupSignal) &&
                       payload.kind === "list" &&
                       request.headers.get("Accept") === "application/x-ndjson"
                     )
                       return salesPlanListResponse(
-                        request.signal,
+                        readSignal,
                         (signal, onPage) =>
                           business.workbenchQuery(payload, signal, detailLoad, onPage),
                         async () => {
@@ -791,7 +799,7 @@ export async function apply(
                           await webLogin.flush();
                         },
                       );
-                    value = await business.workbenchQuery(payload, request.signal, detailLoad);
+                    value = await business.workbenchQuery(payload, readSignal, detailLoad);
                     break;
                   case "people/search":
                     value = await business.searchPeople(payload, request.signal);
@@ -818,7 +826,7 @@ export async function apply(
                     value = await business.salesPlanAction(payload, request.signal);
                     break;
                   case "workflow/config":
-                    value = await business.workflowConfig(payload, request.signal);
+                    value = await business.workflowConfig(payload, readSignal);
                     break;
 
                   case "approval/roles":

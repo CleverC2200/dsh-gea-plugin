@@ -762,6 +762,17 @@ export class Business {
     return this.auth ? `${this.runId}:${this.pageIdentityGeneration}` : undefined;
   }
 
+  salesPlanStartupSignal(scope: string, endpoint: string, kind: unknown): AbortSignal {
+    if (
+      endpoint !== "workflow/config" &&
+      !(endpoint === "workbench/query" && (kind === "periods" || kind === "list"))
+    )
+      throw Error("GEA_SALES_PLAN_STARTUP_READ_ONLY");
+    this.authenticated();
+    if (scope !== this.pageSessionScope()) throw Error("PAGE_IDENTITY_CHANGED");
+    return this.epoch.signal;
+  }
+
   customerInventoryIdentity(): InventoryRoleProfile | null {
     const auth = this.auth;
     const access = this.customerInventoryAccess;
