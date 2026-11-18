@@ -699,6 +699,13 @@ for (const failure of ["http", "permission"])
     assert.equal(failed.isError, true);
     assert.match(JSON.stringify(failed), failure === "http" ? /HTTP_502/ : /AGENT_ACCESS_DENIED/);
     assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, before + 1);
+    if (failure === "http") {
+      const blocked = await f.execute();
+      assert.equal(blocked.isError, true);
+      assert.match(JSON.stringify(blocked), /GEA_TURN_STOPPED/);
+      assert.equal(f.calls.filter(({ url }) => url.endsWith("/session")).length, before + 1);
+      f.business.clearTurnStops("sales");
+    }
     reject = false;
     options.initializeStatus = undefined;
     const next = await f.execute();
