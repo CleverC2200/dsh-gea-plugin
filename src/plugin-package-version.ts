@@ -1,4 +1,4 @@
 export const pluginPackageVersion = Object.freeze({
   name: "@cleverc2200/gea-dsh-prototype",
-  version: "0.0.316",
+  version: "0.0.317",
 } as const);
