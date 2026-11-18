@@ -148,7 +148,7 @@ test(
 
     const openInbox = async () => {
       await preparePageStartup(ui);
-      await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+      await ui.getByRole("button", { name: "消息中心", exact: true }).click();
       const conversation = ui.locator(
         ".agent-workbench-document:has(.gea-inbox) .agent-workbench-native-conversation [data-conversation-session]",
       );
