@@ -37,13 +37,13 @@ export class GatewayRequests {
     return this.request({ kind: "read", path, identity, signal, includeTenant, purpose });
   }
 
-  readResult(path: string, identity: Identity, signal: AbortSignal) {
+  readResult(path: string, identity: Identity, signal: AbortSignal, includeTenant = true) {
     return this.request({
       kind: "read",
       path,
       identity,
       signal,
-      includeTenant: true,
+      includeTenant,
       resultEnvelope: true,
     });
   }
@@ -124,9 +124,11 @@ export class GatewayRequests {
       const safe = new GeaResponseError(response.status, data, [input.identity?.token]);
       const upstreamCode = safe.details.upstreamCode;
       const code =
-        typeof upstreamCode === "string" && /^[A-Z][A-Z_0-9]{2,}$/.test(upstreamCode)
-          ? upstreamCode
-          : "GEA_REQUEST_REJECTED";
+        data.code === 401
+          ? "GEA_HTTP_401"
+          : typeof upstreamCode === "string" && /^[A-Z][A-Z_0-9]{2,}$/.test(upstreamCode)
+            ? upstreamCode
+            : "GEA_REQUEST_REJECTED";
       if (data.code === 401) this.owner.expire(input.identity);
       throw Object.assign(Error(safe.message.replace(/^GEA_HTTP_200[：]?/, "") || code), { code });
     }
