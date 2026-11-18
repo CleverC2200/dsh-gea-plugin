@@ -664,6 +664,11 @@ function skuTotal(rows: Record<string, unknown>[], field: "qty" | "amt") {
   };
 }
 
+type SalesPlanDetailLoad = { pageOwner: string; generation: string };
+
+const salesPlanDetailKey = (load: SalesPlanDetailLoad, planId: string, versionId: string) =>
+  JSON.stringify([load.pageOwner, load.generation, planId, versionId]);
+
 export class Business {
   private readonly identityListeners = new Set<() => void>();
 
@@ -712,6 +717,10 @@ export class Business {
   private readonly surfaces = new Map<string, WorkbenchSurface>();
   private requests = new Map<string, AbortController>();
   private readonly materialNames = new MaterialNameIndex();
+  private salesPlanDetailHandoffs = new Map<
+    string,
+    { detail: GeaSalesPlanDetail; expiresAt: number }
+  >();
   private modelRoutes = new Map<string, GeaModelRoute>();
   private readonly modelMetadataRetries = new Map<string, { at: number; ids: string[] }>();
   private readonly inventoryReads = new InventoryReadCache(Date.now, (value) =>
@@ -1052,6 +1061,7 @@ export class Business {
     this.pageIdentityGeneration = randomUUID();
     this.auth = undefined;
     this.materialNames.clear();
+    this.salesPlanDetailHandoffs = new Map();
     this.customerInventoryAccess = undefined;
     this.modelRoutes.clear();
     this.transport.clearModels();
@@ -1437,7 +1447,11 @@ export class Business {
     return this.auth;
   }
 
-  async salesPlanDraft(payload: Record<string, unknown>, caller: AbortSignal) {
+  async salesPlanDraft(
+    payload: Record<string, unknown>,
+    caller: AbortSignal,
+    detailLoad?: SalesPlanDetailLoad,
+  ) {
     this.assertExecutionAllowed(this.config.analysisAgentCode, "draft");
     keys(payload, ["planId", "versionId", "approvalRole", "draft"]);
     const auth = this.authenticated();
@@ -1457,10 +1471,12 @@ export class Business {
       .digest("hex");
     const dir = resolve(this.config.runtimeDir, "approval-drafts");
     const file = resolve(dir, owner + ".json");
-    const detail = (await this.workbenchQuery(
-      { kind: "detail", query: { planId } },
-      signal,
-    )) as GeaSalesPlanDetail;
+    const canHandoff = detailLoad && payload.draft === undefined;
+    const handoffs = this.salesPlanDetailHandoffs;
+    const readDetail = () => this.workbenchQuery({ kind: "detail", query: { planId } }, signal);
+    const detail = (await (canHandoff
+      ? this.capture.prepare(readDetail)
+      : readDetail())) as GeaSalesPlanDetail;
     const row = {
       planId,
       versionId,
@@ -1486,6 +1502,16 @@ export class Business {
       await rename(temp, file);
       return value;
     }
+    const completed = <T>(value: T) => {
+      signal.throwIfAborted();
+      if (canHandoff) {
+        const key = salesPlanDetailKey(detailLoad, planId, versionId);
+        handoffs.delete(key);
+        if (handoffs.size >= 200) handoffs.delete(handoffs.keys().next().value!);
+        handoffs.set(key, { detail, expiresAt: Date.now() + 15_000 });
+      }
+      return value;
+    };
     try {
       const stored = JSON.parse(await readFile(file, "utf8"));
       signal.throwIfAborted();
@@ -1493,13 +1519,13 @@ export class Business {
         salesPlanLocalDraftValid(stored.draft, planId, versionId) &&
         stored.draft.status !== row.status
       )
-        return { draft: null, sourceSnapshot };
+        return completed({ draft: null, sourceSnapshot });
       if (!salesPlanDraftMatches(stored.draft, row, detail))
-        return { draft: null, stale: true, sourceSnapshot };
-      return { ...stored, sourceSnapshot };
+        return completed({ draft: null, stale: true, sourceSnapshot });
+      return completed({ ...stored, sourceSnapshot });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      return { draft: null, sourceSnapshot };
+      return completed({ draft: null, sourceSnapshot });
     }
   }
 
@@ -1826,11 +1852,17 @@ export class Business {
   }
 
   async salesPlanSubmit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    return this.salesTransactions.submit(payload, caller);
+    this.salesPlanDetailHandoffs = new Map();
+    return this.salesTransactions.submit(payload, caller).finally(() => {
+      this.salesPlanDetailHandoffs = new Map();
+    });
   }
 
   salesPlanAction(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
-    return this.salesTransactions.action(payload, caller);
+    this.salesPlanDetailHandoffs = new Map();
+    return this.salesTransactions.action(payload, caller).finally(() => {
+      this.salesPlanDetailHandoffs = new Map();
+    });
   }
 
   async navigationCatalog(
@@ -3824,10 +3856,14 @@ export class Business {
     return this.recordPreview(snapshot);
   }
 
-  async workbenchQuery(payload: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+  async workbenchQuery(
+    payload: Record<string, unknown>,
+    signal: AbortSignal,
+    detailLoad?: SalesPlanDetailLoad,
+  ): Promise<unknown> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
-    return this.readWorkbenchQuery(payload, signal);
+    return this.readWorkbenchQuery(payload, signal, { detailLoad });
   }
 
   private async fillMaterialNames(
@@ -4141,7 +4177,7 @@ export class Business {
   private async readWorkbenchQuery(
     payload: Record<string, unknown>,
     signal: AbortSignal,
-    options: { forModel?: boolean } = {},
+    options: { forModel?: boolean; detailLoad?: SalesPlanDetailLoad } = {},
   ): Promise<unknown> {
     keys(payload, ["kind", "query"]);
     let query = object(payload.query ?? {});
@@ -4195,10 +4231,18 @@ export class Business {
     if (kind === "skuReview") {
       if (options.forModel) throw new Error("INVALID_QUERY");
       const active = AbortSignal.any([signal, this.epoch.signal]);
+      active.throwIfAborted();
+      const planId = text(query.planId);
+      const versionId = text(query.versionId);
+      const key = options.detailLoad && salesPlanDetailKey(options.detailLoad, planId, versionId);
+      const handoff = key && this.salesPlanDetailHandoffs.get(key);
+      if (key) this.salesPlanDetailHandoffs.delete(key);
       return readSalesPlanSkuReview(
-        { planId: text(query.planId), versionId: text(query.versionId) },
-        (planId, current) =>
-          this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current),
+        { planId, versionId },
+        async (planId, current) =>
+          handoff && handoff.expiresAt > Date.now()
+            ? this.capture.reuse(handoff.detail)
+            : this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current),
         (input, current) =>
           this.pluginSql({ ...input, consumerCode: this.config.analysisAgentCode }, current),
         salesPlan.salesPlanPeriodMonthForPlanId,

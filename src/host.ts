@@ -639,6 +639,14 @@ export async function apply(
             const pageOwner = request.headers.get("X-Workbench-Page-Owner");
             try {
               const page = pageOwner ? ctx.workbenchPages.requestContext(pageOwner) : undefined;
+              const generation = request.headers.get("X-Sales-Plan-Detail-Load");
+              const detailLoad =
+                page &&
+                pageOwner &&
+                generation &&
+                /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/.test(generation)
+                  ? { pageOwner, generation }
+                  : undefined;
               if (page)
                 request = new Request(request, {
                   signal: AbortSignal.any([request.signal, page.signal]),
@@ -768,7 +776,7 @@ export async function apply(
                     );
                     break;
                   case "workbench/query":
-                    value = await business.workbenchQuery(payload, request.signal);
+                    value = await business.workbenchQuery(payload, request.signal, detailLoad);
                     break;
                   case "people/search":
                     value = await business.searchPeople(payload, request.signal);
@@ -789,7 +797,7 @@ export async function apply(
                     value = await business.salesPlanSubmit(payload, request.signal);
                     break;
                   case "sales-plan/draft":
-                    value = await business.salesPlanDraft(payload, request.signal);
+                    value = await business.salesPlanDraft(payload, request.signal, detailLoad);
                     break;
                   case "sales-plan/action":
                     value = await business.salesPlanAction(payload, request.signal);

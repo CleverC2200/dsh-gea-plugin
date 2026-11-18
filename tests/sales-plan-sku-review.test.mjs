@@ -1,4 +1,5 @@
 import { tmpdir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -197,7 +198,7 @@ test("identity cancellation discards late SQL data", async () => {
   );
 });
 
-test("workbench route derives the customer and month from authorized detail and rejects model use", async (t) => {
+test("workbench SKU review derives authorized scope and reuses a validated draft detail once per page load", async (t) => {
   const bundled = await build({
     entryPoints: ["src/host/business.ts"],
     alias: {
@@ -218,8 +219,9 @@ test("workbench route derives the customer and month from authorized detail and 
     module,
     module.exports,
   );
+  const runtimeDir = await mkdtemp(resolve(tmpdir(), "sales-plan-sku-review-"));
   const business = new module.exports.Business({
-    runtimeDir: tmpdir(),
+    runtimeDir,
     geaBaseUrl: "https://gea.test",
     analysisAgentCode: "sales_forecast",
     requestTimeoutMs: 2000,
@@ -231,16 +233,29 @@ test("workbench route derives the customer and month from authorized detail and 
     base: "https://gea.test",
     auth: { token: "fixture", tenantId: "1", id: "u", name: "Test", username: "test" },
   });
-  t.after(() => business.dispose());
+  t.after(async () => {
+    business.dispose();
+    await rm(runtimeDir, { recursive: true, force: true });
+  });
   const planId = "p-y-2026-11-00001";
   const sqlRequests = [];
+  let detailReads = 0;
   t.mock.method(globalThis, "fetch", async (url, init) => {
     init.signal.throwIfAborted();
     const path = new URL(url).pathname;
     let result;
-    if (path.endsWith("/plans/" + planId))
+    if (path.endsWith("/plans/" + planId)) {
+      detailReads++;
       result = {
-        currentVersion: { id: "v1", planId, cust_code: 10001, orderType: "M" },
+        currentVersion: {
+          id: "v1",
+          planId,
+          cust_code: 10001,
+          orderType: "M",
+          planTypeCode: "Y",
+          status: 1,
+          effective: true,
+        },
         skus: [
           {
             versionId: "v1",
@@ -248,12 +263,13 @@ test("workbench route derives the customer and month from authorized detail and 
             materialDescription: "水饺",
             qty: "501.600",
             amt: "1234.50",
+            price: "2",
           },
         ],
         versions: [],
         logs: [],
       };
-    else if (path.endsWith("/agent/session"))
+    } else if (path.endsWith("/agent/session"))
       result = { accessDecision: { allowed: true }, delegationToken: "fixture-delegation" };
     else if (path.endsWith("/sql/execute")) {
       sqlRequests.push(JSON.parse(init.body));
@@ -268,6 +284,39 @@ test("workbench route derives the customer and month from authorized detail and 
   assert.equal(result.versionId, "v1");
   assert.equal(result.skus[0].amt, "1234.50");
   assert.equal(sqlRequests.length, 1);
+  const load = { pageOwner: "page-a", generation: "current-load" };
+  const readDraft = () => business.salesPlanDraft({ planId, versionId: "v1" }, signal(), load);
+  const review = (scope) =>
+    business.workbenchQuery(
+      { kind: "skuReview", query: { planId, versionId: "v1" } },
+      signal(),
+      scope,
+    );
+  assert.equal((await readDraft()).draft, null);
+  assert.equal(detailReads, 2);
+  assert.deepEqual(await review({ ...load, pageOwner: "page-b" }), result);
+  assert.deepEqual(await review({ ...load, generation: "refresh" }), result);
+  assert.equal(detailReads, 4);
+  const cancelled = AbortSignal.abort();
+  await assert.rejects(
+    business.workbenchQuery(
+      { kind: "skuReview", query: { planId, versionId: "v1" } },
+      cancelled,
+      load,
+    ),
+    /Abort/i,
+  );
+  assert.deepEqual(await review(load), result);
+  assert.equal(detailReads, 4);
+  assert.deepEqual(await review(load), result);
+  assert.equal(detailReads, 5);
+
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  await readDraft();
+  t.mock.timers.tick(15_001);
+  assert.deepEqual(await review(load), result);
+  assert.equal(detailReads, 7);
+
   await assert.rejects(
     business.agentQuery({ kind: "skuReview", query: { planId, versionId: "v1" } }, signal()),
     /INVALID_QUERY/,
