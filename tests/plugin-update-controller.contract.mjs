@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { until } from "./profile.mjs";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
@@ -106,6 +107,7 @@ test("legacy personal memory updates alone and requires a new stamped Host and c
   assert.equal(controller.snapshot().operation.packageName, name);
   assert.equal(controller.snapshot().operation.targets, undefined);
   await controller.dispose();
+  await f.installation.beginBoot();
   const script = join(f.root, "memory-restart.mjs");
   await writeFile(
     script,
@@ -135,7 +137,7 @@ test("legacy personal memory updates alone and requires a new stamped Host and c
 
 test("a receipt from the previous three-package updater completes after GEA first upgrades", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
-  const f = await controllerFixture(t, { memory: true, memoryBootstrap: true });
+  const f = await controllerFixture(t, { memory: true, memoryBootstrap: true, managed: false });
   const oldModule = join(work, "previous-controller.mjs");
   const repository = fileURLToPath(new URL("..", import.meta.url));
   await build({
@@ -199,6 +201,7 @@ test("a receipt from the previous three-package updater completes after GEA firs
   const memory = f.proofs.find((row) => row.name === "@cleverc2200/dsh-personal-memory");
   memory.host = { kind: "unversioned", identity: "legacy-memory" };
   memory.client = { kind: "unverified", reason: "legacy-memory" };
+  await f.initializeInstallation();
   const script = join(f.root, "gea-bootstrap-restart.mjs"),
     input = join(f.root, "gea-bootstrap.json");
   await writeFile(
@@ -292,7 +295,7 @@ test("accepted updates preserve personal Agents, customizations and complete Ski
   }
 });
 test(
-  "update never traverses dependency file trees or creates a snapshot stage",
+  "unsupported candidate contents leave the running installation usable",
   { skip: process.platform === "win32" },
   async (t) => {
     const { execFileSync } = await import("node:child_process");
@@ -310,7 +313,8 @@ test(
     assert.ok(row, JSON.stringify(controller.snapshot()));
     await controller.submit({ packageName: row.packageName, planId: row.planId });
     const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
-    assert.equal(operation.stage, "pending-restart", JSON.stringify(operation));
+    assert.equal(operation.stage, "failed", JSON.stringify(operation));
+    assert.equal((await f.installation.beginBoot()).id, "baseline");
     assert.ok(!stages.includes("snapshotting"));
     await assert.rejects(readFile(join(operation.directory, "recovery/snapshot.json")), {
       code: "ENOENT",
@@ -351,7 +355,7 @@ test("missing store metadata stops an update before acceptance or profile mutati
     /PROFILE_STORE_UNAVAILABLE/,
   );
   assert.equal((await readPluginProfile(f.dir)).sha256, before);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+  await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), {
     code: "ENOENT",
   });
 });
@@ -426,7 +430,12 @@ test("durable accepted operation installs one existing package under official lo
   const changed = JSON.parse(
     await readFile(join(f.dir, "node_modules/@cleverc2200/gea-dsh-prototype/package.json"), "utf8"),
   );
-  assert.equal(changed.version, "3.1.0");
+  assert.equal(changed.version, "3.0.0");
+  const candidate = await readPluginProfile(await f.candidateDirectory());
+  assert.equal(
+    candidate.packages.find((pkg) => pkg.name === accepted.packageName).version,
+    "3.1.0",
+  );
   assert.equal(
     controller.snapshot().items.find((row) => row.packageName === accepted.packageName)
       .runningHostVersion,
@@ -435,19 +444,22 @@ test("durable accepted operation installs one existing package under official lo
   assert.equal(
     controller.snapshot().items.find((row) => row.packageName === accepted.packageName)
       .installedVersion,
-    "3.1.0",
+    "3.0.0",
   );
-  const invocation = JSON.parse((await readFile(join(f.dir, "invocations.ndjson"), "utf8")).trim());
+  const invocation = JSON.parse(
+    (await readFile(join(f.evidence, "invocations.ndjson"), "utf8")).trim(),
+  );
   assert.equal(invocation.args[0], "--fixture-prefix");
   assert.equal(invocation.marker, "launcher-provided");
-  assert.equal(invocation.cwd, await realpath(f.dir));
+  assert.notEqual(invocation.cwd, await realpath(f.dir));
+  assert.match(invocation.cwd, /[/\\]staging-[^/\\]+$/);
   await assert.rejects(
     controller.submit({ packageName: row.packageName, planId: row.planId }),
     /UPDATE_OPERATION_BLOCKED/,
   );
 });
 test.after(() => rm(work, { recursive: true, force: true }));
-test("a failed package process reports failure and retains its log without claiming rollback", async (t) => {
+test("a failed candidate package process retains its log and leaves the running version unchanged", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t, { mode: "fail-after-write" }),
     controller = createPluginUpdateController(f.options);
@@ -464,12 +476,12 @@ test("a failed package process reports failure and retains its log without claim
   assert.equal(
     JSON.parse(await readFile(join(f.dir, "node_modules", row.packageName, "package.json"), "utf8"))
       .version,
-    "3.1.0",
+    "3.0.0",
   );
   await controller.check();
   assert.equal(
     controller.snapshot().items.find((item) => item.packageName === row.packageName).state,
-    "current",
+    "available",
   );
 });
 test("unmanaged profile field changes report failure without overwriting user settings", async (t) => {
@@ -486,7 +498,7 @@ test("unmanaged profile field changes report failure without overwriting user se
   assert.equal(outcome.diagnostic, "PROFILE_SETTINGS_OWNERSHIP_UNCONFIRMED");
   assert.equal(
     JSON.parse(await readFile(join(f.dir, "package.json"), "utf8")).retained.draft,
-    "broken",
+    "keep",
   );
 });
 test("the official profile lock rechecks a changed baseline before any package-manager invocation", async (t) => {
@@ -517,7 +529,7 @@ test("the official profile lock rechecks a changed baseline before any package-m
   unlock();
   await writer;
   await rejected;
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), /ENOENT/);
+  await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), /ENOENT/);
   assert.equal(controller.snapshot().operation, null);
 });
 test("timed-out exit zero cannot become installed success", async (t) => {
@@ -536,7 +548,7 @@ test("timed-out exit zero cannot become installed success", async (t) => {
   assert.equal(result.stage, "failed", JSON.stringify(result));
 });
 test(
-  "an orphan writer produces unknown without rollback, and Host unload kills and awaits its recorded group",
+  "an orphan candidate writer is stopped without blocking the verified installation",
   { skip: process.platform === "win32" },
   async (t) => {
     const { controllerFixture, waitForStage } =
@@ -550,9 +562,9 @@ test(
       packageName: row.packageName,
       planId: row.planId,
     });
-    const result = await waitForStage(controller, ["unknown", "pending-restart"]);
-    assert.equal(result.stage, "unknown", JSON.stringify(result));
-    assert.equal(result.diagnostic, "PACKAGE_WRITERS_UNCONFIRMED");
+    const result = await waitForStage(controller, ["failed", "pending-restart"]);
+    assert.equal(result.stage, "failed", JSON.stringify(result));
+    assert.equal(result.diagnostic, "PACKAGE_WRITERS_INTERRUPTED");
     assert.equal(
       JSON.parse(
         await readFile(
@@ -560,22 +572,21 @@ test(
           "utf8",
         ),
       ).version,
-      "3.1.0",
+      "3.0.0",
     );
     await controller.dispose();
-    const marker = await readFile(join(f.dir, "late-write"), "utf8");
+    const marker = await readFile(join(f.evidence, "late-write"), "utf8");
     await new Promise((resolve) => setTimeout(resolve, 100));
-    assert.equal(await readFile(join(f.dir, "late-write"), "utf8"), marker);
+    assert.equal(await readFile(join(f.evidence, "late-write"), "utf8"), marker);
     const reopened = createPluginUpdateController(f.options);
     await reopened.initialize();
-    assert.equal(reopened.snapshot().operation.stage, "unknown");
-    await assert.rejects(
-      reopened.submit({ packageName: row.packageName, planId: row.planId }),
-      /UPDATE_OPERATION_BLOCKED/,
-    );
+    assert.equal(reopened.snapshot().operation.stage, "failed");
+    assert.equal((await f.installation.beginBoot()).id, "baseline");
+    await reopened.check();
+    assert(reopened.snapshot().items.some((item) => item.planId));
     await reopened.dispose();
     assert.equal(
-      (await readFile(join(f.dir, "invocations.ndjson"), "utf8")).trim().split("\n").length,
+      (await readFile(join(f.evidence, "invocations.ndjson"), "utf8")).trim().split("\n").length,
       1,
     );
   },
@@ -592,7 +603,7 @@ test("Host unload cancels an accepted operation and reports failure after quiesc
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     try {
-      await readFile(join(f.dir, "invocations.ndjson"));
+      await readFile(join(f.evidence, "invocations.ndjson"));
       break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -637,7 +648,7 @@ test("a new Host can retry an accepted operation whose process exited before ins
   const receipt = JSON.parse(await readFile(join(accepted.directory, "receipt.json"), "utf8"));
   assert.equal(receipt.stage, "accepted");
   assert.deepEqual(receipt.processes, []);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), { code: "ENOENT" });
   const controller = createPluginUpdateController(f.options);
   t.after(() => controller.dispose());
   await controller.initialize();
@@ -646,7 +657,7 @@ test("a new Host can retry an accepted operation whose process exited before ins
   await controller.check();
   assert.equal(controller.snapshot().items[2].state, "available");
 });
-test("submission rejects live and malformed run records but lets the official runner clear an exited writer", async (t) => {
+test("submission rejects live and malformed run records and preserves an exited writer record", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t);
   await mkdir(join(f.dir, ".plugin-manager"), { recursive: true });
@@ -663,7 +674,7 @@ test("submission rejects live and malformed run records but lets the official ru
       /PROFILE_WRITER_UNCONFIRMED/,
     );
     assert.equal(controller.snapshot().operation, null);
-    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+    await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), { code: "ENOENT" });
   }
   await writeFile(run, JSON.stringify({ pid: 2147483647, grouped: true }));
   await controller.check();
@@ -673,7 +684,7 @@ test("submission rejects live and malformed run records but lets the official ru
     (await waitForStage(controller, ["pending-restart", "failed", "unknown"])).stage,
     "pending-restart",
   );
-  await assert.rejects(readFile(run), { code: "ENOENT" });
+  assert.equal(JSON.parse(await readFile(run, "utf8")).pid, 2147483647);
 });
 test("pending receipt survives recreation in the same Node process and needs a genuinely new process plus client observation", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
@@ -703,6 +714,7 @@ test("pending receipt survives recreation in the same Node process and needs a g
   await sameProcess.reconcileRuntime();
   assert.equal(sameProcess.snapshot().operation.stage, "pending-restart");
   await sameProcess.dispose();
+  await f.installation.beginBoot();
   const script = join(f.root, "reconcile.mjs");
   await writeFile(
     script,
@@ -744,6 +756,7 @@ test("pending receipt survives recreation in the same Node process and needs a g
     "receipt.json",
   );
   const receipt = JSON.parse(await readFile(receiptFile, "utf8"));
+  await mkdir(join(f.dir, ".plugin-manager"), { recursive: true });
   await writeFile(
     join(f.dir, ".plugin-manager/run.json"),
     JSON.stringify({ pid: process.pid, grouped: false }),
@@ -793,7 +806,7 @@ test("pending receipt survives recreation in the same Node process and needs a g
   const aliveWriter = JSON.parse(
     execFileSync(process.execPath, [script, input], { encoding: "utf8" }),
   );
-  assert.equal(aliveWriter.operation.stage, "unknown");
+  assert.equal(aliveWriter.operation.stage, "failed");
   await writeFile(
     receiptFile,
     JSON.stringify({
@@ -805,7 +818,7 @@ test("pending receipt survives recreation in the same Node process and needs a g
   const recovered = JSON.parse(
     execFileSync(process.execPath, [script, input], { encoding: "utf8" }),
   );
-  assert.equal(recovered.operation.stage, "completed");
+  assert.equal(recovered.operation.stage, "failed");
   await writeFile(receiptFile, JSON.stringify(receipt));
   const oldHost = JSON.parse(
     execFileSync(process.execPath, [script, oldBrowserInput], { encoding: "utf8" }),
@@ -838,10 +851,10 @@ test("concurrent user patch and default selection survive a failed installation"
         "utf8",
       ),
     ).version,
-    "3.1.0",
+    "3.0.0",
   );
 });
-test("receipt replacement failure after mutation remains unknown and unreadable durable evidence blocks reopening", async (t) => {
+test("unreadable candidate receipts block updates while keeping the running installation usable", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t),
     controller = createPluginUpdateController(f.options);
@@ -856,7 +869,7 @@ test("receipt replacement failure after mutation remains unknown and unreadable 
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     try {
-      await readFile(join(f.dir, "invocations.ndjson"));
+      await readFile(join(f.evidence, "invocations.ndjson"));
       break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -867,24 +880,27 @@ test("receipt replacement failure after mutation remains unknown and unreadable 
   await writeFile(join(accepted.directory, "last-durable-receipt.json"), durableBefore);
   await rm(receipt);
   await mkdir(receipt);
-  const result = await waitForStage(controller, ["unknown", "pending-restart"]);
-  assert.equal(result.stage, "unknown", JSON.stringify(result));
+  const result = await waitForStage(controller, ["failed", "pending-restart"]);
+  assert.equal(result.stage, "failed", JSON.stringify(result));
   assert.equal(result.diagnostic, "UPDATE_RECEIPT_WRITE_FAILED");
   await controller.dispose();
   const reopened = createPluginUpdateController(f.options);
   await reopened.initialize();
-  assert.ok(reopened.snapshot().items.every((item) => item.state === "unknown"));
+  assert.ok(reopened.snapshot().items.every((item) => item.state === "failed"));
   await assert.rejects(
     reopened.submit({ packageName: row.packageName, planId: row.planId }),
     /UPDATE_OPERATION_BLOCKED/,
   );
+  assert.equal(reopened.operationStatus().state, "failed");
+  assert.equal((await f.installation.beginBoot()).id, "baseline");
   await reopened.dispose();
 });
 
-async function bridgeControllerFixture(t, { workbenchFirst = false } = {}) {
+async function bridgeControllerFixture(t, { workbenchFirst = false, managed = true } = {}) {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t, {
     allUpdates: true,
+    managed,
     releasePeers: workbenchFirst
       ? {
           "@cleverc2200/gea-dsh-prototype": {
@@ -952,7 +968,7 @@ test("legacy bridge companions form one suite and a legacy single request instal
     (await waitForStage(controller, ["pending-restart", "failed", "unknown"])).stage,
     "pending-restart",
   );
-  const calls = (await readFile(join(f.dir, "invocations.ndjson"), "utf8"))
+  const calls = (await readFile(join(f.evidence, "invocations.ndjson"), "utf8"))
     .trim()
     .split("\n")
     .map(JSON.parse);
@@ -989,7 +1005,7 @@ test("a legacy updater can install the compatible GEA bridge before the suite up
   const { withFileLock } = await import(
     pathToFileURL(join(sdk, "packages/util/atomic-write/lib/index.js"))
   );
-  const f = await bridgeControllerFixture(t);
+  const f = await bridgeControllerFixture(t, { managed: false });
   const verifySession = await preservedSession(sdk, f.root);
   const releases = await f.source.check();
   const bridge = releases.find((row) => row.name === "@cleverc2200/gea-dsh-prototype");
@@ -1014,6 +1030,7 @@ test("a legacy updater can install the compatible GEA bridge before the suite up
   assert.equal(result.exitCode, 0);
   f.proofs[2].host.stamp.version = bridge.version;
   f.proofs[2].client.stamp.version = bridge.version;
+  await f.initializeInstallation();
   const controller = createPluginUpdateController(f.options);
   t.after(() => controller.dispose());
   await controller.initialize();
@@ -1058,7 +1075,7 @@ test("a missing suite download or a stale whole-suite plan never starts a packag
   );
   assert.equal((await readPluginProfile(f.dir)).sha256, before.sha256);
   assert.equal(controller.snapshot().operation, null);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+  await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), {
     code: "ENOENT",
   });
 });
@@ -1127,12 +1144,121 @@ test("older channel keeps its candidate and reports a downgrade without acceptin
   assert.equal(controller.snapshot().operation, null);
 });
 
+test("a transient dependency registry outage retries before the installer silence limit", async (t) => {
+  const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+  const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
+  const { downloadRegistry } = await import("./fixtures/plugin-updates/download-registry.mjs");
+  const f = await controllerFixture(t, {
+    managed: false,
+    releaseDependencies: {
+      "@cleverc2200/gea-dsh-prototype": { "fixture-network-dependency": "1.0.0" },
+    },
+  });
+  const registry = await downloadRegistry(t, f.root, "transient");
+  const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
+  f.profile.packageManager.args = [manager, "--registry=" + registry.origin];
+  const controller = createPluginUpdateController({ ...f.options, idleTimeoutMs: 5000 });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  const item = controller.snapshot().items.find((item) => item.planId);
+  await controller.submit({ packageName: item.packageName, planId: item.planId });
+  const operation = await waitForStage(controller, ["pending-restart", "failed", "unknown"]);
+  const log = await readFile(operation.logs[0], "utf8");
+  assert.equal(
+    operation.stage,
+    "pending-restart",
+    JSON.stringify({ operation, requests: registry.requests, log }),
+  );
+  assert(registry.requests.filter((path) => path === "/" + registry.name).length >= 3);
+  assert(registry.requests.includes("/dependency.tgz"));
+  assert.equal(
+    (await readPluginProfile(f.dir)).packages.find((pkg) => pkg.name === item.packageName).version,
+    "3.0.0",
+  );
+});
+
+for (const [mode, diagnostic] of [
+  ["partial", "PACKAGE_INSTALL_TIMEOUT"],
+  ["unavailable", "PACKAGE_DEPENDENCY_NETWORK_FAILED"],
+  ["corrupt", "PACKAGE_INSTALL_FAILED"],
+]) {
+  test(`dependency download ${mode} keeps the live graph and retries from a fresh candidate`, async (t) => {
+    const { controllerFixture, waitForStage } =
+      await import("./fixtures/plugin-updates/profile.mjs");
+    const { installPnpmConsumerLayout } =
+      await import("./fixtures/plugin-updates/pnpm-profile.mjs");
+    const { downloadRegistry } = await import("./fixtures/plugin-updates/download-registry.mjs");
+    const f = await controllerFixture(t, {
+      managed: false,
+      releaseDependencies: {
+        "@cleverc2200/gea-dsh-prototype": { "fixture-network-dependency": "1.0.0" },
+      },
+    });
+    const registry = await downloadRegistry(t, f.root, mode);
+    const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
+    f.profile.packageManager.args = [manager, "--registry=" + registry.origin];
+    const files = [
+      "package.json",
+      "pnpm-lock.yaml",
+      "cordis.patch.yml",
+      "user-draft.txt",
+      "credential.enc",
+    ];
+    await writeFile(join(f.dir, "user-draft.txt"), "keep draft\n");
+    await writeFile(join(f.dir, "credential.enc"), Buffer.from([0, 255, 13, 10, 128]));
+    const before = await Promise.all(files.map((name) => readFile(join(f.dir, name))));
+    const controller = createPluginUpdateController({
+      ...f.options,
+      idleTimeoutMs: mode === "partial" ? 2000 : 5000,
+    });
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    await controller.check();
+    let item = controller.snapshot().items.find((item) => item.planId);
+    await controller.submit({ packageName: item.packageName, planId: item.planId });
+    const failed = await waitForStage(controller, ["pending-restart", "failed", "unknown"], 20000);
+    const log = await readFile(failed.logs[0], "utf8");
+    assert.equal(
+      failed.stage,
+      "failed",
+      JSON.stringify({ failed, requests: registry.requests, log }),
+    );
+    assert.equal(failed.diagnostic, diagnostic, log);
+    assert.equal(failed.logs[0], join(failed.directory, "pnpm.log"));
+    assert.equal((await f.installation.store.status()).pending ?? null, null);
+    assert.deepEqual(await Promise.all(files.map((name) => readFile(join(f.dir, name)))), before);
+    assert(registry.requests.includes("/" + registry.name));
+    if (mode !== "unavailable") assert(registry.requests.includes("/dependency.tgz"));
+    registry.recover();
+    await controller.check();
+    item = controller.snapshot().items.find((item) => item.planId);
+    assert(item, JSON.stringify(controller.snapshot()));
+    await controller.submit({ packageName: item.packageName, planId: item.planId });
+    const retried = await waitForStage(controller, ["pending-restart", "failed", "unknown"], 20000);
+    const retryLog = await readFile(retried.logs[0], "utf8");
+    assert.equal(retried.stage, "pending-restart", JSON.stringify({ retried, retryLog }));
+    assert.notEqual(retried.id, failed.id);
+    assert.equal(await readFile(failed.logs[0], "utf8"), log);
+    const load = createRequire(
+      await realpath(
+        join(
+          await f.candidateDirectory(),
+          "node_modules/@cleverc2200/gea-dsh-prototype/package.json",
+        ),
+      ),
+    );
+    assert.equal(load(registry.name), "complete");
+    assert.deepEqual(await Promise.all(files.map((name) => readFile(join(f.dir, name)))), before);
+  });
+}
+
 test("plugin installation exits after Done even when the pnpm update registry never responds", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
   const { configureStalledPnpmRegistry } =
     await import("./fixtures/plugin-updates/stalled-registry.mjs");
-  const f = await controllerFixture(t);
+  const f = await controllerFixture(t, { managed: false });
   const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
   f.profile.packageManager.args = [manager];
   const registry = await configureStalledPnpmRegistry(t, f.profile);
@@ -1156,7 +1282,7 @@ test("plugin installation exits after Done even when the pnpm update registry ne
 test("company profile reading uses real pnpm roots without traversing obsolete or transitive contents", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const { installPnpmConsumerLayout } = await import("./fixtures/plugin-updates/pnpm-profile.mjs");
-  const f = await controllerFixture(t);
+  const f = await controllerFixture(t, { managed: false });
   await installPnpmConsumerLayout(f, "^3.0.0");
   const stale = join(f.dir, "node_modules/.pnpm/obsolete-context/node_modules/obsolete-consumer");
   await mkdir(stale, { recursive: true });
@@ -1200,7 +1326,7 @@ test("Windows checks the signed channel even before package installation capabil
     );
     assert.equal(controller.snapshot().operation, null);
     assert.deepEqual(await readFile(join(f.dir, "package.json")), before);
-    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+    await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), {
       code: "ENOENT",
     });
   } finally {
@@ -1416,7 +1542,7 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
       assert.ok(pendingDuringWrite.includes(false));
       assert.equal(pendingDuringWrite.at(-1), true);
     }
-    const calls = (await readFile(join(f.dir, "invocations.ndjson"), "utf8"))
+    const calls = (await readFile(join(f.evidence, "invocations.ndjson"), "utf8"))
       .trim()
       .split("\n")
       .map(JSON.parse);
@@ -1430,8 +1556,14 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
       );
       assert.deepEqual(
         controller.snapshot().items.map((row) => row.installedVersion),
-        ["1.1.0", "2.1.0", "3.1.0"],
+        ["1.0.0", "2.0.0", "3.0.0"],
       );
+      const candidate = await readPluginProfile(await f.candidateDirectory());
+      assert.deepEqual(candidate.packages.map((pkg) => pkg.version).sort(), [
+        "1.1.0",
+        "2.1.0",
+        "3.1.0",
+      ]);
       assert.deepEqual(after.manifest.retained, before.manifest.retained);
       await controller.dispose();
       const reopened = createPluginUpdateController(f.options);
@@ -1479,7 +1611,7 @@ test("an inactive companion blocks all plans and disabling a companion after che
   );
   assert.equal((await readPluginProfile(f.dir)).sha256, before);
   assert.equal(controller.snapshot().operation, null);
-  await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), {
+  await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), {
     code: "ENOENT",
   });
 });
@@ -1618,9 +1750,29 @@ test("a prepared desktop update wins the profile lock over a plugin install stil
     await rejected;
     assert.equal((await preparing.companyStatus()).phase, "prepared");
     assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
-    await assert.rejects(readFile(join(f.dir, "invocations.ndjson")), { code: "ENOENT" });
+    await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), { code: "ENOENT" });
   } finally {
     resume.resolve();
     await Promise.all([settled, slow.dispose(), preparing.dispose()]);
   }
+});
+
+test("a client without managed startup cannot offer an in-place company update", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t, { managed: false });
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  assert(
+    controller
+      .snapshot()
+      .items.every(
+        (item) =>
+          item.state === "blocked" &&
+          item.diagnostic === "UPDATE_DESKTOP_INSTALLATION_REQUIRED" &&
+          !item.planId,
+      ),
+  );
+  assert.equal(controller.snapshot().operation, null);
 });

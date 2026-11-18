@@ -6,11 +6,13 @@ import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { chromium } from "@playwright/test";
 import { resolveSourceInputs } from "./source-profile.mjs";
+import { readSourceWindowInputs } from "../tests/fixtures/source-window-inputs.mjs";
 
 test(
   "Workbench tarball installs without GEA and exposes the picker and shared bridge",
   { timeout: 180000 },
   async (t) => {
+    const { core } = await readSourceWindowInputs();
     const root = resolve(import.meta.dirname, "..");
     const entries = await resolveSourceInputs(
       JSON.parse(await readFile(process.env.GEA_TEST_SOURCE_INPUTS, "utf8")),
@@ -60,7 +62,7 @@ test(
     execFileSync(
       process.execPath,
       [
-        process.env.GEA_PACKAGE_PNPM,
+        resolve(core, "apps/desktop/node_modules/pnpm/bin/pnpm.mjs"),
         "install",
         "--ignore-scripts",
         "--registry=https://registry.npmjs.org",

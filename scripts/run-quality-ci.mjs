@@ -613,6 +613,8 @@ try {
     )
       await prepareWorkbenchGeaAuthority({ workbench: workbench.path, gea: own.path });
     profileTestsSelected = plan.runtime;
+    const fullWorkbench =
+      plan.runtime || plan.files.includes("scripts/page-interaction-package.test.mjs");
 
     const needsCoreWeb =
       values.phase === "macos-isolation" ||
@@ -666,7 +668,6 @@ try {
       "GEA_TEST_CANDIDATE_SHA256",
       "GEA_TEST_SOURCE_CORE",
       "GEA_TEST_CANDIDATE_INPUTS",
-      "GEA_PACKAGE_PNPM",
     ])
       delete process.env[key];
     run(process.execPath, [
@@ -869,7 +870,7 @@ try {
         ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
         preparedWorkbench,
       );
-      if (plan.runtime)
+      if (fullWorkbench)
         run(
           "npm",
           ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
@@ -894,8 +895,8 @@ try {
       if (values.stage === "full") stages.start("build");
     }
     if (building && values["prepare-inputs"]) {
-      if (plan.runtime)
-        run("npm", ["run", "build:core"], preparedWorkbench, {
+      if (fullWorkbench)
+        run("npm", ["run", "build:plugin"], preparedWorkbench, {
           DSH_TYPECHECK_PROJECT: "tsconfig.official.json",
           APS_BUILD_MODE: "mock",
         });
@@ -930,7 +931,7 @@ try {
       }
       run("corepack", ["pnpm", "build"], manage.path);
       run("corepack", ["pnpm", "build:plugin"]);
-      if (plan.runtime) {
+      if (fullWorkbench) {
         const prepared = await readPreparedWorkbench({
           source: workbench.path,
           prepared: preparedWorkbench,
@@ -949,7 +950,7 @@ try {
         });
       }
     }
-    if (plan.runtime) {
+    if (fullWorkbench) {
       const workbenchAssets = await verifyPreparedWorkbench({
         source: workbench.path,
         prepared: preparedWorkbench,
@@ -1100,17 +1101,6 @@ try {
     }
     if (building && plan.files.includes("scripts/package-desktop.test.mjs"))
       run(process.execPath, ["scripts/build-desktop-tools.mjs"]);
-    if (
-      plan.files.some((file) =>
-        ["scripts/package-smoke.test.mjs", "scripts/page-interaction-package.test.mjs"].includes(
-          file,
-        ),
-      )
-    ) {
-      const pnpm = resolve(core, "apps/desktop/node_modules/pnpm/bin/pnpm.mjs");
-      if (!existsSync(pnpm)) refuse("QUALITY_PACKAGE_PNPM_REQUIRED", pnpm);
-      process.env.GEA_PACKAGE_PNPM = pnpm;
-    }
     if (stagedPhase) {
       if (building) {
         stages.record.artifacts = {};

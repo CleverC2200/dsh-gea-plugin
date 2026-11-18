@@ -117,7 +117,11 @@ export class FeedbackSubmitter {
           file: "gea-api-logs.jsonl",
           reason: "部分 API 日志已淘汰、未记录正文或无法取得；完整请求记录以独立清单为准",
         });
-    } else missing.push({ file: "gea-api-logs.jsonl", reason: "未取得属于本会话的独立 API 日志" });
+    } else
+      missing.push({
+        file: "gea-api-logs.jsonl",
+        reason: "未取得属于本会话的独立 API 日志",
+      });
     const captureCompletedAt = new Date().toISOString();
     const pack = () => {
       const manifest = {
@@ -129,7 +133,10 @@ export class FeedbackSubmitter {
         files: Object.keys(files),
         missing,
       };
-      const entries = { "manifest.json": Buffer.from(JSON.stringify(manifest)), ...files };
+      const entries = {
+        "manifest.json": Buffer.from(JSON.stringify(manifest)),
+        ...files,
+      };
       const uncompressed = Object.values(entries).reduce(
         (total, bytes) => total + bytes.byteLength,
         0,
@@ -147,7 +154,10 @@ export class FeedbackSubmitter {
       if (archive.fits) break;
       if (!files[optional]) continue;
       delete files[optional];
-      missing.push({ file: optional, reason: "为满足反馈上传容量限制，本次省略此可选原文文件" });
+      missing.push({
+        file: optional,
+        reason: "为满足反馈上传容量限制，本次省略此可选原文文件",
+      });
       archive = pack();
     }
     if (!archive.fits)
@@ -253,10 +263,16 @@ export class FeedbackSubmitter {
       if (error instanceof Error && error.name === "TimeoutError")
         return {
           ok: false,
-          error: { code: "GEA_FEEDBACK_TIMEOUT", message: "反馈上传超时，原包已保留，请重试" },
+          error: {
+            code: "GEA_FEEDBACK_TIMEOUT",
+            message: "反馈上传超时，原包已保留，请重试",
+          },
         };
       if (error instanceof FeedbackFailure)
-        return { ok: false, error: { code: error.code, message: error.message } };
+        return {
+          ok: false,
+          error: { code: error.code, message: error.message },
+        };
       const code =
         error instanceof Error && /^[A-Z_]{1,100}$/.test(error.message)
           ? error.message
@@ -281,6 +297,7 @@ export function mountFeedbackSubmit(
   timeoutMs: number,
   maxZipBytes: number,
 ): void {
+  if (typeof ctx.sessionFeedback.registerSubmit !== "function") return;
   const submitter = new FeedbackSubmitter(ctx, business, timeoutMs, maxZipBytes);
   ctx.effect(() => ctx.sessionFeedback.registerSubmit((request) => submitter.submit(request)));
 }

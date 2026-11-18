@@ -105,3 +105,134 @@ test("required-column and payload identity failures never become an empty result
     { code: "WARNING_SQL_REQUEST_FAILED" },
   );
 });
+
+function directoryFixture() {
+  const records = new Map(),
+    calls = [];
+  const execute = async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    if (sql.startsWith("SELECT")) {
+      const rows = sql.includes("FROM detection_tasks")
+        ? [...records.values()].filter(
+            (row) => !sql.includes("WHERE t.id") || row.id === parameters.gea_p1,
+          )
+        : [];
+      return {
+        success: true,
+        result: {
+          records: rows
+            .slice(parameters.gea_p200, parameters.gea_p200 + parameters.gea_p199)
+            .map((row) => ({ id: row.id, payload: JSON.stringify(row) })),
+        },
+      };
+    }
+    assert.ok(!/CREATE|DELETE|TRUNCATE/.test(sql));
+    let affectedRows = 0;
+    if (sql.startsWith("INSERT INTO detection_tasks")) {
+      assert.equal(parameters.gea_p3, "品类");
+      const payload = JSON.parse(parameters.gea_p6);
+      assert.equal(payload.kind, "warning-owner-directory");
+      if (!records.has(payload.id)) {
+        records.set(payload.id, payload);
+        affectedRows = 1;
+      }
+    } else if (sql.startsWith("UPDATE detection_tasks")) {
+      const prior = records.get(parameters.gea_p200);
+      if (prior && JSON.parse(parameters.gea_p199).revision === prior.revision) {
+        records.set(prior.id, JSON.parse(parameters.gea_p6));
+        affectedRows = 1;
+      }
+    } else throw Error("unexpected SQL " + sql);
+    return { success: true, result: { affectedRows } };
+  };
+  return {
+    records,
+    calls,
+    execute,
+    call: (input, who = owner) => warningStorage(who, input, execute),
+  };
+}
+const ownerRow = { type: "品类", scope: "汤圆", name: "测试负责人", employeeNo: "10000001" };
+test("owner directory is shared through the whitelist, can remain empty and does not become a detection task", async () => {
+  const f = directoryFixture();
+  const initial = await f.call({ operation: "directory-load" });
+  assert.deepEqual(initial.owners, []);
+  const initialState = await f.call({ operation: "load" });
+  const saved = await f.call({
+    operation: "directory-save",
+    directoryId: initial.directoryId,
+    revision: 0,
+    owners: [ownerRow],
+  });
+  assert.equal(saved.revision, 1);
+  const legacy = f.records.get(initial.directoryId);
+  assert.equal(legacy.metric, "预警负责人配置");
+  assert.equal(legacy.scope, "品类");
+  assert.equal(legacy.enabled, false);
+  assert.ok(Number.isFinite(Date.parse(legacy.deletedAt)));
+  assert.deepEqual(
+    (await warningStorage(owner, { operation: "directory-load" }, f.execute)).owners,
+    [ownerRow],
+  );
+  const state = await f.call({ operation: "load" });
+  assert.deepEqual(state, initialState);
+  const empty = await f.call({
+    operation: "directory-save",
+    directoryId: initial.directoryId,
+    revision: 1,
+    owners: [],
+  });
+  assert.equal(empty.revision, 2);
+  assert.deepEqual((await f.call({ operation: "directory-load" })).owners, []);
+  await assert.rejects(
+    f.call({
+      operation: "directory-save",
+      directoryId: initial.directoryId,
+      revision: 1,
+      owners: [ownerRow],
+    }),
+    { code: "WARNING_WRITE_CONFLICT" },
+  );
+});
+test("directory save rejects identity switches, stale writes, foreign rows and task API bypass", async () => {
+  const f = directoryFixture();
+  const first = await f.call({ operation: "directory-load" });
+  const other = { ...owner, id: "2", key: "other-user" };
+  const second = await f.call({ operation: "directory-load" }, other);
+  assert.notEqual(first.directoryId, second.directoryId);
+  await assert.rejects(
+    f.call(
+      {
+        operation: "directory-save",
+        directoryId: first.directoryId,
+        revision: 0,
+        owners: [ownerRow],
+      },
+      other,
+    ),
+    { code: "WARNING_OWNER_DENIED" },
+  );
+  const writes = await Promise.allSettled(
+    [1, 2].map(() =>
+      f.call({
+        operation: "directory-save",
+        directoryId: first.directoryId,
+        revision: 0,
+        owners: [ownerRow],
+      }),
+    ),
+  );
+  assert.equal(writes.filter((row) => row.status === "fulfilled").length, 1);
+  assert.deepEqual((await f.call({ operation: "directory-load" }, other)).owners, []);
+  const state = await f.call({ operation: "load" });
+  await assert.rejects(
+    f.call({
+      operation: "save",
+      expectedRevision: state.revision,
+      state: { tasks: [...f.records.values()], runs: [], events: [] },
+    }),
+    { code: "WARNING_STATE_INVALID" },
+  );
+  f.records.get(first.directoryId).owner = other;
+  await assert.rejects(f.call({ operation: "directory-load" }), { code: "WARNING_OWNER_DENIED" });
+});

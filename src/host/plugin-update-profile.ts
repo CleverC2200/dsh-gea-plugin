@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { access, lstat, readFile, readlink, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { openCompanyInstallation } from "../../desktop/company-installation.mjs";
 import {
   updatablePackageNames,
   parseInstalledPluginManifest,
@@ -118,7 +119,11 @@ export async function readPluginProfile(profileDirectory: string): Promise<Profi
   const dependencies = strings(manifest.dependencies);
   const ownNodeModules = join(profileDirectory, "node_modules"),
     info = await lstat(ownNodeModules);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw Error("PROFILE_NODE_MODULES_NOT_OWNED");
+  if (info.isSymbolicLink()) {
+    const installation = await openCompanyInstallation(profileDirectory);
+    if (!installation || !(await installation.ownsModules(ownNodeModules)))
+      throw Error("PROFILE_NODE_MODULES_NOT_OWNED");
+  } else if (!info.isDirectory()) throw Error("PROFILE_NODE_MODULES_NOT_OWNED");
   const nodeModules = await realpath(ownNodeModules);
   if (!within(await realpath(profileDirectory), nodeModules))
     throw Error("PROFILE_NODE_MODULES_NOT_OWNED");

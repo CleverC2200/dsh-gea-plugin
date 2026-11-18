@@ -60,6 +60,31 @@ export function readBuildAdmissions(path = process.cwd()) {
       return { ...entry, active: alive(entry.pid) };
     });
 }
+function capacityFor(operation, { target, device }, claims) {
+  const reserveBytes = buildPolicy.reserveBytes[operation];
+  if (reserveBytes === undefined) fail("BUILD_OPERATION_UNKNOWN");
+  const stats = fs.statfsSync(target);
+  const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+  const reservedBytes = claims
+    .filter((entry) => entry.device === device)
+    .reduce((sum, entry) => sum + entry.reserveBytes, 0);
+  const safetyBytes =
+    operation === "desktop" || operation === "sdk"
+      ? buildPolicy.desktopSafetyBytes
+      : buildPolicy.safetyBytes;
+  return {
+    operation,
+    output: target,
+    availableBytes,
+    requiredBytes: safetyBytes + reservedBytes + reserveBytes,
+    safetyBytes,
+    reserveBytes,
+    reservedBytes,
+  };
+}
+export function readBuildCapacity({ operation, output = process.cwd() }) {
+  return capacityFor(operation, volume(output), readBuildAdmissions(output));
+}
 export function acquireBuild({
   operation,
   cwd = process.cwd(),
@@ -120,16 +145,11 @@ export function acquireBuild({
       claims.some((entry) => entry.device === device && entry.operation !== "watch")
     )
       fail("BUILD_VOLUME_BUSY");
-    const stats = fs.statfsSync(target);
-    const availableBytes = Number(stats.bavail) * Number(stats.bsize);
-    const reservedBytes = claims
-      .filter((entry) => entry.device === device)
-      .reduce((sum, entry) => sum + entry.reserveBytes, 0);
-    const safetyBytes =
-      operation === "desktop" || operation === "sdk"
-        ? buildPolicy.desktopSafetyBytes
-        : buildPolicy.safetyBytes;
-    const requiredBytes = safetyBytes + reservedBytes + reserveBytes;
+    const { availableBytes, reservedBytes, safetyBytes, requiredBytes } = capacityFor(
+      operation,
+      { target, device },
+      claims,
+    );
     if (availableBytes < requiredBytes) {
       const error = Error(
         `BUILD_CAPACITY_INSUFFICIENT: operation=${operation} output=${target} availableBytes=${availableBytes} requiredBytes=${requiredBytes} safetyBytes=${safetyBytes} reserveBytes=${reserveBytes} reservedBytes=${reservedBytes}; diagnose capacity before retrying`,

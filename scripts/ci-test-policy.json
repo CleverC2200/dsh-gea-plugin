@@ -31,6 +31,8 @@
     "desktop/client-installer.test.mjs",
     "desktop/company-bootstrap.test.mjs",
     "desktop/company-gea-refresh.test.mjs",
+    "desktop/company-installation.test.mjs",
+    "desktop/company-desktop.test.mjs",
     "desktop/company-update.test.mjs",
     "desktop/company-resources.test.mjs",
     "desktop/config.test.cjs",
@@ -61,10 +63,13 @@
     "desktop/updates.test.mjs",
     "desktop/verify-client-artifacts.test.cjs",
     "scripts/windows-complete-local/input.test.mjs",
+    "scripts/windows-complete-local/online-upgrade-input.test.mjs",
     "scripts/windows-complete-local/core-cache.test.mjs",
     "scripts/windows-complete-local/signing.test.mjs",
     "scripts/mac-complete-local/signing.test.mjs",
-    "scripts/desktop-release.test.mjs"
+    "scripts/desktop-release.test.mjs",
+    "scripts/windows-complete-local/r9/runtime.test.mjs",
+    "scripts/windows-complete-local/r9/evidence.test.mjs"
   ],
   "browserFixtures": [
     "scripts/quality-prepared-inputs.test.mjs",
@@ -103,6 +108,9 @@
       "dependencies": false
     },
     "scripts/build-admission.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/hosted-sdk-capacity.test.mjs": {
       "dependencies": false
     },
     "scripts/build.test.mjs": {
@@ -155,9 +163,29 @@
     },
     "scripts/check-workbench.test.mjs": {
       "dependencies": false
+    },
+    "scripts/windows-complete-local/r9/runtime.test.mjs": {
+      "dependencies": false
+    },
+    "scripts/windows-complete-local/r9/evidence.test.mjs": {
+      "dependencies": true
     }
   },
   "rules": [
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^src/(?:host/(?:deployment-transport|fc-dms-default|business)\\.ts|shared/environments\\.(?:js|d\\.ts))$",
+      "tests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ],
+      "sourceTests": [
+        "tests/deployment-transport.test.mjs",
+        "tests/fc-dms-default.test.mjs",
+        "tests/deployment-boundary.test.mjs"
+      ]
+    },
     {
       "repo": "dsh-agent-workbench",
       "pattern": "^(?:src/detection-(?:backend|whitelist)\\.mjs$|services/warning-executor/)",
@@ -317,6 +345,12 @@
       "repo": "dsh-gea-plugin",
       "pattern": "^scripts/(?:plugin-split-development\\.mjs|delivery-package-runtime\\.mjs|delivery-runtime/(?:package\\.json|pnpm-lock\\.yaml))$",
       "tests": ["scripts/deliver-packages.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/hosted-sdk-capacity\\.mjs$",
+      "tests": ["scripts/hosted-sdk-capacity.test.mjs"],
+      "sourceTests": ["scripts/hosted-sdk-capacity.test.mjs"]
     },
     {
       "repo": "dsh-gea-plugin",
@@ -535,7 +569,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/company-(?:archives|bootstrap|gea-refresh)\\.mjs$",
+      "pattern": "^desktop/(?:company-(?:archives|bootstrap|gea-refresh|installation|desktop|pnpm)|windows-job|plugin-store|plugin-storage|copy-graph|core-file-mode|official-(?:branding|main))\\.(?:mjs|cjs|d\\.mts)$",
       "tests": ["scripts/desktop-gea-upgrade.test.mjs"],
       "sourceTests": ["scripts/desktop-gea-upgrade.test.mjs"]
     },
@@ -577,7 +611,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^tests/fixtures/plugin-updates/package-manager\\.cjs$",
+      "pattern": "^tests/fixtures/plugin-updates/(?:package-manager\\.cjs|download-registry\\.mjs)$",
       "tests": ["tests/plugin-update-controller.contract.mjs"]
     },
     {
@@ -780,13 +814,15 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|prepare-signing\\.ps1)$",
+      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|online-upgrade(?:-input(?:\\.test)?)?\\.mjs|prepare-signing\\.ps1)$",
       "tests": [
         "scripts/windows-complete-local/signing.test.mjs",
+        "scripts/windows-complete-local/online-upgrade-input.test.mjs",
         "scripts/delivery-events.test.mjs"
       ],
       "sourceTests": [
         "scripts/windows-complete-local/signing.test.mjs",
+        "scripts/windows-complete-local/online-upgrade-input.test.mjs",
         "scripts/delivery-events.test.mjs"
       ]
     },
@@ -852,6 +888,38 @@
       "pattern": "^scripts/verify-official-input\\.mjs$",
       "tests": ["scripts/check-workbench.test.mjs"],
       "sourceTests": ["scripts/check-workbench.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^scripts/(?:inventory_warehouse_scope|test_fc_plan_template_snapshot|test_fc_summary|test_inventory_warehouse_scope|update-fc-warehouse-exceptions)\\.py$",
+      "tests": []
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/feishu-warning-transport\\.mjs$",
+      "tests": ["tests/deployment-transport.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/html-bridge\\.ts$",
+      "tests": ["tests/html-gateway.test.mjs"]
+    },
+    {
+      "repo": "dsh-agent-workbench",
+      "pattern": "^src/warning-people-request\\.ts$",
+      "tests": ["tests/deployment-transport.test.mjs"]
+    },
+    {
+      "repo": "dsh-gea-plugin",
+      "pattern": "^scripts/windows-complete-local/r9(?:\\.mjs|/[^/]+)$",
+      "tests": [
+        "scripts/windows-complete-local/r9/runtime.test.mjs",
+        "scripts/windows-complete-local/r9/evidence.test.mjs"
+      ],
+      "sourceTests": [
+        "scripts/windows-complete-local/r9/runtime.test.mjs",
+        "scripts/windows-complete-local/r9/evidence.test.mjs"
+      ]
     }
   ],
   "testOwners": {
@@ -864,12 +932,17 @@
     "desktop/plugin-storage.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/plugin-store.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
     "desktop/recovery.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
-    "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
+    "desktop/runtime-resolution.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/company-installation.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/company-desktop.test.mjs": "scripts/desktop-gea-upgrade.test.mjs",
+    "desktop/graph-relocation.test.mjs": "scripts/desktop-gea-upgrade.test.mjs"
   },
   "sourceTools": {
     "scripts/desktop-release.test.mjs": ["semver", "yaml"],
     "scripts/windows-complete-local/input.test.mjs": ["semver"],
     "scripts/delivery-events.test.mjs": ["yaml"],
-    "scripts/run-quality-ci.test.mjs": ["yaml"]
+    "scripts/run-quality-ci.test.mjs": ["yaml"],
+    "scripts/desktop-gea-upgrade.test.mjs": ["yaml"],
+    "scripts/windows-complete-local/r9/evidence.test.mjs": ["tar"]
   }
 }

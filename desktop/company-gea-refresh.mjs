@@ -3,6 +3,7 @@ import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import { companyPackageNames, companyReleaseIndex } from "./company-archives.mjs";
+import { windowsJobStopped } from "./windows-job.mjs";
 
 const gea = "@cleverc2200/gea-dsh-prototype";
 const files = ["package.json", "cordis.patch.yml", "pnpm-lock.yaml", "pnpm-workspace.yaml"];
@@ -66,6 +67,15 @@ export function planBundledCompanyRefresh(current, installed, bundled) {
   };
 }
 
+function processExited(pid) {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error.code === "ESRCH";
+  }
+}
+
 async function stoppedUpdateProcesses(profile, receipt) {
   const processes = receipt.processes;
   if (
@@ -96,29 +106,15 @@ async function stoppedUpdateProcesses(profile, receipt) {
       if (!entry.isFile() || entry.isSymbolicLink()) return false;
       const proof = JSON.parse(await readFile(proofPath));
       const [row] = processes;
-      return (
-        proof?.nonce === row.startIdentity &&
-        proof?.pid === row.pid &&
-        proof?.stage === "empty" &&
-        Number.isInteger(proof?.exitCode)
-      );
+      return windowsJobStopped(proof, row);
     } catch {
       return false;
     }
   }
-  return processes.every((row) =>
-    [row.pid, -row.pid].every((pid) => {
-      try {
-        process.kill(pid, 0);
-        return false;
-      } catch (error) {
-        return error.code === "ESRCH";
-      }
-    }),
-  );
+  return processes.every((row) => [row.pid, -row.pid].every(processExited));
 }
 
-async function readProfileUpdateState(
+export async function readProfileUpdateState(
   profile,
   { allowExitedPackageRun = false, allowStoppedUpdate = false } = {},
 ) {
@@ -330,6 +326,12 @@ async function completeInterruptedUpdate({
             .digest("hex") !== target.targetSha256
         )
           throw Error("GEA_REFRESH_UPDATE_UNKNOWN");
+      }
+      const backup = await mkdtemp(join(operation, "startup-recovery-"));
+      await writeFile(join(backup, "receipt.json"), original, { flag: "wx", mode: 0o600 });
+      for (const file of files) {
+        const bytes = await optional(join(profile, file));
+        if (bytes) await writeFile(join(backup, file), bytes, { flag: "wx", mode: 0o600 });
       }
     },
     complete: async ({ writeFileAtomic, result }) => {

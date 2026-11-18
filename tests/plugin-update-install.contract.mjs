@@ -42,7 +42,7 @@ test(
     ]) {
       await t.test(
         options.startupRecovery
-          ? "companion-only pending restart recovers GEA216 through the real startup installer and fresh Host/client"
+          ? "companion-only candidate retains GEA216 and activates with fresh Host/client"
           : options.allUpdates
             ? "three packages install and reconcile in a fresh Host/client process"
             : options.customStore

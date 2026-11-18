@@ -22,6 +22,8 @@
 
 [GatewayRequests](../src/host/gateway-requests.ts) 集中 GEA envelope 请求的身份代际、取消、超时、请求标识与读取处理。Business 保留登录权威和精确数字解析；模型凭据、通知与审批保留各自错误码，Gateway MCP 握手继续按独立协议校验。请求结束及正文读取后重新核原身份，旧身份迟到的 401 不得清除新登录；取消和超时分别报告，不包装成网络失败。
 
+[DeploymentTransport](../src/host/deployment-transport.ts) 在实际发送处按当前身份环境约束能力目标与凭据，普通调用和日志重放共用。GEA 与 DMS 使用对应环境的目标；记忆允许共享部署，继续携带原身份环境并保留原数据归属；独立模型使用当前代际的 GEA 凭据领取结果，不继承 GEA 登录令牌。预警调度目标由 Host 的 `warningSchedulerEnvironments` 登记，自定义 GEA 部署缺少对应目标时拒绝调度，不回退公司目标。日志保留脱敏后的真实 origin；登录环境标签不表示后端数据环境已被验证。
+
 模型请求的 `modelRequestTimeoutMs` 表示空闲间隔，默认 300000 毫秒。完整 SSE 事件和注释心跳都会续期，客户端不设模型请求总时长上限；已有显式配置值仍优先。聊天与 `model/advice` 共用[模型适配器](../src/host/gea-model.ts)的空闲生命周期，用户停止与身份切换继续取消在途请求。
 
 ## 页面与独立查询

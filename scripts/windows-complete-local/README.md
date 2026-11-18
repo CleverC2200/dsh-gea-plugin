@@ -14,9 +14,31 @@ Mac 输入检查增加 `--mac-baseline`，与实际构建使用同一底包校�
 
 Windows job 实读两仓HEAD及clean、下载三TGZ并核SHA及manifest，再运行官方构建、seed准备、NSIS封包、runtime smoke和隔离首装。`result.json`保留新installer、native EXE、ASAR、原入口SHA、真实包metadata、seed及runner。公司适配器保持桌面 mandatory policy 未配置；签名模式复用 Core 的 electron-updater 和安装事务，未签名诊断模式保持 publish:null。构建回执的`actualNativeUpdateAcceptance`恒为false。
 
-可选 `native_acceptance_bundle_url` / `native_acceptance_bundle_sha256` 用于批准的R9真实更新验收。URL限定OSS `client-release/verification/<sha256>/<name>.tgz`，先核整个bundle SHA与tar路径/普通文件类型，解包到RUNNER_TEMP。必须含`package/windows-run.mjs`，调用参数为`--build-receipt <absolute result.json> --input <absolute original input> --output <absolute new directory>`。验收脚本可从build的`geaRoot/package.json`解析项目固定Playwright，真实Native正常主进程由bundle负责启动。
+可选 `native_acceptance_bundle_url` / `native_acceptance_bundle_sha256` 用于批准的 R9 Native 验收。URL限定OSS `client-release/verification/<sha256>/<name>.tgz`，先核整个bundle SHA与tar路径/普通文件类型，解包到RUNNER_TEMP。必须含`package/windows-run.mjs`，调用参数为`--build-receipt <absolute result.json> --input <absolute original input> --output <absolute new directory>`。验收脚本可从build的`geaRoot/package.json`解析项目固定Playwright，真实Native正常主进程由bundle负责启动。
 
-bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativeUpdateAcceptance:true`，并绑定`buildReceiptSha256`原字节SHA和`inputSha256`。无bundle时仅构建，Native更新仍未验。artifact只留R9回执、bundle绑定及`public/`脱敏证据；raw请求和配置由验收目录的隐私合同单独保全。
+bundle失败使job失败。其`receipt.json`须为`status:passed`、`actualNativeUpdateAcceptance:true`，并绑定`buildReceiptSha256`原字节SHA和`inputSha256`。无bundle时仅构建，Native 验收仍未完成。artifact只留R9回执、bundle绑定及`public/`脱敏证据；raw请求和配置由验收目录的隐私合同单独保全。
+
+已完成构建的安装包可通过 `windows_overwrite_artifact_run` 配合这两个 bundle 输入，在新 Windows runner 重跑 Native 验收。该路径核原任务为主线发行、构建步骤成功，且构建源码是当前验证源码的祖先；继续使用原安装包、原构建回执字节和原固定输入，不重新打包或读取签名私钥。Native 路径跳过会先安装目标版本的普通覆盖测试，公钥证书在临时 runner 的 LocalMachine Root 中准备。
+
+归档输入按已验证原构建源码中的合同校验，包括当时的 Core、包数及输入投影，再核对原回执的输入摘要；不为当前要求补写旧输入。原合同文件或匹配依赖不可用时拒绝，不回退到当前校验。当前构建继续采用当前输入合同。
+
+`windows_online_update=true` 与 `windows_overwrite_artifact_run` 配合使用，不能同时提供 Native bundle。它从所选原构建回执冻结目标版本、安装包名和摘要，保留原签名基线，验证运行中客户端通过正式更新源下载并重启安装。安装前核对原包字节、公司证书及频道中的版本、文件名、大小和摘要；正式频道已前移时拒绝，不自动改用新版本。历史在线升级结果仅对应原固定版本，不代表当前候选已完成设备或业务验收。
+
+## 历史 R9 维护与复核
+
+历史签名包覆盖恢复统一由 `r9.mjs` 维护，固定案例输入读 `r9/case.json`。原 bundle 和既有失败记录继续封存；维护版生成新 bundle，不覆盖旧归档。该案例证明隔离 runner 手工覆盖签名安装包后的恢复，不证明运行中客户端的在线更新交接。
+
+```sh
+node scripts/windows-complete-local/r9.mjs bundle --output /absolute/new-bundle-directory --upload
+node scripts/windows-complete-local/r9.mjs collect --run <completed-run-id> --head <exact-workflow-sha> --bundle /absolute/new-bundle-directory/bundle.json --output /absolute/new-capture-directory
+node scripts/windows-complete-local/r9.mjs verify --input /absolute/new-capture-directory
+```
+
+`bundle` 要求维护源码已提交，生成可复现的归档并绑定 HEAD。可选上传仅写内容寻址的 verification 路径并核匿名回读。使用生成的 URL、SHA 和案例的原构建 run，向现有 workflow 提交 `windows_overwrite_artifact_run` 与两个 Native bundle 输入，workflow ref 须对应同一个 HEAD。
+
+`collect` 使用 gh 在线保存任务、原构建来源、artifact 和 Native job 原始日志。成功或失败均只标记采集结果，不给出验收通过。输出目录必须全新，封存目录及其子目录拒绝写入。`verify` 只读这些快照并向 stdout 输出复核结果，不联网、不写入输入目录；需要项目 Node 依赖及系统 unzip。新回执要求 schema 2，既有旧回执保留原义，不追写为新格式。
+
+Native 检查通过 Core 公开只读插件清单及两条业务路由取样，等待后重新读取并核对 owner、状态和路由；退出必须收到真实进程退出、code 0 且未强杀。合成 Session JSONL 和草稿标记文件只证明相应夹具保留。配置检查比较 YAML 解析后的值，仅允许 Core proof 改变，不声称文件字节保持不变。真实 Session/UI 草稿、员工设备、首次证书交互、当前配套候选及业务验收继续保留未完成状态。测试入口读 package.json 的 `test:desktop:r9`；源码测试选择和 delivery fixture 的 `test:release-source` 均执行对应行为测试。
 
 ## Windows 首次安装证书与在线更新
 

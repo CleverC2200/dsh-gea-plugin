@@ -19,12 +19,8 @@ const gea = resolve(process.argv[3]);
 const candidate = process.argv.includes("--candidate");
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 const geaSha = git(gea, "rev-parse", "HEAD");
-const {
-  readDesktopInput,
-  readDesktopPluginSource,
-  coreArtifactPaths,
-  verifyPersonalMemoryArchive,
-} = await import(pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs")));
+const { readDesktopInput, readDesktopPluginSource, coreArtifactPaths, verifyDesktopPluginArchive } =
+  await import(pathToFileURL(join(gea, "scripts/windows-complete-local/input.mjs")));
 const input = await readDesktopInput(process.argv[4], geaSha);
 const plugin = readDesktopPluginSource(input, gea);
 assert.equal(git(core, "rev-parse", "HEAD"), input.seed.core.head);
@@ -201,7 +197,7 @@ for (const row of input.seed.packages) {
   );
   assert.equal(manifest.name, row.name);
   assert.equal(manifest.version, row.version);
-  verifyPersonalMemoryArchive(path, row, input);
+  verifyDesktopPluginArchive(path, row, input);
   seed.packages.push({ ...row, path });
 }
 const seedInput = join(output, "seed-input.json");

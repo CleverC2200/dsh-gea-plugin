@@ -26,6 +26,8 @@ const SENSITIVE_KEY =
   /^(?:authorization|proxy-authorization|cookies?|set-cookie|x-access-token|x-delegation-token|mcp[_-]?session[_-]?id|access[_-]?token|refresh[_-]?token|tokens?|secrets?|passwords?|client[_-]?(?:id|secret)|delegation[_-]?token|api[_-]?key|session[_-]?id|qrcode[_-]?id|credentials?|credential[_-]?id)$/i;
 
 const METADATA_ONLY = new Set([
+  "announcements.list",
+  "announcements.detail",
   "auth.password",
   "auth.captcha",
   "auth.logout",
@@ -199,6 +201,34 @@ const CATALOG: CatalogDefinition[] = [
       replayNote: safe,
     },
     /^\/api\/v1\/notifications\/[^/]+$/,
+  ),
+  endpoint(
+    {
+      id: "announcements.list",
+      group: "通知",
+      name: "通知公告列表",
+      method: "GET",
+      path: "/api/v1/announcements",
+      description: "查询当前用户可见的通知公告。",
+      requestFields: [],
+      replayPolicy: "blocked",
+      replayNote: blocked,
+    },
+    /^\/api\/v1\/announcements$/,
+  ),
+  endpoint(
+    {
+      id: "announcements.detail",
+      group: "通知",
+      name: "通知公告详情",
+      method: "GET",
+      path: "/api/v1/announcements/{id}",
+      description: "读取当前用户可见的公告正文。",
+      requestFields: [],
+      replayPolicy: "blocked",
+      replayNote: blocked,
+    },
+    /^\/api\/v1\/announcements\/[^/]+$/,
   ),
   endpoint(
     {
@@ -548,6 +578,8 @@ function sanitizeUrl(raw: string): {
   query: Record<string, string>;
 } {
   const parsed = new URL(raw);
+  parsed.username = "";
+  parsed.password = "";
   const query: Record<string, string> = {};
   for (const [key, value] of parsed.searchParams) {
     const safeValue = SENSITIVE_KEY.test(key) ? "[已脱敏]" : sanitizeString(value);
@@ -719,6 +751,7 @@ export class GeaApiLogCenter {
     context: ApiLogContext = { source: "daily" },
     forceMetadata = false,
   ): Promise<Response> {
+    const environment = this.environment();
     const ownerScope = this.currentScope();
     const acceptRequest = this.beforeRequest
       ? await this.beforeRequest(input, init, purpose)
@@ -768,7 +801,7 @@ export class GeaApiLogCenter {
       catalogId: catalog?.id ?? null,
       catalogName: catalog?.name ?? "未登记接口",
       group: catalog?.group ?? "未登记",
-      environment: this.environment(),
+      environment,
       startedAt: new Date(started).toISOString(),
       outcome: "pending",
       replayPolicy: catalog?.replayPolicy ?? "blocked",
@@ -776,6 +809,7 @@ export class GeaApiLogCenter {
       ...(replayedFrom ? { replayedFrom } : {}),
       request: {
         method,
+        origin: new URL(rawUrl).origin,
         ...loggedUrl,
         headers: metadataOnly ? auditHeaders(requestHeaders) : sanitizeHeaders(requestHeaders),
         body: metadataOnly

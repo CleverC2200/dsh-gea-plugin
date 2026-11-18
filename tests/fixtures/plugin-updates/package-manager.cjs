@@ -4,7 +4,7 @@ const fs = require("node:fs"),
 const args = process.argv.slice(2),
   mode = process.env.FIXTURE_MODE || "success";
 fs.appendFileSync(
-  path.join(process.cwd(), "invocations.ndjson"),
+  path.join(process.env.FIXTURE_OBSERVATION_DIR || process.cwd(), "invocations.ndjson"),
   JSON.stringify({
     args,
     cwd: process.cwd(),
@@ -17,7 +17,7 @@ if (process.env.FIXTURE_UPDATE_RUNTIME) {
   const { id } = JSON.parse(fs.readFileSync(path.join(runtime, "latest.json"), "utf8"));
   fs.copyFileSync(
     path.join(runtime, "operations", id, "receipt.json"),
-    path.join(process.cwd(), "installing-receipt.json"),
+    path.join(process.env.FIXTURE_OBSERVATION_DIR || process.cwd(), "installing-receipt.json"),
   );
 }
 console.log("fixture package run started");
@@ -66,7 +66,10 @@ setTimeout(() => {
       ],
       { stdio: "inherit", env: process.env, detached: process.platform === "win32" },
     );
-    fs.writeFileSync(path.join(process.cwd(), "orphan-pid"), String(child.pid));
+    fs.writeFileSync(
+      path.join(process.env.FIXTURE_OBSERVATION_DIR || process.cwd(), "orphan-pid"),
+      String(child.pid),
+    );
     child.on("error", (error) => {
       console.error(error);
       process.exit(10);

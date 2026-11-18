@@ -180,6 +180,7 @@ export function businessDeploymentPatch(
             memoryGatewayAllowPrivateHttp: config.memoryGatewayAllowPrivateHttp,
             serviceAccounts: config.serviceAccounts,
             dms: config.dms,
+            warningSchedulerEnvironments: config.warningSchedulerEnvironments,
             orderFulfillmentConfirmation: config.orderFulfillmentConfirmation,
             fcStorage: config.fcStorage,
             environment: config.environment,

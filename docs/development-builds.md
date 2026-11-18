@@ -32,11 +32,13 @@ node ../dsh-gea-plugin/scripts/development-tasks.mjs finish
 
 版本、锁、本地源路径和安装许可由当前仓 package、锁及 workspace 配置负责。依赖准备与构建要求固定 SDK 已准备；工具不会修改共享 SDK。冷 SDK 由 owner 在独立 checkout 使用 Manage 既有 SDK 准备入口完成。
 
-准备动作先核锁、Node/ABI/平台、管理器、本地链接源、安装元数据与直接依赖 manifest。有效回执复用当前 checkout 的依赖；失效则冻结安装。它不做依赖树每个文件的完整性审计。Manage 关闭隐式 prepare，GEA 保留 allowBuilds。工作树不共享可写 node_modules/lib；包内容缓存沿各仓管理器使用。
+准备动作先核锁、Node/ABI/平台、管理器、本地链接源、安装元数据与直接依赖 manifest。有效回执复用当前 checkout 的依赖；失效则冻结安装。它不做依赖树每个文件的完整性审计。准备动作对 Manage 使用 `--ignore-scripts`，因此不依赖其安装钩子；GEA 保留 allowBuilds。工作树不共享可写 node_modules/lib；包内容缓存沿各仓管理器使用。
 
-构建动作沿现有目标运行，核三仓作者源、实际 SDK 产物、工具、依赖状态、构建环境和完整输出哈希后复用。测试或文档变动不使编译缓存失效；回执保留原编译提交和当前核验提交。默认 plugin；Workbench 另有 all，Manage 有 client，GEA 有 host/client。
+构建动作沿现有目标运行，核三仓作者源、实际 SDK 产物、工具、依赖状态、构建环境和完整输出哈希后复用。测试或文档变动不使编译缓存失效；回执保留原编译提交和当前核验提交。默认 plugin；Workbench 调用 `build:plugin`，逻辑 all 调用完整 `build`，plugin 保留 FC/AQKC 已编译页面并刷新 Manage 资源。Manage 有 client，GEA 有 host/client。Workbench 的旧 `build:core` 临时转发仅供尚未迁移的消费者；本入口不再调用旧名。
 
 容量策略与预算只有 `scripts/build-admission.mjs` 一份。准入读取实际输出卷剩余空间，同卷重型写入串行，watch 保留预算并拒绝同 checkout 写入。正常结束只释放自己的占用记录；异常遗留记录保留并拒绝后续写入，先核 PID、任务输入和打开文件再按既有清理流程处理。准入不是系统配额，其他程序和 swap 仍可消耗空间。
+
+`source-quality` 的 GitHub-hosted Linux worker 在 SDK 准备前通过 `scripts/hosted-sdk-capacity.mjs` 使用同一准入。空间足够时不统计或删除预装 SDK；容量不足才从脚本固定的候选目录回收，每次删除后重新准入，仍不足继续拒绝。`hosted-sdk-capacity.json` 随 worker 成功或失败产物保存；本机及 self-hosted runner 不支持该清理入口。
 
 `verify --input <absolute candidate.json> --sha256 <original bytes SHA256>` 调用既有完整 quality 门禁；本机默认做定向验证，常规完整验证放到登记 GitHub Actions。源码检查、CI、真实安装与业务验收分别留证。
 

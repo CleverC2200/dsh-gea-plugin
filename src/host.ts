@@ -118,6 +118,7 @@ export const Config = z.object({
   geaBaseUrl: z.string().default(companyDefaults.geaBaseUrl),
   serviceAccounts: z.any(),
   dms: z.any<Deployment["dms"]>(),
+  warningSchedulerEnvironments: z.object({ production: z.string(), test: z.string() }),
   orderFulfillmentConfirmation: z.any<Deployment["orderFulfillmentConfirmation"]>(),
   fcStorage: z.any<Deployment["fcStorage"]>(),
   environment: environmentSchema.default(
@@ -595,6 +596,7 @@ export async function apply(
     "navigation/retry",
     "status",
     "notifications",
+    "announcements",
     "workflow/config",
 
     "approval/roles",
@@ -806,6 +808,9 @@ export async function apply(
                     break;
                   case "notifications":
                     value = await business.notifications(payload, request.signal);
+                    break;
+                  case "announcements":
+                    value = await business.announcements(payload, request.signal);
                     break;
                   case "status":
                     if (!business.status().readonlyValidation) {

@@ -16,16 +16,33 @@ export function resolveFcDmsDeployment(
     workNo?: string;
   },
 ): DmsConfig {
-  const configured = deployments?.[environment];
+  const targets = {
+    production: new URL(
+      deployments?.production?.gatewayUrl ?? FC_DMS_PRODUCTION_GATEWAY,
+    ).href.replace(/\/$/, ""),
+    test: new URL(deployments?.test?.gatewayUrl ?? FC_DMS_TEST_GATEWAY).href.replace(/\/$/, ""),
+  };
+  const input = deployments?.[environment];
+  const configured = input ? { ...input, gatewayUrl: targets[environment] } : undefined;
+  if (
+    (environment === "production" && configured?.gatewayUrl === FC_DMS_TEST_GATEWAY) ||
+    (environment === "test" && configured?.gatewayUrl === FC_DMS_PRODUCTION_GATEWAY)
+  )
+    throw Error("DMS_ENVIRONMENT_TARGET_MISMATCH");
+  if (
+    targets.production === targets.test ||
+    targets.production.startsWith(targets.test + "/") ||
+    targets.test.startsWith(targets.production + "/")
+  )
+    throw Error("DMS_ENVIRONMENTS_NOT_DISTINCT");
   if (environment === "production") {
-    const deployment =
-      configured && configured.gatewayUrl !== FC_DMS_TEST_GATEWAY
-        ? configured
-        : {
-            gatewayUrl: FC_DMS_PRODUCTION_GATEWAY,
-            secretEnv: "GEA_DMS_PRODUCTION_SECRET",
-            credentialSource: "fc-bundled-dms-production" as const,
-          };
+    const deployment = configured
+      ? configured
+      : {
+          gatewayUrl: FC_DMS_PRODUCTION_GATEWAY,
+          secretEnv: "GEA_DMS_PRODUCTION_SECRET",
+          credentialSource: "fc-bundled-dms-production" as const,
+        };
     if ("credentialSource" in deployment && deployment.credentialSource === "fc-bundled-dms-test")
       throw Error("正式 DMS 不能使用测试签名配置");
     const workcode = identity.workNo?.trim();

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { readFile, mkdir, readdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, readdir, writeFile, cp, rename } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { execFileSync } from "node:child_process";
@@ -8,14 +8,36 @@ import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { extractAll } from "@electron/asar";
-import { windowsNativeEntrypoints, windowsNativeInput } from "./ci-windows-update.mjs";
+import { parse } from "yaml";
+import { extractAll, createPackageWithOptions } from "@electron/asar";
+import {
+  windowsNativeEntrypoints,
+  windowsNativeInput,
+  windowsCompanyInput,
+} from "./ci-windows-update.mjs";
+import { officialGeaBranding } from "../desktop/official-branding.mjs";
 if (process.platform !== "win32") throw Error("WINDOWS_NATIVE_REQUIRED");
+const companyDesktop = process.argv.includes("--company-desktop");
+const input = companyDesktop ? windowsCompanyInput : windowsNativeInput;
+const sourceHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+if (companyDesktop) {
+  const feed = await fetch(
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/nightly.yml",
+    { redirect: "error" },
+  );
+  if (!feed.ok) throw Error("WINDOWS_COMPANY_CHANNEL_UNREADABLE");
+  const release = parse(await feed.text());
+  if (
+    release.version !== input.desktopVersion ||
+    !release.files?.some((file) => input.installerUrl.endsWith("/" + file.url))
+  )
+    throw Error("WINDOWS_COMPANY_BASELINE_STALE");
+}
 const root = resolve(".runtime/windows-update-native"),
   installer = join(root, "gea157.exe");
 await mkdir(root, { recursive: true });
-const expected = windowsNativeInput.installerSha256;
-const response = await fetch(windowsNativeInput.installerUrl, { redirect: "error" });
+const expected = input.installerSha256;
+const response = await fetch(input.installerUrl, { redirect: "error" });
 if (!response.ok) throw Error("WINDOWS_FIXED_RUNTIME_DOWNLOAD_FAILED");
 const hash = createHash("sha256");
 await pipeline(
@@ -48,8 +70,10 @@ execFileSync(seven, ["x", payload, "-o" + app, "-y"], { stdio: "ignore" });
 const runtime = join(root, "runtime");
 extractAll(join(app, "resources/app.asar"), runtime);
 const manifest = JSON.parse(await readFile(join(runtime, "package.json"), "utf8"));
-if (manifest.dshBuildCommit !== windowsNativeInput.coreHead || manifest.dshBuildDirty !== false)
+if (manifest.dshBuildCommit !== input.coreHead || manifest.dshBuildDirty !== false)
   throw Error("WINDOWS_FIXED_CORE_MISMATCH");
+if (companyDesktop && manifest.version !== input.desktopVersion)
+  throw Error("WINDOWS_FIXED_DESKTOP_MISMATCH");
 const load = createRequire(join(runtime, "dsh/package.json")),
   controller = join(root, "controller.mjs");
 const sdk = new Set([
@@ -78,6 +102,31 @@ await build({
   ],
 });
 const executable = join(app, "GEA Desktop.exe");
+if (companyDesktop) {
+  const config = officialGeaBranding({ files: [], extraResources: [] }, { companySeed: "fixture" });
+  const companyFiles = config.files.find((file) => typeof file === "object" && file.to === ".");
+  for (const name of companyFiles.filter) {
+    await cp(resolve("desktop", name), join(runtime, name));
+  }
+  await rename(join(app, "resources/app.asar"), join(app, "resources/app.original.asar"));
+  await createPackageWithOptions(runtime, join(app, "resources/app.asar"), {
+    unpack: "**/*.{node,exe,dll}",
+  });
+  const binding = Object.fromEntries(
+    await Promise.all(
+      companyFiles.filter.map(async (name) => [
+        name,
+        createHash("sha256")
+          .update(await readFile(join(runtime, name)))
+          .digest("hex"),
+      ]),
+    ),
+  );
+  await writeFile(
+    join(root, "candidate-company-entry.json"),
+    JSON.stringify({ sourceHead, input, binding }, null, 2),
+  );
+}
 let exitCode = 0;
 try {
   execFileSync(
@@ -85,7 +134,7 @@ try {
     ["--expose-internals", "--test", "--test-concurrency=1", windowsNativeEntrypoints.fixture],
     {
       stdio: "inherit",
-      timeout: 120000,
+      timeout: 180000,
       env: {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",
@@ -95,6 +144,35 @@ try {
       },
     },
   );
+  if (companyDesktop) {
+    execFileSync(
+      process.execPath,
+      ["--test", "--test-concurrency=1", "tests/company-update-windows.native.mjs"],
+      {
+        stdio: "inherit",
+        timeout: 360000,
+        env: {
+          ...process.env,
+          GEA_WINDOWS_APP: app,
+          GEA_WINDOWS_RUNTIME: runtime,
+          GEA_WINDOWS_EVIDENCE: root,
+          GEA_WINDOWS_SOURCE_HEAD: sourceHead,
+        },
+      },
+    );
+    const receipt = JSON.parse(await readFile(join(root, "company-desktop-result.json"), "utf8"));
+    if (
+      receipt.sourceHead !== sourceHead ||
+      receipt.input?.installerSha256 !== expected ||
+      receipt.input?.coreHead !== input.coreHead ||
+      receipt.historyReadWithBundledCore !== true ||
+      receipt.userDataPreserved !== true ||
+      receipt.productionDataTouched !== false ||
+      receipt.results?.map((row) => row.stage).join(",") !==
+        "baseline,killed-preparation,killed-trial,automatic-rollback"
+    )
+      throw Error("WINDOWS_COMPANY_RECEIPT_REJECTED");
+  }
 } catch (error) {
   exitCode = error.status ?? 1;
 }
@@ -103,12 +181,13 @@ await writeFile(
   JSON.stringify(
     {
       platform: process.platform,
-      sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      sourceHead,
       coreHead: manifest.dshBuildCommit,
       runtimeInstallerSha256: expected,
-      acceptance: windowsNativeInput.acceptance,
+      acceptance: input.acceptance,
       exitCode,
       nativeUIAcceptance: false,
+      ...(companyDesktop ? { companyDesktopEntryAcceptance: exitCode === 0 } : {}),
     },
     null,
     2,

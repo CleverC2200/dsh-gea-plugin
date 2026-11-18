@@ -17,6 +17,53 @@ const businessCore = [
   "tests/optional-companion-manifest.test.mjs",
 ].sort();
 
+test("R9 maintained helpers select offline behavior tests without a runtime SDK", async (t) => {
+  const tests = [
+    "scripts/windows-complete-local/r9/runtime.test.mjs",
+    "scripts/windows-complete-local/r9/evidence.test.mjs",
+  ];
+  for (const source of [
+    "scripts/windows-complete-local/r9.mjs",
+    ...[
+      "case.json",
+      "runtime.mjs",
+      "evidence.mjs",
+      "windows-run.mjs",
+      "seed-history.mjs",
+      "install-old.mjs",
+      "install.ps1",
+    ].map((file) => "scripts/windows-complete-local/r9/" + file),
+  ])
+    await t.test(source, (t) => {
+      const fixture = resourceImpactFixture(t, tests);
+      fixture.change(fixture.own, source);
+      const plan = fixture.plan({ sourceOnly: true });
+      for (const file of tests)
+        assert.equal(plan.files.filter((entry) => entry === file).length, 1, JSON.stringify(plan));
+      assert.equal(plan.sdk, false);
+    });
+});
+
+test("real package consumers declare their frozen candidate inputs before source-only execution", async (t) => {
+  for (const file of [
+    "scripts/package-smoke.test.mjs",
+    "scripts/page-interaction-package.test.mjs",
+  ])
+    await t.test(file, (t) => {
+      const fixture = resourceImpactFixture(t, [file, "tests/fixtures/source-window-inputs.mjs"]);
+      fixture.change(
+        fixture.own,
+        file,
+        readFileSync(new URL("../" + file, import.meta.url), "utf8") + "\n",
+      );
+      const plan = fixture.plan({ sourceOnly: true });
+      assert.ok(plan.files.includes(file));
+      assert.ok(plan.sourceWindowFiles.includes(file), JSON.stringify(plan));
+      assert.equal(plan.sourceWindow, true);
+      assert.equal(plan.sdk, true);
+    });
+});
+
 test("desktop unit changes select their real CJS or MJS behavior without enabling Electron acceptance", async (t) => {
   for (const [source, regression] of [
     ["desktop/runtime-cookies.cjs", "desktop/runtime-cookies.test.cjs"],
@@ -94,6 +141,18 @@ test("bundled suite source changes select their complete upgrade owner once and 
   assert.ok(fixture.plan().files.includes("tests/window-launch-admission.test.mjs"));
 });
 
+test("environment transport changes select credential and DMS isolation behavior in source-only CI", (t) => {
+  const fixture = resourceImpactFixture(t, [
+    "tests/deployment-transport.test.mjs",
+    "tests/fc-dms-default.test.mjs",
+  ]);
+  fixture.change(fixture.own, "src/host/deployment-transport.ts", "export const changed = true;\n");
+  const plan = fixture.plan({ sourceOnly: true });
+  assert.ok(plan.files.includes("tests/deployment-transport.test.mjs"));
+  assert.ok(plan.files.includes("tests/fc-dms-default.test.mjs"));
+  assert.ok(!plan.files.includes("tests/unrelated.test.mjs"));
+});
+
 test("a docs-only change declares no source, browser or runtime obligation", (t) => {
   const fixture = resourceImpactFixture(t);
   fixture.change(fixture.own, "README.md", "Changed documentation\n");
@@ -166,6 +225,7 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ["scripts/run-quality-ci.test.mjs", "scripts/run-quality-ci-stages.test.mjs"],
     ],
     [2, "scripts/run-quality-checks.mjs", ["scripts/run-quality-checks.test.mjs"]],
+    [2, "scripts/hosted-sdk-capacity.mjs", ["scripts/hosted-sdk-capacity.test.mjs"]],
     [2, "scripts/quality.mjs", ["scripts/quality.test.mjs", "scripts/quality-policy.test.mjs"]],
     [
       2,
@@ -275,6 +335,12 @@ test("engineering source, dynamic commands and configuration reselect the origin
       ],
     ],
     [0, "scripts/check-agent-knowledge.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
+    [0, "scripts/inventory_warehouse_scope.py", []],
+    [0, "scripts/test_fc_plan_template_snapshot.py", []],
+    [0, "scripts/test_fc_summary.py", []],
+    [0, "scripts/test_inventory_warehouse_scope.py", []],
+    [0, "scripts/update-fc-warehouse-exceptions.py", []],
+
     [1, "scripts/prepare-official-sdk.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
     [1, "scripts/sdk-artifact-cache.mjs", ["scripts/run-quality-ci-stages.test.mjs"]],
   ];
@@ -1077,6 +1143,7 @@ test("retiring the Cube-only MCP module selects the knowledge and Cube bridge re
   ];
   for (const file of [
     "tests/required.test.mjs",
+    ...Object.keys(policy.sourceFixtures ?? {}),
     ...(policy.versionTests ?? []),
     ...(policy.companionPeerTests ?? []),
     ...policy.tests.filter((file) => !file.includes("*")),

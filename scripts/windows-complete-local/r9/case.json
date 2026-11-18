@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "gea218-r9-20261103",
+  "repository": "CleverC2200/dsh-gea-plugin",
+  "originalBuildRun": 41580887782,
+  "originalArtifactId": 13205628838,
+  "originalArtifactDigest": "sha256:a6496b2246bf10b1509a8c93d72f65c60c06e03192156ddf3ac76a6efd5ecda6",
+  "originalSourceSha": "de47eeee858ed7de4f1dbd18a0f9e15dc72efeaf",
+  "originalBundle": {
+    "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/verification/8c0f8f3721fbd506cae3eadc306f3746a6d19224f9250c63462cca2f9379acc2/gea218-native-recovery.tgz",
+    "sha256": "8c0f8f3721fbd506cae3eadc306f3746a6d19224f9250c63462cca2f9379acc2"
+  },
+  "baselineVersion": "0.2.0-rc.2.20261103.1",
+  "targetVersion": "0.2.0-rc.2.20261103.2",
+  "coreSha": "a0c0d2ff884b1808eccb9bb254a1659281364d7d",
+  "packages": {
+    "@cleverc2200/dsh-agent-workbench": "0.1.51",
+    "dsh-agent-manage": "0.6.3-company.47",
+    "@cleverc2200/gea-dsh-prototype": "0.0.218"
+  },
+  "baselineGeaVersion": "0.0.216",
+  "installedBaselineProofs": [
+    {
+      "name": "@cleverc2200/gea-dsh-prototype",
+      "path": "lib/host.js",
+      "sha256": "76021f7c97b415bda47fe2cbe55a87bbf45af0bdffafa6c4364a903dca00bff1"
+    },
+    {
+      "name": "@cleverc2200/gea-dsh-prototype",
+      "path": "presets/prompt-policy.json",
+      "sha256": "fa311dae7361366a7746a5949390061332cf30354b5828fcc7c9203491391a40"
+    },
+    {
+      "name": "@cleverc2200/dsh-agent-workbench",
+      "path": "lib/business/inventory-orderworkbench/capability.json",
+      "sha256": "14b7f0d3c377238f202d265b89501d936f250be276fe9663a2d3e003390e0237"
+    }
+  ],
+  "baselineInstaller": {
+    "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/40a8ffc7e04e68cc626d3d0caa6645fe3b169ce1/desktop/GEA-Desktop-0.2.0-rc.2.20261103.1-win-x64-signed.exe",
+    "sha256": "92145df900c0bb743fd9301d7740b8b157dadecff9f3c56c0aae05a4b4f55312"
+  },
+  "baselineGeaSha256": "05aebeb4843ca295249583fa220f579eb0eade3b7f88258657c3d1f95a78d3f9"
+}

@@ -20,5 +20,20 @@ export function resolveEnvironments(config) {
       throw new Error("INVALID_GEA_BASE_URL");
     environments[name] = url.href.replace(/\/$/, "");
   }
+  if (!environments[environment]) throw new Error("INVALID_GEA_ENVIRONMENTS");
+  if (environments.production && environments.production === environments.test)
+    throw new Error("GEA_ENVIRONMENTS_NOT_DISTINCT");
+  if (
+    environments.production &&
+    environments.test &&
+    (environments.production.startsWith(environments.test + "/") ||
+      environments.test.startsWith(environments.production + "/"))
+  )
+    throw new Error("GEA_ENVIRONMENTS_OVERLAP");
+  if (
+    environments.production === "https://gea.synear.cn:4443/gea-boot" ||
+    environments.test === "https://gea.synear.cn/gea-boot"
+  )
+    throw new Error("GEA_ENVIRONMENT_TARGET_MISMATCH");
   return { environment, environments, baseUrl: environments[environment] };
 }

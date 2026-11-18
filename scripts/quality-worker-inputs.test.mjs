@@ -1094,6 +1094,7 @@ async function producerWaitReady(f, run, waiting) {
       }),
     ]),
     "worker did not enter producer wait",
+    30000,
   );
   const observation = f.run(join(own, "scripts/run-quality-ci.mjs"), [
     "--stage",
@@ -1923,13 +1924,17 @@ test("worker CLI overlaps two real installs while keeping nested Workbench inven
   assert.ok(paths.durationMs >= 0);
 });
 
-async function deadline(promise, message = "worker did not close after install failure") {
+async function deadline(
+  promise,
+  message = "worker did not close after install failure",
+  timeoutMs = 5000,
+) {
   let timer;
   try {
     return await Promise.race([
       promise,
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error(message)), 5000);
+        timer = setTimeout(() => reject(Error(message)), timeoutMs);
       }),
     ]);
   } finally {

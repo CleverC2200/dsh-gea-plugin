@@ -11,7 +11,19 @@ const desktopCore = ciCores("required")[0];
 export const personalMemoryPackage = "@cleverc2200/dsh-personal-memory";
 export const desktopPackageNames = [...companyPackageNames, personalMemoryPackage];
 
-export function verifyPersonalMemoryArchive(path, row, input) {
+export function verifyDesktopPluginArchive(path, row, input) {
+  if (row.name === "@cleverc2200/gea-dsh-prototype") {
+    const manifest = JSON.parse(
+      execFileSync("tar", ["-xOf", path, "package/package.json"], {
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      }),
+    );
+    if (manifest.geaPluginUpdateStrategy !== "managed-suite")
+      throw Error("DESKTOP_MANAGED_INSTALLATION_HOST_REQUIRED");
+    return;
+  }
   if (row.name !== personalMemoryPackage) return;
   const options = { encoding: "utf8", timeout: 30000, maxBuffer: 16 * 1024 * 1024 };
   const entries = execFileSync("tar", ["-tzf", path], options).trim().split(/\r?\n/);
@@ -185,6 +197,27 @@ export function readDesktopPluginSource(input, checkout) {
   } catch {
     throw Error("DESKTOP_GEA_PACKAGE_SOURCE_MISMATCH");
   }
+}
+
+export function resolveDesktopAcceptanceSource(sourceSha, qualifiedSourceSha, checkout) {
+  const expected = qualifiedSourceSha ?? sourceSha;
+  if (!/^[a-f0-9]{40}$/.test(expected ?? "")) throw Error("DESKTOP_NATIVE_SOURCE_INVALID");
+  if (qualifiedSourceSha !== undefined) {
+    try {
+      const head = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: checkout,
+        encoding: "utf8",
+      }).trim();
+      if (head !== sourceSha) throw Error();
+      execFileSync("git", ["merge-base", "--is-ancestor", expected, head], {
+        cwd: checkout,
+        stdio: "pipe",
+      });
+    } catch {
+      throw Error("DESKTOP_NATIVE_SOURCE_INVALID");
+    }
+  }
+  return expected;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({

@@ -103,15 +103,23 @@ export function createExecutionPlan({
     id: String(index + 1),
     files: [],
   }));
+  const runtimeFiles = new Set(files.filter((file) => selection.runtimeFiles?.includes(file)));
+  const runtimeLimit = Math.ceil(runtimeFiles.size / groups.length);
   for (const file of [...files].sort(
     (left, right) =>
       Number(ordering.has(left)) - Number(ordering.has(right)) ||
       (ordering.get(right) ?? 0) - (ordering.get(left) ?? 0) ||
       left.localeCompare(right),
   )) {
+    const eligible = runtimeFiles.has(file)
+      ? groups.filter(
+          (entry) =>
+            entry.files.filter((assigned) => runtimeFiles.has(assigned)).length < runtimeLimit,
+        )
+      : groups;
     const group =
-      groups.find((entry) => !entry.files.length) ??
-      [...groups].sort(
+      eligible.find((entry) => !entry.files.length) ??
+      [...eligible].sort(
         (left, right) =>
           dispatchCost([...left.files, file]) - dispatchCost([...right.files, file]) ||
           Number(left.id) - Number(right.id),

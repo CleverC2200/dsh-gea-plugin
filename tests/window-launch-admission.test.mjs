@@ -557,3 +557,16 @@ test("isolated Core admission records the registered version before a held profi
   assert.deepEqual(effects.processes, []);
   assert.deepEqual(effects.network, []);
 });
+
+for (const mode of ["source-host", "isolated-core-host"])
+  test(`${mode}: missing Core runtime dependencies stop the public Host before protected effects`, async (t) => {
+    const fixture = await sourceWindow(t, mode);
+    const before = await snapshot(fixture.runtime);
+    const result = fixture.run("runSourceProfile", {}, { FIXTURE_CORE_RUNTIME_ERROR: "1" });
+    await assertNoEffects(
+      fixture,
+      result,
+      /RUNTIME_CORE_NOT_READY:.*ERR_MODULE_NOT_FOUND js-yaml/,
+      before,
+    );
+  });
