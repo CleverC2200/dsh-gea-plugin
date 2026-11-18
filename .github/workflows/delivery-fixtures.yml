@@ -760,3 +760,39 @@ jobs:
           name: mac-managed-upgrade-receipt
           if-no-files-found: warn
           path: ${{ runner.temp }}/managed-upgrade-result/public/receipt.json
+
+  mac-managed-artifact-transfer:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/mps-managed-desktop-acceptance-20261118' && inputs.mac_complete_input == 'transfer:44230512932'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44230512932
+          name: Synear-GEA-mac-arm64-signed-44230512932
+          path: ${{ runner.temp }}/original-signed
+      - name: Record immutable transfer inputs
+        run: |
+          cd "$RUNNER_TEMP/original-signed"
+          sha256sum *.dmg *.zip *.blockmap nightly-mac.yml result.json > transfer-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-managed-original-dmg
+          path: ${{ runner.temp }}/original-signed/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-managed-original-online
+          path: |
+            ${{ runner.temp }}/original-signed/*.zip
+            ${{ runner.temp }}/original-signed/*.blockmap
+            ${{ runner.temp }}/original-signed/nightly-mac.yml
+            ${{ runner.temp }}/original-signed/result.json
+            ${{ runner.temp }}/original-signed/transfer-sha256.txt
+          if-no-files-found: error
+          compression-level: 0
