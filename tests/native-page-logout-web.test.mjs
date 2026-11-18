@@ -18,8 +18,7 @@ for (const panel of ["gea-proof", "gea-inbox"])
       const { app, page } = await stockReferencePage(t);
       const binding = () => nativeAssociation(page, panel);
       if (panel === "gea-inbox") {
-        await openBusinessPage(page, panel);
-        const shortcut = page.locator('[data-gea-business-entry="gea-inbox"]');
+        const shortcut = page.getByRole("button", { name: "消息中心", exact: true });
         const button = await shortcut.boundingBox();
         const sidebar = await page
           .getByRole("complementary", { name: "业务导航", exact: true })
@@ -30,6 +29,7 @@ for (const panel of ["gea-proof", "gea-inbox"])
           "the inbox action must stay inside its owning sidebar",
         );
         assert.ok(button.y >= sidebar.y && button.y + button.height <= sidebar.y + sidebar.height);
+        await shortcut.click();
       } else await openBusinessPage(page, panel);
       await expect.poll(async () => (await binding())?.sessionId).toMatch(/^session-/);
       const before = await binding(),
