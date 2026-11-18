@@ -95,6 +95,20 @@ import { sharedAgentCapability, WORKBENCH_AGENT_CODE } from "./shared-agent.ts";
 export type QueryId = Branded<"gea-query">;
 export type PreviewId = Branded<"gea-preview">;
 export type Row = Record<string, string | number | boolean | null>;
+type SalesPlanPeriodPage = {
+  records: Row[];
+  total: number;
+  size: number;
+  current: number;
+  pages: number;
+};
+type WorkbenchQueryOptions = {
+  forModel?: boolean;
+  detailLoad?: SalesPlanDetailLoad;
+  onPlanPage?: (page: unknown) => void;
+  periodIndex?: "refresh" | "reuse";
+};
+const SALES_PLAN_PERIOD_INDEX_TTL_MS = 60_000;
 
 export interface Deployment {
   memoryGatewayUrl?: string;
@@ -701,6 +715,14 @@ export class Business {
   private passwordChallenge?: { id: string; createdAt: number; submitting: boolean };
   private epoch = new AbortController();
   private pageIdentityGeneration = randomUUID();
+  private salesPlanPeriodRead = 0;
+  private salesPlanPeriodIndex?: {
+    epoch: AbortSignal;
+    roles: NonNullable<Business["auth"]>["roles"];
+    permissions: NonNullable<Business["auth"]>["permissionCodes"];
+    expiresAt: number;
+    page: SalesPlanPeriodPage;
+  };
   private queryEpoch = new AbortController();
   private page?: Page;
   private preview?: Preview;
@@ -1071,6 +1093,7 @@ export class Business {
     this.epoch = new AbortController();
     this.pageIdentityGeneration = randomUUID();
     this.auth = undefined;
+    this.salesPlanPeriodIndex = undefined;
     this.materialNames.clear();
     this.salesPlanDetailHandoffs = new Map();
     this.customerInventoryAccess = undefined;
@@ -3573,13 +3596,7 @@ export class Business {
   private async salesPlanPeriodPage(
     query: Record<string, unknown>,
     signal: AbortSignal,
-  ): Promise<{
-    records: Row[];
-    total: number;
-    size: number;
-    current: number;
-    pages: number;
-  }> {
+  ): Promise<SalesPlanPeriodPage> {
     if (query.status != null && query.status !== "")
       throw new Error(
         "INVALID_QUERY: period status was removed; filter visible plans by plan status instead.",
@@ -3659,6 +3676,51 @@ export class Business {
       current,
       pages: records.length === 0 ? 0 : Math.ceil(records.length / size),
     };
+  }
+
+  private async startupPeriodIndex(
+    query: Record<string, unknown>,
+    caller: AbortSignal,
+    mode: "refresh" | "reuse",
+  ): Promise<SalesPlanPeriodPage> {
+    const auth = this.authenticated();
+    const epoch = this.epoch.signal;
+    const signal = AbortSignal.any([caller, epoch]);
+    signal.throwIfAborted();
+    const roles = auth.roles;
+    const permissions = auth.permissionCodes;
+    const cached = this.salesPlanPeriodIndex;
+    const size = integer(query.pageSize ?? this.config.periodPageSize, 1, 1000);
+    if (
+      mode === "reuse" &&
+      cached?.epoch === epoch &&
+      cached.roles === roles &&
+      cached.permissions === permissions &&
+      cached.page.size === size &&
+      cached.expiresAt > Date.now()
+    )
+      return cached.page;
+
+    this.salesPlanPeriodIndex = undefined;
+    const revision = ++this.salesPlanPeriodRead;
+    const page = await this.salesPlanPeriodPage(query, signal);
+    signal.throwIfAborted();
+    if (
+      revision === this.salesPlanPeriodRead &&
+      auth.roles === roles &&
+      auth.permissionCodes === permissions &&
+      page.total > 0 &&
+      page.records.length === page.total
+    ) {
+      this.salesPlanPeriodIndex = {
+        epoch,
+        roles,
+        permissions,
+        page,
+        expiresAt: Date.now() + SALES_PLAN_PERIOD_INDEX_TTL_MS,
+      };
+    }
+    return page;
   }
 
   async periods(signal: AbortSignal): Promise<Collection> {
@@ -3870,12 +3932,11 @@ export class Business {
   async workbenchQuery(
     payload: Record<string, unknown>,
     signal: AbortSignal,
-    detailLoad?: SalesPlanDetailLoad,
-    onPlanPage?: (page: unknown) => void,
+    options: Omit<WorkbenchQueryOptions, "forModel"> = {},
   ): Promise<unknown> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
-    return this.readWorkbenchQuery(payload, signal, { detailLoad, onPlanPage });
+    return this.readWorkbenchQuery(payload, signal, options);
   }
 
   private async fillMaterialNames(
@@ -4189,11 +4250,7 @@ export class Business {
   private async readWorkbenchQuery(
     payload: Record<string, unknown>,
     signal: AbortSignal,
-    options: {
-      forModel?: boolean;
-      detailLoad?: SalesPlanDetailLoad;
-      onPlanPage?: (page: unknown) => void;
-    } = {},
+    options: WorkbenchQueryOptions = {},
   ): Promise<unknown> {
     keys(payload, ["kind", "query"]);
     let query = object(payload.query ?? {});
@@ -4243,7 +4300,16 @@ export class Business {
       !["region", "province", "area", "category"].includes(String(query.approvalRole))
     )
       throw new Error("INVALID_QUERY");
-    if (kind === "periods") return this.salesPlanPeriodPage(query, signal);
+    if (kind === "periods") {
+      if (
+        options.periodIndex &&
+        integer(query.pageNo ?? 1, 1) === 1 &&
+        (query.periodMonth == null || query.periodMonth === "") &&
+        (query.planType == null || query.planType === "")
+      )
+        return this.startupPeriodIndex(query, signal, options.periodIndex);
+      return this.salesPlanPeriodPage(query, signal);
+    }
     if (kind === "skuReview") {
       if (options.forModel) throw new Error("INVALID_QUERY");
       const active = AbortSignal.any([signal, this.epoch.signal]);

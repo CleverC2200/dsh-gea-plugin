@@ -287,11 +287,9 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
   const load = { pageOwner: "page-a", generation: "current-load" };
   const readDraft = () => business.salesPlanDraft({ planId, versionId: "v1" }, signal(), load);
   const review = (scope) =>
-    business.workbenchQuery(
-      { kind: "skuReview", query: { planId, versionId: "v1" } },
-      signal(),
-      scope,
-    );
+    business.workbenchQuery({ kind: "skuReview", query: { planId, versionId: "v1" } }, signal(), {
+      detailLoad: scope,
+    });
   assert.equal((await readDraft()).draft, null);
   assert.equal(detailReads, 2);
   assert.deepEqual(await review({ ...load, pageOwner: "page-b" }), result);
@@ -299,11 +297,9 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
   assert.equal(detailReads, 4);
   const cancelled = AbortSignal.abort();
   await assert.rejects(
-    business.workbenchQuery(
-      { kind: "skuReview", query: { planId, versionId: "v1" } },
-      cancelled,
-      load,
-    ),
+    business.workbenchQuery({ kind: "skuReview", query: { planId, versionId: "v1" } }, cancelled, {
+      detailLoad: load,
+    }),
     /Abort/i,
   );
   assert.deepEqual(await review(load), result);

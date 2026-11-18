@@ -145,8 +145,7 @@ test("the owned list can publish its plan rows while shipment SQL is still pendi
   const finished = business.workbenchQuery(
     { kind: "list", query: { orderType: "Z" } },
     new AbortController().signal,
-    undefined,
-    (page) => pages.push(page),
+    { onPlanPage: (page) => pages.push(page) },
   );
   try {
     await new Promise((resolve) => setImmediate(resolve));

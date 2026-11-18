@@ -793,13 +793,26 @@ export async function apply(
                       return salesPlanListResponse(
                         readSignal,
                         (signal, onPage) =>
-                          business.workbenchQuery(payload, signal, detailLoad, onPage),
+                          business.workbenchQuery(payload, signal, {
+                            detailLoad,
+                            onPlanPage: onPage,
+                          }),
                         async () => {
                           await desktopLogin.flush();
                           await webLogin.flush();
                         },
                       );
-                    value = await business.workbenchQuery(payload, readSignal, detailLoad);
+                    value = await business.workbenchQuery(payload, readSignal, {
+                      detailLoad,
+                      ...(startupSignal && payload.kind === "periods"
+                        ? {
+                            periodIndex:
+                              request.headers.get("X-GEA-Sales-Plan-Period-Index") === "reuse"
+                                ? "reuse"
+                                : "refresh",
+                          }
+                        : {}),
+                    });
                     break;
                   case "people/search":
                     value = await business.searchPeople(payload, request.signal);
@@ -850,6 +863,7 @@ export async function apply(
 
                     value = {
                       ...business.status(),
+                      salesPlanStartupReads: true,
                       htmlPlugins: htmlPackages.length > 0,
                       modules: capability.modules(),
                     };
