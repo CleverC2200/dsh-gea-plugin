@@ -182,52 +182,26 @@ try {
  console.log("Product update check: " + JSON.stringify(initial));
  assert.equal(initial.phase,"available");
  assert.equal(initial.version,newer);
- await main.evaluate(version=>{
-  window.dshDesktop.updates.open(version).catch(error=>{
-   window.__upgradeProbeError=String(error.message).split("\n")[0];
-  });
- },newer);
- step("product-update-action-invoked");
- async function actionTarget(){
-  const targets=await fetch("http://127.0.0.1:"+clientPort+"/json/list",{signal:AbortSignal.timeout(2000)})
-   .then(response=>response.json()).catch(()=>[]);
-  return targets.find(row=>row.url==="dsh-app://shell/update-dialog.html");
- }
- async function evaluateTarget(target,expression){
-  const socket=new WebSocket(target.webSocketDebuggerUrl);
-  try{
-   return await new Promise((ok,fail)=>{
-    const timeout=setTimeout(()=>fail(Error("CDP confirmation timed out")),5000);
-    socket.addEventListener("open",()=>socket.send(JSON.stringify({id:1,method:"Runtime.evaluate",
-     params:{expression,awaitPromise:true,returnByValue:true}})),{once:true});
-    socket.addEventListener("error",()=>{clearTimeout(timeout);fail(Error("CDP dialog disconnected"));},{once:true});
-    socket.addEventListener("message",message=>{
-     const reply=JSON.parse(message.data);
-     if(reply.id!==1)return;
-     clearTimeout(timeout);
-     if(reply.error||reply.result?.exceptionDetails)fail(Error("CDP dialog evaluation failed"));
-     else ok(reply.result?.result?.value);
-    });
-   });
-  }finally{socket.close();}
- }
+ const upgrade=main.locator(".gea-update-entry").filter({hasText:newer});
+ await upgrade.waitFor({state:"visible",timeout:30000});
+ const upgradeText=await upgrade.getAttribute("aria-label");
+ assert.match(upgradeText??"",/restart|重启|重新启动/i);
+ await upgrade.click({timeout:15000});
+ results.productEntry="GEA sidebar restart update action";
+ step("product-restart-and-update-confirmed");
  let lastView;
- const confirmation=await wait("downloaded signed update and actual install-and-restart control",async()=>{
-  const rejected=await main.evaluate(()=>window.__upgradeProbeError);
-  if(rejected)throw Error("PRODUCT_UPDATE_ENTRY_REJECTED: "+rejected);
+ await wait("native installer handoff",async()=>{
   const events=await records();
-  const failure=events.find(row=>row.event==="state"&&row.phase==="error");
-  assert.equal(failure,undefined,"Native updater failure: "+JSON.stringify(failure));
-  const target=await actionTarget();
-  const label=target?await evaluateTarget(target,"window.dshUpdateDialog.status().then(view=>view?.buttons?.[0]??'')").catch(()=>""):"";
-  const state=events.filter(row=>row.event==="state").at(-1);
-  const diagnostic=JSON.stringify({label,phase:state?.phase??null,target:state?.targetVersion??null,requests:served.length});
+  const states=events.filter(row=>row.event==="state");
+  const state=states.at(-1);
+  const diagnostic=JSON.stringify({phase:state?.phase??null,target:state?.targetVersion??null,requests:served.length});
   if(diagnostic!==lastView){console.log("Update state: "+diagnostic);lastView=diagnostic;}
-  return /restart|重启|重新启动/i.test(label)&&events.some(row=>row.phase==="ready"&&row.targetVersion===newer)?target:false;
- },300000);
+  const failure=states.find(row=>row.phase==="error");
+  assert.equal(failure,undefined,"Native updater failure: "+JSON.stringify(failure));
+  return events.some(row=>row.event==="install-confirmed")&&states.some(row=>row.phase==="ready"&&row.targetVersion===newer);
+ },150000);
  assert.ok(served.some(row=>row.name===rows.path||row.name==="/"+rows.path));
- step("native-update-journal-and-signed-download-ready");
- await evaluateTarget(confirmation,"setTimeout(()=>document.querySelector('#actions button').click(),500); true");
+ step("native-update-journal-and-signed-download-verified");
  await wait("old process graceful exit",()=>exited,90000);
  const newPid=await wait("native updated executable",async()=>{
   const result=await run("pgrep",["-f",executable.replace(/[.]/g,"\\.")]).catch(()=>null);
