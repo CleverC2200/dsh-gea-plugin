@@ -50,10 +50,10 @@ test("history reads only the plan SKUs once and preserves missing months and par
       }),
       async (input) => {
         calls++;
+        assert.equal(input.includeTotal, false);
         const rows = db.prepare(input.sql).all(input.parameters);
         return {
           rows: rows.slice((input.pageNo - 1) * 200, input.pageNo * 200),
-          total: rows.length,
         };
       },
       () => "2026-11",
@@ -133,11 +133,15 @@ test("wrong version and denied detail fail before any SQL request", async () => 
 });
 
 test("partial pages, malformed facts and query failure never become zero shipments", async () => {
+  const row = { material_code: "1001", ship_qty0: "0", ship_qty1: "5", ship_qty2: "0" };
   for (const sql of [
     async () => {
       throw Error("403");
     },
     async () => ({ rows: [], total: 10 }),
+    async () => ({ rows: [], hasMore: true }),
+    async () => ({ rows: [row, row] }),
+    async () => ({ rows: [{ ...row, material_code: "outside-plan" }] }),
     async () => ({
       rows: [{ material_code: "1001", ship_month: "202609", ship_qty: null }],
       total: 1,
@@ -282,10 +286,12 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
       if (input.sql.includes("material_name")) {
         namesStarted.resolve();
         await releaseNames.promise;
+        assert.equal(input.includeTotal, true);
         result = { rows: [{ material_code: unnamedSku, material_name: "汤圆" }], total: 1 };
       } else {
         if (unnamedSku) historyStarted.resolve();
-        result = { rows: [], total: 0, rejectedColumns: [] };
+        assert.equal(input.includeTotal, false);
+        result = { rows: [], rejectedColumns: [] };
       }
     } else throw Error("unexpected request " + path);
     return Response.json({ success: true, code: 200, result });
@@ -297,6 +303,7 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
   assert.equal(result.versionId, "v1");
   assert.equal(result.skus[0].amt, "1234.50");
   assert.equal(sqlRequests.length, 1);
+  assert.equal(result.shipmentUnavailable, false);
   const load = { pageOwner: "page-a", generation: "current-load" };
   const readDraft = () => business.salesPlanDraft({ planId, versionId: "v1" }, signal(), load);
   const review = (scope) =>

@@ -1,13 +1,13 @@
 import { object, text } from "./payload.ts";
 import { PLUGIN_QUERY_MAX_PAGE_SIZE } from "./plugin-query.ts";
 
-const parseShipmentPage = (value: unknown) => {
+const parseShipmentPage = (value: unknown, maxRows: number) => {
   const page = object(value);
   if (
     !Array.isArray(page.rows) ||
-    typeof page.total !== "number" ||
-    !Number.isSafeInteger(page.total) ||
-    page.total < 0 ||
+    page.rows.length > maxRows ||
+    (page.total != null && page.total !== page.rows.length) ||
+    page.hasMore === true ||
     (page.rejectedColumns !== undefined &&
       (!Array.isArray(page.rejectedColumns) || page.rejectedColumns.length > 0))
   )
@@ -24,11 +24,17 @@ const parseShipmentPage = (value: unknown) => {
     });
     return { material_code: text(row.material_code), shipments };
   });
-  return { rows, total: page.total };
+  return rows;
 };
 
 type ReadShipmentSql = (
-  query: { sql: string; parameters: Record<string, string>; pageNo: number; pageSize: number },
+  query: {
+    sql: string;
+    parameters: Record<string, string>;
+    pageNo: number;
+    pageSize: number;
+    includeTotal: false;
+  },
   signal: AbortSignal,
 ) => Promise<unknown>;
 
@@ -106,7 +112,7 @@ async function readHistoricalShipments(
         (_, index) =>
           `CASE WHEN COUNT(CASE WHEN ship_month = :month${index} THEN 1 END) = 0 THEN '0' WHEN COUNT(CASE WHEN ship_month = :month${index} THEN 1 END) = COUNT(CASE WHEN ship_month = :month${index} THEN act_dl_qty END) THEN CAST(SUM(CASE WHEN ship_month = :month${index} THEN act_dl_qty ELSE 0 END) AS TEXT) ELSE NULL END AS ship_qty${index}`,
       );
-      const page = parseShipmentPage(
+      const rows = parseShipmentPage(
         await readSql(
           {
             sql: `SELECT material_code, ${quantities.join(", ")} FROM agents_scm_cust_deliv_daily_di WHERE cust_code = :customer AND ship_month IN (:month0, :month1, :month2) AND material_code IN (${placeholders}) GROUP BY material_code ORDER BY material_code`,
@@ -119,13 +125,13 @@ async function readHistoricalShipments(
             },
             pageNo: 1,
             pageSize: PLUGIN_QUERY_MAX_PAGE_SIZE,
+            includeTotal: false,
           },
           signal,
         ),
+        batch.length,
       );
-      if (page.total !== page.rows.length || page.total > batch.length)
-        throw new Error("GEA_INCOMPLETE_COLLECTION");
-      for (const row of page.rows) {
+      for (const row of rows) {
         if (!batch.includes(row.material_code)) throw new Error("GEA_INVALID_SHIPMENT");
         for (const [index, quantity] of row.shipments.entries()) {
           const key = `${index}\u0000${row.material_code}`;
