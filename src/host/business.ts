@@ -1,5 +1,6 @@
 import { warningStorage } from "./warning-storage.ts";
 import { searchPeople } from "./people-search.ts";
+import { readAnnouncements } from "./announcements.ts";
 import { retryingFetch } from "./http-attempt.ts";
 import { GeaRequestCapture, type CaptureConfig } from "./request-capture.ts";
 import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
@@ -1947,6 +1948,14 @@ export class Business {
       throw Error(code);
     }
     return data.result;
+  }
+
+  announcements(payload: Record<string, unknown>, caller: AbortSignal) {
+    const auth = this.authenticated();
+    const signal = AbortSignal.any([caller, this.epoch.signal]);
+    return readAnnouncements(payload, (path) =>
+      this.gatewayRequests.readResult(path, auth, signal, false),
+    );
   }
 
   async notifications(payload: Record<string, unknown>, caller: AbortSignal) {
