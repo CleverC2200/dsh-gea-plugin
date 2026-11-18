@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
+import {fileURLToPath} from "node:url";
 import {createReadStream,createWriteStream,openSync,closeSync} from "node:fs";
 import {readFile,writeFile,mkdir,readdir,stat} from "node:fs/promises";
 import {execFile,spawn} from "node:child_process";
@@ -155,12 +156,12 @@ try {
  await main.waitForFunction(()=>Boolean(window.dshDesktop?.updates?.open),{timeout:90000});
  const history=join(privateDir,"history.json"),snapshot=join(privateDir,"before.json");
  await writeFile(history,JSON.stringify({root:asar,home,cwd:privateDir,sessionId,mode:"create"}));
- assert.equal((await bundled(join(import.meta.dirname,"seed-history.mjs"),[history])).status,"history-created-and-read-back");
+ assert.equal((await bundled(fileURLToPath(new URL("../windows-complete-local/r9/seed-history.mjs",import.meta.url)),[history])).status,"history-created-and-read-back");
  assert.equal(await main.evaluate(({draftKey,draftText})=>{
   localStorage.setItem(draftKey,JSON.stringify({draft:draftText,view:null,viewRequest:null}));
   return JSON.parse(localStorage.getItem(draftKey)).draft;
  },{draftKey,draftText}),draftText);
- const data=join(import.meta.dirname,"desktop-update-data.mjs");
+ const data=fileURLToPath(new URL("../desktop-update-data.mjs",import.meta.url));
  assert.ok((await bundled(data,["--home",home,"--capture",snapshot])).events>0);
  step("old-sessions-and-composer-draft-captured");
  await main.evaluate(()=>{void window.dshDesktop.updates.open();});

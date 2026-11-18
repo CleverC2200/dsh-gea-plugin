@@ -751,7 +751,7 @@ jobs:
           path: ${{ runner.temp }}/managed-upgrade-artifacts
       - name: Prepare exact acceptance dependencies
         working-directory: scripts/manual-managed-upgrade
-        run: npm install --ignore-scripts --no-package-lock --no-audit --no-fund yaml@2.9.0 playwright@1.58.2 classic-level@2.0.0
+        run: npm install --prefix "$PWD" --ignore-scripts --no-package-lock --no-audit --no-fund yaml@2.9.0 playwright@1.58.2 classic-level@2.0.0
       - name: Exercise the signed native online upgrade before publication
         run: node scripts/manual-managed-upgrade/mac-run.mjs "$RUNNER_TEMP/managed-upgrade-artifacts" "$RUNNER_TEMP/managed-upgrade-result"
       - uses: actions/upload-artifact@v4
