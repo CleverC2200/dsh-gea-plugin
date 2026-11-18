@@ -104,6 +104,7 @@ type SalesPlanPeriodPage = {
 };
 type WorkbenchQueryOptions = {
   forModel?: boolean;
+  deferMaterialNames?: true;
   detailLoad?: SalesPlanDetailLoad;
   onPlanPage?: (page: unknown) => void;
   periodIndex?: "refresh" | "reuse";
@@ -3932,7 +3933,7 @@ export class Business {
   async workbenchQuery(
     payload: Record<string, unknown>,
     signal: AbortSignal,
-    options: Omit<WorkbenchQueryOptions, "forModel"> = {},
+    options: Omit<WorkbenchQueryOptions, "forModel" | "deferMaterialNames"> = {},
   ): Promise<unknown> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
@@ -4319,16 +4320,20 @@ export class Business {
       const key = options.detailLoad && salesPlanDetailKey(options.detailLoad, planId, versionId);
       const handoff = key && this.salesPlanDetailHandoffs.get(key);
       if (key) this.salesPlanDetailHandoffs.delete(key);
+      const reusable = handoff && handoff.expiresAt > Date.now() ? handoff.detail : undefined;
       return readSalesPlanSkuReview(
         { planId, versionId },
         async (planId, current) =>
-          handoff && handoff.expiresAt > Date.now()
-            ? this.capture.reuse(handoff.detail)
-            : this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current),
+          reusable
+            ? this.capture.reuse(reusable)
+            : this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current, {
+                deferMaterialNames: true,
+              }),
         (input, current) =>
           this.pluginSql({ ...input, consumerCode: this.config.analysisAgentCode }, current),
         salesPlan.salesPlanPeriodMonthForPlanId,
         active,
+        reusable ? undefined : (skus, current) => this.fillMaterialNames(skus, current),
       );
     }
     if (kind === "aggregate")
@@ -4477,7 +4482,7 @@ export class Business {
         logs.some((log) => log.planId !== query.planId || !versionIds.has(text(log.versionId)))
       )
         throw new Error("GEA_IDENTITY_MISMATCH");
-      await this.fillMaterialNames(skus, signal);
+      if (!options.deferMaterialNames) await this.fillMaterialNames(skus, signal);
       if (options.forModel) {
         const budget = Math.max(4096, Math.floor(this.config.inputByteBudget / 2));
         const cappedSkus = capRows(

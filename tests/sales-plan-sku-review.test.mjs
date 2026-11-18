@@ -6,6 +6,7 @@ import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { setTimeout as delay } from "node:timers/promises";
 const bundle = await build({
   entryPoints: ["src/host/sales-plan-sku-review.ts"],
   bundle: true,
@@ -240,6 +241,10 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
   const planId = "p-y-2026-11-00001";
   const sqlRequests = [];
   let detailReads = 0;
+  let unnamedSku;
+  const namesStarted = Promise.withResolvers();
+  const historyStarted = Promise.withResolvers();
+  const releaseNames = Promise.withResolvers();
   t.mock.method(globalThis, "fetch", async (url, init) => {
     init.signal.throwIfAborted();
     const path = new URL(url).pathname;
@@ -259,8 +264,8 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
         skus: [
           {
             versionId: "v1",
-            skuCode: "1001",
-            materialDescription: "水饺",
+            skuCode: unnamedSku ?? "1001",
+            materialDescription: unnamedSku ? undefined : "水饺",
             qty: "501.600",
             amt: "1234.50",
             price: "2",
@@ -272,8 +277,16 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
     } else if (path.endsWith("/agent/session"))
       result = { accessDecision: { allowed: true }, delegationToken: "fixture-delegation" };
     else if (path.endsWith("/sql/execute")) {
-      sqlRequests.push(JSON.parse(init.body));
-      result = { rows: [], total: 0, rejectedColumns: [] };
+      const input = JSON.parse(init.body);
+      sqlRequests.push(input);
+      if (input.sql.includes("material_name")) {
+        namesStarted.resolve();
+        await releaseNames.promise;
+        result = { rows: [{ material_code: unnamedSku, material_name: "汤圆" }], total: 1 };
+      } else {
+        if (unnamedSku) historyStarted.resolve();
+        result = { rows: [], total: 0, rejectedColumns: [] };
+      }
     } else throw Error("unexpected request " + path);
     return Response.json({ success: true, code: 200, result });
   });
@@ -317,4 +330,32 @@ test("workbench SKU review derives authorized scope and reuses a validated draft
     business.agentQuery({ kind: "skuReview", query: { planId, versionId: "v1" } }, signal()),
     /INVALID_QUERY/,
   );
+
+  unnamedSku = "1002";
+  const pending = review({ ...load, generation: "new-load" });
+  const timeout = new AbortController();
+  try {
+    assert.equal(
+      await Promise.race([
+        Promise.all([namesStarted.promise, historyStarted.promise]).then(() => "parallel"),
+        delay(500, "waiting for material names", { signal: timeout.signal }),
+      ]),
+      "parallel",
+    );
+  } finally {
+    timeout.abort();
+    releaseNames.resolve();
+    await Promise.allSettled([pending]);
+  }
+  const enriched = await pending;
+  assert.equal(enriched.skus[0].materialDescription, "汤圆");
+  assert.deepEqual(enriched.rows[0].shipments, ["0", "0", "0"]);
+
+  unnamedSku = "1003";
+  const previousSqlRequests = sqlRequests.length;
+  await assert.rejects(
+    business.workbenchQuery({ kind: "skuReview", query: { planId, versionId: "wrong" } }, signal()),
+    /GEA_IDENTITY_MISMATCH/,
+  );
+  assert.equal(sqlRequests.length, previousSqlRequests);
 });

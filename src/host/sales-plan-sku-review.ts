@@ -27,15 +27,18 @@ const parseShipmentPage = (value: unknown) => {
   return { rows, total: page.total };
 };
 
+type ReadShipmentSql = (
+  query: { sql: string; parameters: Record<string, string>; pageNo: number; pageSize: number },
+  signal: AbortSignal,
+) => Promise<unknown>;
+
 export async function readSalesPlanSkuReview(
   query: { planId: string; versionId: string },
   readDetail: (planId: string, signal: AbortSignal) => Promise<unknown>,
-  readSql: (
-    query: { sql: string; parameters: Record<string, string>; pageNo: number; pageSize: number },
-    signal: AbortSignal,
-  ) => Promise<unknown>,
+  readSql: ReadShipmentSql,
   periodMonth: (planId: string) => string | undefined,
   signal: AbortSignal,
+  fillMaterialNames?: (skus: Record<string, unknown>[], signal: AbortSignal) => Promise<void>,
 ) {
   const detail = object(await readDetail(query.planId, signal));
   const currentVersion = object(detail.currentVersion);
@@ -61,10 +64,37 @@ export async function readSalesPlanSkuReview(
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
   };
   const months = [shift(-12), shift(-2), shift(-1)];
+  const codes = [...new Set(skus.map((row) => row.skuCode))];
+  const [{ facts, shipmentUnavailable }] = await Promise.all([
+    readHistoricalShipments(codes, customer, months, readSql, signal),
+    fillMaterialNames?.(skus, signal),
+  ]);
+  signal.throwIfAborted();
+  return {
+    versionId: query.versionId,
+    skus,
+    months,
+    shipmentUnavailable: shipmentUnavailable || [...facts.values()].some((value) => value === null),
+    rows: skus.map((row) => ({
+      skuCode: row.skuCode,
+      shipments: [0, 1, 2].map((index) => {
+        const key = `${index}\u0000${row.skuCode}`;
+        return shipmentUnavailable ? null : facts.has(key) ? facts.get(key)! : "0";
+      }),
+    })),
+  };
+}
+
+async function readHistoricalShipments(
+  codes: string[],
+  customer: string,
+  months: string[],
+  readSql: ReadShipmentSql,
+  signal: AbortSignal,
+) {
   const facts = new Map<string, string | null>();
   let shipmentUnavailable = false;
   try {
-    const codes = [...new Set(skus.map((row) => row.skuCode))];
     for (let offset = 0; offset < codes.length; offset += PLUGIN_QUERY_MAX_PAGE_SIZE) {
       signal.throwIfAborted();
       const batch = codes.slice(offset, offset + PLUGIN_QUERY_MAX_PAGE_SIZE);
@@ -108,18 +138,5 @@ export async function readSalesPlanSkuReview(
     signal.throwIfAborted();
     shipmentUnavailable = true;
   }
-  signal.throwIfAborted();
-  return {
-    versionId: query.versionId,
-    skus,
-    months,
-    shipmentUnavailable: shipmentUnavailable || [...facts.values()].some((value) => value === null),
-    rows: skus.map((row) => ({
-      skuCode: row.skuCode,
-      shipments: [0, 1, 2].map((index) => {
-        const key = `${index}\u0000${row.skuCode}`;
-        return shipmentUnavailable ? null : facts.has(key) ? facts.get(key)! : "0";
-      }),
-    })),
-  };
+  return { facts, shipmentUnavailable };
 }
