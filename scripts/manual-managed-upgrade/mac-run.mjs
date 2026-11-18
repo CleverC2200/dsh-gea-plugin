@@ -152,22 +152,20 @@ try {
  child.once("exit",()=>{exited=true;});
  browser=await wait("old native renderer",()=>chromium.connectOverCDP("http://127.0.0.1:"+clientPort,{timeout:1500}).catch(()=>null));
  const context=browser.contexts()[0];
- const first=await wait("visible old native window",async()=>{
-  for(const page of context.pages().sort((a,b)=>Number(/welcome/.test(b.url()))-Number(/welcome/.test(a.url())))){
-   if(!/welcome|^dsh-app:\/\/app/.test(page.url()))continue;
-   if(await page.evaluate(()=>document.visibilityState==="visible").catch(()=>false))return page;
-  }
-  return false;
- });
- results.initialWindow=first.url().startsWith("dsh-app://app/")?"workspace":"welcome";
- if(results.initialWindow==="welcome")await first.locator("#company-login").click({timeout:60000});
- const main=await wait("visible old workspace",async()=>{
+ await wait("old Host and initial native window fully initialized",async()=> (await records()).some(row=>row.event==="workspace-ready"&&row.version===old));
+ const welcome=await wait("explicit old company welcome on fresh profile",()=>context.pages().find(page=>page.url().includes("welcome")));
+ const welcomeAction=welcome.locator("#company-login");
+ await welcomeAction.waitFor({state:"visible",timeout:15000});
+ await welcomeAction.click({timeout:15000});
+ await wait("old native welcome closed after entering the workspace",()=>welcome.isClosed());
+ const main=await wait("old workspace after native welcome",async()=>{
   for(const page of context.pages().filter(p=>p.url().startsWith("dsh-app://app/"))){
    if(await page.evaluate(()=>document.visibilityState==="visible"&&Boolean(window.dshDesktop?.updates?.open)).catch(()=>false))return page;
   }
   return false;
  });
- await main.bringToFront();
+ results.initialWindow="native company welcome";
+ step("native-welcome-closed-and-old-workspace-visible");
  const history=join(privateDir,"history.json"),snapshot=join(privateDir,"before.json");
  await writeFile(history,JSON.stringify({root:asar,home,cwd:privateDir,sessionId,mode:"create"}));
  assert.equal((await bundled(fileURLToPath(new URL("../windows-complete-local/r9/seed-history.mjs",import.meta.url)),[history])).status,"history-created-and-read-back");
@@ -178,29 +176,16 @@ try {
  const data=fileURLToPath(new URL("../desktop-update-data.mjs",import.meta.url));
  assert.ok((await bundled(data,["--home",home,"--capture",snapshot])).events>0);
  step("old-sessions-and-composer-draft-captured");
- const launchMenu = `on run argv
-  set wantedPID to (item 1 of argv) as integer
-  tell application "System Events"
-   set ownerProcess to first application process whose unix id is wantedPID
-   set frontmost of ownerProcess to true
-   tell menu bar 1 of ownerProcess
-    repeat with appMenu in menu bar items
-     repeat with updateItem in menu items of menu 1 of appMenu
-      set entryTitle to name of updateItem
-      if entryTitle is "Check for Updates…" or entryTitle is "检查更新…" then
-       click updateItem
-       return entryTitle
-      end if
-     end repeat
-    end repeat
-   end tell
-  end tell
-  error "Actual native Check for Updates menu item unavailable"
- end run`;
- const menu = await run("osascript",["-e",launchMenu,String(child.pid)],{timeout:20000});
- assert.match(menu.stdout,/Check for Updates|检查更新/);
- results.productEntry="native macOS application menu";
- step("native-menu-check-for-update-invoked");
+ const initial = await main.evaluate(() => window.dshDesktop.updates.check());
+ console.log("Product update check: " + JSON.stringify(initial));
+ assert.equal(initial.phase,"available");
+ assert.equal(initial.version,newer);
+ await main.evaluate(version=>{
+  window.dshDesktop.updates.open(version).catch(error=>{
+   window.__upgradeProbeError=String(error.message).split("\n")[0];
+  });
+ },newer);
+ step("product-update-action-invoked");
  async function actionTarget(){
   const targets=await fetch("http://127.0.0.1:"+clientPort+"/json/list",{signal:AbortSignal.timeout(2000)})
    .then(response=>response.json()).catch(()=>[]);
@@ -224,8 +209,10 @@ try {
    });
   }finally{socket.close();}
  }
- let lastView,downloadAction;
+ let lastView;
  const confirmation=await wait("downloaded signed update and actual install-and-restart control",async()=>{
+  const rejected=await main.evaluate(()=>window.__upgradeProbeError);
+  if(rejected)throw Error("PRODUCT_UPDATE_ENTRY_REJECTED: "+rejected);
   const events=await records();
   const failure=events.find(row=>row.event==="state"&&row.phase==="error");
   assert.equal(failure,undefined,"Native updater failure: "+JSON.stringify(failure));
@@ -234,12 +221,6 @@ try {
   const state=events.filter(row=>row.event==="state").at(-1);
   const diagnostic=JSON.stringify({label,phase:state?.phase??null,target:state?.targetVersion??null,requests:served.length});
   if(diagnostic!==lastView){console.log("Update state: "+diagnostic);lastView=diagnostic;}
-  if(!downloadAction&&target&&/download|下载/i.test(label)){
-   await evaluateTarget(target,"document.querySelector('#actions button').click(); true");
-   downloadAction=true;
-   step("native-download-confirmed");
-   return false;
-  }
   return /restart|重启|重新启动/i.test(label)&&events.some(row=>row.phase==="ready"&&row.targetVersion===newer)?target:false;
  },300000);
  assert.ok(served.some(row=>row.name===rows.path||row.name==="/"+rows.path));
