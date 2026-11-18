@@ -11,6 +11,9 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
     ? (value as Record<string, unknown>)
     : undefined;
 
+export const configuredSqlConfigMaxBytes = (agentId: string): number =>
+  agentId === "inventory-fc" ? 8_000_000 : 5_000_000;
+
 export async function readConfiguredHtmlQuery(
   resource: { directory: string; manifest: Record<string, any> },
   input: unknown,
@@ -67,7 +70,8 @@ export async function readConfiguredHtmlQuery(
     const path = await realpath(resolve(root, "sql.config.json"));
     if (!path.startsWith(root + sep)) throw Error("INVALID_SQL_CONFIG_PATH");
     raw = await readFile(path, "utf8");
-    if (Buffer.byteLength(raw) > 5_000_000) throw Error("SQL_CONFIG_TOO_LARGE");
+    if (Buffer.byteLength(raw) > configuredSqlConfigMaxBytes(resource.manifest.id))
+      throw Error("SQL_CONFIG_TOO_LARGE");
     config = JSON.parse(raw);
     if (
       config.schemaVersion !== 1 ||
@@ -195,6 +199,9 @@ export async function readConfiguredHtmlQuery(
       };
     }
 
+    const policyQueryId = queryId.startsWith("base-warehouse.")
+      ? queryId.slice("base-warehouse.".length)
+      : queryId;
     const result = await business.pluginSql(
       {
         ...request,
@@ -206,9 +213,9 @@ export async function readConfiguredHtmlQuery(
       signal,
       true,
       undefined,
-      queryId.startsWith("source.") ||
-        queryId === config.overviewQuickStock ||
-        queryId === "current-shortage.summary",
+      policyQueryId.startsWith("source.") ||
+        policyQueryId === config.overviewQuickStock ||
+        policyQueryId === "current-shortage.summary",
       pageRead,
     );
     signal.throwIfAborted();

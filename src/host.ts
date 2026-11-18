@@ -597,6 +597,7 @@ export async function apply(
     "navigation/retry",
     "status",
     "notifications",
+    "announcements",
     "workflow/config",
 
     "approval/roles",
@@ -851,6 +852,9 @@ export async function apply(
                     break;
                   case "notifications":
                     value = await business.notifications(payload, request.signal);
+                    break;
+                  case "announcements":
+                    value = await business.announcements(payload, request.signal);
                     break;
                   case "status":
                     if (!business.status().readonlyValidation) {

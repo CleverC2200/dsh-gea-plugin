@@ -5,7 +5,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import type { Business } from "./business.ts";
 import { assertSessionResourceAvailable, sessionConsumer } from "./business-identity.ts";
-import { readConfiguredHtmlQuery } from "./configured-html-query.ts";
+import { configuredSqlConfigMaxBytes, readConfiguredHtmlQuery } from "./configured-html-query.ts";
 import { orchestrationInventoryAccess } from "./orchestration-inventory-access.ts";
 import { sameCubeAccess } from "./cube-access.ts";
 
@@ -130,7 +130,8 @@ export function registerBranchInventoryTool(
               const path = await realpath(resolve(root, "sql.config.json"));
               if (!path.startsWith(root + sep)) throw Error("INVALID_SQL_CONFIG_PATH");
               const raw = await readFile(path, "utf8");
-              if (Buffer.byteLength(raw) > 5_000_000) throw Error("SQL_CONFIG_TOO_LARGE");
+              if (Buffer.byteLength(raw) > configuredSqlConfigMaxBytes(resource.manifest.id))
+                throw Error("SQL_CONFIG_TOO_LARGE");
               const config = record(JSON.parse(raw));
               if (config?.schemaVersion !== 1 || config.agentId !== resource.manifest.id)
                 throw Error("INVALID_AGENT_SQL_CONFIG");
