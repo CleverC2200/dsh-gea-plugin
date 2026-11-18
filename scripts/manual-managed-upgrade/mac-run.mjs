@@ -169,13 +169,26 @@ try {
  await main.evaluate(()=>{void window.dshDesktop.updates.open();});
  const dialog=await wait("check/download dialog",()=>context.pages().find(p=>p.url().includes("update-dialog.html")));
  const action=dialog.locator("#actions button").first();
+ let downloadInvoked = false, lastView;
  await wait("download or install action",async()=>{
-  const label=await action.textContent({timeout:1200}).catch(()=>null);
-  if(/download|下载/i.test(label??"")){
-   if(!(await records()).some(r=>r.phase==="downloading"))await action.click({timeout:2500}).catch(()=>{});
+  const view = await dialog.evaluate(() => window.dshUpdateDialog.status()).catch(() => null);
+  const label = view?.buttons?.[0] ?? "";
+  const events = await records();
+  const state = events.filter(row=>row.event==="state").at(-1);
+  const diagnostic = JSON.stringify({ label, phase:state?.phase ?? null, targetVersion:state?.targetVersion ?? null, error:state?.error ?? null, requests:served.length });
+  if (diagnostic !== lastView) {
+   lastView = diagnostic;
+   console.log("Update dialog: "+diagnostic);
+  }
+  if (state?.phase === "error") throw Error("NATIVE_UPDATE_ERROR: " + diagnostic);
+  if (/download|下载/i.test(label)) {
+   if (!downloadInvoked) {
+    await action.click({timeout:8000});
+    downloadInvoked = true;
+   }
    return false;
   }
-  return /restart|重启|重新启动/i.test(label??"") && (await records()).some(r=>r.phase==="ready"&&r.targetVersion===newer);
+  return /restart|重启|重新启动/i.test(label) && events.some(row=>row.phase==="ready"&&row.targetVersion===newer);
  },300000);
  assert.ok(served.some(row=>row.name===rows.path||row.name==="/"+rows.path));
  step("native-update-journal-and-signed-download-ready");
@@ -212,6 +225,11 @@ try {
 }catch(error){
  results.status="failed";
  results.failure=String(error.message).split("\n")[0].replaceAll(privateDir,"<PRIVATE>");
+ results.network=served;
+ results.updateStates=(await records()).filter(row=>row.event==="state").map(({phase,targetVersion,reason})=>({phase,targetVersion,reason}));
+ const log=await readFile(join(privateDir,"native.log"),"utf8").catch(()=>"");
+ results.platformDiagnostics=log.split("\n").filter(line=>/code signature|sha512|Squirrel|update check|expected version|status code|failed operation|invalid ZIP|blockmap/i.test(line) && !/[?&](token|sig)=|authorization|credential/i.test(line)).slice(-14).map(line=>line.replaceAll(privateDir,"<PRIVATE>").slice(0,500));
+ console.log(JSON.stringify({failure:results.failure,network:results.network,updateStates:results.updateStates,platformDiagnostics:results.platformDiagnostics}));
  throw Error(results.failure);
 }finally{
  fake.close();
