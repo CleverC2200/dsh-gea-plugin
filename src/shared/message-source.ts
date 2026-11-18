@@ -4,5 +4,6 @@ declare module "@deepseek-ai/dsh-llm" {
   interface MessageSourceMap {
     "gea-proof": { kind: "gea-proof" } & ContextFormed;
     "gea-turn-anchor": { kind: "gea-turn-anchor" } & ContextFormed;
+    "gea-query-scope": { kind: "gea-query-scope" } & ContextFormed;
   }
 }

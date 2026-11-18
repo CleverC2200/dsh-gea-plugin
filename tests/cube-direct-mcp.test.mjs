@@ -938,3 +938,110 @@ test("personal Cube resolves a trusted owner and rejects same-Consumer replaceme
   );
   assert.equal(f.service.allows("personal"), false);
 });
+
+test("Cube business failures and timeouts stop further transport calls in the same turn", async () => {
+  for (const code of [
+    "CUBE_UNAVAILABLE",
+    "GEA_NETWORK_TIMEOUT",
+    "AI_GATEWAY_MCP_RESULT_TOO_LARGE",
+  ]) {
+    const f = serviceFixture();
+    let requests = 0;
+    f.module.call = async () => {
+      requests++;
+      throw Object.assign(new Error(code + ": fixture"), {
+        code,
+        requestId: "original-request",
+      });
+    };
+    await assert.rejects(
+      f.service.call("sales", "query_business_data", query, f.identity.signal),
+      new RegExp(code),
+    );
+    await assert.rejects(
+      f.service.call("sales", "query_business_data", query, f.identity.signal),
+      /GEA_TURN_STOPPED/,
+    );
+    await assert.rejects(
+      f.service.call("sales", "inspect_cube_model", {}, f.identity.signal),
+      /GEA_TURN_STOPPED/,
+    );
+    assert.equal(requests, 1);
+    f.module.call = async () => "other-authorized-session";
+    assert.equal(
+      await f.service.call("dealer", "query_business_data", query, f.identity.signal),
+      "other-authorized-session",
+    );
+  }
+});
+
+test("simple KPI calls reject expanded queries before transport and preserve authorized summary arguments", async () => {
+  const f = serviceFixture();
+  const originalGet = f.ctx.agents.get;
+  f.ctx.agents.get = (id) => {
+    const agent = originalGet(id);
+    if (agent)
+      agent.session.snapshotEvents = () => [
+        {
+          type: "user/message",
+          data: {
+            source: { kind: "user" },
+            content: [{ type: "text", text: "上周改单率是多少" }],
+          },
+        },
+      ];
+    return agent;
+  };
+  const { simpleKpiPlan } = await import("../src/host/simple-kpi-query.ts");
+  const plan = simpleKpiPlan("上周改单率是多少");
+  const summary = {
+    ...query,
+    queries: [
+      {
+        name: "summary",
+        query: {
+          measures: ["published.final_rate"],
+          timeDimensions: [
+            {
+              dimension: "published.stat_time",
+              dateRange: [plan.start, plan.endInclusive],
+            },
+          ],
+        },
+      },
+    ],
+  };
+  await assert.rejects(
+    f.service.call(
+      "sales",
+      "query_business_data",
+      { ...summary, queries: [...summary.queries, ...summary.queries] },
+      f.identity.signal,
+    ),
+    /GEA_SIMPLE_KPI_SUMMARY_REQUIRED/,
+  );
+  assert.equal(f.calls.length, 0);
+  assert.equal(
+    await f.service.call("sales", "query_business_data", summary, f.identity.signal),
+    "result",
+  );
+  assert.deepEqual(f.calls.find((call) => call.name === "query_business_data").args, summary);
+});
+
+test("Cube connection setup failure also prevents repeated initialization in the same turn", async () => {
+  const f = serviceFixture();
+  let attempts = 0;
+  f.business.moduleMcp = async () => { attempts++; throw Object.assign(new Error('CUBE_UNAVAILABLE: setup'), { code: 'CUBE_UNAVAILABLE' }); };
+  await assert.rejects(f.service.call('sales', 'query_business_data', query, f.identity.signal), /CUBE_UNAVAILABLE/);
+  await assert.rejects(f.service.call('sales', 'query_business_data', query, f.identity.signal), /GEA_TURN_STOPPED/);
+  assert.equal(attempts, 1);
+});
+
+test("a Cube model-inspection timeout also stops later data-query retries", async () => {
+  const f = serviceFixture();
+  let calls = 0;
+  f.module.call = async () => { calls++; throw Object.assign(new Error('model inspection timed out'), { name: 'TimeoutError' }); };
+  await assert.rejects(f.service.call('sales', 'inspect_cube_model', {}, f.identity.signal), /timed out/);
+  await assert.rejects(f.service.call('sales', 'query_business_data', query, f.identity.signal), /GEA_TURN_STOPPED/);
+  assert.equal(calls, 1);
+});
