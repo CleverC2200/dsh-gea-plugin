@@ -116,13 +116,7 @@ test("wrong semantics, base, period and missing generation rejected", async () =
   ]) {
     const { call } = setup(value);
     await assert.rejects(
-      readCubeFinalMetric(
-        config,
-        input,
-        call,
-        new AbortController().signal,
-        envelope,
-      ),
+      readCubeFinalMetric(config, input, call, new AbortController().signal, envelope),
     );
   }
 });
@@ -255,8 +249,7 @@ test("floating transport precision is tolerated, different quantities are reject
   });
   const transport = async (name, args, signal) => {
     const response = JSON.parse(await call(name, args, signal));
-    if (name === "query_business_data")
-      response.datasets[0].rows[0]["K.value_final"] += 1e-13;
+    if (name === "query_business_data") response.datasets[0].rows[0]["K.value_final"] += 1e-13;
     return JSON.stringify(response);
   };
   const result = await readCubeFinalMetric(
@@ -269,18 +262,11 @@ test("floating transport precision is tolerated, different quantities are reject
   assert.equal(result.current.value, 4.0275928293);
   const corrupt = async (name, args, signal) => {
     const response = JSON.parse(await call(name, args, signal));
-    if (name === "query_business_data")
-      response.datasets[0].rows[0]["K.denominator_final"] += 1;
+    if (name === "query_business_data") response.datasets[0].rows[0]["K.denominator_final"] += 1;
     return JSON.stringify(response);
   };
   await assert.rejects(
-    readCubeFinalMetric(
-      config,
-      input,
-      corrupt,
-      new AbortController().signal,
-      envelope,
-    ),
+    readCubeFinalMetric(config, input, corrupt, new AbortController().signal, envelope),
     /COMPONENT_MISMATCH/,
   );
 });
@@ -326,10 +312,7 @@ test("turnover daily-plan denominator accepts transport tail only", async () => 
       new AbortController().signal,
       envelope,
     );
-  assert.equal(
-    (await run(23752.266666666663)).current.denominator,
-    value.denominator,
-  );
+  assert.equal((await run(23752.266666666663)).current.denominator, value.denominator);
   await assert.rejects(run(value.denominator + 1e-6), /COMPONENT_MISMATCH/);
   await assert.rejects(run(null), /COMPONENT_MISMATCH/);
 });

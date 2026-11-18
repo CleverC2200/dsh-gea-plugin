@@ -1031,17 +1031,35 @@ test("simple KPI calls reject expanded queries before transport and preserve aut
 test("Cube connection setup failure also prevents repeated initialization in the same turn", async () => {
   const f = serviceFixture();
   let attempts = 0;
-  f.business.moduleMcp = async () => { attempts++; throw Object.assign(new Error('CUBE_UNAVAILABLE: setup'), { code: 'CUBE_UNAVAILABLE' }); };
-  await assert.rejects(f.service.call('sales', 'query_business_data', query, f.identity.signal), /CUBE_UNAVAILABLE/);
-  await assert.rejects(f.service.call('sales', 'query_business_data', query, f.identity.signal), /GEA_TURN_STOPPED/);
+  f.business.moduleMcp = async () => {
+    attempts++;
+    throw Object.assign(new Error("CUBE_UNAVAILABLE: setup"), { code: "CUBE_UNAVAILABLE" });
+  };
+  await assert.rejects(
+    f.service.call("sales", "query_business_data", query, f.identity.signal),
+    /CUBE_UNAVAILABLE/,
+  );
+  await assert.rejects(
+    f.service.call("sales", "query_business_data", query, f.identity.signal),
+    /GEA_TURN_STOPPED/,
+  );
   assert.equal(attempts, 1);
 });
 
 test("a Cube model-inspection timeout also stops later data-query retries", async () => {
   const f = serviceFixture();
   let calls = 0;
-  f.module.call = async () => { calls++; throw Object.assign(new Error('model inspection timed out'), { name: 'TimeoutError' }); };
-  await assert.rejects(f.service.call('sales', 'inspect_cube_model', {}, f.identity.signal), /timed out/);
-  await assert.rejects(f.service.call('sales', 'query_business_data', query, f.identity.signal), /GEA_TURN_STOPPED/);
+  f.module.call = async () => {
+    calls++;
+    throw Object.assign(new Error("model inspection timed out"), { name: "TimeoutError" });
+  };
+  await assert.rejects(
+    f.service.call("sales", "inspect_cube_model", {}, f.identity.signal),
+    /timed out/,
+  );
+  await assert.rejects(
+    f.service.call("sales", "query_business_data", query, f.identity.signal),
+    /GEA_TURN_STOPPED/,
+  );
   assert.equal(calls, 1);
 });

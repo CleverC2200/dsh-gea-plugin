@@ -228,16 +228,27 @@ test("repeated catalog, query and evidence calls retain business and standard to
   };
   const assemble = (currentAgent = agent) =>
     handlers.get("system-prompt/assemble")(assembly, { agent: currentAgent }, async () => assembly);
-  const question = { role: "user", source: { kind: "user" }, content: [{ type: "text", text: "上周改单率是多少" }] };
-  const scope = async (messages) => handlers.get("agent/pre-step")({ agent, messages }, async () => ({ kind: "accept", messages }));
+  const question = {
+    role: "user",
+    source: { kind: "user" },
+    content: [{ type: "text", text: "上周改单率是多少" }],
+  };
+  const scope = async (messages) =>
+    handlers.get("agent/pre-step")({ agent, messages }, async () => ({ kind: "accept", messages }));
   const firstScope = await scope([question]);
   assert.equal(firstScope.messages[0], question);
   assert.equal(firstScope.messages.at(-1).source.kind, "gea-query-scope");
   assert.match(firstScope.messages.at(-1).content[0].text, /仅发起一条/);
   assert.match(firstScope.messages.at(-1).content[0].text, /不附加周趋势/);
   const repeatedScope = await scope(firstScope.messages);
-  assert.equal(repeatedScope.messages.filter(message => message.source.kind === "gea-query-scope").length, 1);
-  const skillQuestion = { ...question, content: [{ type: "text", text: "按原Skill展示改单率基地明细、环比、同比" }] };
+  assert.equal(
+    repeatedScope.messages.filter((message) => message.source.kind === "gea-query-scope").length,
+    1,
+  );
+  const skillQuestion = {
+    ...question,
+    content: [{ type: "text", text: "按原Skill展示改单率基地明细、环比、同比" }],
+  };
   assert.deepEqual((await scope([skillQuestion])).messages, [skillQuestion]);
   for (const transition of ["query", "turn", "preset", "identity"]) {
     const old1 = await start(),

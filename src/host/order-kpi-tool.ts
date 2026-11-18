@@ -6,10 +6,7 @@ import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import type { Business } from "./business.ts";
-import {
-  assertSessionResourceAvailable,
-  sessionConsumer,
-} from "./business-identity.ts";
+import { assertSessionResourceAvailable, sessionConsumer } from "./business-identity.ts";
 import { readCubeFinalMetric } from "./order-kpi-final.mjs";
 import { deadline } from "@deepseek-ai/dsh-timeout";
 
@@ -36,10 +33,7 @@ export function registerOrderKpiTool(
       item.manifest.mode !== "mock",
   );
   if (!resource) return;
-  const failedGroups = new WeakMap<
-    AbortSignal,
-    Map<string, { retryAt: number; value: string }>
-  >();
+  const failedGroups = new WeakMap<AbortSignal, Map<string, { retryAt: number; value: string }>>();
   ctx.effect(() =>
     ctx.tools.register(
       defineTool({
@@ -54,8 +48,7 @@ export function registerOrderKpiTool(
                 metric: {
                   type: "string" as const,
                   required: true,
-                  description:
-                    "六项看板指标名称；仅这一参数选择指标，不提供SQL或公式。",
+                  description: "六项看板指标名称；仅这一参数选择指标，不提供SQL或公式。",
                 },
               }),
           start: {
@@ -66,13 +59,11 @@ export function registerOrderKpiTool(
           endExclusive: {
             type: "string",
             required: true,
-            description:
-              "统计结束日期YYYY-MM-DD，不包含；周期归属由代码合同决定。",
+            description: "统计结束日期YYYY-MM-DD，不包含；周期归属由代码合同决定。",
           },
           base: {
             type: "string",
-            description:
-              "基地/提货点名称；留空为当前授权全国范围，具体含义由指标合同返回。",
+            description: "基地/提货点名称；留空为当前授权全国范围，具体含义由指标合同返回。",
           },
           dimensions: {
             type: "array",
@@ -122,11 +113,7 @@ export function registerOrderKpiTool(
         isConcurrencySafe: () => true,
         async execute(args, exec) {
           if (!exec.agent) throw Error("GEA_BUSINESS_SESSION_REQUIRED");
-          using budget = deadline(
-            exec.signal,
-            orderKpiTimeoutMs,
-            "GEA_ORDER_KPI_TIMEOUT",
-          );
+          using budget = deadline(exec.signal, orderKpiTimeoutMs, "GEA_ORDER_KPI_TIMEOUT");
           const session = exec.agent.id;
           await assertSessionResourceAvailable(ctx, session, budget.signal);
           if (sessionConsumer(ctx, business, session) !== "order")
@@ -134,21 +121,15 @@ export function registerOrderKpiTool(
           const changed = new AbortController(),
             unwatch = ctx.agentResources.watch(() => changed.abort());
           const identity = business.identitySignal();
-          const signal = AbortSignal.any([
-            budget.signal,
-            identity,
-            changed.signal,
-          ]);
+          const signal = AbortSignal.any([budget.signal, identity, changed.signal]);
           try {
             if (resource.manifest.sqlConfig !== "sql.config.json")
               throw Error("GEA_AGENT_RESOURCE_MISSING");
             const root = await realpath(resource.directory),
               configPath = await realpath(resolve(root, "sql.config.json"));
-            if (!configPath.startsWith(root + sep))
-              throw Error("INVALID_SQL_CONFIG_PATH");
+            if (!configPath.startsWith(root + sep)) throw Error("INVALID_SQL_CONFIG_PATH");
             const raw = await readFile(configPath, "utf8");
-            if (Buffer.byteLength(raw) > 5000000)
-              throw Error("SQL_CONFIG_TOO_LARGE");
+            if (Buffer.byteLength(raw) > 5000000) throw Error("SQL_CONFIG_TOO_LARGE");
             const config = JSON.parse(raw),
               contract = config.metricRuntime;
             if (
@@ -159,10 +140,8 @@ export function registerOrderKpiTool(
             )
               throw Error("GEA_ORDER_KPI_PAGE_UPDATE_REQUIRED");
             const runtimePath = await realpath(resolve(root, contract.file));
-            if (!runtimePath.startsWith(root + sep))
-              throw Error("INVALID_METRIC_RUNTIME_PATH");
-            const digest = (bytes: Buffer) =>
-              createHash("sha256").update(bytes).digest("hex");
+            if (!runtimePath.startsWith(root + sep)) throw Error("INVALID_METRIC_RUNTIME_PATH");
+            const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
             if (digest(await readFile(runtimePath)) !== contract.sha256)
               throw Error("GEA_ORDER_KPI_RUNTIME_CHANGED");
             const runtime = await import(
@@ -235,11 +214,7 @@ export function registerOrderKpiTool(
                   parameters: Record<string, unknown>,
                   callSignal: AbortSignal,
                 ) => {
-                  await assertSessionResourceAvailable(
-                    ctx,
-                    session,
-                    callSignal,
-                  );
+                  await assertSessionResourceAvailable(ctx, session, callSignal);
                   if (sessionConsumer(ctx, business, session) !== "order")
                     throw Error("GEA_BUSINESS_IDENTITY_CHANGED");
                   return client.call(
@@ -257,13 +232,8 @@ export function registerOrderKpiTool(
                     config,
                     (
                       args.dimensions ??
-                      envelope.contract.grouping.defaultDimensions ?? [
-                        "base",
-                        "item",
-                      ]
-                    ).some((dimension: string) =>
-                      ["base", "director", "sku"].includes(dimension),
-                    )
+                      envelope.contract.grouping.defaultDimensions ?? ["base", "item"]
+                    ).some((dimension: string) => ["base", "director", "sku"].includes(dimension))
                       ? "base"
                       : envelope.base
                         ? "base"
@@ -272,17 +242,12 @@ export function registerOrderKpiTool(
                 },
               );
             } catch (error) {
-              const code =
-                error instanceof Error && "code" in error
-                  ? String(error.code)
-                  : "";
+              const code = error instanceof Error && "code" in error ? String(error.code) : "";
               if (
                 input.view !== "groups" ||
-                ![
-                  "GEA_SQL_UNAVAILABLE",
-                  "GEA_SQL_QUERY_TIMEOUT",
-                  "CUBE_QUERY_REJECTED",
-                ].includes(code)
+                !["GEA_SQL_UNAVAILABLE", "GEA_SQL_QUERY_TIMEOUT", "CUBE_QUERY_REJECTED"].includes(
+                  code,
+                )
               )
                 throw error;
               result = {
@@ -315,20 +280,15 @@ export function registerOrderKpiTool(
               metricSource: "cube-final-published-metric",
               sourceChannel: "Cube",
               ...result,
-              ...(retryKey
-                ? { retryPolicy: { automaticRetry: false, suppressed: false } }
-                : {}),
+              ...(retryKey ? { retryPolicy: { automaticRetry: false, suppressed: false } } : {}),
             });
             if (
               retryKey &&
               result.sources?.some((source: { code?: string }) =>
-                ["GEA_SQL_UNAVAILABLE", "GEA_SQL_QUERY_TIMEOUT"].includes(
-                  source.code ?? "",
-                ),
+                ["GEA_SQL_UNAVAILABLE", "GEA_SQL_QUERY_TIMEOUT"].includes(source.code ?? ""),
               )
             ) {
-              if (failures.size >= 128)
-                failures.delete(failures.keys().next().value!);
+              if (failures.size >= 128) failures.delete(failures.keys().next().value!);
               failures.set(retryKey, { retryAt: Date.now() + 60000, value });
               failedGroups.set(identity, failures);
             }

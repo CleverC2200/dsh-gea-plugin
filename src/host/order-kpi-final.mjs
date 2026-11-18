@@ -26,17 +26,11 @@ export async function readCubeFinalMetric(
   contracts = { summary: envelope.contract, groups: envelope.contract },
 ) {
   const inspect = JSON.parse(
-    await call(
-      "inspect_cube_model",
-      { model: "order_kpi_result_v1", limit: 50 },
-      signal,
-    ),
+    await call("inspect_cube_model", { model: "order_kpi_result_v1", limit: 50 }, signal),
   );
   const models =
     inspect.semanticModel?.filter(
-      (model) =>
-        model.meta?.source_table === "ai_db.order_kpi_result_v1" &&
-        model.type === "cube",
+      (model) => model.meta?.source_table === "ai_db.order_kpi_result_v1" && model.type === "cube",
     ) ?? [];
   if (models.length !== 1) throw Error("GEA_CUBE_FINAL_METRIC_NOT_PUBLISHED");
   const model = models[0];
@@ -65,10 +59,7 @@ export async function readCubeFinalMetric(
     input.view === "groups"
       ? [...(input.dimensions ?? envelope.contract.grouping.defaultDimensions)]
       : [];
-  if (
-    dimensions.some((key) => ["director", "sku"].includes(key)) &&
-    !dimensions.includes("base")
-  )
+  if (dimensions.some((key) => ["director", "sku"].includes(key)) && !dimensions.includes("base"))
     dimensions.unshift("base");
   const unsupported = envelope.contract.grouping.unsupported.filter((item) =>
     dimensions.includes(item.dimension),
@@ -88,9 +79,7 @@ export async function readCubeFinalMetric(
   const queryEnd = ["stock_age", "stock_turnover"].includes(codes[input.metric])
     ? (input.inventoryEndExclusive ?? input.endExclusive)
     : input.endExclusive;
-  const end = new Date(Date.parse(queryEnd) - 86400000)
-    .toISOString()
-    .slice(0, 10);
+  const end = new Date(Date.parse(queryEnd) - 86400000).toISOString().slice(0, 10);
   if (input.start >= input.endExclusive) return envelope;
   const requestedPage = input.page ?? 1;
   let verifiedSummary;
@@ -101,16 +90,10 @@ export async function readCubeFinalMetric(
   ) => {
     const selected = grouped ? dimensions : [];
     const query = {
-      measures: [
-        "numerator_final",
-        "denominator_final",
-        "pending_final",
-        "value_final",
-      ].map(member),
-      dimensions: [
-        member("metric_result"),
-        ...selected.map((k) => member(fields[k])),
-      ],
+      measures: ["numerator_final", "denominator_final", "pending_final", "value_final"].map(
+        member,
+      ),
+      dimensions: [member("metric_result"), ...selected.map((k) => member(fields[k]))],
       filters: [
         {
           member: member("metric_code"),
@@ -123,15 +106,11 @@ export async function readCubeFinalMetric(
           values: [queryBase || "全国"],
         },
       ],
-      timeDimensions: [
-        { dimension: member("stat_time"), dateRange: [input.start, end] },
-      ],
+      timeDimensions: [{ dimension: member("stat_time"), dateRange: [input.start, end] }],
       timezone: "Asia/Shanghai",
       limit: grouped ? 100 : 1,
       offset: grouped ? (requestedPage - 1) * 100 : 0,
-      ...(grouped
-        ? { order: selected.map((k) => [member(fields[k]), "asc"]) }
-        : {}),
+      ...(grouped ? { order: selected.map((k) => [member(fields[k]), "asc"]) } : {}),
     };
     signal?.throwIfAborted();
     const response = JSON.parse(
@@ -161,18 +140,14 @@ export async function readCubeFinalMetric(
         ? JSON.parse(row[member("metric_result")])
         : row[member("metric_result")];
     if (grouped && data.rows.some((row) => decode(row)?.formula == null)) {
-      if (rule.formula === contracts.summary.formula)
-        inheritedRule = verifiedSummary;
+      if (rule.formula === contracts.summary.formula) inheritedRule = verifiedSummary;
       else {
         const witnessBase = data.rows[0]?.[member("base_name")];
         if (!witnessBase || !dimensions.includes("base"))
           throw Error("GEA_CUBE_FINAL_SEMANTIC_MISSING");
         inheritedRule = (await run(false, witnessBase, rule)).values[0].value;
       }
-      if (
-        !inheritedRule ||
-        inheritedRule.dataset_generation !== verifiedSummary.dataset_generation
-      )
+      if (!inheritedRule || inheritedRule.dataset_generation !== verifiedSummary.dataset_generation)
         throw Error("GEA_CUBE_FINAL_SNAPSHOT_CHANGED");
     }
     const values = data.rows.map((row) => {
@@ -188,8 +163,7 @@ export async function readCubeFinalMetric(
       )
         throw Error("GEA_CUBE_FINAL_RESULT_SCOPE_MISMATCH");
       const contract = rule;
-      const canonical = (text) =>
-        typeof text === "string" ? text.replace(/\s+/gu, "") : null;
+      const canonical = (text) => (typeof text === "string" ? text.replace(/\s+/gu, "") : null);
       const empty =
         value.status === "暂无数据" &&
         value.value == null &&
@@ -232,9 +206,7 @@ export async function readCubeFinalMetric(
                 (key === "value"
                   ? 1e-10
                   : key === "denominator" && input.metric === "周转天数"
-                    ? 8 *
-                      Number.EPSILON *
-                      Math.max(1, Math.abs(Number(value[key])))
+                    ? 8 * Number.EPSILON * Math.max(1, Math.abs(Number(value[key])))
                     : 0))
         )
           throw Error("GEA_CUBE_FINAL_COMPONENT_MISMATCH:" + key);
@@ -288,27 +260,18 @@ export async function readCubeFinalMetric(
       availability: "available",
       dimensions,
       rows: grouped.values.map(({ value, row }) => ({
-        ...Object.fromEntries(
-          dimensions.map((k) => [k, row[member(fields[k])]]),
-        ),
+        ...Object.fromEntries(dimensions.map((k) => [k, row[member(fields[k])]])),
         current: value,
       })),
       total:
-        input.metric === "周转天数" &&
-        dimensions.includes("base") &&
-        !input.base
-          ? null
-          : total,
+        input.metric === "周转天数" && dimensions.includes("base") && !input.base ? null : total,
       contract: {
         ...envelope.contract,
         formula: grouped.values[0]?.value.formula ?? envelope.contract.formula,
-        periodBasis:
-          grouped.values[0]?.value.periodBasis ?? envelope.contract.periodBasis,
+        periodBasis: grouped.values[0]?.value.periodBasis ?? envelope.contract.periodBasis,
         grouping: { ...envelope.contract.grouping, dimensions },
       },
-      ...(input.metric === "周转天数" &&
-      dimensions.includes("base") &&
-      !input.base
+      ...(input.metric === "周转天数" && dimensions.includes("base") && !input.base
         ? {
             totalMissingReason:
               "Cube尚未发布全国集合按基地计划范围重算的合计；卡片全国值单独保留在current。",
