@@ -39,6 +39,7 @@ import {
 import z from "@deepseek-ai/schemastery";
 import { Business, object, type Deployment } from "./host/business.ts";
 import { errorEnvelope } from "./host/error-envelope.ts";
+import { salesPlanListResponse } from "./host/sales-plan-list-response.ts";
 import { lastUserQuestion } from "./host/turn-anchor.ts";
 import { profileFor } from "./host/prompt-policy.ts";
 import {
@@ -776,6 +777,20 @@ export async function apply(
                     );
                     break;
                   case "workbench/query":
+                    if (
+                      page &&
+                      payload.kind === "list" &&
+                      request.headers.get("Accept") === "application/x-ndjson"
+                    )
+                      return salesPlanListResponse(
+                        request.signal,
+                        (signal, onPage) =>
+                          business.workbenchQuery(payload, signal, detailLoad, onPage),
+                        async () => {
+                          await desktopLogin.flush();
+                          await webLogin.flush();
+                        },
+                      );
                     value = await business.workbenchQuery(payload, request.signal, detailLoad);
                     break;
                   case "people/search":

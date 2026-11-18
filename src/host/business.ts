@@ -3860,10 +3860,11 @@ export class Business {
     payload: Record<string, unknown>,
     signal: AbortSignal,
     detailLoad?: SalesPlanDetailLoad,
+    onPlanPage?: (page: unknown) => void,
   ): Promise<unknown> {
     this.assertExecutionAllowed(this.config.analysisAgentCode);
     this.clearQuery();
-    return this.readWorkbenchQuery(payload, signal, { detailLoad });
+    return this.readWorkbenchQuery(payload, signal, { detailLoad, onPlanPage });
   }
 
   private async fillMaterialNames(
@@ -4177,7 +4178,11 @@ export class Business {
   private async readWorkbenchQuery(
     payload: Record<string, unknown>,
     signal: AbortSignal,
-    options: { forModel?: boolean; detailLoad?: SalesPlanDetailLoad } = {},
+    options: {
+      forModel?: boolean;
+      detailLoad?: SalesPlanDetailLoad;
+      onPlanPage?: (page: unknown) => void;
+    } = {},
   ): Promise<unknown> {
     keys(payload, ["kind", "query"]);
     let query = object(payload.query ?? {});
@@ -4300,10 +4305,11 @@ export class Business {
           salesPlanQueryValue(key, key === "dealerCode" ? value : text(value)),
         );
     }
+    const active = AbortSignal.any([signal, this.epoch.signal]);
     const result = await this.gatewayRequests.read(
       paths[kind]() + (params.size ? "?" + params : ""),
       this.authenticated(),
-      AbortSignal.any([signal, this.epoch.signal]),
+      active,
       true,
       kind,
     );
@@ -4321,6 +4327,7 @@ export class Business {
       return page.records.map(object);
     };
     if (paged) {
+      active.throwIfAborted();
       const page = object(result);
       if (!Array.isArray(page.records)) throw new Error("GEA_INVALID_COLLECTION");
       const total = integer(page.total, page.records.length);
@@ -4337,29 +4344,46 @@ export class Business {
         )
       )
         throw new Error("GEA_PLAN_PERIOD_MISMATCH");
-      return {
+      const orderType =
+        kind === "list" && (query.orderType === "M" || query.orderType === "Z")
+          ? query.orderType
+          : undefined;
+      const planPage = {
         ...page,
-        ...(kind === "list" &&
-        (query.orderType === "M" || query.orderType === "Z") &&
-        Array.isArray(page.groupMetrics)
+        ...(orderType && Array.isArray(page.groupMetrics)
           ? {
               groupMetrics: page.groupMetrics.map((value) => {
                 const metric = { ...object(value) };
                 for (const field of ["shipQty", "shipAmount", "amountProgress", "shipmentError"])
-                  if (query.orderType === "Z" || metric[field] == null) delete metric[field];
+                  if (orderType === "Z" || metric[field] == null) delete metric[field];
                 return metric;
               }),
             }
           : {}),
-        records:
-          kind === "list" && (query.orderType === "M" || query.orderType === "Z")
-            ? await this.salesPlanShipments(planRows, signal, query.orderType)
-            : planRows,
+        records: planRows,
         total,
         size: pageSize,
         current: integer(page.current ?? current, 1),
         pages: integer(page.pages ?? Math.ceil(total / pageSize), 0),
       };
+      if (!orderType) return planPage;
+      if (options.onPlanPage && query.summaryOnly !== "true") {
+        const records = planRows.map((row) =>
+          orderType === "M" && row.shipQty != null && row.shipAmount != null
+            ? row
+            : {
+                ...row,
+                shipQty: null,
+                shipAmount: null,
+                amountProgress: null,
+                shipmentError: null,
+                shipmentPending: true,
+              },
+        );
+        if (records.some((row) => row.shipmentPending))
+          options.onPlanPage({ ...planPage, records });
+      }
+      return { ...planPage, records: await this.salesPlanShipments(planRows, active, orderType) };
     }
     if (kind === "detail") {
       const detail = object(result);
