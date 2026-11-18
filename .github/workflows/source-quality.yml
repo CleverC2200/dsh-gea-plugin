@@ -363,6 +363,9 @@ jobs:
         if: needs.source-plan.outputs.engineering == 'true' && steps.reuse.outputs.hit != 'true'
         timeout-minutes: 5
         run: |
+          sudo install -d /etc/apt/ubuntu-ci-sources.list.d
+          sudo install -m 644 /etc/apt/sources.list.d/ubuntu.sources /etc/apt/ubuntu-ci-sources.list.d/ubuntu.sources
+          printf 'Dir::Etc::sourceparts "/etc/apt/ubuntu-ci-sources.list.d";\n' | sudo tee /etc/apt/apt.conf.d/99-gea-ubuntu-ci-sources
           getent ahostsv4 mirrors.edge.kernel.org
           printf 'https://mirrors.mit.edu/ubuntu/\tpriority:1\nhttps://mirrors.edge.kernel.org/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt
           if ! sudo apt-get -o Acquire::https::Timeout=15 -o Acquire::Retries=1 update --error-on=any; then

@@ -21,6 +21,9 @@ import { PromptExecutionState } from "./prompt-execution-state.ts";
 import { modulePagePrompt } from "./module-page-scope.ts";
 import { moduleAnswerPolicy } from "./module-answer-policy.ts";
 import { orchestrationInventoryAllowed } from "./orchestration-inventory-access.ts";
+import { simpleKpiPlan, simpleKpiPrompt } from "./simple-kpi-query.ts";
+import { lastUserQuestion } from "./turn-anchor.ts";
+import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
 const fixedInventoryMethod = (name: string) =>
   name === "gea_branch_inventory" ||
@@ -161,7 +164,23 @@ export function mountBusinessPrompts(
       )
         stateOf(agent).pageReferences = true;
       refreshMask(agent);
-      return next();
+      const decision = await next();
+      if (decision.kind === "reject" || !cubeAllowed(ctx, business, agent.id)) return decision;
+      const current = decision.messages ?? messages;
+      const simple = simpleKpiPlan(lastUserQuestion(current) ?? "");
+      if (!simple) return decision;
+      const summary = "宿主：简单指标查询范围";
+      const notice = createUserMessage({
+        source: { kind: "gea-query-scope", form: "notice", summary },
+        content: [{ type: "text", text: simpleKpiPrompt(simple) }],
+      });
+      return {
+        ...decision,
+        messages: [
+          ...current.filter((message) => !(message.source.kind === "gea-query-scope")),
+          notice,
+        ],
+      };
     }),
   );
   offs.push(

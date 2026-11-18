@@ -7,6 +7,12 @@ import type { GatewayMcpTool } from "./gateway-mcp-client.ts";
 import { isDeepStrictEqual } from "node:util";
 import { knowledgeArguments, knowledgeSelection } from "./knowledge-mcp.ts";
 import {
+  latestUserQuestion,
+  simpleKpiPlan,
+  terminalCubeFailure,
+  validateSimpleKpiQuery,
+} from "./simple-kpi-query.ts";
+import {
   inheritModuleCubeScope,
   moduleScopeSignature,
   moduleCubeScopeReceipt,
@@ -75,9 +81,21 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
     ) =>
       business.capture.retrying((retry) =>
         business.capture.run(sessionId, "MCP " + name, async () => {
+          const requestedSignal = signal;
           const access = resolveCubeAccess(ctx, business, sessionId);
+          const simple =
+            name === "query_business_data" || name === "inspect_cube_model"
+              ? simpleKpiPlan(
+                  latestUserQuestion(
+                    ctx.agents
+                      .get(sessionId as Parameters<typeof ctx.agents.get>[0])
+                      ?.session.snapshotEvents?.(),
+                  ),
+                )
+              : undefined;
           signal = AbortSignal.any([
             signal,
+            ...(simple ? [AbortSignal.timeout(30000)] : []),
             access.identity,
             access.sourceSignal,
             ...(access.associationSignal ? [access.associationSignal] : []),
@@ -85,6 +103,7 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
           const consumer = access.consumerCode;
           const stopped = business.turnStopped(sessionId);
           if (stopped) throw Error(`GEA_TURN_STOPPED: ${stopped}`);
+          if (simple && name === "query_business_data") validateSimpleKpiQuery(simple, args);
           if (name === "inspect_cube_model") business.invalidateModuleMcp(consumer);
           const scopedArgs =
             name === "query_business_data"
@@ -103,10 +122,11 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
             )
               throw Error("GEA_PAGE_SCOPE_CHANGED: 查询期间页面范围已变，本次结果不用于新页面。");
           };
-          let module = await business.moduleMcp(consumer, signal);
+          let module: Awaited<ReturnType<Business["moduleMcp"]>> | undefined;
           for (let attempt = 0; ; attempt++) {
             try {
               assertCurrent();
+              module ??= await business.moduleMcp(consumer, signal);
               if (name === "weknora_ask") {
                 knowledgeArguments(name, args);
                 const catalog = await module.call("weknora_list_knowledge_bases", {}, signal);
@@ -147,6 +167,17 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
                 ? stopExpiredGateway(business, consumer, sessionId, error, module)
                 : undefined;
               if (expired) throw expired;
+              if (
+                (name === "query_business_data" || name === "inspect_cube_model") &&
+                terminalCubeFailure(error) &&
+                !requestedSignal.aborted &&
+                cubeAllowed(ctx, business, sessionId) &&
+                sameCubeAccess(access, resolveCubeAccess(ctx, business, sessionId))
+              )
+                business.stopTurn(
+                  sessionId,
+                  "Cube查询失败或超时，本轮不再重复请求；请直接说明未取得有效结果。",
+                );
               throw readableError(error);
             }
           }

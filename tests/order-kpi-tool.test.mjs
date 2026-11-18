@@ -7,11 +7,31 @@ const config = JSON.parse(
     "utf8",
   ),
 );
-import test from "node:test";
+import { pathToFileURL } from "node:url";
+import test, { after } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { registerOrderKpiTool } from "../src/host/order-kpi-tool.ts";
 import { allowedTools, PROFILES } from "../src/host/prompt-policy.ts";
+
+const sourceDirectory = resolve("../dsh-agent-workbench/lib/business/inventory-orderworkbench");
+const cubeDirectory = await mkdtemp(resolve(tmpdir(), "order-kpi-cube-route-"));
+const cubeStub = `export function createCubeMetricExecutor(config,input,{call,signal}){return{async execute(request,options){return JSON.parse(await call('query_business_data',{request,queryId:options.queryId},signal));},close(){}}}`;
+config.metricRuntime.cubeRuntime = {
+  file: "cube-runtime.mjs",
+  sha256: createHash("sha256").update(cubeStub).digest("hex"),
+};
+await writeFile(resolve(cubeDirectory, "sql.config.json"), JSON.stringify(config));
+await writeFile(
+  resolve(cubeDirectory, "metric-runtime.mjs"),
+  readFileSync(resolve(sourceDirectory, "metric-runtime.mjs")),
+);
+await writeFile(resolve(cubeDirectory, "cube-runtime.mjs"), cubeStub);
+after(async () => {
+  assert.ok(cubeDirectory.startsWith(resolve(tmpdir(), "order-kpi-cube-route-")));
+  await rm(cubeDirectory, { recursive: true, force: true });
+});
 
 function fixture(
   execute = async () => {
@@ -33,12 +53,11 @@ function fixture(
     ];
     return { rows, returnedColumns: Object.keys(rows[0]), rejectedColumns: [] };
   },
-  directory = resolve("../dsh-agent-workbench/lib/business/inventory-orderworkbench"),
+  directory = cubeDirectory,
 ) {
   let tool,
     preset = "gea-html-inventory-orderworkbench",
-    enabled = true,
-    currentView;
+    enabled = true;
   let identity = new AbortController();
   const listeners = new Set(),
     calls = [],
@@ -64,16 +83,139 @@ function fixture(
   const business = {
     config: { requestTimeoutMs: 1000 },
     identitySignal: () => identity.signal,
-    pluginSql: async (request, signal, configured) => {
-      calls.push({ request, configured });
-      if (currentView === "details" && calls.length > 1) {
-        const columns = config.queries["workbench.amendment.details"].resultColumns;
-        return { rows: [], returnedColumns: columns, rejectedColumns: [] };
-      }
-      return execute(request, signal);
+    pluginSql: async () => {
+      throw Error("Agent SQL gateway use forbidden");
     },
-    moduleMcp: () => {
-      throw Error("Cube fallback forbidden");
+    moduleMcp: async (consumerCode) => {
+      assert.equal(consumerCode, "order");
+      return {
+        call: async (name, args, signal) => {
+          const names = [
+            "metric_code",
+            "scope_base",
+            "stat_time",
+            "metric_result",
+            "numerator_final",
+            "denominator_final",
+            "pending_final",
+            "value_final",
+            "base_name",
+            "item_name",
+            "customer_code",
+          ];
+          if (name === "inspect_cube_model")
+            return JSON.stringify({
+              semanticModel: [
+                {
+                  name: "Final",
+                  type: "cube",
+                  meta: {
+                    source_table: "ai_db.order_kpi_result_v1",
+                    reconciliation: { version: config.metricRuntime.version },
+                  },
+                  dimensions: names.map((n) => ({ name: "Final." + n })),
+                },
+              ],
+            });
+          assert.equal(name, "query_business_data");
+          const q = args.queries[0].query,
+            values = Object.fromEntries(
+              q.filters.map((f) => [f.member.split(".")[1], f.values[0]]),
+            );
+          const namesByCode = {
+            cancellation: "作废率",
+            amendment: "改单率",
+            fulfillment: "订单满足率",
+            ontime: "准交率",
+            stock_age: "货龄（>60天库存占比）",
+            stock_turnover: "周转天数",
+          };
+          const dims = q.dimensions
+            .filter((k) => !k.endsWith(".metric_result"))
+            .map(
+              (k) =>
+                ({
+                  base_name: "base",
+                  item_name: "item",
+                  customer_code: "customer",
+                })[k.split(".")[1]],
+            );
+          const runtime = await import(
+            pathToFileURL(resolve(sourceDirectory, "metric-runtime.mjs")).href
+          );
+          const input = {
+            metric: namesByCode[values.metric_code],
+            base: values.scope_base === "全国" ? "" : values.scope_base,
+            start: q.timeDimensions[0].dateRange[0],
+            endExclusive: new Date(Date.parse(q.timeDimensions[0].dateRange[1]) + 86400000)
+              .toISOString()
+              .slice(0, 10),
+            view: dims.length ? "groups" : "summary",
+            ...(dims.length ? { dimensions: dims } : {}),
+          };
+          calls.push({ request: q, consumerCode, channel: "Cube" });
+          const output = await runtime.readOrderMetric(
+            config,
+            input.metric === "作废率" && !dims.length
+              ? { ...input, view: "groups", dimensions: ["base"] }
+              : input,
+            async (request, options) => {
+              const value = await execute(request, signal);
+              const required = config.queries[options.queryId]?.resultColumns ?? [];
+              return {
+                ...value,
+                returnedColumns: [...new Set([...value.returnedColumns, ...required])],
+                rows: value.rows.map((row) => ({
+                  ...Object.fromEntries(required.map((key) => [key, null])),
+                  ...row,
+                })),
+              };
+            },
+            signal,
+          );
+          const failure = output.sources?.find((s) => s.code);
+          if (failure) throw Object.assign(Error(failure.code), { code: failure.code });
+          const snapshots = dims.length
+            ? output.groups.rows.map((r) => ({ row: r, current: r.current }))
+            : [{ row: {}, current: output.current }];
+          const rows = snapshots.map(({ row, current }) => ({
+            "Final.metric_result": JSON.stringify({
+              ...current,
+              metric: output.metric,
+              base: output.base || null,
+              period: output.period,
+              version: config.metricRuntime.version,
+              revision: config.metricRuntime.revision,
+              dataset_generation: "fixture",
+            }),
+            "Final.numerator_final": current.numerator,
+            "Final.denominator_final": current.denominator,
+            "Final.pending_final": current.pending,
+            "Final.value_final": current.value,
+            ...Object.fromEntries(
+              dims.map((k) => [
+                "Final." +
+                  {
+                    base: "base_name",
+                    item: "item_name",
+                    customer: "customer_code",
+                  }[k],
+                row[k],
+              ]),
+            ),
+          }));
+          return JSON.stringify({
+            datasets: [
+              {
+                dataStatus: "ok",
+                rowCount: rows.length,
+                totalRowCount: rows.length,
+                rows,
+              },
+            ],
+          });
+        },
+      };
     },
   };
   registerOrderKpiTool(ctx, business, [
@@ -92,8 +234,10 @@ function fixture(
     identity,
     listeners,
     call: (args) => {
-      currentView = args.view;
-      return tool.execute(args, { agent, signal: new AbortController().signal });
+      return tool.execute(args, {
+        agent,
+        signal: new AbortController().signal,
+      });
     },
     switchTo: (value) => {
       preset = value;
@@ -110,7 +254,12 @@ function fixture(
 }
 
 const period = { start: "2026-10-19", endExclusive: "2026-10-26" };
-const cancellationGroups = { ...period, metric: "作废率", view: "groups", dimensions: ["base"] };
+const cancellationGroups = {
+  ...period,
+  metric: "作废率",
+  view: "groups",
+  dimensions: ["base"],
+};
 
 test("repeated unavailable cancellation groups do not reissue SQL or invent empty groups", async () => {
   const f = fixture(async () => {
@@ -171,9 +320,9 @@ test("cancellation query suppression expires and successful fresh results remain
   assert.equal(result.groups.availability, "available");
   assert.equal(result.current.numerator, 10);
   assert.equal(result.retryPolicy.suppressed, false);
-  assert.equal(f.calls.length, 2);
-  await f.call(cancellationGroups);
   assert.equal(f.calls.length, 3);
+  await f.call(cancellationGroups);
+  assert.equal(f.calls.length, 5);
 });
 test("generic tool exposes grouped metrics independently of raw detail publication", async () => {
   const f = fixture();
@@ -193,7 +342,12 @@ test("generic tool exposes grouped metrics independently of raw detail publicati
 test("unsupported stock customer grain is reported without Cube fallback or SQL", async () => {
   const f = fixture();
   const value = JSON.parse(
-    await f.call({ ...period, metric: "货龄占比", view: "groups", dimensions: ["customer"] }),
+    await f.call({
+      ...period,
+      metric: "货龄占比",
+      view: "groups",
+      dimensions: ["customer"],
+    }),
   );
   assert.equal(value.groups.availability, "unsupported-dimension");
   assert.equal(value.current, null);
@@ -216,7 +370,11 @@ test("page-independent generic tool resolves exactly six current contracts witho
   );
   await assert.rejects(
     () =>
-      f.call({ ...period, metric: "改单率", expectedVersion: config.metricRuntime.version - 1 }),
+      f.call({
+        ...period,
+        metric: "改单率",
+        expectedVersion: config.metricRuntime.version - 1,
+      }),
     /VERSION_STALE/,
   );
   assert.equal(f.calls.length, 0);
@@ -229,7 +387,7 @@ test("generic independent query returns exact shared components and no implicit 
   assert.equal(v.current.value, 10);
   assert.equal(v.contract.lockPeriod, false);
   assert.ok(f.calls.length > 0);
-  assert.ok(f.calls.every((c) => c.configured && c.request.consumerCode === "order"));
+  assert.ok(f.calls.every((c) => c.channel === "Cube" && c.consumerCode === "order"));
 });
 
 test("KPI queries stop at the shared call deadline without an external timeout wrapper", async (t) => {
@@ -243,7 +401,9 @@ test("KPI queries stop at the shared call deadline without an external timeout w
     entered();
     try {
       await new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
       });
     } finally {
       stopped = true;
@@ -270,7 +430,9 @@ for (const reason of ["caller", "identity", "resource"]) {
       entered();
       try {
         await new Promise((_resolve, reject) => {
-          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
         });
       } finally {
         stopped = true;
