@@ -152,10 +152,22 @@ try {
  child.once("exit",()=>{exited=true;});
  browser=await wait("old native renderer",()=>chromium.connectOverCDP("http://127.0.0.1:"+clientPort,{timeout:1500}).catch(()=>null));
  const context=browser.contexts()[0];
- const first=await wait("old window",()=>context.pages().find(p=>/welcome|^dsh-app:\/\/app/.test(p.url())));
- if(!first.url().startsWith("dsh-app://app/"))await first.locator("#company-login").click({timeout:60000});
- const main=await wait("old workspace",()=>context.pages().find(p=>p.url().startsWith("dsh-app://app/")));
- await main.waitForFunction(()=>Boolean(window.dshDesktop?.updates?.open),{timeout:90000});
+ const first=await wait("visible old native window",async()=>{
+  for(const page of context.pages().sort((a,b)=>Number(/welcome/.test(b.url()))-Number(/welcome/.test(a.url())))){
+   if(!/welcome|^dsh-app:\/\/app/.test(page.url()))continue;
+   if(await page.evaluate(()=>document.visibilityState==="visible").catch(()=>false))return page;
+  }
+  return false;
+ });
+ results.initialWindow=first.url().startsWith("dsh-app://app/")?"workspace":"welcome";
+ if(results.initialWindow==="welcome")await first.locator("#company-login").click({timeout:60000});
+ const main=await wait("visible old workspace",async()=>{
+  for(const page of context.pages().filter(p=>p.url().startsWith("dsh-app://app/"))){
+   if(await page.evaluate(()=>document.visibilityState==="visible"&&Boolean(window.dshDesktop?.updates?.open)).catch(()=>false))return page;
+  }
+  return false;
+ });
+ await main.bringToFront();
  const history=join(privateDir,"history.json"),snapshot=join(privateDir,"before.json");
  await writeFile(history,JSON.stringify({root:asar,home,cwd:privateDir,sessionId,mode:"create"}));
  assert.equal((await bundled(fileURLToPath(new URL("../windows-complete-local/r9/seed-history.mjs",import.meta.url)),[history])).status,"history-created-and-read-back");
@@ -166,33 +178,56 @@ try {
  const data=fileURLToPath(new URL("../desktop-update-data.mjs",import.meta.url));
  assert.ok((await bundled(data,["--home",home,"--capture",snapshot])).events>0);
  step("old-sessions-and-composer-draft-captured");
- await main.evaluate(()=>{void window.dshDesktop.updates.open();});
- const dialog=await wait("check/download dialog",()=>context.pages().find(p=>p.url().includes("update-dialog.html")));
- const action=dialog.locator("#actions button").first();
- let downloadInvoked = false, lastView;
- await wait("download or install action",async()=>{
-  const view = await dialog.evaluate(() => window.dshUpdateDialog.status()).catch(() => null);
-  const label = view?.buttons?.[0] ?? "";
-  const events = await records();
-  const state = events.filter(row=>row.event==="state").at(-1);
-  const diagnostic = JSON.stringify({ label, phase:state?.phase ?? null, targetVersion:state?.targetVersion ?? null, error:state?.error ?? null, requests:served.length });
-  if (diagnostic !== lastView) {
-   lastView = diagnostic;
-   console.log("Update dialog: "+diagnostic);
-  }
-  if (state?.phase === "error") throw Error("NATIVE_UPDATE_ERROR: " + diagnostic);
-  if (/download|下载/i.test(label)) {
-   if (!downloadInvoked) {
-    await action.click({timeout:8000});
-    downloadInvoked = true;
-   }
-   return false;
-  }
-  return /restart|重启|重新启动/i.test(label) && events.some(row=>row.phase==="ready"&&row.targetVersion===newer);
+ const initial = await main.evaluate(() => window.dshDesktop.updates.check());
+ console.log("Product update check: " + JSON.stringify(initial));
+ assert.equal(initial.phase,"available");
+ assert.equal(initial.version,newer);
+ await main.evaluate(version=>{
+  window.dshDesktop.updates.open(version).catch(error=>{
+   window.__upgradeProbeError=String(error.message).split("\n")[0];
+  });
+ },newer);
+ step("product-update-action-invoked");
+ async function actionTarget(){
+  const targets=await fetch("http://127.0.0.1:"+clientPort+"/json/list",{signal:AbortSignal.timeout(2000)})
+   .then(response=>response.json()).catch(()=>[]);
+  return targets.find(row=>row.url==="dsh-app://shell/update-dialog.html");
+ }
+ async function evaluateTarget(target,expression){
+  const socket=new WebSocket(target.webSocketDebuggerUrl);
+  try{
+   return await new Promise((ok,fail)=>{
+    const timeout=setTimeout(()=>fail(Error("CDP confirmation timed out")),5000);
+    socket.addEventListener("open",()=>socket.send(JSON.stringify({id:1,method:"Runtime.evaluate",
+     params:{expression,awaitPromise:true,returnByValue:true}})),{once:true});
+    socket.addEventListener("error",()=>{clearTimeout(timeout);fail(Error("CDP dialog disconnected"));},{once:true});
+    socket.addEventListener("message",message=>{
+     const reply=JSON.parse(message.data);
+     if(reply.id!==1)return;
+     clearTimeout(timeout);
+     if(reply.error||reply.result?.exceptionDetails)fail(Error("CDP dialog evaluation failed"));
+     else ok(reply.result?.result?.value);
+    });
+   });
+  }finally{socket.close();}
+ }
+ let lastView;
+ const confirmation=await wait("downloaded signed update and actual install-and-restart control",async()=>{
+  const rejected=await main.evaluate(()=>window.__upgradeProbeError);
+  if(rejected)throw Error("PRODUCT_UPDATE_ENTRY_REJECTED: "+rejected);
+  const events=await records();
+  const failure=events.find(row=>row.event==="state"&&row.phase==="error");
+  assert.equal(failure,undefined,"Native updater failure: "+JSON.stringify(failure));
+  const target=await actionTarget();
+  const label=target?await evaluateTarget(target,"window.dshUpdateDialog.status().then(view=>view?.buttons?.[0]??'')").catch(()=>""):"";
+  const state=events.filter(row=>row.event==="state").at(-1);
+  const diagnostic=JSON.stringify({label,phase:state?.phase??null,target:state?.targetVersion??null,requests:served.length});
+  if(diagnostic!==lastView){console.log("Update state: "+diagnostic);lastView=diagnostic;}
+  return /restart|重启|重新启动/i.test(label)&&events.some(row=>row.phase==="ready"&&row.targetVersion===newer)?target:false;
  },300000);
  assert.ok(served.some(row=>row.name===rows.path||row.name==="/"+rows.path));
  step("native-update-journal-and-signed-download-ready");
- await action.click({timeout:8000}).catch(error=>{if(!String(error).includes("closed"))throw error;});
+ await evaluateTarget(confirmation,"setTimeout(()=>document.querySelector('#actions button').click(),500); true");
  await wait("old process graceful exit",()=>exited,90000);
  const newPid=await wait("native updated executable",async()=>{
   const result=await run("pgrep",["-f",executable.replace(/[.]/g,"\\.")]).catch(()=>null);
@@ -226,7 +261,7 @@ try {
  results.status="failed";
  results.failure=String(error.message).split("\n")[0].replaceAll(privateDir,"<PRIVATE>");
  results.network=served;
- results.updateStates=(await records()).filter(row=>row.event==="state").map(({phase,targetVersion,reason})=>({phase,targetVersion,reason}));
+ results.updateStates=(await records()).filter(row=>row.event==="state").map(({phase,targetVersion,failedOperation,errorCode})=>({phase,targetVersion,failedOperation,errorCode}));
  const log=await readFile(join(privateDir,"native.log"),"utf8").catch(()=>"");
  results.platformDiagnostics=log.split("\n").filter(line=>/code signature|sha512|Squirrel|update check|expected version|status code|failed operation|invalid ZIP|blockmap/i.test(line) && !/[?&](token|sig)=|authorization|credential/i.test(line)).slice(-14).map(line=>line.replaceAll(privateDir,"<PRIVATE>").slice(0,500));
  console.log(JSON.stringify({failure:results.failure,network:results.network,updateStates:results.updateStates,platformDiagnostics:results.platformDiagnostics}));
