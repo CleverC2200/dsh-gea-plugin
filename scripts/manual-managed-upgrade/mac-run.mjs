@@ -178,30 +178,73 @@ try {
  const data=fileURLToPath(new URL("../desktop-update-data.mjs",import.meta.url));
  assert.ok((await bundled(data,["--home",home,"--capture",snapshot])).events>0);
  step("old-sessions-and-composer-draft-captured");
- const initial = await main.evaluate(() => window.dshDesktop.updates.check());
- console.log("Product update check: " + JSON.stringify(initial));
- assert.equal(initial.phase,"available");
- assert.equal(initial.version,newer);
- const upgrade=main.locator(".gea-update-entry").filter({hasText:newer});
- await upgrade.waitFor({state:"visible",timeout:30000});
- const upgradeText=await upgrade.getAttribute("aria-label");
- assert.match(upgradeText??"",/restart|重启|重新启动/i);
- await upgrade.click({timeout:15000});
- results.productEntry="GEA sidebar restart update action";
- step("product-restart-and-update-confirmed");
- let lastView;
- await wait("native installer handoff",async()=>{
+ const launchMenu = `on run argv
+  set wantedPID to (item 1 of argv) as integer
+  tell application "System Events"
+   set ownerProcess to first application process whose unix id is wantedPID
+   set frontmost of ownerProcess to true
+   tell menu bar 1 of ownerProcess
+    repeat with appMenu in menu bar items
+     repeat with updateItem in menu items of menu 1 of appMenu
+      set entryTitle to name of updateItem
+      if entryTitle is "Check for Updates…" or entryTitle is "检查更新…" then
+       click updateItem
+       return entryTitle
+      end if
+     end repeat
+    end repeat
+   end tell
+  end tell
+  error "Actual native Check for Updates menu item unavailable"
+ end run`;
+ const menu = await run("osascript",["-e",launchMenu,String(child.pid)],{timeout:20000});
+ assert.match(menu.stdout,/Check for Updates|检查更新/);
+ results.productEntry="native macOS application menu";
+ step("native-menu-check-for-update-invoked");
+ async function actionTarget(){
+  const targets=await fetch("http://127.0.0.1:"+clientPort+"/json/list",{signal:AbortSignal.timeout(2000)})
+   .then(response=>response.json()).catch(()=>[]);
+  return targets.find(row=>row.url==="dsh-app://shell/update-dialog.html");
+ }
+ async function evaluateTarget(target,expression){
+  const socket=new WebSocket(target.webSocketDebuggerUrl);
+  try{
+   return await new Promise((ok,fail)=>{
+    const timeout=setTimeout(()=>fail(Error("CDP confirmation timed out")),5000);
+    socket.addEventListener("open",()=>socket.send(JSON.stringify({id:1,method:"Runtime.evaluate",
+     params:{expression,awaitPromise:true,returnByValue:true}})),{once:true});
+    socket.addEventListener("error",()=>{clearTimeout(timeout);fail(Error("CDP dialog disconnected"));},{once:true});
+    socket.addEventListener("message",message=>{
+     const reply=JSON.parse(message.data);
+     if(reply.id!==1)return;
+     clearTimeout(timeout);
+     if(reply.error||reply.result?.exceptionDetails)fail(Error("CDP dialog evaluation failed"));
+     else ok(reply.result?.result?.value);
+    });
+   });
+  }finally{socket.close();}
+ }
+ let lastView,downloadAction;
+ const confirmation=await wait("downloaded signed update and actual install-and-restart control",async()=>{
   const events=await records();
-  const states=events.filter(row=>row.event==="state");
-  const state=states.at(-1);
-  const diagnostic=JSON.stringify({phase:state?.phase??null,target:state?.targetVersion??null,requests:served.length});
-  if(diagnostic!==lastView){console.log("Update state: "+diagnostic);lastView=diagnostic;}
-  const failure=states.find(row=>row.phase==="error");
+  const failure=events.find(row=>row.event==="state"&&row.phase==="error");
   assert.equal(failure,undefined,"Native updater failure: "+JSON.stringify(failure));
-  return events.some(row=>row.event==="install-confirmed")&&states.some(row=>row.phase==="ready"&&row.targetVersion===newer);
- },150000);
+  const target=await actionTarget();
+  const label=target?await evaluateTarget(target,"window.dshUpdateDialog.status().then(view=>view?.buttons?.[0]??'')").catch(()=>""):"";
+  const state=events.filter(row=>row.event==="state").at(-1);
+  const diagnostic=JSON.stringify({label,phase:state?.phase??null,target:state?.targetVersion??null,requests:served.length});
+  if(diagnostic!==lastView){console.log("Update state: "+diagnostic);lastView=diagnostic;}
+  if(!downloadAction&&target&&/download|下载/i.test(label)){
+   await evaluateTarget(target,"document.querySelector('#actions button').click(); true");
+   downloadAction=true;
+   step("native-download-confirmed");
+   return false;
+  }
+  return /restart|重启|重新启动/i.test(label)&&events.some(row=>row.phase==="ready"&&row.targetVersion===newer)?target:false;
+ },300000);
  assert.ok(served.some(row=>row.name===rows.path||row.name==="/"+rows.path));
- step("native-update-journal-and-signed-download-verified");
+ step("native-update-journal-and-signed-download-ready");
+ await evaluateTarget(confirmation,"setTimeout(()=>document.querySelector('#actions button').click(),500); true");
  await wait("old process graceful exit",()=>exited,90000);
  const newPid=await wait("native updated executable",async()=>{
   const result=await run("pgrep",["-f",executable.replace(/[.]/g,"\\.")]).catch(()=>null);
