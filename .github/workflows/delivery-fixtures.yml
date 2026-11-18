@@ -256,7 +256,7 @@ jobs:
         with:
           node-version: "24"
       - run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22 yaml@2.9.0
           ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
       - run: node --run test:release-source
       - run: npm run test:delivery:packages
@@ -727,3 +727,36 @@ jobs:
           name: windows-cache-report-${{ github.run_id }}
           if-no-files-found: warn
           path: core/apps/desktop/.desktop-build/targets/win-x64/**/cache-report.json
+
+
+  mac-managed-upgrade-candidate:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/mps-managed-desktop-acceptance-20261118' && inputs.mac_complete_input == 'candidate:44230512932'
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.1'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44230512932
+          name: Synear-GEA-mac-arm64-signed-44230512932
+          path: ${{ runner.temp }}/managed-upgrade-artifacts
+      - name: Prepare exact acceptance dependencies
+        working-directory: scripts/manual-managed-upgrade
+        run: npm install --ignore-scripts --no-package-lock --no-audit --no-fund yaml@2.9.0 playwright@1.58.2 classic-level@2.0.0
+      - name: Exercise the signed native online upgrade before publication
+        run: node scripts/manual-managed-upgrade/mac-run.mjs "$RUNNER_TEMP/managed-upgrade-artifacts" "$RUNNER_TEMP/managed-upgrade-result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-managed-upgrade-receipt
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/managed-upgrade-result/public/receipt.json
