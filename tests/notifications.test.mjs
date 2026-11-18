@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import { profile, until } from "./profile.mjs";
 import { nativeAssociation } from "./fixtures/native-page.mjs";
-import { preparePageStartup } from "./fixtures/business-page.mjs";
+import { openBusinessPage } from "./fixtures/business-page.mjs";
 
 test(
   "GEA inbox reads preserve paging and identity, reject invalid responses and never mutate notification state",
@@ -147,10 +147,7 @@ test(
     const ui = await context.newPage();
 
     const openInbox = async () => {
-      await preparePageStartup(ui);
-      const expandNavigation = ui.getByRole("button", { name: "展开业务菜单", exact: true });
-      if (await expandNavigation.isVisible()) await expandNavigation.click();
-      await ui.getByRole("button", { name: "消息待办", exact: true }).click();
+      await openBusinessPage(ui, "gea-inbox");
       const conversation = ui.locator(
         ".agent-workbench-document:has(.gea-inbox) .agent-workbench-native-conversation [data-conversation-session]",
       );
