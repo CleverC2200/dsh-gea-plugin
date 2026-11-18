@@ -30,9 +30,41 @@ const { outputFiles } = await build({
     },
   ],
 });
-const { FeedbackSubmitter } = await import(
+const { FeedbackSubmitter, mountFeedbackSubmit } = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
+test("legacy feedback service keeps the host available without submission support", () => {
+  const ctx = {
+    sessionFeedback: { record() {} },
+    effect(register) {
+      register();
+    },
+  };
+  assert.doesNotThrow(() => mountFeedbackSubmit(ctx, {}, 120000, 20 * 1024 * 1024));
+});
+
+test("submission-capable feedback service registers and releases its provider", () => {
+  let provider;
+  let released = false;
+  let dispose;
+  const ctx = {
+    sessionFeedback: {
+      registerSubmit(callback) {
+        provider = callback;
+        return () => {
+          released = true;
+        };
+      },
+    },
+    effect(register) {
+      dispose = register();
+    },
+  };
+  mountFeedbackSubmit(ctx, {}, 120000, 20 * 1024 * 1024);
+  assert.equal(typeof provider, "function");
+  dispose();
+  assert.equal(released, true);
+});
 async function bench(t) {
   const root = await mkdtemp(join(tmpdir(), "gea-submit-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -40,7 +72,12 @@ async function bench(t) {
   const sent = [];
   let fail = true;
   let signal = new AbortController();
-  let identity = { environment: "test", userId: "u", tenantId: "t", base: "https://gea.test" };
+  let identity = {
+    environment: "test",
+    userId: "u",
+    tenantId: "t",
+    base: "https://gea.test",
+  };
   const ctx = {
     sessionPersistence: {
       read: async (id) => JSON.stringify({ type: "session", id, version: 4 }) + "\n",
@@ -129,7 +166,12 @@ test("missing official log prevents upload even when optional evidence exists", 
   const b = await bench(t);
   b.ctx.sessionPersistence.read = async () => undefined;
   assert.equal(
-    (await b.submitter.submit({ sessionId: "session-one", description: "test" })).ok,
+    (
+      await b.submitter.submit({
+        sessionId: "session-one",
+        description: "test",
+      })
+    ).ok,
     false,
   );
   assert.equal(b.sent.length, 0);
@@ -167,7 +209,10 @@ test("reused business IDs cannot pull another Session's API record into a feedba
     await capture.run(session, "approval", async () => {
       const response = await apiLog.fetch(identity.base + "/sales-plan/plans/versions/v1/actions", {
         method: "POST",
-        headers: { "X-Request-Id": "same-business-command", "Content-Type": "application/json" },
+        headers: {
+          "X-Request-Id": "same-business-command",
+          "Content-Type": "application/json",
+        },
         body: '{"action":"SAVE"}',
       });
       await response.text();
@@ -176,7 +221,12 @@ test("reused business IDs cannot pull another Session's API record into a feedba
   assert.equal(new Set(traces).size, 2);
   b.succeed();
   assert.equal(
-    (await b.submitter.submit({ sessionId: "session-one", description: "capture" })).ok,
+    (
+      await b.submitter.submit({
+        sessionId: "session-one",
+        description: "capture",
+      })
+    ).ok,
     true,
   );
   const files = unzipSync(b.sent[0].bytes);
@@ -192,7 +242,11 @@ test("current login uploads historical official logs with only its own captured 
     currentIdentity,
     () => currentIdentity().base,
   );
-  capture.session = (id) => ({ sessionId: id, rootSessionId: id, createdAt: 1 });
+  capture.session = (id) => ({
+    sessionId: id,
+    rootSessionId: id,
+    createdAt: 1,
+  });
   t.after(() => capture.dispose());
   b.business.capture = capture;
   const sessionId = "historical-session";
@@ -224,7 +278,12 @@ test("current login uploads historical official logs with only its own captured 
   });
   b.succeed();
   assert.equal(
-    (await b.submitter.submit({ sessionId, description: "historical feedback" })).ok,
+    (
+      await b.submitter.submit({
+        sessionId,
+        description: "historical feedback",
+      })
+    ).ok,
     true,
   );
   assert.equal(b.sent[0].owner.userId, "current-user");
@@ -289,7 +348,10 @@ test("identity change while retiring an accepted archive suppresses the stale re
   });
   syncBuiltinESMExports();
   try {
-    const result = await b.submitter.submit({ sessionId: "session-one", description: "test" });
+    const result = await b.submitter.submit({
+      sessionId: "session-one",
+      description: "test",
+    });
     assert.equal(result.ok, false);
     assert.equal(result.error.code, "GEA_FEEDBACK_IDENTITY_MISMATCH");
   } finally {
