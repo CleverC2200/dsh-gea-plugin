@@ -249,7 +249,13 @@ test("repeated catalog, query and evidence calls retain business and standard to
     ...question,
     content: [{ type: "text", text: "按原Skill展示改单率基地明细、环比、同比" }],
   };
-  assert.deepEqual((await scope([skillQuestion])).messages, [skillQuestion]);
+  const skillScope = await scope([skillQuestion]);
+  assert.equal(skillScope.messages[0], skillQuestion);
+  assert.equal(skillScope.messages.length, 2);
+  const evidencePolicy = skillScope.messages.at(-1).content[0].text;
+  assert.match(evidencePolicy, /只能称样本率/);
+  assert.match(evidencePolicy, /pending为空只写未提供/);
+  assert.doesNotMatch(evidencePolicy, /仅发起一条|不附加周趋势|不附加.*维度分组/);
   for (const transition of ["query", "turn", "preset", "identity"]) {
     const old1 = await start(),
       old2 = await start();
