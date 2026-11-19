@@ -20,6 +20,7 @@ import { cubeAllowed, resolveCubeAccess } from "./cube-access.ts";
 import { PromptExecutionState } from "./prompt-execution-state.ts";
 import { modulePagePrompt } from "./module-page-scope.ts";
 import { moduleAnswerPolicy } from "./module-answer-policy.ts";
+import { KPI_RESULT_EVIDENCE_POLICY } from "./kpi-result-meaning.mjs";
 import { orchestrationInventoryAllowed } from "./orchestration-inventory-access.ts";
 import { simpleKpiPlan, simpleKpiPrompt } from "./simple-kpi-query.ts";
 import { lastUserQuestion } from "./turn-anchor.ts";
@@ -167,12 +168,24 @@ export function mountBusinessPrompts(
       const decision = await next();
       if (decision.kind === "reject" || !cubeAllowed(ctx, business, agent.id)) return decision;
       const current = decision.messages ?? messages;
-      const simple = simpleKpiPlan(lastUserQuestion(current) ?? "");
-      if (!simple) return decision;
+      const question = lastUserQuestion(current) ?? "";
+      const simple = simpleKpiPlan(question);
+      const metricQuestion = /作废率|改单率|满足率|准交率|货龄占比|可发货天数/.test(question);
+      if (!simple && !metricQuestion) return decision;
       const summary = "宿主：简单指标查询范围";
       const notice = createUserMessage({
         source: { kind: "gea-query-scope", form: "notice", summary },
-        content: [{ type: "text", text: simpleKpiPrompt(simple) }],
+        content: [
+          {
+            type: "text",
+            text: [
+              simple ? simpleKpiPrompt(simple) : "",
+              metricQuestion ? KPI_RESULT_EVIDENCE_POLICY : "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        ],
       });
       return {
         ...decision,
