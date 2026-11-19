@@ -6,7 +6,6 @@ import {
   salesPlanWorkflow,
   validateSalesPlanActionInput,
   verifyReturnedSalesPlan,
-  verifySalesPlanAddedSkus,
   salesPlanReturnDestination,
   prepareSalesPlanResubmit,
   type SalesPlanApprovalRole,
@@ -621,10 +620,17 @@ export class SalesPlanTransactions {
         },
         workflowRows,
       );
-      if (salesPlan.salesPlanAddedSkusValid(request.addedSkus) && request.addedSkus.length) {
+      const addedSkus = request.addedSkus;
+      if (addedSkus !== undefined && (!Array.isArray(addedSkus) || addedSkus.length > 0)) {
         if (
-          detail.skus.length + request.addedSkus.length > 5000 ||
-          request.addedSkus.some((item) => detail.skus.some((sku) => sku.skuCode === item.skuCode))
+          typeof salesPlan.salesPlanAddedSkusValid !== "function" ||
+          typeof salesPlan.verifySalesPlanAddedSkus !== "function"
+        )
+          throw new GeaResponseError(409, { message: "请更新销售计划工作台后再添加 SKU" });
+        if (!salesPlan.salesPlanAddedSkusValid(addedSkus)) throw new Error("INVALID_PAYLOAD");
+        if (
+          detail.skus.length + addedSkus.length > 5000 ||
+          addedSkus.some((item) => detail.skus.some((sku) => sku.skuCode === item.skuCode))
         )
           throw new GeaResponseError(409, {
             message: "新增 SKU 与当前明细重复或超出明细上限",
@@ -632,7 +638,7 @@ export class SalesPlanTransactions {
         await this.requireSkuWriteContract(scope, signal, "action");
         intent.addedEvidence = {
           planId,
-          items: request.addedSkus,
+          items: addedSkus,
           node:
             action === "REJECT"
               ? salesPlanReturnDestination(detail, role).targetStage
@@ -828,7 +834,7 @@ export class SalesPlanTransactions {
             !verifyReturnedSalesPlan(returned.detail, after, returned.request, receipt)) ||
           (added &&
             (after.currentVersion.id !== receipt.versionId ||
-              !verifySalesPlanAddedSkus(after, added.items, added.node)))
+              !salesPlan.verifySalesPlanAddedSkus(after, added.items, added.node)))
         )
           throw new Error("SALES_PLAN_READBACK_MISMATCH");
       } catch {

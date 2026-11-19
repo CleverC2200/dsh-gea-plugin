@@ -4341,6 +4341,8 @@ export class Business {
     if (kind === "skuQuotes") {
       if (options.forModel || !Array.isArray(query.skuCodes)) throw new Error("INVALID_QUERY");
       const codes = [...new Set(query.skuCodes.map(text))];
+      if (typeof salesPlan.isSalesPlanSkuCode !== "function")
+        throw new GeaResponseError(409, { message: "请更新销售计划工作台后再添加 SKU" });
       if (!codes.length || codes.length > 5000 || !codes.every(salesPlan.isSalesPlanSkuCode))
         throw new Error("INVALID_QUERY");
       const active = AbortSignal.any([signal, this.epoch.signal]);
