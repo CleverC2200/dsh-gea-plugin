@@ -5,6 +5,7 @@ import { throwIfAborted, readableError } from "../shared/abort.ts";
 import { gatewaySessionExpired, stopExpiredGateway } from "./agent-tools.ts";
 import type { GatewayMcpTool } from "./gateway-mcp-client.ts";
 import { isDeepStrictEqual } from "node:util";
+import { cubeKpiResultMeaning } from "./kpi-result-meaning.mjs";
 import { knowledgeArguments, knowledgeSelection } from "./knowledge-mcp.ts";
 import {
   latestUserQuestion,
@@ -136,7 +137,7 @@ export function createGatewayMcpService(ctx: Context, business: Business) {
               const result = await module.call(name, scopedArgs, signal);
               assertCurrent();
               return name === "query_business_data"
-                ? moduleCubeScopeReceipt(business, sessionId, result)
+                ? cubeKpiResultMeaning(moduleCubeScopeReceipt(business, sessionId, result))
                 : result;
             } catch (error) {
               const current =
