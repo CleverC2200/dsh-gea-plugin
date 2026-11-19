@@ -227,6 +227,38 @@ function fixture(
   };
 }
 
+test("approval without role-aware protocol refuses a different current node with permission feedback", async (t) => {
+  const f = fixture(t, undefined, undefined, { actionContext: undefined });
+  f.status(3);
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  await assert.rejects(
+    f.business.salesPlanAction(
+      f.payload({
+        action: "APPROVE",
+        approvalRole: "category",
+        expectedSnapshot: undefined,
+        adjustments: undefined,
+      }),
+      signal,
+    ),
+    (error) =>
+      error.details.httpStatus === 403 && /当前审批角色与计划所在节点不匹配/.test(error.message),
+  );
+  assert.equal(f.writes(), 0);
+});
+
+test("an approval protocol disagreement reports a refreshable conflict before writing", async (t) => {
+  const f = fixture(t);
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  await assert.rejects(
+    f.business.salesPlanAction(f.payload({ approvalRole: "category" }), signal),
+    (error) => error.details.httpStatus === 409 && /请刷新计划列表/.test(error.message),
+  );
+  assert.equal(f.writes(), 0);
+});
+
 test("signed-out employee resubmission refuses before any network", async (t) => {
   const business = new module.exports.Business({
     runtimeDir: tmpdir(),
