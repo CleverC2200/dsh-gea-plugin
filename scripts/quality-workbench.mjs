@@ -131,9 +131,10 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      /^lib\/(?:business\/inventory-(?:aqkc|fc|qll|apsplan|dealer|orderfulfillment)|static\/mps)\/sql\.config\.json$/.test(
-        file,
-      )
+      (/^lib\/business\/inventory-(?:aqkc|fc)\/insight-prompt\.md$/.test(file) ||
+        /^lib\/(?:business\/inventory-(?:aqkc|fc|qll|apsplan|dealer|orderfulfillment)|static\/mps)\/sql\.config\.json$/.test(
+          file,
+        ))
     ) {
       const resource = file.slice(4);
       const entry = git(source, "ls-tree", head, "--", resource);
