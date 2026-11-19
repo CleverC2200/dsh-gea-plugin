@@ -95,6 +95,75 @@ export class SalesPlanTransactions {
 
   private readonly resubmissions = new Map<string, WriteIntent>();
 
+  private async requireSkuWriteContract(
+    scope: SalesPlanWriteScope,
+    signal: AbortSignal,
+    operation: "action" | "resubmit",
+    confirmedQty = false,
+  ): Promise<void> {
+    try {
+      const response = await this.host.fetch(scope.base + "/v3/api-docs", {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "X-Access-Token": scope.auth.token,
+          "X-Tenant-Id": scope.auth.tenantId,
+        },
+        redirect: "error",
+        signal: AbortSignal.any([signal, AbortSignal.timeout(this.host.timeoutMs)]),
+      });
+      if (response.status === 401) this.host.expire(scope.auth);
+      if (!response.ok) throw new Error("SALES_PLAN_CONTRACT_UNAVAILABLE");
+      const document = object(this.host.decode(await response.text()));
+      const resolve = (value: unknown, seen = new Set<string>()): Record<string, unknown> => {
+        const schema = object(value);
+        if (typeof schema.$ref !== "string") return schema;
+        if (!schema.$ref.startsWith("#/") || seen.has(schema.$ref))
+          throw new Error("SALES_PLAN_CONTRACT_INVALID");
+        seen.add(schema.$ref);
+        let target: unknown = document;
+        for (const segment of schema.$ref.slice(2).split("/"))
+          target = object(target)[segment.replace(/~1/g, "/").replace(/~0/g, "~")];
+        return resolve(target, seen);
+      };
+      const property = (value: unknown, name: string): unknown => {
+        const schema = resolve(value);
+        if (schema.properties && name in object(schema.properties))
+          return object(schema.properties)[name];
+        for (const part of Array.isArray(schema.allOf) ? schema.allOf : []) {
+          const found = property(part, name);
+          if (found !== undefined) return found;
+        }
+        return undefined;
+      };
+      const path =
+        operation === "action"
+          ? "/sales-plan/plans/versions/{versionId}/actions"
+          : "/sales-plan/plans/resubmit";
+      const post = object(object(document.paths)[path]);
+      const content = object(resolve(object(post.post).requestBody).content);
+      const schema = object(content["application/json"]).schema;
+      const rows = resolve(property(schema, operation === "action" ? "addedSkus" : "items"));
+      if (rows.type !== "array" || !property(rows.items, "skuCode"))
+        throw new Error("SALES_PLAN_CONTRACT_INVALID");
+      if (operation === "action") {
+        if (!property(rows.items, "qty")) throw new Error("SALES_PLAN_CONTRACT_INVALID");
+      } else if (
+        !property(schema, "sourceVersionId") ||
+        resolve(property(rows.items, "useLatestSkuPrice")).type !== "boolean" ||
+        (confirmedQty && !property(rows.items, "confirmedQty"))
+      )
+        throw new Error("SALES_PLAN_CONTRACT_INVALID");
+      signal.throwIfAborted();
+    } catch {
+      if (scope.signal.aborted) throw new Error("STALE_LOGIN");
+      signal.throwIfAborted();
+      throw new GeaResponseError(409, {
+        message: "管理端尚未支持新增 SKU 或无法确认写入契约，请更新管理端后重试，草稿已保留",
+      });
+    }
+  }
+
   async submit(payload: Record<string, unknown>, caller: AbortSignal): Promise<unknown> {
     const scope = this.host.scope("submit");
     payload = structuredClone(payload);
@@ -245,6 +314,14 @@ export class SalesPlanTransactions {
           });
         if (scope.signal.aborted) throw new Error("STALE_LOGIN");
         signal.throwIfAborted();
+        if (addedSkus.length || Object.keys(confirmedQuantities).length)
+          await this.requireSkuWriteContract(
+            scope,
+            signal,
+            "resubmit",
+            Object.keys(confirmedQuantities).length > 0 ||
+              (addedSkus.length > 0 && version.orderType === "Z" && version.status > 6),
+          );
         const submission = {
           ...prepared.request,
           ...(addedSkus.length || Object.keys(confirmedQuantities).length
@@ -552,6 +629,7 @@ export class SalesPlanTransactions {
           throw new GeaResponseError(409, {
             message: "新增 SKU 与当前明细重复或超出明细上限",
           });
+        await this.requireSkuWriteContract(scope, signal, "action");
         intent.addedEvidence = {
           planId,
           items: request.addedSkus,

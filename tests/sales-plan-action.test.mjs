@@ -84,6 +84,57 @@ function actionReceipt(patch = {}, init) {
   };
 }
 
+const skuWriteContract = {
+  openapi: "3.0.1",
+  paths: {
+    "/sales-plan/plans/versions/{versionId}/actions": {
+      post: {
+        requestBody: {
+          content: { "application/json": { schema: { $ref: "#/components/schemas/Action" } } },
+        },
+      },
+    },
+    "/sales-plan/plans/resubmit": {
+      post: {
+        requestBody: {
+          content: { "application/json": { schema: { $ref: "#/components/schemas/Submission" } } },
+        },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      Action: {
+        type: "object",
+        properties: {
+          addedSkus: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { skuCode: { type: "integer" }, qty: { type: "number" } },
+            },
+          },
+        },
+      },
+      Submission: {
+        type: "object",
+        properties: {
+          sourceVersionId: { type: "string" },
+          items: { type: "array", items: { $ref: "#/components/schemas/Item" } },
+        },
+      },
+      Item: {
+        type: "object",
+        properties: {
+          skuCode: { type: "integer" },
+          useLatestSkuPrice: { type: "boolean" },
+          confirmedQty: { type: "number" },
+        },
+      },
+    },
+  },
+};
+
 function fixture(
   t,
   actionReply,
@@ -123,6 +174,8 @@ function fixture(
   const snapshot = "a".repeat(64);
   t.mock.method(globalThis, "fetch", async (url, init) => {
     const path = new URL(url).pathname;
+    if (path.endsWith("/v3/api-docs"))
+      return Response.json(config.skuWriteContract ?? skuWriteContract);
     if (path.endsWith("/plans/p")) await detailGate?.(url);
     let result;
     if (path.endsWith("/getPermCode")) result = { codeList: ["sales-plan:plan:category-approve"] };
@@ -2179,101 +2232,159 @@ test("final approval passes added rows, retries a frozen DMS write with the orig
   assert.deepEqual(requests[0].body.addedSkus, payload.request.addedSkus);
 });
 
-test("employee Z resubmission preserves the old row and transmits source version and new row", async () => {
-  const signal = new AbortController().signal;
-  const planId = "p-jxs-2026-12-00001";
-  const auth = {
-    id: "actor",
-    username: "actor",
-    name: "Actor",
-    tenantId: "1",
-    token: "fixture",
-    roles: [{ code: "sales_plan_region_approver", name: "城市经理" }],
-  };
-  const period = { periodId: "6000", periodMonth: "2026-12", planTypeCode: "Y" };
-  const version = {
-    id: "v1",
-    planId,
-    status: 7,
-    seq: 1,
-    effective: true,
-    dealerCode: "10155004",
-    orderType: "Z",
-    periodId: "6000",
-    planTypeCode: "Y",
-    targetQty: "12",
-    targetAmount: "3540",
-    submitter: "origin",
-  };
-  const skus = [
-    {
-      skuCode: "10004778",
-      versionId: version.id,
-      baseQty: "0",
-      corrBaseQty: "0",
-      qty: "0",
-      price: "295.00",
-      amt: "0",
-      adjAddQty: "0",
-      adjCutQty: "0",
-      regionConfirmedQty: "12",
-      productCategName: "品类",
-    },
-  ];
-  let body;
-  const tx = new module.exports.SalesPlanTransactions({
-    scope: () => ({ auth, base: "https://localhost", signal }),
-    query: async ({ kind }) => {
-      if (kind === "detail") return { currentVersion: version, skus };
-      if (kind === "versionSkus") return skus;
-      if (kind === "periods") return { records: [period] };
-      throw Error(kind);
-    },
-    workflow: async () => [],
-    permissions: async () => {},
-    fetch: async (_url, init) => {
-      body = JSON.parse(init.body);
-      return Response.json({
-        success: true,
-        result: {
-          planId,
-          versionId: "v2",
-          seq: 2,
-          status: 2,
-          replayed: false,
-          requestId: "r",
-          traceId: "trace",
+for (const missing of [undefined, "sourceVersionId", "useLatestSkuPrice", "confirmedQty"])
+  test(
+    "employee Z resubmission " +
+      (missing
+        ? "refuses a contract missing " + missing
+        : "preserves the old row and transmits source version and new row"),
+    async () => {
+      const contract = structuredClone(skuWriteContract);
+      if (missing === "sourceVersionId")
+        delete contract.components.schemas.Submission.properties.sourceVersionId;
+      else if (missing) delete contract.components.schemas.Item.properties[missing];
+      const signal = new AbortController().signal;
+      const planId = "p-jxs-2026-12-00001";
+      const auth = {
+        id: "actor",
+        username: "actor",
+        name: "Actor",
+        tenantId: "1",
+        token: "fixture",
+        roles: [{ code: "sales_plan_region_approver", name: "城市经理" }],
+      };
+      const period = { periodId: "6000", periodMonth: "2026-12", planTypeCode: "Y" };
+      const version = {
+        id: "v1",
+        planId,
+        status: 7,
+        seq: 1,
+        effective: true,
+        dealerCode: "10155004",
+        orderType: "Z",
+        periodId: "6000",
+        planTypeCode: "Y",
+        targetQty: "12",
+        targetAmount: "3540",
+        submitter: "origin",
+      };
+      const skus = [
+        {
+          skuCode: "10004778",
+          versionId: version.id,
+          baseQty: "0",
+          corrBaseQty: "0",
+          qty: "0",
+          price: "295.00",
+          amt: "0",
+          adjAddQty: "0",
+          adjCutQty: "0",
+          regionConfirmedQty: "12",
+          productCategName: "品类",
         },
+      ];
+      let body;
+      const tx = new module.exports.SalesPlanTransactions({
+        scope: () => ({ auth, base: "https://localhost", signal }),
+        query: async ({ kind }) => {
+          if (kind === "detail") return { currentVersion: version, skus };
+          if (kind === "versionSkus") return skus;
+          if (kind === "periods") return { records: [period] };
+          throw Error(kind);
+        },
+        workflow: async () => [],
+        permissions: async () => {},
+        fetch: async (_url, init) => {
+          if (new URL(_url).pathname.endsWith("/v3/api-docs")) return Response.json(contract);
+          body = JSON.parse(init.body);
+          return Response.json({
+            success: true,
+            result: {
+              planId,
+              versionId: "v2",
+              seq: 2,
+              status: 2,
+              replayed: false,
+              requestId: "r",
+              traceId: "trace",
+            },
+          });
+        },
+        expire: () => {},
+        decode: JSON.parse,
+        timeoutMs: 1000,
+        periodPageSize: 100,
       });
+      const { request } = workbench.exports.prepareSalesPlanResubmit({
+        planId,
+        versionId: version.id,
+        period,
+        currentUser: auth,
+        detail: { currentVersion: version },
+        skus,
+        addedSkus: [{ skuCode: "10004779", qty: "5", price: "21", productCategName: "品类" }],
+        confirmedQuantities: { 10004778: "10" },
+      });
+      const submission = tx.submit(
+        {
+          source: { planId, versionId: version.id },
+          request: JSON.parse(JSON.stringify(request)),
+          requestId: "r",
+          idempotencyKey: "k",
+        },
+        signal,
+      );
+      if (missing) {
+        await assert.rejects(submission, /管理端尚未支持新增 SKU/);
+        assert.equal(body, undefined);
+        return;
+      }
+      await submission;
+      assert.equal(body.sourceVersionId, "v1");
+      assert.equal(body.submitterCode, "origin");
+      assert.equal(body.items.length, 2);
+      assert.equal(body.items[0].confirmedQty, "10.000");
+      assert.equal(body.items[1].confirmedQty, "5.000");
+      assert.equal(body.items[1].useLatestSkuPrice, true);
     },
-    expire: () => {},
-    decode: JSON.parse,
-    timeoutMs: 1000,
-    periodPageSize: 100,
-  });
-  const { request } = workbench.exports.prepareSalesPlanResubmit({
-    planId,
-    versionId: version.id,
-    period,
-    currentUser: auth,
-    detail: { currentVersion: version },
-    skus,
-    addedSkus: [{ skuCode: "10004779", qty: "5", price: "21", productCategName: "品类" }],
-    confirmedQuantities: { 10004778: "10" },
-  });
-  await tx.submit(
-    {
-      source: { planId, versionId: version.id },
-      request: JSON.parse(JSON.stringify(request)),
-      requestId: "r",
-      idempotencyKey: "k",
-    },
-    signal,
   );
-  assert.equal(body.sourceVersionId, "v1");
-  assert.equal(body.submitterCode, "origin");
-  assert.equal(body.items.length, 2);
-  assert.equal(body.items[0].confirmedQty, "10.000");
-  assert.equal(body.items[1].confirmedQty, "5.000");
-  assert.equal(body.items[1].useLatestSkuPrice, true);
+
+test("an old action endpoint is refused before sending additions", async (t) => {
+  const f = fixture(
+    t,
+    undefined,
+    undefined,
+    {
+      currentVersion: { id: "v", planId: "p", status: 4, effective: true, planTypeCode: "Y" },
+      skus: [],
+      actionContext: {
+        versionId: "v",
+        status: 4,
+        nodeOrder: 5,
+        allowedActions: ["APPROVE"],
+        snapshotHash: "a".repeat(64),
+        policy: "role-visible-v1",
+        roleActions: [{ role: "category", allowedActions: ["APPROVE"] }],
+      },
+    },
+    undefined,
+    undefined,
+    { skuWriteContract: { openapi: "3.0.1", paths: {} } },
+  );
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  await assert.rejects(
+    f.business.salesPlanAction(
+      f.payload({
+        action: "APPROVE",
+        approvalRole: "category",
+        approvalPolicy: "role-visible-v1",
+        adjustments: [],
+        addedSkus: [{ skuCode: "10004778", qty: "12" }],
+      }),
+      signal,
+    ),
+    /管理端尚未支持新增 SKU/,
+  );
+  assert.equal(f.writes(), 0);
 });
