@@ -106,6 +106,55 @@ test("published members, inclusive Cube dates, exact zero and null", async () =>
   assert.equal(result.current.numerator, 0);
   assert.equal(result.current.pending, null);
 });
+test("published business View reads aliased final envelope without inventing measures", async () => {
+  const call = async (name, args) => {
+    if (name === "inspect_cube_model") {
+      assert.equal(args.keyword, "order_kpi_result_v1");
+      return JSON.stringify({
+        semanticModel: [
+          {
+            name: "workbench_cancellation_qa",
+            type: "view",
+            meta: { source_table: "ai_db.order_kpi_result_v1" },
+            dimensions: ["metric_result", "stat_time", "value_final"].map((key) => ({
+              name: "workbench_cancellation_qa." + key,
+              aliasMember: "K." + key,
+            })),
+          },
+        ],
+      });
+    }
+    assert.deepEqual(args.queries[0].query.measures, ["workbench_cancellation_qa.value_final"]);
+    return JSON.stringify({
+      datasets: [
+        {
+          dataStatus: "ok",
+          rowCount: 1,
+          totalRowCount: 1,
+          rows: [
+            {
+              "K.metric_result": JSON.stringify({
+                ...snapshot,
+                current: snapshot,
+              }),
+              "K.value_final": 0,
+            },
+          ],
+        },
+      ],
+    });
+  };
+  const result = await readCubeFinalMetric(
+    config,
+    input,
+    call,
+    new AbortController().signal,
+    envelope,
+  );
+  assert.equal(result.current.numerator, 0);
+  assert.equal(result.current.pending, null);
+  assert.equal(result.datasetGeneration, "batch");
+});
 test("wrong semantics, base, period and missing generation rejected", async () => {
   for (const value of [
     { ...snapshot, formula: "different formula" },

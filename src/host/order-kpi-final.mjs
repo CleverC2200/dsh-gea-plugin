@@ -26,14 +26,20 @@ export async function readCubeFinalMetric(
   contracts = { summary: envelope.contract, groups: envelope.contract },
 ) {
   const inspect = JSON.parse(
-    await call("inspect_cube_model", { model: "order_kpi_result_v1", limit: 50 }, signal),
+    await call("inspect_cube_model", { keyword: "order_kpi_result_v1", limit: 50 }, signal),
   );
   const models =
     inspect.semanticModel?.filter(
-      (model) => model.meta?.source_table === "ai_db.order_kpi_result_v1" && model.type === "cube",
+      (model) =>
+        model.meta?.source_table === "ai_db.order_kpi_result_v1" &&
+        (model.type === "cube" ||
+          (model.type === "view" && model.name === `workbench_${codes[input.metric]}_qa`)),
     ) ?? [];
-  if (models.length !== 1) throw Error("GEA_CUBE_FINAL_METRIC_NOT_PUBLISHED");
-  const model = models[0];
+  const views = models.filter((m) => m.type === "view");
+  const candidates = views.length ? views : models;
+  if (candidates.length !== 1) throw Error("GEA_CUBE_FINAL_METRIC_NOT_PUBLISHED");
+  const model = candidates[0];
+  const businessView = model.type === "view";
   const published = new Map(
     [...(model.measures ?? []), ...(model.dimensions ?? [])].map((m) => [
       m.name.split(".").at(-1),
@@ -45,6 +51,14 @@ export async function readCubeFinalMetric(
     if (!/^[A-Za-z_]\w*\.[A-Za-z_]\w*$/.test(key ?? ""))
       throw Error("GEA_CUBE_FINAL_MEMBER_MISSING:" + name);
     return key;
+  };
+  const queryMember = (name) => {
+    member(name);
+    return businessView
+      ? [...(model.measures ?? []), ...(model.dimensions ?? [])].find(
+          (m) => m.name.split(".").at(-1) === name,
+        ).name
+      : member(name);
   };
   if (input.view === "contract") return envelope;
   if (input.view === "details")
@@ -90,27 +104,30 @@ export async function readCubeFinalMetric(
   ) => {
     const selected = grouped ? dimensions : [];
     const query = {
-      measures: ["numerator_final", "denominator_final", "pending_final", "value_final"].map(
-        member,
-      ),
-      dimensions: [member("metric_result"), ...selected.map((k) => member(fields[k]))],
-      filters: [
-        {
-          member: member("metric_code"),
-          operator: "equals",
-          values: [codes[input.metric]],
-        },
-        {
-          member: member("scope_base"),
-          operator: "equals",
-          values: [queryBase || "全国"],
-        },
-      ],
-      timeDimensions: [{ dimension: member("stat_time"), dateRange: [input.start, end] }],
+      measures: ["numerator_final", "denominator_final", "pending_final", "value_final"]
+        .filter((name) => !businessView || published.has(name))
+        .map(queryMember),
+      dimensions: [queryMember("metric_result"), ...selected.map((k) => queryMember(fields[k]))],
+      filters:
+        businessView && !queryBase
+          ? []
+          : [
+              {
+                member: queryMember("metric_code"),
+                operator: "equals",
+                values: [codes[input.metric]],
+              },
+              {
+                member: queryMember("scope_base"),
+                operator: "equals",
+                values: [queryBase || "全国"],
+              },
+            ],
+      timeDimensions: [{ dimension: queryMember("stat_time"), dateRange: [input.start, end] }],
       timezone: "Asia/Shanghai",
       limit: grouped ? 100 : 1,
       offset: grouped ? (requestedPage - 1) * 100 : 0,
-      ...(grouped ? { order: selected.map((k) => [member(fields[k]), "asc"]) } : {}),
+      ...(grouped ? { order: selected.map((k) => [queryMember(fields[k]), "asc"]) } : {}),
     };
     signal?.throwIfAborted();
     const response = JSON.parse(
@@ -135,10 +152,17 @@ export async function readCubeFinalMetric(
     if (!grouped && (data.rowCount !== 1 || data.totalRowCount !== 1))
       throw Error("GEA_CUBE_FINAL_SUMMARY_MISSING");
     let inheritedRule;
-    const decode = (row) =>
-      typeof row[member("metric_result")] === "string"
-        ? JSON.parse(row[member("metric_result")])
-        : row[member("metric_result")];
+    const decode = (row) => {
+      const payload = row[member("metric_result")];
+      const value = typeof payload === "string" ? JSON.parse(payload) : payload;
+      if (value?.current) {
+        for (const key of ["value", "numerator", "denominator", "pending"])
+          if (Object.hasOwn(value, key) && value[key] !== value.current[key])
+            throw Error("GEA_CUBE_FINAL_COMPONENT_MISMATCH:" + key);
+        return { ...value, ...value.current };
+      }
+      return value;
+    };
     if (grouped && data.rows.some((row) => decode(row)?.formula == null)) {
       if (rule.formula === contracts.summary.formula) inheritedRule = verifiedSummary;
       else {
@@ -151,8 +175,7 @@ export async function readCubeFinalMetric(
         throw Error("GEA_CUBE_FINAL_SNAPSHOT_CHANGED");
     }
     const values = data.rows.map((row) => {
-      const payload = row[member("metric_result")],
-        value = typeof payload === "string" ? JSON.parse(payload) : payload;
+      const value = decode(row);
       if (
         !value ||
         value.metric !== input.metric ||
@@ -195,7 +218,7 @@ export async function readCubeFinalMetric(
         ["denominator", "denominator_final"],
         ["pending", "pending_final"],
         ["value", "value_final"],
-      ])
+      ].filter(([, measure]) => !businessView || published.has(measure)))
         if (
           !Object.hasOwn(row, member(measure)) ||
           (row[member(measure)] == null || value[key] == null

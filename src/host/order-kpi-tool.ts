@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import type { Business } from "./business.ts";
 import { assertSessionResourceAvailable, sessionConsumer } from "./business-identity.ts";
 import { readCubeFinalMetric } from "./order-kpi-final.mjs";
+import { kpiResultMeaning } from "./kpi-result-meaning.mjs";
 import { deadline } from "@deepseek-ai/dsh-timeout";
 
 const orderKpiTimeoutMs = 180000;
@@ -280,6 +281,7 @@ export function registerOrderKpiTool(
               metricSource: "cube-final-published-metric",
               sourceChannel: "Cube",
               ...result,
+              interpretation: kpiResultMeaning(result.current),
               ...(retryKey ? { retryPolicy: { automaticRetry: false, suppressed: false } } : {}),
             });
             if (
