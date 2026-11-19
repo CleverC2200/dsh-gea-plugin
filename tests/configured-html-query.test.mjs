@@ -439,9 +439,9 @@ test("base warehouse templates fit the FC registry and preserve stock recovery a
   assert.equal(calls.length, 1);
 });
 
-test("FC registry has a bounded eight MB budget while other agents retain five MB", async (t) => {
+test("FC registry has a bounded nine MB budget while other agents retain five MB", async (t) => {
   for (const [id, bytes] of [
-    ["fc", 8_000_001],
+    ["fc", 9_000_001],
     ["qll", 5_000_001],
   ]) {
     const r = await resource(t, id);

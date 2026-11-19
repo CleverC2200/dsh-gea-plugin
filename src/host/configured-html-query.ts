@@ -12,7 +12,7 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
     : undefined;
 
 export const configuredSqlConfigMaxBytes = (agentId: string): number =>
-  agentId === "inventory-fc" ? 8_000_000 : 5_000_000;
+  agentId === "inventory-fc" ? 9_000_000 : 5_000_000;
 
 export async function readConfiguredHtmlQuery(
   resource: { directory: string; manifest: Record<string, any> },

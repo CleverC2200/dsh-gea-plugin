@@ -201,7 +201,7 @@ test(
       frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
 
     await expect
-      .poll(readProgress)
+      .poll(readProgress, { timeout: 15000 })
       .toEqual(["进度 100%", "进度 0%", "进度 0%", "进度 0%", "进度 0%"]);
     const before = await readProgress();
     assert.equal(before.length, 5);

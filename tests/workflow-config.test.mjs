@@ -17,7 +17,7 @@ const {
   GeaApiLogCenter,
   readSalesPlanWorkflowConfig,
   salesPlanWorkflow,
-  createWorkflowLoader,
+  createWorkflowPeriodLoader,
 } = await import(
   "data:text/javascript;base64," + Buffer.from(outputFiles[0].contents).toString("base64")
 );
@@ -147,26 +147,27 @@ test("cancelled and superseded loads cannot reinstall old configuration; failure
   ];
   let release;
   let count = 0;
-  const load = createWorkflowLoader(() =>
+  const load = createWorkflowPeriodLoader(() =>
     ++count === 1 ? new Promise((r) => (release = r)) : Promise.resolve(configured),
   );
-  const old = load();
-  await load();
+  const periods = async () => ["2026-10"];
+  const old = assert.rejects(load(periods), { name: "AbortError" });
+  assert.deepEqual(await load(periods), ["2026-10"]);
   release([]);
-  await assert.rejects(old, /STALE_SELECTION/);
+  await old;
   assert.equal(salesPlanWorkflow("XN").resubmit(6), 1);
   assert.equal(salesPlanWorkflow("XN").transition(2, "REJECT"), 6);
   const controller = new AbortController();
-  const cancelled = createWorkflowLoader(async () => {
+  const cancelled = createWorkflowPeriodLoader(async () => {
     controller.abort();
     return configured;
   });
-  await assert.rejects(cancelled(controller.signal));
+  await assert.rejects(cancelled(periods, controller.signal), { name: "AbortError" });
   assert.equal(salesPlanWorkflow("XN").valid, false);
-  const failed = createWorkflowLoader(async () => {
+  const failed = createWorkflowPeriodLoader(async () => {
     throw Error("offline");
   });
-  await assert.rejects(failed(), /offline/);
+  await assert.rejects(failed(periods), /offline/);
   assert.equal(salesPlanWorkflow("Y").valid, false);
 });
 
