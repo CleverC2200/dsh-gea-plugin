@@ -197,6 +197,8 @@ test(
     const header = frame.locator("header").first();
     await expect(header.getByRole("tab", { name: "月初", exact: true })).toBeVisible();
     assert.equal(modelCalls, 0, "opening the workbench must not trigger analysis");
+    if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
+      await frame.getByTestId("regional-approval-flow-toggle").click();
     const readProgress = () =>
       frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
 
@@ -205,9 +207,6 @@ test(
       .toEqual(["进度 100%", "进度 0%", "进度 0%", "进度 0%", "进度 0%"]);
     const before = await readProgress();
     assert.equal(before.length, 5);
-
-    if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
-      await frame.getByTestId("regional-approval-flow-toggle").click();
 
     for (const stage of ["province", "area", "category"])
       await expect(frame.getByTestId("regional-approval-stage-" + stage)).toBeDisabled();

@@ -241,6 +241,8 @@ test(
     }));
     assert.equal(headerLayout.wrap, "nowrap");
     assert.ok(headerLayout.height <= 76, JSON.stringify(headerLayout));
+    if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
+      await frame.getByTestId("regional-approval-flow-toggle").click();
     const readProgress = () =>
       frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
     await expect
@@ -248,8 +250,6 @@ test(
       .toEqual(["进度 100%", "进度 0%", "进度 0%", "进度 0%", "进度 0%"]);
     const before = await readProgress();
     assert.equal(before.length, 5);
-    if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
-      await frame.getByTestId("regional-approval-flow-toggle").click();
     for (const stage of ["province", "area", "category"])
       await expect(frame.getByTestId("regional-approval-stage-" + stage)).toBeDisabled();
     await frame.getByTestId("regional-approval-stage-region").click();
