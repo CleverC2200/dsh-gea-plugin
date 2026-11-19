@@ -241,12 +241,15 @@ test(
     }));
     assert.equal(headerLayout.wrap, "nowrap");
     assert.ok(headerLayout.height <= 76, JSON.stringify(headerLayout));
-    const readProgress = () =>
-      frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
-    const before = await readProgress();
-    assert.equal(before.length, 5);
     if (!(await frame.getByTestId("regional-approval-flow-lane").isVisible()))
       await frame.getByTestId("regional-approval-flow-toggle").click();
+    const readProgress = () =>
+      frame.locator('[data-testid^="regional-approval-stage-"] small').allTextContents();
+    await expect
+      .poll(readProgress, { timeout: 15000 })
+      .toEqual(["进度 100%", "进度 0%", "进度 0%", "进度 0%", "进度 0%"]);
+    const before = await readProgress();
+    assert.equal(before.length, 5);
     for (const stage of ["province", "area", "category"])
       await expect(frame.getByTestId("regional-approval-stage-" + stage)).toBeDisabled();
     await frame.getByTestId("regional-approval-stage-region").click();

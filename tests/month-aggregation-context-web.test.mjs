@@ -9,7 +9,7 @@ test(
   { timeout: 90000 },
   async (t) => {
     let page;
-    t.after(async () => page?.removeAllListeners("response", { behavior: "wait" }));
+    t.after(async () => page?.removeAllListeners("response", { behavior: "ignoreErrors" }));
     const app = await profile(t, {
       roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
     });
@@ -177,7 +177,6 @@ test(
     const contextPayloads = [];
     const contextOwners = [];
     const openedPages = [];
-    const listResponses = [];
     page.on("request", (request) => {
       if (request.url().endsWith("/api/agent-workbench/page")) {
         const body = request.postDataJSON();
@@ -188,21 +187,10 @@ test(
       }
     });
     page.on("response", async (response) => {
-      if (response.url().endsWith("/api/agent-workbench/page")) {
-        const request = response.request().postDataJSON();
-        if (request.operation === "open" && response.ok())
-          openedPages.push({ ...request, owner: (await response.json()).owner });
-        return;
-      }
-      if (!response.url().endsWith("/api/gea-proof/workbench/query")) return;
+      if (!response.url().endsWith("/api/agent-workbench/page") || !response.ok()) return;
       const request = response.request().postDataJSON();
-      if (request.kind !== "list") return;
-      const payload = await response.json();
-      if (payload.value?.records?.length)
-        listResponses.push({
-          query: request.query,
-          plans: payload.value.records.map((row) => row.planId),
-        });
+      if (request.operation === "open")
+        openedPages.push({ ...request, owner: (await response.json()).owner });
     });
     await page.goto(app.origin);
     await page
@@ -257,11 +245,10 @@ test(
     );
     assert.equal(combined.scope.month, "2026-10");
     assert.equal(combined.scope.planType, "mixed");
-    assert.deepEqual(
-      combined.visibleRows.map((row) => row.planId).toSorted(),
-      ["p-jxs-2026-10-00001", "p-jxs-2026-10-00002"],
-      JSON.stringify(listResponses),
-    );
+    assert.deepEqual(combined.visibleRows.map((row) => row.planId).toSorted(), [
+      "p-jxs-2026-10-00001",
+      "p-jxs-2026-10-00002",
+    ]);
     await expect(frame.locator("tbody").first()).toContainText("大仓计划客户");
 
     await frame.locator('label.arco-checkbox:has(input[value="p-jxs-2026-10-00002"])').click();
