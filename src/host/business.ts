@@ -65,6 +65,7 @@ import { workbenchPresence, type WorkbenchPresence } from "./workbench-presence.
 import { normalizeSurface, type WorkbenchSurface } from "./workbench-surface.ts";
 import { compressForModel } from "@cleverc2200/dsh-agent-workbench/page-interaction/payload-budget";
 import { readSalesPlanSkuReview } from "./sales-plan-sku-review.js";
+import { readSalesPlanReportFacts } from "./sales-plan-monthly-report.ts";
 import { aggregateSalesPlans } from "./sales-plan-aggregate.ts";
 
 const PLUGIN_SCHEMA_TTL_MS = 10 * 60_000;
@@ -449,6 +450,7 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
   skuReview: ["planId", "versionId"],
   skuQuotes: ["planId", "versionId", "skuCodes"],
+  reportFacts: ["planId", "versionId"],
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
 
@@ -4320,6 +4322,21 @@ export class Business {
       )
         return this.startupPeriodIndex(query, signal, options.periodIndex);
       return this.salesPlanPeriodPage(query, signal);
+    }
+    if (kind === "reportFacts") {
+      if (options.forModel) throw new Error("INVALID_QUERY");
+      const active = AbortSignal.any([signal, this.epoch.signal]);
+      return readSalesPlanReportFacts(
+        { planId: text(query.planId), versionId: text(query.versionId) },
+        (planId, current) =>
+          this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current, {
+            deferMaterialNames: true,
+          }),
+        (input, current) =>
+          this.pluginSql({ ...input, consumerCode: this.config.analysisAgentCode }, current),
+        salesPlan.salesPlanPeriodMonthForPlanId,
+        active,
+      );
     }
     if (kind === "skuQuotes") {
       if (options.forModel || !Array.isArray(query.skuCodes)) throw new Error("INVALID_QUERY");
