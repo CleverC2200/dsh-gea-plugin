@@ -9,7 +9,7 @@ test(
   { timeout: 90000 },
   async (t) => {
     let page;
-    t.after(async () => page?.removeAllListeners("response", { behavior: "wait" }));
+    t.after(async () => page?.removeAllListeners("response", { behavior: "ignoreErrors" }));
     const app = await profile(t, {
       roles: [{ code: "sales_plan_province_approver", name: "省区审批" }],
     });
@@ -197,7 +197,10 @@ test(
       if (!response.url().endsWith("/api/gea-proof/workbench/query")) return;
       const request = response.request().postDataJSON();
       if (request.kind !== "list") return;
-      const payload = await response.json();
+      const payload =
+        response.headers()["content-type"] === "application/x-ndjson"
+          ? JSON.parse((await response.text()).trimEnd().split("\n").at(-1))
+          : await response.json();
       if (payload.value?.records?.length)
         listResponses.push({
           query: request.query,
