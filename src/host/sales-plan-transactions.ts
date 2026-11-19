@@ -473,14 +473,14 @@ export class SalesPlanTransactions {
         throw new GeaResponseError(409, {
           message: "审批依据已变化，请刷新后重试",
         });
-      if (
-        request.approvalPolicy === "role-visible-v1"
-          ? !access.roleContractSupported
-          : access.roleContractSupported ||
-            salesPlanWorkflow(row.planTypeCode, workflowRows).actor(row.status) !== role
-      )
+      const flow = salesPlanWorkflow(row.planTypeCode, workflowRows);
+      if ((request.approvalPolicy === "role-visible-v1") !== access.roleContractSupported)
         throw new GeaResponseError(409, {
-          message: "GEA 尚未支持本次角色审批契约，请升级服务端后重试",
+          message: "审批方式与当前计划不一致，请刷新计划列表后重试。",
+        });
+      if (!access.roleContractSupported && flow.actor(row.status) !== role)
+        throw new GeaResponseError(403, {
+          message: "当前审批角色与计划所在节点不匹配，请由该节点的审批人员提交。",
         });
       if (request.expectedReturnTargetStage !== undefined) {
         if (request.action !== "REJECT") throw new Error("INVALID_PAYLOAD");
@@ -504,7 +504,6 @@ export class SalesPlanTransactions {
         },
         workflowRows,
       );
-      const flow = salesPlanWorkflow(row.planTypeCode, workflowRows);
       const approvalRoles: NonNullable<GeaSalesPlanActionRequest["approvalRole"]>[] = [
         "region",
         "province",
