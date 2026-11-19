@@ -365,6 +365,7 @@ jobs:
         run: |
           sudo install -d /etc/apt/ubuntu-ci-sources.list.d
           sudo install -m 644 /etc/apt/sources.list.d/ubuntu.sources /etc/apt/ubuntu-ci-sources.list.d/ubuntu.sources
+          sudo sed -E -i 's|^URIs:[[:blank:]]+https?://security\.ubuntu\.com/ubuntu/?[[:blank:]]*$|URIs: mirror+file:/etc/apt/apt-mirrors.txt|' /etc/apt/ubuntu-ci-sources.list.d/ubuntu.sources
           printf 'Dir::Etc::sourceparts "/etc/apt/ubuntu-ci-sources.list.d";\n' | sudo tee /etc/apt/apt.conf.d/99-gea-ubuntu-ci-sources
           getent ahostsv4 mirrors.edge.kernel.org
           printf 'https://mirrors.mit.edu/ubuntu/\tpriority:1\nhttps://mirrors.edge.kernel.org/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt
