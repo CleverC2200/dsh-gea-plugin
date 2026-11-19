@@ -6,11 +6,13 @@ import {
   salesPlanWorkflow,
   validateSalesPlanActionInput,
   verifyReturnedSalesPlan,
+  verifySalesPlanAddedSkus,
   salesPlanReturnDestination,
   prepareSalesPlanResubmit,
   type SalesPlanApprovalRole,
   type SalesPlanWorkflowRow,
   type GeaSalesPlanActionRequest,
+  type GeaSalesPlanAddedSku,
   type GeaSalesPlanActionReceipt,
   type GeaSalesPlanDetail,
   type GeaSalesPlanPeriod,
@@ -42,6 +44,11 @@ type WriteIntent = {
   receipt?: unknown;
   actionReceipt?: GeaSalesPlanActionReceipt;
   matchesActionReceipt?: (receipt: GeaSalesPlanActionReceipt) => boolean;
+  addedEvidence?: {
+    planId: string;
+    node: number;
+    items: GeaSalesPlanAddedSku[];
+  };
   returnEvidence?: {
     detail: GeaSalesPlanDetail;
     request: GeaSalesPlanActionRequest;
@@ -65,6 +72,7 @@ const UPSTREAM_ACTION_FIELDS = [
   "expectedStatus",
   "remark",
   "adjustments",
+  "addedSkus",
   "notification",
 ] as const;
 function upstreamActionBody(request: Record<string, unknown>): Record<string, unknown> {
@@ -167,14 +175,21 @@ export class SalesPlanTransactions {
           { kind: "versionSkus", query: { versionId } },
           signal,
         )) as GeaSalesPlanSku[];
-        if (!Array.isArray(request.items) || request.items.length !== skus.length)
+        if (
+          !Array.isArray(request.items) ||
+          request.items.length < skus.length ||
+          request.items.length > 5000
+        )
           throw new Error("INVALID_PAYLOAD");
         const items = request.items.map(object);
-        if (new Set(items.map((row) => row.skuCode)).size !== skus.length)
-          throw new Error("INVALID_PAYLOAD");
+        const byCode = new Map(items.map((row) => [text(row.skuCode), row]));
+        if (byCode.size !== items.length) throw new Error("INVALID_PAYLOAD");
+        const known = new Set(skus.map((sku) => sku.skuCode));
+        const confirmedQuantities: Record<string, string> = {};
         const edited = skus.map((sku) => {
-          const item = items.find((row) => row.skuCode === sku.skuCode);
-          if (!item || typeof item.qty !== "string") throw new Error("INVALID_PAYLOAD");
+          const item = byCode.get(sku.skuCode);
+          if (!item || item.useLatestSkuPrice !== undefined || typeof item.qty !== "string")
+            throw new Error("INVALID_PAYLOAD");
           if (version.orderType === "Z") {
             if (
               !correctionDecimal(item.qty).eq(correctionDecimal(sku.qty)) ||
@@ -182,6 +197,8 @@ export class SalesPlanTransactions {
               typeof item.adjCutQty !== "string"
             )
               throw new Error("INVALID_PAYLOAD");
+            if (item.confirmedQty !== undefined)
+              confirmedQuantities[sku.skuCode] = text(item.confirmedQty);
             return {
               ...sku,
               adjAddQty: item.adjAddQty,
@@ -189,6 +206,23 @@ export class SalesPlanTransactions {
             };
           }
           return { ...sku, qty: item.qty };
+        });
+        const addedSkus = items.flatMap((item) => {
+          const skuCode = text(item.skuCode);
+          if (known.has(skuCode)) return [];
+          if (item.useLatestSkuPrice !== true) throw new Error("INVALID_PAYLOAD");
+          const qty =
+            version.orderType === "Z"
+              ? text(version.status === 6 ? item.adjAddQty : item.confirmedQty)
+              : text(item.qty);
+          return [
+            {
+              skuCode,
+              qty,
+              price: text(item.price),
+              productCategName: text(item.productCategName),
+            },
+          ];
         });
         const rows = await this.host.workflow(signal);
         const prepared = prepareSalesPlanResubmit(
@@ -199,6 +233,8 @@ export class SalesPlanTransactions {
             period,
             skus: edited,
             currentUser: auth,
+            addedSkus,
+            confirmedQuantities,
           },
           rows,
         );
@@ -211,6 +247,9 @@ export class SalesPlanTransactions {
         signal.throwIfAborted();
         const submission = {
           ...prepared.request,
+          ...(addedSkus.length || Object.keys(confirmedQuantities).length
+            ? { sourceVersionId: versionId }
+            : {}),
           submitterCode: text(version.submitter),
         };
         delete submission.submitterName;
@@ -395,6 +434,7 @@ export class SalesPlanTransactions {
       "expectedStatus",
       "remark",
       "adjustments",
+      "addedSkus",
       "expectedReturnTargetStage",
       "adjustmentMode",
       "approvalRole",
@@ -504,6 +544,23 @@ export class SalesPlanTransactions {
         },
         workflowRows,
       );
+      if (salesPlan.salesPlanAddedSkusValid(request.addedSkus) && request.addedSkus.length) {
+        if (
+          detail.skus.length + request.addedSkus.length > 5000 ||
+          request.addedSkus.some((item) => detail.skus.some((sku) => sku.skuCode === item.skuCode))
+        )
+          throw new GeaResponseError(409, {
+            message: "新增 SKU 与当前明细重复或超出明细上限",
+          });
+        intent.addedEvidence = {
+          planId,
+          items: request.addedSkus,
+          node:
+            action === "REJECT"
+              ? salesPlanReturnDestination(detail, role).targetStage
+              : ["customer", "region", "province", "area", "category"].indexOf(role) + 1,
+        };
+      }
       const flow = salesPlanWorkflow(row.planTypeCode, workflowRows);
       const approvalRoles: NonNullable<GeaSalesPlanActionRequest["approvalRole"]>[] = [
         "region",
@@ -519,13 +576,16 @@ export class SalesPlanTransactions {
         if (!access.roleContractSupported)
           return (
             receipt.toStatus === flow.transition(row.status, action) ||
+            (action === "APPROVE" &&
+              receipt.toStatus === 10 &&
+              flow.transition(row.status, action) === 5) ||
             (action === "APPROVE" && !access.snapshotHash && receipt.toStatus === row.status)
           );
         if (action === "REJECT") {
           const pending = flow.pending(role);
           return pending !== undefined && receipt.toStatus === flow.transition(pending, action);
         }
-        if (receipt.toStatus === 5) {
+        if (receipt.toStatus === 5 || receipt.toStatus === 10) {
           const approvedRoles = receipt.approvedRoles;
           return (
             Array.isArray(approvedRoles) &&
@@ -627,7 +687,13 @@ export class SalesPlanTransactions {
               : 502;
         const error = new GeaResponseError(status, data, [auth.token]);
         if (status === 401) this.host.expire(auth);
-        if (data.success === false) error.details.retrySameIntent = false;
+        if (
+          data.errorCode === "SALES_PLAN_DMS_WRITEBACK_FAILED" &&
+          typeof data.message === "string" &&
+          data.message.includes("终审明细已保存")
+        )
+          error.details.retrySameIntent = true;
+        else if (data.success === false) error.details.retrySameIntent = false;
         else if ((status >= 500 || status === 408) && error.details.retryable !== false)
           error.details.retrySameIntent = true;
         throw error;
@@ -670,19 +736,29 @@ export class SalesPlanTransactions {
       intent.actionReceipt = received;
     }
     const receipt = intent.actionReceipt;
-    if (intent.returnEvidence) {
-      const evidence = intent.returnEvidence;
+    const returned = intent.returnEvidence;
+    const added = intent.addedEvidence;
+    const readbackPlanId = returned?.planId ?? added?.planId;
+    if (readbackPlanId) {
       try {
         const after = (await this.host.query(
-          { kind: "detail", query: { planId: evidence.planId } },
+          { kind: "detail", query: { planId: readbackPlanId } },
           signal,
         )) as GeaSalesPlanDetail;
-        if (!verifyReturnedSalesPlan(evidence.detail, after, evidence.request, receipt))
-          throw new Error("RETURN_READBACK_MISMATCH");
+        if (
+          (returned &&
+            !verifyReturnedSalesPlan(returned.detail, after, returned.request, receipt)) ||
+          (added &&
+            (after.currentVersion.id !== receipt.versionId ||
+              !verifySalesPlanAddedSkus(after, added.items, added.node)))
+        )
+          throw new Error("SALES_PLAN_READBACK_MISMATCH");
       } catch {
         if (scope.signal.aborted) throw new Error("STALE_LOGIN");
         const error = new GeaResponseError(502, {
-          message: "退回结果尚未核对，请刷新或使用原操作重试",
+          message: returned
+            ? "退回结果尚未核对，请刷新或使用原操作重试"
+            : "新增明细尚未核对，请刷新或使用原操作重试",
         });
         error.details.retrySameIntent = true;
         throw error;

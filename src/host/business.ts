@@ -448,6 +448,7 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   logs: ["planId", "pageNo", "pageSize"],
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
   skuReview: ["planId", "versionId"],
+  skuQuotes: ["planId", "versionId", "skuCodes"],
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
 
@@ -4319,6 +4320,86 @@ export class Business {
       )
         return this.startupPeriodIndex(query, signal, options.periodIndex);
       return this.salesPlanPeriodPage(query, signal);
+    }
+    if (kind === "skuQuotes") {
+      if (options.forModel || !Array.isArray(query.skuCodes)) throw new Error("INVALID_QUERY");
+      const codes = [...new Set(query.skuCodes.map(text))];
+      if (!codes.length || codes.length > 5000 || !codes.every(salesPlan.isSalesPlanSkuCode))
+        throw new Error("INVALID_QUERY");
+      const active = AbortSignal.any([signal, this.epoch.signal]);
+      const planId = text(query.planId);
+      const versionId = text(query.versionId);
+      const detail = (await this.readWorkbenchQuery({ kind: "detail", query: { planId } }, active, {
+        deferMaterialNames: true,
+      })) as GeaSalesPlanDetail;
+      const version = detail.currentVersion;
+      if (!version.effective || version.id !== versionId || version.planId !== planId)
+        throw new Error("STALE_DRAFT_VERSION");
+      const customer = salesPlanCustomer(version.dealerCode);
+      const placeholders = codes.map((_, index) => "sku" + index);
+      const skuList = placeholders.map((name) => ":" + name).join(", ");
+      const sql = `SELECT DISTINCT s.material_code, s.material_name, s.product_categ_name,
+        CASE WHEN p.positive_price_count = 1 AND p.cif_price > 0 THEN CAST(p.cif_price AS STRING) ELSE NULL END AS price
+        FROM agents_dim_cust_sales_material_detail_d s
+        LEFT JOIN (
+          SELECT cust_code, material_code, positive_price_count, cif_price
+          FROM agents_sales_plan_sku_price_v
+          WHERE cust_code = :customer AND material_code IN (${skuList})
+          AND stat_date = (SELECT MAX(stat_date) FROM agents_sales_plan_sku_price_v)
+        ) p ON p.cust_code = s.cust_code AND p.material_code = s.material_code
+        WHERE s.cust_code = :customer AND s.material_code IN (${skuList})
+        ORDER BY s.material_code`;
+      const parameters = {
+        customer,
+        ...Object.fromEntries(placeholders.map((name, index) => [name, codes[index]])),
+      };
+      const requested = new Set(codes);
+      const pageSize = Math.min(codes.length + 1, 200);
+      const quotes = new Map<string, salesPlan.GeaSalesPlanSkuQuote>();
+      let total: number | undefined;
+      for (let pageNo = 1; ; pageNo++) {
+        const page = object(
+          await this.pluginSql(
+            {
+              sql,
+              parameters,
+              pageNo,
+              pageSize,
+              consumerCode: this.config.analysisAgentCode,
+            },
+            active,
+          ),
+        );
+        if (
+          !Array.isArray(page.rows) ||
+          typeof page.total !== "number" ||
+          !Number.isSafeInteger(page.total) ||
+          page.total < 0 ||
+          page.total > codes.length ||
+          (total !== undefined && total !== page.total) ||
+          (Array.isArray(page.rejectedColumns) && page.rejectedColumns.length > 0)
+        )
+          throw new Error("GEA_INCOMPLETE_COLLECTION");
+        total = page.total;
+        for (const value of page.rows) {
+          const row = object(value);
+          const skuCode = text(row.material_code);
+          const skuName = text(row.material_name);
+          const productCategName = text(row.product_categ_name);
+          const price = row.price === null ? null : text(row.price);
+          if (
+            !requested.has(skuCode) ||
+            quotes.has(skuCode) ||
+            !skuName.trim() ||
+            !productCategName.trim() ||
+            (price !== null && (!/^\d{1,14}(?:\.\d{1,4})?$/.test(price) || Number(price) <= 0))
+          )
+            throw new Error("GEA_INVALID_SKU_PRICE");
+          quotes.set(skuCode, { skuCode, skuName, productCategName, price });
+        }
+        if (quotes.size === total) return [...quotes.values()];
+        if (!page.rows.length || quotes.size > total) throw new Error("GEA_INCOMPLETE_COLLECTION");
+      }
     }
     if (kind === "skuReview") {
       if (options.forModel) throw new Error("INVALID_QUERY");

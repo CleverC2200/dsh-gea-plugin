@@ -6,7 +6,11 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
 const output = await build({
-  entryPoints: ["src/host/business.ts"],
+  stdin: {
+    resolveDir: process.cwd(),
+    contents:
+      'export { Business } from "./src/host/business.ts"; export { SalesPlanTransactions } from "./src/host/sales-plan-transactions.ts";',
+  },
   bundle: true,
   packages: "external",
   write: false,
@@ -181,6 +185,29 @@ function fixture(
       };
     else if (path.endsWith("/sql/execute")) {
       const body = JSON.parse(init.body);
+      if (body.sql.includes("agents_sales_plan_sku_price_v")) {
+        assert.match(body.sql, /MAX\(stat_date\)/);
+        assert.equal(body.parameters.gea_p1, "10155004");
+        assert.equal(body.parameters.gea_p2, "10004778");
+        return Response.json({
+          success: true,
+          code: 200,
+          result: {
+            tables: ["agents_dim_cust_sales_material_detail_d", "agents_sales_plan_sku_price_v"],
+            total: 1,
+            pageNo: 1,
+            pageSize: 2,
+            rows: [
+              {
+                material_code: "10004778",
+                material_name: "新增商品",
+                product_categ_name: "品类",
+                price: "295.00",
+              },
+            ],
+          },
+        });
+      }
       const rows =
         workflowRows ??
         ["0", "1", "2", "3", "4", "Y"].map((node, level) => ({
@@ -2058,4 +2085,195 @@ test("employee resubmission readiness needs login and ignores absent or obsolete
     assert.equal(business.status().resubmitUnavailableReason, undefined);
   }
   assert.equal(network.mock.callCount(), 0);
+});
+
+test("customer preview derives its customer from the version and reads the latest SKU price", async (t) => {
+  const { business } = fixture(t, undefined, undefined, {
+    currentVersion: {
+      id: "v",
+      planId: "p",
+      status: 4,
+      effective: true,
+      planTypeCode: "Y",
+      cust_code: 10155004,
+    },
+  });
+  const signal = new AbortController().signal;
+  const query = { planId: "p", versionId: "v", skuCodes: ["10004778"] };
+  const quotes = await business.workbenchQuery({ kind: "skuQuotes", query }, signal);
+  assert.deepEqual(quotes, [
+    { skuCode: "10004778", skuName: "新增商品", productCategName: "品类", price: "295.00" },
+  ]);
+  await assert.rejects(
+    business.workbenchQuery({ kind: "skuQuotes", query: { ...query, versionId: "old" } }, signal),
+    /STALE_DRAFT_VERSION/,
+  );
+});
+
+test("final approval passes added rows, retries a frozen DMS write with the original request and verifies the SKU", async (t) => {
+  const requests = [];
+  const detailPatch = {
+    actionContext: {
+      versionId: "v",
+      status: 4,
+      nodeOrder: 5,
+      allowedActions: ["APPROVE"],
+      snapshotHash: "a".repeat(64),
+      policy: "role-visible-v1",
+      roleActions: [{ role: "category", allowedActions: ["APPROVE"] }],
+    },
+    skus: [],
+  };
+  const f = fixture(
+    t,
+    async (_url, init) => {
+      requests.push({
+        body: JSON.parse(init.body),
+        key: new Headers(init.headers).get("Idempotency-Key"),
+      });
+      if (requests.length === 1)
+        return Response.json(
+          {
+            success: false,
+            code: 502,
+            retryable: false,
+            errorCode: "SALES_PLAN_DMS_WRITEBACK_FAILED",
+            message: "DMS回写超时。终审明细已保存，请使用原 Idempotency-Key 和原请求重试",
+          },
+          { status: 502 },
+        );
+      detailPatch.skus.push({
+        versionId: "v",
+        skuCode: "10004778",
+        baseQty: "0",
+        qty: "0",
+        price: "295.00",
+        categoryConfirmedQty: "12",
+        categoryConfirmedAmount: "3540.00",
+      });
+      f.status(10);
+      return Response.json({
+        success: true,
+        result: actionReceipt({ toStatus: 10, replayed: true }, init),
+      });
+    },
+    undefined,
+    detailPatch,
+  );
+  const signal = new AbortController().signal;
+  await f.business.refreshApprovalRoles(signal);
+  const payload = f.payload({
+    action: "APPROVE",
+    approvalRole: "category",
+    approvalPolicy: "role-visible-v1",
+    adjustments: [],
+    addedSkus: [{ skuCode: "10004778", qty: "12" }],
+  });
+  await assert.rejects(
+    f.business.salesPlanAction(payload, signal),
+    (error) => error.details.retrySameIntent === true,
+  );
+  const receipt = await f.business.salesPlanAction(payload, signal);
+  assert.equal(receipt.toStatus, 10);
+  assert.deepEqual(requests[0], requests[1]);
+  assert.deepEqual(requests[0].body.addedSkus, payload.request.addedSkus);
+});
+
+test("employee Z resubmission preserves the old row and transmits source version and new row", async () => {
+  const signal = new AbortController().signal;
+  const planId = "p-jxs-2026-12-00001";
+  const auth = {
+    id: "actor",
+    username: "actor",
+    name: "Actor",
+    tenantId: "1",
+    token: "fixture",
+    roles: [{ code: "sales_plan_region_approver", name: "城市经理" }],
+  };
+  const period = { periodId: "6000", periodMonth: "2026-12", planTypeCode: "Y" };
+  const version = {
+    id: "v1",
+    planId,
+    status: 7,
+    seq: 1,
+    effective: true,
+    dealerCode: "10155004",
+    orderType: "Z",
+    periodId: "6000",
+    planTypeCode: "Y",
+    targetQty: "12",
+    targetAmount: "3540",
+    submitter: "origin",
+  };
+  const skus = [
+    {
+      skuCode: "10004778",
+      versionId: version.id,
+      baseQty: "0",
+      corrBaseQty: "0",
+      qty: "0",
+      price: "295.00",
+      amt: "0",
+      adjAddQty: "0",
+      adjCutQty: "0",
+      regionConfirmedQty: "12",
+      productCategName: "品类",
+    },
+  ];
+  let body;
+  const tx = new module.exports.SalesPlanTransactions({
+    scope: () => ({ auth, base: "https://localhost", signal }),
+    query: async ({ kind }) => {
+      if (kind === "detail") return { currentVersion: version, skus };
+      if (kind === "versionSkus") return skus;
+      if (kind === "periods") return { records: [period] };
+      throw Error(kind);
+    },
+    workflow: async () => [],
+    permissions: async () => {},
+    fetch: async (_url, init) => {
+      body = JSON.parse(init.body);
+      return Response.json({
+        success: true,
+        result: {
+          planId,
+          versionId: "v2",
+          seq: 2,
+          status: 2,
+          replayed: false,
+          requestId: "r",
+          traceId: "trace",
+        },
+      });
+    },
+    expire: () => {},
+    decode: JSON.parse,
+    timeoutMs: 1000,
+    periodPageSize: 100,
+  });
+  const { request } = workbench.exports.prepareSalesPlanResubmit({
+    planId,
+    versionId: version.id,
+    period,
+    currentUser: auth,
+    detail: { currentVersion: version },
+    skus,
+    addedSkus: [{ skuCode: "10004779", qty: "5", price: "21", productCategName: "品类" }],
+    confirmedQuantities: { 10004778: "10" },
+  });
+  await tx.submit(
+    {
+      source: { planId, versionId: version.id },
+      request: JSON.parse(JSON.stringify(request)),
+      requestId: "r",
+      idempotencyKey: "k",
+    },
+    signal,
+  );
+  assert.equal(body.sourceVersionId, "v1");
+  assert.equal(body.submitterCode, "origin");
+  assert.equal(body.items.length, 2);
+  assert.equal(body.items[0].confirmedQty, "10.000");
+  assert.equal(body.items[1].confirmedQty, "5.000");
+  assert.equal(body.items[1].useLatestSkuPrice, true);
 });
