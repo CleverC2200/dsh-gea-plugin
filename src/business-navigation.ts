@@ -112,7 +112,7 @@ export const BUSINESS_MENU_PRESET: readonly BusinessMenuGroup[] = [
     title: "订单管理",
     icon: "orders",
     items: [
-      { id: "inventory-orderworkbench", title: "订单工作台(开发中)" },
+      { id: "inventory-orderworkbench", title: "订单工作台" },
       { id: "inventory-orderfulfillment", title: "订单履约(开发中)" },
     ],
   },

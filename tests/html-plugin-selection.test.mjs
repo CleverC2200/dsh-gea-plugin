@@ -113,9 +113,9 @@ test("requested preview pages remain visible while retired modules stay hidden",
     "inventory-customer",
     "inventory-personal",
   ]);
-  assert.equal(
-    groups.some((group) => group.key === "orders"),
-    true,
+  assert.deepEqual(
+    groups.find((group) => group.key === "orders")?.entries.map((entry) => entry.title),
+    ["订单工作台", "订单履约(开发中)"],
   );
   const entries = groups.flatMap((group) => group.entries);
   assert.equal(
