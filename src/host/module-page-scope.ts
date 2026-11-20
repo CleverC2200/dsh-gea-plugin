@@ -54,10 +54,7 @@ export function appendOrderCardModelContext(
     source?: { kind: string };
     content: readonly { type: string; text?: string }[];
   }[],
-  messages: (
-    | { role: "system" | "assistant" | "tool"; content?: string }
-    | { role: "user"; content: unknown }
-  )[],
+  messages: { role: string; content?: string }[],
 ) {
   if (!session || host.surfaceFor?.(session)?.menu !== "inventory-orderworkbench") return;
   const user = inputs

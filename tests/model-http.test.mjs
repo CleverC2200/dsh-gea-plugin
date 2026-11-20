@@ -301,92 +301,62 @@ const officialMetadata = {
   modelName: "deepseek-flash",
   baseUrl: "https://api.deepseek.com/v1",
 };
-for (const [label, declared, metadata, expected, expectedModes, catalogModes] of [
-  [
-    "catalog capacity wins while missing input types are read from metadata",
-    262144,
-    { ...officialMetadata, modelParams: '{"inputModalities":["text","image"]}' },
-    262144,
-    ["text", "image"],
-  ],
-  [
-    "official image support is unknown when the gateway omits capabilities",
-    undefined,
-    officialMetadata,
-    1000000,
-    undefined,
-  ],
-  [
-    "explicit text-only metadata is preserved",
-    undefined,
-    { ...officialMetadata, input_modalities: ["text"] },
-    1000000,
-    ["text"],
-  ],
-  [
-    "gateway text-only catalog wins over model configuration",
-    undefined,
-    { ...officialMetadata, input_modalities: ["text", "image"] },
-    1000000,
-    ["text"],
-    ["text"],
-  ],
-  [
-    "gateway advertises enabled image input",
-    undefined,
-    officialMetadata,
-    1000000,
-    ["text", "image"],
-    ["text", "image"],
-  ],
+for (const [label, declared, metadata, expected, reads] of [
+  ["catalog capacity wins", 262144, officialMetadata, 262144, 0],
+  ["official default without catalog capacity", undefined, officialMetadata, 1000000, 1],
   [
     "metadata capacity wins over default",
     undefined,
     { ...officialMetadata, contextWindow: 131072 },
     131072,
-    undefined,
+    1,
   ],
   [
     "metadata parameters win over default",
     undefined,
     { ...officialMetadata, modelParams: '{"contextWindow":65536}' },
     65536,
-    undefined,
+    1,
   ],
-  ["invalid catalog capacity falls back", 0, officialMetadata, 1000000, undefined],
+  ["invalid catalog capacity falls back", 0, officialMetadata, 1000000, 1],
   [
     "other provider remains unknown",
     undefined,
     { ...officialMetadata, provider: "VLLM" },
     undefined,
+    1,
   ],
   [
     "proxy remains unknown",
     undefined,
     { ...officialMetadata, baseUrl: "https://proxy.invalid/v1" },
     undefined,
+    1,
   ],
   [
     "lookalike official hostname remains unknown",
     undefined,
     { ...officialMetadata, baseUrl: "https://api.deepseek.com.evil.invalid/v1" },
     undefined,
+    1,
   ],
   [
     "unknown wire model remains unknown",
     undefined,
     { ...officialMetadata, modelName: "unknown-model" },
     undefined,
+    1,
   ],
   [
     "mismatched model metadata remains unknown",
     undefined,
     { ...officialMetadata, id: "other-model" },
     undefined,
+    1,
   ],
-  ["metadata denial does not disable an authorized route", undefined, undefined, undefined],
+  ["metadata denial does not disable an authorized route", undefined, undefined, undefined, 1],
 ]) {
-  test("model discovery: " + label, async (t) => {
+  test("model discovery capacity: " + label, async (t) => {
     const { business } = loggedInBusiness(t);
     let metadataReads = 0;
     t.mock.method(globalThis, "fetch", async (input) => {
@@ -409,7 +379,6 @@ for (const [label, declared, metadata, expected, expectedModes, catalogModes] of
               id: "fixture-model",
               name: "deepseek-flash",
               ...(declared === undefined ? {} : { contextWindow: declared }),
-              ...(catalogModes === undefined ? {} : { input_modalities: catalogModes }),
             },
           ],
         });
@@ -421,12 +390,11 @@ for (const [label, declared, metadata, expected, expectedModes, catalogModes] of
     });
     const route = await business.modelRoute(new AbortController().signal);
     assert.equal(route.contextWindows["fixture-model"], expected);
-    assert.deepEqual(route.inputModalities["fixture-model"], expectedModes);
-    assert.equal(metadataReads, 1);
+    assert.equal(metadataReads, reads);
     assert.deepEqual(route.models, ["fixture-model"]);
     assert.equal(business.status().authenticated, true);
     await business.modelRoute(new AbortController().signal);
-    assert.equal(metadataReads, 1);
+    assert.equal(metadataReads, reads);
   });
 }
 

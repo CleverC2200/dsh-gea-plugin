@@ -1,28 +1,17 @@
-import {
-  offloadedImageText,
-  textOnlyImageText,
-  type ContentBlock,
-  type GenerateOptions,
-} from "@deepseek-ai/dsh-llm";
+import type { ContentBlock, GenerateOptions } from "@deepseek-ai/dsh-llm";
 import { toolResults } from "../shared/tool-results.ts";
 
-type GeaUserPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
-type ImageRef = Extract<ContentBlock, { type: "image" }>["attachment"];
-type GeaMessage =
-  | { role: "user"; content: string | GeaUserPart[] }
-  | {
-      role: "system" | "assistant" | "tool";
-      content?: string;
-      reasoning_content?: string;
-      tool_call_id?: string;
-      tool_calls?: Array<{
-        id: string;
-        type: "function";
-        function: { name: string; arguments: string };
-      }>;
-    };
+type GeaMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string;
+  reasoning_content?: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+};
 
 function textContent(content: readonly ContentBlock[]): string {
   return content
@@ -31,10 +20,7 @@ function textContent(content: readonly ContentBlock[]): string {
     .join("");
 }
 
-export function toGeaMessages(
-  options: GenerateOptions,
-  images?: ReadonlyMap<ImageRef["attachmentId"], string>,
-): GeaMessage[] {
+export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
   const messages: GeaMessage[] = [];
   if (options.system !== undefined) messages.push({ role: "system", content: options.system });
   for (const message of options.messages) {
@@ -77,26 +63,7 @@ export function toGeaMessages(
       });
       continue;
     }
-    const parts = message.content.flatMap((block): GeaUserPart[] => {
-      if (block.type === "text") return [{ type: "text", text: block.text }];
-      if (block.type !== "image") return [];
-      const url = block.offloaded ? undefined : images?.get(block.attachment.attachmentId);
-      if (url) return [{ type: "image_url", image_url: { url } }];
-      return [
-        {
-          type: "text",
-          text: block.offloaded
-            ? offloadedImageText(block.attachment)
-            : textOnlyImageText(block.attachment),
-        },
-      ];
-    });
-    messages.push({
-      role: "user",
-      content: parts.some((part) => part.type === "image_url")
-        ? parts
-        : parts.map((part) => (part.type === "text" ? part.text : "")).join(""),
-    });
+    messages.push({ role: "user", content: textContent(message.content) });
   }
   return messages;
 }

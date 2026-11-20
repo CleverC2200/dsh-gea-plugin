@@ -42,11 +42,7 @@ import {
 import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { SalesPlanTransactions } from "./sales-plan-transactions.ts";
 import { object, text, keys } from "./payload.ts";
-import {
-  modelContextWindow,
-  modelInputModalities,
-  officialModelContextWindow,
-} from "../shared/model-context.ts";
+import { modelContextWindow, officialModelContextWindow } from "../shared/model-context.ts";
 export { object } from "./payload.ts";
 import { GatewayRequests } from "./gateway-requests.ts";
 import { DeploymentTransport } from "./deployment-transport.ts";
@@ -243,7 +239,6 @@ export type GeaModelRoute = {
   models: string[];
   names: Record<string, string>;
   contextWindows?: Record<string, number>;
-  inputModalities?: Record<string, ("text" | "image")[]>;
 };
 
 const planFields = [
@@ -2231,14 +2226,11 @@ export class Business {
           ...cached,
           names: { ...cached.names },
           contextWindows: { ...cached.contextWindows },
-          inputModalities: { ...cached.inputModalities },
         };
         for (const id of retry.ids) {
           const metadata = await readMetadata(id);
           const capacity = modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
           if (capacity !== undefined) route.contextWindows[id] ??= capacity;
-          const modalities = modelInputModalities(metadata);
-          if (modalities) route.inputModalities[id] ??= modalities;
           const label = metadata.name || metadata.modelName;
           if (
             cached.names[id] === "GEA 模型（名称未提供）" &&
@@ -2343,7 +2335,6 @@ export class Business {
         });
       const names: Record<string, string> = {};
       const contextWindows: Record<string, number> = {};
-      const inputModalities: NonNullable<GeaModelRoute["inputModalities"]> = {};
       for (const id of new Set(models)) {
         const item = modelsPayload.data.find(
           (entry: unknown) =>
@@ -2351,18 +2342,15 @@ export class Business {
         );
         const entry = item && typeof item === "object" ? object(item) : {};
         let capacity = modelContextWindow(entry);
-        let modalities = modelInputModalities(entry);
         let label = entry.name;
         const hasLabel = typeof label === "string" && label.trim();
-        if (!hasLabel || capacity === undefined || modalities === undefined) {
+        if (!hasLabel || capacity === undefined) {
           const metadata = await readMetadata(id);
           if (!hasLabel) label = metadata.name || metadata.modelName;
           capacity ??= modelContextWindow(metadata) ?? officialModelContextWindow(metadata);
-          modalities ??= modelInputModalities(metadata);
         }
         capacity ??= officialModelContextWindow(entry);
         if (capacity !== undefined) contextWindows[id] = capacity;
-        if (modalities) inputModalities[id] = modalities;
         names[id] =
           typeof label === "string" && label.trim() && label.length <= 256
             ? label.trim()
@@ -2375,7 +2363,6 @@ export class Business {
         models: [...new Set(models)],
         names,
         contextWindows,
-        inputModalities,
       };
       return cacheRoute(route);
     });

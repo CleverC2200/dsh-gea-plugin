@@ -7,10 +7,6 @@ import {
   LlmError,
   ReasoningEffortId,
   ProviderRequestId,
-  IMAGE_OFFLOAD_REQUIRED_CODE,
-  requiredImageOffload,
-  type ContentBlock,
-  type ModelModality,
   attributionHeaders,
   resolveRetryPolicy,
   type GenerateOptions,
@@ -104,52 +100,6 @@ export async function initializeGeaDefaultModel(
   });
 }
 
-type ImageRef = Extract<ContentBlock, { type: "image" }>["attachment"];
-type ReadImage = (
-  ref: ImageRef,
-  signal: AbortSignal,
-) => Promise<{ data: Uint8Array; mediaType: string }>;
-const TEXT_INPUT: ModelModality[] = ["text"];
-
-async function prepareUserImages(
-  options: GenerateOptions,
-  readImage: ReadImage | undefined,
-  signal: AbortSignal,
-) {
-  const messages = options.messages.filter((message) => message.role === "user");
-  const offloadImages = requiredImageOffload(
-    messages,
-    {
-      representation: "base64",
-      maxBytes: 24 * 1024 * 1024,
-      maxImages: 16,
-      byteQuantum: 1,
-      countQuantum: 1,
-    },
-    (block) => block.attachment.bytes,
-  );
-  if (offloadImages > 0)
-    throw new LlmError("图片超出单次请求容量。", IMAGE_OFFLOAD_REQUIRED_CODE, { offloadImages });
-  const images = new Map<ImageRef["attachmentId"], string>();
-  for (const message of messages) {
-    for (const block of message.content) {
-      if (block.type !== "image" || block.offloaded || images.has(block.attachment.attachmentId))
-        continue;
-      if (!readImage) throw new LlmError("图片存储不可用。", "INVALID_REQUEST");
-      const { data, mediaType } = await readImage(block.attachment, signal).catch(() => {
-        signal.throwIfAborted();
-        throw new LlmError("无法读取已上传的图片，请重新上传。", "INVALID_REQUEST");
-      });
-      signal.throwIfAborted();
-      images.set(
-        block.attachment.attachmentId,
-        `data:${mediaType};base64,${Buffer.from(data).toString("base64")}`,
-      );
-    }
-  }
-  return images;
-}
-
 export class GeaModelAdapter extends LlmAdapter {
   private readonly requestOwners = new WeakMap<AbortSignal, AbortSignal>();
   constructor(
@@ -158,7 +108,6 @@ export class GeaModelAdapter extends LlmAdapter {
       session?: string,
       signal?: AbortSignal,
     ) => Promise<{ consumerCode: string; signal: AbortSignal } | undefined> = async () => undefined,
-    private readonly readImage?: ReadImage,
   ) {
     super();
   }
@@ -173,12 +122,7 @@ export class GeaModelAdapter extends LlmAdapter {
       new AbortController().signal,
       WORKBENCH_AGENT_CODE,
     );
-    return route.models.map((id) => ({
-      provider,
-      id,
-      name: route.names[id],
-      ...(route.inputModalities?.[id] ? { inputModalities: route.inputModalities[id] } : {}),
-    }));
+    return route.models.map((id) => ({ provider, id, name: route.names[id] }));
   }
   async resolveModel(provider: string, model: string, signal?: AbortSignal) {
     const route = await this.business.modelRoute(
@@ -191,7 +135,6 @@ export class GeaModelAdapter extends LlmAdapter {
       ...(route.contextWindows?.[model]
         ? { context: { contextWindow: route.contextWindows[model] } }
         : {}),
-      inputModalities: route.inputModalities?.[model] ?? TEXT_INPUT,
       name: route.names[model] ?? "GEA 模型（名称未提供）",
 
       reasoning: {
@@ -281,7 +224,6 @@ export class GeaModelAdapter extends LlmAdapter {
     const business = this.business;
     const htmlAccess = this.htmlAccess;
     const requestOwners = this.requestOwners;
-    const readImage = this.readImage;
     const request = async function* (): AsyncGenerator<StreamChunk> {
       const access = await htmlAccess(options.sessionId, signal);
       if (access) {
@@ -304,10 +246,7 @@ export class GeaModelAdapter extends LlmAdapter {
           "GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。",
           "MODEL_NOT_FOUND",
         );
-      const images = route.inputModalities?.[options.model]?.includes("image")
-        ? await prepareUserImages(options, readImage, signal)
-        : undefined;
-      const requestBody = toGeaRequest(options, images);
+      const requestBody = toGeaRequest(options);
       appendOrderCardModelContext(
         business,
         options.sessionId,
@@ -320,7 +259,7 @@ export class GeaModelAdapter extends LlmAdapter {
           business.fetchExternal(route.baseUrl + "/chat/completions", {
             method: "POST",
             headers: {
-              Accept: "text/event-stream, application/json",
+              Accept: "text/event-stream",
               "Content-Type": "application/json",
               ...attributionHeaders(),
               Authorization: "Bearer " + route.secret,
@@ -496,14 +435,11 @@ export class GeaModelAdapter extends LlmAdapter {
   }
 }
 
-function toGeaRequest(
-  options: GenerateOptions,
-  images?: ReadonlyMap<ImageRef["attachmentId"], string>,
-) {
+function toGeaRequest(options: GenerateOptions) {
   const extraParams = geaExtraParams(options);
   return {
     model: options.model,
-    messages: toGeaMessages(options, images),
+    messages: toGeaMessages(options),
     stream: true,
     gea_tool_execution_mode: "client",
     stream_options: { include_usage: true },

@@ -453,12 +453,7 @@ export async function apply(
     ctx.effect(() => {
       const registration = ctx.llm.registerAdapter(
         ["gea-analysis"],
-        new GeaModelAdapter(business, htmlPlugins.modelAccessForSession, async (ref, signal) => {
-          const attachments = ctx.get("attachments");
-          if (!attachments) throw Error("GEA_IMAGE_STORAGE_UNAVAILABLE");
-          const image = await attachments.readImage(ref, signal);
-          return { data: image.data, mediaType: image.ref.mediaType };
-        }),
+        new GeaModelAdapter(business, htmlPlugins.modelAccessForSession),
       );
       let identity = business.identitySignal();
       let authenticated = business.status().authenticated;
