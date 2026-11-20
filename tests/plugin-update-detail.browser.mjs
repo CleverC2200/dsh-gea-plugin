@@ -24,7 +24,7 @@ const pkg = (name) => ({
   rows: [],
 });
 
-test("official detail diagnostics navigate to the shared update panel", async (t) => {
+test("official plugin detail keeps diagnostics without a separate update window", async (t) => {
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/detail-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -203,41 +203,35 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   const base = `http://127.0.0.1:${server.address().port}`;
   phase = "current";
   await page.goto(base + "/?latest");
-  await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
-  assert.equal(await page.locator("[data-update-entry]").textContent(), "");
-  await page.getByRole("button", { name: "View update status", exact: true }).click();
-  await page.getByText("Client is up to date", { exact: true }).waitFor();
-  assert.equal(await page.getByText("Target version", { exact: true }).count(), 0);
+  const footer = page.locator("[data-update-entry]");
+  assert.equal(await footer.locator(".gea-update-card").count(), 0);
+  await page.getByRole("menuitem", { name: "Check for updates", exact: true }).click();
+  await footer.getByRole("button", { name: "Yes", exact: true }).click();
+  await footer.getByText(/Client is up to date/).waitFor();
   await page.evaluate(() => window.fixture.locale("zh"));
-  await page.getByText("已是最新版", { exact: true }).waitFor();
-  assert.equal(await page.getByText("目标版本", { exact: true }).count(), 0);
-  await mkdir(".runtime/detail-summary", { recursive: true });
-  await page.screenshot({ path: ".runtime/detail-summary/latest.png" });
-  assert.equal(await page.locator("[data-update-entry]").textContent(), "");
+  await footer.getByText(/已是最新版/).waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
   await page.evaluate(() => window.fixture.dispose());
   phase = "available";
-  for (const layout of ["hidden-entry", "narrow-entry"]) {
-    await page.goto(base + "/?" + layout);
-    await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
-    assert.equal(await page.locator(".gea-update-entry").count(), 0);
-    await page.evaluate(() => window.fixture.dispose());
-  }
+  await page.goto(base + "/?narrow-entry");
+  assert.equal(await footer.getByRole("button").count(), 0);
+  await page.evaluate(() => window.fixture.dispose());
   await page.goto(base);
-  await page
-    .locator("[data-update-entry]")
-    .getByRole("button", { name: "Restart and update", exact: true })
-    .waitFor();
+  await footer.getByRole("button", { name: "Restart and update", exact: true }).waitFor();
   phase = "pending-restart";
   await page.locator("main").getByText("Restart required", { exact: true }).waitFor();
-  assert.equal(await page.locator(".gea-update-entry").count(), 1);
   phase = "current";
-  await page.locator(".gea-update-entry").waitFor({ state: "hidden" });
-  assert.equal(await page.locator("[data-update-entry] .gea-update-dot").count(), 0);
+  await footer
+    .getByRole("button", { name: "Restart and update", exact: true })
+    .waitFor({ state: "hidden" });
+  assert.equal(await footer.locator(".gea-update-dot").count(), 0);
   phase = "available";
-  await page.locator(".gea-update-entry").waitFor();
-  await page.getByRole("button", { name: "View update status", exact: true }).waitFor();
+  await footer.getByRole("button", { name: "Restart and update", exact: true }).waitFor();
   assert.equal(
-    await page.getByRole("button", { name: "Check for updates", exact: true }).count(),
+    await page
+      .locator("main")
+      .getByRole("button", { name: "View update status", exact: true })
+      .count(),
     0,
   );
   assert.match(await page.locator("main").textContent(), /1.2.2/);
@@ -299,10 +293,6 @@ test("official detail diagnostics navigate to the shared update panel", async (t
     )
     .waitFor();
   assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
-  assert.equal(
-    await page.getByRole("button", { name: "View update status", exact: true }).isEnabled(),
-    true,
-  );
   await page.evaluate(() => window.fixture.locale("zh"));
   await requirement.getByText("当前依赖版本", { exact: true }).waitFor();
   await page
@@ -362,10 +352,6 @@ test("official detail diagnostics navigate to the shared update panel", async (t
       .getByText(problem.requirements.at(-1).consumer, { exact: true })
       .scrollIntoViewIfNeeded();
     assert.equal(await page.getByRole("button", { name: "Update all", exact: true }).count(), 0);
-    assert.equal(
-      await page.getByRole("button", { name: "View update status", exact: true }).isEnabled(),
-      true,
-    );
     if (process.env.GEA_DETAIL_SCREENSHOT)
       await page.screenshot({
         path: `${process.env.GEA_DETAIL_SCREENSHOT}-many-${viewport.width}.png`,
@@ -449,57 +435,17 @@ test("official detail diagnostics navigate to the shared update panel", async (t
   problem = undefined;
   phase = "available";
   await page.evaluate(() => window.fixture.dispose());
-  await page.goto(base);
-  await page.getByRole("button", { name: "View update status", exact: true }).click();
-  const panel = page.locator("[data-update-panel]");
-  await panel.getByRole("button", { name: "Restart and update", exact: true }).first().click();
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
-    "check",
-    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
-  ]);
-  assert.equal(prepared, 0);
-  assert.equal(updates, 0);
-  await page.evaluate(() => window.fixture.locale("zh"));
-  await mkdir(".runtime/detail-summary", { recursive: true });
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 840 });
-    await page.screenshot({ path: `.runtime/detail-summary/takeover-${width}.png` });
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-      true,
-    );
-  }
-  await page.evaluate(() => window.fixture.dispose());
   await page.goto(base + "/?old-client");
-  await page.getByRole("button", { name: "View update status", exact: true }).click();
-  await panel
-    .getByRole("alert")
-    .filter({ hasText: "Upgrade the client to use restart and update." })
-    .waitFor();
-  assert.equal(
-    await panel
-      .getByRole("button", { name: "Restart and update", exact: true })
-      .first()
-      .isDisabled(),
-    true,
-  );
+  const restart = footer.getByRole("button", { name: "Restart and update", exact: true });
+  await restart.waitFor();
+  assert.equal(await restart.isDisabled(), true);
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
-  assert.equal(prepared, 0);
-  assert.equal(updates, 0);
   await page.evaluate(() => window.fixture.dispose());
+
   phase = "current";
   await page.goto(base + "/?retry-install");
-  await page
-    .locator("[data-update-entry]")
-    .getByRole("button", { name: "Restart and update", exact: true })
-    .click();
+  await restart.click();
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
-    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
-  ]);
-  await page.getByRole("button", { name: "View update status", exact: true }).click();
-  await panel.getByRole("button", { name: "Restart and update", exact: true }).click();
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
-    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
     { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
   ]);
   assert.equal(prepared, 0);

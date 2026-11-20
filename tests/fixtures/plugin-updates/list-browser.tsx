@@ -60,35 +60,25 @@ new TestRemote(ctx, {
   },
 });
 await ctx.plugin(settings).await();
-let openSettings = () => {};
-let selectSection = (_id: string) => {};
 let closeSettings = () => {};
-const openedSections: string[] = [];
-ctx.provide("settingsNavigation", {
-  open(sectionId) {
-    openedSections.push(sectionId);
-    selectSection(sectionId);
-    openSettings();
-  },
-});
+ctx.provide("settingsNavigation", { open() {} });
 ctx.slots.register(
   {
     name: "root",
     children: {
       "settings.section": { kind: "list", scope: "root" },
       "shell.overlay": { kind: "list", scope: "root" },
-      "settings.update": { kind: "single", scope: "root" },
+      "sidebar.footer.action": { kind: "list", scope: "root" },
+      "gea.account.actions": { kind: "list", scope: "root" },
     },
   },
   ({ renderSlot }) => {
     const [visible, setVisible] = useState(!sidebar);
-    const [section, setSection] = useState("plugin-manager");
-    selectSection = setSection;
-    openSettings = () => setVisible(true);
+    const [accountOpen, setAccountOpen] = useState(false);
     closeSettings = () => setVisible(false);
     return (
       <div style={{ maxWidth: 800, margin: "auto", padding: 24 }}>
-        {sidebar ? (
+        {
           <footer
             style={{
               display: "flex",
@@ -98,11 +88,19 @@ ctx.slots.register(
             }}
           >
             <span>陈勇浩</span>
-            {renderSlot("settings.update", { wide: true, hidden: false })}
+            {renderSlot("sidebar.footer.action", { wide: true })}
+            <button type="button" onClick={() => setAccountOpen(!accountOpen)}>
+              账户菜单
+            </button>
+            {accountOpen && (
+              <div role="menu">
+                {renderSlot("gea.account.actions", { onSelect: () => setAccountOpen(false) })}
+              </div>
+            )}
           </footer>
-        ) : null}
+        }
         {visible
-          ? renderSlot("settings.section", { close: closeSettings }, { only: section })
+          ? renderSlot("settings.section", { close: closeSettings }, { only: "plugin-manager" })
           : null}
         {renderSlot("shell.overlay", {})}
       </div>
@@ -132,7 +130,6 @@ Object.assign(window, {
     closeSettings() {
       closeSettings();
     },
-    openedSections,
     locale(value: string) {
       locale.setLocale(value);
     },

@@ -1,8 +1,4 @@
-export function modelContextWindow(model: Record<string, unknown>): number | undefined {
-  const positive = (value: unknown): value is number =>
-    typeof value === "number" && Number.isSafeInteger(value) && value > 0;
-  const declared = model.contextWindow ?? model.context_window;
-  if (positive(declared)) return declared;
+function modelParameters(model: Record<string, unknown>): Record<string, unknown> | undefined {
   let parameters: unknown = model.modelParams;
   if (typeof parameters === "string") {
     try {
@@ -11,10 +7,33 @@ export function modelContextWindow(model: Record<string, unknown>): number | und
       return undefined;
     }
   }
-  if (!parameters || typeof parameters !== "object" || Array.isArray(parameters)) return undefined;
-  const configured =
-    Reflect.get(parameters, "contextWindow") ?? Reflect.get(parameters, "context_window");
+  return parameters && typeof parameters === "object" && !Array.isArray(parameters)
+    ? (parameters as Record<string, unknown>)
+    : undefined;
+}
+
+export function modelContextWindow(model: Record<string, unknown>): number | undefined {
+  const positive = (value: unknown): value is number =>
+    typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+  const declared = model.contextWindow ?? model.context_window;
+  if (positive(declared)) return declared;
+  const parameters = modelParameters(model);
+  const configured = parameters?.contextWindow ?? parameters?.context_window;
   return positive(configured) ? configured : undefined;
+}
+
+export function modelInputModalities(
+  model: Record<string, unknown>,
+): ("text" | "image")[] | undefined {
+  const parameters = modelParameters(model);
+  const declared =
+    model.inputModalities ??
+    model.input_modalities ??
+    parameters?.inputModalities ??
+    parameters?.input_modalities;
+  if (!Array.isArray(declared)) return undefined;
+  if (declared.includes("image")) return ["text", "image"];
+  if (declared.includes("text")) return ["text"];
 }
 
 export function officialModelContextWindow(model: Record<string, unknown>): number | undefined {
