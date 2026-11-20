@@ -130,12 +130,13 @@ async function fixture(t) {
   };
 }
 
-test("GEA registers execution metadata and evidence only, preserving the original official Skill and persona assembly", async (t) => {
+test("GEA registers execution evidence and session attachments without altering the official Skill and persona assembly", async (t) => {
   const current = await fixture(t);
   assert.deepEqual([...current.registered.keys()].sort(), [
     "gea_capabilities",
     "gea_evidence_read",
     "gea_runtime_diagnose",
+    "read_uploaded_file",
   ]);
   const original = {
     sections: [
@@ -143,10 +144,17 @@ test("GEA registers execution metadata and evidence only, preserving the origina
       { name: "deployment:persona-prefix", text: "Exact source persona" },
       { name: "platform:security", text: "Exact platform rule" },
     ],
-    tools: [{ name: "skill", description: "Official full-body loader" }],
+    tools: [
+      { name: "skill", description: "Official full-body loader" },
+      { name: "read_uploaded_file" },
+    ],
   };
   const result = await current.assemble(original);
   assert.deepEqual(result.sections, original.sections);
+  assert.equal(
+    result.tools.some((tool) => tool.name === "read_uploaded_file"),
+    false,
+  );
   assert.equal(
     result.tools.find((tool) => tool.name === "skill").description,
     "Official full-body loader",
