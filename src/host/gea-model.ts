@@ -14,8 +14,8 @@ import {
   type StreamChunk,
 } from "@deepseek-ai/dsh-llm";
 import { idleWatchdog, timeoutOf } from "@deepseek-ai/dsh-timeout";
-import type { Business } from "./business.ts";
-import { toGeaMessages } from "./gea-messages.ts";
+import type { Business, GeaModelRoute } from "./business.ts";
+import { toGeaMessages, type ImageRef } from "./gea-messages.ts";
 import { appendOrderCardModelContext } from "./module-page-scope.ts";
 import { networkError } from "../shared/net-error.ts";
 import { modelHttpError } from "../shared/model-http-error.ts";
@@ -100,6 +100,63 @@ export async function initializeGeaDefaultModel(
   });
 }
 
+type ReadImage = (ref: ImageRef, signal: AbortSignal) => Promise<{ data: Uint8Array }>;
+
+async function prepareImages(
+  options: GenerateOptions,
+  route: GeaModelRoute,
+  readImage: ReadImage | undefined,
+  signal: AbortSignal,
+) {
+  const references = options.messages.flatMap((message) =>
+    message.role === "user"
+      ? message.content.flatMap((block) =>
+          block.type === "image" && !block.offloaded ? [block.attachment] : [],
+        )
+      : [],
+  );
+  const images = new Map<ImageRef["attachmentId"], string>();
+  if (!references.length) return images;
+  const input = route.imageInputs.get(options.model);
+  if (!input)
+    throw new LlmError("当前 GEA 模型未开放图片输入，请更换支持图片的模型。", "INVALID_REQUEST");
+  if (options.tools?.length && !input.withTools)
+    throw new LlmError("当前 GEA 模型不支持同时使用图片和工具，请更换模型。", "INVALID_REQUEST");
+  if (
+    references.length > input.count ||
+    references.some((ref) => ref.bytes > input.fileBytes) ||
+    references.reduce((bytes, ref) => bytes + ref.bytes, 0) > input.totalBytes
+  )
+    throw new LlmError(
+      "图片超出当前 GEA 模型的附件限额，请减少图片或缩小后重传。",
+      "INVALID_REQUEST",
+    );
+  if (!readImage) throw new LlmError("图片存储不可用。", "INVALID_REQUEST");
+  for (const ref of references) {
+    const extension = ref.mediaType.slice("image/".length);
+    if (
+      !input.formats.includes(extension) &&
+      !(extension === "jpeg" && input.formats.includes("jpg"))
+    )
+      throw new LlmError(
+        "当前 GEA 模型不支持这张图片的格式，请换用模型支持的图片格式。",
+        "INVALID_REQUEST",
+      );
+    if (images.has(ref.attachmentId)) continue;
+    signal.throwIfAborted();
+    const { data } = await readImage(ref, signal).catch(() => {
+      signal.throwIfAborted();
+      throw new LlmError("无法读取已上传的图片，请重新上传。", "INVALID_REQUEST");
+    });
+    signal.throwIfAborted();
+    images.set(
+      ref.attachmentId,
+      `data:${ref.mediaType};base64,${Buffer.from(data).toString("base64")}`,
+    );
+  }
+  return images;
+}
+
 export class GeaModelAdapter extends LlmAdapter {
   private readonly requestOwners = new WeakMap<AbortSignal, AbortSignal>();
   constructor(
@@ -108,6 +165,7 @@ export class GeaModelAdapter extends LlmAdapter {
       session?: string,
       signal?: AbortSignal,
     ) => Promise<{ consumerCode: string; signal: AbortSignal } | undefined> = async () => undefined,
+    private readonly readImage?: ReadImage,
   ) {
     super();
   }
@@ -223,6 +281,7 @@ export class GeaModelAdapter extends LlmAdapter {
     const modelHost = "GEA 模型网关";
     const business = this.business;
     const htmlAccess = this.htmlAccess;
+    const readImage = this.readImage;
     const requestOwners = this.requestOwners;
     const request = async function* (): AsyncGenerator<StreamChunk> {
       const access = await htmlAccess(options.sessionId, signal);
@@ -246,7 +305,8 @@ export class GeaModelAdapter extends LlmAdapter {
           "GEA_MODEL_NOT_FOUND: 当前Agent不支持所选模型，请按当前Agent重新发现并选择模型；不能借用其它Agent的模型身份。",
           "MODEL_NOT_FOUND",
         );
-      const requestBody = toGeaRequest(options);
+      const images = await prepareImages(options, route, readImage, signal);
+      const requestBody = toGeaRequest(options, images);
       appendOrderCardModelContext(
         business,
         options.sessionId,
@@ -435,11 +495,14 @@ export class GeaModelAdapter extends LlmAdapter {
   }
 }
 
-function toGeaRequest(options: GenerateOptions) {
+function toGeaRequest(
+  options: GenerateOptions,
+  images: ReadonlyMap<ImageRef["attachmentId"], string>,
+) {
   const extraParams = geaExtraParams(options);
   return {
     model: options.model,
-    messages: toGeaMessages(options),
+    messages: toGeaMessages(options, images),
     stream: true,
     gea_tool_execution_mode: "client",
     stream_options: { include_usage: true },

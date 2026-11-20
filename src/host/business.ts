@@ -42,7 +42,11 @@ import {
 import * as salesPlan from "@cleverc2200/dsh-agent-workbench/sales-plan";
 import { SalesPlanTransactions } from "./sales-plan-transactions.ts";
 import { object, text, keys } from "./payload.ts";
-import { modelContextWindow, officialModelContextWindow } from "../shared/model-context.ts";
+import {
+  modelContextWindow,
+  modelImageInput,
+  officialModelContextWindow,
+} from "../shared/model-context.ts";
 export { object } from "./payload.ts";
 import { GatewayRequests } from "./gateway-requests.ts";
 import { DeploymentTransport } from "./deployment-transport.ts";
@@ -239,6 +243,7 @@ export type GeaModelRoute = {
   models: string[];
   names: Record<string, string>;
   contextWindows?: Record<string, number>;
+  imageInputs: ReadonlyMap<string, NonNullable<ReturnType<typeof modelImageInput>>>;
 };
 
 const planFields = [
@@ -2335,12 +2340,15 @@ export class Business {
         });
       const names: Record<string, string> = {};
       const contextWindows: Record<string, number> = {};
+      const imageInputs = new Map<string, NonNullable<ReturnType<typeof modelImageInput>>>();
       for (const id of new Set(models)) {
         const item = modelsPayload.data.find(
           (entry: unknown) =>
             typeof entry === "object" && entry !== null && object(entry).id === id,
         );
         const entry = item && typeof item === "object" ? object(item) : {};
+        const imageInput = modelImageInput(entry.gea_attachments);
+        if (imageInput) imageInputs.set(id, imageInput);
         let capacity = modelContextWindow(entry);
         let label = entry.name;
         const hasLabel = typeof label === "string" && label.trim();
@@ -2363,6 +2371,7 @@ export class Business {
         models: [...new Set(models)],
         names,
         contextWindows,
+        imageInputs,
       };
       return cacheRoute(route);
     });

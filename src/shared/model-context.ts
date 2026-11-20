@@ -1,3 +1,25 @@
+import { z } from "zod";
+
+const imageInputs = z.object({
+  image_extensions: z.array(z.string()),
+  media_with_tools: z.boolean(),
+  max_attachments: z.number().int().nonnegative(),
+  max_attachment_bytes: z.number().int().nonnegative(),
+  max_total_bytes: z.number().int().nonnegative(),
+});
+
+export function modelImageInput(value: unknown) {
+  const parsed = imageInputs.safeParse(value);
+  if (!parsed.success || !parsed.data.image_extensions.length) return undefined;
+  return {
+    formats: parsed.data.image_extensions,
+    withTools: parsed.data.media_with_tools,
+    count: parsed.data.max_attachments,
+    fileBytes: parsed.data.max_attachment_bytes,
+    totalBytes: parsed.data.max_total_bytes,
+  };
+}
+
 export function modelContextWindow(model: Record<string, unknown>): number | undefined {
   const positive = (value: unknown): value is number =>
     typeof value === "number" && Number.isSafeInteger(value) && value > 0;
