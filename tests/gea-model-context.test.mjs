@@ -124,3 +124,90 @@ test("the default catalog, model metadata and inference use workbench while scop
   assert.deepEqual(authorized, ["workbench", "sales_forecast", "branch-inventory"]);
   assert.deepEqual(transported, authorized);
 });
+
+test("GEA sends image-only and mixed history as ordered image_url blocks on every attempt", async (t) => {
+  t.mock.method(console, "info", () => {});
+  const ctx = new Context();
+  t.after(() => ctx.fiber.dispose());
+  const runtime = new LlmRuntime(ctx);
+  const bodies = [];
+  const reads = [];
+  const data = Buffer.from("UklGRgwAAABXRUJQVlA4TA==", "base64");
+  const attachment = {
+    attachmentId: "sha256:" + "b".repeat(64),
+    mediaType: "image/webp",
+    width: 1,
+    height: 1,
+    bytes: data.length,
+  };
+  const identity = new AbortController();
+  const business = {
+    capture: new GeaRequestCapture(
+      "",
+      () => undefined,
+      () => "https://fixture.invalid",
+    ),
+    config: { modelRequestTimeoutMs: 1000 },
+    identitySignal: () => identity.signal,
+    assertExecutionAllowed() {},
+    modelRoute: async (_signal, agentCode) => ({
+      agentCode,
+      models: ["vision", "text"],
+      names: { vision: "Vision", text: "Text" },
+      imageInputs: new Map([
+        [
+          "vision",
+          { formats: ["webp"], withTools: true, count: 2, fileBytes: 100, totalBytes: 100 },
+        ],
+      ]),
+      baseUrl: "https://fixture.invalid",
+      secret: "fixture-only",
+    }),
+    fetchExternal: async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return new Response(
+        'data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    },
+  };
+  runtime.registerAdapter(
+    ["gea-analysis"],
+    new GeaModelAdapter(business, undefined, async (ref) => {
+      reads.push(ref);
+      return { data };
+    }),
+  );
+  const user = (content) => ({ role: "user", source: { kind: "user" }, content });
+  const image = { type: "image", attachment };
+  const text = (text) => ({ type: "text", text });
+  const dispatch = async (model, messages) => {
+    const chunks = [];
+    for await (const chunk of runtime.stream({ provider: "gea-analysis", model, messages }))
+      chunks.push(chunk);
+    return chunks.at(-1).reason.kind;
+  };
+
+  const imageOnly = user([image]);
+  const picture = {
+    type: "image_url",
+    image_url: { url: "data:image/webp;base64," + data.toString("base64") },
+  };
+  assert.equal(await dispatch("vision", [imageOnly]), "stop");
+  assert.deepEqual(bodies[0].messages, [{ role: "user", content: [picture] }]);
+
+  const history = [imageOnly, user([text("before"), image, text("after")]), user([text("next")])];
+  assert.equal(await dispatch("vision", history), "stop");
+  assert.equal(await dispatch("vision", history), "stop");
+  assert.deepEqual(bodies[1].messages, [
+    { role: "user", content: [picture] },
+    { role: "user", content: [text("before"), picture, text("after")] },
+    { role: "user", content: "next" },
+  ]);
+  assert.deepEqual(bodies[2], bodies[1]);
+  assert.equal(reads.length, 3);
+  assert.equal(await dispatch("text", [imageOnly]), "error");
+  assert.equal(await dispatch("vision", [imageOnly, imageOnly, imageOnly]), "error");
+  assert.equal(bodies.length, 3);
+  assert.equal(reads.length, 3);
+});

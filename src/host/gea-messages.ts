@@ -1,17 +1,25 @@
-import type { ContentBlock, GenerateOptions } from "@deepseek-ai/dsh-llm";
+import { offloadedImageText, type ContentBlock, type GenerateOptions } from "@deepseek-ai/dsh-llm";
 import { toolResults } from "../shared/tool-results.ts";
 
-type GeaMessage = {
-  role: "system" | "user" | "assistant" | "tool";
-  content?: string;
-  reasoning_content?: string;
-  tool_call_id?: string;
-  tool_calls?: Array<{
-    id: string;
-    type: "function";
-    function: { name: string; arguments: string };
-  }>;
-};
+type GeaUserPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+export type ImageRef = Extract<ContentBlock, { type: "image" }>["attachment"];
+
+export type GeaMessage =
+  | { role: "user"; content: string | GeaUserPart[] }
+  | {
+      role: "system" | "assistant" | "tool";
+      content?: string;
+      reasoning_content?: string;
+      tool_call_id?: string;
+      tool_calls?: Array<{
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }>;
+    };
 
 function textContent(content: readonly ContentBlock[]): string {
   return content
@@ -20,7 +28,10 @@ function textContent(content: readonly ContentBlock[]): string {
     .join("");
 }
 
-export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
+export function toGeaMessages(
+  options: GenerateOptions,
+  images: ReadonlyMap<ImageRef["attachmentId"], string> = new Map(),
+): GeaMessage[] {
   const messages: GeaMessage[] = [];
   if (options.system !== undefined) messages.push({ role: "system", content: options.system });
   for (const message of options.messages) {
@@ -63,7 +74,18 @@ export function toGeaMessages(options: GenerateOptions): GeaMessage[] {
       });
       continue;
     }
-    messages.push({ role: "user", content: textContent(message.content) });
+    const parts = message.content.flatMap((block): GeaUserPart[] => {
+      if (block.type === "text") return [{ type: "text", text: block.text }];
+      if (block.type !== "image") return [];
+      if (block.offloaded) return [{ type: "text", text: offloadedImageText(block.attachment) }];
+      const url = images.get(block.attachment.attachmentId);
+      if (!url) throw Error("GEA_MODEL_IMAGE_NOT_PREPARED");
+      return [{ type: "image_url", image_url: { url } }];
+    });
+    const content = parts.some((part) => part.type === "image_url")
+      ? parts
+      : parts.map((part) => (part.type === "text" ? part.text : "")).join("");
+    messages.push({ role: "user", content });
   }
   return messages;
 }

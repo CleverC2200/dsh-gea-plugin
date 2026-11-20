@@ -54,7 +54,7 @@ export function appendOrderCardModelContext(
     source?: { kind: string };
     content: readonly { type: string; text?: string }[];
   }[],
-  messages: { role: string; content?: string }[],
+  messages: import("./gea-messages.ts").GeaMessage[],
 ) {
   if (!session || host.surfaceFor?.(session)?.menu !== "inventory-orderworkbench") return;
   const user = inputs
@@ -73,7 +73,7 @@ export function appendOrderCardModelContext(
     : undefined;
   if (!prompt) return;
   const system = messages.find((message) => message.role === "system");
-  if (system) system.content = (system.content ?? "") + "\n\n" + prompt;
+  if (system?.role === "system") system.content = (system.content ?? "") + "\n\n" + prompt;
   else messages.unshift({ role: "system", content: prompt });
 }
 export function modulePagePrompt(

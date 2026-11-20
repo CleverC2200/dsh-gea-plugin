@@ -67,10 +67,31 @@ test("the default model route and status use the workbench catalog independently
       });
     assert.equal(url, "https://fixture.invalid/ai/v1/models");
     assert.equal(new Headers(init.headers).get("X-GEA-Agent-Code"), "workbench");
-    return Response.json({ data: [{ id: "workbench-model", name: "Workbench model" }] });
+    return Response.json({
+      data: [
+        {
+          id: "workbench-model",
+          name: "Workbench model",
+          gea_attachments: {
+            image_extensions: ["webp", "png"],
+            media_with_tools: true,
+            max_attachments: 8,
+            max_attachment_bytes: 8388608,
+            max_total_bytes: 12582912,
+          },
+        },
+      ],
+    });
   });
   const route = await business.modelRoute(new AbortController().signal);
   assert.equal(route.agentCode, "workbench");
+  assert.deepEqual(route.imageInputs.get("workbench-model"), {
+    formats: ["webp", "png"],
+    withTools: true,
+    count: 8,
+    fileBytes: 8388608,
+    totalBytes: 12582912,
+  });
   assert.deepEqual(business.status().discoveredModels, ["workbench-model"]);
   assert.equal(business.status().model, "workbench-model");
 });
