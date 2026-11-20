@@ -24,6 +24,7 @@ import { KPI_RESULT_EVIDENCE_POLICY } from "./kpi-result-meaning.mjs";
 import { orchestrationInventoryAllowed } from "./orchestration-inventory-access.ts";
 import { simpleKpiPlan, simpleKpiPrompt } from "./simple-kpi-query.ts";
 import { lastUserQuestion } from "./turn-anchor.ts";
+import { readUploadedFileTool, uploadedFiles } from "./uploaded-files.ts";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
 const fixedInventoryMethod = (name: string) =>
@@ -474,18 +475,23 @@ export function mountBusinessPrompts(
     ),
   );
 
+  offs.push(ctx.tools.register(readUploadedFileTool(ctx)));
+
   ctx.inject(["systemPrompt"], (promptCtx) => {
     promptCtx.on("system-prompt/assemble", async (_assembly, context, next) => {
       const assembled = await next();
       const agent = context.agent as Agent | undefined;
       const profile = profileOf(agent);
       if (!agent) return assembled;
+      const toolsForTurn = uploadedFiles(agent).length
+        ? assembled.tools
+        : assembled.tools.filter((tool) => tool.name !== "read_uploaded_file");
       if (!profile) {
         const inventory = orchestrationInventoryAllowed(ctx, business, agent.id);
         refreshMask(agent);
         return {
           ...assembled,
-          tools: assembled.tools.filter(
+          tools: toolsForTurn.filter(
             (tool) =>
               !businessMethod(tool.name) ||
               (gatewayMethod(tool.name) && cubeAllowed(ctx, business, agent.id)) ||
@@ -496,7 +502,7 @@ export function mountBusinessPrompts(
       const state = executionState.snapshot(agent);
       refreshMask(agent);
       const visible = new Set(ctx.tools.schemas(agent).map((tool) => tool.name));
-      const tools = assembled.tools
+      const tools = toolsForTurn
         .filter((tool) => visible.has(tool.name))
         .map((tool) =>
           businessToolDisplay({

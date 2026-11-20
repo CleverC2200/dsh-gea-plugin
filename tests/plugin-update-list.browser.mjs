@@ -18,7 +18,7 @@ const names = [
   "@cleverc2200/dsh-personal-memory",
 ];
 
-test("official installed list opens the shared update panel for suite actions and restart", async (t) => {
+test("official installed list keeps status while the sidebar owns suite actions and restart", async (t) => {
   await mkdir(".runtime", { recursive: true });
   const root = await mkdtemp(join(process.cwd(), ".runtime/list-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -89,7 +89,7 @@ test("official installed list opens the shared update panel for suite actions an
       if (req.url.endsWith("/check")) {
         checks++;
         await new Promise((resolve) => setTimeout(resolve, 120));
-        phase = "available";
+        if (phase !== "pending-restart") phase = "available";
       }
       if (req.url.endsWith("/update")) {
         singles++;
@@ -159,14 +159,15 @@ test("official installed list opens the shared update panel for suite actions an
   for (const name of ["dsh-agent-workbench", "dsh-agent-manage", "gea-dsh-prototype"])
     assert.equal(await page.getByRole("button", { name: `查看 ${name}`, exact: true }).count(), 1);
   assert.equal(await page.getByRole("button", { name: /@cleverc2200/ }).count(), 0);
-  await page.getByRole("button", { name: "查看更新状态", exact: true }).click();
-  const panel = page.locator(".gea-updates-panel");
-  await panel.getByRole("heading", { name: "公司插件", exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.fixture.openedSections), ["company-updates"]);
-  await panel.getByRole("button", { name: "检查更新", exact: true }).dblclick();
-  await panel.getByRole("button", { name: "重启更新", exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "查看更新状态", exact: true }).count(), 0);
+  const footer = page.locator("footer");
+  assert.equal(checks, 0);
+  await footer.getByRole("button", { name: "账户菜单", exact: true }).click();
+  await footer.getByRole("menuitem", { name: "检查更新", exact: true }).click();
+  assert.equal(checks, 0);
+  await footer.getByRole("button", { name: "是", exact: true }).click();
+  await footer.getByRole("button", { name: "重启更新", exact: true }).click();
   assert.equal(checks, 1);
-  await panel.getByRole("button", { name: "重启更新", exact: true }).click();
   await page.evaluate(() => window.fixture.closeSettings());
   assert.equal(batches, 0);
   assert.equal(singles, 0);
@@ -177,15 +178,9 @@ test("official installed list opens the shared update panel for suite actions an
     },
   ]);
   phase = "pending-restart";
-  await page.getByRole("alert").filter({ hasText: "正在接管" }).waitFor();
-  assert.equal((await page.evaluate(() => window.nativeRequests)).length, 1);
-  await page.getByRole("button", { name: "查看更新状态", exact: true }).click();
-  await page.evaluate(() => window.fixture.locale("en"));
-  await panel.getByRole("heading", { name: "Company plugins", exact: true }).waitFor();
   await page.goto(url + "?sidebar");
-  const footer = page.locator("footer");
   await footer.getByRole("button", { name: "重启更新", exact: true }).waitFor();
-  assert.equal(await footer.locator(".gea-sidebar-update").count(), 0);
+  assert.equal(await footer.locator(".gea-update-dot").count(), 0);
   const previous = batches;
   await mkdir(".runtime/takeover-visual", { recursive: true });
   await page.screenshot({ path: ".runtime/takeover-visual/entry.png" });

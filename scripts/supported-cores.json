@@ -274,5 +274,19 @@
     "nodeMajor": 24,
     "sourceRepository": "CleverC2200/deepseek-harness",
     "scope": "公司 Core：自动化任务新建沿用对话创建，并在输入区上方居中显示操作引导"
+  },
+  {
+    "head": "17746ac35c8fa08e2da98f2127b05f421132cb16",
+    "version": "0.2.0-rc.2",
+    "sdk": {
+      "@deepseek-ai/cordis": "4.0.4",
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/cordis-plugin-include": "1.0.9"
+    },
+    "lockSha256": "c96d468dd0aa7b857e93b02c062cc5bb3adbe1240decab0980b889aba74a637d",
+    "packageManager": "pnpm@11.7.0",
+    "nodeMajor": 24,
+    "sourceRepository": "CleverC2200/deepseek-harness",
+    "scope": "公司 Core：桌面启动最大化、登录入口收敛和侧栏默认布局"
   }
 ]

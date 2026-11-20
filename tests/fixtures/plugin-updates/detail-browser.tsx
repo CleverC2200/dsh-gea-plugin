@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/base.css";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/design-platform.css";
 import { Context } from "@deepseek-ai/cordis";
@@ -19,12 +19,6 @@ const locale = new LocaleRuntime(ctx);
 ctx.provide("locale", locale);
 ctx.slots.installLocale(locale);
 ctx.provide("pluginNavigation", { openBundle() {} });
-let navigateUpdates = () => {};
-ctx.provide("settingsNavigation", {
-  open() {
-    navigateUpdates();
-  },
-});
 let subject = {
   kind: "bundle",
   pkg: {
@@ -38,46 +32,25 @@ ctx.slots.register(
   {
     name: "root",
     children: {
-      "settings.section": { kind: "list", scope: "root" },
       "settings.update": { kind: "single", scope: "root" },
-      "sidebar.toggle.badge": { kind: "single", scope: "root" },
-      "plugins.detail.actions": { kind: "list", scope: "root" },
+      "sidebar.footer.action": { kind: "list", scope: "root" },
+      "gea.account.actions": { kind: "list", scope: "root" },
       "plugins.detail.badge": { kind: "list", scope: "root" },
       "plugins.detail.section": { kind: "list", scope: "root" },
     },
   },
-  ({ renderSlot }) => {
-    const [updatesOpen, setUpdatesOpen] = useState(false);
-    navigateUpdates = () => setUpdatesOpen(true);
-    return (
-      <>
-        <aside data-update-entry>
-          {renderSlot("settings.update", {
-            wide: !location.search.includes("narrow-entry"),
-            hidden: location.search.includes("hidden-entry"),
-          })}
-          {renderSlot("sidebar.toggle.badge")}
-        </aside>
-        <main>
-          {updatesOpen ? (
-            <div data-update-panel>
-              {renderSlot(
-                "settings.section",
-                { close: () => setUpdatesOpen(false) },
-                { only: "company-updates" },
-              )}
-            </div>
-          ) : (
-            <>
-              {renderSlot("plugins.detail.actions", { subject })}
-              {renderSlot("plugins.detail.badge", { subject })}
-              {renderSlot("plugins.detail.section", { subject })}
-            </>
-          )}
-        </main>
-      </>
-    );
-  },
+  ({ renderSlot }) => (
+    <>
+      <div data-account-actions>{renderSlot("gea.account.actions", { onSelect() {} })}</div>
+      <aside data-update-entry>
+        {renderSlot("sidebar.footer.action", { wide: !location.search.includes("narrow-entry") })}
+      </aside>
+      <main>
+        {renderSlot("plugins.detail.badge", { subject })}
+        {renderSlot("plugins.detail.section", { subject })}
+      </main>
+    </>
+  ),
 );
 ctx.provide("modules", {
   entries: { state: { getSnapshot: () => ({ syncing: true, failures: [] }) } },

@@ -3,14 +3,20 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { runInNewContext } from "node:vm";
+import { clientBuildOptions } from "../scripts/client-build.mjs";
 const require = createRequire(import.meta.url);
+const rendererProvidedModules = new Set([
+  "@deepseek-ai/dsh-client-store",
+  "@deepseek-ai/dsh-client-ui-primitives",
+]);
+const requireClientModule = (name) => (rendererProvidedModules.has(name) ? {} : require(name));
 const { outputFiles } = await build({
   entryPoints: ["src/client.tsx"],
   bundle: true,
   write: false,
   format: "cjs",
   platform: "node",
-  external: ["react", "react/jsx-runtime", "react-dom", "react-dom/*"],
+  external: [...clientBuildOptions("").external, "react-dom", "react-dom/*"],
   loader: { ".css": "text", ".module.css": "text" },
 });
 test("public account actions consume the same GEA Host identity and reject expired login without inventing client authentication", async () => {
@@ -70,7 +76,7 @@ test("public account actions consume the same GEA Host identity and reject expir
   runInNewContext(outputFiles[0].text, {
     module,
     exports: module.exports,
-    require,
+    require: requireClientModule,
     fetch,
     Response,
     AbortController,
@@ -161,7 +167,7 @@ test("a cancelled account login cannot refresh the identity or accept its late c
   runInNewContext(outputFiles[0].text, {
     module,
     exports: module.exports,
-    require,
+    require: requireClientModule,
     fetch,
     Response,
     AbortController,
@@ -201,7 +207,7 @@ for (const [desktop, authenticated, expected] of [
     runInNewContext(outputFiles[0].text, {
       module,
       exports: module.exports,
-      require,
+      require: requireClientModule,
       fetch: async (url) =>
         Response.json(
           url === "/api/gea-html/identity"
@@ -265,7 +271,7 @@ test("the public catalog provider uses Host RPC and refreshes the same identity 
   runInNewContext(outputFiles[0].text, {
     module,
     exports: module.exports,
-    require,
+    require: requireClientModule,
     fetch: async (url, options) => {
       requests.push({ url, options });
       if (url === "/api/gea-html/identity")
