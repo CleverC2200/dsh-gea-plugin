@@ -209,7 +209,7 @@ test("official plugin detail keeps diagnostics without a separate update window"
   await footer.getByRole("button", { name: "Yes", exact: true }).click();
   await footer.getByText(/Client is up to date/).waitFor();
   await page.evaluate(() => window.fixture.locale("zh"));
-  await footer.getByText(/已是最新版/).waitFor();
+  await footer.getByText(/^已是最新版 · /).waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
   await page.evaluate(() => window.fixture.dispose());
   phase = "available";

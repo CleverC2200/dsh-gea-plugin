@@ -450,7 +450,7 @@ const PLAN_QUERY_FIELDS: Record<string, string[]> = {
   versionSkus: ["versionId", "pageNo", "pageSize", "offset"],
   skuReview: ["planId", "versionId"],
   skuQuotes: ["planId", "versionId", "skuCodes"],
-  reportFacts: ["planId", "versionId"],
+  reportFacts: ["planId", "versionId", "resolveAreaName"],
   compare: ["planId", "fromVersionId", "toVersionId"],
 };
 
@@ -4325,9 +4325,15 @@ export class Business {
     }
     if (kind === "reportFacts") {
       if (options.forModel) throw new Error("INVALID_QUERY");
+      if (query.resolveAreaName !== undefined && query.resolveAreaName !== true)
+        throw new Error("INVALID_QUERY");
       const active = AbortSignal.any([signal, this.epoch.signal]);
       return readSalesPlanReportFacts(
-        { planId: text(query.planId), versionId: text(query.versionId) },
+        {
+          planId: text(query.planId),
+          versionId: text(query.versionId),
+          resolveAreaName: query.resolveAreaName,
+        },
         (planId, current) =>
           this.readWorkbenchQuery({ kind: "detail", query: { planId } }, current, {
             deferMaterialNames: true,

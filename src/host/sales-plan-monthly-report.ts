@@ -53,7 +53,7 @@ async function readRows(
 }
 
 export async function readSalesPlanReportFacts(
-  query: { planId: string; versionId: string },
+  query: { planId: string; versionId: string; resolveAreaName?: true },
   readDetail: (planId: string, signal: AbortSignal) => Promise<unknown>,
   readSql: ReadSql,
   periodMonth: (planId: string) => string | undefined,
@@ -70,6 +70,7 @@ export async function readSalesPlanReportFacts(
     throw new Error("GEA_IDENTITY_MISMATCH");
   const customer = text(version.dealerCode);
   const base = text(version.baseName);
+  const province = typeof version.provinceCode === "string" ? version.provinceCode.trim() : "";
   const month = periodMonth(query.planId);
   if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
     throw new Error("GEA_PLAN_MONTH_SOURCE_MISSING");
@@ -80,7 +81,7 @@ export async function readSalesPlanReportFacts(
     return text(sku.skuCode);
   });
   if (new Set(codes).size !== codes.length) throw new Error("GEA_INVALID_REPORT_FACTS");
-  const [gradingRows, dealerRows] = await Promise.all([
+  const [gradingRows, dealerRows, areaRows] = await Promise.all([
     readRows(
       readSql,
       "SELECT DISTINCT warehouse_group_type FROM agents_sales_target_data_d WHERE cust_code = :customer AND belong_base = :base AND bill_date = :month",
@@ -93,13 +94,26 @@ export async function readSalesPlanReportFacts(
       { customer },
       signal,
     ),
+    query.resolveAreaName && province
+      ? readRows(
+          readSql,
+          "SELECT DISTINCT region_name FROM agents_dim_dealer_data_d WHERE cust_code = :customer AND province_region_code = :province",
+          { customer, province },
+          signal,
+        )
+      : [],
   ]);
   if (gradingRows.length > 1 || dealerRows.length > 1)
     throw new Error("GEA_AMBIGUOUS_REPORT_FACTS");
   const grading = gradingRows.length ? nullableText(gradingRows[0].warehouse_group_type) : null;
   const customerType = dealerRows.length ? nullableText(dealerRows[0].cust_type) : null;
   const customerGroup = dealerRows.length ? nullableText(dealerRows[0].cust_group_name) : null;
-  const rows: GeaSalesPlanReportFacts["rows"] = [];
+  const areaNames = new Set(
+    areaRows.map((row) => nullableText(row.region_name)).filter((name) => name !== null),
+  );
+  const fallbackAreaName = areaNames.size === 1 ? [...areaNames][0] : null;
+  const materialByCode = new Map<string, { code: string | null; name: string | null }>();
+  const inventoryByCode = new Map<string, string | null>();
   const [year, number] = month.split("-").map(Number);
   const next = new Date(Date.UTC(year, number, 1));
   const before = `${next.getUTCFullYear()}${String(next.getUTCMonth() + 1).padStart(2, "0")}01`;
@@ -120,18 +134,18 @@ export async function readSalesPlanReportFacts(
         readSql,
         `SELECT material_code, inventory_org FROM (
           SELECT material_code, inventory_org,
-            ROW_NUMBER() OVER (PARTITION BY material_code ORDER BY COUNT(*) DESC, MAX(act_ship_date) DESC, inventory_org ASC) AS org_rank
+            ROW_NUMBER() OVER (PARTITION BY material_code ORDER BY
+              CASE WHEN inventory_org IS NULL OR TRIM(inventory_org) = '' THEN 1 ELSE 0 END,
+              COUNT(*) DESC, MAX(act_ship_date) DESC, inventory_org ASC) AS org_rank
           FROM agents_scm_cust_deliv_daily_di
           WHERE cust_code = :customer AND belong_base = :base AND material_code IN (${placeholders})
-            AND act_ship_date < :before AND inventory_org IS NOT NULL AND TRIM(inventory_org) <> ''
+            AND act_ship_date < :before
           GROUP BY material_code, inventory_org
         ) ranked WHERE org_rank = 1 ORDER BY material_code`,
         { customer, base, before, ...parameters },
         signal,
       ),
     ]);
-    const materialByCode = new Map<string, { code: string | null; name: string | null }>();
-    const inventoryByCode = new Map<string, string | null>();
     for (const row of materials) {
       const code = text(row.material_code);
       if (!batch.includes(code) || materialByCode.has(code))
@@ -147,19 +161,45 @@ export async function readSalesPlanReportFacts(
         throw new Error("GEA_AMBIGUOUS_REPORT_FACTS");
       inventoryByCode.set(code, nullableText(row.inventory_org));
     }
-    for (const skuCode of batch) {
-      const material = materialByCode.get(skuCode);
-      rows.push({
-        skuCode,
-        grading,
-        customerType,
-        customerGroup,
-        materialGroupCode: material?.code ?? null,
-        materialGroupName: material?.name ?? null,
-        inventoryOrganization: inventoryByCode.get(skuCode) ?? null,
-      });
-    }
   }
+  const [baseInventory] = codes.some((code) => !inventoryByCode.has(code))
+    ? await readRows(
+        readSql,
+        `SELECT inventory_org FROM (
+          SELECT inventory_org,
+            ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, MAX(act_ship_date) DESC, inventory_org ASC) AS org_rank
+          FROM agents_scm_cust_deliv_daily_di
+          WHERE cust_code = :customer AND belong_base = :base AND act_ship_date < :before
+            AND inventory_org IS NOT NULL AND TRIM(inventory_org) <> ''
+          GROUP BY inventory_org
+        ) ranked WHERE org_rank = 1`,
+        { customer, base, before },
+        signal,
+      )
+    : [];
+  const baseInventoryOrganization = baseInventory
+    ? nullableText(baseInventory.inventory_org)
+    : null;
+  const rows = codes.map((skuCode) => {
+    const material = materialByCode.get(skuCode);
+    const inventoryOrganization = inventoryByCode.get(skuCode);
+    return {
+      skuCode,
+      grading,
+      customerType,
+      customerGroup,
+      materialGroupCode: material?.code ?? null,
+      materialGroupName: material?.name ?? null,
+      inventoryOrganization:
+        inventoryOrganization === undefined ? baseInventoryOrganization : inventoryOrganization,
+    };
+  });
   signal.throwIfAborted();
-  return { planId: query.planId, versionId: query.versionId, month, rows };
+  return {
+    planId: query.planId,
+    versionId: query.versionId,
+    month,
+    ...(query.resolveAreaName ? { fallbackAreaName } : {}),
+    rows,
+  };
 }
