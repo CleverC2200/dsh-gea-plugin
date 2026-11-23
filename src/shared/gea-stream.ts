@@ -37,6 +37,14 @@ function invalid(code: string, detail?: string): never {
   throw streamFailure(code, detail);
 }
 
+export class UnofferedToolCall extends Error {
+  readonly code = "GEA_MODEL_INVALID_TOOL_CALL";
+
+  constructor(readonly toolName: string) {
+    super(streamFailure("GEA_MODEL_INVALID_TOOL_CALL", "调用的工具不在本轮提供的清单中").message);
+  }
+}
+
 function gatewayErrorDetail(value: unknown): {
   detail: string;
   contextLimit: boolean;
@@ -319,8 +327,7 @@ export async function* geaTextStream(
           for (const call of calls.values()) {
             if (!call.id || ids.has(call.id))
               invalid("GEA_MODEL_INVALID_TOOL_CALL", "工具调用标识为空或重复");
-            if (!offered?.names.includes(call.name))
-              invalid("GEA_MODEL_INVALID_TOOL_CALL", "调用的工具不在本轮提供的清单中");
+            if (!offered?.names.includes(call.name)) throw new UnofferedToolCall(call.name);
             ids.add(call.id);
             let args: unknown;
             try {

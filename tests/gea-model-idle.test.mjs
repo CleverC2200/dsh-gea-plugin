@@ -435,3 +435,72 @@ test("invalid tool responses retain a request id without automatic retry or payl
     false,
   );
 });
+
+test("a detached MPS turn answers once from history if the model calls the removed page tool", async (t) => {
+  const requests = [];
+  const grant = new AbortController();
+  const { adapter } = fixture(
+    t,
+    async (_url, init) => {
+      requests.push(JSON.parse(init.body));
+      const data =
+        requests.length === 1
+          ? event({ content: "未验证的进度" }) +
+            event(
+              {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "stale-page",
+                    function: {
+                      name: "gea_page",
+                      arguments: '{"action":"context"}',
+                    },
+                  },
+                ],
+              },
+              "tool_calls",
+            )
+          : event({ content: "Excel 已生成，当前无法确认 MPS 是否算完。" }, "stop");
+      return new Response(data, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    },
+    { access: async () => ({ consumerCode: "mps", signal: grant.signal }) },
+  );
+  const chunks = await collect(
+    adapter.stream({
+      ...options,
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Excel 已生成。" }],
+        },
+        { role: "user", content: [{ type: "text", text: "跑完了没有？" }] },
+      ],
+      tools: [
+        {
+          name: "lookup",
+          description: "fixture",
+          parameters: { type: "object" },
+        },
+        {
+          name: "gea_plugin_page_apply",
+          description: "fixture",
+          parameters: { type: "object" },
+        },
+      ],
+    }),
+  );
+  assert.equal(requests.length, 2);
+  assert.match(requests[0].messages[0].content, /暂不可用的 MPS 页面工具是 gea_page/);
+  assert.deepEqual(
+    requests[0].tools.map(({ function: tool }) => tool.name),
+    ["lookup", "gea_plugin_page_apply"],
+  );
+  assert.equal(requests[1].tools, undefined);
+  assert.match(requests[1].messages[0].content, /只用对话里已有的结果回答/);
+  assert.equal(requests[1].messages.at(-1).content, "跑完了没有？");
+  assert.doesNotMatch(JSON.stringify(chunks), /未验证的进度|stale-page/);
+  assert.match(JSON.stringify(chunks), /Excel 已生成，当前无法确认 MPS 是否算完/);
+});
