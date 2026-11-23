@@ -71,6 +71,9 @@ await mkdir(output, { recursive: true });
 await writeFile(join(output, "fixed-input.json"), JSON.stringify(input, null, 2));
 const require = createRequire(join(desktop, "package.json"));
 const sharp = require("sharp");
+const { packIco, TRAY_ICON_SIZES } = await import(
+  pathToFileURL(join(desktop, "scripts/render-tray-icon.ts"))
+);
 const stages = [];
 const run = stageRunner(root, output, stages);
 function relocate(source, original) {
@@ -91,15 +94,16 @@ factory = factory.replace(policy, "const policy = undefined");
 if (signed) factory = adaptSignedWindowsFactory(factory, desktop);
 await writeFile(join(output, "builder-factory.mjs"), factory);
 const iconPath = join(gea, "desktop/build/icon.png");
-const icon = await sharp(iconPath).resize(256, 256).png().toBuffer();
-const header = Buffer.alloc(22);
-header.writeUInt16LE(1, 2);
-header.writeUInt16LE(1, 4);
-header.writeUInt16LE(1, 10);
-header.writeUInt16LE(32, 12);
-header.writeUInt32LE(icon.length, 14);
-header.writeUInt32LE(header.length, 18);
-await writeFile(join(output, "gea.ico"), Buffer.concat([header, icon]));
+const trayIconPath = join(output, "gea-tray.ico");
+const trayIcon = packIco(
+  await Promise.all(
+    [...TRAY_ICON_SIZES, 256].map(async (size) => ({
+      size,
+      png: await sharp(iconPath).resize(size, size).png().toBuffer(),
+    })),
+  ),
+);
+await writeFile(trayIconPath, trayIcon);
 const installerUi = join(target, "installer-ui");
 await mkdir(installerUi, { recursive: true });
 for (const asset of ["brand", "brand-2x", "brand-dark", "brand-dark-2x", "uninstaller-sidebar"]) {
@@ -145,7 +149,7 @@ if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || ${signed ? "c
 config.artifactName = 'Synear-GEA-\${version}-win-\${arch}-${signed ? "signed" : "complete-local-unsigned"}.\${ext}';
 config.extraMetadata = { ...config.extraMetadata, dshLocalTestBuild: ${!signed}, geaBrandingCommit: process.env.GEA_COMPLETE_SOURCE_SHA, dshLocalPackaging: '${signed ? "official-layout-gea-windows-signed-no-publish" : "official-layout-gea-windows-unsigned-no-publish"}' };
 config.win = { ...config.win, icon: ${JSON.stringify(iconPath)}, target: [{ target: 'nsis', arch: ['x64'] }] };
-config.extraResources = config.extraResources.map(item => item.to === 'tray.ico' ? { ...item, from: ${JSON.stringify(join(output, "gea.ico"))} } : item);
+config.extraResources = config.extraResources.map(item => item.to === 'tray.ico' ? { ...item, from: ${JSON.stringify(trayIconPath)} } : item);
 config.nsis = { ...config.nsis, deleteAppDataOnUninstall: false, include: ${JSON.stringify(join(output, "gea-installer.nsh"))} };
 const prepare = config.beforeBuild;
 config.beforeBuild = async (...args) => {
@@ -278,14 +282,17 @@ await run(
   ],
   desktop,
 );
+const resources = join(artifactDirectory, "win-unpacked/resources");
+if (!(await readFile(join(resources, "tray.ico"))).equals(trayIcon))
+  throw Error("DESKTOP_PACKAGED_TRAY_ICON_MISMATCH");
 await run(
   "smoke-windows",
   ["exec", "tsx", join(output, "smoke-gea.mts"), ...(signed ? [] : ["--unsigned"])],
   desktop,
 );
-const appRoot = join(artifactDirectory, "win-unpacked/resources/app.asar");
-const supportRoot = join(artifactDirectory, "win-unpacked/resources/runtime");
-const seed = join(artifactDirectory, "win-unpacked/resources/company-seed");
+const appRoot = join(resources, "app.asar");
+const supportRoot = join(resources, "runtime");
+const seed = join(resources, "company-seed");
 const executable = join(artifactDirectory, "win-unpacked", companyWindowsExecutableName + ".exe");
 const cleanHome = join(target, "offline-new-install");
 const firstInstallStarted = Date.now();
@@ -335,9 +342,7 @@ if (signed) {
     pathToFileURL(join(desktop, "scripts/windows-sign.mjs")).href
   );
   const yaml = createRequire(require.resolve("electron-updater/package.json"))("js-yaml");
-  const update = yaml.load(
-    await readFile(join(artifactDirectory, "win-unpacked/resources/app-update.yml"), "utf8"),
-  );
+  const update = yaml.load(await readFile(join(resources, "app-update.yml"), "utf8"));
   const publishers = Array.isArray(update.publisherName)
     ? update.publisherName
     : [update.publisherName];
