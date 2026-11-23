@@ -474,6 +474,18 @@ test("a detached MPS turn answers once from history if the model calls the remov
       messages: [
         {
           role: "assistant",
+          content: [
+            { type: "reasoning", text: "旧工具推理" },
+            { type: "tool-call", id: "old-page", name: "gea_page", arguments: "{}" },
+          ],
+        },
+        {
+          role: "tool",
+          toolCallId: "old-page",
+          content: [{ type: "text", text: "旧工具回执" }],
+        },
+        {
+          role: "assistant",
           content: [{ type: "text", text: "Excel 已生成。" }],
         },
         { role: "user", content: [{ type: "text", text: "跑完了没有？" }] },
@@ -501,6 +513,37 @@ test("a detached MPS turn answers once from history if the model calls the remov
   assert.equal(requests[1].tools, undefined);
   assert.match(requests[1].messages[0].content, /只用对话里已有的结果回答/);
   assert.equal(requests[1].messages.at(-1).content, "跑完了没有？");
+  assert.doesNotMatch(JSON.stringify(requests[1].messages), /tool_calls|reasoning_content|旧工具/);
+  assert.deepEqual(requests[1].messages.at(-2), { role: "assistant", content: "Excel 已生成。" });
   assert.doesNotMatch(JSON.stringify(chunks), /未验证的进度|stale-page/);
   assert.match(JSON.stringify(chunks), /Excel 已生成，当前无法确认 MPS 是否算完/);
+});
+
+test("detached MPS returns a normal status when the gateway repeats raw tool text", async (t) => {
+  const requests = [];
+  const grant = new AbortController();
+  const { adapter } = fixture(
+    t,
+    async (_url, init) => {
+      requests.push(JSON.parse(init.body));
+      return new Response(event({ content: "<｜｜DSML｜｜tool_calls>" }, "stop"), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    },
+    { access: async () => ({ consumerCode: "mps", signal: grant.signal }) },
+  );
+  const chunks = await collect(
+    adapter.stream({
+      ...options,
+      tools: [{ name: "lookup", description: "fixture", parameters: { type: "object" } }],
+    }),
+  );
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].tools, undefined);
+  assert.doesNotMatch(JSON.stringify(chunks), /DSML|tool-call/);
+  assert.equal(
+    chunks.find((chunk) => chunk.type === "text-delta")?.text,
+    "我目前无法核实 MPS 是否跑完。请重新连接 MPS 页面后再查看当前状态。",
+  );
+  assert.deepEqual(chunks.at(-1), { type: "finish", reason: { kind: "stop" } });
 });

@@ -15,7 +15,7 @@ import {
 } from "@deepseek-ai/dsh-llm";
 import { idleWatchdog, timeoutOf } from "@deepseek-ai/dsh-timeout";
 import type { Business, GeaModelRoute } from "./business.ts";
-import { toGeaMessages, type ImageRef } from "./gea-messages.ts";
+import { toGeaMessages, type GeaMessage, type ImageRef } from "./gea-messages.ts";
 import { appendOrderCardModelContext } from "./module-page-scope.ts";
 import { networkError } from "../shared/net-error.ts";
 import { modelHttpError } from "../shared/model-http-error.ts";
@@ -50,6 +50,8 @@ const GEA_MODEL_RETRY_POLICY = resolveRetryPolicy(
   "gea-analysis.retryPolicy",
 );
 const MPS_PAGE_TOOLS = ["gea_page", "gea_plugin_page_apply"];
+
+class MpsPageToolRetry extends Error {}
 
 function geaExtraParams(options: GenerateOptions): Record<string, string> | undefined {
   const effort = options.reasoningEffort;
@@ -208,7 +210,7 @@ export class GeaModelAdapter extends LlmAdapter {
       try {
         yield* this.streamAttempt({ ...options, signal });
       } catch (error) {
-        if (!(error instanceof UnofferedToolCall)) throw error;
+        if (!(error instanceof MpsPageToolRetry)) throw error;
         signal.throwIfAborted();
         this.requestOwners.get(signal)?.throwIfAborted();
         yield* this.streamAttempt({ ...options, signal, tools: [] }, true);
@@ -324,6 +326,12 @@ export class GeaModelAdapter extends LlmAdapter {
         );
       const images = await prepareImages(options, route, readImage, signal);
       const requestBody = toGeaRequest(options, images);
+      if (answerWithoutTools)
+        requestBody.messages = requestBody.messages.flatMap((message): GeaMessage[] => {
+          if (message.role === "tool") return [];
+          if (message.role !== "assistant") return [message];
+          return message.content ? [{ role: "assistant", content: message.content }] : [];
+        });
       if (answerWithoutTools || unavailableMpsTools.length) {
         const pageStatus = answerWithoutTools
           ? "当前只用对话里已有的结果回答，不调用工具。若不能核实实时进度，请给出最后确认的状态，并说明目前无法查看页面。"
@@ -429,7 +437,7 @@ export class GeaModelAdapter extends LlmAdapter {
             }),
           );
         }
-        if (unavailableMpsTools.length) unpublished.push(chunk);
+        if (unavailableMpsTools.length || answerWithoutTools) unpublished.push(chunk);
         else yield chunk;
       }
       if (!reportedUsage)
@@ -466,7 +474,9 @@ export class GeaModelAdapter extends LlmAdapter {
 
       const idle = timeoutOf(watchdog.signal, "GEA_MODEL_IDLE");
       if (!idle && error instanceof LlmError) throw error;
-      if ((error as { code?: string })?.code === "GEA_MODEL_TOOL_TEXT")
+      const code = (error as { code?: string })?.code;
+      const toolText = code === "GEA_MODEL_TOOL_TEXT";
+      if (toolText && !unavailableMpsTools.length && !answerWithoutTools)
         throw new LlmError((error as Error).message, "PROVIDER_PROTOCOL");
       const converted = networkError(
         idle ? new DOMException(idle.message, "TimeoutError") : error,
@@ -505,10 +515,21 @@ export class GeaModelAdapter extends LlmAdapter {
       );
       if (
         !idle &&
-        error instanceof UnofferedToolCall &&
-        unavailableMpsTools.includes(error.toolName)
-      )
-        throw error;
+        ((toolText && unavailableMpsTools.length > 0) ||
+          (error instanceof UnofferedToolCall && unavailableMpsTools.includes(error.toolName)))
+      ) {
+        signal.throwIfAborted();
+        throw new MpsPageToolRetry(failure.originalCode, { cause: error });
+      }
+      if (!idle && answerWithoutTools && (toolText || code === "GEA_MODEL_UNSUPPORTED_TOOL_CALL")) {
+        signal.throwIfAborted();
+        const text = "我目前无法核实 MPS 是否跑完。请重新连接 MPS 页面后再查看当前状态。";
+        yield { type: "block-start", index: 0, blockType: "text" };
+        yield { type: "text-delta", index: 0, text };
+        yield { type: "block-end", index: 0, block: { type: "text", text } };
+        yield { type: "finish", reason: { kind: "stop" } };
+        return;
+      }
       throw new LlmError(
         `${converted.message} requestId=${serverRequestId ?? requestId} clientRequestId=${requestId} traceId=${traceId}`,
         failure.code,
