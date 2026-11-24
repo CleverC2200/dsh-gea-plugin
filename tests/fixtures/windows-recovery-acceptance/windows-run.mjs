@@ -287,6 +287,7 @@ try {
         return;
       }
       if (recoveryFeed) {
+        requests.push({ name, range: Boolean(request.headers.range) });
         response.writeHead(404).end();
         return;
       }
@@ -864,7 +865,10 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     await writeFile(latest, "{", { flag: "wx" });
     const nextVersion = newVersion.replace(/\.(\d+)$/, (_, build) => "." + (Number(build) + 1));
     assert.notEqual(nextVersion, newVersion);
-    recoveryFeed = metadata.replace(/^version:.*$/m, "version: " + nextVersion);
+    const unavailableInstaller = targetInput.artifact.replace(newVersion, nextVersion);
+    recoveryFeed = metadata
+      .replace(/^version:.*$/m, "version: " + nextVersion)
+      .replaceAll(targetInput.artifact, unavailableInstaller);
     const candidateConfig = await readFile(join(installation, "resources/app-update.yml"), "utf8");
     const loopbackConfig = candidateConfig.replace(
       feed.slice(0, -"nightly.yml".length),
@@ -1096,23 +1100,35 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
       await until(
         "fixed button opens the native updater without a company preparation operation",
         async () => {
+          const run = (await records()).filter((row) => row.version === newVersion);
+          if (
+            !run.some((row) => row.event === "download-requested") ||
+            !run.some((row) => row.failedOperation === "download" && row.targetVersion === nextVersion)
+          ) return false;
           const dialog = await target("dsh-app://shell/update-dialog.html");
           if (!dialog) return false;
           const client = await connection(dialog.webSocketDebuggerUrl);
           try {
             const view = await evaluate(client, "window.dshUpdateDialog.status()");
-            if (!view?.buttons?.some((label) => /download|下载/i.test(label))) return false;
+            if (!view?.dismissible) return false;
+            assert.ok(requests.some(({ name }) => name === "/" + unavailableInstaller));
             assert.deepEqual(
               (await evaluate(main, "geaRecoveryAcceptance.read()")).requests,
               previousOperations,
             );
             await screenshot(client, "07-candidate-official-download.png");
+            await evaluate(client, "document.querySelector('#actions button').click(); true");
             return true;
           } finally {
             client.close();
           }
         },
         45000,
+      );
+      await until(
+        "failed official download leaves the signed candidate usable",
+        async () => (await evaluate(main, "geaRecoveryAcceptance.read()")).enabled,
+        15000,
       );
       evidence.fixedVisibleEntryIgnoresDamagedJournal = true;
       milestone("fixed-visible-button-opens-native-updater-with-damaged-journal");
