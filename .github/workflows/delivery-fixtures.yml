@@ -136,7 +136,9 @@ jobs:
         if: inputs.native_acceptance_bundle_url != '' || inputs.windows_online_update || inputs.windows_seed_cache_recheck
         shell: pwsh
         run: |
-          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 yaml@2.9.0 semver@7.7.4
+          $packages = @('@playwright/test@1.58.2', 'yaml@2.9.0', 'semver@7.7.4')
+          if ('${{ matrix.entry }}' -eq 'cache-only') { $packages += 'esbuild@0.25.9' }
+          npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @packages
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path gea/node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
