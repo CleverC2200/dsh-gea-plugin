@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useSyncExternalStore } from "react";
+import { DesktopUpdateIndicator } from "@deepseek-ai/dsh-client-ui-settings-general/src/client/DesktopUpdateIndicator.tsx";
+import { DesktopUpdateSource } from "@deepseek-ai/dsh-client-ui-settings-general/src/client/desktop-update-source.ts";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/base.css";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/design-platform.css";
 import { Context } from "@deepseek-ai/cordis";
@@ -8,6 +10,7 @@ import * as primitives from "@deepseek-ai/dsh-client-ui-primitives";
 import * as store from "@deepseek-ai/dsh-client-store";
 import * as jsxRuntime from "react/jsx-runtime";
 const ctx = new Context();
+const officialUpdates = new DesktopUpdateSource(window.dshDesktop?.updates);
 await ctx.plugin(renderer).await();
 const emptyBinding = { key: undefined, hooks: {}, keyedHooks: {}, props: {} };
 const binding = { getSnapshot: () => emptyBinding, subscribe: () => () => {} };
@@ -39,18 +42,43 @@ ctx.slots.register(
       "plugins.detail.section": { kind: "list", scope: "root" },
     },
   },
-  ({ renderSlot }) => (
-    <>
-      <div data-account-actions>{renderSlot("gea.account.actions", { onSelect() {} })}</div>
-      <aside data-update-entry>
-        {renderSlot("sidebar.footer.action", { wide: !location.search.includes("narrow-entry") })}
-      </aside>
-      <main>
-        {renderSlot("plugins.detail.badge", { subject })}
-        {renderSlot("plugins.detail.section", { subject })}
-      </main>
-    </>
-  ),
+  ({ renderSlot }) => {
+    const view = useSyncExternalStore(
+      officialUpdates.store.subscribe,
+      officialUpdates.store.getSnapshot,
+    );
+    return (
+      <>
+        <div data-official-update>
+          {renderSlot(
+            "settings.update",
+            { wide: true, hidden: false },
+            {
+              fallback: (
+                <DesktopUpdateIndicator
+                  wide
+                  hidden={false}
+                  t={(key) => key}
+                  view={view}
+                  onOpen={() => officialUpdates.open()}
+                />
+              ),
+            },
+          )}
+        </div>
+        <div data-account-actions>{renderSlot("gea.account.actions", { onSelect() {} })}</div>
+        <aside data-update-entry>
+          {renderSlot("sidebar.footer.action", {
+            wide: !location.search.includes("narrow-entry"),
+          })}
+        </aside>
+        <main>
+          {renderSlot("plugins.detail.badge", { subject })}
+          {renderSlot("plugins.detail.section", { subject })}
+        </main>
+      </>
+    );
+  },
 );
 ctx.provide("modules", {
   entries: { state: { getSnapshot: () => ({ syncing: true, failures: [] }) } },
@@ -75,6 +103,10 @@ const built = factory((name) => {
 });
 const geaFiber = ctx.plugin(built);
 await geaFiber.await();
+const refreshOfficialUpdates = () =>
+  officialUpdates.setEnabled(ctx.slots.entries("settings.update").length === 0);
+refreshOfficialUpdates();
+const releaseOfficialUpdates = ctx.slots.subscribe("settings.update", refreshOfficialUpdates);
 const release = () => geaFiber.dispose();
 await new Promise((resolve) => setTimeout(resolve, 20));
 let unmount = ctx.uiRenderer.mount(document.getElementById("app")!);
@@ -99,6 +131,8 @@ Object.assign(window, {
       frozen: Object.isFrozen(built.pluginPackageVersion),
     },
     async dispose() {
+      releaseOfficialUpdates();
+      officialUpdates.dispose();
       await release();
     },
   },
