@@ -1700,6 +1700,33 @@ test("combined updates cache the approved suite without installation, serialize 
   assert.equal(await readFile(receiptPath, "utf8"), previous);
 });
 
+test("a corrupt isolated update journal allows desktop unlock without accepting another update", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const runtimeDirectory = join(f.dir, "gea/plugin-updates");
+  const journal = join(runtimeDirectory, "latest.json");
+  await mkdir(runtimeDirectory, { recursive: true });
+  await writeFile(journal, "{");
+  const controller = createPluginUpdateController({ ...f.options, runtimeDirectory });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  assert.equal(controller.operationStatus().state, "failed");
+  assert.equal(await controller.companyStatus(), null);
+  const run = join(f.dir, ".plugin-manager/run.json");
+  await mkdir(dirname(run), { recursive: true });
+  await writeFile(run, JSON.stringify({ pid: process.pid, grouped: false }));
+  await assert.rejects(controller.cancelDesktop(), /UPDATE_OPERATION_BLOCKED/);
+  await rm(run);
+  await controller.cancelDesktop();
+  await controller.cancelDesktop();
+  await assert.rejects(
+    controller.prepareDesktop("0.2.0-rc.2.20261124.1"),
+    /UPDATE_OPERATION_BLOCKED/,
+  );
+  assert.equal(await readFile(journal, "utf8"), "{");
+  assert.equal(await controller.companyStatus(), null);
+});
+
 test("a prepared desktop update wins the profile lock over a plugin install still downloading", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t, {

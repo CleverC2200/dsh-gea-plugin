@@ -921,13 +921,14 @@ export async function prepareCompanyBoot({
         await writePluginStoreJson(companyUpdatePath(profile), await readCompanyUpdate(directory));
       });
     } catch (error) {
-      await writePluginStoreJson(companyUpdatePath(profile), {
-        ...company,
-        phase: "failed",
-        diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
-          ? error.message
-          : "GEA_COMPANY_PREPARATION_FAILED",
-      });
+      if (error.message !== "PLUGIN_UPDATE_BUSY")
+        await writePluginStoreJson(companyUpdatePath(profile), {
+          ...company,
+          phase: "failed",
+          diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
+            ? error.message
+            : "GEA_COMPANY_PREPARATION_FAILED",
+        });
     }
   } else if (
     !(await installation.store.status()).pending &&
@@ -937,23 +938,26 @@ export async function prepareCompanyBoot({
     const id = retry ? bundle + "-" + randomUUID() : bundle;
     const attempt = join(installation.directory, bundle + ".json");
     if (retry || !existsSync(attempt)) {
-      if (existsSync(attempt))
-        await cp(attempt, attempt + ".before-retry-" + randomUUID(), {
-          force: false,
-          errorOnExist: true,
-        });
-      await writePluginStoreJson(attempt, { id, stage: "preparing" });
       try {
-        await installation.prepare(id, installBundled);
+        await installation.prepare(id, async (directory) => {
+          if (existsSync(attempt))
+            await cp(attempt, attempt + ".before-retry-" + randomUUID(), {
+              force: false,
+              errorOnExist: true,
+            });
+          await writePluginStoreJson(attempt, { id, stage: "preparing" });
+          await installBundled(directory);
+        });
         await writePluginStoreJson(attempt, { id, stage: "prepared" });
       } catch (error) {
-        await writePluginStoreJson(attempt, {
-          id,
-          stage: "failed",
-          diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
-            ? error.message
-            : "GEA_BUNDLED_PREPARATION_FAILED",
-        });
+        if (error.message !== "PLUGIN_UPDATE_BUSY")
+          await writePluginStoreJson(attempt, {
+            id,
+            stage: "failed",
+            diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
+              ? error.message
+              : "GEA_BUNDLED_PREPARATION_FAILED",
+          });
       }
     }
   }

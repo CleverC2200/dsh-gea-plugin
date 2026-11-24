@@ -8,7 +8,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { createServer } from "node:net";
 import { chromium } from "@playwright/test";
 import { CompanyInstallation } from "../desktop/company-installation.mjs";
-import { withPluginStoreLock } from "../desktop/plugin-store-lock.mjs";
+import { bootstrapCompanyProfile } from "../desktop/company-bootstrap.mjs";
 import { windowsCompanyInput } from "../scripts/ci-windows-update.mjs";
 
 const app = process.env.GEA_WINDOWS_APP;
@@ -43,7 +43,15 @@ async function until(action, timeout = 60000) {
 
 if (process.argv[2] === "initialize-worker") {
   const installation = new CompanyInstallation(process.argv[3], windowsCompanyInput.coreHead);
-  await withPluginStoreLock(installation.store.root, async () => {
+  const resources = join(app, "resources");
+  await bootstrapCompanyProfile({
+    root,
+    support: join(resources, "runtime"),
+    seed: join(resources, "company-seed"),
+    home: process.env.DSH_HOME,
+  });
+  await installation.initialize(async (stage) => {
+    assert.ok((await readFile(join(stage, "package.json"))).length);
     await writeFile(process.argv[4], "locked");
     await new Promise(() => setInterval(() => {}, 1000));
   });
@@ -75,53 +83,7 @@ if (process.argv[2] === "initialize-worker") {
       await mkdir(env.LOCALAPPDATA, { recursive: true });
       const installation = new CompanyInstallation(profile, windowsCompanyInput.coreHead);
       const initialLock = join(installation.store.root, "prepare.lock");
-      const initialDraft = join(home, "draft-before-initialization.json");
-      await writeFile(initialDraft, "draft before interrupted initialization");
-      const initializationReady = join(home, "initialization-started");
-      const initialWorker = spawn(
-        executable,
-        [ownFile, "initialize-worker", profile, initializationReady],
-        {
-          env: { ...env, ELECTRON_RUN_AS_NODE: "1" },
-          stdio: "inherit",
-        },
-      );
-      try {
-        await until(() => readFile(initializationReady, "utf8"));
-        assert.equal(JSON.parse(await readFile(initialLock)).pid, initialWorker.pid);
-      } finally {
-        if (initialWorker.exitCode === null)
-          execFileSync("taskkill", ["/PID", String(initialWorker.pid), "/T", "/F"], {
-            stdio: "ignore",
-          });
-      }
-      await until(() => initialWorker.exitCode !== null || initialWorker.signalCode !== null);
-      assert.equal(JSON.parse(await readFile(initialLock)).pid, initialWorker.pid);
-      execFileSync(
-        executable,
-        [
-          "--expose-internals",
-          join(root, "company-bootstrap.mjs"),
-          root,
-          join(app, "resources/runtime"),
-          join(app, "resources/company-seed"),
-        ],
-        {
-          env: { ...env, ELECTRON_RUN_AS_NODE: "1" },
-          timeout: 180000,
-          stdio: "inherit",
-        },
-      );
-      await assert.rejects(readFile(initialLock), { code: "ENOENT" });
-      assert.equal(await readFile(initialDraft, "utf8"), "draft before interrupted initialization");
       const load = createRequire(join(process.env.GEA_WINDOWS_RUNTIME, "dsh/package.json"));
-      const configured = load("yaml").parse(
-        await readFile(join(profile, "cordis.patch.yml"), "utf8"),
-      );
-      assert.equal(
-        configured.find((row) => row.id === "gea-proof").config.pluginUpdates.installationProtocol,
-        1,
-      );
       const { Context } = await import(pathToFileURL(load.resolve("@deepseek-ai/cordis")));
       const { default: Persistence } = await import(
         pathToFileURL(load.resolve("@deepseek-ai/dsh-session-persistence-jsonl"))
@@ -171,6 +133,55 @@ if (process.argv[2] === "initialize-worker") {
         }
       };
       await persistence(true);
+      const initialDraft = join(home, "draft-before-initialization.json");
+      await writeFile(initialDraft, "draft before interrupted initialization");
+      const initializationReady = join(home, "initialization-started");
+      const initialWorker = spawn(
+        executable,
+        ["--expose-internals", ownFile, "initialize-worker", profile, initializationReady],
+        {
+          env: { ...env, ELECTRON_RUN_AS_NODE: "1" },
+          stdio: "inherit",
+        },
+      );
+      try {
+        await until(() => readFile(initializationReady, "utf8"), 150000);
+        const owner = JSON.parse(await readFile(initialLock));
+        assert.equal(owner.pid, initialWorker.pid);
+        assert.match(owner.stage, /^baseline-/);
+      } finally {
+        if (initialWorker.exitCode === null)
+          execFileSync("taskkill", ["/PID", String(initialWorker.pid), "/T", "/F"], {
+            stdio: "ignore",
+          });
+      }
+      await until(() => initialWorker.exitCode !== null || initialWorker.signalCode !== null);
+      assert.equal(JSON.parse(await readFile(initialLock)).pid, initialWorker.pid);
+      execFileSync(
+        executable,
+        [
+          "--expose-internals",
+          join(root, "company-bootstrap.mjs"),
+          root,
+          join(app, "resources/runtime"),
+          join(app, "resources/company-seed"),
+        ],
+        {
+          env: { ...env, ELECTRON_RUN_AS_NODE: "1" },
+          timeout: 180000,
+          stdio: "inherit",
+        },
+      );
+      await assert.rejects(readFile(initialLock), { code: "ENOENT" });
+      assert.equal(await readFile(initialDraft, "utf8"), "draft before interrupted initialization");
+      const configured = load("yaml").parse(
+        await readFile(join(profile, "cordis.patch.yml"), "utf8"),
+      );
+      assert.equal(
+        configured.find((row) => row.id === "gea-proof").config.pluginUpdates.installationProtocol,
+        1,
+      );
+      await persistence(false);
       const retained = {
         "user-draft.json": '{"text":"未完成的工作"}',
         "test-credentials.encrypted": "encrypted-test-value",
