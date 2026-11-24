@@ -19,11 +19,11 @@ export const windowsNativeEntrypoints = Object.freeze({
 });
 
 export const windowsCompanyInput = Object.freeze({
-  desktopVersion: "0.2.0-rc.2.20261120.1",
+  desktopVersion: "0.2.0-rc.2.20261123.1",
   coreHead: "17746ac35c8fa08e2da98f2127b05f421132cb16",
-  installerSha256: "945c2274b612c90082c8e298d4b857dc85c08f9c309f66a054e0853e7c555a81",
+  installerSha256: "9b91e1151bcddec81855da93605ba4ee358a1c22243bda2201c962cdf2ee0006",
   installerUrl:
-    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/1492d73ee280859acf370f93d5bd5da995e44339/desktop/Synear-GEA-0.2.0-rc.2.20261120.1-win-x64-signed.exe",
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/cd4234bf8563db2fe24c80079907a8251bdf7d73/desktop/Synear-GEA-0.2.0-rc.2.20261123.1-win-x64-signed.exe",
   acceptance:
     "released Windows runtime with candidate company entry; isolated data; no publication or installer qualification",
 });
