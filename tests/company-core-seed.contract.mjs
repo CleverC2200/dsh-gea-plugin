@@ -17,7 +17,7 @@ import {
   readlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { makeArchive } from "./fixtures/plugin-updates/installed-runtime.mjs";
@@ -27,7 +27,7 @@ import { companyPackageNames } from "../desktop/company-archives.mjs";
 
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 const packaged = process.env.GEA_PLUGIN_UPDATE_PACKAGED;
-const fileSpec = (path) => "file:" + path.replaceAll("\\", "/");
+const fileSpec = (profile, path) => "file:" + relative(profile, path).replaceAll("\\", "/");
 const pnpm =
   process.env.GEA_PLUGIN_UPDATE_PNPM ??
   join(dirname(createRequire(import.meta.url).resolve("pnpm")), "bin/pnpm.cjs");
@@ -116,7 +116,7 @@ for (const userCache of [false, true, "active-wal"])
       );
       await run(profile, [
         "add",
-        ...old.map((row) => fileSpec(row.path)),
+        ...old.map((row) => fileSpec(profile, row.path)),
         "--offline",
         "--store-dir=" + store,
       ]);
@@ -206,7 +206,7 @@ for (const userCache of [false, true, "active-wal"])
       await writeFile(join(seedProfile, "pnpm-workspace.yaml"), "autoInstallPeers: false\n");
       await run(seedProfile, [
         "add",
-        ...packages.map((row) => fileSpec(join(seed, "archives", row.file))),
+        ...packages.map((row) => fileSpec(seedProfile, join(seed, "archives", row.file))),
         "--registry=" + origin,
         "--store-dir=" + join(seed, "store"),
         "--cache-dir=" + join(seed, "metadata"),
@@ -216,7 +216,11 @@ for (const userCache of [false, true, "active-wal"])
         await cp(join(metadata, entry), join(metadata, "registry.npmjs.org"), { recursive: true });
       const manifest = { schema: 1, core: { head: "b".repeat(40) }, packages };
       await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest));
-      await writeCompanySeedLock({ root, seed, profile: seedProfile });
+      await writeCompanySeedLock({ root, seed, profile: seedProfile }).catch(async (error) => {
+        const lock = await readFile(join(seedProfile, "pnpm-lock.yaml"), "utf8");
+        console.error(lock.split(/\n\s*packages:/u, 1)[0]);
+        throw error;
+      });
       await rm(join(seed, "store/v11/projects"), { recursive: true, force: true });
       await new Promise((resolve) => server.close(resolve));
       if (userCache) {
