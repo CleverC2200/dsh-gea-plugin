@@ -738,32 +738,38 @@ for (const broken of ["{interrupted-selection", "{}"])
     await f.preserved();
   });
 
-test("selection recovery preserves unindexed company graphs after the baseline is confirmed", async (t) => {
-  const f = await fixture(t);
-  const ids = [randomUUID(), randomUUID()];
-  for (const id of ids) {
-    await f.installation.prepare(id, f.update);
-    await f.installation.beginBoot();
+for (const damage of ["corrupt", "missing"])
+  test(`selection recovery preserves unindexed company graphs after the baseline is confirmed (${damage})`, async (t) => {
+    const f = await fixture(t);
+    const ids = [randomUUID(), randomUUID()];
+    for (const id of ids) {
+      await f.installation.prepare(id, f.update);
+      await f.installation.beginBoot();
+      await f.installation.confirmRuntime(await f.proofs());
+    }
+    const selection = join(f.installation.store.root, "selection.json");
+    if (damage === "missing") await rm(selection);
+    else await writeFile(selection, "{interrupted-selection");
+    await prepareCompanyBoot({
+      home: f.home,
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      manifest: {
+        core: { head: core },
+        packages: companyPackageNames.map((name) => ({ name, version: "1.0.0" })),
+      },
+    });
     await f.installation.confirmRuntime(await f.proofs());
-  }
-  await writeFile(join(f.installation.store.root, "selection.json"), "{interrupted-selection");
-  await prepareCompanyBoot({
-    home: f.home,
-    root: "unused",
-    support: "unused",
-    seed: "unused",
-    manifest: { core: { head: core }, packages: [] },
+    const reopened = await openCompanyInstallation(f.profile);
+    await reopened.collectGarbage();
+    for (const id of ids)
+      assert.equal(
+        JSON.parse(await readFile(join(reopened.store.root, "versions", id, "version.json"))).id,
+        id,
+      );
+    await f.preserved();
   });
-  await f.installation.confirmRuntime(await f.proofs());
-  const reopened = await openCompanyInstallation(f.profile);
-  await reopened.collectGarbage();
-  for (const id of ids)
-    assert.equal(
-      JSON.parse(await readFile(join(reopened.store.root, "versions", id, "version.json"))).id,
-      id,
-    );
-  await f.preserved();
-});
 
 test("a corrupt old update receipt does not hide a usable verified graph", async (t) => {
   const f = await fixture(t);

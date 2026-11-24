@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, open, lstat } from "node:fs/promises";
+import { mkdir, readFile, rename, open, lstat, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { relocateVirtualStore } from "./copy-graph.mjs";
 import { randomUUID, createHash } from "node:crypto";
@@ -75,7 +75,19 @@ export class PluginStore {
       return state;
     } catch (error) {
       if (error.code !== "ENOENT") throw Error("PLUGIN_SELECTION_INVALID");
-      return { active: "baseline", previous: null };
+      const versions = this.companyCoreHead
+        ? await readdir(join(this.root, "versions"), { withFileTypes: true }).catch((error) => {
+            if (error.code === "ENOENT") return [];
+            throw error;
+          })
+        : [];
+      return {
+        active: "baseline",
+        previous: null,
+        ...(versions.some((entry) => entry.isDirectory() || entry.isSymbolicLink())
+          ? { referencesUncertain: true }
+          : {}),
+      };
     }
   }
   async selected() {
@@ -116,6 +128,16 @@ export class PluginStore {
       const preparation = { ...owner, stage: stageName };
       try {
         await writePluginStoreJson(lockPath, preparation);
+        if (this.companyCoreHead)
+          await this.withSelectionLock(async () => {
+            const path = join(this.root, "selection.json");
+            try {
+              await lstat(path);
+            } catch (error) {
+              if (error.code !== "ENOENT") throw error;
+              await writePluginStoreJson(path, await this.status());
+            }
+          });
         const current = await this.selected();
         await mkdir(stage, { recursive: true, mode: 0o700 });
 
