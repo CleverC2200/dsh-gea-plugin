@@ -1835,7 +1835,12 @@ export class Business {
       signal.throwIfAborted();
       if (this.auth !== auth) throw Error("STALE_LOGIN");
       this.assertExecutionAllowed("branch-inventory");
-      return { ...result, message: dmsTargetNotice(config) + result.message };
+      return {
+        warehouseCode: result.warehouseCode,
+        fields: result.fields,
+        addresses: result.addresses,
+        message: dmsTargetNotice(config) + result.message,
+      };
     }
     const bindings = config?.users?.filter(
       (user) => user.tenantId === auth.tenantId && user.userId === auth.id,
@@ -1859,25 +1864,30 @@ export class Business {
         payload.warehouseCode.length > 64
       )
         throw Error("DMS 提交缺少分仓编码，请刷新分仓页面后重试");
-      if (payload.operation === "preflight") {
-        result = checkFcSubmissionReadiness(
-          config,
-          { tenantId: auth.tenantId, userId: auth.id },
-          payload.warehouseCode.trim(),
-          payload.order,
-        );
+      const warehouseCode = payload.warehouseCode.trim();
+      const readiness =
+        payload.operation === "preflight"
+          ? checkFcSubmissionReadiness(
+              config,
+              { tenantId: auth.tenantId, userId: auth.id },
+              warehouseCode,
+              payload.order,
+            )
+          : null;
+      const order = parseDmsOrder(payload.order);
+      const target = await resolveFcDmsTarget(
+        warehouseCode,
+        order.addressCode,
+        (query) => this.pluginSql({ consumerCode: "branch-inventory", ...query }, signal),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (this.auth !== auth) throw Error("STALE_LOGIN");
+      this.assertExecutionAllowed("branch-inventory");
+      checkFcDmsOrderTarget(warehouseCode, order, target);
+      if (readiness) {
+        result = readiness;
       } else {
-        const order = parseDmsOrder(payload.order);
-        const target = await resolveFcDmsTarget(
-          payload.warehouseCode.trim(),
-          order.addressCode,
-          (query) => this.pluginSql({ consumerCode: "branch-inventory", ...query }, signal),
-          signal,
-        );
-        signal.throwIfAborted();
-        if (this.auth !== auth) throw Error("STALE_LOGIN");
-        this.assertExecutionAllowed("branch-inventory");
-        checkFcDmsOrderTarget(payload.warehouseCode.trim(), order, target);
         const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
         result = await submitOwnedDmsOrder(
           resolve(this.config.runtimeDir, "dms-orders"),

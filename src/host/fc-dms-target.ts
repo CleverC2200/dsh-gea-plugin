@@ -9,9 +9,11 @@ SELECT t.warehouseid AS warehouse_code,t.warehouse_name AS warehouse_name,
  WHERE t.warehouseid=:gea_p1 AND t.inv_variant_id='DMS_TARGET'
  GROUP BY t.warehouseid,t.warehouse_name,t.dms_customer_code,t.dms_address_code,t.dms_pickup_point_code,t.dms_address_name
  ORDER BY t.dms_address_code LIMIT 200`;
+type FcDmsCodes = { addressCode: string; customerCode: string; pupCode: string };
 export type FcDmsTarget = {
   warehouseCode: string;
-  fields: { addressCode: string; customerCode: string; pupCode: string };
+  fields: FcDmsCodes;
+  targets: FcDmsCodes[];
   addresses: { code: string; name: string }[];
   message: string;
 };
@@ -37,6 +39,7 @@ export async function resolveFcDmsTarget(
     warehouseCode,
     fields: { addressCode: "", customerCode: "", pupCode: "" },
     addresses: [],
+    targets: [],
     message,
   });
   let result: Record<string, unknown>;
@@ -63,11 +66,7 @@ export async function resolveFcDmsTarget(
   const rows = result.rows.map(record);
   if (rows.some((row) => text(row.warehouse_code) !== warehouseCode || !text(row.warehouse_name)))
     throw Error("DMS 分仓主数据范围不一致");
-  const customers = new Set(rows.map((row) => text(row.customer_code)));
-  const pickups = new Set(rows.map((row) => text(row.pup_code)));
   if (
-    customers.size !== 1 ||
-    pickups.size !== 1 ||
     rows.some(
       (row) =>
         !code(row.customer_code) ||
@@ -78,24 +77,45 @@ export async function resolveFcDmsTarget(
   )
     return empty("当前分仓的客户、地址或提货点关联不完整，请联系管理员核对。");
   const addresses = new Map<string, string>();
+  const targets = new Map<string, FcDmsCodes>();
   for (const row of rows) {
-    const key = text(row.address_code);
+    const entry = {
+      addressCode: text(row.address_code),
+      customerCode: text(row.customer_code),
+      pupCode: text(row.pup_code),
+    };
     const name = text(row.address_name).replaceAll("\\t", " ");
-    if (addresses.has(key) && addresses.get(key) !== name)
+    if (addresses.has(entry.addressCode) && addresses.get(entry.addressCode) !== name)
       return empty("当前分仓收货地址存在冲突，请联系管理员核对。");
-    addresses.set(key, name);
+    addresses.set(entry.addressCode, name);
+    targets.set(JSON.stringify(entry), entry);
   }
-  const selected = addressCode.trim() || (addresses.size === 1 ? [...addresses.keys()][0] : "");
+  const addressChoices = [...addresses].map(([code, name]) => ({ code, name }));
+  const selected = addressCode.trim() || (addresses.size === 1 ? addressChoices[0].code : "");
   if (selected && !addresses.has(selected))
     return empty("所选收货地址不属于当前分仓，请重新选择。");
+  const validTargets = [...targets.values()];
+  const matching = selected
+    ? validTargets.filter((target) => target.addressCode === selected)
+    : validTargets;
+  const sharedCode = (field: "customerCode" | "pupCode") => {
+    const values = new Set(matching.map((target) => target[field]));
+    return values.size === 1 ? matching[0][field] : "";
+  };
+  const fields = {
+    customerCode: sharedCode("customerCode"),
+    addressCode: selected,
+    pupCode: sharedCode("pupCode"),
+  };
   return {
     warehouseCode,
-    fields: {
-      customerCode: text(rows[0].customer_code),
-      addressCode: selected,
-      pupCode: text(rows[0].pup_code),
-    },
-    addresses: [...addresses].map(([code, name]) => ({ code, name })),
-    message: selected ? "已自动带入收货信息。" : "请选择收货地址，编码将自动带入。",
+    fields,
+    addresses: addressChoices,
+    targets: validTargets,
+    message: !selected
+      ? "请选择收货地址，编码将自动带入。"
+      : fields.customerCode && fields.pupCode
+        ? "已自动带入收货信息。"
+        : "此收货地址存在多个已登记组合，请填写本次使用的客户和提货点编码。",
   };
 }

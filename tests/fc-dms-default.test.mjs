@@ -297,6 +297,14 @@ test("production submission preserves the current form and uses current user; id
         {
           warehouse_code: "selected-warehouse",
           warehouse_name: "Selected warehouse",
+          customer_code: "default-customer",
+          address_code: "default-address",
+          pup_code: "01",
+          address_name: "Default address",
+        },
+        {
+          warehouse_code: "selected-warehouse",
+          warehouse_name: "Selected warehouse",
           customer_code: "entered-customer",
           address_code: "entered-address",
           pup_code: "07",
@@ -317,6 +325,17 @@ test("production submission preserves the current form and uses current user; id
       itemList: [{ productCode: "selected-sku", quantity: 17 }],
     },
   };
+  const signal = new AbortController().signal;
+  const preflight = { ...payload, operation: "preflight" };
+  assert.deepEqual(await business.branchDms(preflight, signal), {
+    ready: true,
+    scope: "dms-direct",
+  });
+  await assert.rejects(
+    business.branchDms({ ...preflight, order: { ...payload.order, pupCode: "01" } }, signal),
+    /收货信息/,
+  );
+  assert.equal(orders.length, 0);
   const first = await business.branchDms(payload, new AbortController().signal);
   const again = await business.branchDms(payload, new AbortController().signal);
   assert.equal(first.orderCode, "fixture-order");

@@ -54,15 +54,18 @@ test("duplicate identical address rows collapse to one choice", async () => {
   assert.equal(r.addresses.length, 1);
   assert.equal(r.fields.addressCode, "A1");
 });
-test("conflicting customer or pickup relations cannot be used for an order", async () => {
-  for (const row of [
-    { ...source, customer_code: "C2" },
-    { ...source, pup_code: "02" },
-    { ...source, pup_code: null },
-  ]) {
-    const r = await resolve([source, row]);
-    assert.deepEqual(r.fields, { addressCode: "", customerCode: "", pupCode: "" });
-  }
+test("multiple registered combinations remain available without guessing a customer or pickup", async () => {
+  const r = await resolve([source, { ...source, customer_code: "C2", pup_code: "02" }]);
+  assert.deepEqual(r.fields, { addressCode: "A1", customerCode: "", pupCode: "" });
+  assert.deepEqual(r.targets, [
+    { addressCode: "A1", customerCode: "C1", pupCode: "01" },
+    { addressCode: "A1", customerCode: "C2", pupCode: "02" },
+  ]);
+});
+test("incomplete records cannot authorize a DMS destination", async () => {
+  const r = await resolve([source, { ...source, pup_code: null }]);
+  assert.deepEqual(r.fields, { addressCode: "", customerCode: "", pupCode: "" });
+  assert.deepEqual(r.targets, []);
 });
 test("inconsistent names for one address fail closed", async () => {
   const r = await resolve([source, { ...source, address_name: "冲突地址" }]);
@@ -93,6 +96,7 @@ test("rejected return columns and missing records never become editable fallback
     const r = await resolveFcDmsTarget("A110", "", async () => result, signal);
     assert.equal(r.fields.addressCode, "");
     assert.equal(r.addresses.length, 0);
+    assert.deepEqual(r.targets, []);
   }
 });
 test("cancellation remains cancellation", async () => {
