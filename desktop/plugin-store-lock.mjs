@@ -79,6 +79,11 @@ async function processStillOwnsRecord(pid, mtimeMs) {
 
 async function preparationStopped(root, { owner, mtimeMs }) {
   if (await processStillOwnsRecord(owner.pid, mtimeMs)) return false;
+  return preparationWorkerStopped(root, owner, mtimeMs);
+}
+
+export async function preparationWorkerStopped(root, owner, mtimeMs) {
+  if (!lockOwner(owner)) return false;
   if (
     owner.workerPid !== undefined &&
     ((await processStillOwnsRecord(owner.workerPid, mtimeMs)) ||
