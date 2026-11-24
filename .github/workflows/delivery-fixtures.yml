@@ -639,6 +639,7 @@ jobs:
         if: inputs.prepare_windows_cache
         run: node gea/scripts/windows-complete-local/prepare.mjs core
       - name: Build full Windows package and verify isolated first installation
+        id: signed-build
         if: "!inputs.prepare_windows_cache"
         env:
           DSH_DELIVERY_CORE_RESTORE: ${{ steps.delivery-core-restore.outcome }}
@@ -656,6 +657,13 @@ jobs:
           $env:ELECTRON_RUN_AS_NODE = '1'
           & "$app/GEA Desktop.exe" --expose-internals gea/scripts/windows-complete-local/legacy-bootstrap.mjs "$app/resources/app.asar" "$app/resources/runtime" "$app/resources/company-seed" "$root/gea-local/legacy-bootstrap"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify the prior cached user plugin with packaged pnpm on Windows
+        if: "!cancelled() && steps.signed-build.outcome == 'success'"
+        working-directory: gea
+        run: |
+          $env:GEA_PLUGIN_UPDATE_SDK = (Resolve-Path '../core').Path
+          $env:GEA_PLUGIN_UPDATE_PNPM = (Resolve-Path '../core/apps/desktop/.desktop-build/targets/win-x64/artifacts/win-unpacked/resources/runtime/pnpm/bin/pnpm.mjs').Path
+          node --test tests/company-core-seed.contract.mjs
       - name: Verify signed downloads and unsigned-to-signed overwrite
         if: inputs.windows_update_acceptance && inputs.windows_signed && !inputs.prepare_windows_cache
         run: node gea/scripts/windows-complete-local/signed-upgrade.mjs core gea

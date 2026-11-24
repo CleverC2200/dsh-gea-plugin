@@ -407,10 +407,15 @@ try {
   await mkdir(dirname(marker), { recursive: true });
   await writeFile(marker, markerBytes);
   port = await loopbackPort();
+  const baselineMainPort = repairAffectedBaseline ? await loopbackPort() : undefined;
   const descriptor = openSync(join(privateOutput, "client-raw.txt"), "a");
   child = spawn(
     executable,
-    [`--remote-debugging-port=${port}`, "--remote-debugging-address=127.0.0.1"],
+    [
+      ...(baselineMainPort ? [`--inspect=127.0.0.1:${baselineMainPort}`] : []),
+      `--remote-debugging-port=${port}`,
+      "--remote-debugging-address=127.0.0.1",
+    ],
     { env: environment, stdio: ["ignore", descriptor, descriptor] },
   );
   closeSync(descriptor);
@@ -474,6 +479,31 @@ try {
   assert.ok(oldData.sessions > 0 && oldData.events > 0);
   evidence.historyBefore = oldData;
   evidence.oldDraftSaved = true;
+  const draftPath = join(process.env.APPDATA, "GEA Desktop");
+  const npm = join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
+  const dependencies = join(privateOutput, "draft-deps");
+  const installedDependency = spawnSync(
+    process.execPath,
+    [
+      npm,
+      "install",
+      "--prefix",
+      dependencies,
+      "--ignore-scripts",
+      "--no-package-lock",
+      "--no-audit",
+      "--no-fund",
+      "classic-level@2.0.0",
+    ],
+    {
+      env: environment,
+      encoding: "utf8",
+      timeout: 90000,
+      windowsHide: true,
+    },
+  );
+  assert.equal(installedDependency.status, 0, "DRAFT_READER_DEPENDENCY_FAILED");
+  const { ClassicLevel } = createRequire(join(dependencies, "package.json"))("classic-level");
   const lock = join(profile, "gea/installations", managedCore, "plugins/prepare.lock");
   if (!repairAffectedBaseline) {
     const abandoned = join(privateOutput, "abandoned-preparation.json");
@@ -571,12 +601,41 @@ try {
     recoveryReceipt = { path: operation, digest: await fileDigest(operation) };
     if (cdp) cdp.close();
     cdp = undefined;
-    const killed = spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-      env: environment,
-      windowsHide: true,
-      encoding: "utf8",
-    });
-    assert.equal(killed.status, 0, killed.stderr);
+    const debuggerTarget = await until(
+      "old client main inspector",
+      async () => {
+        const list = await fetch(`http://127.0.0.1:${baselineMainPort}/json/list`, {
+          signal: AbortSignal.timeout(2000),
+        })
+          .then((reply) => reply.json())
+          .catch(() => []);
+        return list.find((item) => item.webSocketDebuggerUrl);
+      },
+      15000,
+    );
+    const oldMain = await connection(debuggerTarget.webSocketDebuggerUrl);
+    try {
+      assert.equal(
+        await evaluate(
+          oldMain,
+          `(() => {
+        const path = process.getBuiltinModule("node:path");
+        const load = process.getBuiltinModule("node:module").createRequire(
+          path.join(process.resourcesPath, "app.asar", "package.json"));
+        const { app, BrowserWindow } = load("electron");
+        const workspace = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().startsWith("dsh-app://app/"));
+        if (!workspace) return false;
+        workspace.webContents.session.flushStorageData();
+        setTimeout(() => app.quit(), 250);
+        return true;
+      })()`,
+        ),
+        true,
+      );
+    } finally {
+      oldMain.close();
+    }
     handoff = Date.now();
     evidence.firstHop = "signed-in-place-cover-of-affected-baseline";
   } else {
@@ -688,6 +747,18 @@ try {
     elapsedMs: Date.now() - handoff,
   });
   if (repairAffectedBaseline) {
+    evidence.oldDraftVerifiedOnDisk = await until(
+      "original closed client left a saved draft on disk",
+      () =>
+        readDraft(
+          draftPath,
+          draftKey,
+          markerDraft,
+          join(privateOutput, "old-draft-check"),
+          ClassicLevel,
+        ),
+      15000,
+    );
     const replaced = spawnSync(originalInstaller, ["/S", "/D=" + installation], {
       encoding: "utf8",
       env: environment,
@@ -846,31 +917,6 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
   ]);
   assert.equal(after.status, "passed");
   evidence.data = after;
-  const draftPath = join(process.env.APPDATA, "GEA Desktop");
-  const npm = join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
-  const dependencies = join(privateOutput, "draft-deps");
-  const installedDependency = spawnSync(
-    process.execPath,
-    [
-      npm,
-      "install",
-      "--prefix",
-      dependencies,
-      "--ignore-scripts",
-      "--no-package-lock",
-      "--no-audit",
-      "--no-fund",
-      "classic-level@2.0.0",
-    ],
-    {
-      env: environment,
-      encoding: "utf8",
-      timeout: 90000,
-      windowsHide: true,
-    },
-  );
-  assert.equal(installedDependency.status, 0, "DRAFT_READER_DEPENDENCY_FAILED");
-  const { ClassicLevel } = createRequire(join(dependencies, "package.json"))("classic-level");
   evidence.composerDraftStorageRetained = await until(
     "old logical draft through Chromium local storage",
     () =>
@@ -1233,6 +1279,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     recoveryProbe: evidence.recoveryProbe,
     data: evidence.data,
     composerDraftStorageRetained: evidence.composerDraftStorageRetained,
+    oldDraftVerifiedOnDisk: evidence.oldDraftVerifiedOnDisk,
     milestones: evidence.milestones.map(({ name, time }) => ({ name, time })),
     ...(evidence.failure
       ? { failure: evidence.failure.split("\n")[0].replaceAll(privateOutput, "<PRIVATE>") }
