@@ -8,6 +8,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, symlink, readdir, cp } from "n
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { makeArchive } from "./fixtures/plugin-updates/installed-runtime.mjs";
 import { CompanyInstallation } from "../desktop/company-installation.mjs";
 import { prepareCompanyBoot, writeCompanySeedLock } from "../desktop/company-bootstrap.mjs";
@@ -21,176 +22,283 @@ if (!sdk) throw Error("fixed GEA_PLUGIN_UPDATE_SDK required");
 const execute = promisify(execFile);
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-test(
-  "a new Core installs a content-only bundled seed offline without replacing an existing shared store",
-  { timeout: 120000 },
-  async (t) => {
-    const directory = await mkdtemp(join(tmpdir(), "gea-core-offline-seed-"));
-    t.after(() =>
-      process.env.GEA_KEEP_TEST_ARTIFACTS
-        ? console.error(directory)
-        : rm(directory, { recursive: true, force: true }),
-    );
-    const home = join(directory, "home");
-    const profile = join(home, "profiles/desktop");
-    const root = join(directory, "runtime");
-    const support = join(directory, "support");
-    const seed = join(directory, "seed");
-    const store = join(home, "desktop-company-cache/installation/store");
-    for (const path of [
-      profile,
-      join(root, "dsh/node_modules/@deepseek-ai"),
-      support,
-      join(seed, "archives"),
-    ])
-      await mkdir(path, { recursive: true });
-    for (const [name, path] of Object.entries({
-      "dsh-app-boot": "packages/boot/app-boot",
-      "dsh-plugin-manager": "packages/boot/plugin-manager",
-      "dsh-atomic-write": "packages/util/atomic-write",
-    }))
-      await symlink(join(sdk, path), join(root, "dsh/node_modules/@deepseek-ai", name), "dir");
-    await symlink(
-      dirname(createRequire(import.meta.url).resolve("yaml/package.json")),
-      join(root, "dsh/node_modules/yaml"),
-      "dir",
-    );
-    await symlink(dirname(dirname(pnpm)), join(support, "pnpm"), "dir");
-    const run = async (cwd, args) =>
-      execute(
-        process.execPath,
-        [
-          pnpm,
-          ...args,
-          "--config.update-notifier=false",
-          "--config.manage-package-manager-versions=false",
-        ],
-        { cwd, env: process.env },
+for (const userCache of [false, true, "active-wal"])
+  test(
+    `a new Core installs the bundled seed offline and preserves the previous user store (${userCache})`,
+    { timeout: 120000 },
+    async (t) => {
+      const directory = await mkdtemp(join(tmpdir(), "gea-core-offline-seed-"));
+      t.after(() =>
+        process.env.GEA_KEEP_TEST_ARTIFACTS
+          ? console.error(directory)
+          : rm(directory, { recursive: true, force: true }),
       );
-    const old = await Promise.all(
-      companyPackageNames.map((name, index) =>
-        makeArchive(join(directory, "old"), name, ["0.1.50", "0.6.3-company.46", "0.0.216"][index]),
-      ),
-    );
-    await writeFile(
-      join(profile, "package.json"),
-      JSON.stringify({
-        private: true,
-        dependencies: {},
-        dsh: { profile: { bundles: companyPackageNames } },
-        retained: "user configuration",
-      }),
-    );
-    await run(profile, ["add", ...old.map((row) => row.path), "--offline", "--store-dir=" + store]);
-    const previous = new CompanyInstallation(profile, "a".repeat(40));
-    await previous.initialize();
-    await previous.beginBoot();
-    const dependency = await makeArchive(
-      join(directory, "dependency"),
-      "seed-only-dependency",
-      "1.0.0",
-    );
-    let origin;
-    const server = createServer((request, response) => {
-      if (request.url === "/dependency.tgz") response.end(dependency.bytes);
-      else {
-        response.setHeader("Content-Type", "application/json");
-        response.end(
-          JSON.stringify({
-            name: dependency.manifest.name,
-            "dist-tags": { latest: "1.0.0" },
-            versions: {
-              "1.0.0": {
-                ...dependency.manifest,
-                dist: {
-                  tarball: origin + "/dependency.tgz",
-                  integrity:
-                    "sha512-" + createHash("sha512").update(dependency.bytes).digest("base64"),
-                },
-              },
-            },
-          }),
-        );
-      }
-    });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    t.after(() => server.close());
-    origin = "http://127.0.0.1:" + server.address().port;
-    const packages = [];
-    for (const [index, name] of companyPackageNames.entries()) {
-      const artifact = await makeArchive(
-        join(directory, "new"),
-        name,
-        ["0.1.51", "0.6.3-company.47", "0.0.217"][index],
-      );
-      const source = join(dirname(artifact.path), "package");
-      if (index === 2) {
-        artifact.manifest.dependencies = { "seed-only-dependency": "1.0.0" };
-        await writeFile(join(source, "package.json"), JSON.stringify(artifact.manifest));
-      }
-      const file = "company-" + index + ".tgz";
-      const archive = join(seed, "archives", file);
-      execFileSync("tar", ["-czf", archive, "-C", dirname(source), "package"], {
-        env: { ...process.env, COPYFILE_DISABLE: "1" },
-      });
-      packages.push({
-        name,
-        version: artifact.manifest.version,
-        file,
-        sha256: digest(await readFile(archive)),
-      });
-    }
-    const seedProfile = join(directory, "seed-profile");
-    await mkdir(seedProfile);
-    await writeFile(join(seedProfile, "package.json"), '{"private":true}');
-    await writeFile(join(seedProfile, "pnpm-workspace.yaml"), "autoInstallPeers: false\n");
-    await run(seedProfile, [
-      "add",
-      ...packages.map((row) => join(seed, "archives", row.file)),
-      "--registry=" + origin,
-      "--store-dir=" + join(seed, "store"),
-      "--cache-dir=" + join(seed, "metadata"),
-    ]);
-    const metadata = join(seed, "metadata/v11/metadata");
-    for (const entry of await readdir(metadata))
-      await cp(join(metadata, entry), join(metadata, "registry.npmjs.org"), { recursive: true });
-    const manifest = { schema: 1, core: { head: "b".repeat(40) }, packages };
-    await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest));
-    await writeCompanySeedLock({ root, seed, profile: seedProfile });
-    await rm(join(seed, "store/v11/projects"), { recursive: true, force: true });
-    await new Promise((resolve) => server.close(resolve));
-    await writeFile(join(store, "old-store-sentinel"), "retained old store");
-    const oldIndex = await readFile(join(store, "v11/index.db"));
-    for (const coreHead of ["b".repeat(40), "c".repeat(40)]) {
-      const result = await prepareCompanyBoot({
-        home,
-        root,
+      const home = join(directory, "home");
+      const profile = join(home, "profiles/desktop");
+      const root = join(directory, "runtime");
+      const support = join(directory, "support");
+      const seed = join(directory, "seed");
+      const store = userCache
+        ? join(directory, "external-user-store")
+        : join(home, "desktop-company-cache/installation/store");
+      for (const path of [
+        profile,
+        join(root, "dsh/node_modules/@deepseek-ai"),
         support,
-        seed,
-        manifest: { ...manifest, core: { head: coreHead } },
-      }).catch(async (error) => {
-        const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
-        if (error.message.startsWith(prefix))
-          console.error(await readFile(error.message.slice(prefix.length), "utf8"));
-        throw error;
-      });
-      assert.equal(result.coreHead, coreHead);
-      const dependencyPath = createRequire(
-        join(profile, "node_modules", companyPackageNames[2], "package.json"),
-      ).resolve("seed-only-dependency");
-      assert.equal(
-        JSON.parse(await readFile(join(dirname(dirname(dependencyPath)), "package.json"))).version,
+        join(seed, "archives"),
+      ])
+        await mkdir(path, { recursive: true });
+      for (const [name, path] of Object.entries({
+        "dsh-app-boot": "packages/boot/app-boot",
+        "dsh-plugin-manager": "packages/boot/plugin-manager",
+        "dsh-atomic-write": "packages/util/atomic-write",
+      }))
+        await symlink(join(sdk, path), join(root, "dsh/node_modules/@deepseek-ai", name), "dir");
+      await symlink(
+        dirname(createRequire(import.meta.url).resolve("yaml/package.json")),
+        join(root, "dsh/node_modules/yaml"),
+        "dir",
+      );
+      await symlink(dirname(dirname(pnpm)), join(support, "pnpm"), "dir");
+      const run = async (cwd, args) =>
+        execute(
+          process.execPath,
+          [
+            pnpm,
+            ...args,
+            "--config.update-notifier=false",
+            "--config.manage-package-manager-versions=false",
+          ],
+          { cwd, env: process.env },
+        );
+      const old = await Promise.all(
+        companyPackageNames.map((name, index) =>
+          makeArchive(
+            join(directory, "old"),
+            name,
+            ["0.1.50", "0.6.3-company.46", "0.0.216"][index],
+          ),
+        ),
+      );
+      await writeFile(
+        join(profile, "package.json"),
+        JSON.stringify({
+          private: true,
+          dependencies: {},
+          dsh: { profile: { bundles: companyPackageNames } },
+          retained: "user configuration",
+        }),
+      );
+      await run(profile, [
+        "add",
+        ...old.map((row) => row.path),
+        "--offline",
+        "--store-dir=" + store,
+      ]);
+      const dependency = await makeArchive(
+        join(directory, "dependency"),
+        "seed-only-dependency",
         "1.0.0",
       );
-      assert.equal(
-        JSON.parse(await readFile(join(profile, "package.json"))).retained,
-        "user configuration",
+      const employee = await makeArchive(
+        join(directory, "employee"),
+        "employee-registry-widget",
+        "1.0.0",
       );
-      assert.equal(await readFile(join(store, "old-store-sentinel"), "utf8"), "retained old store");
-      assert.deepEqual(await readFile(join(store, "v11/index.db")), oldIndex);
-    }
-    const caches = await readdir(join(home, "desktop-company-cache"));
-    assert(!caches.some((entry) => /^[a-f0-9]{64}$/.test(entry)));
-    assert.equal((await readdir(join(home, "desktop-company-cache/seed-stores"))).length, 1);
-  },
-);
+      const oldMetadata = join(home, "desktop-company-cache/metadata");
+      let origin;
+      const server = createServer((request, response) => {
+        const pkg = request.url.includes("employee") ? employee : dependency;
+        const tarball = pkg === employee ? "/employee.tgz" : "/dependency.tgz";
+        if (request.url === tarball) response.end(pkg.bytes);
+        else {
+          response.setHeader("Content-Type", "application/json");
+          response.end(
+            JSON.stringify({
+              name: pkg.manifest.name,
+              "dist-tags": { latest: "1.0.0" },
+              versions: {
+                "1.0.0": {
+                  ...pkg.manifest,
+                  dist: {
+                    tarball: origin + tarball,
+                    integrity: "sha512-" + createHash("sha512").update(pkg.bytes).digest("base64"),
+                  },
+                },
+              },
+            }),
+          );
+        }
+      });
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      t.after(() => server.close());
+      origin = "http://127.0.0.1:" + server.address().port;
+      if (userCache) {
+        await run(profile, [
+          "add",
+          employee.manifest.name + "@1.0.0",
+          "--save-exact",
+          "--registry=" + origin,
+          "--store-dir=" + store,
+          "--cache-dir=" + oldMetadata,
+        ]);
+        const namespaces = join(oldMetadata, "v11/metadata");
+        for (const entry of await readdir(namespaces))
+          await cp(join(namespaces, entry), join(namespaces, "registry.npmjs.org"), {
+            recursive: true,
+          });
+      }
+      const previous = new CompanyInstallation(profile, "a".repeat(40));
+      await previous.initialize();
+      await previous.beginBoot();
+      const packages = [];
+      for (const [index, name] of companyPackageNames.entries()) {
+        const artifact = await makeArchive(
+          join(directory, "new"),
+          name,
+          ["0.1.51", "0.6.3-company.47", "0.0.217"][index],
+        );
+        const source = join(dirname(artifact.path), "package");
+        if (index === 2) {
+          artifact.manifest.dependencies = { "seed-only-dependency": "1.0.0" };
+          await writeFile(join(source, "package.json"), JSON.stringify(artifact.manifest));
+        }
+        const file = "company-" + index + ".tgz";
+        const archive = join(seed, "archives", file);
+        execFileSync("tar", ["-czf", archive, "-C", dirname(source), "package"], {
+          env: { ...process.env, COPYFILE_DISABLE: "1" },
+        });
+        packages.push({
+          name,
+          version: artifact.manifest.version,
+          file,
+          sha256: digest(await readFile(archive)),
+        });
+      }
+      const seedProfile = join(directory, "seed-profile");
+      await mkdir(seedProfile);
+      await writeFile(join(seedProfile, "package.json"), '{"private":true}');
+      await writeFile(join(seedProfile, "pnpm-workspace.yaml"), "autoInstallPeers: false\n");
+      await run(seedProfile, [
+        "add",
+        ...packages.map((row) => join(seed, "archives", row.file)),
+        "--registry=" + origin,
+        "--store-dir=" + join(seed, "store"),
+        "--cache-dir=" + join(seed, "metadata"),
+      ]);
+      const metadata = join(seed, "metadata/v11/metadata");
+      for (const entry of await readdir(metadata))
+        await cp(join(metadata, entry), join(metadata, "registry.npmjs.org"), { recursive: true });
+      const manifest = { schema: 1, core: { head: "b".repeat(40) }, packages };
+      await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest));
+      await writeCompanySeedLock({ root, seed, profile: seedProfile });
+      await rm(join(seed, "store/v11/projects"), { recursive: true, force: true });
+      await new Promise((resolve) => server.close(resolve));
+      if (userCache) {
+        const control = join(directory, "independent-control");
+        await mkdir(control);
+        await writeFile(
+          join(control, "package.json"),
+          JSON.stringify({ private: true, dependencies: { [employee.manifest.name]: "1.0.0" } }),
+        );
+        await run(control, [
+          "install",
+          "--offline",
+          "--frozen-store",
+          "--store-dir=" + store,
+          "--cache-dir=" + oldMetadata,
+          "--registry=https://registry.npmjs.org",
+        ]);
+        assert.equal(
+          JSON.parse(
+            await readFile(join(control, "node_modules", employee.manifest.name, "package.json")),
+          ).version,
+          "1.0.0",
+        );
+      }
+      await writeFile(join(store, "old-store-sentinel"), "retained old store");
+      const oldIndex = await readFile(join(store, "v11/index.db"));
+      const oldEntries = await readdir(store, { recursive: true });
+      const seedIndex = await readFile(join(seed, "store/v11/index.db"));
+      if (userCache === "active-wal") {
+        await writeFile(join(store, "v11/index.db-wal"), "active cache writer");
+        await assert.rejects(
+          prepareCompanyBoot({ home, root, support, seed, manifest }),
+          /GEA_PREVIOUS_STORE_ACTIVE/,
+        );
+        assert.deepEqual(await readFile(join(store, "v11/index.db")), oldIndex);
+        assert.deepEqual(await readFile(join(seed, "store/v11/index.db")), seedIndex);
+        assert.equal(
+          await readFile(join(store, "v11/index.db-wal"), "utf8"),
+          "active cache writer",
+        );
+        assert.equal((await previous.store.selected()).id, "baseline");
+        return;
+      }
+      for (const coreHead of ["b".repeat(40), "c".repeat(40)]) {
+        const result = await prepareCompanyBoot({
+          home,
+          root,
+          support,
+          seed,
+          manifest: { ...manifest, core: { head: coreHead } },
+        }).catch(async (error) => {
+          const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
+          if (error.message.startsWith(prefix))
+            console.error(await readFile(error.message.slice(prefix.length), "utf8"));
+          throw error;
+        });
+        assert.equal(result.coreHead, coreHead);
+        if (userCache)
+          assert.equal(
+            JSON.parse(
+              await readFile(join(profile, "node_modules", employee.manifest.name, "package.json")),
+            ).version,
+            "1.0.0",
+          );
+        if (userCache) {
+          const employeeEntry = createRequire(join(profile, "package.json")).resolve(
+            employee.manifest.name,
+          );
+          assert.equal(
+            (await import(pathToFileURL(employeeEntry).href)).pluginPackageVersion.version,
+            "1.0.0",
+          );
+          assert.equal(
+            JSON.parse(await readFile(join(profile, "package.json"))).dependencies[
+              employee.manifest.name
+            ],
+            "1.0.0",
+          );
+        }
+        const dependencyPath = createRequire(
+          join(profile, "node_modules", companyPackageNames[2], "package.json"),
+        ).resolve("seed-only-dependency");
+        assert.equal(
+          JSON.parse(await readFile(join(dirname(dirname(dependencyPath)), "package.json")))
+            .version,
+          "1.0.0",
+        );
+        assert.equal(
+          (await import(pathToFileURL(dependencyPath).href)).pluginPackageVersion.version,
+          "1.0.0",
+        );
+        assert.equal(
+          JSON.parse(await readFile(join(profile, "package.json"))).retained,
+          "user configuration",
+        );
+        assert.equal(
+          await readFile(join(store, "old-store-sentinel"), "utf8"),
+          "retained old store",
+        );
+        assert.deepEqual(await readFile(join(store, "v11/index.db")), oldIndex);
+        assert.deepEqual(await readdir(store, { recursive: true }), oldEntries);
+        assert.deepEqual(await readFile(join(seed, "store/v11/index.db")), seedIndex);
+      }
+      const caches = await readdir(join(home, "desktop-company-cache"));
+      assert(!caches.some((entry) => /^[a-f0-9]{64}$/.test(entry)));
+      assert.equal((await readdir(join(home, "desktop-company-cache/seed-stores"))).length, 1);
+      if (userCache)
+        assert.equal((await readdir(join(home, "desktop-company-cache/seed-recovery"))).length, 1);
+    },
+  );

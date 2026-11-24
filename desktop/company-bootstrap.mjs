@@ -13,6 +13,8 @@ import {
   rename,
   symlink,
   realpath,
+  stat,
+  link,
 } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -392,6 +394,90 @@ async function prepareCompanySeedStore(seed, home, manifest) {
   }
   await mergeCompanySeed(join(seed, "metadata"), join(cache, "metadata"), true);
   return store;
+}
+
+async function recoverCompanySeedStore(store, previousStore, home) {
+  if (basename(previousStore) !== "v11") throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+  const priorIndex = join(previousStore, "index.db");
+  if (existsSync(priorIndex + "-wal")) throw Error("GEA_PREVIOUS_STORE_ACTIVE");
+  if (!existsSync(priorIndex) || !(await lstat(priorIndex)).isFile())
+    throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+  const source = await realpath(join(previousStore, "files"));
+  const files = await realpath(join(store, "v11/files"));
+  if ((await stat(source)).dev !== (await stat(files)).dev)
+    throw Error("GEA_PREVIOUS_STORE_CROSS_VOLUME");
+  const recovered = join(home, "desktop-company-cache/seed-recovery", basename(store));
+  const recoveredDirectory = await realpath(join(recovered, "v11")).catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if ((await realpath(previousStore)) === recoveredDirectory) return recovered;
+  const before = await stat(priorIndex);
+  const { DatabaseSync } = await import("node:sqlite");
+  const uri = pathToFileURL(priorIndex);
+  uri.searchParams.set("immutable", "1");
+  let prior, target;
+  try {
+    prior = new DatabaseSync(uri.href, { readOnly: true });
+    const columns = prior.prepare("PRAGMA table_info(package_index)").all();
+    if (
+      columns.length !== 2 ||
+      columns[0].name !== "key" ||
+      columns[0].type !== "TEXT" ||
+      columns[0].pk !== 1 ||
+      columns[1].name !== "data" ||
+      columns[1].type !== "BLOB" ||
+      columns[1].notnull !== 1
+    )
+      throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+    for (const prefix of await readdir(source, { withFileTypes: true })) {
+      if (!/^[a-f0-9]{2}$/.test(prefix.name) || !prefix.isDirectory())
+        throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+      const directory = join(files, prefix.name);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      for (const entry of await readdir(join(source, prefix.name), { withFileTypes: true })) {
+        if (!/^[a-f0-9]{126}(?:-exec)?$/.test(entry.name) || !entry.isFile())
+          throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+        if (source !== files)
+          await link(join(source, prefix.name, entry.name), join(directory, entry.name)).catch(
+            (error) => {
+              if (error.code !== "EEXIST") throw error;
+            },
+          );
+      }
+    }
+    await mkdir(join(recovered, "v11"), { recursive: true, mode: 0o700 });
+    const index = join(recovered, "v11/index.db");
+    await copyFile(join(store, "v11/index.db"), index, constants.COPYFILE_EXCL).catch((error) => {
+      if (error.code !== "EEXIST") throw error;
+    });
+    const content = join(recovered, "v11/files");
+    try {
+      await symlink(files, content, process.platform === "win32" ? "junction" : "dir");
+    } catch (error) {
+      if (error.code !== "EEXIST" || (await realpath(content)) !== files) throw error;
+    }
+    target = new DatabaseSync(index);
+    target.exec("PRAGMA busy_timeout=5000; BEGIN IMMEDIATE");
+    const insert = target.prepare("INSERT OR IGNORE INTO package_index (key, data) VALUES (?, ?)");
+    for (const row of prior.prepare("SELECT key, data FROM package_index").iterate())
+      insert.run(row.key, row.data);
+    const after = await stat(priorIndex);
+    if (
+      existsSync(priorIndex + "-wal") ||
+      before.mtimeMs !== after.mtimeMs ||
+      before.size !== after.size
+    )
+      throw Error("GEA_PREVIOUS_STORE_ACTIVE");
+    target.exec("COMMIT");
+    return recovered;
+  } catch (error) {
+    if (error.message.startsWith("GEA_PREVIOUS_STORE_")) throw error;
+    throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED", { cause: error });
+  } finally {
+    target?.close();
+    prior?.close();
+  }
 }
 
 export async function installCompanyPackages({
@@ -922,7 +1008,7 @@ async function prepareCompanyBootUpdate({
     async (directory) => {
       if (!inherit) {
         const store = await prepareCompanySeedStore(seed, home, manifest);
-        await install({
+        const options = {
           root,
           support,
           seed,
@@ -933,7 +1019,27 @@ async function prepareCompanyBootUpdate({
           offline: true,
           requireOffline: true,
           activateNewBundles: false,
-        });
+        };
+        try {
+          await install(options);
+        } catch (error) {
+          const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
+          if (
+            !error.message.startsWith(prefix) ||
+            !/\bERR_PNPM_NO_OFFLINE_(?:TARBALL|META)\b/.test(
+              await readFile(error.message.slice(prefix.length), "utf8"),
+            )
+          )
+            throw error;
+          const require = createRequire(join(root, "dsh/package.json"));
+          const modules = require("yaml").parse(
+            await readFile(join(profile, "node_modules/.modules.yaml"), "utf8"),
+          );
+          if (typeof modules?.storeDir !== "string" || !isAbsolute(modules.storeDir)) throw error;
+          const recovered = await recoverCompanySeedStore(store, modules.storeDir, home);
+          await rm(join(directory, "node_modules"), { recursive: true, force: true });
+          await install({ ...options, store: recovered });
+        }
         return;
       }
       try {
