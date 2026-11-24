@@ -174,52 +174,55 @@ export function registerBranchInventoryTool(
                 const warehouses = [...new Set<string>(route.values)];
                 const scope = args.warehouseScope === "all" ? [null, ...warehouses] : warehouses;
                 const batchIds = new Set<unknown>();
-                const snapshotReads = new Map<string, Promise<unknown>>();
+                const execute: NonNullable<
+                  Parameters<typeof readConfiguredFacts>[3]
+                >["execute"] = async (_request, call) => {
+                  const response = await readConfiguredHtmlQuery(
+                    resource,
+                    { queryId: call.queryId, parameters: call.values },
+                    business,
+                    signal,
+                    consumer,
+                  );
+                  if (call.queryId.endsWith(".replenishment.overview")) {
+                    batchIds.add(call.values.summary_batch_id);
+                  } else if (
+                    call.queryId === "summary.bootstrap" ||
+                    call.queryId.endsWith("summary.snapshot")
+                  ) {
+                    for (const row of response.rows) {
+                      const batchId = record(row)?.batch_id;
+                      if (typeof batchId === "string") batchIds.add(batchId);
+                    }
+                  }
+                  return response;
+                };
                 const parts = await Promise.all(
                   scope.map(async (warehouseCode) => {
-                    const part = await readConfiguredFacts(
-                      config,
-                      "replenishment",
-                      {
-                        asOf,
-                        cycleDays,
-                        filters: warehouseCode ? { warehouse_code: warehouseCode } : {},
-                      },
-                      {
-                        signal,
-                        snapshotReads,
-                        summaryOnly: true,
-                        execute: async (_request, call) => {
-                          const response = await readConfiguredHtmlQuery(
-                            resource,
-                            { queryId: call.queryId, parameters: call.values },
-                            business,
-                            signal,
-                            consumer,
-                          );
-                          if (call.queryId.endsWith(".replenishment.overview")) {
-                            batchIds.add(call.values.summary_batch_id);
-                          } else if (
-                            call.queryId === "summary.bootstrap" ||
-                            call.queryId.endsWith("summary.snapshot")
-                          ) {
-                            for (const row of response.rows) {
-                              const batchId = record(row)?.batch_id;
-                              if (typeof batchId === "string") batchIds.add(batchId);
-                            }
-                          }
-                          return response;
+                    const part = record(
+                      await readConfiguredFacts(
+                        config,
+                        "replenishment",
+                        {
+                          asOf,
+                          cycleDays,
+                          filters: warehouseCode ? { warehouse_code: warehouseCode } : {},
                         },
-                      },
+                        {
+                          signal,
+                          summaryOnly: true,
+                          execute,
+                        },
+                      ),
                     );
-                    const summary = record(part.summary);
+                    const summary = record(part?.summary);
                     return {
                       warehouseCode,
-                      snapshotDate: part.snapshotDate,
-                      configVersion: part.configVersion,
+                      snapshotDate: part?.snapshotDate,
+                      configVersion: part?.configVersion,
                       inventory: summary?.review_turn_inventory,
                       daily: summary?.review_turn_daily,
-                      error: part.summaryError,
+                      error: part?.summaryError,
                     };
                   }),
                 );
