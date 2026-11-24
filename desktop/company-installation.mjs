@@ -50,7 +50,7 @@ export class CompanyInstallation {
       baseline: join(this.directory, "baseline"),
     });
   }
-  async initialize(prepare) {
+  async initialize(prepare, { inherit = true } = {}) {
     if (await optional(join(this.directory, "baseline/baseline.json"))) return;
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     await this.store.withLock(async (owner, lockPath) => {
@@ -59,8 +59,14 @@ export class CompanyInstallation {
       const stage = join(this.directory, stageName);
       await writePluginStoreJson(lockPath, { ...owner, stage: stageName });
       await mkdir(stage, { mode: 0o700 });
-      await materializeGraph({ path: this.profile }, stage);
-      await relocateVirtualStore(stage, { sourceDirectory: this.profile });
+      if (inherit) {
+        await materializeGraph({ path: this.profile }, stage);
+        await relocateVirtualStore(stage, { sourceDirectory: this.profile });
+      } else {
+        const manifest = await json(join(this.profile, "package.json"));
+        for (const key of graphFields) delete manifest[key];
+        await writePluginStoreJson(join(stage, "package.json"), manifest);
+      }
       await prepare?.(stage);
       await this.validate(stage);
       await writePluginStoreJson(join(stage, "baseline.json"), {
@@ -141,6 +147,65 @@ export class CompanyInstallation {
     await this.mount(selected);
     return selected;
   }
+  async restoreBaselineSelection() {
+    const baseline = await json(join(this.store.baseline, "baseline.json"));
+    if (baseline.schema !== 1 || baseline.coreHead !== this.coreHead)
+      throw Error("GEA_INSTALLATION_CORE_MISMATCH");
+    await this.validate(this.store.baseline);
+    await this.store.withSelectionLock(async () => {
+      try {
+        await this.store.status();
+        return;
+      } catch (error) {
+        if (error.message !== "PLUGIN_SELECTION_INVALID") throw error;
+      }
+      const path = join(this.store.root, "selection.json");
+      const original = await readFile(path);
+      await writeFile(path + ".before-recovery-" + randomUUID(), original, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await writePluginStoreJson(path, {
+        active: "baseline",
+        verified: "baseline",
+        previous: null,
+        booting: null,
+        pending: null,
+        dataSchema: this.store.dataSchema,
+        error: "PLUGIN_SELECTION_INVALID",
+      });
+    });
+    return this.beginBoot({ activatePending: false });
+  }
+  async verifiedMounted() {
+    const state = await this.store.status();
+    if (!state.verified || state.active !== state.verified) return null;
+    const marker = await json(join(this.profile, "gea/installation.json"));
+    if (marker.schema !== 1 || marker.coreHead !== this.coreHead || marker.graphId !== state.active)
+      return null;
+    const selected = await this.store.selected();
+    const directory = await realpath(selected.path);
+    if (!inside(await realpath(this.directory), directory)) return null;
+    if (
+      selected.id === "baseline" &&
+      (await json(join(directory, "baseline.json"))).coreHead !== this.coreHead
+    )
+      return null;
+    if (
+      (await realpath(join(this.profile, "node_modules"))) !==
+      (await realpath(join(directory, "node_modules")))
+    )
+      return null;
+    if (
+      !isDeepStrictEqual(
+        graphValues(await json(join(this.profile, "package.json"))),
+        graphValues(await json(join(directory, "package.json"))),
+      )
+    )
+      return null;
+    await this.validate(directory);
+    return selected;
+  }
   async mount(selected) {
     const directory = await realpath(selected.path);
     if (!inside(await realpath(this.directory), directory))
@@ -154,10 +219,17 @@ export class CompanyInstallation {
     });
     const actual = entry ? await realpath(modules).catch(() => null) : null;
     const marker = await optional(join(this.profile, "gea/installation.json"));
+    let mounted;
+    try {
+      mounted = marker && JSON.parse(marker.toString("utf8"));
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
     if (
       actual === (await realpath(target)) &&
-      marker &&
-      JSON.parse(marker.toString("utf8")).graphId === selected.id
+      mounted?.schema === 1 &&
+      mounted.coreHead === this.coreHead &&
+      mounted.graphId === selected.id
     )
       return;
     const current = await optional(join(this.profile, "package.json"));
@@ -167,6 +239,7 @@ export class CompanyInstallation {
     for (const [name, bytes] of [
       ["package.json", current],
       ["pnpm-lock.yaml", previousLock],
+      ["installation.json", marker],
     ])
       if (bytes) await writeFile(join(recovery, name), bytes, { flag: "wx", mode: 0o600 });
     if (actual !== (await realpath(target))) {

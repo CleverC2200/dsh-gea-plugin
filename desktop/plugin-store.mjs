@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, open, lstat } from "node:fs/promises";
+import { mkdir, readFile, rename, open, lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { relocateVirtualStore } from "./copy-graph.mjs";
 import { randomUUID, createHash } from "node:crypto";
@@ -60,7 +60,17 @@ export class PluginStore {
   }
   async status() {
     try {
-      return await json(join(this.root, "selection.json"));
+      const state = await json(join(this.root, "selection.json"));
+      const valid = (id) => typeof id === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(id);
+      if (
+        !state ||
+        !valid(state.active) ||
+        ["previous", "verified", "pending", "booting"].some(
+          (key) => state[key] != null && !valid(state[key]),
+        )
+      )
+        throw Error("PLUGIN_SELECTION_INVALID");
+      return state;
     } catch (error) {
       if (error.code !== "ENOENT") throw Error("PLUGIN_SELECTION_INVALID");
       return { active: "baseline", previous: null };

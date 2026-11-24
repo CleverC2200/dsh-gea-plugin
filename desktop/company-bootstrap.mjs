@@ -9,13 +9,13 @@ import {
   refreshBundledCompanySuite,
   assertCompletedGeaRefresh,
   assertProfileIdle,
-  readProfileUpdateState,
+  assertProfileWritersStopped,
   planBundledCompanyRefresh,
 } from "./company-gea-refresh.mjs";
 import { CompanyInstallation } from "./company-installation.mjs";
 import { companyPnpmNetworkArguments } from "./company-pnpm.mjs";
 import { writePluginStoreJson } from "./plugin-store.mjs";
-import { companyUpdatePath, readCompanyUpdate } from "./company-update.mjs";
+import { readCompanyUpdate } from "./company-update.mjs";
 import {
   prepareCompanyArchives,
   repointCompanyArchives,
@@ -830,7 +830,7 @@ export async function refreshCompanyStartup({ legacyData, ...options }) {
   return { refresh, cleanup };
 }
 
-export async function prepareCompanyBoot({
+async function prepareCompanyBootUpdate({
   root,
   support,
   seed,
@@ -838,17 +838,14 @@ export async function prepareCompanyBoot({
   manifest,
   install = installCompanyPackages,
   retry = false,
+  recover = false,
 }) {
   const profile = join(home, "profiles/desktop");
-  if (!existsSync(join(profile, "package.json")))
-    await bootstrapCompanyProfile({ root, support, seed, home, install });
+  const created = !existsSync(join(profile, "package.json"));
+  if (created) await bootstrapCompanyProfile({ root, support, seed, home, install });
   const installation = new CompanyInstallation(profile, manifest.core.head);
-  const baseline = join(installation.directory, "baseline/baseline.json");
-  if (!existsSync(baseline))
-    await readProfileUpdateState(profile, {
-      allowExitedPackageRun: true,
-      allowStoppedUpdate: true,
-    });
+  const marker = await json(join(profile, "gea/installation.json")).catch(() => null);
+  const inherit = created || marker?.coreHead === manifest.core.head;
   const bundled = manifest.packages.filter((row) => companyPackageNames.includes(row.name));
   const plan = async (directory) => {
     const current = JSON.parse(
@@ -879,58 +876,67 @@ export async function prepareCompanyBoot({
       strictPeers: true,
       activateNewBundles: false,
     });
-  await installation.initialize(async (directory) => {
-    try {
-      await installation.validate(directory);
-    } catch (error) {
-      if (error.code !== "ENOENT" && error.message !== "GEA_INSTALLATION_INCOMPLETE") throw error;
-      await installBundled(directory);
-    }
-  });
+  await installation.initialize(
+    async (directory) => {
+      if (!inherit) {
+        const store = join(home, "desktop-company-cache/installation/store");
+        if (!existsSync(store))
+          await cp(join(seed, "store"), store, {
+            recursive: true,
+            errorOnExist: true,
+            force: false,
+          });
+        const metadata = join(home, "desktop-company-cache/metadata");
+        if (!existsSync(metadata))
+          await cp(join(seed, "metadata"), metadata, {
+            recursive: true,
+            errorOnExist: true,
+            force: false,
+          });
+        await install({
+          root,
+          support,
+          seed,
+          home,
+          profile: directory,
+          packages: manifest.packages.map((row) => join(seed, "archives", row.file)),
+          store: join(home, "desktop-company-cache/installation/store"),
+          offline: true,
+          activateNewBundles: false,
+        });
+        return;
+      }
+      try {
+        await installation.validate(directory);
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.message !== "GEA_INSTALLATION_INCOMPLETE") throw error;
+        await installBundled(directory);
+      }
+    },
+    { inherit },
+  );
+  if (recover) {
+    await installation.rollback("BOOTSTRAP_FAILED");
+    const selected = await installation.beginBoot({ activatePending: false });
+    return {
+      schema: 1,
+      profile,
+      coreHead: installation.coreHead,
+      graphId: selected.id,
+      trial: false,
+    };
+  }
   const previousBoot = await installation.store.status();
   if (previousBoot.booting && previousBoot.active !== previousBoot.verified)
     await installation.beginBoot({ activatePending: false });
-  const company = await readCompanyUpdate(profile);
+  const company = await readCompanyUpdate(profile).catch(() => null);
   const selection = await installation.store.status();
   if (
     company?.phase === "verifying" &&
     ![selection.active, selection.pending].includes("desktop-" + company.id)
   )
     await installation.failOperation("desktop-" + company.id, "PREVIOUS_PREPARATION_INTERRUPTED");
-  if (company?.phase === "prepared" && company.desktopVersion === process.env.GEA_DESKTOP_VERSION) {
-    try {
-      await installation.prepare("desktop-" + company.id, async (directory) => {
-        const runtime = join(directory, "gea/plugin-updates");
-        await mkdir(join(runtime, "cache"), { recursive: true, mode: 0o700 });
-        await writePluginStoreJson(companyUpdatePath(directory), company);
-        for (const target of company.targets) {
-          const file = target.sha256 + ".tgz";
-          const source = join(profile, "gea/plugin-updates/cache", file);
-          if (existsSync(source))
-            await cp(source, join(runtime, "cache", file), { errorOnExist: true, force: false });
-        }
-        await applyCompanyUpdate({
-          root,
-          support,
-          seed,
-          home,
-          profile: directory,
-          manifest,
-          install,
-        });
-        await writePluginStoreJson(companyUpdatePath(profile), await readCompanyUpdate(directory));
-      });
-    } catch (error) {
-      if (error.message !== "PLUGIN_UPDATE_BUSY")
-        await writePluginStoreJson(companyUpdatePath(profile), {
-          ...company,
-          phase: "failed",
-          diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
-            ? error.message
-            : "GEA_COMPANY_PREPARATION_FAILED",
-        });
-    }
-  } else if (
+  if (
     !(await installation.store.status()).pending &&
     (await plan((await installation.store.selected()).path)).status === "ready"
   ) {
@@ -961,8 +967,13 @@ export async function prepareCompanyBoot({
       }
     }
   }
-  const selected = await installation.beginBoot();
-  await refreshCompanyCore({ root, seed, home, installationProtocol: 1 });
+  await assertProfileWritersStopped(profile);
+  const mounted =
+    !(await installation.store.status()).pending && (await installation.verifiedMounted());
+  const selected = mounted || (await installation.beginBoot());
+  await refreshCompanyCore({ root, seed, home, installationProtocol: 1 }).catch((error) => {
+    console.error("GEA_BOOT_CORE_PROOF_DEFERRED", error.message);
+  });
   return {
     schema: 1,
     profile,
@@ -970,6 +981,44 @@ export async function prepareCompanyBoot({
     graphId: selected.id,
     trial: selected.id !== ((await installation.store.status()).verified ?? "baseline"),
   };
+}
+
+export async function prepareCompanyBoot(options) {
+  await assertProfileWritersStopped(join(options.home, "profiles/desktop"));
+  if (options.recover) {
+    const installation = new CompanyInstallation(
+      join(options.home, "profiles/desktop"),
+      options.manifest.core.head,
+    );
+    const selected = await installation.verifiedMounted().catch(() => null);
+    if (selected)
+      return {
+        schema: 1,
+        profile: installation.profile,
+        coreHead: installation.coreHead,
+        graphId: selected.id,
+        trial: false,
+      };
+  }
+  try {
+    return await prepareCompanyBootUpdate(options);
+  } catch (error) {
+    await assertProfileWritersStopped(join(options.home, "profiles/desktop"));
+    const installation = new CompanyInstallation(
+      join(options.home, "profiles/desktop"),
+      options.manifest.core.head,
+    );
+    const selected = await installation.verifiedMounted().catch(() => null);
+    if (!selected && error.message !== "PLUGIN_SELECTION_INVALID") throw error;
+    const fallback = selected ?? (await installation.restoreBaselineSelection());
+    return {
+      schema: 1,
+      profile: installation.profile,
+      coreHead: installation.coreHead,
+      graphId: fallback.id,
+      trial: false,
+    };
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -980,30 +1029,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   );
   const home = resolveDshHome();
   const manifest = await readCompanySeed(seed);
-  let boot;
-  if (process.argv.includes("--recover-installation")) {
-    const installation = new CompanyInstallation(
-      join(home, "profiles/desktop"),
-      manifest.core.head,
-    );
-    await installation.rollback("BOOTSTRAP_FAILED");
-    const selected = await installation.beginBoot();
-    await refreshCompanyCore({ root, seed, home, installationProtocol: 1 });
-    boot = {
-      schema: 1,
-      profile: installation.profile,
-      coreHead: installation.coreHead,
-      graphId: selected.id,
-      trial: false,
-    };
-  } else
-    boot = await prepareCompanyBoot({
-      root,
-      support,
-      seed,
-      home,
-      manifest,
-      retry: process.argv.includes("--retry-installation"),
-    });
+  await verifyCompanyCore(root, manifest.core);
+  const boot = await prepareCompanyBoot({
+    root,
+    support,
+    seed,
+    home,
+    manifest,
+    recover: process.argv.includes("--recover-installation"),
+    retry: process.argv.includes("--retry-installation"),
+  });
   console.log("GEA_INSTALLATION_BOOT", JSON.stringify(boot));
 }
