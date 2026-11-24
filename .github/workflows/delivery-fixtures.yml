@@ -526,7 +526,7 @@ jobs:
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
           $inputPath = Join-Path $env:RUNNER_TEMP 'gea-desktop-input.json'
           [IO.File]::WriteAllText($inputPath, $env:DESKTOP_INPUT_JSON, [Text.UTF8Encoding]::new($false))
-          $env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE = Join-Path $env:RUNNER_TEMP 'cleverc2200-gea-dsh-prototype-0.0.348024.tgz'
+          $env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE = Join-Path $env:RUNNER_TEMP 'cleverc2200-gea-dsh-prototype-0.0.348025.tgz'
           node tests/fixtures/windows-recovery-acceptance/prepare-input.mjs $inputPath
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "GEA_RECOVERY_ACCEPTANCE_ARCHIVE=$env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE" | Out-File -Append -FilePath $env:GITHUB_ENV

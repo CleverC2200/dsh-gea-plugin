@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const inputPath = process.argv[2];
 const archivePath = process.env.GEA_RECOVERY_ACCEPTANCE_ARCHIVE;
-const version = "0.0.348024";
+const version = "0.0.348025";
 const baseDigest = "31a35df75a10d070e9c8e0255f0aa4d7d958c4e369e445f7c4bc675e426f7e10";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const baseUrl = "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/" +

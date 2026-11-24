@@ -386,6 +386,42 @@ try {
   assert.ok(oldData.sessions>0 && oldData.events>0);
   evidence.historyBefore = oldData;
   evidence.oldDraftSaved = true;
+  const lock = join(profile, "gea/installations", managedCore, "plugins/prepare.lock");
+  const abandoned = join(privateOutput, "abandoned-preparation.json");
+  const workerScript = join(privateOutput, "interrupt-preparation.mjs");
+  await writeFile(workerScript, `
+    import { writeFile } from "node:fs/promises";
+    import { pathToFileURL } from "node:url";
+    const [entry, profile, coreHead, result] = process.argv.slice(2);
+    const { CompanyInstallation } = await import(pathToFileURL(entry));
+    const installation = new CompanyInstallation(profile, coreHead);
+    await installation.prepare("interrupted-signed-upgrade", async (stage) => {
+      await writeFile(result, JSON.stringify({ pid: process.pid, stage }));
+      await new Promise(() => setInterval(() => {}, 1000));
+    });
+  `);
+  const worker = spawn(executable, ["--expose-internals", workerScript,
+    join(appRoot, "company-installation.mjs"), profile, managedCore, abandoned], {
+      env: { ...environment, ELECTRON_RUN_AS_NODE: "1" }, windowsHide: true, stdio: "inherit",
+    });
+  try {
+    const prepared = await until("real prior preparation reached the staging directory", async () =>
+      JSON.parse(await readFile(abandoned, "utf8").catch(() => "null")),
+    );
+    assert.equal(prepared.pid, worker.pid);
+    assert.ok(prepared.stage.includes("staging-"));
+    assert.equal(JSON.parse(await readFile(lock, "utf8")).pid, worker.pid);
+  } finally {
+    if (worker.exitCode === null && worker.signalCode === null) {
+      const ended = new Promise((resolve) => worker.once("exit", resolve));
+      const killed = spawnSync("taskkill.exe", ["/PID", String(worker.pid), "/T", "/F"],
+        { env: environment, windowsHide: true, encoding: "utf8" });
+      assert.equal(killed.status, 0, killed.stderr);
+      await ended;
+    }
+  }
+  assert.equal(JSON.parse(await readFile(lock, "utf8")).pid, worker.pid);
+  milestone("prior-package-preparation-interrupted-with-lock-preserved");
   const before = await processes();
   const owned = new Set([child.pid]);
   for (let changed = true; changed;) {
@@ -574,6 +610,8 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     }
   },150000);
   evidence.runtimePackages = running;
+  await assert.rejects(readFile(lock), { code: "ENOENT" });
+  evidence.interruptedExistingInstallationRecovered = true;
   const after = runBundled(dataTool,["--home",home,"--before",snapshot,"--output",join(privateOutput,"new-data.json")]);
   assert.equal(after.status,"passed");
   evidence.data = after;
@@ -624,6 +662,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     installerSha256:expectedNewSha,feedSha256:evidence.feedSha256,
     relaunch:evidence.relaunchedProcess ? {method:"native-updater",nativeUpdatedFlag:true,manualSuccessorLaunch:false} : null,
     runtimePackages:evidence.runtimePackages,
+    interruptedExistingInstallationRecovered: evidence.interruptedExistingInstallationRecovered,
     data:evidence.data,
     composerDraftStorageRetained:evidence.composerDraftStorageRetained,
     milestones:evidence.milestones.map(({name,time})=>({name,time})),
