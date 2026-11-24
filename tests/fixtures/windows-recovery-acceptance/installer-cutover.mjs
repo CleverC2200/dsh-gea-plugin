@@ -11,7 +11,7 @@ await mkdir(output, { recursive: true });
 const work = await mkdtemp(join(process.env.RUNNER_TEMP, "dsh-directory-cutover-"));
 const core = "17746ac35c8fa08e2da98f2127b05f421132cb16";
 const { getMakeNsisPath } = createRequire(import.meta.url)("app-builder-lib/out/toolsets/windows.js");
-const makensis = await getMakeNsisPath();
+const nsis = await getMakeNsisPath();
 const sevenZip = "C:/Program Files/7-Zip/7z.exe";
 const target = join(work, "Application");
 const data = join(work, ".dsh");
@@ -24,8 +24,8 @@ await writeFile(join(target, "GEA Desktop.exe"), "original program");
 await writeFile(join(payload, "GEA Desktop.exe"), "new program");
 await Promise.all(Object.entries(sentinel).map(([file, text]) => writeFile(join(data, file), text)));
 
-function run(command, args) {
-  const result = spawnSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 60000 });
+function run(command, args, env = process.env) {
+  const result = spawnSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 60000, env });
   assert.equal(result.status, 0, result.stderr || result.stdout || String(result.error));
 }
 run(sevenZip, ["a", archive, join(payload, "*"), "-bso0", "-bsp0"]);
@@ -68,7 +68,7 @@ async function compile(installerPath, scriptSource) {
     '  Quit',
     'SectionEnd',
   ].join("\r\n"));
-  run(makensis, ["/V2", script]);
+  run(nsis.path, ["/V2", script], { ...process.env, ...nsis.env });
 }
 
 const interrupted = join(work, "interrupt-after-move.exe");
