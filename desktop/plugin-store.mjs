@@ -37,10 +37,12 @@ export async function writePluginStoreJson(path, value) {
   await rename(temporary, path);
 }
 export class PluginStore {
-  constructor({ data, baseline, dataSchema = 1 }) {
+  constructor({ data, baseline, dataSchema = 1, companyCoreHead, companyProfile }) {
     this.root = join(resolve(data), "plugins");
     this.baseline = resolve(baseline);
     this.dataSchema = dataSchema;
+    this.companyCoreHead = companyCoreHead;
+    this.companyProfile = companyProfile;
   }
   async withLock(action, options) {
     return withPluginStoreLock(this.root, action, options);
@@ -105,7 +107,7 @@ export class PluginStore {
     }
     return { id: active, path, receipt };
   }
-  async prepare({ id, install, signal }) {
+  async prepare({ id, install, signal, queueActivation = false }) {
     versionId(id);
     await mkdir(join(this.root, "versions"), { recursive: true, mode: 0o700 });
     return this.withLock(async (owner, lockPath) => {
@@ -121,8 +123,10 @@ export class PluginStore {
         signal?.throwIfAborted();
         await relocateVirtualStore(stage, { sourceDirectory: current.path, storeRoot: this.root });
         await install(stage, {
-          registerProcess: async (workerPid) =>
-            writePluginStoreJson(lockPath, { ...preparation, workerPid }),
+          registerProcess: async (workerPid) => {
+            preparation.workerPid = workerPid;
+            await writePluginStoreJson(lockPath, preparation);
+          },
         });
         await relocateVirtualStore(stage);
         await pruneUnreferencedArchives(stage);
@@ -166,6 +170,9 @@ export class PluginStore {
           versions,
           lockSha256: createHash("sha256").update(lockBytes).digest("hex"),
           ...layout,
+          ...(this.companyCoreHead
+            ? { ownership: { schema: 1, kind: "company-update", coreHead: this.companyCoreHead } }
+            : {}),
         };
         await writePluginStoreJson(join(stage, "version.json"), receipt);
 
@@ -177,6 +184,7 @@ export class PluginStore {
           if (error.code !== "ENOENT") throw error;
         }
         await rename(stage, destination);
+        if (queueActivation) await this.queueActivation(id);
         return receipt;
       } catch (error) {
         await writePluginStoreJson(join(stage, "preparation-failure.json"), {
@@ -185,6 +193,12 @@ export class PluginStore {
           code: /^[A-Z][A-Z0-9_]+$/.test(error.message)
             ? error.message
             : "PLUGIN_PREPARATION_FAILED",
+          ...(this.companyCoreHead
+            ? {
+                ownership: { schema: 1, kind: "company-update", coreHead: this.companyCoreHead },
+                writer: preparation,
+              }
+            : {}),
         }).catch(() => undefined);
         throw error;
       }

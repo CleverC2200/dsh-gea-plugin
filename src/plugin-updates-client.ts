@@ -127,6 +127,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
+          restartWhenReady: boolean;
           timer: ReturnType<typeof setTimeout>;
         };
       }
@@ -188,19 +189,30 @@ export function createPluginDetailUpdates(
     owner.observation = undefined;
     if (!owner.refs && !owner.recovering) close(owner);
   };
-  const observe = (owner: NonNullable<typeof page>, names: readonly string[]) => {
+  const observe = (
+    owner: NonNullable<typeof page>,
+    names: readonly string[],
+    restartWhenReady = false,
+  ) => {
     if (owner.observation || disposed) return;
     notified = undefined;
     owner.observation = {
       names,
+      restartWhenReady,
       timer: setTimeout(() => {
         notify(owner, "unconfirmed");
-        endObservation(owner);
+        if (!owner.observation?.restartWhenReady) endObservation(owner);
       }, pluginUpdateObservationMs),
     };
   };
   const restart = async () => {
-    if (disposed || snapshot.restart === "restarting" || snapshot.restart === "requested") return;
+    if (
+      disposed ||
+      snapshot.restartReady !== true ||
+      snapshot.restart === "restarting" ||
+      snapshot.restart === "requested"
+    )
+      return;
     if (!desktop?.restartUpdate) {
       publish({ restart: "unsupported" });
       return;
@@ -234,6 +246,12 @@ export function createPluginDetailUpdates(
               ? "restored"
               : "completed",
       );
+      const pending = rows.some((row) => row?.state === "pending-restart");
+      if (pending && owner.observation.restartWhenReady) {
+        if (!snapshot.restartReady) return;
+        if (rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null))
+          void restart();
+      }
       endObservation(owner);
     } else
       notify(
@@ -372,30 +390,44 @@ export function createPluginDetailUpdates(
           Number(right.packageName === requestedName) - Number(left.packageName === requestedName),
       );
     const names = selected.map((row) => row.packageName);
-    const restartUpdate = desktop?.restartUpdate;
-    if (!restartUpdate) {
+    if (!desktop?.restartUpdate) {
       publish({ restart: "unsupported" });
       return Promise.resolve();
     }
-    publish({ submitting: names.join(","), transportError: null, restart: "idle" });
-    observe(page, names);
-    notify(page, "progress");
+    const owner = page;
+    publish({
+      submitting: names.join(","),
+      transportError: null,
+      restart: "idle",
+    });
+    observe(owner, names, true);
+    notify(owner, "progress");
     const run = async () => {
       try {
-        await restartUpdate({
-          kind: "plugins",
-          plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })),
-        });
-        publish({ restart: "requested" });
-      } catch {
-        publish({ restart: "failed" });
-        if (page?.observation) notify(page, "unconfirmed");
-        publish({
-          transportError: "unknown",
-          items: snapshot.items.map((item) =>
-            names.includes(item.packageName) ? { ...item, state: "unknown" } : item,
-          ),
-        });
+        await request(
+          "update-all",
+          {
+            plans: selected.map((row) => ({
+              packageName: row.packageName,
+              planId: row.planId,
+            })),
+          },
+          signalFor(owner),
+        );
+      } catch (error) {
+        if (error instanceof PluginUpdateRequestError) {
+          publish({ transportError: "check" });
+          notify(owner, "failed");
+          endObservation(owner);
+        } else {
+          notify(owner, "unconfirmed");
+          publish({
+            transportError: "unknown",
+            items: snapshot.items.map((item) =>
+              names.includes(item.packageName) ? { ...item, state: "unknown" } : item,
+            ),
+          });
+        }
       } finally {
         publish({ submitting: null });
       }

@@ -48,6 +48,8 @@ export class CompanyInstallation {
     this.store = new PluginStore({
       data: this.directory,
       baseline: join(this.directory, "baseline"),
+      companyCoreHead: coreHead,
+      companyProfile: profile,
     });
   }
   async initialize(prepare, { inherit = true } = {}) {
@@ -102,6 +104,7 @@ export class CompanyInstallation {
     const receipt = await this.store.prepare({
       id,
       signal,
+      queueActivation: true,
       install: async (stage, controls) => {
         const manifest = await json(join(this.profile, "package.json"));
         if (!isDeepStrictEqual(graphValues(manifest), source))
@@ -114,7 +117,6 @@ export class CompanyInstallation {
         await writePluginStoreJson(join(stage, "activation.json"), { schema: 1, source });
       },
     });
-    await this.store.queueActivation(id);
     return receipt;
   }
   async preparationIdle() {
