@@ -161,6 +161,11 @@ jobs:
             execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
           }
           NODE
+      - name: Verify same-Core recovery and cache protection on Windows
+        if: always() && matrix.entry == 'official'
+        working-directory: gea
+        shell: pwsh
+        run: node --test desktop/company-installation.test.mjs desktop/plugin-store.test.mjs desktop/plugin-storage.test.mjs
       - name: Select GNU tar for Native artifact recheck
         if: inputs.native_acceptance_bundle_url != ''
         shell: pwsh

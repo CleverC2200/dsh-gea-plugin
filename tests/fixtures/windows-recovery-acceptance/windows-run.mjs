@@ -119,6 +119,7 @@ const evidence = {
 };
 let cdp;
 let child;
+let offlineRule;
 await mkdir(output, { recursive: true });
 function milestone(name, details = {}) {
   evidence.milestones.push({
@@ -550,6 +551,14 @@ try {
     mainPid: child.pid,
     ownedProcesses: oldProcesses.length,
   });
+  const oldCore = JSON.parse(
+    await readFile(join(profile, "gea/installation.json"), "utf8"),
+  ).coreHead;
+  assert.equal(
+    oldCore,
+    repairAffectedBaseline ? "8cc49e9b5c5ddf3751af2f6fb21276513a14bf9b" : managedCore,
+  );
+  evidence.oldCore = oldCore;
   let handoff;
   let recoveryReceipt;
   if (repairAffectedBaseline) {
@@ -686,6 +695,17 @@ try {
       timeout: 180000,
     });
     assert.equal(replaced.status, 0, String(replaced.stderr || replaced.error));
+    const rule = "GEA-isolated-offline-" + process.pid;
+    await powershell(
+      `param([string]$Name,[string]$Executable)
+New-NetFirewallRule -Name $Name -DisplayName $Name -Direction Outbound -Program $Executable -Action Block | Out-Null
+if (!(Get-NetFirewallRule -Name $Name -ErrorAction Stop)) { throw 'GEA_ISOLATED_OFFLINE_RULE_MISSING' }`,
+      [rule, executable],
+    );
+    offlineRule = rule;
+    const oldStore = join(home, "desktop-company-cache", "installation", "store");
+    await mkdir(oldStore, { recursive: true });
+    await writeFile(join(oldStore, "existing-store-marker"), "preserve");
     port = await loopbackPort();
     child = spawn(
       executable,
@@ -781,7 +801,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
           state.verified !== proof.graphId ||
           state.active !== proof.graphId ||
           state.booting ||
-          proof.graphId === "baseline"
+          (!repairAffectedBaseline && proof.graphId === "baseline")
         )
           return false;
         return await Promise.all(
@@ -801,6 +821,17 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     150000,
   );
   evidence.runtimePackages = running;
+  if (offlineRule) {
+    assert.equal(
+      await readFile(
+        join(home, "desktop-company-cache/installation/store/existing-store-marker"),
+        "utf8",
+      ),
+      "preserve",
+    );
+    evidence.crossCoreStartedWithoutOutboundNetwork = true;
+    milestone("cross-core-signed-install-started-offline-with-existing-store");
+  }
   if (!repairAffectedBaseline) {
     await assert.rejects(readFile(lock), { code: "ENOENT" });
     evidence.interruptedExistingInstallationRecovered = true;
@@ -1103,8 +1134,11 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
           const run = (await records()).filter((row) => row.version === newVersion);
           if (
             !run.some((row) => row.event === "download-requested") ||
-            !run.some((row) => row.failedOperation === "download" && row.targetVersion === nextVersion)
-          ) return false;
+            !run.some(
+              (row) => row.failedOperation === "download" && row.targetVersion === nextVersion,
+            )
+          )
+            return false;
           const dialog = await target("dsh-app://shell/update-dialog.html");
           if (!dialog) return false;
           const client = await connection(dialog.webSocketDebuggerUrl);
@@ -1189,6 +1223,8 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
         }
       : null,
     signedOverwriteRecoveredAffectedBaseline: evidence.signedOverwriteRecoveredAffectedBaseline,
+    crossCoreStartedWithoutOutboundNetwork: evidence.crossCoreStartedWithoutOutboundNetwork,
+    oldCore: evidence.oldCore,
     runtimePackages: evidence.runtimePackages,
     interruptedExistingInstallationRecovered: evidence.interruptedExistingInstallationRecovered,
     nativeRecoveryWindowUnlocked: evidence.nativeRecoveryWindowUnlocked,
@@ -1204,6 +1240,10 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
   };
   await writeFile(join(output, "receipt.json"), JSON.stringify(publicReceipt, null, 2));
   candidateServer?.close();
+  if (offlineRule)
+    await powershell("param([string]$Name) Remove-NetFirewallRule -Name $Name", [
+      offlineRule,
+    ]).catch(() => {});
   await powershell(
     `param([string]$Executable)
 Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -eq $Executable} | ForEach-Object { & taskkill /PID $_.ProcessId /T /F | Out-Null }`,
