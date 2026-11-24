@@ -635,6 +635,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
   const {ClassicLevel} = createRequire(join(dependencies,"package.json"))("classic-level");
   evidence.composerDraftStorageRetained = await until("old logical draft through Chromium local storage",()=>readDraft(draftPath,draftKey,markerDraft,join(privateOutput,"draft-check"),ClassicLevel),20000);
   milestone("managed-runtime-session-and-draft-storage-verified");
+  evidence.nativeUpgradePassed = true;
   if (values["recheck-recovery-ui"]) {
     const stop = spawnSync("taskkill.exe", ["/PID", String(relaunched.ProcessId), "/T", "/F"], {
       env: environment, windowsHide: true, encoding: "utf8",
@@ -671,13 +672,36 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     }, 15000);
     const main = await connection(mainInspector.webSocketDebuggerUrl);
     try {
+      const childPrototype = (await main.send("Runtime.evaluate", {
+        expression: 'process.getBuiltinModule("node:child_process").ChildProcess.prototype',
+      })).result.objectId;
+      await until("live desktop Host and enabled product window", async () => {
+        const handles = await main.send("Runtime.queryObjects", { prototypeObjectId: childPrototype });
+        const result = await main.send("Runtime.callFunctionOn", {
+          objectId: handles.objects.objectId,
+          functionDeclaration: `function () {
+            globalThis.geaRecoveryHost = this.find((child) =>
+              child.connected && child.spawnargs?.some((arg) => arg.includes("dsh-desktop-host")));
+            return Boolean(globalThis.geaRecoveryHost);
+          }`,
+          returnByValue: true,
+        });
+        await main.send("Runtime.releaseObject", { objectId: handles.objects.objectId });
+        if (result.result.value !== true) return false;
+        return evaluate(main, `(() => {
+          const path = process.getBuiltinModule("node:path");
+          const load = process.getBuiltinModule("node:module").createRequire(
+            path.join(process.resourcesPath, "app.asar", "package.json"));
+          return load("electron").BrowserWindow.getAllWindows().some((window) =>
+            window.isEnabled() && window.webContents.getURL().startsWith("dsh-app://app/"));
+        })()`);
+      }, 45000);
       assert.equal(await evaluate(main, `(() => {
         const path = process.getBuiltinModule("node:path");
         const load = process.getBuiltinModule("node:module").createRequire(
           path.join(process.resourcesPath, "app.asar", "package.json"));
         const { BrowserWindow } = load("electron");
-        const host = process._getActiveHandles().find((handle) =>
-          handle.connected && handle.spawnargs?.some((arg) => arg.includes("dsh-desktop-host")));
+        const host = globalThis.geaRecoveryHost;
         if (!host) return false;
         const product = BrowserWindow.getAllWindows().find((window) =>
           window.webContents.getURL().startsWith("dsh-app://app/"));
@@ -774,7 +798,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
   await writeFile(join(privateOutput,"online-upgrade.json"),JSON.stringify(evidence,null,2));
   const publicReceipt = {
     status:evidence.status,
-    actualNativeUpdateAcceptance:evidence.status === "passed",
+    actualNativeUpdateAcceptance:evidence.nativeUpgradePassed === true,
     fromVersion:oldVersion,toVersion:newVersion,
     buildReceiptSha256:evidence.buildReceiptSha256,
     inputSha256:build.inputSha256,
