@@ -13,9 +13,11 @@ const { installCompanyPackages, bootstrapCompanyProfile, readCompanySeed } = awa
 const { refreshBundledCompanySuite } = await import(
   pathToFileURL(join(root, "company-gea-refresh.mjs"))
 );
-const home = await mkdtemp(join(tmpdir(), "gea-legacy-"));
+const workspace = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), "gea-legacy-"));
+const home = join(workspace, "home");
 const profile = join(home, "profiles/desktop");
-const old = join(output, "old-client/company-seed/archives");
+const old = join(workspace, "old-client/company-seed/archives");
+await mkdir(output, { recursive: true });
 await mkdir(old, { recursive: true });
 const identities = [
   [
@@ -54,12 +56,12 @@ await installCompanyPackages({
   home,
   profile,
   packages,
-  store: join(output, "store"),
+  store: join(workspace, "store"),
   offline: false,
 });
 const before = JSON.parse(await readFile(join(profile, "package.json"), "utf8"));
 const restorePackages = [];
-const restoreArchives = join(output, "restore-archives");
+const restoreArchives = join(workspace, "restore-archives");
 await mkdir(restoreArchives);
 for (const [file] of identities) {
   const target = join(restoreArchives, file);
@@ -70,7 +72,7 @@ assert.ok(before.dsh.profile.bundles.includes("@cleverc2200/gea-dsh-prototype"))
 const patch = await readFile(join(profile, "cordis.patch.yml"));
 await mkdir(join(profile, "sessions"), { recursive: true });
 await writeFile(join(profile, "sessions/user-data.json"), '{"keep":"user draft"}');
-await rm(join(output, "old-client"), { recursive: true });
+await rm(join(workspace, "old-client"), { recursive: true });
 const manifest = await readCompanySeed(seed);
 const options = { root, support, seed, home, manifest, install: installCompanyPackages };
 await assert.rejects(
@@ -119,7 +121,7 @@ assert.equal(
   '{"keep":"user draft"}',
 );
 
-const moved = join(output, "same-version-client/company-seed/archives");
+const moved = join(workspace, "same-version-client/company-seed/archives");
 await mkdir(moved, { recursive: true });
 const sameVersionPackages = [];
 for (const spec of Object.values(current.dependencies)) {

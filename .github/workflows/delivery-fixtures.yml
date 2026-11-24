@@ -648,12 +648,14 @@ jobs:
           git -C gea status --porcelain=v1
           git -C core status --porcelain=v1
           node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
-      - name: Verify Windows native upgrade to the recovery candidate
+      - name: Verify archived legacy profile migration
         if: "!inputs.prepare_windows_cache"
         run: |
-          $buildReceipt = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/result.json'
-          $evidence = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance'
-          node gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs --build-receipt $buildReceipt --input "$env:GEA_DESKTOP_INPUT" --output $evidence
+          $root = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64'
+          $app = Join-Path $root 'artifacts/win-unpacked'
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          & "$app/GEA Desktop.exe" --expose-internals gea/scripts/windows-complete-local/legacy-bootstrap.mjs "$app/resources/app.asar" "$app/resources/runtime" "$app/resources/company-seed" "$root/gea-local/legacy-bootstrap"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify signed downloads and unsigned-to-signed overwrite
         if: inputs.windows_update_acceptance && inputs.windows_signed && !inputs.prepare_windows_cache
         run: node gea/scripts/windows-complete-local/signed-upgrade.mjs core gea

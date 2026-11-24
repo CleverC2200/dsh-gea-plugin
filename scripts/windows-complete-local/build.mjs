@@ -321,21 +321,6 @@ stages.push({
   seconds: (Date.now() - firstInstallStarted) / 1000,
 });
 await writeFile(join(output, "first-install-receipt.json"), JSON.stringify(receipt, null, 2));
-execFileSync(
-  executable,
-  [
-    "--expose-internals",
-    join(gea, "scripts/windows-complete-local/legacy-bootstrap.mjs"),
-    appRoot,
-    supportRoot,
-    seed,
-    join(output, "legacy-bootstrap"),
-  ],
-  {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-    stdio: "inherit",
-  },
-);
 const files = (await readdir(artifactDirectory)).filter((name) => name.endsWith(".exe"));
 if (files.length !== 1) throw Error("EXPECTED_ONE_INSTALLER");
 const artifact = join(artifactDirectory, files[0]);
