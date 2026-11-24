@@ -238,6 +238,7 @@ try {
         response.writeHead(200, { "Content-Type": "text/yaml", "Cache-Control": "no-store" }).end(recoveryFeed);
         return;
       }
+      if (recoveryFeed) { response.writeHead(404).end(); return; }
       const path = allowed.get(name);
       if (!path) { response.writeHead(404).end(); return; }
       const info = await (await import("node:fs/promises")).stat(path);
@@ -696,6 +697,25 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
             window.isEnabled() && window.webContents.getURL().startsWith("dsh-app://app/"));
         })()`);
       }, 45000);
+      const recoveryHost = await evaluate(main, `new Promise((resolve) => {
+        const host = globalThis.geaRecoveryHost;
+        const requestId = 900000000;
+        const timer = setTimeout(() => finish({ error: "host-status-timeout" }), 5000);
+        function finish(result) {
+          host.removeListener("message", receive);
+          clearTimeout(timer);
+          resolve(result);
+        }
+        function receive(message) {
+          if (message.type === "update-operation" && message.requestId === requestId)
+            finish(message.result);
+        }
+        host.on("message", receive);
+        host.send({ type: "update-operation", requestId, request: { action: "plugins-status" } },
+          (error) => { if (error) finish({ error: "status-send-failed" }); });
+      })`);
+      evidence.recoveryStatusBeforeUpdate = recoveryHost;
+      assert.deepEqual(recoveryHost, { ok: true, value: { operationId: null, state: "failed" } });
       assert.equal(await evaluate(main, `(() => {
         const path = process.getBuiltinModule("node:path");
         const load = process.getBuiltinModule("node:module").createRequire(
@@ -708,15 +728,17 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
         if (!product?.isEnabled()) return false;
         const send = host.send;
         const operations = new Map();
-        const facts = { missedStatus: false, replies: {} };
+        const facts = { missedStatus: false, requests: [], replies: {} };
         const observe = (message) => {
           const operation = operations.get(message.requestId);
-          if (operation && message.result) facts.replies[operation] = message.result;
+          if (operation) facts.replies[operation] = message.result ??
+            { active: message.active, error: message.error };
         };
         host.on("message", observe);
         host.send = function (message, ...args) {
-          if (message.type === "update-operation") {
-            const action = message.request.action;
+          if (message.type === "update-operation" || message.type === "update-tasks") {
+            const action = message.request?.action ?? message.action;
+            facts.requests.push(action);
             if (!facts.missedStatus && action === "plugins-status") {
               facts.missedStatus = true;
               queueMicrotask(() => args.at(-1)(Error("Windows acceptance: first status unavailable")));
@@ -735,7 +757,17 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
       const update = await evaluate(cdp, "window.dshDesktop.updates.check()");
       assert.equal(update.phase, "available");
       assert.equal(update.version, nextVersion);
-      await evaluate(cdp, `window.dshDesktop.updates.restartUpdate({kind:"desktop",version:${JSON.stringify(nextVersion)}}).catch(()=>{}); true`);
+      await evaluate(cdp, `(() => {
+        setTimeout(async () => {
+          try {
+            await window.dshDesktop.updates.restartUpdate({ kind: "desktop", version: ${JSON.stringify(nextVersion)} });
+            globalThis.geaRecoveryStart = "resolved";
+          } catch (error) {
+            globalThis.geaRecoveryStart = String(error?.message ?? error);
+          }
+        }, 0);
+        return true;
+      })()`);
       const check = await until("actual update status retry dialog disables the product window", async () => {
         const dialog = await target("dsh-app://shell/update-dialog.html");
         if (!dialog) return false;
@@ -764,6 +796,11 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
       evidence.nativeRecoveryWindowUnlocked = true;
       milestone("actual-native-recheck-unlocked-real-window");
     } finally {
+      evidence.recoveryProbe = {
+        host: await evaluate(main, "globalThis.geaRecoveryAcceptance?.read()").catch(() => null),
+        start: await evaluate(cdp, "globalThis.geaRecoveryStart ?? null").catch(() => null),
+        hasDialog: Boolean(await target("dsh-app://shell/update-dialog.html")),
+      };
       await evaluate(main, "globalThis.geaRecoveryAcceptance?.restore()").catch(() => {});
       main.close();
     }
@@ -807,6 +844,8 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     runtimePackages:evidence.runtimePackages,
     interruptedExistingInstallationRecovered: evidence.interruptedExistingInstallationRecovered,
     nativeRecoveryWindowUnlocked: evidence.nativeRecoveryWindowUnlocked,
+    recoveryStatusBeforeUpdate: evidence.recoveryStatusBeforeUpdate,
+    recoveryProbe: evidence.recoveryProbe,
     data:evidence.data,
     composerDraftStorageRetained:evidence.composerDraftStorageRetained,
     milestones:evidence.milestones.map(({name,time})=>({name,time})),
