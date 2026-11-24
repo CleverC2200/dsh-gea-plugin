@@ -13,8 +13,10 @@ import { companyUpdatePath, readCompanyUpdate } from "./company-update.mjs";
 
 const core = "a".repeat(40);
 async function fixture(t) {
-  const profile = await mkdtemp(join(tmpdir(), "gea installation "));
-  t.after(() => rm(profile, { recursive: true, force: true }));
+  const home = await mkdtemp(join(tmpdir(), "gea installation "));
+  const profile = join(home, "profiles/desktop");
+  await mkdir(profile, { recursive: true });
+  t.after(() => rm(home, { recursive: true, force: true }));
   const manifest = {
     dependencies: Object.fromEntries(companyPackageNames.map((name) => [name, "1.0.0"])),
     dsh: { profile: { bundles: companyPackageNames.slice(0, 2) } },
@@ -89,7 +91,7 @@ async function fixture(t) {
     await writeFile(join(stage, "package.json"), JSON.stringify(next));
     await writeFile(join(stage, "pnpm-lock.yaml"), "new lock");
   };
-  return { profile, installation, boot, proofs, preserved, update };
+  return { home, profile, installation, boot, proofs, preserved, update };
 }
 
 test("company preparation leaves the running graph untouched and activation keeps the original user profile", async (t) => {
@@ -384,6 +386,11 @@ for (const failure of [
     if (failure === "partial")
       await rm(join(profile, "node_modules", companyPackageNames[2], "host.mjs"));
     const installation = new CompanyInstallation(profile, core);
+    await mkdir(join(profile, "gea"), { recursive: true });
+    await writeFile(
+      join(profile, "gea/installation.json"),
+      JSON.stringify({ schema: 1, coreHead: core, graphId: "baseline" }),
+    );
     if (failure === "interrupted-preparation") {
       await installation.initialize();
       const id = randomUUID();
@@ -434,8 +441,8 @@ for (const failure of [
     const boot = await prepareCompanyBoot(options);
     if (failure === "interrupted-preparation") {
       const receipt = await readCompanyUpdate(profile);
-      assert.equal(boot.graphId, "desktop-" + receipt.id);
-      assert.equal(receipt.phase, "verifying");
+      assert.match(boot.graphId, /^bundled-/);
+      assert.equal(receipt.phase, "prepared");
       assert.equal(calls, 1);
       assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");
       return;
@@ -472,3 +479,255 @@ for (const failure of [
       code: "ENOENT",
     });
   });
+
+test("a baseline mounted across Core upgrades completes the new Core marker", async (t) => {
+  const f = await fixture(t);
+  const next = new CompanyInstallation(f.profile, "b".repeat(40));
+  await next.initialize();
+  await rm(join(f.profile, "node_modules"));
+  await fs.symlink(
+    join(next.store.baseline, "node_modules"),
+    join(f.profile, "node_modules"),
+    "dir",
+  );
+  await next.beginBoot();
+  assert.equal((await openCompanyInstallation(f.profile)).coreHead, next.coreHead);
+  await f.preserved();
+});
+
+test("verified mounted graph starts without updating metadata when the disk is full", async (t) => {
+  const f = await fixture(t);
+  await f.installation.store.beginBoot();
+  const before = await readFile(join(f.installation.store.root, "selection.json"));
+  const original = fs.open;
+  fs.open = async (path, ...args) => {
+    if (String(path).includes("selection.json.") && args[0] === "wx")
+      throw Object.assign(Error("full disk"), { code: "ENOSPC" });
+    return original(path, ...args);
+  };
+  syncBuiltinESMExports();
+  try {
+    const result = await prepareCompanyBoot({
+      home: f.home,
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      manifest: {
+        core: { head: core },
+        packages: companyPackageNames.map((name) => ({ name, version: "1.0.0" })),
+      },
+    });
+    assert.equal(result.graphId, "baseline");
+    assert.equal(result.trial, false);
+    assert.deepEqual(await readFile(join(f.installation.store.root, "selection.json")), before);
+    await f.preserved();
+  } finally {
+    fs.open = original;
+    syncBuiltinESMExports();
+  }
+});
+
+test("metadata recovery refuses a live legacy writer on the mounted graph", async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.profile, ".plugin-manager"), { recursive: true });
+  await writeFile(
+    join(f.profile, ".plugin-manager/run.json"),
+    JSON.stringify({ pid: process.pid, grouped: false }),
+  );
+  await assert.rejects(
+    prepareCompanyBoot({
+      home: f.home,
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      manifest: { core: { head: core }, packages: [] },
+    }),
+    /GEA_REFRESH_PROFILE_BUSY/,
+  );
+  await f.preserved();
+});
+
+for (const recover of [false, true])
+  test(`a new Core ignores an old accepted update and builds only its bundled graph (${recover})`, async (t) => {
+    const f = await fixture(t);
+    const updateId = randomUUID();
+    const updates = join(f.profile, "gea/plugin-updates");
+    await mkdir(join(updates, "operations", updateId), { recursive: true });
+    const oldReceipt = JSON.stringify({ id: updateId, stage: "accepted", processes: [] });
+    await writeFile(join(updates, "latest.json"), JSON.stringify({ id: updateId }));
+    await writeFile(join(updates, "operations", updateId, "receipt.json"), oldReceipt);
+    const packages = companyPackageNames.map((name, index) => ({
+      name,
+      version: "2.0.0",
+      file: `bundled-${index}.tgz`,
+    }));
+    await mkdir(join(f.home, "bundled-seed/store"), { recursive: true });
+    await mkdir(join(f.home, "bundled-seed/metadata"), { recursive: true });
+    let installs = 0;
+    const result = await prepareCompanyBoot({
+      home: f.home,
+      root: "unused",
+      support: "unused",
+      seed: join(f.home, "bundled-seed"),
+      recover,
+      manifest: { core: { head: "b".repeat(40) }, packages },
+      install: async ({ profile, offline, packages: archives, strictPeers }) => {
+        installs++;
+        assert.equal(offline, true);
+        assert.notEqual(strictPeers, true);
+        assert.deepEqual(
+          archives,
+          packages.map((row) => join(f.home, "bundled-seed/archives", row.file)),
+        );
+        await assert.rejects(
+          readFile(join(profile, "node_modules", companyPackageNames[0], "package.json")),
+          { code: "ENOENT" },
+        );
+        const manifest = JSON.parse(await readFile(join(profile, "package.json")));
+        manifest.dependencies = Object.fromEntries(packages.map((row) => [row.name, row.version]));
+        await writeFile(join(profile, "package.json"), JSON.stringify(manifest));
+        for (const row of packages) {
+          const directory = join(profile, "node_modules", row.name);
+          await mkdir(directory, { recursive: true });
+          await writeFile(
+            join(directory, "package.json"),
+            JSON.stringify({ ...row, exports: { ".": "./host.mjs", "./client": "./client.mjs" } }),
+          );
+          await writeFile(join(directory, "host.mjs"), "export function apply() {}");
+          await writeFile(join(directory, "client.mjs"), "export function apply() {}");
+        }
+      },
+    });
+    assert.equal(result.coreHead, "b".repeat(40));
+    assert.equal(result.graphId, "baseline");
+    assert.equal(installs, 1);
+    assert.equal(
+      await readFile(join(updates, "operations", updateId, "receipt.json"), "utf8"),
+      oldReceipt,
+    );
+    assert.equal((await openCompanyInstallation(f.profile)).coreHead, result.coreHead);
+    await f.preserved();
+  });
+
+test("bootstrap recovery starts the verified graph without activating a queued candidate", async (t) => {
+  const f = await fixture(t);
+  await f.installation.prepare("waiting", f.update);
+  const result = await prepareCompanyBoot({
+    home: f.home,
+    root: "unused",
+    support: "unused",
+    seed: "unused",
+    recover: true,
+    manifest: {
+      core: { head: core },
+      packages: companyPackageNames.map((name) => ({ name, version: "1.0.0" })),
+    },
+    install: async () => assert.fail("recovery cannot prepare a new update"),
+  });
+  assert.equal(result.graphId, "baseline");
+  assert.equal(result.trial, false);
+  await f.preserved();
+});
+
+for (const broken of ["{interrupted-selection", "{}"])
+  test(`a damaged selection recovers the current Core baseline and preserves the original record (${broken})`, async (t) => {
+    const f = await fixture(t);
+    const selection = join(f.installation.store.root, "selection.json");
+    await writeFile(selection, broken);
+    const result = await prepareCompanyBoot({
+      home: f.home,
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      manifest: { core: { head: core }, packages: [] },
+      install: async () => assert.fail("a usable baseline does not need installation"),
+    });
+    assert.equal(result.graphId, "baseline");
+    const backups = (await readdir(f.installation.store.root)).filter((name) =>
+      name.startsWith("selection.json.before-recovery-"),
+    );
+    assert.equal(backups.length, 1);
+    assert.equal(await readFile(join(f.installation.store.root, backups[0]), "utf8"), broken);
+    assert.equal((await openCompanyInstallation(f.profile)).coreHead, core);
+    await f.preserved();
+  });
+
+test("a corrupt old update receipt does not hide a usable verified graph", async (t) => {
+  const f = await fixture(t);
+  const receipt = companyUpdatePath(f.profile);
+  await mkdir(join(f.profile, "gea/plugin-updates"), { recursive: true });
+  const damaged = "{old-receipt-write-interrupted";
+  await writeFile(receipt, damaged);
+  const result = await prepareCompanyBoot({
+    home: f.home,
+    root: "unused",
+    support: "unused",
+    seed: "unused",
+    manifest: {
+      core: { head: core },
+      packages: companyPackageNames.map((name) => ({ name, version: "1.0.0" })),
+    },
+    install: async () => assert.fail("verified graph must remain usable"),
+  });
+  assert.equal(result.graphId, "baseline");
+  assert.equal(result.trial, false);
+  assert.equal(await readFile(receipt, "utf8"), damaged);
+  await f.preserved();
+});
+
+test("a live legacy worker remains blocked even without a package run record", async (t) => {
+  const f = await fixture(t);
+  const id = randomUUID();
+  const updates = join(f.profile, "gea/plugin-updates");
+  await mkdir(join(updates, "operations", id), { recursive: true });
+  await writeFile(join(updates, "latest.json"), JSON.stringify({ id }));
+  await writeFile(
+    join(updates, "operations", id, "receipt.json"),
+    JSON.stringify({
+      id,
+      stage: "accepted",
+      processes: [
+        {
+          pid: process.pid,
+          grouped: process.platform !== "win32",
+          sawAlive: true,
+          startIdentity: "live-legacy-worker",
+        },
+      ],
+    }),
+  );
+  await assert.rejects(
+    prepareCompanyBoot({
+      home: f.home,
+      root: "unused",
+      support: "unused",
+      seed: "unused",
+      manifest: { core: { head: core }, packages: [] },
+    }),
+    /GEA_REFRESH_PROFILE_BUSY/,
+  );
+  await f.preserved();
+});
+
+test("an interrupted mount marker is preserved and completed on the next boot", async (t) => {
+  const f = await fixture(t);
+  const marker = "{interrupted-mount";
+  await writeFile(join(f.profile, "gea/installation.json"), marker);
+  assert.equal((await f.installation.beginBoot()).id, "baseline");
+  assert.equal((await openCompanyInstallation(f.profile)).coreHead, core);
+  const backups = (await readdir(f.installation.directory)).filter((name) =>
+    name.startsWith("mount-before-"),
+  );
+  assert.ok(
+    (
+      await Promise.all(
+        backups.map((name) =>
+          readFile(join(f.installation.directory, name, "installation.json"), "utf8").catch(
+            () => null,
+          ),
+        ),
+      )
+    ).includes(marker),
+  );
+  await f.preserved();
+});

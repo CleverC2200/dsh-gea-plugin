@@ -114,10 +114,7 @@ async function stoppedUpdateProcesses(profile, receipt) {
   return processes.every((row) => [row.pid, -row.pid].every(processExited));
 }
 
-export async function readProfileUpdateState(
-  profile,
-  { allowExitedPackageRun = false, allowStoppedUpdate = false } = {},
-) {
+async function assertPackageRunStopped(profile, allowExitedPackageRun) {
   const recorded = await optional(join(profile, ".plugin-manager/run.json"));
   if (recorded) {
     if (!allowExitedPackageRun) throw Error("GEA_REFRESH_PROFILE_BUSY");
@@ -136,6 +133,35 @@ export async function readProfileUpdateState(
       }
     }
   }
+}
+
+export async function assertProfileWritersStopped(profile) {
+  await assertPackageRunStopped(profile, true);
+  let receipt;
+  try {
+    const pointer = JSON.parse(await optional(join(profile, "gea/plugin-updates/latest.json")));
+    if (!pointer || typeof pointer.id !== "string" || !/^[a-f0-9-]{36}$/.test(pointer.id)) return;
+    receipt = JSON.parse(
+      await optional(join(profile, "gea/plugin-updates/operations", pointer.id, "receipt.json")),
+    );
+  } catch (error) {
+    if (error instanceof SyntaxError) return;
+    throw error;
+  }
+  if (
+    receipt?.installationId ||
+    !receipt?.processes?.length ||
+    ["completed", "restored", "failed"].includes(receipt.stage)
+  )
+    return;
+  if (!(await stoppedUpdateProcesses(profile, receipt))) throw Error("GEA_REFRESH_PROFILE_BUSY");
+}
+
+export async function readProfileUpdateState(
+  profile,
+  { allowExitedPackageRun = false, allowStoppedUpdate = false } = {},
+) {
+  await assertPackageRunStopped(profile, allowExitedPackageRun);
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
   if (!latest) return;
   const pointer = JSON.parse(latest);

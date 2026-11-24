@@ -3,10 +3,7 @@ import type {
   DesktopUpdatePresentation,
 } from "@deepseek-ai/dsh-client-ui-settings-general/types";
 
-export type RestartUpdateRequest =
-  | { kind: "desktop"; version: string }
-  | { kind: "plugins"; plans: { packageName: string; planId: string }[] }
-  | { kind: "plugins-restart" };
+export type RestartUpdateRequest = { kind: "plugins-restart" };
 
 export function desktopRestartTarget(presentation?: DesktopUpdatePresentation): string | undefined {
   if (!presentation?.version) return;
@@ -37,6 +34,7 @@ export function createDesktopUpdates() {
     supported: boolean;
     canCheck: boolean;
     canRestartUpdate: boolean;
+    canOpen: boolean;
     current?: string;
     versionFailed: boolean;
     presentation?: DesktopUpdatePresentation;
@@ -47,6 +45,7 @@ export function createDesktopUpdates() {
     supported: bridge !== undefined,
     canCheck: typeof bridge?.check === "function",
     canRestartUpdate: typeof bridge?.restartUpdate === "function",
+    canOpen: typeof bridge?.open === "function",
     versionFailed: false,
     failed: false,
     opening: false,
@@ -103,6 +102,18 @@ export function createDesktopUpdates() {
       } catch (error) {
         publish({ failed: true, checked: false });
         throw error;
+      }
+    },
+    open: async (version: string) => {
+      if (!bridge?.open) throw Error("UPDATE_OPEN_UNAVAILABLE");
+      publish({ opening: true });
+      try {
+        await bridge.open(version);
+      } catch (error) {
+        publish({ failed: true });
+        throw error;
+      } finally {
+        publish({ opening: false });
       }
     },
     restartUpdate: async (request: RestartUpdateRequest) => {

@@ -308,6 +308,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   };
   const pendingChecks = new Set<Promise<PluginUpdateSnapshot>>();
   let initialization: Promise<PluginUpdateSnapshot> | null = null;
+  let storageMaintenance = false;
   let initialized = false,
     closed = false,
     journalBroken = false,
@@ -430,10 +431,24 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   }
   async function reconcileRuntime() {
     const installation = await openCompanyInstallation(options.profile.dir);
-    if (installation)
-      await installation.confirmRuntime(
+    if (
+      installation &&
+      (await installation.confirmRuntime(
         await options.readRuntimeProofs(pluginUpdateProcessIdentity),
+      )) &&
+      !closed &&
+      !active &&
+      !storageMaintenance
+    ) {
+      storageMaintenance = true;
+      void installation.collectGarbage().then(
+        (result) => {
+          if (result.skipped === "store-busy" || result.skipped === "update-in-progress")
+            storageMaintenance = false;
+        },
+        () => {},
       );
+    }
     if (!initialized || active || closed || journalBroken) return snapshot();
     const currentProofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
     captureStartup(currentProofs);
