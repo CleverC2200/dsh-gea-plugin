@@ -56,20 +56,32 @@ test("DMS preflight works without optional GEA submission storage", (t) => {
   });
 });
 
-test("DMS submission routing matches governed warehouse, customer, address and pickup", () => {
+test("DMS submission accepts an edited registered combination and rejects mixed or cross-warehouse codes", () => {
+  const original = { customerCode: "C1", addressCode: "A1", pupCode: "01" };
+  const alternate = { customerCode: "C2", addressCode: "A2", pupCode: "02" };
   const target = {
     warehouseCode: "001",
-    fields: { customerCode: "C1", addressCode: "A1", pupCode: "01" },
-    addresses: [{ code: "A1", name: "收货地" }],
+    fields: original,
+    addresses: [
+      { code: "A1", name: "收货地" },
+      { code: "A2", name: "另一个收货地" },
+    ],
+    targets: [original, alternate],
     message: "",
   };
   assert.equal(checkFcDmsOrderTarget("001", order, target).customerCode, "C1");
+  const editedOrder = { ...order, ...alternate };
+  assert.equal(checkFcDmsOrderTarget("001", editedOrder, target).pupCode, "02");
   for (const changed of [
-    { ...target, warehouseCode: "OTHER" },
-    { ...target, fields: { ...target.fields, customerCode: "C2" } },
-    { ...target, fields: { ...target.fields, addressCode: "A2" } },
-    { ...target, fields: { ...target.fields, pupCode: "02" } },
-    { ...target, fields: { customerCode: "", addressCode: "", pupCode: "" } },
+    { ...editedOrder, customerCode: "C1" },
+    { ...editedOrder, addressCode: "A1" },
+    { ...editedOrder, pupCode: "01" },
+    { ...editedOrder, pupCode: "99" },
   ])
-    assert.throws(() => checkFcDmsOrderTarget("001", order, changed), /收货信息/);
+    assert.throws(() => checkFcDmsOrderTarget("001", changed, target), /收货信息/);
+  assert.throws(() => checkFcDmsOrderTarget("002", editedOrder, target), /收货信息/);
+  assert.throws(
+    () => checkFcDmsOrderTarget("001", editedOrder, { ...target, targets: [] }),
+    /收货信息/,
+  );
 });

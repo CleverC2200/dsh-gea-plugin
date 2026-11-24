@@ -21,13 +21,13 @@ export function checkFcDmsOrderTarget(warehouseCode: string, order: unknown, tar
   const parsed = parseDmsOrder(order);
   if (
     target.warehouseCode !== warehouseCode ||
-    !target.fields.customerCode ||
-    !target.fields.addressCode ||
-    !target.fields.pupCode ||
-    parsed.customerCode !== target.fields.customerCode ||
-    parsed.addressCode !== target.fields.addressCode ||
-    parsed.pupCode !== target.fields.pupCode
+    !target.targets.some(
+      (entry) =>
+        parsed.customerCode === entry.customerCode &&
+        parsed.addressCode === entry.addressCode &&
+        parsed.pupCode === entry.pupCode,
+    )
   )
-    throw Error("收货信息已变化或当前账号不可读取，请重新选择分仓并读取收货信息");
+    throw Error("收货信息未通过当前分仓的核验，请核对客户、收货地址和提货点编码或重新读取收货信息");
   return parsed;
 }
