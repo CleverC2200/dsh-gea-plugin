@@ -149,7 +149,7 @@ jobs:
           const output=join(process.env.RUNNER_TEMP,'signed-overwrite-result');
           if(process.env.GEA_WINDOWS_ONLINE_UPDATE==='true') {
             const input=join(dirname(files[0]),'fixed-input.json');
-            execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output],{stdio:'inherit'});
+            execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output,'--recheck-recovery-ui'],{stdio:'inherit'});
           } else {
             execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
           }

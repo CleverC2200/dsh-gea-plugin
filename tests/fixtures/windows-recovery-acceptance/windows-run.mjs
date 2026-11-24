@@ -20,6 +20,7 @@ const { values } = parseArgs({
     "build-receipt": { type: "string" },
     input: { type: "string" },
     output: { type: "string" },
+    "recheck-recovery-ui": { type: "boolean" },
   },
 });
 const buildReceipt = resolve(values["build-receipt"]);
@@ -183,6 +184,13 @@ async function evaluate(client, expression) {
   if (response.exceptionDetails) throw new Error(JSON.stringify(response.exceptionDetails));
   return response.result.value;
 }
+async function loopbackPort() {
+  const socket = createServer();
+  await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
+  const reserved = socket.address().port;
+  await new Promise((resolve) => socket.close(resolve));
+  return reserved;
+}
 async function screenshot(client, name) {
   const result = await client.send("Page.captureScreenshot", { format: "png" });
   await writeFile(join(privateOutput, name), Buffer.from(result.data, "base64"));
@@ -217,6 +225,7 @@ try {
   });
   evidence.feedSha256 = createHash("sha256").update(metadata).digest("hex");
   const requests = [];
+  let recoveryFeed;
   const allowed = new Map([
     ["/nightly.yml", join(artifacts, "nightly.yml")],
     ["/" + targetInput.artifact, originalInstaller],
@@ -225,6 +234,10 @@ try {
   candidateServer = createHttpServer(async (request, response) => {
     try {
       const name = new URL(request.url, "http://127.0.0.1").pathname;
+      if (name === "/nightly.yml" && recoveryFeed) {
+        response.writeHead(200, { "Content-Type": "text/yaml", "Cache-Control": "no-store" }).end(recoveryFeed);
+        return;
+      }
       const path = allowed.get(name);
       if (!path) { response.writeHead(404).end(); return; }
       const info = await (await import("node:fs/promises")).stat(path);
@@ -328,10 +341,7 @@ try {
   assert.ok(cacheName);
   await mkdir(dirname(marker), { recursive: true });
   await writeFile(marker, markerBytes);
-  const socket = createServer();
-  await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
-  port = socket.address().port;
-  await new Promise((resolve) => socket.close(resolve));
+  port = await loopbackPort();
   const descriptor = openSync(join(privateOutput, "client-raw.txt"), "a");
   child = spawn(
     executable,
@@ -625,6 +635,115 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
   const {ClassicLevel} = createRequire(join(dependencies,"package.json"))("classic-level");
   evidence.composerDraftStorageRetained = await until("old logical draft through Chromium local storage",()=>readDraft(draftPath,draftKey,markerDraft,join(privateOutput,"draft-check"),ClassicLevel),20000);
   milestone("managed-runtime-session-and-draft-storage-verified");
+  if (values["recheck-recovery-ui"]) {
+    const stop = spawnSync("taskkill.exe", ["/PID", String(relaunched.ProcessId), "/T", "/F"], {
+      env: environment, windowsHide: true, encoding: "utf8",
+    });
+    assert.equal(stop.status, 0, stop.stderr);
+    await until("updated client has stopped before isolated recovery scenario", async () =>
+      !(await processes()).some(({ ProcessId }) => ProcessId === relaunched.ProcessId),
+    );
+    const latest = join(profile, "gea/plugin-updates/latest.json");
+    await mkdir(dirname(latest), { recursive: true });
+    await writeFile(latest, "{", { flag: "wx" });
+    const nextVersion = newVersion.replace(/\.(\d+)$/, (_, build) => "." + (Number(build) + 1));
+    assert.notEqual(nextVersion, newVersion);
+    recoveryFeed = metadata.replace(/^version:.*$/m, "version: " + nextVersion);
+    const candidateConfig = await readFile(join(installation, "resources/app-update.yml"), "utf8");
+    const loopbackConfig = candidateConfig.replace(feed.slice(0, -"nightly.yml".length), candidateUrl);
+    assert.notEqual(candidateConfig, loopbackConfig);
+    await writeFile(join(installation, "resources/app-update.yml"), loopbackConfig);
+    const mainPort = await loopbackPort();
+    port = await loopbackPort();
+    const descriptor = openSync(join(privateOutput, "client-raw.txt"), "a");
+    child = spawn(executable, [
+      `--inspect=127.0.0.1:${mainPort}`,
+      `--remote-debugging-port=${port}`,
+      "--remote-debugging-address=127.0.0.1",
+    ], { env: environment, stdio: ["ignore", descriptor, descriptor] });
+    closeSync(descriptor);
+    const renderer = await until("recovery candidate workspace", () => target("dsh-app://app/"));
+    cdp = await connection(renderer.webSocketDebuggerUrl);
+    const mainInspector = await until("packaged main loopback inspector", async () => {
+      const list = await fetch(`http://127.0.0.1:${mainPort}/json/list`, { signal: AbortSignal.timeout(2000) })
+        .then((reply) => reply.json()).catch(() => []);
+      return list.find((row) => row.webSocketDebuggerUrl);
+    }, 15000);
+    const main = await connection(mainInspector.webSocketDebuggerUrl);
+    try {
+      assert.equal(await evaluate(main, `(() => {
+        const path = process.getBuiltinModule("node:path");
+        const load = process.getBuiltinModule("node:module").createRequire(
+          path.join(process.resourcesPath, "app.asar", "package.json"));
+        const { BrowserWindow } = load("electron");
+        const host = process._getActiveHandles().find((handle) =>
+          handle.connected && handle.spawnargs?.some((arg) => arg.includes("dsh-desktop-host")));
+        if (!host) return false;
+        const product = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().startsWith("dsh-app://app/"));
+        if (!product?.isEnabled()) return false;
+        const send = host.send;
+        const operations = new Map();
+        const facts = { missedStatus: false, replies: {} };
+        const observe = (message) => {
+          const operation = operations.get(message.requestId);
+          if (operation && message.result) facts.replies[operation] = message.result;
+        };
+        host.on("message", observe);
+        host.send = function (message, ...args) {
+          if (message.type === "update-operation") {
+            const action = message.request.action;
+            if (!facts.missedStatus && action === "plugins-status") {
+              facts.missedStatus = true;
+              queueMicrotask(() => args.at(-1)(Error("Windows acceptance: first status unavailable")));
+              return false;
+            }
+            operations.set(message.requestId, action);
+          }
+          return Reflect.apply(send, this, [message, ...args]);
+        };
+        globalThis.geaRecoveryAcceptance = {
+          read: () => ({ ...facts, enabled: product.isEnabled() }),
+          restore: () => { host.send = send; host.removeListener("message", observe); },
+        };
+        return true;
+      })()`), true);
+      const update = await evaluate(cdp, "window.dshDesktop.updates.check()");
+      assert.equal(update.phase, "available");
+      assert.equal(update.version, nextVersion);
+      await evaluate(cdp, `window.dshDesktop.updates.restartUpdate({kind:"desktop",version:${JSON.stringify(nextVersion)}}).catch(()=>{}); true`);
+      const check = await until("actual update status retry dialog disables the product window", async () => {
+        const dialog = await target("dsh-app://shell/update-dialog.html");
+        if (!dialog) return false;
+        const client = await connection(dialog.webSocketDebuggerUrl);
+        try {
+          const view = await evaluate(client, "window.dshUpdateDialog.status()");
+          if (!view?.buttons?.some((label) => /重新检查|check again/i.test(label))) return false;
+          const before = await evaluate(main, "geaRecoveryAcceptance.read()");
+          assert.equal(before.enabled, false);
+          assert.equal(before.missedStatus, true);
+          await screenshot(client, "04-recovery-recheck.png");
+          await evaluate(client, "document.querySelector('#actions button').click(); true");
+          return true;
+        } finally { client.close(); }
+      }, 45000);
+      assert.equal(check, true);
+      await until("product window re-enabled by the actual retry action", async () => {
+        const state = await evaluate(main, "geaRecoveryAcceptance.read()");
+        if (!state.enabled) return false;
+        assert.deepEqual(state.replies["plugins-status"], { ok: true, value: { operationId: null, state: "failed" } });
+        assert.deepEqual(state.replies["desktop-cancel"], { ok: true, value: {} });
+        return true;
+      }, 45000);
+      assert.equal(await readFile(latest, "utf8"), "{");
+      assert.equal(await evaluate(cdp, `JSON.parse(localStorage.getItem(${JSON.stringify(draftKey)})).draft`), markerDraft);
+      evidence.nativeRecoveryWindowUnlocked = true;
+      milestone("actual-native-recheck-unlocked-real-window");
+    } finally {
+      await evaluate(main, "globalThis.geaRecoveryAcceptance?.restore()").catch(() => {});
+      main.close();
+    }
+  }
   Object.assign(evidence, {
     status: "passed",
     installedVersion: newVersion,
@@ -663,6 +782,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     relaunch:evidence.relaunchedProcess ? {method:"native-updater",nativeUpdatedFlag:true,manualSuccessorLaunch:false} : null,
     runtimePackages:evidence.runtimePackages,
     interruptedExistingInstallationRecovered: evidence.interruptedExistingInstallationRecovered,
+    nativeRecoveryWindowUnlocked: evidence.nativeRecoveryWindowUnlocked,
     data:evidence.data,
     composerDraftStorageRetained:evidence.composerDraftStorageRetained,
     milestones:evidence.milestones.map(({name,time})=>({name,time})),
