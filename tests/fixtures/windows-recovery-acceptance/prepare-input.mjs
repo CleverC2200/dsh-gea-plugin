@@ -8,11 +8,13 @@ import { pathToFileURL } from "node:url";
 
 const inputPath = process.argv[2];
 const archivePath = process.env.GEA_RECOVERY_ACCEPTANCE_ARCHIVE;
-const version = "0.0.348025";
-const baseDigest = "31a35df75a10d070e9c8e0255f0aa4d7d958c4e369e445f7c4bc675e426f7e10";
+const version = "0.0.349901";
+const baseDigest = "6211e33b37aeb62a9f38a538f7e4c3b28c48d97ab7fe08ca0015e38a4214a6ec";
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const baseUrl = "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/" +
-  baseDigest + "/cleverc2200-gea-dsh-prototype-0.0.348.tgz";
+const baseUrl =
+  "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/packages/" +
+  baseDigest +
+  "/cleverc2200-gea-dsh-prototype-0.0.349.tgz";
 const response = await fetch(baseUrl, { redirect: "error", signal: AbortSignal.timeout(120000) });
 assert.equal(response.status, 200);
 const bytes = Buffer.from(await response.arrayBuffer());
@@ -26,7 +28,11 @@ await mkdir(source);
 const snapshot = join(stage, "source.tar");
 execFileSync("git", ["archive", "--format=tar", "--output=" + snapshot, "HEAD"]);
 execFileSync("tar", ["-xf", snapshot, "-C", source]);
-await symlink(join(process.cwd(), "node_modules"), join(source, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+await symlink(
+  join(process.cwd(), "node_modules"),
+  join(source, "node_modules"),
+  process.platform === "win32" ? "junction" : "dir",
+);
 execFileSync(process.execPath, ["scripts/build.mjs", "--target", "host,client"], {
   cwd: source,
   stdio: "inherit",
@@ -43,7 +49,11 @@ for (const name of ["package.json", "npm-shrinkwrap.json"]) {
 execFileSync("tar", ["-czf", archivePath, "-C", stage, "package"]);
 const input = JSON.parse(await readFile(inputPath, "utf8"));
 const gea = input.seed.packages.find(({ name }) => name === "@cleverc2200/gea-dsh-prototype");
-Object.assign(gea, { version, sha256: hash(await readFile(archivePath)), url: pathToFileURL(archivePath).href });
+Object.assign(gea, {
+  version,
+  sha256: hash(await readFile(archivePath)),
+  url: pathToFileURL(archivePath).href,
+});
 input.geaSourceSha = process.env.GITHUB_SHA;
 delete input.pluginSourceSha;
 await writeFile(inputPath, JSON.stringify(input));

@@ -21,6 +21,8 @@ const { values } = parseArgs({
     input: { type: "string" },
     output: { type: "string" },
     "recheck-recovery-ui": { type: "boolean" },
+    "old-visible-entry": { type: "boolean" },
+    "repair-affected-baseline": { type: "boolean" },
   },
 });
 const buildReceipt = resolve(values["build-receipt"]);
@@ -32,9 +34,28 @@ const privateOutput = output + "-private";
 await mkdir(output);
 await mkdir(privateOutput);
 const gea = resolve(process.cwd(), "gea");
-const { readOnlineUpgradeTarget, verifyOnlineUpgradeFeed } = await import(pathToFileURL(join(gea,"scripts/windows-complete-local/online-upgrade-input.mjs")));
-const { companyWindowsCertificate } = await import(pathToFileURL(join(gea,"scripts/windows-complete-local/signing.mjs")));
-const oldVersion = "0.2.0-rc.2.20261123.1";
+const { readOnlineUpgradeTarget, verifyOnlineUpgradeFeed } = await import(
+  pathToFileURL(join(gea, "scripts/windows-complete-local/online-upgrade-input.mjs"))
+);
+const { companyWindowsCertificate } = await import(
+  pathToFileURL(join(gea, "scripts/windows-complete-local/signing.mjs"))
+);
+const repairAffectedBaseline = values["repair-affected-baseline"];
+const {
+  version: oldVersion,
+  source: oldSource,
+  sha256: baselineSha,
+} = repairAffectedBaseline
+  ? {
+      version: "0.2.0-rc.2.20261118.1",
+      source: "b2c1f5faf5198e9390491773c78be8dd8302e426",
+      sha256: "043ae109a1cef0b34334d988231b127abe5ec4c76d66ffd8cd5343ee48a3ee15",
+    }
+  : {
+      version: "0.2.0-rc.2.20261123.1",
+      source: "cd4234bf8563db2fe24c80079907a8251bdf7d73",
+      sha256: "9b91e1151bcddec81855da93605ba4ee358a1c22243bda2201c962cdf2ee0006",
+    };
 const targetInput = readOnlineUpgradeTarget(build, {
   sourceSha: process.env.GITHUB_SHA,
   qualifiedSourceSha: process.env.GEA_QUALIFICATION_SOURCE_SHA,
@@ -43,23 +64,33 @@ const targetInput = readOnlineUpgradeTarget(build, {
 });
 const { version: newVersion, sha256: expectedNewSha, feedUrl: feed } = targetInput;
 assert.equal(newVersion, fixed.desktopVersion);
-const baseline = join(privateOutput,"baseline.exe");
-const baselineUrl = "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/cd4234bf8563db2fe24c80079907a8251bdf7d73/desktop/Synear-GEA-0.2.0-rc.2.20261123.1-win-x64-signed.exe";
-const baselineDownload = await fetch(baselineUrl,{redirect:"error",signal:AbortSignal.timeout(180000)});
-assert.equal(baselineDownload.status,200);
-await pipeline(Readable.fromWeb(baselineDownload.body), (await import("node:fs")).createWriteStream(baseline,{flags:"wx"}));
-const home = join(homedir(),".dsh");
-const profile = join(home,"profiles/desktop");
-const snapshot = join(privateOutput,"old-data.json");
-const history = join(privateOutput,"history-input.json");
+const baseline = join(privateOutput, "baseline.exe");
+const baselineUrl = `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/${oldSource}/desktop/Synear-GEA-${oldVersion}-win-x64-signed.exe`;
+const baselineDownload = await fetch(baselineUrl, {
+  redirect: "error",
+  signal: AbortSignal.timeout(180000),
+});
+assert.equal(baselineDownload.status, 200);
+await pipeline(
+  Readable.fromWeb(baselineDownload.body),
+  (await import("node:fs")).createWriteStream(baseline, { flags: "wx" }),
+);
+const home = join(homedir(), ".dsh");
+const profile = join(home, "profiles/desktop");
+const snapshot = join(privateOutput, "old-data.json");
+const history = join(privateOutput, "history-input.json");
 const sessionId = "session-6e10a0f1-c9de-4174-ae9c-b088f52fe009";
 const markerDraft = "Managed upgrade saved composer draft 6e10a0f1";
 const managedCore = fixed.seed.core.head;
-const companyNames = new Set(["@cleverc2200/dsh-agent-workbench","dsh-agent-manage","@cleverc2200/gea-dsh-prototype"]);
-const expectedCompany = fixed.seed.packages.filter(row=>companyNames.has(row.name));
-assert.equal(expectedCompany.length,3);
-const dataTool = join(import.meta.dirname,"desktop-update-data.mjs");
-const historyTool = join(import.meta.dirname,"seed-history.mjs");
+const companyNames = new Set([
+  "@cleverc2200/dsh-agent-workbench",
+  "dsh-agent-manage",
+  "@cleverc2200/gea-dsh-prototype",
+]);
+const expectedCompany = fixed.seed.packages.filter((row) => companyNames.has(row.name));
+assert.equal(expectedCompany.length, 3);
+const dataTool = join(import.meta.dirname, "desktop-update-data.mjs");
+const historyTool = join(import.meta.dirname, "seed-history.mjs");
 let candidateServer;
 const installation = join(privateOutput, "installed");
 const executable = join(installation, "GEA Desktop.exe");
@@ -195,6 +226,24 @@ async function screenshot(client, name) {
   const result = await client.send("Page.captureScreenshot", { format: "png" });
   await writeFile(join(privateOutput, name), Buffer.from(result.data, "base64"));
 }
+async function openVisibleDesktopUpdate(client, version, image) {
+  const check = await evaluate(client, "window.dshDesktop.updates.check()");
+  assert.equal(check.version, version);
+  const findButton = `(() => {
+    const card = document.querySelector(".gea-sidebar-reminder");
+    const section = [...(card?.querySelectorAll("section") ?? [])].find((item) => item.innerText.includes(${JSON.stringify(version)}));
+    const button = [...(section?.querySelectorAll("button") ?? [])].find((item) => /restart and update|重启更新/i.test(item.innerText));
+    return button?.getBoundingClientRect().width > 0 && !button.disabled ? button : null;
+  })()`;
+  await until(
+    "visible GEA desktop update action",
+    () => evaluate(client, `Boolean(${findButton})`),
+    30000,
+  );
+  await screenshot(client, image);
+  await evaluate(client, `${findButton}.click(); true`);
+}
+
 let port;
 async function targets() {
   return fetch(`http://127.0.0.1:${port}/json/list`, {
@@ -207,10 +256,7 @@ async function target(prefix) {
   return (await targets()).find((item) => item.type === "page" && item.url.startsWith(prefix));
 }
 try {
-  assert.equal(
-    await fileDigest(baseline),
-    "9b91e1151bcddec81855da93605ba4ee358a1c22243bda2201c962cdf2ee0006",
-  );
+  assert.equal(await fileDigest(baseline), baselineSha);
   const originalInstaller = resolve(dirname(buildReceipt), "../artifacts", targetInput.artifact);
   assert.equal(await fileDigest(originalInstaller), expectedNewSha);
   assert.equal(
@@ -235,16 +281,27 @@ try {
     try {
       const name = new URL(request.url, "http://127.0.0.1").pathname;
       if (name === "/nightly.yml" && recoveryFeed) {
-        response.writeHead(200, { "Content-Type": "text/yaml", "Cache-Control": "no-store" }).end(recoveryFeed);
+        response
+          .writeHead(200, { "Content-Type": "text/yaml", "Cache-Control": "no-store" })
+          .end(recoveryFeed);
         return;
       }
-      if (recoveryFeed) { response.writeHead(404).end(); return; }
+      if (recoveryFeed) {
+        response.writeHead(404).end();
+        return;
+      }
       const path = allowed.get(name);
-      if (!path) { response.writeHead(404).end(); return; }
+      if (!path) {
+        response.writeHead(404).end();
+        return;
+      }
       const info = await (await import("node:fs/promises")).stat(path);
-      requests.push({name, range: Boolean(request.headers.range)});
+      requests.push({ name, range: Boolean(request.headers.range) });
       const range = /^bytes=(\d+)-(\d+)$/.exec(request.headers.range ?? "");
-      if (request.headers.range && !range) { response.writeHead(416).end(); return; }
+      if (request.headers.range && !range) {
+        response.writeHead(416).end();
+        return;
+      }
       const start = range ? Number(range[1]) : 0;
       const end = range ? Math.min(Number(range[2]), info.size - 1) : info.size - 1;
       response.writeHead(range ? 206 : 200, {
@@ -253,15 +310,17 @@ try {
         ...(range ? { "Content-Range": `bytes ${start}-${end}/${info.size}` } : {}),
       });
       if (request.method === "HEAD") response.end();
-      else await pipeline(createReadStream(path,{start,end}),response);
-    } catch { response.destroy(); }
+      else await pipeline(createReadStream(path, { start, end }), response);
+    } catch {
+      response.destroy();
+    }
   });
-  await new Promise((resolve,reject)=>{
-    candidateServer.once("error",reject);
-    candidateServer.listen(0,"127.0.0.1",resolve);
+  await new Promise((resolve, reject) => {
+    candidateServer.once("error", reject);
+    candidateServer.listen(0, "127.0.0.1", resolve);
   });
   const candidateUrl = "http://127.0.0.1:" + candidateServer.address().port + "/";
-  evidence.candidateSource = {transport:"isolated-loopback", fixedFeedBytes:true, requests};
+  evidence.candidateSource = { transport: "isolated-loopback", fixedFeedBytes: true, requests };
   milestone("candidate-source-and-baseline-verified");
   const trust = spawnSync(
     "powershell.exe",
@@ -320,22 +379,25 @@ try {
     ),
   );
   assert.ok(config.includes("publisherName:"));
-  const appRoot = join(installation,"resources/app.asar");
+  const appRoot = join(installation, "resources/app.asar");
   const appBefore = await fileDigest(appRoot);
   const exeBefore = await fileDigest(executable);
-  const changed = config.replace(feed.slice(0,-"nightly.yml".length), candidateUrl);
+  const changed = config.replace(feed.slice(0, -"nightly.yml".length), candidateUrl);
   assert.notEqual(changed, config);
   assert.ok(changed.includes("publisherName:"));
-  await writeFile(join(installation,"resources/app-update.yml"),changed);
-  assert.equal(await fileDigest(appRoot),appBefore);
-  assert.equal(await fileDigest(executable),exeBefore);
-  evidence.untouchedBaselineCode = {exeSha256:exeBefore,asarSha256:appBefore};
+  await writeFile(join(installation, "resources/app-update.yml"), changed);
+  assert.equal(await fileDigest(appRoot), appBefore);
+  assert.equal(await fileDigest(executable), exeBefore);
+  evidence.untouchedBaselineCode = { exeSha256: exeBefore, asarSha256: appBefore };
   environment.DSH_HOME = home;
-  const runBundled = (script,args) => {
-    const result = spawnSync(executable,["--expose-internals",script,...args],{
-      env:{...environment,ELECTRON_RUN_AS_NODE:"1"},encoding:"utf8",timeout:45000,windowsHide:true,
+  const runBundled = (script, args) => {
+    const result = spawnSync(executable, ["--expose-internals", script, ...args], {
+      env: { ...environment, ELECTRON_RUN_AS_NODE: "1" },
+      encoding: "utf8",
+      timeout: 45000,
+      windowsHide: true,
     });
-    assert.equal(result.status,0,result.stderr);
+    assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout.trim());
   };
   const cacheName = /^updaterCacheDirName:\s*['"]?([^'"\r\n]+)['"]?\s*$/m.exec(config)?.[1];
@@ -356,7 +418,7 @@ try {
       const windows = await targets();
       return (
         windows.find((item) => item.type === "page" && item.url.includes("welcome")) ??
-        ((await records()).some((row) => row.event === "workspace-ready")
+        (repairAffectedBaseline || (await records()).some((row) => row.event === "workspace-ready")
           ? windows.find((item) => item.type === "page" && item.url.startsWith("dsh-app://app/"))
           : undefined)
       );
@@ -378,29 +440,45 @@ try {
   await until(
     "old Host ready",
     async () =>
-      (await records()).some(
-        (row) => row.version === oldVersion && row.event === "workspace-ready",
-      ),
+      repairAffectedBaseline
+        ? (await processes()).some((row) => row.ParentProcessId === child.pid && row.IsDesktopHost)
+        : (await records()).some(
+            (row) => row.version === oldVersion && row.event === "workspace-ready",
+          ),
     180000,
   );
-  await until("real product update bridge", () =>
-    evaluate(cdp, "Boolean(window.dshDesktop?.updates?.open)"),
-  );
+  if (!repairAffectedBaseline) {
+    await until("real product update bridge", () =>
+      evaluate(cdp, "Boolean(window.dshDesktop?.updates?.open)"),
+    );
+  }
   await screenshot(cdp, "02-old-workspace.png");
-  await writeFile(history,JSON.stringify({root:appRoot,home,cwd:privateOutput,sessionId,mode:"create"}));
-  const historyBefore = runBundled(historyTool,[history]);
-  assert.equal(historyBefore.status,"history-created-and-read-back");
+  await writeFile(
+    history,
+    JSON.stringify({ root: appRoot, home, cwd: privateOutput, sessionId, mode: "create" }),
+  );
+  const historyBefore = runBundled(historyTool, [history]);
+  assert.equal(historyBefore.status, "history-created-and-read-back");
   const draftKey = "dsh.conversation." + sessionId;
-  const draftValue = {draft:markerDraft,view:null,viewRequest:null};
-  assert.equal(await evaluate(cdp,`(() => { localStorage.setItem(${JSON.stringify(draftKey)},${JSON.stringify(JSON.stringify(draftValue))});return JSON.parse(localStorage.getItem(${JSON.stringify(draftKey)})).draft })()`),markerDraft);
-  const oldData = runBundled(dataTool,["--home",home,"--capture",snapshot]);
-  assert.ok(oldData.sessions>0 && oldData.events>0);
+  const draftValue = { draft: markerDraft, view: null, viewRequest: null };
+  assert.equal(
+    await evaluate(
+      cdp,
+      `(() => { localStorage.setItem(${JSON.stringify(draftKey)},${JSON.stringify(JSON.stringify(draftValue))});return JSON.parse(localStorage.getItem(${JSON.stringify(draftKey)})).draft })()`,
+    ),
+    markerDraft,
+  );
+  const oldData = runBundled(dataTool, ["--home", home, "--capture", snapshot]);
+  assert.ok(oldData.sessions > 0 && oldData.events > 0);
   evidence.historyBefore = oldData;
   evidence.oldDraftSaved = true;
   const lock = join(profile, "gea/installations", managedCore, "plugins/prepare.lock");
-  const abandoned = join(privateOutput, "abandoned-preparation.json");
-  const workerScript = join(privateOutput, "interrupt-preparation.mjs");
-  await writeFile(workerScript, `
+  if (!repairAffectedBaseline) {
+    const abandoned = join(privateOutput, "abandoned-preparation.json");
+    const workerScript = join(privateOutput, "interrupt-preparation.mjs");
+    await writeFile(
+      workerScript,
+      `
     import { writeFile } from "node:fs/promises";
     import { pathToFileURL } from "node:url";
     const [entry, profile, coreHead, result] = process.argv.slice(2);
@@ -410,29 +488,47 @@ try {
       await writeFile(result, JSON.stringify({ pid: process.pid, stage }));
       await new Promise(() => setInterval(() => {}, 1000));
     });
-  `);
-  const worker = spawn(executable, ["--expose-internals", workerScript,
-    join(appRoot, "company-installation.mjs"), profile, managedCore, abandoned], {
-      env: { ...environment, ELECTRON_RUN_AS_NODE: "1" }, windowsHide: true, stdio: "inherit",
-    });
-  try {
-    const prepared = await until("real prior preparation reached the staging directory", async () =>
-      JSON.parse(await readFile(abandoned, "utf8").catch(() => "null")),
+  `,
     );
-    assert.equal(prepared.pid, worker.pid);
-    assert.ok(prepared.stage.includes("staging-"));
-    assert.equal(JSON.parse(await readFile(lock, "utf8")).pid, worker.pid);
-  } finally {
-    if (worker.exitCode === null && worker.signalCode === null) {
-      const ended = new Promise((resolve) => worker.once("exit", resolve));
-      const killed = spawnSync("taskkill.exe", ["/PID", String(worker.pid), "/T", "/F"],
-        { env: environment, windowsHide: true, encoding: "utf8" });
-      assert.equal(killed.status, 0, killed.stderr);
-      await ended;
+    const worker = spawn(
+      executable,
+      [
+        "--expose-internals",
+        workerScript,
+        join(appRoot, "company-installation.mjs"),
+        profile,
+        managedCore,
+        abandoned,
+      ],
+      {
+        env: { ...environment, ELECTRON_RUN_AS_NODE: "1" },
+        windowsHide: true,
+        stdio: "inherit",
+      },
+    );
+    try {
+      const prepared = await until(
+        "real prior preparation reached the staging directory",
+        async () => JSON.parse(await readFile(abandoned, "utf8").catch(() => "null")),
+      );
+      assert.equal(prepared.pid, worker.pid);
+      assert.ok(prepared.stage.includes("staging-"));
+      assert.equal(JSON.parse(await readFile(lock, "utf8")).pid, worker.pid);
+    } finally {
+      if (worker.exitCode === null && worker.signalCode === null) {
+        const ended = new Promise((resolve) => worker.once("exit", resolve));
+        const killed = spawnSync("taskkill.exe", ["/PID", String(worker.pid), "/T", "/F"], {
+          env: environment,
+          windowsHide: true,
+          encoding: "utf8",
+        });
+        assert.equal(killed.status, 0, killed.stderr);
+        await ended;
+      }
     }
+    assert.equal(JSON.parse(await readFile(lock, "utf8")).pid, worker.pid);
+    milestone("prior-package-preparation-interrupted-with-lock-preserved");
   }
-  assert.equal(JSON.parse(await readFile(lock, "utf8")).pid, worker.pid);
-  milestone("prior-package-preparation-interrupted-with-lock-preserved");
   const before = await processes();
   const owned = new Set([child.pid]);
   for (let changed = true; changed;) {
@@ -453,69 +549,118 @@ try {
     mainPid: child.pid,
     ownedProcesses: oldProcesses.length,
   });
-  await evaluate(cdp, "window.dshDesktop.updates.open().catch(() => {}); true");
-  milestone("product-update-action-invoked");
-  let confirmation;
-  await until(
-    "real install-and-restart confirmation",
-    async () => {
-      const rows = await records();
-      const failure = rows.find((row) => row.event === "state" && row.phase === "error");
-      assert.equal(failure, undefined, "Real updater failed: " + JSON.stringify(failure));
-      const dialog = await target("dsh-app://shell/update-dialog.html");
-      if (!dialog) return false;
-      const client = await connection(dialog.webSocketDebuggerUrl);
-      try {
-        const view = await evaluate(client, "window.dshUpdateDialog.status()");
-        if (!view) return false;
+  let handoff;
+  let recoveryReceipt;
+  if (repairAffectedBaseline) {
+    const id = "a8a2fc6c-6dcf-4094-85da-cc6a3e8981e4";
+    const directory = join(profile, "gea/plugin-updates");
+    const operation = join(directory, "operations", id, "receipt.json");
+    await mkdir(dirname(operation), { recursive: true });
+    await writeFile(operation, JSON.stringify({ id, stage: "accepted" }), { flag: "wx" });
+    await writeFile(join(directory, "latest.json"), JSON.stringify({ id }));
+    recoveryReceipt = { path: operation, digest: await fileDigest(operation) };
+    if (cdp) cdp.close();
+    cdp = undefined;
+    const killed = spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+      env: environment,
+      windowsHide: true,
+      encoding: "utf8",
+    });
+    assert.equal(killed.status, 0, killed.stderr);
+    handoff = Date.now();
+    evidence.firstHop = "signed-in-place-cover-of-affected-baseline";
+  } else {
+    if (values["old-visible-entry"]) {
+      await openVisibleDesktopUpdate(cdp, newVersion, "03-old-visible-update.png");
+      evidence.firstHop = "old-visible-gea-reminder";
+    } else {
+      await evaluate(cdp, "window.dshDesktop.updates.open().catch(() => {}); true");
+      evidence.firstHop = "old-native-update-bridge";
+    }
+    milestone("product-update-action-invoked", { entry: evidence.firstHop });
+    let confirmation;
+    await until(
+      "real install-and-restart confirmation",
+      async () => {
+        const rows = await records();
         if (
-          /download|下载/i.test(view.buttons[0]) &&
-          !rows.some((row) => row.phase === "downloading")
+          values["old-visible-entry"] &&
+          rows.some((row) => row.event === "workspace-ready" && row.version === newVersion)
         ) {
-          await evaluate(client, "document.querySelector('#actions button').click(); true");
-          return false;
+          evidence.firstHopConfirmedBySuccessor = true;
+          return true;
         }
-        if (!rows.some((row) => row.phase === "ready" && row.targetVersion === newVersion))
-          return false;
-        assert.match(view.buttons[0], /restart|重启|重新启动/i);
-        await screenshot(client, "03-install-and-restart.png");
-        confirmation = dialog;
-        return true;
-      } finally {
-        client.close();
-      }
-    },
-    300000,
-  );
-  assert.ok(
-    (await processes()).some((item) => item.ProcessId === child.pid),
-    "Old application exited before restart confirmation",
-  );
-  const pending = join(process.env.LOCALAPPDATA, cacheName, "pending");
-  const candidates = await readdir(pending);
-  for (const name of candidates.filter((name) => name.endsWith(".exe"))) {
-    const actual = await fileDigest(join(pending, name));
-    if (actual === expectedNewSha) evidence.downloadedInstallerSha256 = actual;
+        const failure = rows.find((row) => row.event === "state" && row.phase === "error");
+        assert.equal(failure, undefined, "Real updater failed: " + JSON.stringify(failure));
+        const dialog = await target("dsh-app://shell/update-dialog.html");
+        if (!dialog) return false;
+        const client = await connection(dialog.webSocketDebuggerUrl);
+        try {
+          const view = await evaluate(client, "window.dshUpdateDialog.status()");
+          if (!view) return false;
+          if (
+            values["old-visible-entry"] &&
+            view.buttons?.some((label) => /重新检查|check again/i.test(label))
+          ) {
+            await screenshot(client, "03-old-visible-update-blocked.png");
+            throw new Error("OLD_VISIBLE_UPDATE_REQUIRES_RECOVERY");
+          }
+          if (
+            /download|下载/i.test(view.buttons[0]) &&
+            !rows.some((row) => row.phase === "downloading")
+          ) {
+            await evaluate(client, "document.querySelector('#actions button').click(); true");
+            return false;
+          }
+          if (!rows.some((row) => row.phase === "ready" && row.targetVersion === newVersion))
+            return false;
+          assert.match(view.buttons[0], /restart|重启|重新启动/i);
+          await screenshot(client, "03-install-and-restart.png");
+          confirmation = dialog;
+          return true;
+        } finally {
+          client.close();
+        }
+      },
+      300000,
+    );
+    const pending = join(process.env.LOCALAPPDATA, cacheName, "pending");
+    const candidates = await readdir(pending).catch((error) => {
+      if (error.code === "ENOENT" && evidence.firstHopConfirmedBySuccessor) return [];
+      throw error;
+    });
+    for (const name of candidates.filter((name) => name.endsWith(".exe"))) {
+      const actual = await fileDigest(join(pending, name));
+      if (actual === expectedNewSha) evidence.downloadedInstallerSha256 = actual;
+    }
+    if (confirmation) {
+      assert.ok(
+        (await processes()).some((item) => item.ProcessId === child.pid),
+        "Old application exited before restart confirmation",
+      );
+      assert.equal(evidence.downloadedInstallerSha256, expectedNewSha);
+      milestone("signed-online-download-ready-and-old-client-still-running");
+      const dialog = await connection(confirmation.webSocketDebuggerUrl);
+      await evaluate(
+        dialog,
+        "setTimeout(() => document.querySelector('#actions button').click(), 500); true",
+      );
+      dialog.close();
+    } else {
+      assert.ok(requests.some(({ name }) => name === "/" + targetInput.artifact));
+    }
+    cdp.close();
+    cdp = undefined;
+    handoff = Date.now();
+    await until(
+      "actual installer handoff",
+      async () =>
+        (await records()).some(
+          (row) => row.event === "install-confirmed" && row.version === oldVersion,
+        ),
+      60000,
+    );
   }
-  assert.equal(evidence.downloadedInstallerSha256, expectedNewSha);
-  milestone("signed-online-download-ready-and-old-client-still-running");
-  const dialog = await connection(confirmation.webSocketDebuggerUrl);
-  await evaluate(
-    dialog,
-    "setTimeout(() => document.querySelector('#actions button').click(), 500); true",
-  );
-  dialog.close();
-  cdp.close();
-  cdp = undefined;
-  const handoff = Date.now();
-  await until(
-    "actual installer handoff",
-    async () =>
-      (await records()).some(
-        (row) => row.event === "install-confirmed" && row.version === oldVersion,
-      ),
-    60000,
-  );
   await until(
     "all pre-update application and Host processes exit",
     async () => {
@@ -532,11 +677,29 @@ try {
   milestone("old-client-and-owned-processes-exited", {
     elapsedMs: Date.now() - handoff,
   });
+  if (repairAffectedBaseline) {
+    const replaced = spawnSync(originalInstaller, ["/S", "/D=" + installation], {
+      encoding: "utf8",
+      env: environment,
+      windowsHide: true,
+      timeout: 180000,
+    });
+    assert.equal(replaced.status, 0, String(replaced.stderr || replaced.error));
+    port = await loopbackPort();
+    child = spawn(
+      executable,
+      [`--remote-debugging-port=${port}`, "--remote-debugging-address=127.0.0.1"],
+      { env: environment, windowsHide: true, stdio: "ignore" },
+    );
+    evidence.manualSuccessorLaunch = true;
+  }
   const relaunched = await until(
     "new installed application starts",
     async () =>
       (await processes()).find(
-        (item) => item.ExecutablePath === executable && item.IsUpdatedClient,
+        (item) =>
+          item.ExecutablePath === executable &&
+          (repairAffectedBaseline ? item.ProcessId === child.pid : item.IsUpdatedClient),
       ),
     180000,
   );
@@ -591,6 +754,7 @@ $process=Get-Process -Id $ClientPid
   evidence.newHostServer = ports;
   evidence.newWindow = window;
   assert.equal(await readFile(marker, "utf8"), markerBytes);
+  if (recoveryReceipt) assert.equal(await fileDigest(recoveryReceipt.path), recoveryReceipt.digest);
   const signature = JSON.parse(
     await powershell(
       `param([string]$Executable,[string]$Certificate)
@@ -602,48 +766,98 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     ),
   );
   milestone("new-client-and-host-ready-with-user-file-preserved");
-  const proofPath = join(profile,"gea/installation.json");
-  const selectionPath = join(profile,"gea/installations",managedCore,"plugins/selection.json");
-  const readJson = async (path) => JSON.parse(await readFile(path,"utf8"));
-  const running = await until("actual managed Host and renderer stamps confirmed", async () => {
-    try {
-      const proof = await readJson(proofPath);
-      const state = await readJson(selectionPath);
-      if (proof.coreHead !== managedCore || state.verified !== proof.graphId || state.active !== proof.graphId || state.booting || proof.graphId === "baseline") return false;
-      return await Promise.all(expectedCompany.map(async expected => {
-        const actual = await readJson(join(profile,"node_modules",expected.name,"package.json"));
-        assert.equal(actual.version,expected.version);
-        return {name:actual.name,version:actual.version,hostAndClientVerified:true};
-      }));
-    } catch(error) {
-      if(error.code==="ENOENT")return false;
-      throw error;
-    }
-  },150000);
+  const proofPath = join(profile, "gea/installation.json");
+  const selectionPath = join(profile, "gea/installations", managedCore, "plugins/selection.json");
+  const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
+  const running = await until(
+    "actual managed Host and renderer stamps confirmed",
+    async () => {
+      try {
+        const proof = await readJson(proofPath);
+        const state = await readJson(selectionPath);
+        if (
+          proof.coreHead !== managedCore ||
+          state.verified !== proof.graphId ||
+          state.active !== proof.graphId ||
+          state.booting ||
+          proof.graphId === "baseline"
+        )
+          return false;
+        return await Promise.all(
+          expectedCompany.map(async (expected) => {
+            const actual = await readJson(
+              join(profile, "node_modules", expected.name, "package.json"),
+            );
+            assert.equal(actual.version, expected.version);
+            return { name: actual.name, version: actual.version, hostAndClientVerified: true };
+          }),
+        );
+      } catch (error) {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      }
+    },
+    150000,
+  );
   evidence.runtimePackages = running;
-  await assert.rejects(readFile(lock), { code: "ENOENT" });
-  evidence.interruptedExistingInstallationRecovered = true;
-  const after = runBundled(dataTool,["--home",home,"--before",snapshot,"--output",join(privateOutput,"new-data.json")]);
-  assert.equal(after.status,"passed");
+  if (!repairAffectedBaseline) {
+    await assert.rejects(readFile(lock), { code: "ENOENT" });
+    evidence.interruptedExistingInstallationRecovered = true;
+  }
+  const after = runBundled(dataTool, [
+    "--home",
+    home,
+    "--before",
+    snapshot,
+    "--output",
+    join(privateOutput, "new-data.json"),
+  ]);
+  assert.equal(after.status, "passed");
   evidence.data = after;
-  const draftPath = join(process.env.APPDATA,"GEA Desktop");
-  const npm = join(dirname(process.execPath),"node_modules/npm/bin/npm-cli.js");
-  const dependencies = join(privateOutput,"draft-deps");
-  const installedDependency = spawnSync(process.execPath,[npm,"install","--prefix",dependencies,"--ignore-scripts","--no-package-lock","--no-audit","--no-fund","classic-level@2.0.0"],{
-    env:environment,encoding:"utf8",timeout:90000,windowsHide:true,
-  });
-  assert.equal(installedDependency.status,0,"DRAFT_READER_DEPENDENCY_FAILED");
-  const {ClassicLevel} = createRequire(join(dependencies,"package.json"))("classic-level");
-  evidence.composerDraftStorageRetained = await until("old logical draft through Chromium local storage",()=>readDraft(draftPath,draftKey,markerDraft,join(privateOutput,"draft-check"),ClassicLevel),20000);
+  const draftPath = join(process.env.APPDATA, "GEA Desktop");
+  const npm = join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
+  const dependencies = join(privateOutput, "draft-deps");
+  const installedDependency = spawnSync(
+    process.execPath,
+    [
+      npm,
+      "install",
+      "--prefix",
+      dependencies,
+      "--ignore-scripts",
+      "--no-package-lock",
+      "--no-audit",
+      "--no-fund",
+      "classic-level@2.0.0",
+    ],
+    {
+      env: environment,
+      encoding: "utf8",
+      timeout: 90000,
+      windowsHide: true,
+    },
+  );
+  assert.equal(installedDependency.status, 0, "DRAFT_READER_DEPENDENCY_FAILED");
+  const { ClassicLevel } = createRequire(join(dependencies, "package.json"))("classic-level");
+  evidence.composerDraftStorageRetained = await until(
+    "old logical draft through Chromium local storage",
+    () =>
+      readDraft(draftPath, draftKey, markerDraft, join(privateOutput, "draft-check"), ClassicLevel),
+    20000,
+  );
   milestone("managed-runtime-session-and-draft-storage-verified");
-  evidence.nativeUpgradePassed = true;
+  evidence.nativeUpgradePassed = !repairAffectedBaseline;
+  evidence.signedOverwriteRecoveredAffectedBaseline = Boolean(recoveryReceipt);
   if (values["recheck-recovery-ui"]) {
     const stop = spawnSync("taskkill.exe", ["/PID", String(relaunched.ProcessId), "/T", "/F"], {
-      env: environment, windowsHide: true, encoding: "utf8",
+      env: environment,
+      windowsHide: true,
+      encoding: "utf8",
     });
     assert.equal(stop.status, 0, stop.stderr);
-    await until("updated client has stopped before isolated recovery scenario", async () =>
-      !(await processes()).some(({ ProcessId }) => ProcessId === relaunched.ProcessId),
+    await until(
+      "updated client has stopped before isolated recovery scenario",
+      async () => !(await processes()).some(({ ProcessId }) => ProcessId === relaunched.ProcessId),
     );
     const latest = join(profile, "gea/plugin-updates/latest.json");
     await mkdir(dirname(latest), { recursive: true });
@@ -652,53 +866,82 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     assert.notEqual(nextVersion, newVersion);
     recoveryFeed = metadata.replace(/^version:.*$/m, "version: " + nextVersion);
     const candidateConfig = await readFile(join(installation, "resources/app-update.yml"), "utf8");
-    const loopbackConfig = candidateConfig.replace(feed.slice(0, -"nightly.yml".length), candidateUrl);
+    const loopbackConfig = candidateConfig.replace(
+      feed.slice(0, -"nightly.yml".length),
+      candidateUrl,
+    );
     assert.notEqual(candidateConfig, loopbackConfig);
     await writeFile(join(installation, "resources/app-update.yml"), loopbackConfig);
     const mainPort = await loopbackPort();
     port = await loopbackPort();
     const descriptor = openSync(join(privateOutput, "client-raw.txt"), "a");
-    child = spawn(executable, [
-      `--inspect=127.0.0.1:${mainPort}`,
-      `--remote-debugging-port=${port}`,
-      "--remote-debugging-address=127.0.0.1",
-    ], { env: environment, stdio: ["ignore", descriptor, descriptor] });
+    child = spawn(
+      executable,
+      [
+        `--inspect=127.0.0.1:${mainPort}`,
+        `--remote-debugging-port=${port}`,
+        "--remote-debugging-address=127.0.0.1",
+      ],
+      { env: environment, stdio: ["ignore", descriptor, descriptor] },
+    );
     closeSync(descriptor);
     const renderer = await until("recovery candidate workspace", () => target("dsh-app://app/"));
     cdp = await connection(renderer.webSocketDebuggerUrl);
-    const mainInspector = await until("packaged main loopback inspector", async () => {
-      const list = await fetch(`http://127.0.0.1:${mainPort}/json/list`, { signal: AbortSignal.timeout(2000) })
-        .then((reply) => reply.json()).catch(() => []);
-      return list.find((row) => row.webSocketDebuggerUrl);
-    }, 15000);
+    const mainInspector = await until(
+      "packaged main loopback inspector",
+      async () => {
+        const list = await fetch(`http://127.0.0.1:${mainPort}/json/list`, {
+          signal: AbortSignal.timeout(2000),
+        })
+          .then((reply) => reply.json())
+          .catch(() => []);
+        return list.find((row) => row.webSocketDebuggerUrl);
+      },
+      15000,
+    );
     const main = await connection(mainInspector.webSocketDebuggerUrl);
     try {
-      const childPrototype = (await main.send("Runtime.evaluate", {
-        expression: 'process.getBuiltinModule("node:child_process").ChildProcess.prototype',
-      })).result.objectId;
-      await until("live desktop Host and enabled product window", async () => {
-        const handles = await main.send("Runtime.queryObjects", { prototypeObjectId: childPrototype });
-        const result = await main.send("Runtime.callFunctionOn", {
-          objectId: handles.objects.objectId,
-          functionDeclaration: `function () {
+      const childPrototype = (
+        await main.send("Runtime.evaluate", {
+          expression: 'process.getBuiltinModule("node:child_process").ChildProcess.prototype',
+        })
+      ).result.objectId;
+      await until(
+        "live desktop Host and enabled product window",
+        async () => {
+          const handles = await main.send("Runtime.queryObjects", {
+            prototypeObjectId: childPrototype,
+          });
+          const result = await main.send("Runtime.callFunctionOn", {
+            objectId: handles.objects.objectId,
+            functionDeclaration: `function () {
             globalThis.geaRecoveryHost = this.find((child) =>
               child.connected && child.spawnargs?.some((arg) => arg.includes("dsh-desktop-host")));
             return Boolean(globalThis.geaRecoveryHost);
           }`,
-          returnByValue: true,
-        });
-        await main.send("Runtime.releaseObject", { objectId: handles.objects.objectId });
-        if (result.result.value !== true) return false;
-        return evaluate(main, `(() => {
+            returnByValue: true,
+          });
+          await main.send("Runtime.releaseObject", { objectId: handles.objects.objectId });
+          if (result.result.value !== true) return false;
+          return evaluate(
+            main,
+            `(() => {
           const path = process.getBuiltinModule("node:path");
           const load = process.getBuiltinModule("node:module").createRequire(
             path.join(process.resourcesPath, "app.asar", "package.json"));
           return load("electron").BrowserWindow.getAllWindows().some((window) =>
             window.isEnabled() && window.webContents.getURL().startsWith("dsh-app://app/"));
-        })()`);
-      }, 45000);
-      await until("signed candidate Host update route reports the damaged journal", async () => {
-        const recoveryHost = await evaluate(main, `new Promise((resolve) => {
+        })()`,
+          );
+        },
+        45000,
+      );
+      await until(
+        "signed candidate Host update route reports the damaged journal",
+        async () => {
+          const recoveryHost = await evaluate(
+            main,
+            `new Promise((resolve) => {
         const host = globalThis.geaRecoveryHost;
         const requestId = 900000000 + (globalThis.geaRecoveryProbeSequence = (globalThis.geaRecoveryProbeSequence ?? 0) + 1);
         const timer = setTimeout(() => finish({ error: "host-status-timeout" }), 5000);
@@ -714,14 +957,23 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
         host.on("message", receive);
         host.send({ type: "update-operation", requestId, request: { action: "plugins-status" } },
           (error) => { if (error) finish({ error: "status-send-failed" }); });
-      })`);
-        evidence.recoveryStatusBeforeUpdate = recoveryHost;
-        if (!recoveryHost?.ok) return false;
-        assert.deepEqual(recoveryHost, { ok: true, value: { operationId: null, state: "failed" } });
-        return true;
-      }, 45000);
+      })`,
+          );
+          evidence.recoveryStatusBeforeUpdate = recoveryHost;
+          if (!recoveryHost?.ok) return false;
+          assert.deepEqual(recoveryHost, {
+            ok: true,
+            value: { operationId: null, state: "failed" },
+          });
+          return true;
+        },
+        45000,
+      );
       milestone("signed-host-reports-damaged-update-journal");
-      assert.equal(await evaluate(main, `(() => {
+      assert.equal(
+        await evaluate(
+          main,
+          `(() => {
         const path = process.getBuiltinModule("node:path");
         const load = process.getBuiltinModule("node:module").createRequire(
           path.join(process.resourcesPath, "app.asar", "package.json"));
@@ -758,11 +1010,16 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
           restore: () => { host.send = send; host.removeListener("message", observe); },
         };
         return true;
-      })()`), true);
+      })()`,
+        ),
+        true,
+      );
       const update = await evaluate(cdp, "window.dshDesktop.updates.check()");
       assert.equal(update.phase, "available");
       assert.equal(update.version, nextVersion);
-      await evaluate(cdp, `(() => {
+      await evaluate(
+        cdp,
+        `(() => {
         setTimeout(async () => {
           try {
             await window.dshDesktop.updates.restartUpdate({ kind: "desktop", version: ${JSON.stringify(nextVersion)} });
@@ -772,47 +1029,93 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
           }
         }, 0);
         return true;
-      })()`);
-      const check = await until("actual update status retry dialog disables the product window", async () => {
-        const dialog = await target("dsh-app://shell/update-dialog.html");
-        if (!dialog) return false;
-        const client = await connection(dialog.webSocketDebuggerUrl);
-        try {
-          const view = await evaluate(client, "window.dshUpdateDialog.status()");
-          if (!view?.buttons?.some((label) => /重新检查|check again/i.test(label))) return false;
-          const before = await evaluate(main, "geaRecoveryAcceptance.read()");
-          assert.equal(before.enabled, false);
-          assert.equal(before.missedStatus, true);
-          await screenshot(client, "04-recovery-recheck.png");
-          await evaluate(client, "document.querySelector('#actions button').click(); true");
-          return true;
-        } finally { client.close(); }
-      }, 45000);
+      })()`,
+      );
+      const check = await until(
+        "actual update status retry dialog disables the product window",
+        async () => {
+          const dialog = await target("dsh-app://shell/update-dialog.html");
+          if (!dialog) return false;
+          const client = await connection(dialog.webSocketDebuggerUrl);
+          try {
+            const view = await evaluate(client, "window.dshUpdateDialog.status()");
+            if (!view?.buttons?.some((label) => /重新检查|check again/i.test(label))) return false;
+            const before = await evaluate(main, "geaRecoveryAcceptance.read()");
+            assert.equal(before.enabled, false);
+            assert.equal(before.missedStatus, true);
+            await screenshot(client, "04-recovery-recheck.png");
+            await evaluate(client, "document.querySelector('#actions button').click(); true");
+            return true;
+          } finally {
+            client.close();
+          }
+        },
+        45000,
+      );
       assert.equal(check, true);
-      await until("successful recovery makes the normal update result message dismissible", async () => {
-        const dialog = await target("dsh-app://shell/update-dialog.html");
-        if (!dialog) return false;
-        const client = await connection(dialog.webSocketDebuggerUrl);
-        try {
-          const view = await evaluate(client, "window.dshUpdateDialog.status()");
-          if (!view?.dismissible || !/更新未完成|update did not complete/i.test(view.message))
-            return false;
-          const state = await evaluate(main, "geaRecoveryAcceptance.read()");
-          assert.deepEqual(state.replies["plugins-status"], { ok: true, value: { operationId: null, state: "failed" } });
-          assert.deepEqual(state.replies["desktop-cancel"], { ok: true, value: {} });
-          assert.deepEqual(state.replies.unlock, { active: false });
-          await screenshot(client, "05-recovery-result.png");
-          await evaluate(client, "document.querySelector('#actions button').click(); true");
-          return true;
-        } finally { client.close(); }
-      }, 45000);
-      await until("product window re-enabled after acknowledging the recovered update result", async () =>
-        (await evaluate(main, "geaRecoveryAcceptance.read()")).enabled, 15000,
+      await until(
+        "successful recovery makes the normal update result message dismissible",
+        async () => {
+          const dialog = await target("dsh-app://shell/update-dialog.html");
+          if (!dialog) return false;
+          const client = await connection(dialog.webSocketDebuggerUrl);
+          try {
+            const view = await evaluate(client, "window.dshUpdateDialog.status()");
+            if (!view?.dismissible || !/更新未完成|update did not complete/i.test(view.message))
+              return false;
+            const state = await evaluate(main, "geaRecoveryAcceptance.read()");
+            assert.deepEqual(state.replies["plugins-status"], {
+              ok: true,
+              value: { operationId: null, state: "failed" },
+            });
+            assert.deepEqual(state.replies["desktop-cancel"], { ok: true, value: {} });
+            assert.deepEqual(state.replies.unlock, { active: false });
+            await screenshot(client, "05-recovery-result.png");
+            await evaluate(client, "document.querySelector('#actions button').click(); true");
+            return true;
+          } finally {
+            client.close();
+          }
+        },
+        45000,
+      );
+      await until(
+        "product window re-enabled after acknowledging the recovered update result",
+        async () => (await evaluate(main, "geaRecoveryAcceptance.read()")).enabled,
+        15000,
       );
       assert.equal(await readFile(latest, "utf8"), "{");
-      assert.equal(await evaluate(cdp, `JSON.parse(localStorage.getItem(${JSON.stringify(draftKey)})).draft`), markerDraft);
+      assert.equal(
+        await evaluate(cdp, `JSON.parse(localStorage.getItem(${JSON.stringify(draftKey)})).draft`),
+        markerDraft,
+      );
       evidence.nativeRecoveryWindowUnlocked = true;
       milestone("actual-native-recheck-unlocked-real-window");
+      const previousOperations = (await evaluate(main, "geaRecoveryAcceptance.read()")).requests;
+      await openVisibleDesktopUpdate(cdp, nextVersion, "06-candidate-visible-update.png");
+      await until(
+        "fixed button opens the native updater without a company preparation operation",
+        async () => {
+          const dialog = await target("dsh-app://shell/update-dialog.html");
+          if (!dialog) return false;
+          const client = await connection(dialog.webSocketDebuggerUrl);
+          try {
+            const view = await evaluate(client, "window.dshUpdateDialog.status()");
+            if (!view?.buttons?.some((label) => /download|下载/i.test(label))) return false;
+            assert.deepEqual(
+              (await evaluate(main, "geaRecoveryAcceptance.read()")).requests,
+              previousOperations,
+            );
+            await screenshot(client, "07-candidate-official-download.png");
+            return true;
+          } finally {
+            client.close();
+          }
+        },
+        45000,
+      );
+      evidence.fixedVisibleEntryIgnoresDamagedJournal = true;
+      milestone("fixed-visible-button-opens-native-updater-with-damaged-journal");
     } finally {
       evidence.recoveryProbe = {
         host: await evaluate(main, "globalThis.geaRecoveryAcceptance?.read()").catch(() => null),
@@ -850,26 +1153,40 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
       .replace(/([?&]token=)[^&\s"'<>]+/gi, "$1<REDACTED>")
       .replace(/(Bearer\s+)[A-Za-z0-9._~-]+/gi, "$1<REDACTED>"),
   );
-  await writeFile(join(privateOutput,"online-upgrade.json"),JSON.stringify(evidence,null,2));
+  await writeFile(join(privateOutput, "online-upgrade.json"), JSON.stringify(evidence, null, 2));
   const publicReceipt = {
-    status:evidence.status,
-    actualNativeUpdateAcceptance:evidence.nativeUpgradePassed === true,
-    fromVersion:oldVersion,toVersion:newVersion,
-    buildReceiptSha256:evidence.buildReceiptSha256,
-    inputSha256:build.inputSha256,
-    installerSha256:expectedNewSha,feedSha256:evidence.feedSha256,
-    relaunch:evidence.relaunchedProcess ? {method:"native-updater",nativeUpdatedFlag:true,manualSuccessorLaunch:false} : null,
-    runtimePackages:evidence.runtimePackages,
+    status: evidence.status,
+    actualNativeUpdateAcceptance: evidence.nativeUpgradePassed === true,
+    fromVersion: oldVersion,
+    toVersion: newVersion,
+    firstHop: evidence.firstHop,
+    firstHopConfirmedBySuccessor: evidence.firstHopConfirmedBySuccessor,
+    buildReceiptSha256: evidence.buildReceiptSha256,
+    inputSha256: build.inputSha256,
+    installerSha256: expectedNewSha,
+    feedSha256: evidence.feedSha256,
+    relaunch: evidence.relaunchedProcess
+      ? {
+          method: repairAffectedBaseline ? "signed-installer" : "native-updater",
+          nativeUpdatedFlag: !repairAffectedBaseline,
+          manualSuccessorLaunch: Boolean(evidence.manualSuccessorLaunch),
+        }
+      : null,
+    signedOverwriteRecoveredAffectedBaseline: evidence.signedOverwriteRecoveredAffectedBaseline,
+    runtimePackages: evidence.runtimePackages,
     interruptedExistingInstallationRecovered: evidence.interruptedExistingInstallationRecovered,
     nativeRecoveryWindowUnlocked: evidence.nativeRecoveryWindowUnlocked,
+    fixedVisibleEntryIgnoresDamagedJournal: evidence.fixedVisibleEntryIgnoresDamagedJournal,
     recoveryStatusBeforeUpdate: evidence.recoveryStatusBeforeUpdate,
     recoveryProbe: evidence.recoveryProbe,
-    data:evidence.data,
-    composerDraftStorageRetained:evidence.composerDraftStorageRetained,
-    milestones:evidence.milestones.map(({name,time})=>({name,time})),
-    ...(evidence.failure?{failure:evidence.failure.split("\n")[0].replaceAll(privateOutput,"<PRIVATE>")}:{})
+    data: evidence.data,
+    composerDraftStorageRetained: evidence.composerDraftStorageRetained,
+    milestones: evidence.milestones.map(({ name, time }) => ({ name, time })),
+    ...(evidence.failure
+      ? { failure: evidence.failure.split("\n")[0].replaceAll(privateOutput, "<PRIVATE>") }
+      : {}),
   };
-  await writeFile(join(output,"receipt.json"),JSON.stringify(publicReceipt,null,2));
+  await writeFile(join(output, "receipt.json"), JSON.stringify(publicReceipt, null, 2));
   candidateServer?.close();
   await powershell(
     `param([string]$Executable)

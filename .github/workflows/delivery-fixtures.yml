@@ -74,6 +74,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && (inputs.windows_overwrite_artifact_run != '' || inputs.windows_online_update)
     runs-on: windows-2025
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
     permissions:
       contents: read
       actions: read
@@ -109,7 +113,7 @@ jobs:
           const prefix='repos/CleverC2200/dsh-gea-plugin/actions/runs/'+process.env.ORIGINAL_RUN;
           const run=JSON.parse(execFileSync('gh',['api',prefix],{encoding:'utf8'}));
           assert.equal(run.head_repository.full_name,'CleverC2200/dsh-gea-plugin');
-          assert.equal(run.head_branch,'codex/windows-recovery-acceptance-20261124');assert.equal(run.event,'workflow_dispatch');
+          assert.equal(run.head_branch,'codex/windows-stability-acceptance-20261124');assert.equal(run.event,'workflow_dispatch');
           assert.equal(run.path.split('@')[0],'.github/workflows/delivery-fixtures.yml');
           execFileSync('git',['-C','gea','merge-base','--is-ancestor',run.head_sha,'HEAD']);
           const jobs=JSON.parse(execFileSync('gh',['api',prefix+'/jobs?per_page=100'],{encoding:'utf8'}));
@@ -137,6 +141,7 @@ jobs:
         env:
           GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
           GEA_WINDOWS_ONLINE_UPDATE: ${{ inputs.windows_online_update }}
+          GEA_WINDOWS_ENTRY: ${{ matrix.entry }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -149,7 +154,9 @@ jobs:
           const output=join(process.env.RUNNER_TEMP,'signed-overwrite-result');
           if(process.env.GEA_WINDOWS_ONLINE_UPDATE==='true') {
             const input=join(dirname(files[0]),'fixed-input.json');
-            execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output,'--recheck-recovery-ui'],{stdio:'inherit'});
+            const argument={official:'--recheck-recovery-ui','old-visible':'--old-visible-entry','old-profile-overwrite':'--repair-affected-baseline'}[process.env.GEA_WINDOWS_ENTRY];
+            assert.ok(argument);
+            execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output,argument],{stdio:'inherit'});
           } else {
             execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
           }
@@ -184,7 +191,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-overwrite-recheck-${{ inputs.windows_overwrite_artifact_run }}
+          name: windows-overwrite-recheck-${{ inputs.windows_overwrite_artifact_run }}-${{ matrix.entry }}
           if-no-files-found: warn
           path: |
             ${{ runner.temp }}/signed-overwrite-result/*.json
@@ -536,7 +543,7 @@ jobs:
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
           $inputPath = Join-Path $env:RUNNER_TEMP 'gea-desktop-input.json'
           [IO.File]::WriteAllText($inputPath, $env:DESKTOP_INPUT_JSON, [Text.UTF8Encoding]::new($false))
-          $env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE = Join-Path $env:RUNNER_TEMP 'cleverc2200-gea-dsh-prototype-0.0.348025.tgz'
+          $env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE = Join-Path $env:RUNNER_TEMP 'cleverc2200-gea-dsh-prototype-0.0.349901.tgz'
           node tests/fixtures/windows-recovery-acceptance/prepare-input.mjs $inputPath
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "GEA_RECOVERY_ACCEPTANCE_ARCHIVE=$env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE" | Out-File -Append -FilePath $env:GITHUB_ENV
