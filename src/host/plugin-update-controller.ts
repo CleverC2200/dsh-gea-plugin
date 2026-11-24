@@ -1168,7 +1168,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       async () => {
         if (active) fail("UPDATE_OPERATION_BLOCKED");
         const receipt = await readCompanyUpdate(options.profile.dir);
-        if (!receipt || receipt.phase === "cancelled") {
+        if (!receipt || receipt.phase === "cancelled" || receipt.phase === "completed") {
           if (blocking(await readLatest()) || !profilePackageRunStopped(options.profile.dir))
             fail("UPDATE_OPERATION_BLOCKED");
           return;

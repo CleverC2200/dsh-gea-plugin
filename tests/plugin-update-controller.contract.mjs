@@ -1692,6 +1692,12 @@ test("combined updates cache the approved suite without installation, serialize 
   await controller.cancelDesktop();
   await controller.cancelDesktop();
   assert.equal((await controller.companyStatus()).phase, "cancelled");
+  const receiptPath = join(f.dir, "gea/plugin-updates/company-update.json");
+  const receipt = JSON.parse(await readFile(receiptPath));
+  const previous = JSON.stringify({ ...receipt, phase: "completed", expected: receipt.targets });
+  await writeFile(receiptPath, previous);
+  await controller.cancelDesktop();
+  assert.equal(await readFile(receiptPath, "utf8"), previous);
 });
 
 test("a prepared desktop update wins the profile lock over a plugin install still downloading", async (t) => {
