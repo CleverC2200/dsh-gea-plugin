@@ -22,6 +22,7 @@ export class CompanyInstallation {
   restoreBaselineSelection(): Promise<{ id: string; path: string }>;
   verifiedMounted(): Promise<{ id: string; path: string } | null>;
   confirmRuntime(proofs: RuntimePackageProof[]): Promise<boolean>;
+  collectGarbage(): Promise<{ skipped?: string }>;
   failOperation(id: string, diagnostic: string): Promise<void>;
   ownsModules(path: string): Promise<boolean>;
   rollback(reason: string): Promise<{ changed: boolean; fallback: string }>;

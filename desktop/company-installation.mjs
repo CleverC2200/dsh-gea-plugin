@@ -304,7 +304,13 @@ export class CompanyInstallation {
       )
         return false;
     }
-    return this.store.confirmBoot(selected.id);
+    const state = await this.store.status();
+    if (state.active !== selected.id) return false;
+    if (state.booting === selected.id) return this.store.confirmBoot(selected.id);
+    return state.verified === selected.id && !state.booting;
+  }
+  collectGarbage() {
+    return this.store.collectGarbage();
   }
   async rollback(reason) {
     const previous = (await this.store.status()).active;

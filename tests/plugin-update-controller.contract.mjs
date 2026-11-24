@@ -76,6 +76,35 @@ const {
   retainsProfileUpdates,
 } = await import(pathToFileURL(modulePath));
 
+test("an already verified desktop runs maintenance when the actual client and Host stamps arrive", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const id = "00000000-0000-4000-8000-000000000041";
+  await f.installation.store.prepare({ id, install: async () => {} });
+  const version = join(f.installation.store.root, "versions", id, "version.json");
+  const proof = f.proofs[0];
+  const client = proof.client;
+  proof.client = { kind: "unverified", reason: "fixture-awaiting-client" };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  assert.equal(JSON.parse(await readFile(version)).id, id);
+  proof.client = client;
+  await controller.reconcileRuntime();
+  await until(
+    () =>
+      readFile(version).then(
+        () => true,
+        (error) => {
+          if (error.code !== "ENOENT") throw error;
+          return false;
+        },
+      ),
+    (exists) => !exists,
+  );
+  assert.equal((await f.installation.store.status()).verified, "baseline");
+});
+
 test("legacy personal memory updates alone and requires a new stamped Host and client after restart", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t, { memory: true });
