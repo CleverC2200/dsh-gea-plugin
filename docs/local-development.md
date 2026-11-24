@@ -24,7 +24,7 @@ corepack pnpm install --frozen-lockfile --prefer-offline
 
 完整 build 也仅构建 GEA host/client；页面在同组 Workbench 按自己的工具链构建。watch 只编译，不启动应用，勿并发写同一输出。官方类型检查需要明确准备的只读 SDK 与 peer 声明，不能以旧 SDK 或历史产物代替当前输入。
 
-公司版本提醒位于账户菜单和侧栏。客户端更新调用官方 `dshDesktop.updates.open(version)`，保留官方 `settings.update` 默认入口；插件源和旧回执失败不阻止客户端入口。插件更新先向 Host 提交候选准备，普通操作保持可用；Host 确认候选持久化且写入结束后，页面才调用原生 `plugins-restart`，由官方宿主停止和重启流程接管。计划失效不进入原生接管，回包丢失只读实际状态后继续。页面共用一个插件更新 owner，保留公开 status/check/observed 与新 Host/client 实际版本确认。缺少原生插件重启能力时提示升级客户端。插件详情保留版本和兼容性诊断。当前安装客户端版本只读 `dshDesktop.appVersion()`，缺失或失败保持未确认。公开槽位与状态源接线由 `tests/plugin-update-{detail,list}.browser.mjs` 和同组 Workbench 的 `tests/sidebar-reopen.browser.mjs` 核验；运行不代表原生安装、最终外部写者停止或真实网络验收。
+公司版本提醒位于账户菜单和侧栏。客户端更新调用官方 `dshDesktop.updates.open(version)`，保留官方 `settings.update` 默认入口；插件源和旧回执失败不阻止客户端入口。插件更新先向 Host 提交候选准备，普通操作保持可用；Host 确认候选持久化且写入结束后，页面才调用原生 `plugins-restart`，由官方宿主停止和重启流程接管。计划失效不进入原生接管；自动重启只跟随同一 Host 明确回执的操作，回包丢失后只读实际状态，确认候选待重启时由用户手动重启。页面共用一个插件更新 owner，保留公开 status/check/observed 与新 Host/client 实际版本确认。缺少原生插件重启能力时提示升级客户端。插件详情保留版本和兼容性诊断。当前安装客户端版本只读 `dshDesktop.appVersion()`，缺失或失败保持未确认。公开槽位与状态源接线由 `tests/plugin-update-{detail,list}.browser.mjs` 和同组 Workbench 的 `tests/sidebar-reopen.browser.mjs` 核验；运行不代表原生安装、最终外部写者停止或真实网络验收。
 
 只读交付一致性检查使用 `pnpm run delivery:check --input request.json`，failed/unknown 返回非零；人工浏览报告使用 `pnpm run delivery:report --input request.json`，短接续增加 `--continuation`。预算、阶段、原依赖与授权从同次固定回执读取派生，详见 [交付核对 interface](delivery-check.md)。`pnpm run test:delivery` 只运行本地 fixture 回归。报告命令退出0只表示生成成功，检查命令退出0只证明一致性；两者都不授予业务验收、不启动应用或恢复自动化。
 

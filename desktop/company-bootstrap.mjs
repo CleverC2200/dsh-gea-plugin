@@ -1,7 +1,20 @@
 import { applyCompanyUpdate } from "./company-update.mjs";
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, writeFile, lstat, rm, mkdtemp } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import {
+  cp,
+  mkdir,
+  readFile,
+  writeFile,
+  lstat,
+  rm,
+  mkdtemp,
+  readdir,
+  copyFile,
+  rename,
+  symlink,
+  realpath,
+} from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,7 +28,7 @@ import {
 import { CompanyInstallation } from "./company-installation.mjs";
 import { companyPnpmNetworkArguments } from "./company-pnpm.mjs";
 import { writePluginStoreJson } from "./plugin-store.mjs";
-import { readCompanyUpdate } from "./company-update.mjs";
+import { companyUpdatePath, readCompanyUpdate } from "./company-update.mjs";
 import {
   prepareCompanyArchives,
   repointCompanyArchives,
@@ -23,6 +36,7 @@ import {
 } from "./company-archives.mjs";
 import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
 import { ciCores } from "../scripts/ci-core-policy.mjs";
+import { gte, valid } from "semver";
 
 const memory = "@cleverc2200/dsh-personal-memory";
 const names = [...companyPackageNames, "@changfenhuang/dsh-genui", memory];
@@ -333,6 +347,53 @@ export async function writeCompanySeedLock({ root, seed, profile }) {
   await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 }
 
+async function mergeCompanySeed(source, target, replace = false) {
+  await mkdir(target, { recursive: true, mode: 0o700 });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    const from = join(source, entry.name);
+    const to = join(target, entry.name);
+    if (entry.isDirectory()) await mergeCompanySeed(from, to, replace);
+    else if (entry.isFile()) {
+      if (replace) {
+        const temporary = to + "." + randomUUID() + ".tmp";
+        await copyFile(from, temporary, constants.COPYFILE_EXCL);
+        await rename(temporary, to);
+      } else
+        await copyFile(from, to, constants.COPYFILE_EXCL).catch((error) => {
+          if (error.code !== "EEXIST") throw error;
+        });
+    } else throw Error("GEA_SEED_ENTRY_INVALID");
+  }
+}
+
+async function prepareCompanySeedStore(seed, home, manifest) {
+  const cache = join(home, "desktop-company-cache");
+  const identity = digest(
+    Buffer.from(JSON.stringify([manifest.packages, manifest.dependencyLockSha256 ?? null])),
+  );
+  const store = join(cache, "seed-stores", identity);
+  const files = join(cache, "installation/content-files");
+  const source = join(seed, "store/v11/files");
+  if (existsSync(source)) await mergeCompanySeed(source, files);
+  else await mkdir(files, { recursive: true, mode: 0o700 });
+  await cp(join(seed, "store"), store, {
+    recursive: true,
+    force: false,
+    errorOnExist: false,
+    filter: (path) => path !== source,
+  });
+  await mkdir(join(store, "v11"), { recursive: true, mode: 0o700 });
+  const target = join(store, "v11/files");
+  try {
+    await symlink(files, target, process.platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    if (error.code !== "EEXIST" || (await realpath(target)) !== (await realpath(files)))
+      throw error;
+  }
+  await mergeCompanySeed(join(seed, "metadata"), join(cache, "metadata"), true);
+  return store;
+}
+
 export async function installCompanyPackages({
   root,
   support,
@@ -346,6 +407,7 @@ export async function installCompanyPackages({
   strictPeers = false,
   activateNewBundles = true,
   seed,
+  requireOffline = false,
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
   const require = createRequire(anchor);
@@ -369,7 +431,7 @@ export async function installCompanyPackages({
         if (typeof modules?.storeDir !== "string" || !isAbsolute(modules.storeDir))
           throw Error("GEA_COMPANY_STORE_INVALID");
         selectedStore = modules.storeDir;
-        if (offline && selectedStore !== join(store, "v11"))
+        if (offline && !requireOffline && selectedStore !== join(store, "v11"))
           offlineArguments = ["--prefer-offline"];
       }
       const archives = seed
@@ -387,7 +449,7 @@ export async function installCompanyPackages({
         (field) =>
           Object.keys(current[field] ?? {}).some((name) => !companyPackageNames.includes(name)),
       );
-      if (offline && hasUserDependencies)
+      if (offline && hasUserDependencies && !requireOffline)
         offlineArguments = ["--prefer-offline", "--offline=false"];
       const lockPath = join(profile, "pnpm-lock.yaml");
       const previousLock = existsSync(lockPath) ? await readFile(lockPath) : undefined;
@@ -612,27 +674,7 @@ export async function bootstrapCompanyProfile({
             force: false,
           });
       }
-      const store = join(
-        home,
-        "desktop-company-cache",
-        digest(
-          Buffer.from(JSON.stringify([manifest.packages, manifest.dependencyLockSha256 ?? null])),
-        ),
-        "store",
-      );
-      if (!existsSync(store))
-        await cp(join(seed, "store"), store, {
-          recursive: true,
-          errorOnExist: true,
-          force: false,
-        });
-      const metadata = join(home, "desktop-company-cache/metadata");
-      if (!existsSync(metadata))
-        await cp(join(seed, "metadata"), metadata, {
-          recursive: true,
-          errorOnExist: true,
-          force: false,
-        });
+      const store = await prepareCompanySeedStore(seed, home, manifest);
       let operationStarted = false;
       let disabled = [];
       try {
@@ -879,20 +921,7 @@ async function prepareCompanyBootUpdate({
   await installation.initialize(
     async (directory) => {
       if (!inherit) {
-        const store = join(home, "desktop-company-cache/installation/store");
-        if (!existsSync(store))
-          await cp(join(seed, "store"), store, {
-            recursive: true,
-            errorOnExist: true,
-            force: false,
-          });
-        const metadata = join(home, "desktop-company-cache/metadata");
-        if (!existsSync(metadata))
-          await cp(join(seed, "metadata"), metadata, {
-            recursive: true,
-            errorOnExist: true,
-            force: false,
-          });
+        const store = await prepareCompanySeedStore(seed, home, manifest);
         await install({
           root,
           support,
@@ -900,8 +929,9 @@ async function prepareCompanyBootUpdate({
           home,
           profile: directory,
           packages: manifest.packages.map((row) => join(seed, "archives", row.file)),
-          store: join(home, "desktop-company-cache/installation/store"),
+          store,
           offline: true,
+          requireOffline: true,
           activateNewBundles: false,
         });
         return;
@@ -984,24 +1014,58 @@ async function prepareCompanyBootUpdate({
 }
 
 export async function prepareCompanyBoot(options) {
+  const finish = async (result) => {
+    try {
+      const desktopVersion = options.desktopVersion ?? process.env.GEA_DESKTOP_VERSION;
+      const receipt = await readCompanyUpdate(result.profile);
+      if (
+        receipt?.phase === "prepared" &&
+        valid(desktopVersion) &&
+        gte(desktopVersion, receipt.desktopVersion)
+      ) {
+        const path = companyUpdatePath(result.profile);
+        const original = await readFile(path);
+        const archive = join(
+          result.profile,
+          "gea/plugin-updates",
+          "company-update-" + receipt.id + ".json",
+        );
+        if (existsSync(archive)) {
+          if (!(await readFile(archive)).equals(original))
+            throw Error("GEA_COMPANY_UPDATE_ARCHIVE_CHANGED");
+        } else await cp(path, archive, { errorOnExist: true, force: false });
+        await writePluginStoreJson(path, {
+          ...receipt,
+          phase: "cancelled",
+          diagnostic: "DESKTOP_SUCCESSOR_STARTED",
+        });
+      }
+    } catch (error) {
+      console.error("GEA_BOOT_COMPANY_UPDATE_DEFERRED", error.code ?? error.name);
+    }
+    return result;
+  };
   await assertProfileWritersStopped(join(options.home, "profiles/desktop"));
   if (options.recover) {
     const installation = new CompanyInstallation(
       join(options.home, "profiles/desktop"),
       options.manifest.core.head,
     );
-    const selected = await installation.verifiedMounted().catch(() => null);
+    const selected = await installation.verifiedMounted().catch((error) => {
+      if (error.message === "DATA_SCHEMA_INCOMPATIBLE") throw error;
+      return null;
+    });
     if (selected)
-      return {
+      return finish({
         schema: 1,
         profile: installation.profile,
         coreHead: installation.coreHead,
         graphId: selected.id,
         trial: false,
-      };
+      });
   }
   try {
-    return await prepareCompanyBootUpdate(options);
+    return await finish(await prepareCompanyBootUpdate(options));
   } catch (error) {
     await assertProfileWritersStopped(join(options.home, "profiles/desktop"));
     const installation = new CompanyInstallation(
@@ -1011,13 +1075,13 @@ export async function prepareCompanyBoot(options) {
     const selected = await installation.verifiedMounted().catch(() => null);
     if (!selected && error.message !== "PLUGIN_SELECTION_INVALID") throw error;
     const fallback = selected ?? (await installation.restoreBaselineSelection());
-    return {
+    return finish({
       schema: 1,
       profile: installation.profile,
       coreHead: installation.coreHead,
       graphId: fallback.id,
       trial: false,
-    };
+    });
   }
 }
 

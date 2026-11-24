@@ -438,6 +438,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       )) &&
       !closed &&
       !active &&
+      !journalBroken &&
+      !blocking(state.operation) &&
       !storageMaintenance
     ) {
       storageMaintenance = true;
@@ -1206,11 +1208,15 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     publish();
   }
   async function confirmDesktop() {
-    if (active || (await readCompanyUpdate(options.profile.dir))?.phase !== "verifying") return;
+    if (
+      active ||
+      (await readCompanyUpdate(options.profile.dir).catch(() => null))?.phase !== "verifying"
+    )
+      return;
     await withFileLock(
       join(options.profile.dir, "package.json"),
       async () => {
-        const receipt = await readCompanyUpdate(options.profile.dir);
+        const receipt = await readCompanyUpdate(options.profile.dir).catch(() => null);
         if (
           companyUpdateFinished(
             receipt,

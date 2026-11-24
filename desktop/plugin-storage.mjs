@@ -180,12 +180,21 @@ export async function collectPluginStorage(
 ) {
   let plan;
   try {
-    plan = await store.withLock(
+    const withLock = dryRun ? async (action) => action() : store.withLock.bind(store);
+    const withSelectionLock = dryRun
+      ? async (action) => action()
+      : store.withSelectionLock.bind(store);
+    plan = await withLock(
       async () =>
-        store.withSelectionLock(async () => {
+        withSelectionLock(async () => {
           await directory(store.root);
           const state = await store.status();
-          if (state.booting || state.error || state.active !== state.verified)
+          if (
+            state.booting ||
+            state.error ||
+            state.referencesUncertain ||
+            state.active !== state.verified
+          )
             return { skipped: "boot-not-verified" };
 
           await store.selected();

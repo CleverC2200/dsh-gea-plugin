@@ -422,7 +422,7 @@ function UpdateCard({
           <section aria-label={t("pluginsTitle")}>
             <strong>{t("pluginsTitle")}</strong>
             <span role="status">{pluginStatus}</span>
-            {(pluginAvailable || pending) && !desktopTarget && (
+            {(pluginAvailable || pending) && (
               <Button
                 size="sm"
                 variant="primary"

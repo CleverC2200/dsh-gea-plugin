@@ -185,7 +185,8 @@ test("official plugin detail keeps diagnostics without a separate update window"
                 failure: "install",
                 version: "0.2.0-rc.2.20261105.1",
               }
-            : location.search.includes("old-client")
+            : location.search.includes("old-client") ||
+                location.search.includes("desktop-available")
               ? { phase: "available", version: "0.2.0-rc.2.20261105.1" }
               : { phase: "idle" },
         subscribe: () => () => {},
@@ -221,6 +222,13 @@ test("official plugin detail keeps diagnostics without a separate update window"
   assert.equal(await page.getByRole("dialog").count(), 0);
   await page.evaluate(() => window.fixture.dispose());
   phase = "available";
+  await page.goto(base + "/?desktop-available");
+  await footer.getByRole("button", { name: "Restart and update", exact: true }).nth(1).waitFor();
+  assert.equal(
+    await footer.getByRole("button", { name: "Restart and update", exact: true }).count(),
+    2,
+  );
+  await page.evaluate(() => window.fixture.dispose());
   await page.goto(base + "/?narrow-entry");
   assert.equal(await footer.getByRole("button").count(), 0);
   await page.evaluate(() => window.fixture.dispose());
@@ -452,7 +460,7 @@ test("official plugin detail keeps diagnostics without a separate update window"
   await page.evaluate(() => {
     window.nativeOpenCalls = [];
   });
-  const restart = footer.getByRole("button", {
+  const restart = footer.getByLabel("Client", { exact: true }).getByRole("button", {
     name: "Restart and update",
     exact: true,
   });
