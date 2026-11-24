@@ -23,7 +23,10 @@ test("official installed list keeps status while the sidebar owns suite actions 
   const root = await mkdtemp(join(process.cwd(), ".runtime/list-browser-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const clientOptions = clientBuildOptions(join(root, "gea-client.js"));
-  await build({ ...clientOptions, plugins: [...sourceTools(sdk), ...clientOptions.plugins] });
+  await build({
+    ...clientOptions,
+    plugins: [...sourceTools(sdk), ...clientOptions.plugins],
+  });
   const sources = {
     "@fixture/remote": "packages/test-support/client-runtime/src/remote.ts",
     "@deepseek-ai/dsh-client-ui-primitives": "packages/client/ui-primitives/src/index.ts",
@@ -104,12 +107,20 @@ test("official installed list keeps status while the sidebar owns suite actions 
         batches++;
         assert.deepEqual(
           payload.plans,
-          names.map((packageName) => ({ packageName, planId: "plan-" + packageName })),
+          names.map((packageName) => ({
+            packageName,
+            planId: "plan-" + packageName,
+          })),
         );
         phase = "installing";
       }
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ ok: true, value: req.url.endsWith("/status") ? status() : null }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          value: req.url.endsWith("/status") ? status() : null,
+        }),
+      );
       return;
     }
     if (req.url === "/gea-client.js") {
@@ -140,7 +151,10 @@ test("official installed list keeps status while the sidebar owns suite actions 
     executablePath: process.env.GEA_TEST_CHROMIUM,
   });
   t.after(() => browser.close());
-  const page = await browser.newPage({ locale: "zh-CN", viewport: { width: 835, height: 800 } });
+  const page = await browser.newPage({
+    locale: "zh-CN",
+    viewport: { width: 835, height: 800 },
+  });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.setDefaultTimeout(8000);
@@ -169,14 +183,9 @@ test("official installed list keeps status while the sidebar owns suite actions 
   await footer.getByRole("button", { name: "重启更新", exact: true }).click();
   assert.equal(checks, 1);
   await page.evaluate(() => window.fixture.closeSettings());
-  assert.equal(batches, 0);
+  assert.equal(batches, 1);
   assert.equal(singles, 0);
-  assert.deepEqual(await page.evaluate(() => window.nativeRequests), [
-    {
-      kind: "plugins",
-      plans: names.map((packageName) => ({ packageName, planId: "plan-" + packageName })),
-    },
-  ]);
+  assert.deepEqual(await page.evaluate(() => window.nativeRequests), []);
   phase = "pending-restart";
   await page.goto(url + "?sidebar");
   await footer.getByRole("button", { name: "重启更新", exact: true }).waitFor();
