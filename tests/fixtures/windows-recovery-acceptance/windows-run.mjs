@@ -789,13 +789,26 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
         } finally { client.close(); }
       }, 45000);
       assert.equal(check, true);
-      await until("product window re-enabled by the actual retry action", async () => {
-        const state = await evaluate(main, "geaRecoveryAcceptance.read()");
-        if (!state.enabled) return false;
-        assert.deepEqual(state.replies["plugins-status"], { ok: true, value: { operationId: null, state: "failed" } });
-        assert.deepEqual(state.replies["desktop-cancel"], { ok: true, value: {} });
-        return true;
+      await until("successful recovery makes the normal update result message dismissible", async () => {
+        const dialog = await target("dsh-app://shell/update-dialog.html");
+        if (!dialog) return false;
+        const client = await connection(dialog.webSocketDebuggerUrl);
+        try {
+          const view = await evaluate(client, "window.dshUpdateDialog.status()");
+          if (!view?.dismissible || !/更新未完成|update did not complete/i.test(view.message))
+            return false;
+          const state = await evaluate(main, "geaRecoveryAcceptance.read()");
+          assert.deepEqual(state.replies["plugins-status"], { ok: true, value: { operationId: null, state: "failed" } });
+          assert.deepEqual(state.replies["desktop-cancel"], { ok: true, value: {} });
+          assert.deepEqual(state.replies.unlock, { active: false });
+          await screenshot(client, "05-recovery-result.png");
+          await evaluate(client, "document.querySelector('#actions button').click(); true");
+          return true;
+        } finally { client.close(); }
       }, 45000);
+      await until("product window re-enabled after acknowledging the recovered update result", async () =>
+        (await evaluate(main, "geaRecoveryAcceptance.read()")).enabled, 15000,
+      );
       assert.equal(await readFile(latest, "utf8"), "{");
       assert.equal(await evaluate(cdp, `JSON.parse(localStorage.getItem(${JSON.stringify(draftKey)})).draft`), markerDraft);
       evidence.nativeRecoveryWindowUnlocked = true;
