@@ -17,6 +17,7 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 export const BRANCH_INVENTORY_ROUTING =
   "分仓库存结构与补货问题直接使用gea_branch_inventory：summary返回全范围库存、可用、占用、冻结、目标及补货测算；health返回分仓货龄与超龄风险汇总；replenishment返回正建议量清单，按建议量降序，每页10条。orders返回本月分仓向下游经销商供货的订单汇总、已发货订单池满足率和分页明细；supply返回本月分仓向基地补货执行单汇总和分页明细；supply-current返回当前未收货完成的ASN订单汇总和明细；ASN按warehouseid收货分仓、source_warehouseid来源基地归属，关联基地出库占用并按订单创建时间分配基地与SKU共享可用库存。订单满足率和当前缺货回答必须使用下游客户订单；ASN和supply只用于上游补货、备单、在途，不能替代经销商订单。operations返回本月入库、自身出货和分仓费用/过仓全范围摘要。" +
   "与分仓页面共用固定SQL、快照、周期和计算，不要求打开页面，也不改用Cube重算。追问沿用已返回的分仓编码、SKU和周期；下一页保留筛选并递增page。" +
+  "问分仓回顾周转用summary返回的historical_turnover_days。默认留空仓编码只查分仓属性；明确问基地仓属性合计传warehouseScope=base-warehouses，问分仓属性和基地仓属性整体传warehouseScope=all。汇总用同批现库存合计除以近30日正向实际发货日均合计，直接引用工具结果。展望周转另有计划口径。不能用仓库分类01、02全体或可用库存替换此指标。" +
   "该清单只是只读建议，不是正式下单；不含未保存的页面计划/草稿。结构符合率暂不计算。" +
   "库存与建议的行计数为分仓+SKU组合数；补货订单的行计数为收货分仓+执行单+行号+SKU，order_count为去重执行单数。plan_count/stock_only_count只代表是否有计划表记录，不能据此认定有无订单需求或历史发货。" +
   "target_gap_qty=可用库存+调拨中量-目标库存，正数表示富余、负数表示不足，必须保留符号，不能称为绝对值缺口。" +
@@ -50,6 +51,12 @@ export function registerBranchInventoryTool(
           warehouseCode: {
             type: "string",
             description: "实际分仓编码，留空为当前授权范围。",
+          },
+          warehouseScope: {
+            type: "string",
+            enum: ["base-warehouses", "all"],
+            description:
+              "仅用于summary回顾周转合计。base-warehouses只取页面基地仓，all合计分仓属性及基地仓属性。不与仓库编码、SKU并用。",
           },
           sku: { type: "string", description: "SKU编码，沿用上一轮返回值。" },
           asOf: {
@@ -109,6 +116,8 @@ export function registerBranchInventoryTool(
               throw Error("INVALID_PAGE");
             if (!Number.isSafeInteger(cycleDays) || cycleDays < 1 || cycleDays > 365)
               throw Error("INVALID_CYCLE");
+            if (args.warehouseScope && (args.view !== "summary" || args.warehouseCode || args.sku))
+              throw Error("BRANCH_TURNOVER_SCOPE_INVALID");
             const asOf =
               args.asOf ??
               new Intl.DateTimeFormat("en-CA", {
@@ -146,7 +155,115 @@ export function registerBranchInventoryTool(
                 throw Error("GEA_WORKBENCH_UPDATE_REQUIRED");
               const { readConfiguredFacts } =
                 await import("@cleverc2200/dsh-agent-workbench/configured-facts");
-              if (args.view === "operations") {
+              if (args.warehouseScope) {
+                const routes = config.scopedQueryRoutes;
+                const route = Array.isArray(routes)
+                  ? routes
+                      .map(record)
+                      .find(
+                        (item) =>
+                          item?.parameter === "warehouse_code" && item.prefix === "base-warehouse.",
+                      )
+                  : undefined;
+                if (
+                  !Array.isArray(route?.values) ||
+                  !route.values.length ||
+                  !route.values.every((value) => typeof value === "string" && value.length > 0)
+                )
+                  throw Error("GEA_WORKBENCH_UPDATE_REQUIRED");
+                const warehouses = [...new Set<string>(route.values)];
+                const scope = args.warehouseScope === "all" ? [null, ...warehouses] : warehouses;
+                const batchIds = new Set<unknown>();
+                const execute: NonNullable<
+                  Parameters<typeof readConfiguredFacts>[3]
+                >["execute"] = async (_request, call) => {
+                  const response = await readConfiguredHtmlQuery(
+                    resource,
+                    { queryId: call.queryId, parameters: call.values },
+                    business,
+                    signal,
+                    consumer,
+                  );
+                  if (call.queryId.endsWith(".replenishment.overview")) {
+                    batchIds.add(call.values.summary_batch_id);
+                  } else if (
+                    call.queryId === "summary.bootstrap" ||
+                    call.queryId.endsWith("summary.snapshot")
+                  ) {
+                    for (const row of response.rows) {
+                      const batchId = record(row)?.batch_id;
+                      if (typeof batchId === "string") batchIds.add(batchId);
+                    }
+                  }
+                  return response;
+                };
+                const parts = await Promise.all(
+                  scope.map(async (warehouseCode) => {
+                    const part = record(
+                      await readConfiguredFacts(
+                        config,
+                        "replenishment",
+                        {
+                          asOf,
+                          cycleDays,
+                          filters: warehouseCode ? { warehouse_code: warehouseCode } : {},
+                        },
+                        {
+                          signal,
+                          summaryOnly: true,
+                          execute,
+                        },
+                      ),
+                    );
+                    const summary = record(part?.summary);
+                    return {
+                      warehouseCode,
+                      snapshotDate: part?.snapshotDate,
+                      configVersion: part?.configVersion,
+                      inventory: summary?.review_turn_inventory,
+                      daily: summary?.review_turn_daily,
+                      error: part?.summaryError,
+                    };
+                  }),
+                );
+                const value = (candidate: unknown) =>
+                  (typeof candidate === "number" ||
+                    (typeof candidate === "string" && candidate.trim())) &&
+                  Number.isFinite(Number(candidate))
+                    ? Number(candidate)
+                    : null;
+                const consistent =
+                  batchIds.size === 1 &&
+                  !batchIds.has(undefined) &&
+                  !!parts[0]?.snapshotDate &&
+                  parts.every(
+                    (part) =>
+                      part.snapshotDate === parts[0].snapshotDate &&
+                      part.configVersion === parts[0].configVersion &&
+                      !part.error &&
+                      value(part.inventory) !== null &&
+                      value(part.daily) !== null,
+                  );
+                const inventory = consistent
+                  ? parts.reduce((total, part) => total + Number(part.inventory), 0)
+                  : null;
+                const daily = consistent
+                  ? parts.reduce((total, part) => total + Number(part.daily), 0)
+                  : null;
+                result = {
+                  success: consistent,
+                  errorCode: consistent ? undefined : "BRANCH_TURNOVER_SCOPE_INCOMPLETE",
+                  warehouseScope: args.warehouseScope,
+                  snapshotDate: consistent ? parts[0].snapshotDate : null,
+                  summary: {
+                    review_turn_inventory: inventory,
+                    review_turn_daily: daily,
+                    historical_turnover_days:
+                      inventory !== null && daily !== null && daily > 0 ? inventory / daily : null,
+                  },
+                  parts,
+                };
+              } else if (args.view === "operations") {
                 if (args.sku) throw Error("OPERATIONS_SKU_SCOPE_NOT_SUPPORTED");
                 const read = (viewId: string, filterName: string) =>
                   readConfiguredFacts(
