@@ -167,7 +167,7 @@ function summaryData(queryId = snapshotId) {
   };
 }
 test("combined review turnover adds the three configured base warehouses to the branch scope", async () => {
-  const f = fixture(async (id, request) => {
+  const f = fixture(async (id) => {
     const q = config.queries[id];
     const rows =
       id === "base-warehouse.summary.snapshot"
