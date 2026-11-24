@@ -697,9 +697,10 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
             window.isEnabled() && window.webContents.getURL().startsWith("dsh-app://app/"));
         })()`);
       }, 45000);
-      const recoveryHost = await evaluate(main, `new Promise((resolve) => {
+      await until("signed candidate Host update route reports the damaged journal", async () => {
+        const recoveryHost = await evaluate(main, `new Promise((resolve) => {
         const host = globalThis.geaRecoveryHost;
-        const requestId = 900000000;
+        const requestId = 900000000 + (globalThis.geaRecoveryProbeSequence = (globalThis.geaRecoveryProbeSequence ?? 0) + 1);
         const timer = setTimeout(() => finish({ error: "host-status-timeout" }), 5000);
         function finish(result) {
           host.removeListener("message", receive);
@@ -714,8 +715,12 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
         host.send({ type: "update-operation", requestId, request: { action: "plugins-status" } },
           (error) => { if (error) finish({ error: "status-send-failed" }); });
       })`);
-      evidence.recoveryStatusBeforeUpdate = recoveryHost;
-      assert.deepEqual(recoveryHost, { ok: true, value: { operationId: null, state: "failed" } });
+        evidence.recoveryStatusBeforeUpdate = recoveryHost;
+        if (!recoveryHost?.ok) return false;
+        assert.deepEqual(recoveryHost, { ok: true, value: { operationId: null, state: "failed" } });
+        return true;
+      }, 45000);
+      milestone("signed-host-reports-damaged-update-journal");
       assert.equal(await evaluate(main, `(() => {
         const path = process.getBuiltinModule("node:path");
         const load = process.getBuiltinModule("node:module").createRequire(
