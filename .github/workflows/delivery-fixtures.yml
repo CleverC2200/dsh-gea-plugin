@@ -256,7 +256,7 @@ jobs:
         with:
           node-version: "24"
       - run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22 yaml@2.9.0
           ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
       - run: node --run test:release-source
       - run: npm run test:delivery:packages
@@ -630,7 +630,10 @@ jobs:
           DSH_DELIVERY_CORE_RESTORE: ${{ steps.delivery-core-restore.outcome }}
           DSH_DELIVERY_RUNTIME_RESTORE: ${{ steps.delivery-runtime-restore.outcome }}
           DSH_DELIVERY_PREFLIGHT: ${{ runner.temp }}/windows-cache-preflight.json
-        run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
+        run: |
+          git -C gea status --porcelain=v1
+          git -C core status --porcelain=v1
+          node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
       - name: Verify Windows native upgrade to the recovery candidate
         if: "!inputs.prepare_windows_cache"
         run: |

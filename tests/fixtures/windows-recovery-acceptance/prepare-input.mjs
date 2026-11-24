@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,8 +21,18 @@ const stage = await mkdtemp(join(tmpdir(), "gea-recovery-seed-"));
 const archive = join(stage, "base.tgz");
 await writeFile(archive, bytes);
 execFileSync("tar", ["-xzf", archive, "-C", stage]);
-execFileSync(process.execPath, ["scripts/build.mjs", "--target", "host,client"], { stdio: "inherit" });
-for (const name of ["host.js", "client.js"]) await cp(join("lib", name), join(stage, "package", "lib", name));
+const source = join(stage, "source");
+await mkdir(source);
+const snapshot = join(stage, "source.tar");
+execFileSync("git", ["archive", "--format=tar", "--output=" + snapshot, "HEAD"]);
+execFileSync("tar", ["-xf", snapshot, "-C", source]);
+await symlink(join(process.cwd(), "node_modules"), join(source, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+execFileSync(process.execPath, ["scripts/build.mjs", "--target", "host,client"], {
+  cwd: source,
+  stdio: "inherit",
+});
+for (const name of ["host.js", "client.js"])
+  await cp(join(source, "lib", name), join(stage, "package", "lib", name));
 for (const name of ["package.json", "npm-shrinkwrap.json"]) {
   const path = join(stage, "package", name);
   const manifest = JSON.parse(await readFile(path, "utf8"));
