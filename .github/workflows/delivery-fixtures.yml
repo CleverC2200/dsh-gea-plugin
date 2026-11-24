@@ -48,6 +48,11 @@ on:
         default: false
         required: false
         type: boolean
+      windows_seed_cache_recheck:
+        description: "Test the exact signed package and its bundled pnpm against isolated dual-cache fixtures"
+        default: false
+        required: false
+        type: boolean
       mac_complete_input:
         description: "Fixed macOS arm64 input with the same Core, company suite and pinned personal memory"
         required: false
@@ -77,7 +82,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        entry: ${{ fromJSON(inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
+        entry: ${{ fromJSON(inputs.windows_seed_cache_recheck && '["cache-only"]' || inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
     permissions:
       contents: read
       actions: read
@@ -128,7 +133,7 @@ jobs:
           pattern: "{GEA-Desktop,Synear-GEA}-*-win-x64-complete"
           path: ${{ runner.temp }}/signed-overwrite-package
       - name: Prepare artifact acceptance dependencies
-        if: inputs.native_acceptance_bundle_url != '' || inputs.windows_online_update
+        if: inputs.native_acceptance_bundle_url != '' || inputs.windows_online_update || inputs.windows_seed_cache_recheck
         shell: pwsh
         run: |
           npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @playwright/test@1.58.2 yaml@2.9.0 semver@7.7.4
@@ -136,7 +141,7 @@ jobs:
           New-Item -ItemType Junction -Path gea/node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
       - name: Recheck installed package version and preserved user files
-        if: inputs.native_acceptance_bundle_url == ''
+        if: inputs.native_acceptance_bundle_url == '' && matrix.entry != 'cache-only'
         shell: bash
         env:
           GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
@@ -161,6 +166,30 @@ jobs:
             execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
           }
           NODE
+      - name: Test dual-cache recovery with actual installed Windows runtime
+        if: matrix.entry == 'cache-only'
+        shell: pwsh
+        run: |
+          $artifact = @(Get-ChildItem "$env:RUNNER_TEMP/signed-overwrite-package" -Recurse -File -Filter '*-win-x64-signed.exe')
+          if ($artifact.Count -ne 1) { throw 'GEA_SIGNED_CACHE_ARTIFACT_REQUIRED' }
+          $buildResult = @(Get-ChildItem "$env:RUNNER_TEMP/signed-overwrite-package" -Recurse -File -Filter 'result.json' | Where-Object { $_.Directory.Name -eq 'gea-local' })
+          if ($buildResult.Count -ne 1) { throw 'GEA_SIGNED_CACHE_RECEIPT_REQUIRED' }
+          $receipt = Get-Content -Raw $buildResult[0].FullName | ConvertFrom-Json
+          if ($receipt.unsigned -ne $false -or $receipt.artifact -ne $artifact[0].Name -or (Get-FileHash $artifact[0].FullName).Hash -ine $receipt.sha256) {
+            throw 'GEA_SIGNED_CACHE_ARTIFACT_CHANGED'
+          }
+          $destination = Join-Path $env:RUNNER_TEMP 'gc-installed'
+          $setup = Start-Process -FilePath $artifact[0].FullName -ArgumentList "/S", "/D=$destination" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw 'GEA_SIGNED_CACHE_INSTALL_FAILED' }
+          $env:GEA_PLUGIN_UPDATE_PACKAGED = Join-Path $destination 'resources'
+          $env:GEA_PLUGIN_UPDATE_PNPM = Join-Path $env:GEA_PLUGIN_UPDATE_PACKAGED 'runtime/pnpm/bin/pnpm.mjs'
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          $tarDirectory = Join-Path $env:ProgramFiles 'Git/usr/bin'
+          $env:PATH = "$tarDirectory;$env:PATH"
+          $env:TAR_OPTIONS = '--force-local --quoting-style=literal'
+          & "$destination/GEA Desktop.exe" --expose-internals gea/tests/company-core-seed.contract.mjs |
+            Tee-Object -FilePath "$env:RUNNER_TEMP/windows-seed-cache-recheck.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify same-Core recovery and cache protection on Windows
         if: always() && matrix.entry == 'official'
         working-directory: gea
@@ -203,6 +232,7 @@ jobs:
             ${{ runner.temp }}/signed-overwrite-result/*.log
             ${{ runner.temp }}/signed-overwrite-result/*.png
             ${{ runner.temp }}/signed-overwrite-result/journal/**
+            ${{ runner.temp }}/windows-seed-cache-recheck.log
             ${{ runner.temp }}/native-artifact-recheck/*.json
             ${{ runner.temp }}/native-artifact-recheck/public/**
   windows-certificate-fixture:

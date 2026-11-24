@@ -26,10 +26,12 @@ import { prepareCompanyBoot, writeCompanySeedLock } from "../desktop/company-boo
 import { companyPackageNames } from "../desktop/company-archives.mjs";
 
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
+const packaged = process.env.GEA_PLUGIN_UPDATE_PACKAGED;
+const fileSpec = (path) => "file:" + path.replaceAll("\\", "/");
 const pnpm =
   process.env.GEA_PLUGIN_UPDATE_PNPM ??
   join(dirname(createRequire(import.meta.url).resolve("pnpm")), "bin/pnpm.cjs");
-if (!sdk) throw Error("fixed GEA_PLUGIN_UPDATE_SDK required");
+if (!sdk && !packaged) throw Error("fixed Core SDK or installed Windows runtime required");
 const execute = promisify(execFile);
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -59,31 +61,30 @@ for (const userCache of [false, true, "active-wal"])
       );
       const home = join(directory, "home");
       const profile = join(home, "profiles/desktop");
-      const root = join(directory, "runtime");
-      const support = join(directory, "support");
+      const root = packaged ? join(packaged, "app.asar") : join(directory, "runtime");
+      const support = packaged ? join(packaged, "runtime") : join(directory, "support");
       const seed = join(directory, "seed");
       const store = userCache
         ? join(directory, "external-user-store")
         : join(home, "desktop-company-cache/installation/store");
-      for (const path of [
-        profile,
-        join(root, "dsh/node_modules/@deepseek-ai"),
-        support,
-        join(seed, "archives"),
-      ])
-        await mkdir(path, { recursive: true });
-      for (const [name, path] of Object.entries({
-        "dsh-app-boot": "packages/boot/app-boot",
-        "dsh-plugin-manager": "packages/boot/plugin-manager",
-        "dsh-atomic-write": "packages/util/atomic-write",
-      }))
-        await symlink(join(sdk, path), join(root, "dsh/node_modules/@deepseek-ai", name), "dir");
-      await symlink(
-        dirname(createRequire(import.meta.url).resolve("yaml/package.json")),
-        join(root, "dsh/node_modules/yaml"),
-        "dir",
-      );
-      await symlink(dirname(dirname(pnpm)), join(support, "pnpm"), "dir");
+      await mkdir(profile, { recursive: true });
+      await mkdir(join(seed, "archives"), { recursive: true });
+      if (!packaged) {
+        await mkdir(join(root, "dsh/node_modules/@deepseek-ai"), { recursive: true });
+        await mkdir(support, { recursive: true });
+        for (const [name, path] of Object.entries({
+          "dsh-app-boot": "packages/boot/app-boot",
+          "dsh-plugin-manager": "packages/boot/plugin-manager",
+          "dsh-atomic-write": "packages/util/atomic-write",
+        }))
+          await symlink(join(sdk, path), join(root, "dsh/node_modules/@deepseek-ai", name), "dir");
+        await symlink(
+          dirname(createRequire(import.meta.url).resolve("yaml/package.json")),
+          join(root, "dsh/node_modules/yaml"),
+          "dir",
+        );
+        await symlink(dirname(dirname(pnpm)), join(support, "pnpm"), "dir");
+      }
       const run = async (cwd, args) =>
         execute(
           process.execPath,
@@ -115,7 +116,7 @@ for (const userCache of [false, true, "active-wal"])
       );
       await run(profile, [
         "add",
-        ...old.map((row) => row.path),
+        ...old.map((row) => fileSpec(row.path)),
         "--offline",
         "--store-dir=" + store,
       ]);
@@ -205,7 +206,7 @@ for (const userCache of [false, true, "active-wal"])
       await writeFile(join(seedProfile, "pnpm-workspace.yaml"), "autoInstallPeers: false\n");
       await run(seedProfile, [
         "add",
-        ...packages.map((row) => join(seed, "archives", row.file)),
+        ...packages.map((row) => fileSpec(join(seed, "archives", row.file))),
         "--registry=" + origin,
         "--store-dir=" + join(seed, "store"),
         "--cache-dir=" + join(seed, "metadata"),
