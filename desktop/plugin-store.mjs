@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, rm, open, lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { relocateVirtualStore } from "./copy-graph.mjs";
 import { randomUUID, createHash } from "node:crypto";
-import { withPluginStoreLock } from "./plugin-store-lock.mjs";
+import { recoverPluginStoreLock, withPluginStoreLock } from "./plugin-store-lock.mjs";
 import { collectPluginStorage, pruneUnreferencedArchives } from "./plugin-storage.mjs";
 import {
   readCoreLayout,
@@ -99,8 +99,11 @@ export class PluginStore {
     versionId(id);
     await mkdir(join(this.root, "versions"), { recursive: true, mode: 0o700 });
     return this.withLock(async (owner, lockPath) => {
-      const stage = join(this.root, "staging-" + randomUUID());
+      const stageName = "staging-" + randomUUID();
+      const stage = join(this.root, stageName);
+      const preparation = { ...owner, stage: stageName };
       try {
+        await writePluginStoreJson(lockPath, preparation);
         const current = await this.selected();
         await mkdir(stage, { recursive: true, mode: 0o700 });
 
@@ -109,7 +112,7 @@ export class PluginStore {
         await relocateVirtualStore(stage, { sourceDirectory: current.path, storeRoot: this.root });
         await install(stage, {
           registerProcess: async (workerPid) =>
-            writePluginStoreJson(lockPath, { ...owner, workerPid }),
+            writePluginStoreJson(lockPath, { ...preparation, workerPid }),
         });
         await relocateVirtualStore(stage);
         await pruneUnreferencedArchives(stage);
@@ -177,37 +180,8 @@ export class PluginStore {
       }
     });
   }
-  async recoverPreparation(directory = this.root) {
-    const path = join(directory, "prepare.lock");
-    let owner;
-    try {
-      owner = await json(path);
-    } catch (error) {
-      if (error.code === "ENOENT") return "idle";
-      throw Error("PLUGIN_PREPARATION_LOCK_INVALID");
-    }
-    const alive = (pid) => {
-      if (!Number.isSafeInteger(pid) || pid < 1) return false;
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch (error) {
-        return error.code !== "ESRCH";
-      }
-    };
-    let groupAlive = false;
-    if (process.platform !== "win32" && Number.isSafeInteger(owner.workerPid)) {
-      try {
-        process.kill(-owner.workerPid, 0);
-        groupAlive = true;
-      } catch (error) {
-        groupAlive = error.code !== "ESRCH";
-      }
-    }
-    if (alive(owner.pid) || alive(owner.workerPid) || groupAlive) return "busy";
-
-    await rm(path, { force: true });
-    return "recovered";
+  async recoverPreparation() {
+    return recoverPluginStoreLock(this.root);
   }
   async queueActivation(id) {
     versionId(id);

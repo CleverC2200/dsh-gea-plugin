@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import fs, { mkdtemp, mkdir, writeFile, readFile, readdir, rm, utimes } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CompanyInstallation, openCompanyInstallation } from "./company-installation.mjs";
@@ -165,6 +167,63 @@ test("a candidate writer cannot prevent startup of the separate verified graph",
   }
 });
 
+test("preparation takeover retains the active owner and recovery evidence", async (t) => {
+  const f = await fixture(t);
+  const store = f.installation.store;
+  const path = join(store.root, "prepare.lock");
+  await writeFile(path, "{}");
+  assert.equal(await store.recoverPreparation(), "busy");
+  await assert.rejects(f.installation.prepare("opaque", f.update), /PLUGIN_UPDATE_BUSY/);
+  assert.equal(await readFile(path, "utf8"), "{}");
+  assert.equal((await f.installation.beginBoot()).id, "baseline");
+  const pid = execFileSync(process.execPath, ["-p", "process.pid"], {
+    encoding: "utf8",
+  }).trim();
+  const abandoned = { pid: Number(pid), token: randomUUID(), purpose: "write" };
+  await writeFile(path, JSON.stringify(abandoned));
+  const deletionReached = Promise.withResolvers();
+  let waiting = false;
+  const resume = Promise.withResolvers();
+  const originalRemove = fs.rm;
+  fs.rm = async (file, ...args) => {
+    if (file === path && !waiting) {
+      waiting = true;
+      deletionReached.resolve();
+      await resume.promise;
+    }
+    return originalRemove(file, ...args);
+  };
+  syncBuiltinESMExports();
+  const first = store.recoverPreparation();
+  try {
+    await Promise.race([deletionReached.promise, first]);
+    assert.ok(waiting);
+    assert.equal(await store.recoverPreparation(), "busy");
+    assert.deepEqual(JSON.parse(await readFile(path)), abandoned);
+  } finally {
+    resume.resolve();
+    fs.rm = originalRemove;
+    syncBuiltinESMExports();
+    await first;
+  }
+  await assert.rejects(readFile(path), { code: "ENOENT" });
+  await f.preserved();
+});
+
+test("a process assigned the old owner's PID cannot keep an abandoned legacy lock", async (t) => {
+  const f = await fixture(t);
+  const store = f.installation.store;
+  const path = join(store.root, "prepare.lock");
+  const lock = { pid: process.pid, token: randomUUID(), purpose: "write" };
+  await writeFile(path, JSON.stringify(lock));
+  assert.equal(await store.recoverPreparation(), "busy");
+  const original = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  await utimes(path, original, original);
+  await f.installation.prepare("recover-reused-pid", f.update);
+  assert.equal((await f.installation.beginBoot()).id, "recover-reused-pid");
+  await f.preserved();
+});
+
 test("activation preserves a dependency change made after preparation", async (t) => {
   const f = await fixture(t);
   await f.installation.prepare("stale", f.update);
@@ -239,7 +298,13 @@ test("boot rollback also fails a combined update receipt and preserves its origi
   await f.preserved();
 });
 
-for (const failure of [false, true, "partial", "interrupted-initialization"])
+for (const failure of [
+  false,
+  true,
+  "partial",
+  "interrupted-initialization",
+  "interrupted-preparation",
+])
   test(`the shipped bootstrap retains the previous graph across bundled preparation and trial failure (${failure})`, async (t) => {
     const home = await mkdtemp(join(tmpdir(), "gea bootstrap installation "));
     t.after(() => rm(home, { recursive: true, force: true }));
@@ -250,6 +315,7 @@ for (const failure of [false, true, "partial", "interrupted-initialization"])
       name,
       version: versions[index],
       file: `company-${index}.tgz`,
+      sha256: "b".repeat(64),
     }));
     await mkdir(profile, { recursive: true });
     await writeFile(join(home, "draft.json"), "keep draft");
@@ -290,7 +356,8 @@ for (const failure of [false, true, "partial", "interrupted-initialization"])
       support: "unused",
       seed: "unused",
       manifest: { packages, core: { head: core } },
-      install: async ({ profile: candidate }) => {
+      install: async ({ profile: candidate, beforeInstall, complete }) => {
+        await beforeInstall?.();
         calls++;
         assert.notEqual(candidate, profile);
         const current = JSON.parse(await readFile(join(candidate, "package.json")));
@@ -311,30 +378,68 @@ for (const failure of [false, true, "partial", "interrupted-initialization"])
         }
         await writeFile(join(candidate, "package.json"), JSON.stringify(current));
         if (shouldFail) throw Error("PREPARATION_INTERRUPTED");
+        await complete?.({ writeFileAtomic: writeFile });
       },
     };
     if (failure === "partial")
       await rm(join(profile, "node_modules", companyPackageNames[2], "host.mjs"));
     const installation = new CompanyInstallation(profile, core);
-    if (failure === "interrupted-initialization") {
-      const lockModule = new URL("./plugin-store-lock.mjs", import.meta.url).href;
-      const lock = join(installation.store.root, "prepare.lock");
-      const child = execFileSync(
-        process.execPath,
-        [
-          "--input-type=module",
-          "-e",
-          `import { withPluginStoreLock } from ${JSON.stringify(lockModule)};
-           await withPluginStoreLock(process.argv[1], async () => process.exit(0));`,
-          installation.store.root,
-        ],
-        { encoding: "utf8" },
+    if (failure === "interrupted-preparation") {
+      await installation.initialize();
+      const id = randomUUID();
+      await mkdir(join(profile, "gea/plugin-updates"), { recursive: true });
+      const previous = process.env.GEA_DESKTOP_VERSION;
+      process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261124.1";
+      t.after(() => {
+        if (previous === undefined) delete process.env.GEA_DESKTOP_VERSION;
+        else process.env.GEA_DESKTOP_VERSION = previous;
+      });
+      await writeFile(
+        companyUpdatePath(profile),
+        JSON.stringify({
+          schema: 1,
+          id,
+          phase: "prepared",
+          desktopVersion: process.env.GEA_DESKTOP_VERSION,
+          processIdentity: "old-desktop",
+          expected: null,
+          targets: packages.map(({ name, version }) => ({
+            name,
+            version,
+            sha256: "b".repeat(64),
+            supportedCores: [{ head: core, version: "0.2.0-rc.2" }],
+          })),
+        }),
       );
-      assert.equal(child, "");
+    }
+    if (["interrupted-initialization", "interrupted-preparation"].includes(failure)) {
+      const module = new URL("./company-installation.mjs", import.meta.url).href;
+      execFileSync(process.execPath, [
+        "--input-type=module",
+        "-e",
+        `import { CompanyInstallation } from ${JSON.stringify(module)};
+           const installation = new CompanyInstallation(process.argv[1], process.argv[2]);
+           const interrupt = async () => process.exit(0);
+           if (process.argv[3] === "interrupted-preparation")
+             await installation.prepare("interrupted", interrupt);
+           else await installation.initialize(interrupt);`,
+        profile,
+        core,
+        failure,
+      ]);
+      const lock = join(installation.store.root, "prepare.lock");
       assert.ok(JSON.parse(await readFile(lock)).pid > 0);
       assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");
     }
     const boot = await prepareCompanyBoot(options);
+    if (failure === "interrupted-preparation") {
+      const receipt = await readCompanyUpdate(profile);
+      assert.equal(boot.graphId, "desktop-" + receipt.id);
+      assert.equal(receipt.phase, "verifying");
+      assert.equal(calls, 1);
+      assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");
+      return;
+    }
     assert.equal(boot.trial, !failure || failure === "interrupted-initialization");
     assert.equal(
       JSON.parse(

@@ -1169,8 +1169,13 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         if (active) fail("UPDATE_OPERATION_BLOCKED");
         const receipt = await readCompanyUpdate(options.profile.dir);
         if (!receipt || receipt.phase === "cancelled" || receipt.phase === "completed") {
-          if (blocking(await readLatest()) || !profilePackageRunStopped(options.profile.dir))
-            fail("UPDATE_OPERATION_BLOCKED");
+          if (!profilePackageRunStopped(options.profile.dir)) fail("UPDATE_OPERATION_BLOCKED");
+          const running = await readLatest().then(blocking, async (error: unknown) => {
+            if (!isolatedInstallation || blocking(state.operation)) throw error;
+            const installation = await openCompanyInstallation(options.profile.dir);
+            return !installation || !(await installation.preparationIdle());
+          });
+          if (running || active) fail("UPDATE_OPERATION_BLOCKED");
           return;
         }
         if (receipt.phase !== "prepared" && receipt.phase !== "failed")

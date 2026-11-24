@@ -53,10 +53,11 @@ export class CompanyInstallation {
   async initialize(prepare) {
     if (await optional(join(this.directory, "baseline/baseline.json"))) return;
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    await this.store.recoverPreparation();
-    await this.store.withLock(async () => {
+    await this.store.withLock(async (owner, lockPath) => {
       if (await optional(join(this.directory, "baseline/baseline.json"))) return;
-      const stage = join(this.directory, "baseline-" + randomUUID());
+      const stageName = "baseline-" + randomUUID();
+      const stage = join(this.directory, stageName);
+      await writePluginStoreJson(lockPath, { ...owner, stage: stageName });
       await mkdir(stage, { mode: 0o700 });
       await materializeGraph({ path: this.profile }, stage);
       await relocateVirtualStore(stage, { sourceDirectory: this.profile });
@@ -110,10 +111,11 @@ export class CompanyInstallation {
     await this.store.queueActivation(id);
     return receipt;
   }
+  async preparationIdle() {
+    return (await this.store.recoverPreparation()) !== "busy";
+  }
   async beginBoot({ activatePending = true } = {}) {
-    if ((await this.store.recoverPreparation(join(this.store.root, "selection"))) === "busy")
-      throw Error("GEA_INSTALLATION_SELECTION_BUSY");
-    await this.store.recoverPreparation();
+    await this.preparationIdle();
     const before = await this.store.status();
     if (before.pending) {
       const activation = await json(

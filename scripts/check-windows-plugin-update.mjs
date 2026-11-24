@@ -82,7 +82,11 @@ const sdk = new Set([
   "@deepseek-ai/dsh-plugin-manager/operations",
 ]);
 await build({
-  entryPoints: [windowsNativeEntrypoints.controller],
+  stdin: {
+    contents: `export * from "./${windowsNativeEntrypoints.controller}"; export { mountDesktopUpdateOperations } from "./src/host/plugin-update-desktop.ts";`,
+    resolveDir: process.cwd(),
+    loader: "ts",
+  },
   outfile: controller,
   bundle: true,
   packages: "external",
