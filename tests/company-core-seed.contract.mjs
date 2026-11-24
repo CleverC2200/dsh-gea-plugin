@@ -4,7 +4,18 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, writeFile, rm, symlink, readdir, cp } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  writeFile,
+  rm,
+  symlink,
+  readdir,
+  cp,
+  lstat,
+  readlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
@@ -21,6 +32,19 @@ const pnpm =
 if (!sdk) throw Error("fixed GEA_PLUGIN_UPDATE_SDK required");
 const execute = promisify(execFile);
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+async function inventory(directory, prefix = "") {
+  const entries = [];
+  for (const name of (await readdir(directory)).sort()) {
+    const path = join(directory, name);
+    const relative = prefix ? prefix + "/" + name : name;
+    const entry = await lstat(path);
+    const type = entry.isSymbolicLink() ? "link" : entry.isDirectory() ? "directory" : "file";
+    entries.push([relative, type, type === "link" ? await readlink(path) : null]);
+    if (type === "directory") entries.push(...(await inventory(path, relative)));
+  }
+  return entries;
+}
 
 for (const userCache of [false, true, "active-wal"])
   test(
@@ -218,7 +242,7 @@ for (const userCache of [false, true, "active-wal"])
       }
       await writeFile(join(store, "old-store-sentinel"), "retained old store");
       const oldIndex = await readFile(join(store, "v11/index.db"));
-      const oldEntries = await readdir(store, { recursive: true });
+      const oldEntries = await inventory(store);
       const seedIndex = await readFile(join(seed, "store/v11/index.db"));
       if (userCache === "active-wal") {
         await writeFile(join(store, "v11/index.db-wal"), "active cache writer");
@@ -292,7 +316,7 @@ for (const userCache of [false, true, "active-wal"])
           "retained old store",
         );
         assert.deepEqual(await readFile(join(store, "v11/index.db")), oldIndex);
-        assert.deepEqual(await readdir(store, { recursive: true }), oldEntries);
+        assert.deepEqual(await inventory(store), oldEntries);
         assert.deepEqual(await readFile(join(seed, "store/v11/index.db")), seedIndex);
       }
       const caches = await readdir(join(home, "desktop-company-cache"));
