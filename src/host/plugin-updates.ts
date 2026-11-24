@@ -228,9 +228,10 @@ export function mountPluginUpdates(
                 }) ?? blocked();
               const value: UpdateClientStatus = {
                 restartReady: controllerReady && controller?.restartReady() === true,
+                operationId: state?.operation?.id ?? null,
                 revision: Math.max(state?.revision ?? 0, revision),
                 companyUpdate: controllerReady
-                  ? ((await controller?.companyStatus()) ?? null)
+                  ? ((await controller?.companyStatus().catch(() => null)) ?? null)
                   : null,
                 items,
                 hostProcessIdentity: pluginUpdateProcessIdentity,

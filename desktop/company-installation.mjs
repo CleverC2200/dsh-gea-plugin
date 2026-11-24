@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile, rename, lstat, realpath, symlink, rm } from "node:fs/promises";
-import { join, relative, isAbsolute } from "node:path";
+import { join, relative, isAbsolute, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createRequire } from "node:module";
@@ -66,8 +66,18 @@ export class CompanyInstallation {
         await relocateVirtualStore(stage, { sourceDirectory: this.profile });
       } else {
         const manifest = await json(join(this.profile, "package.json"));
-        for (const key of graphFields) delete manifest[key];
+        for (const field of ["dependencies", "devDependencies", "optionalDependencies"])
+          for (const [name, spec] of Object.entries(manifest[field] ?? {})) {
+            if (companyPackageNames.includes(name)) delete manifest[field][name];
+            else if (typeof spec === "string" && /^(file|link):/.test(spec)) {
+              const separator = spec.indexOf(":") + 1;
+              manifest[field][name] =
+                spec.slice(0, separator) + resolve(this.profile, spec.slice(separator));
+            }
+          }
         await writePluginStoreJson(join(stage, "package.json"), manifest);
+        const workspace = await optional(join(this.profile, "pnpm-workspace.yaml"));
+        if (workspace) await writeFile(join(stage, "pnpm-workspace.yaml"), workspace);
       }
       await prepare?.(stage);
       await this.validate(stage);
@@ -174,6 +184,7 @@ export class CompanyInstallation {
         booting: null,
         pending: null,
         dataSchema: this.store.dataSchema,
+        referencesUncertain: true,
         error: "PLUGIN_SELECTION_INVALID",
       });
     });
@@ -181,6 +192,7 @@ export class CompanyInstallation {
   }
   async verifiedMounted() {
     const state = await this.store.status();
+    if ((state.dataSchema ?? 1) !== this.store.dataSchema) throw Error("DATA_SCHEMA_INCOMPATIBLE");
     if (!state.verified || state.active !== state.verified) return null;
     const marker = await json(join(this.profile, "gea/installation.json"));
     if (marker.schema !== 1 || marker.coreHead !== this.coreHead || marker.graphId !== state.active)

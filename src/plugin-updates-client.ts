@@ -127,7 +127,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
-          restartWhenReady: boolean;
+          accepted?: { operationId: string; hostProcessIdentity: string };
           timer: ReturnType<typeof setTimeout>;
         };
       }
@@ -189,19 +189,14 @@ export function createPluginDetailUpdates(
     owner.observation = undefined;
     if (!owner.refs && !owner.recovering) close(owner);
   };
-  const observe = (
-    owner: NonNullable<typeof page>,
-    names: readonly string[],
-    restartWhenReady = false,
-  ) => {
+  const observe = (owner: NonNullable<typeof page>, names: readonly string[]) => {
     if (owner.observation || disposed) return;
     notified = undefined;
     owner.observation = {
       names,
-      restartWhenReady,
       timer: setTimeout(() => {
         notify(owner, "unconfirmed");
-        if (!owner.observation?.restartWhenReady) endObservation(owner);
+        if (!owner.observation?.accepted) endObservation(owner);
       }, pluginUpdateObservationMs),
     };
   };
@@ -247,7 +242,13 @@ export function createPluginDetailUpdates(
               : "completed",
       );
       const pending = rows.some((row) => row?.state === "pending-restart");
-      if (pending && owner.observation.restartWhenReady) {
+      const accepted = owner.observation.accepted;
+      if (
+        pending &&
+        accepted &&
+        status?.operationId === accepted.operationId &&
+        status.hostProcessIdentity === accepted.hostProcessIdentity
+      ) {
         if (!snapshot.restartReady) return;
         if (rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null))
           void restart();
@@ -400,20 +401,30 @@ export function createPluginDetailUpdates(
       transportError: null,
       restart: "idle",
     });
-    observe(owner, names, true);
+    observe(owner, names);
     notify(owner, "progress");
+    const hostProcessIdentity = status?.hostProcessIdentity;
     const run = async () => {
       try {
-        await request(
-          "update-all",
-          {
-            plans: selected.map((row) => ({
-              packageName: row.packageName,
-              planId: row.planId,
-            })),
-          },
-          signalFor(owner),
+        const accepted = updateObject(
+          await request(
+            "update-all",
+            {
+              plans: selected.map((row) => ({
+                packageName: row.packageName,
+                planId: row.planId,
+              })),
+            },
+            signalFor(owner),
+          ),
         );
+        if (
+          hostProcessIdentity &&
+          typeof accepted.id === "string" &&
+          /^[a-f0-9-]{36}$/.test(accepted.id) &&
+          owner.observation
+        )
+          owner.observation.accepted = { operationId: accepted.id, hostProcessIdentity };
       } catch (error) {
         if (error instanceof PluginUpdateRequestError) {
           publish({ transportError: "check" });

@@ -32,6 +32,8 @@ async function fixture(t, capable = true) {
     prepareError: undefined,
     durable: false,
     loseResponse: false,
+    operationId: "22222222-2222-4222-8222-222222222222",
+    hostProcessIdentity: "host",
   };
   const original = globalThis.fetch;
   t.after(() => (globalThis.fetch = original));
@@ -49,11 +51,12 @@ async function fixture(t, capable = true) {
       value: url.endsWith("/status")
         ? {
             revision: 1,
-            hostProcessIdentity: "host",
+            hostProcessIdentity: state.hostProcessIdentity,
             challenge: "nonce",
             checkTimeoutMs: 1000,
             pollIntervalMs: 1000,
             restartReady: state.durable && state.phase === "pending-restart",
+            operationId: state.operationId,
             items: names.map((packageName) => ({
               packageName,
               state: state.phase,
@@ -65,7 +68,7 @@ async function fixture(t, capable = true) {
               diagnostic: null,
             })),
           }
-        : null,
+        : { id: state.operationId, stage: state.phase },
     });
   };
   const owner = createPluginDetailUpdates(
@@ -158,19 +161,39 @@ test("a stale plan stays outside native takeover and can be checked again", asyn
   assert.equal(owner.getSnapshot().submitting, null);
 });
 
-test("a lost preparation response recovers durable status before requesting native restart", async (t) => {
-  const { owner, state } = await fixture(t);
-  state.loseResponse = true;
+for (const response of ["lost", "unidentified", "different-operation", "different-host"])
+  test(`an uncorrelated preparation requires explicit native restart (${response})`, async (t) => {
+    const { owner, state } = await fixture(t);
+    state.loseResponse = response === "lost";
+    if (response === "unidentified") state.operationId = undefined;
+    await owner.updateAll();
+    assert.deepEqual(state.requests, []);
+    assert.equal(owner.getSnapshot().restart, "idle");
+    if (response === "different-host") state.hostProcessIdentity = "other-host";
+    else if (response !== "lost") state.operationId = "33333333-3333-4333-8333-333333333333";
+    state.phase = "pending-restart";
+    state.durable = true;
+    await until(
+      () => owner.getSnapshot().notice?.kind,
+      (kind) => kind === "pending-restart",
+    );
+    assert.deepEqual(state.requests, []);
+    await owner.restart();
+    assert.deepEqual(state.requests, [{ kind: "plugins-restart" }]);
+  });
+
+test("closing the page after acceptance cannot restart another operation", async (t) => {
+  const { owner, state, close } = await fixture(t);
   await owner.updateAll();
-  assert.deepEqual(state.requests, []);
-  assert.equal(owner.getSnapshot().restart, "idle");
+  close();
+  state.operationId = "33333333-3333-4333-8333-333333333333";
   state.phase = "pending-restart";
   state.durable = true;
   await until(
-    () => state.requests.length,
-    (count) => count === 1,
+    () => owner.getSnapshot().notice?.kind,
+    (kind) => kind === "pending-restart",
   );
-  assert.deepEqual(state.requests, [{ kind: "plugins-restart" }]);
+  assert.deepEqual(state.requests, []);
 });
 
 test("manual restart also waits for the Host durable confirmation", async (t) => {

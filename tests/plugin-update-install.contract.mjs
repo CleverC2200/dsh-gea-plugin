@@ -35,7 +35,7 @@ test(
       ),
     };
     for (const options of [
-      { customStore: false },
+      { customStore: false, corruptCompanyReceipt: true },
       { customStore: true },
       { customStore: true, allUpdates: true, strictSuitePeers: true },
       { customStore: true, allUpdates: true, startupRecovery: true },
