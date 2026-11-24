@@ -204,13 +204,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Verify native public certificate import and signed updates
-        run: ./desktop/windows-certificate.test.ps1 -OutputDirectory "$env:RUNNER_TEMP/gea-certificate-result"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - name: Prepare pinned NSIS tooling
+        shell: pwsh
+        run: |
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund app-builder-lib@26.15.3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
+      - name: Verify staged replacement and interrupted cutover recovery of official NSIS
+        shell: pwsh
+        run: node tests/fixtures/windows-recovery-acceptance/installer-cutover.mjs "$env:RUNNER_TEMP/gea-cutover"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-certificate-fixture
-          path: ${{ runner.temp }}/gea-certificate-result/result.json
+          name: windows-official-cutover
+          path: ${{ runner.temp }}/gea-cutover/official-cutover.json
           if-no-files-found: warn
   core-cache-fixtures:
     if: github.event_name == 'workflow_dispatch' && !inputs.prepare_windows_cache && !inputs.windows_certificate_test && inputs.windows_overwrite_artifact_run == ''

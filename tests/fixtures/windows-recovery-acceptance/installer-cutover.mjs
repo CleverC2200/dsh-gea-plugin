@@ -1,0 +1,108 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+
+assert.equal(process.platform, "win32");
+const output = resolve(process.argv[2]);
+await mkdir(output, { recursive: true });
+const work = await mkdtemp(join(process.env.RUNNER_TEMP, "dsh-directory-cutover-"));
+const core = "17746ac35c8fa08e2da98f2127b05f421132cb16";
+const { getMakeNsisPath } = createRequire(import.meta.url)("app-builder-lib/out/toolsets/windows.js");
+const makensis = await getMakeNsisPath();
+const sevenZip = "C:/Program Files/7-Zip/7z.exe";
+const target = join(work, "Application");
+const data = join(work, ".dsh");
+const payload = join(work, "payload");
+const archive = join(work, "new.7z");
+const oldMoved = join(work, "old-moved");
+const sentinel = { "config.json": '{"setting":"keep"}', "history.jsonl": '{"session":"keep"}\n', "draft.json": '{"draft":"keep"}' };
+await Promise.all([target, data, payload].map((directory) => mkdir(directory)));
+await writeFile(join(target, "GEA Desktop.exe"), "original program");
+await writeFile(join(payload, "GEA Desktop.exe"), "new program");
+await Promise.all(Object.entries(sentinel).map(([file, text]) => writeFile(join(data, file), text)));
+
+function run(command, args) {
+  const result = spawnSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 60000 });
+  assert.equal(result.status, 0, result.stderr || result.stdout || String(result.error));
+}
+run(sevenZip, ["a", archive, join(payload, "*"), "-bso0", "-bsp0"]);
+
+const url = "https://raw.githubusercontent.com/CleverC2200/deepseek-harness/" + core + "/apps/desktop/scripts/installer-directories.nsh";
+const sourceResponse = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15000) });
+assert.equal(sourceResponse.status, 200);
+const source = await sourceResponse.text();
+const renameCheckpoint = '    StrCpy $dshOldMoved "1"';
+assert.equal(source.split(renameCheckpoint).length, 2);
+
+async function compile(installerPath, scriptSource) {
+  const included = installerPath + ".nsh";
+  await writeFile(included, scriptSource);
+  const script = installerPath + ".nsi";
+  await writeFile(script, [
+    'Unicode true',
+    'RequestExecutionLevel user',
+    'SilentInstall silent',
+    'Name "Desktop directory recovery probe"',
+    'OutFile "' + installerPath + '"',
+    'LoadLanguageFile "${NSISDIR}\\Contrib\\Language files\\English.nlf"',
+    'LangString decompressionFailed ${LANG_ENGLISH} "Payload failed"',
+    '!define DSH_SEVENZIP_PATH "' + sevenZip + '"',
+    '!macro installApplicationFiles',
+    '  !insertmacro dshExtractPayload "' + archive + '"',
+    '!macroend',
+    '!include "' + included + '"',
+    'Section',
+    '  InitPluginsDir',
+    '  StrCpy $INSTDIR "' + target + '"',
+    '  !insertmacro dshStageApplication',
+    '  Call dshPromoteDirectories',
+    '  IfErrors failed',
+    '  !insertmacro dshFinishDirectories',
+    '  SetErrorLevel 0',
+    '  Quit',
+    '  failed:',
+    '  SetErrorLevel 2',
+    '  Quit',
+    'SectionEnd',
+  ].join("\r\n"));
+  run(makensis, ["/V2", script]);
+}
+
+const interrupted = join(work, "interrupt-after-move.exe");
+await compile(interrupted, source.replace(renameCheckpoint, renameCheckpoint +
+  '\n    FileOpen $9 "' + oldMoved + '" w\n    FileClose $9\n    Sleep 120000'));
+const transaction = spawn(interrupted, ["/S"], { windowsHide: true, stdio: "ignore" });
+const closed = new Promise((done) => transaction.once("exit", done));
+try {
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    try { await readFile(oldMoved); break; }
+    catch (error) { if (error.code !== "ENOENT" || Date.now() >= deadline || transaction.exitCode !== null) throw error; }
+    await delay(50);
+  }
+  await assert.rejects(readFile(join(target, "GEA Desktop.exe")), { code: "ENOENT" });
+} finally {
+  if (transaction.exitCode === null) transaction.kill();
+  await closed;
+}
+
+const old = (await readdir(work)).find((name) => name.startsWith("Application.old-"));
+assert.ok(old);
+assert.equal(await readFile(join(work, old, "GEA Desktop.exe"), "utf8"), "original program");
+await assert.rejects(readFile(join(target, "GEA Desktop.exe")), { code: "ENOENT" });
+const repair = join(work, "standard-overwrite.exe");
+await compile(repair, source);
+run(repair, ["/S"]);
+assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "new program");
+for (const [file, text] of Object.entries(sentinel)) assert.equal(await readFile(join(data, file), "utf8"), text);
+await writeFile(join(output, "official-cutover.json"), JSON.stringify({
+  core,
+  fault: "installer process terminated between actual old and new directory renames",
+  originalShortcutTargetAvailableAfterKill: false,
+  originalProgramPreservedInBackup: true,
+  standardInstallerOverwriteRestoredTarget: true,
+  dataFilesPreserved: true,
+}, null, 2));
