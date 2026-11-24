@@ -1166,8 +1166,14 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     await withFileLock(
       join(options.profile.dir, "package.json"),
       async () => {
+        if (active) fail("UPDATE_OPERATION_BLOCKED");
         const receipt = await readCompanyUpdate(options.profile.dir);
-        if (!receipt || !["prepared", "failed"].includes(receipt.phase))
+        if (!receipt || receipt.phase === "cancelled") {
+          if (blocking(await readLatest()) || !profilePackageRunStopped(options.profile.dir))
+            fail("UPDATE_OPERATION_BLOCKED");
+          return;
+        }
+        if (receipt.phase !== "prepared" && receipt.phase !== "failed")
           fail("UPDATE_OPERATION_BLOCKED");
         await durableJson(
           companyUpdatePath(options.profile.dir),

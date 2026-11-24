@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -238,7 +239,7 @@ test("boot rollback also fails a combined update receipt and preserves its origi
   await f.preserved();
 });
 
-for (const failure of [false, true, "partial"])
+for (const failure of [false, true, "partial", "interrupted-initialization"])
   test(`the shipped bootstrap retains the previous graph across bundled preparation and trial failure (${failure})`, async (t) => {
     const home = await mkdtemp(join(tmpdir(), "gea bootstrap installation "));
     t.after(() => rm(home, { recursive: true, force: true }));
@@ -314,9 +315,27 @@ for (const failure of [false, true, "partial"])
     };
     if (failure === "partial")
       await rm(join(profile, "node_modules", companyPackageNames[2], "host.mjs"));
-    const boot = await prepareCompanyBoot(options);
     const installation = new CompanyInstallation(profile, core);
-    assert.equal(boot.trial, !failure);
+    if (failure === "interrupted-initialization") {
+      const lockModule = new URL("./plugin-store-lock.mjs", import.meta.url).href;
+      const lock = join(installation.store.root, "prepare.lock");
+      const child = execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `import { withPluginStoreLock } from ${JSON.stringify(lockModule)};
+           await withPluginStoreLock(process.argv[1], async () => process.exit(0));`,
+          installation.store.root,
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(child, "");
+      assert.ok(JSON.parse(await readFile(lock)).pid > 0);
+      assert.equal(await readFile(join(home, "draft.json"), "utf8"), "keep draft");
+    }
+    const boot = await prepareCompanyBoot(options);
+    assert.equal(boot.trial, !failure || failure === "interrupted-initialization");
     assert.equal(
       JSON.parse(
         await readFile(

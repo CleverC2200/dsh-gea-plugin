@@ -1680,6 +1680,8 @@ test("combined updates cache the approved suite without installation, serialize 
   });
   t.after(() => controller.dispose());
   await controller.initialize();
+  await controller.cancelDesktop();
+  assert.equal(await controller.companyStatus(), null);
   await controller.prepareDesktop("0.2.0-rc.2.20261105.1");
   assert.deepEqual(await controller.companyStatus(), {
     phase: "prepared",
@@ -1687,6 +1689,7 @@ test("combined updates cache the approved suite without installation, serialize 
   });
   assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
   await assert.rejects(controller.submitBatch([]), /UPDATE_OPERATION_BLOCKED/);
+  await controller.cancelDesktop();
   await controller.cancelDesktop();
   assert.equal((await controller.companyStatus()).phase, "cancelled");
 });

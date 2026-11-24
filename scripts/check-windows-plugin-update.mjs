@@ -102,7 +102,19 @@ await build({
   ],
 });
 const executable = join(app, "GEA Desktop.exe");
+const restartUpdate = join(root, "restart-update.mjs");
 if (companyDesktop) {
+  const coreSource = await fetch(
+    `https://raw.githubusercontent.com/CleverC2200/deepseek-harness/${input.coreHead}/apps/desktop/src/restart-update.ts`,
+    { redirect: "error" },
+  );
+  if (!coreSource.ok) throw Error("WINDOWS_CORE_RESTART_UPDATE_UNREADABLE");
+  await build({
+    stdin: { contents: await coreSource.text(), loader: "ts" },
+    outfile: restartUpdate,
+    format: "esm",
+    platform: "node",
+  });
   const config = officialGeaBranding({ files: [], extraResources: [] }, { companySeed: "fixture" });
   const companyFiles = config.files.find((file) => typeof file === "object" && file.to === ".");
   for (const name of companyFiles.filter) {
@@ -141,6 +153,7 @@ try {
         GEA_WINDOWS_RUNTIME: runtime,
         GEA_WINDOWS_CONTROLLER: controller,
         GEA_PLUGIN_UPDATE_PNPM: join(app, "resources/runtime/pnpm/bin/pnpm.mjs"),
+        ...(companyDesktop ? { GEA_WINDOWS_RESTART_UPDATE: restartUpdate } : {}),
       },
     },
   );
@@ -165,6 +178,7 @@ try {
       receipt.sourceHead !== sourceHead ||
       receipt.input?.installerSha256 !== expected ||
       receipt.input?.coreHead !== input.coreHead ||
+      receipt.interruptedInitializationRecovered !== true ||
       receipt.historyReadWithBundledCore !== true ||
       receipt.userDataPreserved !== true ||
       receipt.productionDataTouched !== false ||

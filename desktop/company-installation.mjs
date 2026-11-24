@@ -53,6 +53,7 @@ export class CompanyInstallation {
   async initialize(prepare) {
     if (await optional(join(this.directory, "baseline/baseline.json"))) return;
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    await this.store.recoverPreparation();
     await this.store.withLock(async () => {
       if (await optional(join(this.directory, "baseline/baseline.json"))) return;
       const stage = join(this.directory, "baseline-" + randomUUID());

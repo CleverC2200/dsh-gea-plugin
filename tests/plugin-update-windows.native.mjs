@@ -20,6 +20,72 @@ const { createPluginUpdateController } = await import(
   pathToFileURL(process.env.GEA_WINDOWS_CONTROLLER)
 );
 const anchor = join(process.env.GEA_WINDOWS_RUNTIME, "dsh/package.json");
+
+if (process.env.GEA_WINDOWS_RESTART_UPDATE)
+  test("Windows restart coordinator unlocks after the Host becomes idle without a desktop receipt", async (t) => {
+    const { DesktopRestartUpdate } = await import(
+      pathToFileURL(process.env.GEA_WINDOWS_RESTART_UPDATE)
+    );
+    const f = await controllerFixture(t, { sourceFailure: "network" });
+    const controller = createPluginUpdateController({
+      ...f.options,
+      runtimeDirectory: join(f.dir, "gea/plugin-updates"),
+    });
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    const desktopVersion = process.env.GEA_DESKTOP_VERSION;
+    process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261123.1";
+    t.after(() => {
+      if (desktopVersion === undefined) delete process.env.GEA_DESKTOP_VERSION;
+      else process.env.GEA_DESKTOP_VERSION = desktopVersion;
+    });
+    const target = "0.2.0-rc.2.20261124.1";
+    let lostStatus = true;
+    const tasks = [],
+      window = [];
+    const host = {
+      updateTasks: async (action) => {
+        tasks.push(action);
+        return false;
+      },
+      updateOperation: async ({ action }) => {
+        try {
+          if (action === "desktop-prepare") await controller.prepareDesktop(target);
+          else if (action === "desktop-cancel") await controller.cancelDesktop();
+          else if (action === "plugins-status") {
+            if (lostStatus) {
+              lostStatus = false;
+              return { ok: false, error: { code: "host-unavailable" } };
+            }
+            return { ok: true, value: controller.operationStatus() };
+          } else assert.fail(action);
+          return { ok: true, value: {} };
+        } catch (error) {
+          return { ok: false, error: { code: error.message } };
+        }
+      },
+    };
+    const coordinator = new DesktopRestartUpdate({
+      host: () => host,
+      recoverLockedHost: async () => host,
+      state: () => ({ phase: "available", version: target }),
+      block: (blocked) => window.push(blocked),
+      progress: () => {},
+      download: () => assert.fail("unexpected native download"),
+      install: () => assert.fail("unexpected native installation"),
+    });
+    await assert.rejects(
+      coordinator.start({ kind: "desktop", version: target }),
+      /preparation failed/,
+    );
+    assert.equal(controller.operationStatus().state, "idle");
+    assert.equal(await controller.companyStatus(), null);
+    assert.deepEqual(window, [true]);
+    await coordinator.recover();
+    assert.deepEqual(tasks, ["lock", "unlock"]);
+    assert.deepEqual(window, [true, false]);
+    assert.equal(coordinator.active, false);
+  });
 for (const mode of [
   "success",
   "pnpm",
