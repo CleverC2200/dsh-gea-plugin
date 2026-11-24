@@ -178,9 +178,11 @@ jobs:
           if ($receipt.unsigned -ne $false -or $receipt.artifact -ne $artifact[0].Name -or (Get-FileHash $artifact[0].FullName).Hash -ine $receipt.sha256) {
             throw 'GEA_SIGNED_CACHE_ARTIFACT_CHANGED'
           }
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File gea/desktop/build/install-certificate.ps1 -CertificatePath gea/desktop/build/codesign.cer -StoreLocation LocalMachine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $destination = Join-Path $env:RUNNER_TEMP 'gc-installed'
           $setup = Start-Process -FilePath $artifact[0].FullName -ArgumentList "/S", "/D=$destination" -Wait -PassThru
-          if ($setup.ExitCode -ne 0) { throw 'GEA_SIGNED_CACHE_INSTALL_FAILED' }
+          if ($setup.ExitCode -ne 0) { throw "GEA_SIGNED_CACHE_INSTALL_FAILED $($setup.ExitCode)" }
           $env:GEA_PLUGIN_UPDATE_PACKAGED = Join-Path $destination 'resources'
           $env:GEA_PLUGIN_UPDATE_PNPM = Join-Path $env:GEA_PLUGIN_UPDATE_PACKAGED 'runtime/pnpm/bin/pnpm.mjs'
           $env:ELECTRON_RUN_AS_NODE = '1'
