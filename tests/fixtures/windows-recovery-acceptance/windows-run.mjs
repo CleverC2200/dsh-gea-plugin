@@ -41,6 +41,7 @@ const { companyWindowsCertificate } = await import(
   pathToFileURL(join(gea, "scripts/windows-complete-local/signing.mjs"))
 );
 const repairAffectedBaseline = values["repair-affected-baseline"];
+const interruptPreparation = !repairAffectedBaseline && !values["old-visible-entry"];
 const {
   version: oldVersion,
   source: oldSource,
@@ -505,7 +506,7 @@ try {
   assert.equal(installedDependency.status, 0, "DRAFT_READER_DEPENDENCY_FAILED");
   const { ClassicLevel } = createRequire(join(dependencies, "package.json"))("classic-level");
   const lock = join(profile, "gea/installations", managedCore, "plugins/prepare.lock");
-  if (!repairAffectedBaseline) {
+  if (interruptPreparation) {
     const abandoned = join(privateOutput, "abandoned-preparation.json");
     const workerScript = join(privateOutput, "interrupt-preparation.mjs");
     await writeFile(
@@ -667,6 +668,8 @@ try {
         try {
           const view = await evaluate(client, "window.dshUpdateDialog.status()");
           if (!view) return false;
+          if (values["old-visible-entry"])
+            evidence.oldVisibleDialog = { message: view.message, buttons: view.buttons };
           if (
             values["old-visible-entry"] &&
             view.buttons?.some((label) => /重新检查|check again/i.test(label))
@@ -903,7 +906,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     evidence.crossCoreStartedWithoutOutboundNetwork = true;
     milestone("cross-core-signed-install-started-offline-with-existing-store");
   }
-  if (!repairAffectedBaseline) {
+  if (interruptPreparation) {
     await assert.rejects(readFile(lock), { code: "ENOENT" });
     evidence.interruptedExistingInstallationRecovered = true;
   }
@@ -943,9 +946,12 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     const nextVersion = newVersion.replace(/\.(\d+)$/, (_, build) => "." + (Number(build) + 1));
     assert.notEqual(nextVersion, newVersion);
     const unavailableInstaller = targetInput.artifact.replace(newVersion, nextVersion);
+    const unavailableSha = createHash("sha512").update(unavailableInstaller).digest("base64");
+    const installedSha = await fileDigest(originalInstaller, "sha512", "base64");
     recoveryFeed = metadata
       .replace(/^version:.*$/m, "version: " + nextVersion)
-      .replaceAll(targetInput.artifact, unavailableInstaller);
+      .replaceAll(targetInput.artifact, unavailableInstaller)
+      .replaceAll(installedSha, unavailableSha);
     const candidateConfig = await readFile(join(installation, "resources/app-update.yml"), "utf8");
     const loopbackConfig = candidateConfig.replace(
       feed.slice(0, -"nightly.yml".length),
@@ -1217,6 +1223,10 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
         host: await evaluate(main, "globalThis.geaRecoveryAcceptance?.read()").catch(() => null),
         start: await evaluate(cdp, "globalThis.geaRecoveryStart ?? null").catch(() => null),
         hasDialog: Boolean(await target("dsh-app://shell/update-dialog.html")),
+        nativeUpdateEvents: (await records()).filter((row) => row.version === newVersion),
+        simulatedDownloadRequests: requests.filter(
+          ({ name }) => name === "/" + unavailableInstaller,
+        ),
       };
       await evaluate(main, "globalThis.geaRecoveryAcceptance?.restore()").catch(() => {});
       main.close();
@@ -1257,6 +1267,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     toVersion: newVersion,
     firstHop: evidence.firstHop,
     firstHopConfirmedBySuccessor: evidence.firstHopConfirmedBySuccessor,
+    oldVisibleDialog: evidence.oldVisibleDialog,
     buildReceiptSha256: evidence.buildReceiptSha256,
     inputSha256: build.inputSha256,
     installerSha256: expectedNewSha,
