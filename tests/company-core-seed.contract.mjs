@@ -89,8 +89,12 @@ for (const userCache of [false, true, "active-wal"])
         execute(
           process.execPath,
           [
+            "--expose-internals",
             pnpm,
+            "--dir",
+            cwd,
             ...args,
+            "--config.lockfile-dir=" + cwd,
             "--config.update-notifier=false",
             "--config.manage-package-manager-versions=false",
           ],

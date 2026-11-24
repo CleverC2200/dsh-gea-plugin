@@ -188,6 +188,8 @@ jobs:
           $env:GEA_PLUGIN_UPDATE_PACKAGED = Join-Path $destination 'resources'
           $env:GEA_PLUGIN_UPDATE_PNPM = Join-Path $env:GEA_PLUGIN_UPDATE_PACKAGED 'runtime/pnpm/bin/pnpm.mjs'
           $env:ELECTRON_RUN_AS_NODE = '1'
+          $env:TEMP = $env:RUNNER_TEMP
+          $env:TMP = $env:RUNNER_TEMP
           $tarDirectory = Join-Path $env:ProgramFiles 'Git/usr/bin'
           $env:PATH = "$tarDirectory;$env:PATH"
           $env:TAR_OPTIONS = '--force-local --quoting-style=literal'
