@@ -529,11 +529,15 @@ jobs:
           NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
           NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
         run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0 esbuild@0.25.9
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
           $inputPath = Join-Path $env:RUNNER_TEMP 'gea-desktop-input.json'
           [IO.File]::WriteAllText($inputPath, $env:DESKTOP_INPUT_JSON, [Text.UTF8Encoding]::new($false))
+          $env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE = Join-Path $env:RUNNER_TEMP 'cleverc2200-gea-dsh-prototype-0.0.348024.tgz'
+          node tests/fixtures/windows-recovery-acceptance/prepare-input.mjs $inputPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "GEA_RECOVERY_ACCEPTANCE_ARCHIVE=$env:GEA_RECOVERY_ACCEPTANCE_ARCHIVE" | Out-File -Append -FilePath $env:GITHUB_ENV
           node scripts/windows-complete-local/input.mjs --input $inputPath --source-sha $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($env:NATIVE_BUNDLE_URL -or $env:NATIVE_BUNDLE_SHA256) {
@@ -627,6 +631,12 @@ jobs:
           DSH_DELIVERY_RUNTIME_RESTORE: ${{ steps.delivery-runtime-restore.outcome }}
           DSH_DELIVERY_PREFLIGHT: ${{ runner.temp }}/windows-cache-preflight.json
         run: node gea/scripts/windows-complete-local/build.mjs core gea "$env:GEA_DESKTOP_INPUT"
+      - name: Verify Windows native upgrade to the recovery candidate
+        if: "!inputs.prepare_windows_cache"
+        run: |
+          $buildReceipt = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/result.json'
+          $evidence = Join-Path $PWD 'core/apps/desktop/.desktop-build/targets/win-x64/gea-local/native-acceptance'
+          node gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs --build-receipt $buildReceipt --input "$env:GEA_DESKTOP_INPUT" --output $evidence
       - name: Verify signed downloads and unsigned-to-signed overwrite
         if: inputs.windows_update_acceptance && inputs.windows_signed && !inputs.prepare_windows_cache
         run: node gea/scripts/windows-complete-local/signed-upgrade.mjs core gea

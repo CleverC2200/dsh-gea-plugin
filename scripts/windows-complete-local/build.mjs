@@ -189,10 +189,12 @@ await writeFile(join(output, "smoke-gea.mts"), smoke);
 const seedInput = structuredClone(input.seed);
 await mkdir(join(output, "packages"));
 for (const row of seedInput.packages) {
-  const response = await fetch(row.url, {
-    redirect: "error",
-    signal: AbortSignal.timeout(120000),
-  });
+  const response = row.url.startsWith("file:")
+    ? new Response(await readFile(new URL(row.url)))
+    : await fetch(row.url, {
+        redirect: "error",
+        signal: AbortSignal.timeout(120000),
+      });
   if (response.status !== 200) throw Error("PACKAGE_DOWNLOAD_FAILED");
   const reader = response.body?.getReader();
   if (!reader) throw Error("PACKAGE_DOWNLOAD_BODY_MISSING");

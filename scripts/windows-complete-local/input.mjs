@@ -125,9 +125,14 @@ export async function readDesktopInput(file, sourceSha) {
     const file = `${row.name.replace(/^@/, "").replace("/", "-")}-${row.version}.tgz`;
     try {
       comparePluginVersions(row.version, row.version);
+      const fixture = process.env.GEA_RECOVERY_ACCEPTANCE_ARCHIVE;
+      const localFixture =
+        fixture &&
+        row.name === "@cleverc2200/gea-dsh-prototype" &&
+        row.url === pathToFileURL(fixture).href;
       if (
         !validSha(row.sha256) ||
-        row.url !== `${oss}/plugin-release/packages/${row.sha256}/${file}`
+        (!localFixture && row.url !== `${oss}/plugin-release/packages/${row.sha256}/${file}`)
       )
         throw Error();
     } catch {
