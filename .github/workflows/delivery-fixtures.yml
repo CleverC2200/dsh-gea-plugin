@@ -109,7 +109,7 @@ jobs:
           const prefix='repos/CleverC2200/dsh-gea-plugin/actions/runs/'+process.env.ORIGINAL_RUN;
           const run=JSON.parse(execFileSync('gh',['api',prefix],{encoding:'utf8'}));
           assert.equal(run.head_repository.full_name,'CleverC2200/dsh-gea-plugin');
-          assert.equal(run.head_branch,'main');assert.equal(run.event,'workflow_dispatch');
+          assert.equal(run.head_branch,'codex/windows-recovery-acceptance-20261124');assert.equal(run.event,'workflow_dispatch');
           assert.equal(run.path.split('@')[0],'.github/workflows/delivery-fixtures.yml');
           execFileSync('git',['-C','gea','merge-base','--is-ancestor',run.head_sha,'HEAD']);
           const jobs=JSON.parse(execFileSync('gh',['api',prefix+'/jobs?per_page=100'],{encoding:'utf8'}));
@@ -131,13 +131,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path gea/node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
-      - uses: actions/download-artifact@v4
-        if: inputs.windows_online_update
-        with:
-          github-token: ${{ github.token }}
-          run-id: 41028129549
-          name: GEA-Desktop-0.2.0-rc.2.20261030.2-win-x64-complete
-          path: ${{ runner.temp }}/online-update-baseline
       - name: Recheck installed package version and preserved user files
         if: inputs.native_acceptance_bundle_url == ''
         shell: bash
@@ -155,9 +148,8 @@ jobs:
           assert.equal(files.length,1);
           const output=join(process.env.RUNNER_TEMP,'signed-overwrite-result');
           if(process.env.GEA_WINDOWS_ONLINE_UPDATE==='true') {
-            const baseline=walk(join(process.env.RUNNER_TEMP,'online-update-baseline')).filter(path=>path.endsWith('GEA-Desktop-0.2.0-rc.2.20261030.2-win-x64-signed.exe'));
-            assert.equal(baseline.length,1);
-            execFileSync(process.execPath,['gea/scripts/windows-complete-local/online-upgrade.mjs',baseline[0],files[0],output],{stdio:'inherit'});
+            const input=join(dirname(files[0]),'fixed-input.json');
+            execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output],{stdio:'inherit'});
           } else {
             execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
           }

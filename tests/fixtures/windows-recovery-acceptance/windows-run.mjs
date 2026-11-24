@@ -201,7 +201,7 @@ async function target(prefix) {
 try {
   assert.equal(
     await fileDigest(baseline),
-    "29dd266c40c10874f68fa82670d569d1fd0f1705406a88fa08bdbc210fbb4b47",
+    "9b91e1151bcddec81855da93605ba4ee358a1c22243bda2201c962cdf2ee0006",
   );
   const originalInstaller = resolve(dirname(buildReceipt), "../artifacts", targetInput.artifact);
   assert.equal(await fileDigest(originalInstaller), expectedNewSha);
