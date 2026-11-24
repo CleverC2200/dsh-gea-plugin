@@ -124,6 +124,8 @@ function data(id) {
               recommended_qty: 35,
               replenishment_sku_count: 1,
               inventory_qty: 130,
+              review_turn_inventory: 130,
+              review_turn_daily: 10,
               available_qty: 85,
               occupied_qty: 45,
               frozen_qty: 0,
@@ -164,6 +166,49 @@ function summaryData(queryId = snapshotId) {
     rejectedColumns: [],
   };
 }
+test("combined review turnover adds the three configured base warehouses to the branch scope", async () => {
+  const f = fixture(async (id, request) => {
+    const q = config.queries[id];
+    const rows =
+      id === "base-warehouse.summary.snapshot"
+        ? [
+            {
+              batch_id: "20261023080000000000",
+              business_date: "2026-10-23",
+              stock_date: "2026-10-22",
+              target_month: "2026-10-01",
+            },
+          ]
+        : id === "base-warehouse.snapshot.source.branch-stock-date"
+          ? [{ day: "2026-10-22" }]
+          : [{ row_count: 1, review_turn_inventory: 30, review_turn_daily: 20 }];
+    return {
+      rows: rows.map((row) =>
+        Object.fromEntries(q.resultColumns.map((name) => [name, row[name] ?? null])),
+      ),
+      returnedColumns: q.resultColumns,
+      rejectedColumns: [],
+    };
+  }, true);
+  const result = JSON.parse(
+    await f.call({ view: "summary", warehouseScope: "all", asOf: "2026-10-23" }),
+  );
+  assert.ok(result.success, JSON.stringify(result));
+  assert.equal(result.snapshotDate, "2026-10-22");
+  assert.deepEqual(
+    result.parts.map((part) => part.warehouseCode),
+    [null, "Y204", "N436", "A221"],
+  );
+  assert.deepEqual(result.summary, {
+    review_turn_inventory: 220,
+    review_turn_daily: 70,
+    historical_turnover_days: 220 / 70,
+  });
+  await assert.rejects(
+    f.call({ view: "summary", warehouseScope: "all", warehouseCode: "Y204" }),
+    /BRANCH_TURNOVER_SCOPE_INVALID/,
+  );
+});
 test("base supply questions use receiving-branch executions, full-scope metrics and ten-row pages", async () => {
   const f = fixture(async (id, request) => {
     const result = data(id);
