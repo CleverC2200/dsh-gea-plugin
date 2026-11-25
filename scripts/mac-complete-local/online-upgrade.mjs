@@ -356,40 +356,38 @@ try {
     (await records()).some((row) => row.version === oldVersion && row.event === "workspace-ready"),
   );
   stage("old workspace and Host ready");
-  if (plan) {
-    const settingsPath = join(home, "profiles/desktop/cordis.patch.yml");
-    const settings = parseDocument(await readFile(settingsPath, "utf8"));
-    assert.equal(settings.errors.length, 0);
-    const gea = settings.toJS().findIndex((row) => row.id === "gea-proof");
-    assert.ok(gea >= 0);
-    settings.setIn([gea, "config", "pluginUpdates", "pollIntervalMs"], 4250);
-    await writeFile(settingsPath, settings.toString());
-    bundled([
-      join(project, "scripts/windows-complete-local/certum-migration.mjs"),
-      "--seed-session",
-      archive,
-      home,
-      root,
-      session,
-    ]);
-    const stored = JSON.stringify({ draft, view: null, viewRequest: null });
-    assert.equal(
-      await evaluate(
-        old.page,
-        "localStorage.setItem(" +
-          JSON.stringify(draftKey) +
-          "," +
-          JSON.stringify(stored) +
-          ");localStorage.getItem(" +
-          JSON.stringify(draftKey) +
-          ")",
-      ),
-      stored,
-    );
-    const before = JSON.parse(bundled([dataTool, "--home", home, "--capture", snapshot]));
-    assert.ok(before.sessions >= 1 && before.events >= 3);
-    stage("existing conversation, draft and settings captured");
-  }
+  const settingsPath = join(home, "profiles/desktop/cordis.patch.yml");
+  const settings = parseDocument(await readFile(settingsPath, "utf8"));
+  assert.equal(settings.errors.length, 0);
+  const gea = settings.toJS().findIndex((row) => row.id === "gea-proof");
+  assert.ok(gea >= 0);
+  settings.setIn([gea, "config", "pluginUpdates", "pollIntervalMs"], 4250);
+  await writeFile(settingsPath, settings.toString());
+  bundled([
+    join(project, "scripts/windows-complete-local/certum-migration.mjs"),
+    "--seed-session",
+    archive,
+    home,
+    root,
+    session,
+  ]);
+  const stored = JSON.stringify({ draft, view: null, viewRequest: null });
+  assert.equal(
+    await evaluate(
+      old.page,
+      "localStorage.setItem(" +
+        JSON.stringify(draftKey) +
+        "," +
+        JSON.stringify(stored) +
+        ");localStorage.getItem(" +
+        JSON.stringify(draftKey) +
+        ")",
+    ),
+    stored,
+  );
+  const before = JSON.parse(bundled([dataTool, "--home", home, "--capture", snapshot]));
+  assert.ok(before.sessions >= 1 && before.events >= 3);
+  stage("existing conversation, draft and settings captured");
   const previousRequestCount = requests.length;
   const start = Date.now();
   await evaluate(old.page, "window.dshDesktop.updates.open().catch(()=>{}); true");
