@@ -46,7 +46,13 @@ if (!$signTool) { throw 'WINDOWS_CERTUM_SIGNTOOL_UNAVAILABLE' }
 "GEA_WINDOWS_SIGNTOOL=$($signTool.FullName)" | Add-Content -LiteralPath $env:GITHUB_ENV
 
 $sample = Join-Path $output 'sample.exe'
-Copy-Item -LiteralPath "$env:SystemRoot\System32\whoami.exe" -Destination $sample
+$sampleSource = Join-Path $output 'sample.cs'
+$compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+[IO.File]::WriteAllText($sampleSource, 'internal static class Program { private static int Main() { return 0; } }')
+& $compiler /nologo /target:exe "/out:$sample" $sampleSource
+if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $sample -PathType Leaf)) {
+    throw 'WINDOWS_CERTUM_SAMPLE_BUILD_FAILED'
+}
 $process = Start-Process -FilePath $signTool.FullName -ArgumentList (
     "sign /s My /sha1 $expected /fd SHA256 /tr http://time.certum.pl /td SHA256 `"$sample`""
 ) -PassThru -NoNewWindow
@@ -59,7 +65,7 @@ if ($process.ExitCode -ne 0) { throw 'WINDOWS_CERTUM_SAMPLE_SIGN_FAILED' }
 if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_CERTUM_SAMPLE_VERIFY_FAILED' }
 $signature = Get-AuthenticodeSignature -LiteralPath $sample
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $expected -or !$signature.TimeStamperCertificate) {
-    throw 'WINDOWS_CERTUM_SAMPLE_IDENTITY_INVALID'
+    throw "WINDOWS_CERTUM_SAMPLE_IDENTITY_INVALID status=$($signature.Status) thumbprintMatches=$($signature.SignerCertificate.Thumbprint -eq $expected) timestamped=$([bool]$signature.TimeStamperCertificate)"
 }
 @{
     thumbprint = $signature.SignerCertificate.Thumbprint
