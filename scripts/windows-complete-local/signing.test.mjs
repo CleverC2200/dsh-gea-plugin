@@ -95,6 +95,7 @@ test("the Windows store signer pins the leaf and verifies the SHA-256 timestampe
     {
       certificateFile: companyWindowsCertificate,
       repairExecutable: async () => calls.push(["repair"]),
+      preserveSignature: async (path) => path === "verified-runtime.exe",
     },
     {
       env: store,
@@ -104,6 +105,8 @@ test("the Windows store signer pins the leaf and verifies the SHA-256 timestampe
       },
     },
   );
+  await sign({ path: "verified-runtime.exe", hash: "sha256", isNest: false });
+  assert.deepEqual(calls, []);
   await sign({ path: "setup.exe", hash: "sha256" });
   assert.deepEqual(calls, [
     ["repair"],
@@ -113,6 +116,10 @@ test("the Windows store signer pins the leaf and verifies the SHA-256 timestampe
     ],
     ["verify", "/pa", "/tw", "setup.exe"],
   ]);
+  await assert.rejects(
+    sign({ path: "setup.exe", hash: "sha256", isNest: true }),
+    /WINDOWS_SIGNING_APPEND_UNSUPPORTED/,
+  );
 });
 
 test("a mismatched public certificate and a failed timestamp stop signed packaging", async (t) => {

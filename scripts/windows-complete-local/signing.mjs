@@ -76,6 +76,8 @@ export function createCompanyWindowsSigner(
   return (configuration) => {
     const operation = pending.then(async () => {
       if (configuration.hash !== "sha256") throw Error("WINDOWS_SIGNING_SHA256_REQUIRED");
+      if (configuration.isNest) throw Error("WINDOWS_SIGNING_APPEND_UNSUPPORTED");
+      if (await options.preserveSignature?.(configuration.path)) return;
       await options.repairExecutable(configuration.path);
       const settings = {
         windowsHide: true,
