@@ -305,65 +305,71 @@ export function createPluginDetailUpdates(
     recovering = false,
   ) => {
     let generation = ++statusRequestGeneration;
-    const next = parseUpdateClientStatus(
-      await request("status", { pageIdentity: owner.identity }, signal),
-    );
-    if (page !== owner || generation !== statusRequestGeneration) return;
-    if (!publishStatus(next)) return;
-    if (recovering && owner.recovering) {
-      owner.recovering = false;
-      clearTimeout(owner.recoveryTimer);
-      const names = snapshot.items
-        .filter((row) => operationStages.includes(row.state))
-        .map((row) => row.packageName);
-      if (names.length) observe(owner, names);
-    }
-    const confirming = snapshot.items.filter(
-      (row) =>
-        row.state === "confirming" &&
-        row.candidateVersion !== null &&
-        row.runningHostVersion === row.candidateVersion,
-    );
-    owner.awaitingClient = confirming.length > 0;
-    const modules = readClientPluginModules(ctx);
-    let acknowledged = false;
-    if (modules.length && next.items.some((row) => row.runningHostVersion !== null)) {
-      await request(
-        "observed",
-        {
-          hostProcessIdentity: next.hostProcessIdentity,
-          pageIdentity: owner.identity,
-          nonce: next.challenge,
-          modules,
-        },
-        signal,
-      )
-        .then(() => {
-          acknowledged = true;
-        })
-        .catch(() => {
-          signal.throwIfAborted();
-        });
-    }
-    if (page !== owner || generation !== statusRequestGeneration) return;
-    if (
-      acknowledged &&
-      confirming.length &&
-      confirming.every((row) =>
-        modules.some(
-          (module) =>
-            module.stamp.name === row.packageName && module.stamp.version === row.candidateVersion,
-        ),
-      )
-    ) {
-      generation = ++statusRequestGeneration;
-      const confirmed = parseUpdateClientStatus(
+    try {
+      const next = parseUpdateClientStatus(
         await request("status", { pageIdentity: owner.identity }, signal),
       );
       if (page !== owner || generation !== statusRequestGeneration) return;
-      if (publishStatus(confirmed)) owner.awaitingClient = false;
+      if (!publishStatus(next)) return;
+      if (recovering && owner.recovering) {
+        owner.recovering = false;
+        clearTimeout(owner.recoveryTimer);
+        const names = snapshot.items
+          .filter((row) => operationStages.includes(row.state))
+          .map((row) => row.packageName);
+        if (names.length) observe(owner, names);
+      }
+      const confirming = snapshot.items.filter(
+        (row) =>
+          row.state === "confirming" &&
+          row.candidateVersion !== null &&
+          row.runningHostVersion === row.candidateVersion,
+      );
+      owner.awaitingClient = confirming.length > 0;
+      const modules = readClientPluginModules(ctx);
+      let acknowledged = false;
+      if (modules.length && next.items.some((row) => row.runningHostVersion !== null)) {
+        await request(
+          "observed",
+          {
+            hostProcessIdentity: next.hostProcessIdentity,
+            pageIdentity: owner.identity,
+            nonce: next.challenge,
+            modules,
+          },
+          signal,
+        )
+          .then(() => {
+            acknowledged = true;
+          })
+          .catch(() => {
+            signal.throwIfAborted();
+          });
+      }
+      if (page !== owner || generation !== statusRequestGeneration) return;
+      if (
+        acknowledged &&
+        confirming.length &&
+        confirming.every((row) =>
+          modules.some(
+            (module) =>
+              module.stamp.name === row.packageName &&
+              module.stamp.version === row.candidateVersion,
+          ),
+        )
+      ) {
+        generation = ++statusRequestGeneration;
+        const confirmed = parseUpdateClientStatus(
+          await request("status", { pageIdentity: owner.identity }, signal),
+        );
+        if (page !== owner || generation !== statusRequestGeneration) return;
+        if (publishStatus(confirmed)) owner.awaitingClient = false;
+      }
+      reflectObservation(owner);
+    } catch (error) {
+      if (page !== owner || generation !== statusRequestGeneration) return;
+      throw error;
     }
-    reflectObservation(owner);
   };
   const tick = async (owner: NonNullable<typeof page>) => {
     try {

@@ -24,6 +24,12 @@ const graphValues = (manifest) =>
   Object.fromEntries(
     graphFields.filter((key) => Object.hasOwn(manifest, key)).map((key) => [key, manifest[key]]),
   );
+const rolledBackSelection = (selection, id) =>
+  selection.previous === id &&
+  selection.active !== id &&
+  selection.active === selection.verified &&
+  selection.pending === null &&
+  (selection.booting === null || selection.booting === selection.active);
 const json = async (path) => JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, ""));
 const optional = async (path) =>
   readFile(path).catch((error) => {
@@ -138,7 +144,20 @@ export class CompanyInstallation {
       ? "pending"
       : selection.active === id
         ? "active"
-        : "unavailable";
+        : rolledBackSelection(selection, id)
+          ? "rolled-back"
+          : "unavailable";
+  }
+  async recoverRollback(id) {
+    return this.store.withSelectionLock(async () => {
+      const selection = await this.store.status();
+      if (!rolledBackSelection(selection, id)) return false;
+      await this.failOperation(
+        id,
+        typeof selection.error === "string" ? selection.error : "PREVIOUS_BOOT_INTERRUPTED",
+      );
+      return true;
+    });
   }
   async beginBoot({ activatePending = true } = {}) {
     await this.preparationIdle();

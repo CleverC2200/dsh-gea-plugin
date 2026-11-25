@@ -48,7 +48,10 @@ import {
   observeProfilePackageProcesses,
 } from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun, type PluginUpdateFileCommit } from "./plugin-update-windows.ts";
-import { openCompanyInstallation } from "../../desktop/company-installation.mjs";
+import {
+  openCompanyInstallation,
+  type CompanyInstallation,
+} from "../../desktop/company-installation.mjs";
 import { companyPnpmNetworkArguments } from "../../desktop/company-pnpm.mjs";
 
 export const pluginUpdateProcessIdentity = `${process.pid}:${performance.timeOrigin}`;
@@ -329,7 +332,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     checking = 0,
     active: Promise<void> | null = null;
   let startup: RuntimePackageProof[] = [];
-  let candidateActivation: "pending" | "active" | "unavailable" = "unavailable";
+  let candidateActivation: Awaited<ReturnType<CompanyInstallation["activationState"]>> =
+    "unavailable";
   let plans = new Map<UpdatablePackageName, Plan>();
   let suiteReleases: PluginRelease[] = [];
   let currentMonitor: Pick<
@@ -443,13 +447,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       await durableJson(join(operation.directory, "receipt.legacy.json"), raw, options.fileCommit);
     return operation;
   }
-  async function persist(operation: PluginUpdateOperation) {
-    await durableJson(
-      join(operations, operation.id, "receipt.json"),
-      operation,
-      options.fileCommit,
-    );
-    if (operation.stage === "pending-restart") await readCandidateSelection(operation);
+  function reflectOperation(operation: PluginUpdateOperation) {
     state = { ...state, operation };
     for (const target of operationTargets(operation))
       row(target.packageName, {
@@ -458,6 +456,15 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         candidateVersion: target.targetVersion,
         planId: null,
       });
+  }
+  async function persist(operation: PluginUpdateOperation) {
+    await durableJson(
+      join(operations, operation.id, "receipt.json"),
+      operation,
+      options.fileCommit,
+    );
+    if (operation.stage === "pending-restart") await readCandidateSelection(operation);
+    reflectOperation(operation);
   }
   async function stage(
     stage: PluginUpdateStage,
@@ -477,6 +484,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     const installation = await readCandidateSelection();
     if (
       installation &&
+      (candidateActivation !== "rolled-back" || !blocking(state.operation)) &&
       (await installation.confirmRuntime(
         await options.readRuntimeProofs(pluginUpdateProcessIdentity),
       )) &&
@@ -516,7 +524,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       !operation ||
       !["pending-restart", "unknown"].includes(operation.stage) ||
       operation.processIdentity === pluginUpdateProcessIdentity ||
-      (operation.installationId && candidateActivation !== "active")
+      (operation.installationId &&
+        candidateActivation !== "active" &&
+        candidateActivation !== "rolled-back")
     )
       return snapshot();
     return withFileLock(
@@ -529,7 +539,19 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           !["pending-restart", "unknown"].includes(latestOperation.stage)
         )
           return snapshot();
-        await readCandidateSelection(latestOperation);
+        const selectedInstallation = await readCandidateSelection(latestOperation);
+        if (latestOperation.installationId && candidateActivation === "rolled-back") {
+          if (
+            !selectedInstallation ||
+            !previousPackageProcessesStopped(options.profile.dir, latestOperation) ||
+            !(await selectedInstallation.recoverRollback(latestOperation.id))
+          )
+            return snapshot();
+          const recovered = await readLatest();
+          if (recovered?.id === latestOperation.id && recovered.stage === "failed")
+            reflectOperation(recovered);
+          return snapshot();
+        }
         if (latestOperation.installationId && candidateActivation !== "active") return snapshot();
         state = { ...state, operation: latestOperation };
         const profile = await readPluginProfile(options.profile.dir),

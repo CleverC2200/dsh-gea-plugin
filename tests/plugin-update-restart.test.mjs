@@ -340,3 +340,29 @@ test("a transient confirming poll failure waits for the bounded observation dead
   await owner.restart();
   assert.deepEqual(state.requests, []);
 });
+
+test("a late failure from the first status request cannot replace a newer confirming status", async (t) => {
+  const delayed = Promise.withResolvers();
+  let waiting = false;
+  const { owner, state } = await fixture(t, true, 30000, {
+    statusResponse: async (response) => {
+      if (!waiting) {
+        waiting = true;
+        await delayed.promise;
+        throw new TypeError("old Host connection closed");
+      }
+      return response;
+    },
+  });
+  state.phase = "confirming";
+  state.hostProcessIdentity = "new-host";
+  await owner.check();
+  assert.equal(owner.getSnapshot().items[0].state, "confirming");
+  delayed.resolve();
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().transportError, null);
+  assert.equal(owner.getSnapshot().items[0].state, "confirming");
+  assert.equal(owner.getSnapshot().restartReady, false);
+  await owner.restart();
+  assert.deepEqual(state.requests, []);
+});

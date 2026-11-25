@@ -1,7 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { mkdir, mkdtemp, readFile, writeFile, rm, realpath } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  writeFile,
+  rm,
+  realpath,
+  readdir,
+  chmod,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -1887,6 +1896,72 @@ test("the known failed managed receipt keeps its history while repeated checks r
   assert.equal(controller.snapshot().operation.id, legacy.receipt.id);
   assert.equal(await readFile(legacy.path, "utf8"), legacy.bytes);
   await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), { code: "ENOENT" });
+});
+
+test("a rollback selected before its receipt write resumes only after the old writer stops", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const saved = await historicalPluginReceipt(f, (receipt) => {
+    delete receipt.completionProofs;
+    return { ...receipt, stage: "pending-restart", completionProof: null };
+  });
+  await f.installation.prepare(saved.receipt.id, async () => {});
+  await f.installation.beginBoot();
+  assert.equal(await f.installation.store.failBoot("GEA_TRIAL_STARTUP_TIMEOUT"), "baseline");
+  await f.installation.beginBoot();
+  assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
+  const run = join(f.dir, ".plugin-manager/run.json");
+  await mkdir(dirname(run), { recursive: true });
+  await writeFile(run, JSON.stringify({ pid: process.pid, grouped: false }));
+  let sourceReads = 0;
+  const controller = createPluginUpdateController({
+    ...f.options,
+    source: {
+      ...f.source,
+      check: (...args) => {
+        sourceReads++;
+        return f.source.check(...args);
+      },
+    },
+  });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  await controller.check();
+  assert.equal(controller.snapshot().operation.stage, "pending-restart");
+  assert.equal(sourceReads, 0);
+  assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
+  await rm(run);
+  const receiptDirectory = dirname(saved.path);
+  if (process.platform !== "win32" && process.getuid?.() !== 0) {
+    await chmod(receiptDirectory, 0o500);
+    try {
+      await controller.reconcileRuntime();
+      await controller.check();
+      assert.equal(controller.snapshot().operation.stage, "pending-restart");
+      assert.equal(sourceReads, 0);
+      assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
+    } finally {
+      await chmod(receiptDirectory, 0o700);
+    }
+  }
+  await controller.reconcileRuntime();
+  const restored = controller.snapshot();
+  assert.equal(restored.operation.stage, "failed");
+  assert.equal(restored.operation.diagnostic, "GEA_TRIAL_STARTUP_TIMEOUT");
+  assert.equal(restored.operation.completionProof, null);
+  const backup = (await readdir(receiptDirectory)).find((name) =>
+    name.startsWith("receipt.before-boot-failure-"),
+  );
+  assert(backup);
+  assert.equal(await readFile(join(receiptDirectory, backup), "utf8"), saved.bytes);
+  await controller.reconcileRuntime();
+  assert.equal((await f.installation.store.status()).booting, null);
+  await controller.check();
+  assert.equal(sourceReads, 1);
+  assert.deepEqual(
+    controller.snapshot().items.map((row) => row.state),
+    ["current", "current", "available"],
+  );
 });
 
 for (const multiple of [false, true])
