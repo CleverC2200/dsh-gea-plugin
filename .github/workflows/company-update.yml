@@ -116,6 +116,8 @@ jobs:
             .runtime/windows-update-native/*.json
             .runtime/windows-update-native/*.log
             .runtime/windows-update-native/*.png
+            .runtime/windows-update-native/legacy-bootstrap/*.json
+            .runtime/windows-update-native/legacy-bootstrap/*.log
           if-no-files-found: warn
   startup:
     if: inputs.certum_run_pair == ''

@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile, copyFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -92,7 +93,24 @@ assert.ok(missingArchive, log);
 assert.ok(packages.includes(missingArchive[1]), missingArchive[1]);
 await writeFile(join(output, "failure-pnpm.log"), log);
 await writeFile(join(output, "failed-receipt.json"), JSON.stringify(failed, null, 2));
-const recovered = await refreshBundledCompanySuite(options);
+const recovered = await refreshBundledCompanySuite(options).catch(async (error) => {
+  if (error.message === "GEA_LEGACY_ARCHIVE_LOCK_MISMATCH") {
+    const name = "@changfenhuang/dsh-genui";
+    const current = JSON.parse(await readFile(join(profile, "package.json"), "utf8"));
+    const yaml = createRequire(join(root, "dsh/package.json"))("yaml");
+    const lock = yaml.parse(await readFile(join(profile, "pnpm-lock.yaml"), "utf8"));
+    console.error(
+      JSON.stringify({
+        dependency: current.dependencies?.[name],
+        importer: lock.importers?.["."]?.dependencies?.[name],
+        tarballs: Object.entries(lock.packages ?? {})
+          .filter(([key]) => key.startsWith(name + "@file:"))
+          .map(([key, value]) => [key, value.resolution?.tarball ?? null]),
+      }),
+    );
+  }
+  throw error;
+});
 assert.equal(recovered.status, "completed");
 assert.deepEqual(
   JSON.parse(await readFile(join(failed.backup, "failed-receipt.json"), "utf8")),
