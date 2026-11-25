@@ -300,6 +300,55 @@ test("boot rollback also fails a combined update receipt and preserves its origi
   await f.preserved();
 });
 
+for (const multiple of [false, true])
+  test(`boot rollback clears completed plugin proofs and preserves every prior receipt (${multiple ? "multiple" : "single"})`, async (t) => {
+    const f = await fixture(t);
+    const id = "12345678-1234-1234-1234-123456789abc";
+    const directory = join(f.profile, "gea/plugin-updates/operations", id);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(f.profile, "gea/plugin-updates/latest.json"), JSON.stringify({ id }));
+    const receipt = {
+      schema: 2,
+      id,
+      installationId: id,
+      stage: "completed",
+      completionProof: { processIdentity: "verified-host" },
+      ...(multiple
+        ? {
+            completionProofs: companyPackageNames.map(() => ({ processIdentity: "verified-host" })),
+            targets: companyPackageNames.map((packageName) => ({
+              packageName,
+              targetVersion: "2.0.0",
+            })),
+          }
+        : { packageName: companyPackageNames[0], targetVersion: "2.0.0" }),
+    };
+    const original = JSON.stringify(receipt);
+    const path = join(directory, "receipt.json");
+    await writeFile(path, original);
+    await f.installation.prepare(id, f.update);
+    await f.installation.beginBoot();
+    assert.equal((await f.installation.rollback("GEA_TRIAL_STARTUP_TIMEOUT")).changed, true);
+    const failed = await readFile(path, "utf8");
+    await f.installation.failOperation(id, "REPEATED_FAILURE");
+    for (const bytes of [failed, await readFile(path, "utf8")]) {
+      const record = JSON.parse(bytes);
+      assert.equal(record.stage, "failed");
+      assert.equal(record.completionProof, null);
+      assert.equal(Object.hasOwn(record, "completionProofs"), false);
+      assert.deepEqual(record.targets, receipt.targets);
+      assert.equal(record.installationId, id);
+    }
+    const backups = await Promise.all(
+      (await readdir(directory))
+        .filter((name) => name.startsWith("receipt.before-boot-failure-"))
+        .map((name) => readFile(join(directory, name), "utf8")),
+    );
+    assert.deepEqual(backups.sort(), [original, failed].sort());
+    assert.equal((await f.installation.beginBoot()).id, "baseline");
+    await f.preserved();
+  });
+
 for (const failure of [
   false,
   true,

@@ -1763,6 +1763,223 @@ test("a corrupt isolated update journal allows desktop unlock without accepting 
   assert.equal(await controller.companyStatus(), null);
 });
 
+async function historicalPluginReceipt(f, change = (receipt) => receipt) {
+  const id = "00000000-0000-4000-8000-000000000051";
+  const runtime = f.options.runtimeDirectory;
+  const directory = join(runtime, "operations", id);
+  const targets = f.proofs.map((proof, index) => ({
+    packageName: proof.name,
+    targetVersion: proof.host.stamp.version,
+    targetSha256: String(index + 1).repeat(64),
+    archivePath: join(runtime, "cache", index + ".tgz"),
+  }));
+  const completionProofs = f.proofs.map((proof) => ({
+    processIdentity: "verified-previous-runtime",
+    host: proof.host,
+    client: {
+      ...proof.client,
+      binding: { ...proof.client.binding, hostProcessIdentity: "verified-previous-runtime" },
+    },
+  }));
+  const receipt = change({
+    schema: 2,
+    id,
+    installationId: id,
+    directory,
+    ...targets[0],
+    targets,
+    processIdentity: "previous-updater",
+    stage: "completed",
+    startedAt: "2026-11-24T00:00:00.000Z",
+    updatedAt: "2026-11-24T00:01:00.000Z",
+    logs: [],
+    processes: [],
+    completionProof: completionProofs[0],
+    completionProofs,
+    diagnostic: null,
+  });
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(runtime, "latest.json"), JSON.stringify({ id }));
+  const path = join(directory, "receipt.json");
+  const bytes = JSON.stringify(receipt);
+  await writeFile(path, bytes);
+  return { receipt, path, bytes };
+}
+
+test("the known failed managed receipt keeps its history while repeated checks read the source and live writers still block installation", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const before = await readFile(join(f.dir, "package.json"));
+  const legacy = await historicalPluginReceipt(f, (receipt) => ({
+    ...receipt,
+    stage: "failed",
+    completionProof: null,
+    diagnostic: "PREVIOUS_OPERATION_INTERRUPTED",
+  }));
+  let sourceReads = 0;
+  const controller = createPluginUpdateController({
+    ...f.options,
+    source: {
+      ...f.source,
+      check: (...args) => {
+        sourceReads++;
+        return f.source.check(...args);
+      },
+    },
+  });
+  t.after(() => controller.dispose());
+  const initial = await controller.initialize();
+  assert.equal(initial.operation?.stage, "failed");
+  assert.equal(initial.operation?.completionProofs, undefined);
+  assert(initial.items.every((row) => row.diagnostic === "PREVIOUS_OPERATION_INTERRUPTED"));
+  for (let index = 1; index <= 2; index++) {
+    const checked = await controller.check();
+    assert.equal(sourceReads, index);
+    assert.deepEqual(
+      checked.items.map((row) => row.state),
+      ["current", "current", "available"],
+    );
+    assert.equal(checked.operation.stage, "failed");
+  }
+  assert.equal(await readFile(legacy.path, "utf8"), legacy.bytes);
+  assert.deepEqual(await readFile(join(f.dir, "package.json")), before);
+  const run = join(f.dir, ".plugin-manager/run.json");
+  await mkdir(dirname(run), { recursive: true });
+  await writeFile(run, JSON.stringify({ pid: process.pid, grouped: false }));
+  const row = controller.snapshot().items.find((item) => item.planId);
+  await assert.rejects(
+    controller.submit({ packageName: row.packageName, planId: row.planId }),
+    /PROFILE_WRITER_UNCONFIRMED/,
+  );
+  assert.equal(controller.snapshot().operation.id, legacy.receipt.id);
+  assert.equal(await readFile(legacy.path, "utf8"), legacy.bytes);
+  await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), { code: "ENOENT" });
+});
+
+for (const multiple of [false, true])
+  test(`a rolled back ${multiple ? "multi" : "single"} package operation remains readable by the Host`, async (t) => {
+    const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+    const f = await controllerFixture(t);
+    const saved = await historicalPluginReceipt(f, (receipt) => {
+      if (!multiple) {
+        delete receipt.targets;
+        delete receipt.completionProofs;
+      }
+      return receipt;
+    });
+    await f.installation.prepare(saved.receipt.id, async () => {});
+    await f.installation.beginBoot();
+    assert.equal((await f.installation.rollback("GEA_TRIAL_STARTUP_TIMEOUT")).changed, true);
+    await f.installation.beginBoot();
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    const initial = await controller.initialize();
+    assert.equal(initial.operation?.stage, "failed");
+    assert.equal(initial.operation?.diagnostic, "GEA_TRIAL_STARTUP_TIMEOUT");
+    assert.equal(initial.operation?.completionProof, null);
+    assert.equal(initial.operation?.completionProofs, undefined);
+    const checked = await controller.check();
+    assert.deepEqual(
+      checked.items.map((row) => row.state),
+      ["current", "current", "available"],
+    );
+  });
+
+for (const schema of [1, 2])
+  test(`valid schema ${schema} historical completions retain their proofs and allow another check`, async (t) => {
+    const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+    const f = await controllerFixture(t);
+    const saved = await historicalPluginReceipt(f, (receipt) => ({
+      ...receipt,
+      schema,
+      ...(schema === 1 ? { recoveryDirectory: join(receipt.directory, "before") } : {}),
+    }));
+    const controller = createPluginUpdateController(f.options);
+    t.after(() => controller.dispose());
+    const initial = await controller.initialize();
+    assert.equal(initial.operation?.stage, "completed");
+    assert.deepEqual(initial.operation?.completionProofs, saved.receipt.completionProofs);
+    assert.deepEqual(
+      (await controller.check()).items.map((row) => row.state),
+      ["current", "current", "available"],
+    );
+    assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
+  });
+
+test("legacy failed receipt compatibility still rejects other shapes and damaged operation boundaries", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const variants = {
+    "schema 1": (receipt) => ({
+      ...receipt,
+      schema: 1,
+      recoveryDirectory: join(receipt.directory, "before"),
+    }),
+    unmanaged: (receipt) => ({ ...receipt, installationId: undefined }),
+    "nonempty single proof": (receipt) => ({
+      ...receipt,
+      completionProof: receipt.completionProofs[0],
+    }),
+    "pending operation": (receipt) => ({ ...receipt, stage: "pending-restart" }),
+    "installing operation": (receipt) => ({ ...receipt, stage: "installing" }),
+    "single target": (receipt) => ({ ...receipt, targets: undefined }),
+    "proof count": (receipt) => ({ ...receipt, completionProofs: [] }),
+    "proof type": (receipt) => ({ ...receipt, completionProofs: {} }),
+    "different id": (receipt) => ({
+      ...receipt,
+      id: "00000000-0000-4000-8000-000000000052",
+      installationId: "00000000-0000-4000-8000-000000000052",
+    }),
+    "different directory": (receipt) => ({
+      ...receipt,
+      directory: join(dirname(receipt.directory), "other"),
+    }),
+    "archive outside cache": (receipt) => ({
+      ...receipt,
+      archivePath: "/outside/plugin.tgz",
+      targets: receipt.targets.map((target, index) =>
+        index ? target : { ...target, archivePath: "/outside/plugin.tgz" },
+      ),
+    }),
+    "invalid target": (receipt) => ({
+      ...receipt,
+      targets: receipt.targets.map((target, index) =>
+        index ? { ...target, targetSha256: "invalid" } : target,
+      ),
+    }),
+    "invalid diagnostic": (receipt) => ({ ...receipt, diagnostic: {} }),
+  };
+  for (const [name, change] of Object.entries(variants))
+    await t.test(name, async (t) => {
+      const f = await controllerFixture(t);
+      const saved = await historicalPluginReceipt(f, (receipt) =>
+        change({
+          ...receipt,
+          stage: "failed",
+          completionProof: null,
+          diagnostic: "PREVIOUS_OPERATION_INTERRUPTED",
+        }),
+      );
+      let sourceReads = 0;
+      const controller = createPluginUpdateController({
+        ...f.options,
+        source: {
+          ...f.source,
+          check: async () => {
+            sourceReads++;
+            return [];
+          },
+        },
+      });
+      t.after(() => controller.dispose());
+      const initial = await controller.initialize();
+      assert.equal(initial.operation, null);
+      assert(initial.items.every((row) => row.diagnostic === "UPDATE_JOURNAL_UNREADABLE"));
+      await controller.check();
+      assert.equal(sourceReads, 0);
+      assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
+    });
+});
+
 test("a prepared desktop update wins the profile lock over a plugin install still downloading", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t, {
