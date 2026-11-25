@@ -111,7 +111,10 @@ environment.TAR_OPTIONS = "--force-local --quoting-style=literal";
 await mkdir(output, { recursive: true });
 
 async function powershell(source, args = [], timeout = 30000) {
-  await writeFile(ps, `$ErrorActionPreference='Stop'\n& {\n${source}\n} @args`);
+  await writeFile(
+    ps,
+    `$ErrorActionPreference='Stop'\n$env:PSModulePath=Join-Path $PSHOME 'Modules'\n[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n& {\n${source}\n} @args`,
+  );
   return execFileSync(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps, ...args],
