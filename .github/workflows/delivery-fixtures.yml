@@ -23,6 +23,11 @@ on:
         description: "Desktop version, required Core, merged GEA SHA, company suite and pinned personal memory as JSON"
         required: false
         type: string
+      windows_store_signing:
+        description: "Sign a complete Windows package with the approved SimplySign certificate"
+        default: false
+        required: false
+        type: boolean
       windows_store_probe:
         description: "Sign one isolated sample with the pinned SimplySign certificate"
         default: false
@@ -220,18 +225,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24.14.1"
-      - name: Install verified SimplySign Desktop
-        shell: pwsh
-        run: ./scripts/windows-complete-local/prepare-store-signing.ps1 -Install
-      - name: Sign in to SimplySign
-        shell: pwsh
-        env:
-          CERTUM_USERNAME: ${{ secrets.GEA_CERTUM_ACCOUNT }}
-          CERTUM_TOTP_SECRET: ${{ secrets.GEA_CERTUM_TOTP_SECRET }}
-        run: node "$env:GEA_CERTUM_AUTH_SCRIPT"
-      - name: Verify a sample signature and export its public certificate
-        shell: pwsh
-        run: ./scripts/windows-complete-local/prepare-store-signing.ps1
+      - uses: ./.github/actions/windows-certum
+        with:
+          account: ${{ secrets.GEA_CERTUM_ACCOUNT }}
+          seed: ${{ secrets.GEA_CERTUM_TOTP_SECRET }}
       - uses: actions/upload-artifact@v4
         with:
           name: windows-store-signature-proof
@@ -512,6 +509,7 @@ jobs:
       contents: read
       actions: write
     runs-on: windows-2025
+    environment: ${{ inputs.windows_store_signing && 'windows-certum' || 'windows-legacy' }}
     timeout-minutes: 90
     env:
       DSH_DESKTOP_TARGET_PLATFORM: win32
@@ -519,6 +517,7 @@ jobs:
       DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
       DSH_DESKTOP_UNSIGNED: "1"
       GEA_WINDOWS_SIGNED: ${{ inputs.windows_signed && !inputs.prepare_windows_cache && '1' || '0' }}
+      GEA_WINDOWS_STORE_CERT_SHA1: ${{ vars.GEA_WINDOWS_STORE_CERT_SHA1 }}
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_7Z_FILTER: BCJ
@@ -582,8 +581,14 @@ jobs:
           $fixed = Get-Content -Raw $inputPath | ConvertFrom-Json
           "DSH_DESKTOP_BUILD_VERSION=$($fixed.desktopVersion)" | Out-File -Append -FilePath $env:GITHUB_ENV
           "GEA_DESKTOP_INPUT=$inputPath" | Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Open the approved SimplySign signing session
+        if: inputs.windows_signed && !inputs.prepare_windows_cache && inputs.windows_store_signing
+        uses: ./gea/.github/actions/windows-certum
+        with:
+          account: ${{ secrets.GEA_CERTUM_ACCOUNT }}
+          seed: ${{ secrets.GEA_CERTUM_TOTP_SECRET }}
       - name: Prepare isolated Windows signing credentials
-        if: inputs.windows_signed && !inputs.prepare_windows_cache
+        if: inputs.windows_signed && !inputs.prepare_windows_cache && !inputs.windows_store_signing
         env:
           GEA_SIGNING_PFX_BASE64: ${{ secrets.GEA_WINDOWS_SIGNING_PFX_BASE64 }}
           GEA_SIGNING_PASSWORD: ${{ secrets.GEA_WINDOWS_SIGNING_PASSWORD }}
