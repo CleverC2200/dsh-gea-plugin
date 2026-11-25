@@ -52,11 +52,7 @@ if ($Owner) {
 } else {
     if (!(Test-ExistingInstallation $Backup)) { exit 0 }
     if ([IO.Directory]::Exists($Target)) {
-        try {
-            [IO.Directory]::Delete($Target, $false)
-        } catch [IO.IOException] {
-            exit 0
-        }
+        [IO.Directory]::Delete($Target, $false)
     }
 }
 
