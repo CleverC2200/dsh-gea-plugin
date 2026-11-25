@@ -8,13 +8,73 @@ on:
         required: false
         default: ""
         type: string
+      certum_run_pair:
+        description: 'Successful delivery run IDs as JSON with bridge and certum keys'
+        required: false
+        default: ""
+        type: string
 permissions:
   contents: read
 concurrency:
   group: company-update-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  windows-certum-migration:
+    if: github.event_name == 'workflow_dispatch' && inputs.certum_run_pair != ''
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.0"
+      - name: Prepare release receipt dependencies
+        shell: pwsh
+        run: |
+          npm install --prefix .runtime/tools --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/tools/node_modules" | Out-Null
+      - name: Retrieve the two exact verified Windows builds
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAIR: ${{ inputs.certum_run_pair }}
+        run: |
+          $pair = $env:PAIR | ConvertFrom-Json -AsHashtable
+          if ($pair.Count -ne 2 -or "$($pair.bridge)" -notmatch '^[1-9][0-9]+$' -or "$($pair.certum)" -notmatch '^[1-9][0-9]+$' -or $pair.bridge -eq $pair.certum) { throw 'CERTUM_MIGRATION_RUN_PAIR_INVALID' }
+          $head = $null
+          foreach ($kind in @('bridge', 'certum')) {
+            $id = $pair[$kind]
+            $run = gh api "repos/$($env:GITHUB_REPOSITORY)/actions/runs/$id" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $run.event -ne 'workflow_dispatch' -or $run.path -notlike '.github/workflows/delivery-fixtures.yml*' -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.conclusion -ne 'success') { throw 'CERTUM_MIGRATION_DELIVERY_RUN_INVALID' }
+            if ($head -and $head -ne $run.head_sha) { throw 'CERTUM_MIGRATION_SOURCE_MISMATCH' }
+            $head = $run.head_sha
+            $destination = Join-Path $env:RUNNER_TEMP "certum-migration-$kind"
+            gh run download $id -R $env:GITHUB_REPOSITORY -p '*-win-x64-complete' -D $destination
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $receipts = @(Get-ChildItem $destination -Recurse -Force -Filter result.json -File | Where-Object { $_.Directory.Name -eq 'gea-local' })
+            if ($receipts.Count -ne 1) { throw 'CERTUM_MIGRATION_RECEIPT_REQUIRED' }
+            $build = Get-Content $receipts[0].FullName -Raw | ConvertFrom-Json
+            if ($build.geaSha -ne $head -or $build.runner.runId -ne "$id") { throw 'CERTUM_MIGRATION_RECEIPT_CHANGED' }
+            "GEA_CERTUM_$($kind.ToUpperInvariant())=$($receipts[0].Directory.Parent.FullName)" | Out-File -Append -FilePath $env:GITHUB_ENV
+          }
+      - name: Exercise both native upgrades and read back the same profile
+        shell: pwsh
+        run: node scripts/windows-complete-local/certum-migration.mjs "$env:GEA_CERTUM_BRIDGE" "$env:GEA_CERTUM_CERTUM" "$env:RUNNER_TEMP/certum-migration-result"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: certum-migration-result
+          path: ${{ runner.temp }}/certum-migration-result/*.json
+          if-no-files-found: warn
   windows-company-entry:
+    if: inputs.certum_run_pair == ''
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
@@ -58,6 +118,7 @@ jobs:
             .runtime/windows-update-native/*.png
           if-no-files-found: warn
   startup:
+    if: inputs.certum_run_pair == ''
     strategy:
       fail-fast: false
       matrix:
@@ -78,6 +139,7 @@ jobs:
       - name: Verify coordinated startup and completion
         run: node --test desktop/company-update.test.mjs desktop/company-gea-refresh.test.mjs desktop/company-installation.test.mjs desktop/company-desktop.test.mjs
   legacy-client:
+    if: inputs.certum_run_pair == ''
     runs-on: windows-2025
     timeout-minutes: 20
     defaults:
@@ -130,7 +192,7 @@ jobs:
           path: integration/dsh-gea-plugin/.runtime/detail-summary/
           if-no-files-found: warn
   core-contract:
-    if: github.event_name == 'workflow_dispatch' && inputs.core_sha != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.core_sha != '' && inputs.certum_run_pair == ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
