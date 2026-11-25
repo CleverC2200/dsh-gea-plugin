@@ -136,17 +136,19 @@ export async function inspectPluginArchive(
   const entries = new Set<string>();
   const manifest: Buffer[] = [];
   let nameBytes = 0;
+  let manifestBytes = 0;
   const archive = readTar({
     strict: true,
     onReadEntry(entry) {
       const rawPath = entry.header.path ?? "";
       const file =
-        entry.type === "Directory" && !rawPath.endsWith("/") ? rawPath + "/" : rawPath;
+        entry.type === "Directory" && !entry.path.endsWith("/") ? entry.path + "/" : entry.path;
       nameBytes += Buffer.byteLength(file) + 1;
       if (
         nameBytes > limit ||
         entries.has(file) ||
         !file.startsWith("package/") ||
+        /[\\\n\r\t]/.test(rawPath) ||
         /[\\\n\r\t]/.test(file) ||
         file.split("/").some((part) => part === ".." || part === ".") ||
         file.includes("//") ||
@@ -162,7 +164,12 @@ export async function inspectPluginArchive(
       entries.add(file);
       if (file === "package/package.json" && entry.type !== "Directory") {
         if (entry.size > limit) archive.abort(Error("SOURCE_ARCHIVE_INVALID"));
-        else entry.on("data", (chunk: Buffer) => manifest.push(chunk));
+        else
+          entry.on("data", (chunk: Buffer) => {
+            manifestBytes += chunk.byteLength;
+            if (manifestBytes > limit) archive.abort(Error("SOURCE_ARCHIVE_INVALID"));
+            else manifest.push(chunk);
+          });
       }
     },
   });
