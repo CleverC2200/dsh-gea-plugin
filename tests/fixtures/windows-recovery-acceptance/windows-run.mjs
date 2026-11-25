@@ -235,13 +235,62 @@ async function traceLegacyStartup(port) {
     recipe,
     `
     import { appendFileSync } from "node:fs";
-    const report = (value) => appendFileSync(${JSON.stringify(legacyTrace)}, JSON.stringify(value) + "\\n");
+    import { Session } from "node:inspector";
+    import { syncBuiltinESMExports } from "node:module";
+    const report = (value) => appendFileSync(${JSON.stringify(legacyTrace)}, JSON.stringify({ time: new Date().toISOString(), ...value }) + "\\n");
     report({ kind: "host-probe-loaded", hasDesktopVersion: Boolean(process.env.GEA_DESKTOP_VERSION) });
+    const session = new Session();
+    session.connect();
+    session.post("Debugger.enable");
+    session.on("Debugger.paused", ({ params }) => {
+      const frame = params.callFrames.find((candidate) => candidate.scopeChain.some((scope) => scope.type === "catch"));
+      const scope = frame?.scopeChain.find((candidate) => candidate.type === "catch");
+      if (!scope) { session.post("Debugger.resume"); return; }
+      session.post("Runtime.getProperties", { objectId: scope.object.objectId, ownProperties: true }, (_, reply) => {
+        const binding = reply?.result.find((property) => property.value?.subtype === "error")?.name;
+        if (!binding || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding)) { session.post("Debugger.resume"); return; }
+        session.post("Debugger.evaluateOnCallFrame", {
+          callFrameId: frame.callFrameId,
+          expression: "((error) => ({name:error.name,code:error.code,status:error.status,signal:error.signal,syscall:error.syscall,timeout:/timed out|ETIMEDOUT/i.test(error.message),commandFailed:/^Command failed:/i.test(error.message),stack:String(error.stack).split(String.fromCharCode(10)).slice(1,8).map((line) => line.trim().split(' ').slice(0,2).join(' ')).filter((line) => /^at [A-Za-z0-9._<>]+$/.test(line))}))(" + binding + ")",
+          returnByValue: true,
+        }, (_, reply) => {
+          if (reply?.result?.value) report({ kind: "caught-host-error", ...reply.result.value });
+          session.post("Debugger.resume");
+        });
+      });
+    });
+    const commands = process.getBuiltinModule("node:child_process");
+    const exec = commands.execFileSync;
+    commands.execFileSync = function(executable, args, options) {
+      if (!Array.isArray(args) || !args.includes("--replace")) return Reflect.apply(exec, this, [executable, args, options]);
+      try {
+        const result = Reflect.apply(exec, this, [executable, args, { ...options, stdio: ["ignore", "ignore", "pipe"] }]);
+        report({ kind: "windows-file-replace-ok" });
+        return result;
+      } catch (error) {
+        const signal = /UPDATE_WINDOWS_JOB_UNCONFIRMED ([A-Za-z0-9_]+(?::[0-9]+)?)/.exec(String(error.stderr ?? ""))?.[1];
+        report({ kind: "windows-file-replace-failed", signal, status: error.status, code: error.code });
+        throw error;
+      }
+    };
+    syncBuiltinESMExports();
+    const request = Request;
+    globalThis.Request = class extends request {
+      constructor(input, init) {
+        super(input, init);
+        if (this.url === "http://desktop.internal/api/desktop/update") {
+          const action = JSON.parse(init.body).action;
+          if (["desktop-prepare", "plugins-status", "desktop-cancel"].includes(action)) report({ kind: "host-route-invoked", action });
+        }
+      }
+    };
     const json = Response.json;
     Response.json = function (body, options) {
       const code = body?.error?.code;
-      if (options?.status === 409 && body?.ok === false && typeof code === "string" && /^[A-Z][A-Z0-9_]{0,79}$/.test(code))
+      if (options?.status === 409 && body?.ok === false && typeof code === "string" && /^[A-Z][A-Z0-9_]{0,79}$/.test(code)) {
         report({ kind: "host-route-rejected", code });
+        if (code === "UPDATE_REQUEST_FAILED") debugger;
+      }
       return Reflect.apply(json, this, [body, options]);
     };
   `,
