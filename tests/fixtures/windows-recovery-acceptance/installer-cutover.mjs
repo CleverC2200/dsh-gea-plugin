@@ -4,6 +4,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+import { recoverableDirectoryInstaller } from "../../../scripts/windows-complete-local/installer-recovery.mjs";
 
 assert.equal(process.platform, "win32");
 const output = resolve(process.argv[2]);
@@ -35,7 +37,8 @@ run(sevenZip, ["a", archive, join(payload, "*"), "-bso0", "-bsp0"]);
 const url = "https://raw.githubusercontent.com/CleverC2200/deepseek-harness/" + core + "/apps/desktop/scripts/installer-directories.nsh";
 const sourceResponse = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15000) });
 assert.equal(sourceResponse.status, 200);
-const source = await sourceResponse.text();
+const source = recoverableDirectoryInstaller(await sourceResponse.text());
+const hooks = fileURLToPath(new URL("../../../desktop/build/installer-recovery.nsh", import.meta.url));
 const renameCheckpoint = '    StrCpy $dshOldMoved "1"';
 assert.equal(source.split(renameCheckpoint).length, 2);
 
@@ -51,6 +54,8 @@ async function compile(installerPath, scriptSource) {
     'OutFile "' + installerPath + '"',
     'LoadLanguageFile "${NSISDIR}\\Contrib\\Language files\\English.nlf"',
     'LangString decompressionFailed ${LANG_ENGLISH} "Payload failed"',
+    '!define APP_EXECUTABLE_FILENAME "GEA Desktop.exe"',
+    '!include "' + hooks + '"',
     '!define DSH_SEVENZIP_PATH "' + sevenZip + '"',
     '!macro installApplicationFiles',
     '  !insertmacro dshExtractPayload "' + archive + '"',
@@ -91,10 +96,17 @@ try {
   await closed;
 }
 
-const old = (await readdir(work)).find((name) => name.startsWith("Application.old-"));
-assert.ok(old);
-assert.equal(await readFile(join(work, old, "GEA Desktop.exe"), "utf8"), "original program");
-await assert.rejects(readFile(join(target, "GEA Desktop.exe")), { code: "ENOENT" });
+const rollbackDeadline = Date.now() + 30000;
+for (;;) {
+  try {
+    assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "original program");
+    break;
+  } catch (error) {
+    if (error.code !== "ENOENT" || Date.now() >= rollbackDeadline) throw error;
+    await delay(50);
+  }
+}
+assert.equal((await readdir(work)).some((name) => name.startsWith("Application.old-")), false);
 const repair = join(work, "standard-overwrite.exe");
 await compile(repair, source);
 run(repair, ["/S"]);
@@ -103,8 +115,8 @@ for (const [file, text] of Object.entries(sentinel)) assert.equal(await readFile
 await writeFile(join(output, "official-cutover.json"), JSON.stringify({
   core,
   fault: "installer process terminated between actual old and new directory renames",
-  originalShortcutTargetAvailableAfterKill: false,
-  originalProgramPreservedInBackup: true,
+  originalShortcutTargetAvailableAfterKill: true,
+  oldVersionRestoredWithoutInstallerRerun: true,
   standardInstallerOverwriteRestoredTarget: true,
   dataFilesPreserved: true,
 }, null, 2));

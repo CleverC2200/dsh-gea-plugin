@@ -15,6 +15,7 @@ import {
   cp,
   lstat,
   readlink,
+  realpath,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -53,7 +54,7 @@ for (const userCache of [false, true, "active-wal"])
     `a new Core installs the bundled seed offline and preserves the previous user store (${userCache})`,
     { timeout: 120000 },
     async (t) => {
-      const directory = await mkdtemp(join(tmpdir(), "gea-core-offline-seed-"));
+      const directory = await realpath(await mkdtemp(join(tmpdir(), "gea-core-offline-seed-")));
       t.after(() =>
         process.env.GEA_KEEP_TEST_ARTIFACTS
           ? console.error(directory)
