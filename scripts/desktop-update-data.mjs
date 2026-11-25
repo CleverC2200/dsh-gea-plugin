@@ -69,7 +69,7 @@ async function capture(home) {
     process.platform === "darwin"
       ? resolve(dirname(process.execPath), "../Resources/app.asar")
       : resolve(dirname(process.execPath), "resources/app.asar");
-  const require = createRequire(join(appRoot, "dsh/package.json"));
+  const require = createRequire(join(appRoot, "dsh/node_modules/@deepseek-ai/dsh/package.json"));
   const { Context } = await import(pathToFileURL(require.resolve("@deepseek-ai/cordis")));
   const { default: Backend } = await import(
     pathToFileURL(require.resolve("@deepseek-ai/dsh-session-persistence-jsonl"))
@@ -144,7 +144,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.log(JSON.stringify(result));
   } catch (error) {
     console.error(
-      error.message?.match(/^DESKTOP_UPDATE_[A-Z_]+/)?.[0] ?? "DESKTOP_UPDATE_DATA_FAILED",
+      error.message?.match(/^DESKTOP_UPDATE_[A-Z_]+/)?.[0] ??
+        ([
+          "MODULE_NOT_FOUND",
+          "ERR_MODULE_NOT_FOUND",
+          "ENOENT",
+          "EPERM",
+          "EACCES",
+          "EBUSY",
+          "EINVAL",
+        ].includes(error.code)
+          ? `DESKTOP_UPDATE_DATA_FAILED ${error.code}`
+          : "DESKTOP_UPDATE_DATA_FAILED"),
     );
     process.exitCode = 1;
   }
