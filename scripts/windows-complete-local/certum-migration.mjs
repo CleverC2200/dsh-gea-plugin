@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID, X509Certificate } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { createServer as createSocket } from "node:net";
@@ -81,7 +81,7 @@ const result = {
   staging: "loopback with exact unsigned feed bytes and signed installers",
   hops: [],
 };
-const root = await mkdtemp(join(tmpdir(), "g-cm-"));
+const root = await realpath(await mkdtemp(join(tmpdir(), "g-cm-")));
 const install = join(root, "app");
 const home = join(root, ".dsh");
 const journal = join(root, "journal");
@@ -98,7 +98,12 @@ const environment = Object.fromEntries(
     ([name]) => !/KEY|SECRET|TOKEN|PASSWORD|^NODE_OPTIONS$|^ELECTRON_RUN_AS_NODE$/iu.test(name),
   ),
 );
-Object.assign(environment, { DSH_HOME: home, DSH_DESKTOP_UPDATE_JOURNAL_DIR: journal });
+Object.assign(environment, {
+  DSH_HOME: home,
+  DSH_DESKTOP_UPDATE_JOURNAL_DIR: journal,
+  TEMP: root,
+  TMP: root,
+});
 const gitTar = join(process.env.ProgramFiles, "Git", "usr", "bin");
 await stat(join(gitTar, "tar.exe"));
 environment.PATH = gitTar + delimiter + process.env.PATH;

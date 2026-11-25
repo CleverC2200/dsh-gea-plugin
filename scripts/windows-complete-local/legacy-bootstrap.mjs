@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile, copyFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, copyFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -14,7 +14,9 @@ const { installCompanyPackages, bootstrapCompanyProfile, readCompanySeed } = awa
 const { refreshBundledCompanySuite } = await import(
   pathToFileURL(join(root, "company-gea-refresh.mjs"))
 );
-const scratch = await mkdtemp(join(tmpdir(), "gea-legacy-"));
+const scratch = await realpath(await mkdtemp(join(tmpdir(), "gea-legacy-")));
+process.env.TEMP = scratch;
+process.env.TMP = scratch;
 const home = join(scratch, "home");
 const profile = join(home, "profiles/desktop");
 const old = join(scratch, "old-client/company-seed/archives");
@@ -102,6 +104,7 @@ const recovered = await refreshBundledCompanySuite(options).catch(async (error) 
     console.error(
       JSON.stringify({
         dependency: current.dependencies?.[name],
+        importers: Object.keys(lock.importers ?? {}),
         importer: lock.importers?.["."]?.dependencies?.[name],
         tarballs: Object.entries(lock.packages ?? {})
           .filter(([key]) => key.startsWith(name + "@file:"))
