@@ -823,13 +823,15 @@ try {
   let handoff;
   let recoveryReceipt;
   if (repairAffectedBaseline) {
-    const id = "a8a2fc6c-6dcf-4094-85da-cc6a3e8981e4";
-    const directory = join(profile, "gea/plugin-updates");
-    const operation = join(directory, "operations", id, "receipt.json");
-    await mkdir(dirname(operation), { recursive: true });
-    await writeFile(operation, JSON.stringify({ id, stage: "accepted" }), { flag: "wx" });
-    await writeFile(join(directory, "latest.json"), JSON.stringify({ id }));
-    recoveryReceipt = { path: operation, digest: await fileDigest(operation) };
+    if (values["repair-affected-baseline"]) {
+      const id = "a8a2fc6c-6dcf-4094-85da-cc6a3e8981e4";
+      const directory = join(profile, "gea/plugin-updates");
+      const operation = join(directory, "operations", id, "receipt.json");
+      await mkdir(dirname(operation), { recursive: true });
+      await writeFile(operation, JSON.stringify({ id, stage: "accepted" }), { flag: "wx" });
+      await writeFile(join(directory, "latest.json"), JSON.stringify({ id }));
+      recoveryReceipt = { path: operation, digest: await fileDigest(operation) };
+    }
     if (cdp) cdp.close();
     cdp = undefined;
     await closeWorkspace(baselineMainPort);
@@ -1192,7 +1194,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     await cp(join(privateOutput, "independent-suite.json"), join(output, "independent-suite.json"));
   }
 
-  evidence.signedOverwriteRecoveredAffectedBaseline = Boolean(recoveryReceipt);
+  evidence.signedOverwriteRecoveredAffectedBaseline = Boolean(repairAffectedBaseline);
   if (values["recheck-recovery-ui"]) {
     const stop = spawnSync("taskkill.exe", ["/PID", String(relaunched.ProcessId), "/T", "/F"], {
       env: environment,
