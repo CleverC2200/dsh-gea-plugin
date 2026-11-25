@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, stat, writeFile } from "no
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { createServer as createSocket } from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -83,7 +83,7 @@ const result = {
 };
 const root = await realpath(await mkdtemp(join(tmpdir(), "g-cm-")));
 const install = join(root, "app");
-const home = join(root, ".dsh");
+const home = join(await realpath(homedir()), ".dsh");
 const journal = join(root, "journal");
 const executable = join(install, "GEA Desktop.exe");
 const resources = join(install, "resources");
@@ -99,11 +99,11 @@ const environment = Object.fromEntries(
   ),
 );
 Object.assign(environment, {
-  DSH_HOME: home,
   DSH_DESKTOP_UPDATE_JOURNAL_DIR: journal,
   TEMP: root,
   TMP: root,
 });
+delete environment.DSH_HOME;
 const gitTar = join(process.env.ProgramFiles, "Git", "usr", "bin");
 await stat(join(gitTar, "tar.exe"));
 environment.PATH = gitTar + delimiter + process.env.PATH;
@@ -398,7 +398,7 @@ async function upgrade(fromVersion, fromUrl, stagedUrl, targetBuild, previousWor
     "setTimeout(()=>document.querySelector('#actions button').click(),250); true",
   );
   console.log(`Windows native updater: ${toVersion}, install and restart selected`);
-  await until(
+  const successor = await until(
     "old tree exited and native successor appeared",
     async () => {
       const rows = await processRows();
@@ -417,20 +417,41 @@ async function upgrade(fromVersion, fromUrl, stagedUrl, targetBuild, previousWor
   );
   assert.equal(readVersion(), toVersion);
   assert.notEqual(await digest(executable), oldHash);
-  await until(
-    "successor workspace ready",
-    async () =>
-      (await events()).some((row) => row.version === toVersion && row.event === "workspace-ready"),
-    180000,
-  );
-  await until(
-    "native process has visible application window",
-    async () =>
-      (await powershell(
-        `param([string]$Exe)
-@((Get-CimInstance Win32_Process | Where-Object {$_.ExecutablePath -eq $Exe -and $_.CommandLine -match '(?:^|\\s)--updated(?:\\s|$)'}) | ForEach-Object {(Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).MainWindowHandle.ToInt64()} | Where-Object {$_ -ne 0}).Count`,
-        [executable],
-      )) !== "0",
+  console.log(`Windows native updater: ${toVersion}, signed executable relaunched`);
+  const nativeHost = await until("successor Host ready", async () => {
+    const failed = (await events()).some(
+      (row) => row.version === toVersion && row.event === "workspace-failed",
+    );
+    assert.ok(!failed, "CERTUM_MIGRATION_SUCCESSOR_WORKSPACE_FAILED");
+    return (await processRows()).find(
+      (row) => row.host && row.ParentProcessId === successor.ProcessId,
+    );
+  });
+  await until("successor Host responds", async () => {
+    const ports = JSON.parse(
+      await powershell(
+        `param([int]$HostPid)
+ConvertTo-Json -InputObject @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.OwningProcess -eq $HostPid} | Select-Object -ExpandProperty LocalPort) -Compress`,
+        [String(nativeHost.ProcessId)],
+      ),
+    );
+    for (const port of ports) {
+      const response = await fetch(`http://127.0.0.1:${port}/`, {
+        signal: AbortSignal.timeout(3000),
+      }).catch(() => undefined);
+      if (response && [200, 401, 403].includes(response.status)) return true;
+    }
+    return false;
+  });
+  await until("native process has visible application window", async () =>
+    (
+      await powershell(
+        `param([int]$ClientPid)
+$app = Get-Process -Id $ClientPid -ErrorAction SilentlyContinue
+if ($app -and $app.MainWindowHandle -ne 0) { $app.MainWindowTitle }`,
+        [String(successor.ProcessId)],
+      )
+    ).match(/GEA|DeepSeek/iu),
   );
   console.log(`Windows native updater: ${toVersion}, successor window ready`);
   assert.ok(
@@ -468,6 +489,7 @@ async function readDraft(workspace, hop) {
 }
 
 try {
+  await mkdir(home);
   const certInput = companyWindowsCertificate;
   await powershell(
     `param([string]$Script,[string]$Certificate)
@@ -535,7 +557,20 @@ try {
   );
   result.status = "passed";
 } catch (error) {
-  result.failure = String(error.message).split("\n")[0].replaceAll(root, "<TEST_ROOT>");
+  result.failure = String(error.message)
+    .split("\n")[0]
+    .replaceAll(root, "<TEST_ROOT>")
+    .replaceAll(home, "<TEST_PROFILE>");
+  result.journal = (await records().catch(() => [])).map(
+    ({ version, event, phase, targetVersion, failedOperation, errorCode }) => ({
+      version,
+      event,
+      phase,
+      targetVersion,
+      failedOperation,
+      errorCode,
+    }),
+  );
   throw error;
 } finally {
   server.closeAllConnections();
