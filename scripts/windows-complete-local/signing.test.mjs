@@ -86,8 +86,7 @@ test("the Windows store signer pins the leaf and verifies the SHA-256 timestampe
   };
   assert.equal(resolveCompanyWindowsSigning(store).provider, "windows-store");
   assert.throws(
-    () =>
-      resolveCompanyWindowsSigning({ ...store, GEA_WINDOWS_STORE_CERT_SHA1: "0".repeat(40) }),
+    () => resolveCompanyWindowsSigning({ ...store, GEA_WINDOWS_STORE_CERT_SHA1: "0".repeat(40) }),
     /WINDOWS_STORE_CERTIFICATE_MISMATCH/,
   );
   const calls = [];
@@ -111,8 +110,18 @@ test("the Windows store signer pins the leaf and verifies the SHA-256 timestampe
   assert.deepEqual(calls, [
     ["repair"],
     [
-      "sign", "/s", "My", "/sha1", thumbprint, "/fd", "SHA256", "/tr",
-      "http://time.certum.pl", "/td", "SHA256", "setup.exe",
+      "sign",
+      "/s",
+      "My",
+      "/sha1",
+      thumbprint,
+      "/fd",
+      "SHA256",
+      "/tr",
+      "http://time.certum.pl",
+      "/td",
+      "SHA256",
+      "setup.exe",
     ],
     ["verify", "/pa", "/tw", "setup.exe"],
   ]);
@@ -164,7 +173,10 @@ test("company signing keeps the official updater and company feed", () => {
     /createCompanyWindowsSigner\(\{ repairExecutable: repairDanglingAuthenticodeDirectory,/,
   );
   assert.match(adapted, /const update=resolveCompanyWindowsUpdate\(env\)/);
-  assert.match(adapted, /const publisher=resolveWindowsUpdatePublisher\(update.publisherCertificate\)/);
+  assert.match(
+    adapted,
+    /const publisher=resolveWindowsUpdatePublisher\(update.publisherCertificate\)/,
+  );
   assert.match(adapted, /buildPaths\.runtime = "D:\/signed runtime"/);
   assert.equal(
     new URL(companyWindowsUpdateUrl).origin,
@@ -184,7 +196,10 @@ test("the old-signed bridge and new-signed build point to the same approved upda
     DSH_DESKTOP_WINDOWS_CER_FILE: certumWindowsCertificate,
     GEA_WINDOWS_STORE_CER_FILE: certumWindowsCertificate,
   };
-  const next = { publicUrl: certumWindowsUpdateUrl, publisherCertificate: certumWindowsCertificate };
+  const next = {
+    publicUrl: certumWindowsUpdateUrl,
+    publisherCertificate: certumWindowsCertificate,
+  };
   assert.deepEqual(resolveCompanyWindowsUpdate(bridge), next);
   assert.deepEqual(resolveCompanyWindowsUpdate(store), next);
   assert.throws(

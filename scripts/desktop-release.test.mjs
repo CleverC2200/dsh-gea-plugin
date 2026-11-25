@@ -127,10 +127,16 @@ test("Certum publishing preserves the old updater feed until the bridge can reac
   await writeFile(result, JSON.stringify({ ...f.receipt, windowsSigning: signing }));
   const bridge = await f.plan();
   assert.equal(bridge.prefix + bridge.feed, legacyFeed);
-  await assert.rejects(publishDesktopRelease(bridge, f.store), /DESKTOP_RELEASE_CERTUM_FEED_NOT_READY/);
+  await assert.rejects(
+    publishDesktopRelease(bridge, f.store),
+    /DESKTOP_RELEASE_CERTUM_FEED_NOT_READY/,
+  );
   assert.ok(!f.objects.has(legacyFeed));
   const latest = YAML.parse(f.objects.get(certumFeed).toString());
-  f.objects.set(certumFeed, Buffer.from(YAML.stringify({ ...latest, version: "0.2.0-rc.2.20261125.1" })));
+  f.objects.set(
+    certumFeed,
+    Buffer.from(YAML.stringify({ ...latest, version: "0.2.0-rc.2.20261125.1" })),
+  );
   await publishDesktopRelease(bridge, f.store);
   assert.equal(f.writes.at(-1), legacyFeed);
 });

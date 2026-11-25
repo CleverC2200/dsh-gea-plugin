@@ -531,34 +531,34 @@ export async function installCompanyPackages({
       });
       boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
       const current = await json(join(profile, "package.json"));
+      const manifest = offline && seed ? await readCompanySeed(seed) : undefined;
+      const fullSeed =
+        manifest?.packages.length === packages.length &&
+        manifest.packages.every((row, index) => basename(packages[index]) === row.file);
+      const bundledNames = fullSeed
+        ? manifest.packages.map((row) => row.name)
+        : companyPackageNames;
       const hasUserDependencies = ["dependencies", "devDependencies", "optionalDependencies"].some(
-        (field) =>
-          Object.keys(current[field] ?? {}).some((name) => !companyPackageNames.includes(name)),
+        (field) => Object.keys(current[field] ?? {}).some((name) => !bundledNames.includes(name)),
       );
       if (offline && hasUserDependencies && !requireOffline)
         offlineArguments = ["--prefer-offline", "--offline=false"];
       const lockPath = join(profile, "pnpm-lock.yaml");
       const previousLock = existsSync(lockPath) ? await readFile(lockPath) : undefined;
       let seededLock = false;
-      if (offline && seed && !hasUserDependencies) {
-        const manifest = await readCompanySeed(seed);
-        if (
-          manifest.dependencyLockSha256 &&
-          archives.packages.length === manifest.packages.length
-        ) {
-          const YAML = require("yaml");
-          const lock = YAML.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
-          const replacements = manifest.packages.map((row, index) => [
-            "file:company-seed/archives/" + row.file,
-            "file:" + relative(profile, archives.packages[index]).replaceAll("\\", "/"),
-          ]);
-          const relocated = relocateCompanyLock(lock, replacements);
-          for (const [index, row] of manifest.packages.entries())
-            relocated.importers["."].dependencies[row.name].specifier =
-              "file:" + archives.packages[index].replaceAll("\\", "/");
-          await writeFileAtomic(lockPath, YAML.stringify(relocated), { mode: 0o600 });
-          seededLock = true;
-        }
+      if (fullSeed && manifest.dependencyLockSha256 && !hasUserDependencies) {
+        const YAML = require("yaml");
+        const lock = YAML.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
+        const replacements = manifest.packages.map((row, index) => [
+          "file:company-seed/archives/" + row.file,
+          "file:" + relative(profile, archives.packages[index]).replaceAll("\\", "/"),
+        ]);
+        const relocated = relocateCompanyLock(lock, replacements);
+        for (const [index, row] of manifest.packages.entries())
+          relocated.importers["."].dependencies[row.name].specifier =
+            "file:" + archives.packages[index].replaceAll("\\", "/");
+        await writeFileAtomic(lockPath, YAML.stringify(relocated), { mode: 0o600 });
+        seededLock = true;
       }
       let result;
       try {

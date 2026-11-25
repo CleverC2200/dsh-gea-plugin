@@ -122,7 +122,9 @@ export async function createReleasePreflightFixture(t, options = {}) {
       }),
     );
     const archive = join(root, "packages", `${index}.tgz`);
-    execFileSync("tar", ["-czf", archive, "-C", stage, "package"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+    execFileSync("tar", ["-czf", archive, "-C", stage, "package"], {
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+    });
     const metadata = join(root, `${index}-metadata.json`);
     await writeFile(
       metadata,

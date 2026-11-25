@@ -208,7 +208,9 @@ test(
       const file = join(root, "package", relative);
       await mkdir(dirname(file), { recursive: true });
       await writeFile(file, "invalid");
-      execFileSync("tar", ["-czf", archive, "-C", root, "package"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+      execFileSync("tar", ["-czf", archive, "-C", root, "package"], {
+        env: { ...process.env, COPYFILE_DISABLE: "1" },
+      });
       await assert.rejects(inspectPluginArchive(archive), /SOURCE_ARCHIVE_INVALID/);
       await rm(join(root, "package", relative.split("/")[0]), { recursive: true });
     }

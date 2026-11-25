@@ -22,11 +22,7 @@ export function recoverableDirectoryInstaller(source) {
     ].join("\n"),
   );
   const cleanup = '    RMDir /r "\\\\?\\$dshOldDirectory"';
-  return replaceOnce(
-    installer,
-    cleanup,
-    "    Call GeaClearDirectoryRecovery\n" + cleanup,
-  );
+  return replaceOnce(installer, cleanup, "    Call GeaClearDirectoryRecovery\n" + cleanup);
 }
 
 export function recoverableInstaller(source, directories) {

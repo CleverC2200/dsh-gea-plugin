@@ -44,9 +44,17 @@ export function resolveCompanyWindowsSigning(
   if (store) {
     const thumbprint = env.GEA_WINDOWS_STORE_CERT_SHA1?.toUpperCase();
     const signTool = env.GEA_WINDOWS_SIGNTOOL;
-    if (!/^[0-9A-F]{40}$/.test(thumbprint ?? "") || cert.fingerprint.replaceAll(":", "") !== thumbprint)
+    if (
+      !/^[0-9A-F]{40}$/.test(thumbprint ?? "") ||
+      cert.fingerprint.replaceAll(":", "") !== thumbprint
+    )
       throw Error("WINDOWS_STORE_CERTIFICATE_MISMATCH");
-    if (!signTool || !isAbsolute(signTool) || !/\.exe$/i.test(signTool) || !statSync(signTool).isFile())
+    if (
+      !signTool ||
+      !isAbsolute(signTool) ||
+      !/\.exe$/i.test(signTool) ||
+      !statSync(signTool).isFile()
+    )
       throw Error("WINDOWS_STORE_SIGNTOOL_REQUIRED");
     return { ...identity, provider: "windows-store", thumbprint, signTool };
   }
@@ -87,15 +95,24 @@ export function createCompanyWindowsSigner(
       };
       try {
         if (signing.provider === "windows-store") {
-          await run(signing.signTool, [
-            "sign",
-            "/s", "My",
-            "/sha1", signing.thumbprint,
-            "/fd", "SHA256",
-            "/tr", "http://time.certum.pl",
-            "/td", "SHA256",
-            configuration.path,
-          ], settings);
+          await run(
+            signing.signTool,
+            [
+              "sign",
+              "/s",
+              "My",
+              "/sha1",
+              signing.thumbprint,
+              "/fd",
+              "SHA256",
+              "/tr",
+              "http://time.certum.pl",
+              "/td",
+              "SHA256",
+              configuration.path,
+            ],
+            settings,
+          );
           await run(signing.signTool, ["verify", "/pa", "/tw", configuration.path], settings);
           return;
         }
@@ -136,7 +153,8 @@ export function createCompanyWindowsSigner(
 
 export function resolveCompanyWindowsUpdate(env) {
   const bridge = env.GEA_WINDOWS_CERTUM_BRIDGE === "1";
-  if (bridge && env.GEA_WINDOWS_STORE_CER_FILE) throw Error("WINDOWS_BRIDGE_REQUIRES_LEGACY_SIGNER");
+  if (bridge && env.GEA_WINDOWS_STORE_CER_FILE)
+    throw Error("WINDOWS_BRIDGE_REQUIRES_LEGACY_SIGNER");
   return {
     publicUrl:
       bridge || env.GEA_WINDOWS_STORE_CER_FILE ? certumWindowsUpdateUrl : companyWindowsUpdateUrl,
