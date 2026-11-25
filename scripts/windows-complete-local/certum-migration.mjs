@@ -35,7 +35,7 @@ if (process.argv[2] === "--seed-session") {
   );
   const ctx = new Context();
   try {
-    await ctx.plugin(Persistence, { root: join(home, "sessions"), compression: "none" });
+    await ctx.plugin(Persistence, { root: join(home, "sessions"), compression: "zstd" });
     const handle = await ctx.sessionPersistence.create({
       version: SESSION_FORMAT_VERSION,
       id,
@@ -365,6 +365,7 @@ async function upgrade(fromVersion, fromUrl, stagedUrl, targetBuild, previousWor
   const config = await bindFeed(fromUrl, stagedUrl);
   const workspace = await openWorkspace();
   if (previousWorkspace) await previousWorkspace(workspace);
+  console.log(`Windows native updater: ${fromVersion} → ${toVersion}, profile ready`);
   const oldRows = await processRows();
   const oldEvents = new Set((await records()).map((row) => JSON.stringify(row)));
   const events = async () => (await records()).filter((row) => !oldEvents.has(JSON.stringify(row)));
@@ -396,6 +397,7 @@ async function upgrade(fromVersion, fromUrl, stagedUrl, targetBuild, previousWor
     dialog,
     "setTimeout(()=>document.querySelector('#actions button').click(),250); true",
   );
+  console.log(`Windows native updater: ${toVersion}, install and restart selected`);
   await until(
     "old tree exited and native successor appeared",
     async () => {
@@ -430,6 +432,7 @@ async function upgrade(fromVersion, fromUrl, stagedUrl, targetBuild, previousWor
         [executable],
       )) !== "0",
   );
+  console.log(`Windows native updater: ${toVersion}, successor window ready`);
   assert.ok(
     requests.some((key) => key === new URL(targetBuild.build.artifact, stagedUrl).pathname),
   );
