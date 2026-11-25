@@ -75,6 +75,7 @@ async function compile(installerPath, scriptSource, restoreOnly = false) {
     '  !insertmacro dshExtractPayload "' + archive + '"',
     '!macroend',
     '!include "' + included + '"',
+    '!insertmacro GEA_INSTALLER_RECOVERY_FUNCTIONS',
     'Section',
     '  InitPluginsDir',
     '  StrCpy $INSTDIR "' + target + '"',

@@ -780,7 +780,7 @@ try {
   ).coreHead;
   assert.equal(
     oldCore,
-    repairAffectedBaseline ? "8cc49e9b5c5ddf3751af2f6fb21276513a14bf9b" : managedCore,
+    values["repair-affected-baseline"] ? "8cc49e9b5c5ddf3751af2f6fb21276513a14bf9b" : managedCore,
   );
   evidence.oldCore = oldCore;
   let handoff;
@@ -1120,7 +1120,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
       ),
       "preserve",
     );
-    evidence.crossCoreStartedWithoutOutboundNetwork = true;
+    evidence.crossCoreStartedWithoutOutboundNetwork = oldCore !== managedCore;
     milestone("cross-core-signed-install-started-offline-with-existing-store");
   }
   if (interruptPreparation) {
