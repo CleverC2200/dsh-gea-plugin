@@ -493,8 +493,12 @@ export async function registerHtmlPlugins(
                     );
                   });
                 },
-                ...(["inventory-aqkc", "inventory-fc", "inventory-qll"].includes(item.id) &&
-                !item.mock
+                ...([
+                  "inventory-aqkc",
+                  "inventory-fc",
+                  "inventory-qll",
+                  "inventory-apsplan",
+                ].includes(item.id) && !item.mock
                   ? {
                       insight: (parameters: unknown, requestSignal: AbortSignal) => {
                         return business.capture.run(session, "页面请求", () => {
