@@ -10,7 +10,7 @@ const names = [
   "dsh-agent-manage",
   "@cleverc2200/gea-dsh-prototype",
 ];
-async function fixture(t, capable = true) {
+async function fixture(t, capable = true, checkTimeoutMs = 1000, config = {}) {
   await mkdir(".runtime", { recursive: true });
   const directory = await mkdtemp(join(process.cwd(), ".runtime/plugin-restart-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -34,10 +34,12 @@ async function fixture(t, capable = true) {
     loseResponse: false,
     operationId: "22222222-2222-4222-8222-222222222222",
     hostProcessIdentity: "host",
+    statusFailure: false,
   };
   const original = globalThis.fetch;
   t.after(() => (globalThis.fetch = original));
   globalThis.fetch = async (url, options) => {
+    if (url.endsWith("/status") && state.statusFailure) throw Error("temporarily unavailable");
     if (!url.endsWith("/status")) state.writes.push({ url, payload: JSON.parse(options.body) });
     if (url.endsWith("/update-all")) {
       if (state.release) await state.release;
@@ -46,14 +48,14 @@ async function fixture(t, capable = true) {
       state.phase = "downloading";
       if (state.loseResponse) throw Error("connection lost after acceptance");
     }
-    return Response.json({
+    const response = Response.json({
       ok: true,
       value: url.endsWith("/status")
         ? {
             revision: 1,
             hostProcessIdentity: state.hostProcessIdentity,
             challenge: "nonce",
-            checkTimeoutMs: 1000,
+            checkTimeoutMs,
             pollIntervalMs: 1000,
             restartReady: state.durable && state.phase === "pending-restart",
             operationId: state.operationId,
@@ -70,6 +72,9 @@ async function fixture(t, capable = true) {
           }
         : { id: state.operationId, stage: state.phase },
     });
+    return url.endsWith("/status") && config.statusResponse
+      ? config.statusResponse(response)
+      : response;
   };
   const owner = createPluginDetailUpdates(
     { get: () => undefined },
@@ -83,7 +88,9 @@ async function fixture(t, capable = true) {
     },
   );
   t.after(() => owner.dispose());
-  const close = owner.retain();
+  let close = () => {};
+  if (config.start === "resume") void owner.resume();
+  else close = owner.retain();
   await new Promise(setImmediate);
   return { owner, state, close };
 }
@@ -217,4 +224,145 @@ test("slow accepted preparation still restarts when its candidate later becomes 
   t.mock.timers.tick(1000);
   await new Promise(setImmediate);
   assert.deepEqual(state.requests, [{ kind: "plugins-restart" }]);
+});
+
+test("a delayed old Host response cannot restore restart after the candidate starts", async (t) => {
+  const { owner, state } = await fixture(t, true, 30000);
+  const fetchStatus = globalThis.fetch;
+  let finish,
+    waiting = false;
+  const delayed = new Promise((resolve) => (finish = resolve));
+  globalThis.fetch = async (url, options) => {
+    const response = await fetchStatus(url, options);
+    if (url.endsWith("/status") && !waiting) {
+      waiting = true;
+      await delayed;
+    }
+    return response;
+  };
+  state.phase = "pending-restart";
+  state.durable = true;
+  const check = owner.check();
+  await until(() => waiting, Boolean);
+  state.phase = "confirming";
+  state.durable = false;
+  state.hostProcessIdentity = "new-host";
+  await until(
+    () => owner.getSnapshot().items[0]?.state,
+    (value) => value === "confirming",
+  );
+  finish();
+  await check;
+  assert.equal(owner.getSnapshot().items[0].state, "confirming");
+  assert.equal(owner.getSnapshot().restartReady, false);
+  await owner.restart();
+  assert.deepEqual(state.requests, []);
+});
+
+test("confirmation timeout stays unconfirmed until runtime confirmation succeeds", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { owner, state } = await fixture(t);
+  await owner.updateAll();
+  state.phase = "confirming";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "confirming");
+  t.mock.timers.tick(120_000);
+  await new Promise(setImmediate);
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  await owner.restart();
+  assert.deepEqual(state.requests, []);
+  state.phase = "completed";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "completed");
+});
+
+for (const [start, host] of [
+  ["retain", "new-host"],
+  ["resume", "new-host"],
+  ["retain", "host"],
+])
+  test(`the first delayed Host status cannot overwrite a newer check (${start}, ${host})`, async (t) => {
+    let release,
+      waiting = false;
+    const delayed = new Promise((resolve) => (release = resolve));
+    const { owner, state } = await fixture(t, true, 30000, {
+      start,
+      statusResponse: async (response) => {
+        if (!waiting) {
+          waiting = true;
+          const payload = await response.json();
+          payload.value.restartReady = true;
+          payload.value.items.forEach((row) => (row.state = "pending-restart"));
+          await delayed;
+          return Response.json(payload);
+        }
+        return response;
+      },
+    });
+    state.phase = "confirming";
+    state.hostProcessIdentity = host;
+    await owner.check();
+    assert.equal(owner.getSnapshot().items[0].state, "confirming");
+    release();
+    await new Promise(setImmediate);
+    assert.equal(owner.getSnapshot().items[0].state, "confirming");
+    assert.equal(owner.getSnapshot().restartReady, false);
+    await owner.restart();
+    assert.deepEqual(state.requests, []);
+  });
+
+test("a transient confirming poll failure waits for the bounded observation deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { owner, state } = await fixture(t);
+  await owner.updateAll();
+  state.phase = "confirming";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "confirming");
+  state.statusFailure = true;
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "confirming");
+  assert.equal(owner.getSnapshot().transportError, null);
+  state.statusFailure = false;
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "confirming");
+  state.statusFailure = true;
+  t.mock.timers.tick(120_000);
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
+  assert.equal(owner.getSnapshot().transportError, "status");
+  await owner.restart();
+  assert.deepEqual(state.requests, []);
+});
+
+test("a late failure from the first status request cannot replace a newer confirming status", async (t) => {
+  const delayed = Promise.withResolvers();
+  let waiting = false;
+  const { owner, state } = await fixture(t, true, 30000, {
+    statusResponse: async (response) => {
+      if (!waiting) {
+        waiting = true;
+        await delayed.promise;
+        throw new TypeError("old Host connection closed");
+      }
+      return response;
+    },
+  });
+  state.phase = "confirming";
+  state.hostProcessIdentity = "new-host";
+  await owner.check();
+  assert.equal(owner.getSnapshot().items[0].state, "confirming");
+  delayed.resolve();
+  await new Promise(setImmediate);
+  assert.equal(owner.getSnapshot().transportError, null);
+  assert.equal(owner.getSnapshot().items[0].state, "confirming");
+  assert.equal(owner.getSnapshot().restartReady, false);
+  await owner.restart();
+  assert.deepEqual(state.requests, []);
 });

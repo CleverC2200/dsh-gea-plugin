@@ -48,7 +48,10 @@ import {
   observeProfilePackageProcesses,
 } from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun, type PluginUpdateFileCommit } from "./plugin-update-windows.ts";
-import { openCompanyInstallation } from "../../desktop/company-installation.mjs";
+import {
+  openCompanyInstallation,
+  type CompanyInstallation,
+} from "../../desktop/company-installation.mjs";
 import { companyPnpmNetworkArguments } from "../../desktop/company-pnpm.mjs";
 
 export const pluginUpdateProcessIdentity = `${process.pid}:${performance.timeOrigin}`;
@@ -83,8 +86,6 @@ const stageNames: PluginUpdateStage[] = [
   "failed",
   "unknown",
 ];
-const blocking = (operation: PluginUpdateOperation | null) =>
-  operation !== null && !["completed", "restored", "failed"].includes(operation.stage);
 function fail(code: string): never {
   throw Error(code);
 }
@@ -218,6 +219,7 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
     )
       fail("UPDATE_JOURNAL_INVALID");
   }
+  let legacyFailedCompletionProofs = false;
   if (value.targets !== undefined) {
     if (
       !Array.isArray(value.targets) ||
@@ -262,7 +264,18 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
           completionProofs: undefined,
           completionProof: value.completionProofs[index],
         });
-    } else if (value.completionProofs !== undefined) fail("UPDATE_JOURNAL_INVALID");
+    } else if (value.completionProofs !== undefined) {
+      if (
+        value.schema !== 2 ||
+        value.installationId !== value.id ||
+        value.stage !== "failed" ||
+        value.completionProof !== null ||
+        !Array.isArray(value.completionProofs) ||
+        value.completionProofs.length !== value.targets.length
+      )
+        fail("UPDATE_JOURNAL_INVALID");
+      legacyFailedCompletionProofs = true;
+    }
   } else if (value.completionProofs !== undefined) fail("UPDATE_JOURNAL_INVALID");
   if (value.stage === "completed" && value.completionProof === null) fail("UPDATE_JOURNAL_INVALID");
   if (!(value.diagnostic === null || typeof value.diagnostic === "string"))
@@ -273,6 +286,7 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
     value.schema === 1 ? join(String(value.recoveryDirectory), "..") : value.directory;
   if (typeof directory !== "string" || !isAbsolute(directory)) fail("UPDATE_JOURNAL_INVALID");
   const operation = { ...value };
+  if (legacyFailedCompletionProofs) delete operation.completionProofs;
   for (const key of [
     "baselineSha256",
     "recoveryDirectory",
@@ -316,6 +330,14 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     checking = 0,
     active: Promise<void> | null = null;
   let startup: RuntimePackageProof[] = [];
+  let candidateActivation: Awaited<ReturnType<CompanyInstallation["activationState"]>> =
+    "unavailable";
+  const blocking = (operation: PluginUpdateOperation | null) =>
+    operation !== null &&
+    (!["completed", "restored", "failed"].includes(operation.stage) ||
+      (operation.stage === "completed" &&
+        operation.id === state.operation?.id &&
+        candidateActivation === "rolled-back"));
   let plans = new Map<UpdatablePackageName, Plan>();
   let suiteReleases: PluginRelease[] = [];
   let currentMonitor: Pick<
@@ -323,7 +345,37 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     "capture" | "snapshot" | "waitForQuiescence" | "cancelObserved" | "close"
   > | null = null;
   function snapshot() {
-    return structuredClone(state);
+    return structuredClone({
+      ...state,
+      items: state.items.map((item): PluginUpdateRow =>
+        (item.state === "pending-restart" && candidateActivation !== "pending") ||
+        (item.state === "completed" && candidateActivation === "rolled-back")
+          ? {
+              ...item,
+              state: candidateActivation === "active" ? "confirming" : "unknown",
+            }
+          : item,
+      ),
+    });
+  }
+  function restartReady() {
+    return (
+      !active &&
+      !closed &&
+      !journalBroken &&
+      state.operation?.stage === "pending-restart" &&
+      candidateActivation === "pending"
+    );
+  }
+  async function readCandidateSelection(operation = state.operation) {
+    const installation = await openCompanyInstallation(options.profile.dir);
+    const activation =
+      installation && operation ? await installation.activationState(operation.id) : "unavailable";
+    if (candidateActivation !== activation) {
+      candidateActivation = activation;
+      publish();
+    }
+    return installation;
   }
   function publish() {
     state = { ...state, revision: state.revision + 1 };
@@ -400,12 +452,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       await durableJson(join(operation.directory, "receipt.legacy.json"), raw, options.fileCommit);
     return operation;
   }
-  async function persist(operation: PluginUpdateOperation) {
-    await durableJson(
-      join(operations, operation.id, "receipt.json"),
-      operation,
-      options.fileCommit,
-    );
+  function reflectOperation(operation: PluginUpdateOperation) {
     state = { ...state, operation };
     for (const target of operationTargets(operation))
       row(target.packageName, {
@@ -414,6 +461,15 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         candidateVersion: target.targetVersion,
         planId: null,
       });
+  }
+  async function persist(operation: PluginUpdateOperation) {
+    await durableJson(
+      join(operations, operation.id, "receipt.json"),
+      operation,
+      options.fileCommit,
+    );
+    if (operation.stage === "pending-restart") await readCandidateSelection(operation);
+    reflectOperation(operation);
   }
   async function stage(
     stage: PluginUpdateStage,
@@ -430,9 +486,10 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     });
   }
   async function reconcileRuntime() {
-    const installation = await openCompanyInstallation(options.profile.dir);
+    const installation = await readCandidateSelection();
     if (
       installation &&
+      (candidateActivation !== "rolled-back" || !blocking(state.operation)) &&
       (await installation.confirmRuntime(
         await options.readRuntimeProofs(pluginUpdateProcessIdentity),
       )) &&
@@ -470,18 +527,42 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     const operation = state.operation;
     if (
       !operation ||
-      !["pending-restart", "unknown"].includes(operation.stage) ||
-      operation.processIdentity === pluginUpdateProcessIdentity
+      (!["pending-restart", "unknown"].includes(operation.stage) &&
+        !(operation.stage === "completed" && candidateActivation === "rolled-back"))
     )
       return snapshot();
     return withFileLock(
       join(options.profile.dir, "package.json"),
       async () => {
         const latestOperation = await readLatest();
+        if (!latestOperation || latestOperation.id !== operation.id) return snapshot();
+        const selectedInstallation = await readCandidateSelection(latestOperation);
         if (
-          !latestOperation ||
-          latestOperation.id !== operation.id ||
-          !["pending-restart", "unknown"].includes(latestOperation.stage)
+          ["failed", "restored"].includes(latestOperation.stage) ||
+          (latestOperation.stage === "completed" && candidateActivation !== "rolled-back")
+        ) {
+          reflectOperation(latestOperation);
+          return snapshot();
+        }
+        if (!["pending-restart", "unknown", "completed"].includes(latestOperation.stage))
+          return snapshot();
+        if (latestOperation.installationId && candidateActivation === "rolled-back") {
+          if (
+            !selectedInstallation ||
+            !(latestOperation.stage === "completed"
+              ? profilePackageRunStopped(options.profile.dir)
+              : previousPackageProcessesStopped(options.profile.dir, latestOperation)) ||
+            !(await selectedInstallation.recoverRollback(latestOperation.id))
+          )
+            return snapshot();
+          const recovered = await readLatest();
+          if (recovered?.id === latestOperation.id && recovered.stage === "failed")
+            reflectOperation(recovered);
+          return snapshot();
+        }
+        if (
+          latestOperation.processIdentity === pluginUpdateProcessIdentity ||
+          (latestOperation.installationId && candidateActivation !== "active")
         )
           return snapshot();
         state = { ...state, operation: latestOperation };
@@ -1275,17 +1356,29 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       if (operationId && operation?.id !== operationId) return { operationId, state: "unknown" };
       const id = operation?.id ?? null;
       if (journalBroken && isolatedInstallation) return { operationId: id, state: "failed" };
-      if (closed || journalBroken || operation?.stage === "unknown")
+      if (
+        closed ||
+        journalBroken ||
+        operation?.stage === "unknown" ||
+        (operation?.stage === "completed" && blocking(operation))
+      )
         return { operationId: id, state: "unknown" };
       if (active) return { operationId: id, state: "running" };
       if (!operation || operation.stage === "completed") return { operationId: id, state: "idle" };
-      if (operation.stage === "pending-restart") return { operationId: id, state: "ready" };
+      if (operation.stage === "pending-restart")
+        return {
+          operationId: id,
+          state: restartReady()
+            ? "ready"
+            : candidateActivation === "active"
+              ? "running"
+              : "unknown",
+        };
       if (operation.stage === "failed" || operation.stage === "restored")
         return { operationId: id, state: "failed" };
       return { operationId: id, state: "unknown" };
     },
-    restartReady: () =>
-      !active && !closed && !journalBroken && state.operation?.stage === "pending-restart",
+    restartReady,
     subscribe(listener: (snapshot: PluginUpdateSnapshot) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);

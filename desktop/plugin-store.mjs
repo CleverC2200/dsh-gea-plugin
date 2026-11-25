@@ -69,7 +69,13 @@ export class PluginStore {
         !valid(state.active) ||
         ["previous", "verified", "pending", "booting"].some(
           (key) => state[key] != null && !valid(state[key]),
-        )
+        ) ||
+        (this.companyCoreHead &&
+          state.rollback != null &&
+          (typeof state.rollback !== "object" ||
+            !valid(state.rollback.operationId) ||
+            typeof state.rollback.diagnostic !== "string" ||
+            state.rollback.diagnostic.length === 0))
       )
         throw Error("PLUGIN_SELECTION_INVALID");
       return state;
@@ -261,9 +267,13 @@ export class PluginStore {
       if ((state.dataSchema ?? 1) !== this.dataSchema) throw Error("DATA_SCHEMA_INCOMPATIBLE");
 
       if (state.booting) {
+        const fallback = state.verified ?? state.previous ?? "baseline";
         state = {
           ...state,
-          active: state.verified ?? state.previous ?? "baseline",
+          active: fallback,
+          ...(this.companyCoreHead && fallback !== state.active
+            ? { rollback: { operationId: state.active, diagnostic: "PREVIOUS_BOOT_INTERRUPTED" } }
+            : {}),
           previous: state.active,
           booting: null,
           error: "PREVIOUS_BOOT_INTERRUPTED",
@@ -285,6 +295,7 @@ export class PluginStore {
           previous: state.active,
           verified: state.verified ?? state.active,
           pending: null,
+          ...(this.companyCoreHead ? { rollback: null } : {}),
         };
       }
       await writePluginStoreJson(join(this.root, "selection.json"), {
@@ -304,6 +315,7 @@ export class PluginStore {
         booting: null,
         verified: state.active,
         error: null,
+        ...(this.companyCoreHead ? { rollback: null } : {}),
         dataSchema: this.dataSchema,
       });
       return true;
@@ -316,6 +328,9 @@ export class PluginStore {
       await writePluginStoreJson(join(this.root, "selection.json"), {
         ...state,
         active: fallback,
+        ...(this.companyCoreHead && fallback !== state.active
+          ? { rollback: { operationId: state.active, diagnostic: reason } }
+          : {}),
         previous: state.active,
         pending: null,
         booting: null,
@@ -344,6 +359,7 @@ export class PluginStore {
         previous: state.active,
         verified: state.verified ?? state.active,
         booting: null,
+        ...(this.companyCoreHead ? { rollback: null } : {}),
       });
     });
   }

@@ -119,6 +119,7 @@ const states: PluginUpdateRow["state"][] = [
   "verifying",
   "restoring",
   "pending-restart",
+  "confirming",
   "completed",
   "restored",
   "failed",

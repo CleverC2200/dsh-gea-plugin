@@ -55,7 +55,14 @@ export type PluginDetailUpdateSnapshot = {
   restart: "idle" | "restarting" | "requested" | "failed" | "unsupported";
   restartReady?: boolean;
   notice: {
-    kind: "progress" | "pending-restart" | "completed" | "restored" | "failed" | "unconfirmed";
+    kind:
+      | "progress"
+      | "pending-restart"
+      | "confirming"
+      | "completed"
+      | "restored"
+      | "failed"
+      | "unconfirmed";
     sequence: number;
     packageName?: string;
   } | null;
@@ -70,6 +77,7 @@ const operationStages: PluginUpdateRow["state"][] = [
   "verifying",
   "restoring",
   "pending-restart",
+  "confirming",
 ];
 const activeStages: PluginUpdateRow["state"][] = [
   "checking",
@@ -81,6 +89,7 @@ const activeStages: PluginUpdateRow["state"][] = [
   "verifying",
   "restoring",
   "pending-restart",
+  "confirming",
   "unknown",
 ];
 export const pluginUpdateBusy = (items: PluginUpdateRow[]) =>
@@ -114,6 +123,8 @@ export function createPluginDetailUpdates(
     notice: null,
   };
   let status: UpdateClientStatus | undefined;
+  let statusRequestGeneration = 0;
+  const previousHosts = new Set<string>();
   let page:
     | {
         lifetime: AbortController;
@@ -127,6 +138,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
+          expired?: boolean;
           accepted?: { operationId: string; hostProcessIdentity: string };
           timer: ReturnType<typeof setTimeout>;
         };
@@ -195,6 +207,7 @@ export function createPluginDetailUpdates(
     owner.observation = {
       names,
       timer: setTimeout(() => {
+        if (owner.observation) owner.observation.expired = true;
         notify(owner, "unconfirmed");
         if (!owner.observation?.accepted) endObservation(owner);
       }, pluginUpdateObservationMs),
@@ -258,17 +271,23 @@ export function createPluginDetailUpdates(
       notify(
         owner,
         rows.some((row) => row?.state === "unknown") ||
+          (owner.observation.expired && rows.some((row) => row?.state === "confirming")) ||
           !rows.some((row) => row && operationStages.includes(row.state))
           ? "unconfirmed"
-          : "progress",
+          : rows.some((row) => row?.state === "confirming")
+            ? "confirming"
+            : "progress",
       );
   };
   const publishStatus = (next: UpdateClientStatus) => {
+    if (previousHosts.has(next.hostProcessIdentity)) return false;
     if (
       !status ||
       status.hostProcessIdentity !== next.hostProcessIdentity ||
       next.revision >= status.revision
     ) {
+      if (status && status.hostProcessIdentity !== next.hostProcessIdentity)
+        previousHosts.add(status.hostProcessIdentity);
       status = next;
       publish({
         items: next.items,
@@ -285,70 +304,86 @@ export function createPluginDetailUpdates(
     signal = signalFor(owner),
     recovering = false,
   ) => {
-    const next = parseUpdateClientStatus(
-      await request("status", { pageIdentity: owner.identity }, signal),
-    );
-    if (page !== owner) return;
-    publishStatus(next);
-    if (recovering && owner.recovering) {
-      owner.recovering = false;
-      clearTimeout(owner.recoveryTimer);
-      const names = snapshot.items
-        .filter((row) => operationStages.includes(row.state))
-        .map((row) => row.packageName);
-      if (names.length) observe(owner, names);
-    }
-    const confirming = snapshot.items.filter(
-      (row) =>
-        row.state === "pending-restart" &&
-        row.candidateVersion !== null &&
-        row.runningHostVersion === row.candidateVersion,
-    );
-    owner.awaitingClient = confirming.length > 0;
-    const modules = readClientPluginModules(ctx);
-    let acknowledged = false;
-    if (modules.length && next.items.some((row) => row.runningHostVersion !== null)) {
-      await request(
-        "observed",
-        {
-          hostProcessIdentity: next.hostProcessIdentity,
-          pageIdentity: owner.identity,
-          nonce: next.challenge,
-          modules,
-        },
-        signal,
-      )
-        .then(() => {
-          acknowledged = true;
-        })
-        .catch(() => {
-          signal.throwIfAborted();
-        });
-    }
-    if (
-      acknowledged &&
-      confirming.length &&
-      confirming.every((row) =>
-        modules.some(
-          (module) =>
-            module.stamp.name === row.packageName && module.stamp.version === row.candidateVersion,
-        ),
-      )
-    ) {
-      const confirmed = parseUpdateClientStatus(
+    let generation = ++statusRequestGeneration;
+    try {
+      const next = parseUpdateClientStatus(
         await request("status", { pageIdentity: owner.identity }, signal),
       );
-      if (page !== owner) return;
-      if (publishStatus(confirmed)) owner.awaitingClient = false;
+      if (page !== owner || generation !== statusRequestGeneration) return;
+      if (!publishStatus(next)) return;
+      if (recovering && owner.recovering) {
+        owner.recovering = false;
+        clearTimeout(owner.recoveryTimer);
+        const names = snapshot.items
+          .filter((row) => operationStages.includes(row.state))
+          .map((row) => row.packageName);
+        if (names.length) observe(owner, names);
+      }
+      const confirming = snapshot.items.filter(
+        (row) =>
+          row.state === "confirming" &&
+          row.candidateVersion !== null &&
+          row.runningHostVersion === row.candidateVersion,
+      );
+      owner.awaitingClient = confirming.length > 0;
+      const modules = readClientPluginModules(ctx);
+      let acknowledged = false;
+      if (modules.length && next.items.some((row) => row.runningHostVersion !== null)) {
+        await request(
+          "observed",
+          {
+            hostProcessIdentity: next.hostProcessIdentity,
+            pageIdentity: owner.identity,
+            nonce: next.challenge,
+            modules,
+          },
+          signal,
+        )
+          .then(() => {
+            acknowledged = true;
+          })
+          .catch(() => {
+            signal.throwIfAborted();
+          });
+      }
+      if (page !== owner || generation !== statusRequestGeneration) return;
+      if (
+        acknowledged &&
+        confirming.length &&
+        confirming.every((row) =>
+          modules.some(
+            (module) =>
+              module.stamp.name === row.packageName &&
+              module.stamp.version === row.candidateVersion,
+          ),
+        )
+      ) {
+        generation = ++statusRequestGeneration;
+        const confirmed = parseUpdateClientStatus(
+          await request("status", { pageIdentity: owner.identity }, signal),
+        );
+        if (page !== owner || generation !== statusRequestGeneration) return;
+        if (publishStatus(confirmed)) owner.awaitingClient = false;
+      }
+      reflectObservation(owner);
+    } catch (error) {
+      if (page !== owner || generation !== statusRequestGeneration) return;
+      throw error;
     }
-    reflectObservation(owner);
   };
   const tick = async (owner: NonNullable<typeof page>) => {
     try {
       await refresh(owner, signalFor(owner), true);
       if (page !== owner) return;
     } catch {
-      if (!owner.lifetime.signal.aborted) {
+      if (
+        !owner.lifetime.signal.aborted &&
+        !(
+          owner.observation &&
+          !owner.observation.expired &&
+          snapshot.items.some((row) => row.state === "confirming")
+        )
+      ) {
         publish({ transportError: "status" });
         if (owner.observation) notify(owner, "unconfirmed");
       }
@@ -365,6 +400,7 @@ export function createPluginDetailUpdates(
     clearTimeout(owner.recoveryTimer);
     clearTimeout(owner.observation?.timer);
     owner.lifetime.abort();
+    statusRequestGeneration++;
     page = undefined;
     publish({ checking: false });
   };
@@ -495,19 +531,19 @@ export function createPluginDetailUpdates(
     resume(): Promise<void> {
       if (resumed || disposed) return Promise.resolve();
       resumed = true;
-      if (page) return page.poll ?? Promise.resolve();
-      page = {
+      page ??= {
         lifetime: new AbortController(),
         identity: crypto.randomUUID(),
         refs: 0,
         recovering: true,
       };
       const owner = page;
+      owner.recovering = true;
       owner.recoveryTimer = setTimeout(() => {
         owner.recovering = false;
         if (!owner.refs && !owner.observation) close(owner);
       }, pluginUpdateObservationMs);
-      page.poll = tick(page);
+      page.poll ??= tick(page);
       return page.poll;
     },
     retain() {

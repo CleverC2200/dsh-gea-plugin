@@ -43,7 +43,18 @@ function targetName(subject: PluginDetailProps["subject"]) {
 }
 function useDetail(updates: Owner) {
   useEffect(() => updates.retain(), [updates]);
-  return useSyncExternalStore(updates.subscribe, updates.getSnapshot);
+  const snapshot = useSyncExternalStore(updates.subscribe, updates.getSnapshot);
+  return {
+    ...snapshot,
+    confirmationUnconfirmed:
+      snapshot.notice?.kind === "unconfirmed" &&
+      snapshot.items.some((row) => row.state === "confirming"),
+    items: snapshot.items.map((row) =>
+      row.state === "confirming" && snapshot.notice?.kind === "unconfirmed"
+        ? { ...row, state: "unknown" as const }
+        : row,
+    ),
+  };
 }
 function UpdateBadge({ subject, updates, t }: Props): ReactNode {
   const name = targetName(subject);
@@ -153,9 +164,9 @@ function DetailSection({
         <dt>{t("candidate")}</dt>
         <dd>{row?.candidateVersion ?? t("unavailable")}</dd>
       </dl>
-      {row?.state === "pending-restart" ? (
+      {row?.state === "pending-restart" || row?.state === "confirming" ? (
         <p className="gea-plugin-update-notice" role="status">
-          {t("restart")}
+          {t(row.state === "confirming" ? "confirming" : "restart")}
         </p>
       ) : null}
       {error ? (
@@ -300,7 +311,10 @@ function UpdateCard({
     ...plugins.items.flatMap((row) => {
       const version = row.candidateVersion ?? row.installedVersion;
       return version &&
-        ((pluginAvailable && row.state === "available") || row.state === "pending-restart")
+        ((pluginAvailable && row.state === "available") ||
+          row.state === "pending-restart" ||
+          row.state === "confirming" ||
+          (row.state === "unknown" && plugins.confirmationUnconfirmed))
         ? [`${row.packageName}:${version}`]
         : [];
     }),
@@ -340,22 +354,24 @@ function UpdateCard({
   const pluginInProgress = plugins.items.find(
     (row) => row.state !== "pending-restart" && row.state !== "unknown" && pluginUpdateBusy([row]),
   );
-  const pluginStatus = pluginInProgress
-    ? t(pluginInProgress.state)
-    : pending
-      ? t("pending-restart")
-      : pluginAvailable
-        ? t("available")
-        : plugins.checking
-          ? t("checking")
-          : plugins.transportError || plugins.items.some((row) => row.state === "check-failed")
-            ? t("checkError")
-            : plugins.items.length > 0 &&
-                plugins.items.every((row) => ["current", "completed"].includes(row.state))
-              ? t("current")
-              : plugins.items.some((row) => row.state === "blocked")
-                ? t("blocked")
-                : t("unavailable");
+  const pluginStatus = plugins.confirmationUnconfirmed
+    ? t("unavailable")
+    : pluginInProgress
+      ? t(pluginInProgress.state)
+      : pending
+        ? t("pending-restart")
+        : pluginAvailable
+          ? t("available")
+          : plugins.checking
+            ? t("checking")
+            : plugins.transportError || plugins.items.some((row) => row.state === "check-failed")
+              ? t("checkError")
+              : plugins.items.length > 0 &&
+                  plugins.items.every((row) => ["current", "completed"].includes(row.state))
+                ? t("current")
+                : plugins.items.some((row) => row.state === "blocked")
+                  ? t("blocked")
+                  : t("unavailable");
   if (!wide || (manual === "closed" && !newVersion)) return null;
   return (
     <article

@@ -171,6 +171,9 @@ test("official plugin detail keeps diagnostics without a separate update window"
   page.setDefaultTimeout(5000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
+  t.after(() => {
+    if (errors.length) t.diagnostic(JSON.stringify(errors));
+  });
   await page.addInitScript(() => {
     window.nativeUpdateCalls = [];
     window.nativeOpenCalls = [];
@@ -236,6 +239,20 @@ test("official plugin detail keeps diagnostics without a separate update window"
   await footer.getByRole("button", { name: "Restart and update", exact: true }).waitFor();
   phase = "pending-restart";
   await page.locator("main").getByText("Restart required", { exact: true }).waitFor();
+  phase = "confirming";
+  await page
+    .locator("main")
+    .getByText("Confirming plugin updates", { exact: true })
+    .first()
+    .waitFor();
+  await footer.getByText("Confirming plugin updates", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Restart required", { exact: true }).count(), 0);
+  assert.equal(
+    await footer.getByRole("button", { name: "Restart and update", exact: true }).count(),
+    0,
+  );
+  phase = "completed";
+  await page.locator("main").getByText("Updated", { exact: true }).first().waitFor();
   phase = "current";
   await footer
     .getByRole("button", { name: "Restart and update", exact: true })

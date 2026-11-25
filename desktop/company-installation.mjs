@@ -24,6 +24,12 @@ const graphValues = (manifest) =>
   Object.fromEntries(
     graphFields.filter((key) => Object.hasOwn(manifest, key)).map((key) => [key, manifest[key]]),
   );
+const rolledBackSelection = (selection, id) =>
+  selection.rollback?.operationId === id &&
+  selection.active !== id &&
+  selection.active === selection.verified &&
+  selection.pending === null &&
+  (selection.booting === null || selection.booting === selection.active);
 const json = async (path) => JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, ""));
 const optional = async (path) =>
   readFile(path).catch((error) => {
@@ -131,6 +137,24 @@ export class CompanyInstallation {
   }
   async preparationIdle() {
     return (await this.store.recoverPreparation()) !== "busy";
+  }
+  async activationState(id) {
+    const selection = await this.store.status();
+    return selection.pending === id
+      ? "pending"
+      : selection.active === id
+        ? "active"
+        : rolledBackSelection(selection, id)
+          ? "rolled-back"
+          : "unavailable";
+  }
+  async recoverRollback(id) {
+    return this.store.withSelectionLock(async () => {
+      const selection = await this.store.status();
+      if (!rolledBackSelection(selection, id)) return false;
+      await this.failOperation(id, selection.rollback.diagnostic);
+      return true;
+    });
   }
   async beginBoot({ activatePending = true } = {}) {
     await this.preparationIdle();
@@ -360,6 +384,7 @@ export class CompanyInstallation {
         stage: "failed",
         diagnostic,
         completionProof: null,
+        completionProofs: undefined,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {

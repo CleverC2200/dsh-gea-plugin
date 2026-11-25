@@ -85,6 +85,7 @@ export type PluginUpdateRow = {
     | "downloading"
     | "waiting-lock"
     | "snapshotting"
+    | "confirming"
     | PluginUpdateStage;
   diagnostic: string | null;
   problem?: PluginUpdateProblem;
