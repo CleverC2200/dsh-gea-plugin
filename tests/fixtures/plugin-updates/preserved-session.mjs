@@ -3,13 +3,16 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export async function preservedSession(sdk, home) {
-  const { Context } = await import(pathToFileURL(join(sdk, "vendor/cordis/lib/index.js")));
+export async function preservedSession(sdk, home, packages) {
+  const modulePath = (name, source) => pathToFileURL(
+    packages ? join(packages, "@deepseek-ai", name, "lib/index.js") : join(sdk, source),
+  );
+  const { Context } = await import(modulePath("cordis", "vendor/cordis/lib/index.js"));
   const { default: Persistence } = await import(
-    pathToFileURL(join(sdk, "packages/session/session-persistence-jsonl/lib/index.js"))
+    modulePath("dsh-session-persistence-jsonl", "packages/session/session-persistence-jsonl/lib/index.js")
   );
   const { SESSION_FORMAT_VERSION } = await import(
-    pathToFileURL(join(sdk, "packages/core/session/lib/index.js"))
+    modulePath("dsh-session", "packages/core/session/lib/index.js")
   );
   const root = join(home, "sessions");
   const header = {

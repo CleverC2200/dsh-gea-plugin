@@ -7,6 +7,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { build } from "esbuild";
 import { parse as parseYaml } from "yaml";
+import { c as packTar } from "tar";
 import { projectPluginRelease, companyPackageNames } from "../../../src/shared/plugin-release.mjs";
 import { preservedSession } from "./preserved-session.mjs";
 import { CompanyInstallation } from "../../../desktop/company-installation.mjs";
@@ -47,9 +48,8 @@ export async function makeArchive(
     `window.__ModuleLoader__.load({id:${JSON.stringify(name)},factory:()=>({pluginPackageVersion:Object.freeze(${JSON.stringify({ name, version })}),apply(){}})});\n`,
   );
   const path = join(directory, "..", "plugin.tgz");
-  execFileSync("tar", ["-czf", path, "-C", dirname(directory), "package"], {
-    env: { ...process.env, COPYFILE_DISABLE: "1" },
-  });
+  await writeFile(join(directory, "订单履约.md"), "更新归档中的中文路径");
+  await packTar({ gzip: true, file: path, cwd: dirname(directory) }, ["package"]);
   return { path, manifest, bytes: await readFile(path) };
 }
 function runtimeLocation(proof, sdk) {
@@ -263,7 +263,9 @@ export async function installedScenario(
 ) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
   const root = await mkdtemp(join(repository, ".runtime/actual-install-"));
-  const verifySession = await preservedSession(sdk, root);
+  const verifySession = await preservedSession(
+    sdk, root, proof.kind === "desktop" ? join(proof.root, "dsh/node_modules") : undefined,
+  );
   const personalData = join(root, "agent-plugins/data");
   await mkdir(join(personalData, "user-agents.json.skills/personal/tree/references"), {
     recursive: true,
@@ -371,7 +373,7 @@ export async function installedScenario(
   );
   await mkdir(join(root, "node_modules/@deepseek-ai"), { recursive: true });
   for (const [name, target] of Object.entries(sdkDependencies))
-    await symlink(target.slice("link:".length), join(root, "node_modules", name), "dir");
+    await symlink(target.slice("link:".length), join(root, "node_modules", name), process.platform === "win32" ? "junction" : "dir");
   await writeFile(
     join(dir, "package.json"),
     JSON.stringify({
@@ -676,8 +678,7 @@ export async function installedScenario(
     fresh,
     packageManager: {
       file: pnpm,
-      version: JSON.parse(await readFile(createRequire(import.meta.url).resolve("pnpm"), "utf8"))
-        .version,
+      version: JSON.parse(await readFile(join(dirname(dirname(pnpm)), "package.json"), "utf8")).version,
     },
     profileRetained: JSON.parse(await readFile(join(dir, "package.json"), "utf8")).retained,
     personalAgentPreserved: true,

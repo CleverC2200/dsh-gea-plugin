@@ -1144,6 +1144,19 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
   );
   milestone("managed-runtime-session-and-draft-storage-verified");
   evidence.nativeUpgradePassed = !repairAffectedBaseline;
+  if (process.env.GEA_RECHECK_SUITE === "true") {
+    execFileSync(process.execPath, ["--expose-internals", "--test", join(import.meta.dirname, "independent-suite.mjs")], {
+      env: {
+        ...process.env,
+        GEA_INSTALLED_SUITE_ROOT: installation,
+        GEA_INSTALLED_SUITE_OUTPUT: privateOutput,
+      },
+      stdio: "inherit",
+      timeout: 190000,
+    });
+    await cp(join(privateOutput, "independent-suite.json"), join(output, "independent-suite.json"));
+  }
+
   evidence.signedOverwriteRecoveredAffectedBaseline = Boolean(recoveryReceipt);
   if (values["recheck-recovery-ui"]) {
     const stop = spawnSync("taskkill.exe", ["/PID", String(relaunched.ProcessId), "/T", "/F"], {
