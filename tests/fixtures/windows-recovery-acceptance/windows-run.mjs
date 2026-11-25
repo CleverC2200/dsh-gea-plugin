@@ -238,6 +238,8 @@ async function traceLegacyStartup(port) {
     import { Session } from "node:inspector";
     import { syncBuiltinESMExports } from "node:module";
     import { delimiter, join } from "node:path";
+    import { promisify } from "node:util";
+    import { t as readTar } from ${JSON.stringify(import.meta.resolve("tar"))};
     const report = (value) => appendFileSync(${JSON.stringify(legacyTrace)}, JSON.stringify({ time: new Date().toISOString(), ...value }) + "\\n");
     report({ kind: "host-probe-loaded", hasDesktopVersion: Boolean(process.env.GEA_DESKTOP_VERSION) });
     const session = new Session();
@@ -252,7 +254,7 @@ async function traceLegacyStartup(port) {
         if (!binding || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding)) { session.post("Debugger.resume"); return; }
         session.post("Debugger.evaluateOnCallFrame", {
           callFrameId: frame.callFrameId,
-          expression: "((error) => ({name:error.name,code:error.code,status:error.status,signal:error.signal,syscall:error.syscall,timeout:/timed out|ETIMEDOUT/i.test(error.message),commandFailed:/^Command failed:/i.test(error.message),tarFlags:/^tar(?:[.]exe)? +(-[A-Za-z]+) +/.exec(error.cmd ?? error.message.slice(16))?.[1],tarRemotePath:/cannot connect to|could not resolve hostname|rmt:/i.test(String(error.stderr ?? '')),stack:String(error.stack).split(String.fromCharCode(10)).slice(1,8).map((line) => line.trim().split(' ').slice(0,2).join(' ')).filter((line) => /^at [A-Za-z0-9._<>]+$/.test(line))}))(" + binding + ")",
+          expression: "((error) => ({name:error.name,code:error.code,status:error.status,signal:error.signal,syscall:error.syscall,timeout:/timed out|ETIMEDOUT/i.test(error.message),commandFailed:/^Command failed:/i.test(error.message),tarFlags:/^tar(?:[.]exe)? +(-[A-Za-z]+) +/.exec(error.cmd ?? error.message.slice(16))?.[1],tarRemotePath:/cannot connect to|could not resolve hostname|rmt:/i.test(String(error.stderr ?? '')),tarNameEncoding:/cannot be converted|conversion|invalid multibyte/i.test(String(error.stderr ?? '')),tarOpenError:/error opening archive|failed to open|cannot open/i.test(String(error.stderr ?? '')),tarArchiveReadError:/unrecognized archive|truncated|damaged/i.test(String(error.stderr ?? '')),stack:String(error.stack).split(String.fromCharCode(10)).slice(1,8).map((line) => line.trim().split(' ').slice(0,2).join(' ')).filter((line) => /^at [A-Za-z0-9._<>]+$/.test(line))}))(" + binding + ")",
           returnByValue: true,
         }, (_, reply) => {
           const detail = reply?.result?.value;
@@ -261,6 +263,12 @@ async function traceLegacyStartup(port) {
             if (detail.tarFlags && detail.tarRemotePath && !process.env.TAR_OPTIONS?.includes("--force-local")) {
               process.env.TAR_OPTIONS = [process.env.TAR_OPTIONS, "--force-local"].filter(Boolean).join(" ");
               report({ kind: "controlled-host-change", tarForceLocal: true });
+            } else if (detail.tarFlags && usedSystemTar && !useTarLibrary) {
+              process.env.PATH = savedPath;
+              if (savedTarOptions === undefined) delete process.env.TAR_OPTIONS;
+              else process.env.TAR_OPTIONS = savedTarOptions;
+              useTarLibrary = true;
+              report({ kind: "controlled-host-change", tarViaLibrary: true });
             }
           }
           session.post("Debugger.resume");
@@ -277,7 +285,38 @@ async function traceLegacyStartup(port) {
       }
     }
     report({ kind: "tar-version", version: tarVersion() });
+    const savedPath = process.env.PATH;
+    const savedTarOptions = process.env.TAR_OPTIONS;
     let usedSystemTar = false;
+    let useTarLibrary = false;
+    const execute = commands.execFile;
+    const executeAsync = promisify(execute);
+    commands.execFile = function(...args) {
+      return Reflect.apply(execute, this, args);
+    };
+    commands.execFile[promisify.custom] = async function(executable, args, options) {
+      if (!useTarLibrary || executable !== "tar" || !["-tzf", "-tvzf", "-xOf"].includes(args?.[0]))
+        return executeAsync(executable, args, options);
+      options?.signal?.throwIfAborted();
+      const [flag, file, selected] = args;
+      const stdout = [];
+      await readTar({
+        file,
+        strict: true,
+        onReadEntry(entry) {
+          if (flag === "-tzf") stdout.push(entry.path + String.fromCharCode(10));
+          if (flag === "-tvzf") {
+            const type = entry.type === "File" ? "-" : entry.type === "Directory" ? "d" : "?";
+            stdout.push(type + String.fromCharCode(10));
+          }
+          if (flag === "-xOf" && entry.path === selected)
+            entry.on("data", (chunk) => stdout.push(chunk));
+        },
+      });
+      options?.signal?.throwIfAborted();
+      report({ kind: "tar-library-read", flag });
+      return { stdout: flag === "-xOf" ? Buffer.concat(stdout).toString("utf8") : stdout.join(""), stderr: "" };
+    };
     commands.execFileSync = function(executable, args, options) {
       if (!Array.isArray(args) || !args.includes("--replace")) return Reflect.apply(exec, this, [executable, args, options]);
       try {
@@ -828,6 +867,9 @@ try {
             } else if (!evidence.oldVisibleRetriedWithSystemTar && trace.includes('"systemTar":true')) {
               evidence.oldVisibleRetriedWithSystemTar = true;
               milestone("old-visible-retry-with-only-system-tar");
+            } else if (!evidence.oldVisibleRetriedWithTarLibrary && trace.includes('"tarViaLibrary":true')) {
+              evidence.oldVisibleRetriedWithTarLibrary = true;
+              milestone("old-visible-retry-with-only-library-archive-read");
             } else {
               throw Error("OLD_VISIBLE_UPDATE_FAILED");
             }
@@ -1436,6 +1478,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     oldVisibleDialog: evidence.oldVisibleDialog,
     oldVisibleRetriedWithForceLocal: evidence.oldVisibleRetriedWithForceLocal,
     oldVisibleRetriedWithSystemTar: evidence.oldVisibleRetriedWithSystemTar,
+    oldVisibleRetriedWithTarLibrary: evidence.oldVisibleRetriedWithTarLibrary,
     legacyHostTrace: values["trace-legacy-host"]
       ? (await readFile(legacyTrace, "utf8").catch(() => ""))
           .trim()

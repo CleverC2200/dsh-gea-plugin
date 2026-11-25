@@ -143,6 +143,7 @@ jobs:
         run: |
           $packages = @('@playwright/test@1.58.2', 'yaml@2.9.0', 'semver@7.7.4')
           if ('${{ matrix.entry }}' -eq 'cache-only') { $packages += 'esbuild@0.25.9' }
+          if ('${{ inputs.windows_old_entry_trace }}' -eq 'true') { $packages += 'tar@7.5.22' }
           npm install --prefix gea/.runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund @packages
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path gea/node_modules -Target "$PWD/gea/.runtime/fixture-dependencies/node_modules" | Out-Null
