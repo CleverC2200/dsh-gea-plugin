@@ -8,7 +8,7 @@ function replaceOnce(source, anchor, replacement) {
 }
 
 export function recoverableDirectoryInstaller(source) {
-  return replaceOnce(
+  const installer = replaceOnce(
     source.replaceAll("\r\n", "\n"),
     "    Rename $dshFinalDirectory $dshOldDirectory",
     [
@@ -21,6 +21,12 @@ export function recoverableDirectoryInstaller(source) {
       "    Rename $dshFinalDirectory $dshOldDirectory",
     ].join("\n"),
   );
+  const cleanup = '    RMDir /r "\\\\?\\$dshOldDirectory"';
+  return replaceOnce(
+    installer,
+    cleanup,
+    "    !insertmacro GEA_CLEAR_DIRECTORY_RECOVERY\n" + cleanup,
+  );
 }
 
 export function recoverableInstaller(source, directories) {
@@ -30,11 +36,15 @@ export function recoverableInstaller(source, directories) {
     include,
     '!include "' + directories + '"',
   );
-  const perUser = "  !insertmacro setInstallModePerUser";
+  const selectedPath = "  StrCpy $InstallerPath $INSTDIR";
   return (
     '!include "' +
     hooks +
     '"\n' +
-    replaceOnce(installer, perUser, perUser + "\n  !insertmacro GEA_RESTORE_REGISTERED_DIRECTORY")
+    replaceOnce(
+      installer,
+      selectedPath,
+      selectedPath + "\n  !insertmacro GEA_RESTORE_REGISTERED_DIRECTORY",
+    )
   );
 }

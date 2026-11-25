@@ -227,6 +227,19 @@ test("archive inspection succeeds with no system tar in PATH", async (t) => {
     else process.env.PATH = previous;
   }
 });
+test("archive inspection uses the effective name of a long Unicode export", async (t) => {
+  const f = await fixture(t);
+  const root = join(f.dir, companyPackageNames[0].replaceAll("/", "-"));
+  const manifestPath = join(root, "package/package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const relative = "lib/" + "订单履约".repeat(18) + ".mjs";
+  manifest.exports["./client"] = "./" + relative;
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await writeFile(join(root, "package", relative), "export default {}");
+  const archive = join(f.dir, "long-name.tgz");
+  await packTar({ gzip: true, file: archive, cwd: root }, ["package"]);
+  assert.equal((await inspectPluginArchive(archive)).name, manifest.name);
+});
 test("source rejects malformed channel and clears previous execution authority while original inventory remains outside source", async (t) => {
   const f = await fixture(t),
     releases = await f.source.check();

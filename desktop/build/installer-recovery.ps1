@@ -1,12 +1,24 @@
 param(
     [Parameter(Mandatory = $true)][string]$Target,
     [Parameter(Mandatory = $true)][string]$Executable,
-    [string]$Backup,
+    [Parameter(Mandatory = $true)][string]$Backup,
     [int]$Owner,
     [string]$Ready
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Test-PhysicalPath([string]$Path) {
+    for ($item = $Path; $item; $item = [IO.Path]::GetDirectoryName($item)) {
+        try {
+            if ([IO.File]::GetAttributes($item) -band [IO.FileAttributes]::ReparsePoint) {
+                return $false
+            }
+        } catch [IO.FileNotFoundException], [IO.DirectoryNotFoundException] {
+        }
+    }
+    return $true
+}
 
 function Test-ExistingInstallation([string]$Directory) {
     if (![IO.Directory]::Exists($Directory)) { return $false }
@@ -25,8 +37,10 @@ function Test-BackupName([string]$Path) {
     return [Guid]::TryParseExact($Path.Substring($prefix.Length), 'B', [ref]$id)
 }
 
+if (!(Test-BackupName $Backup) -or !(Test-PhysicalPath $Target)) { exit 2 }
+
 if ($Owner) {
-    if (!(Test-BackupName $Backup) -or !(Test-ExistingInstallation $Target)) { exit 2 }
+    if (!(Test-ExistingInstallation $Target)) { exit 2 }
     $installer = [Diagnostics.Process]::GetProcessById($Owner)
     try {
         $null = $installer.Handle
@@ -36,20 +50,30 @@ if ($Owner) {
         $installer.Dispose()
     }
 } else {
-    if (Test-Path -LiteralPath $Target) { exit 0 }
-    $parent = [IO.Path]::GetDirectoryName($Target)
-    if (![IO.Directory]::Exists($parent)) { exit 0 }
-    $candidates = @([IO.Directory]::EnumerateDirectories($parent) | Where-Object {
-        (Test-BackupName $_) -and (Test-ExistingInstallation $_)
-    })
-    if ($candidates.Count -ne 1) { exit 0 }
-    $Backup = $candidates[0]
+    if (!(Test-ExistingInstallation $Backup)) { exit 0 }
+    if ([IO.Directory]::Exists($Target)) {
+        try {
+            [IO.Directory]::Delete($Target, $false)
+        } catch [IO.IOException] {
+            exit 0
+        }
+    }
 }
 
-if (!(Test-Path -LiteralPath $Target) -and (Test-ExistingInstallation $Backup)) {
+if (!(Test-Path -LiteralPath $Target) -and (Test-PhysicalPath $Target) -and
+    (Test-ExistingInstallation $Backup)) {
     try {
         [IO.Directory]::Move($Backup, $Target)
     } catch [IO.IOException] {
         if (!(Test-ExistingInstallation $Target)) { throw }
+        exit 0
+    }
+    $staged = "$Target.new-" + $Backup.Substring("$Target.old-".Length)
+    if ([IO.Directory]::Exists($staged) -and (Test-PhysicalPath $staged)) {
+        try {
+            [IO.Directory]::Delete($staged, $true)
+        } catch [IO.IOException], [UnauthorizedAccessException] {
+            Write-Warning "The interrupted installation staging folder could not be removed."
+        }
     }
 }

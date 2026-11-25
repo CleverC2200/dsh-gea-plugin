@@ -1,4 +1,5 @@
 !define GEA_INSTALLER_RECOVERY_SCRIPT "${__FILEDIR__}\installer-recovery.ps1"
+!define GEA_DIRECTORY_ROLLBACK_VALUE "GeaPendingDirectoryRollback"
 
 !macro GEA_RESTORE_REGISTERED_DIRECTORY
   Push $0
@@ -7,11 +8,24 @@
   ${If} $0 != ""
   ${AndIf} $0 == $INSTDIR
   ${AndIfNot} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
-    InitPluginsDir
-    File "/oname=$PLUGINSDIR\gea-installer-recovery.ps1" "${GEA_INSTALLER_RECOVERY_SCRIPT}"
-    nsExec::ExecToStack /TIMEOUT=10000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\gea-installer-recovery.ps1" -Target "$INSTDIR" -Executable "${APP_EXECUTABLE_FILENAME}"'
-    Pop $0
-    Pop $1
+    Call InstallerValidatePath
+    ${If} $InstallerError == ""
+    ${AndIf} $InstallerPath == $INSTDIR
+      ReadRegStr $1 HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}"
+      ${If} $1 != ""
+        InitPluginsDir
+        SetOutPath "$PLUGINSDIR"
+        File "/oname=$PLUGINSDIR\gea-installer-recovery.ps1" "${GEA_INSTALLER_RECOVERY_SCRIPT}"
+        nsExec::ExecToStack /TIMEOUT=10000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\gea-installer-recovery.ps1" -Target "$INSTDIR" -Executable "${APP_EXECUTABLE_FILENAME}" -Backup "$1"'
+        Pop $0
+        Pop $1
+        ${If} $0 != 0
+          DetailPrint "恢复上次安装目录失败（$0），备份目录已保留。"
+        ${ElseIf} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+          DeleteRegValue HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}"
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
   ${EndIf}
   Pop $1
   Pop $0
@@ -41,6 +55,13 @@
       ${Loop}
     ${EndIf}
     SetOutPath "$PLUGINSDIR"
+    ${If} $1 == 1
+      ClearErrors
+      WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}" "$dshOldDirectory"
+      ${If} ${Errors}
+        StrCpy $1 0
+      ${EndIf}
+    ${EndIf}
   ${EndIf}
   ClearErrors
   ${If} $1 == 0
@@ -48,4 +69,8 @@
   ${EndIf}
   Pop $1
   Pop $0
+!macroend
+
+!macro GEA_CLEAR_DIRECTORY_RECOVERY
+  DeleteRegValue HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}"
 !macroend
