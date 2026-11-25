@@ -435,6 +435,43 @@ async function openVisibleDesktopUpdate(client, version, image) {
   await evaluate(client, `${findButton}.click(); true`);
 }
 
+async function closeWorkspace(mainPort) {
+    const debuggerTarget = await until(
+      "old client main inspector",
+      async () => {
+        const list = await fetch(`http://127.0.0.1:${mainPort}/json/list`, {
+          signal: AbortSignal.timeout(2000),
+        })
+          .then((reply) => reply.json())
+          .catch(() => []);
+        return list.find((item) => item.webSocketDebuggerUrl);
+      },
+      15000,
+    );
+    const oldMain = await connection(debuggerTarget.webSocketDebuggerUrl);
+    try {
+      assert.equal(
+        await evaluate(
+          oldMain,
+          `(() => {
+        const path = process.getBuiltinModule("node:path");
+        const load = process.getBuiltinModule("node:module").createRequire(
+          path.join(process.resourcesPath, "app.asar", "package.json"));
+        const { app, BrowserWindow } = load("electron");
+        const workspace = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().startsWith("dsh-app://app/"));
+        if (!workspace) return false;
+        workspace.webContents.session.flushStorageData();
+        setTimeout(() => app.quit(), 250);
+        return true;
+      })()`,
+        ),
+        true,
+      );
+    } finally {
+      oldMain.close();
+    }
+}
 let port;
 async function targets() {
   return fetch(`http://127.0.0.1:${port}/json/list`, {
@@ -795,41 +832,7 @@ try {
     recoveryReceipt = { path: operation, digest: await fileDigest(operation) };
     if (cdp) cdp.close();
     cdp = undefined;
-    const debuggerTarget = await until(
-      "old client main inspector",
-      async () => {
-        const list = await fetch(`http://127.0.0.1:${baselineMainPort}/json/list`, {
-          signal: AbortSignal.timeout(2000),
-        })
-          .then((reply) => reply.json())
-          .catch(() => []);
-        return list.find((item) => item.webSocketDebuggerUrl);
-      },
-      15000,
-    );
-    const oldMain = await connection(debuggerTarget.webSocketDebuggerUrl);
-    try {
-      assert.equal(
-        await evaluate(
-          oldMain,
-          `(() => {
-        const path = process.getBuiltinModule("node:path");
-        const load = process.getBuiltinModule("node:module").createRequire(
-          path.join(process.resourcesPath, "app.asar", "package.json"));
-        const { app, BrowserWindow } = load("electron");
-        const workspace = BrowserWindow.getAllWindows().find((window) =>
-          window.webContents.getURL().startsWith("dsh-app://app/"));
-        if (!workspace) return false;
-        workspace.webContents.session.flushStorageData();
-        setTimeout(() => app.quit(), 250);
-        return true;
-      })()`,
-        ),
-        true,
-      );
-    } finally {
-      oldMain.close();
-    }
+    await closeWorkspace(baselineMainPort);
     handoff = Date.now();
     evidence.firstHop = "signed-in-place-cover-of-affected-baseline";
   } else {
@@ -979,6 +982,37 @@ try {
         ),
       15000,
     );
+    if (values["repair-legacy-visible"]) {
+      execFileSync(process.execPath, [join(import.meta.dirname, "installer-cutover.mjs"), output, installation], {
+        env: environment,
+        stdio: "inherit",
+        timeout: 120000,
+      });
+      const restored = JSON.parse(await readFile(join(output, "official-cutover.json"), "utf8"));
+      assert.equal(restored.exactInstalledExecutableRestored, true);
+      const mainPort = await loopbackPort();
+      port = await loopbackPort();
+      const old = spawn(executable, [
+        "--inspect=127.0.0.1:" + mainPort,
+        "--remote-debugging-port=" + port,
+        "--remote-debugging-address=127.0.0.1",
+      ], { env: environment, windowsHide: true, stdio: "ignore" });
+      const oldExited = new Promise((done) => old.once("exit", done));
+      try {
+        await until("old signed client starts without reinstall after cutover rollback", async () =>
+          (await records()).some((row) => row.version === oldVersion && row.pid === old.pid &&
+            row.event === "workspace-ready"),
+        );
+        await closeWorkspace(mainPort);
+        evidence.cutoverRecoveredOldSignedClient = true;
+        milestone("old-signed-client-reopened-after-directory-cutover");
+      } finally {
+        if (old.exitCode === null) {
+          const closed = await Promise.race([oldExited.then(() => true), delay(15000, false)]);
+          if (!closed) old.kill();
+        }
+      }
+    }
     const replaced = spawnSync(originalInstaller, ["/S", "/D=" + installation], {
       encoding: "utf8",
       env: environment,
@@ -1121,7 +1155,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
       "preserve",
     );
     evidence.crossCoreStartedWithoutOutboundNetwork = oldCore !== managedCore;
-    milestone("cross-core-signed-install-started-offline-with-existing-store");
+    milestone("signed-install-started-offline-with-existing-store");
   }
   if (interruptPreparation) {
     await assert.rejects(readFile(lock), { code: "ENOENT" });
@@ -1520,6 +1554,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
           manualSuccessorLaunch: Boolean(evidence.manualSuccessorLaunch),
         }
       : null,
+    cutoverRecoveredOldSignedClient: evidence.cutoverRecoveredOldSignedClient,
     signedOverwriteRecoveredAffectedBaseline: evidence.signedOverwriteRecoveredAffectedBaseline,
     crossCoreStartedWithoutOutboundNetwork: evidence.crossCoreStartedWithoutOutboundNetwork,
     oldCore: evidence.oldCore,

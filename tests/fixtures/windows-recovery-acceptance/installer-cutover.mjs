@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, unlink, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { recoverableDirectoryInstaller } from "../../../scripts/windows-complete-local/installer-recovery.mjs";
@@ -17,14 +18,24 @@ const { getMakeNsisPath } = require("app-builder-lib/out/toolsets/windows.js");
 const { getPath7za } = require("app-builder-lib/out/toolsets/7zip.js");
 const nsis = await getMakeNsisPath();
 const sevenZip = await getPath7za();
-const target = join(work, "Application");
+const installed = process.argv[3] !== undefined;
+const target = installed ? resolve(process.argv[3]) : join(work, "Application");
+const relativeTarget = relative(resolve(process.env.RUNNER_TEMP), target);
+assert.ok(relativeTarget && !isAbsolute(relativeTarget) && !relativeTarget.startsWith(".."));
+assert.ok(!installed || basename(target) === "installed");
+const executable = join(target, "GEA Desktop.exe");
+const digest = async () => createHash("sha256").update(await readFile(executable)).digest("hex");
 const data = join(work, ".dsh");
 const payload = join(work, "payload");
 const archive = join(work, "new.7z");
 const oldMoved = join(work, "old-moved");
 const sentinel = { "config.json": '{"setting":"keep"}', "history.jsonl": '{"session":"keep"}\n', "draft.json": '{"draft":"keep"}' };
-await Promise.all([target, data, payload].map((directory) => mkdir(directory)));
-await writeFile(join(target, "GEA Desktop.exe"), "original program");
+await Promise.all([data, payload].map((directory) => mkdir(directory)));
+if (!installed) {
+  await mkdir(target);
+  await writeFile(executable, "original program");
+}
+const originalExecutable = await digest();
 await writeFile(join(payload, "GEA Desktop.exe"), "new program");
 await Promise.all(Object.entries(sentinel).map(([file, text]) => writeFile(join(data, file), text)));
 
@@ -133,16 +144,26 @@ await interruptCutover(false);
 const rollbackDeadline = Date.now() + 30000;
 for (;;) {
   try {
-    assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "original program");
+    assert.equal(await digest(), originalExecutable);
     break;
   } catch (error) {
     if (error.code !== "ENOENT" || Date.now() >= rollbackDeadline) throw error;
     await delay(50);
   }
 }
-for (let retries = 0; retries < 80 && (await readdir(work)).some((name) => name.startsWith("Application.new-")); retries++)
-  await delay(50);
-assert.equal((await readdir(work)).some((name) => /^Application[.](old|new)-/.test(name)), false);
+const leftovers = async () => (await readdir(dirname(target))).filter(
+  (name) => ["old", "new"].some((phase) => name.startsWith(basename(target) + "." + phase + "-")),
+);
+for (let retries = 0; retries < 80 && (await leftovers()).length; retries++) await delay(50);
+assert.deepEqual(await leftovers(), []);
+if (installed) {
+  await writeFile(join(output, "official-cutover.json"), JSON.stringify({
+    core,
+    exactInstalledExecutableRestored: true,
+    originalExecutable,
+  }, null, 2));
+  process.exit(0);
+}
 const repair = join(work, "standard-overwrite.exe");
 await compile(repair, source);
 run(repair, ["/S"]);
