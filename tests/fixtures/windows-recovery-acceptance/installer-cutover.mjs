@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -44,7 +44,7 @@ const pathSource = await fetch(url.replace("scripts/installer-directories.nsh", 
 assert.equal(pathSource.status, 200);
 const pathRules = join(work, "official-path.nsh");
 await writeFile(pathRules, await pathSource.text());
-const backup = target + ".old-{E8029507-CF56-4BA3-B69A-C638E896F255}";
+const unrelated = target + ".old-{E8029507-CF56-4BA3-B69A-C638E896F255}";
 const hooks = fileURLToPath(new URL("../../../desktop/build/installer-recovery.nsh", import.meta.url));
 const renameCheckpoint = '    StrCpy $dshOldMoved "1"';
 assert.equal(source.split(renameCheckpoint).length, 2);
@@ -82,11 +82,10 @@ async function compile(installerPath, scriptSource, restoreOnly = false) {
     ...(restoreOnly ? [
       '  SetOutPath "$INSTDIR"',
       '  StrCpy $InstallerPath $INSTDIR',
-      '  WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"',
-      '  WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}" "' + backup + '"',
       '  !insertmacro GEA_RESTORE_REGISTERED_DIRECTORY',
       '  DeleteRegKey HKCU "${INSTALL_REGISTRY_KEY}"',
     ] : [
+      '  WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"',
       '  !insertmacro dshStageApplication',
       '  Call dshPromoteDirectories',
       '  IfErrors failed',
@@ -105,20 +104,31 @@ async function compile(installerPath, scriptSource, restoreOnly = false) {
 const interrupted = join(work, "interrupt-after-move.exe");
 await compile(interrupted, source.replace(renameCheckpoint, renameCheckpoint +
   '\n    FileOpen $9 "' + oldMoved + '" w\n    FileClose $9\n    Sleep 120000'));
-const transaction = spawn(interrupted, ["/S"], { windowsHide: true, stdio: "ignore" });
-const closed = new Promise((done) => transaction.once("exit", done));
-try {
-  const deadline = Date.now() + 30000;
-  for (;;) {
-    try { await readFile(oldMoved); break; }
-    catch (error) { if (error.code !== "ENOENT" || Date.now() >= deadline || transaction.exitCode !== null) throw error; }
-    await delay(50);
+async function interruptCutover(killWatcher) {
+  await unlink(oldMoved).catch((error) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+  const transaction = spawn(interrupted, ["/S"], { windowsHide: true, stdio: "ignore" });
+  const closed = new Promise((done) => transaction.once("exit", done));
+  try {
+    const deadline = Date.now() + 30000;
+    for (;;) {
+      try { await readFile(oldMoved); break; }
+      catch (error) { if (error.code !== "ENOENT" || Date.now() >= deadline || transaction.exitCode !== null) throw error; }
+      await delay(50);
+    }
+    await assert.rejects(readFile(join(target, "GEA Desktop.exe")), { code: "ENOENT" });
+    if (killWatcher) {
+      run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+        "$p=@(Get-CimInstance Win32_Process -Filter 'ParentProcessId=" + transaction.pid +
+          "' | Where-Object Name -eq 'powershell.exe'); if ($p.Length -ne 1) { exit 2 }; Stop-Process -Id $p[0].ProcessId -Force"]);
+    }
+  } finally {
+    if (transaction.exitCode === null) transaction.kill();
+    await closed;
   }
-  await assert.rejects(readFile(join(target, "GEA Desktop.exe")), { code: "ENOENT" });
-} finally {
-  if (transaction.exitCode === null) transaction.kill();
-  await closed;
 }
+await interruptCutover(false);
 
 const rollbackDeadline = Date.now() + 30000;
 for (;;) {
@@ -138,12 +148,17 @@ await compile(repair, source);
 run(repair, ["/S"]);
 assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "new program");
 const registeredRecovery = join(work, "registered-recovery.exe");
-await rename(target, backup);
+await interruptCutover(true);
+await assert.rejects(readFile(join(target, "GEA Desktop.exe")), { code: "ENOENT" });
+await mkdir(unrelated);
+await writeFile(join(unrelated, "GEA Desktop.exe"), "retained unrelated installation");
 await compile(registeredRecovery, source, true);
-run(registeredRecovery, ["/S"]);
+run(registeredRecovery, ["/S", "/D=" + target]);
 assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "new program");
-await assert.rejects(readFile(join(backup, "GEA Desktop.exe")), { code: "ENOENT" });
-
+assert.equal(await readFile(join(unrelated, "GEA Desktop.exe"), "utf8"), "retained unrelated installation");
+assert.deepEqual((await readdir(work)).filter((name) => /^Application[.](old|new)-/.test(name)), [
+  "Application.old-{E8029507-CF56-4BA3-B69A-C638E896F255}",
+]);
 for (const [file, text] of Object.entries(sentinel)) assert.equal(await readFile(join(data, file), "utf8"), text);
 await writeFile(join(output, "official-cutover.json"), JSON.stringify({
   core,
@@ -153,5 +168,6 @@ await writeFile(join(output, "official-cutover.json"), JSON.stringify({
   standardInstallerOverwriteRestoredTarget: true,
   coldRecoveryRestoredRegisteredTarget: true,
   abandonedStagingRemoved: true,
+  unrelatedBackupPreserved: true,
   dataFilesPreserved: true,
 }, null, 2));
