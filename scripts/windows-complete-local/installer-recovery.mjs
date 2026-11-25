@@ -12,7 +12,7 @@ export function recoverableDirectoryInstaller(source) {
     source.replaceAll("\r\n", "\n"),
     "    Rename $dshFinalDirectory $dshOldDirectory",
     [
-      "    !insertmacro GEA_WATCH_DIRECTORY_SWITCH",
+      "    Call GeaWatchDirectorySwitch",
       "    ${If} ${Errors}",
       "      Call dshRollbackDirectories",
       "      SetErrors",
@@ -25,7 +25,7 @@ export function recoverableDirectoryInstaller(source) {
   return replaceOnce(
     installer,
     cleanup,
-    "    !insertmacro GEA_CLEAR_DIRECTORY_RECOVERY\n" + cleanup,
+    "    Call GeaClearDirectoryRecovery\n" + cleanup,
   );
 }
 
@@ -36,13 +36,19 @@ export function recoverableInstaller(source, directories) {
     include,
     '!include "' + directories + '"',
   );
+  const checkRunning = "    Function InstallerCheckAppRunning";
+  const initialized = replaceOnce(
+    installer,
+    checkRunning,
+    "    !insertmacro GEA_INSTALLER_RECOVERY_FUNCTIONS\n" + checkRunning,
+  );
   const selectedPath = "  StrCpy $InstallerPath $INSTDIR";
   return (
     '!include "' +
     hooks +
     '"\n' +
     replaceOnce(
-      installer,
+      initialized,
       selectedPath,
       selectedPath + "\n  !insertmacro GEA_RESTORE_REGISTERED_DIRECTORY",
     )

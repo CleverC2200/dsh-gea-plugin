@@ -35,7 +35,8 @@
   ClearErrors
 !macroend
 
-!macro GEA_WATCH_DIRECTORY_SWITCH
+!macro GEA_INSTALLER_RECOVERY_FUNCTIONS
+Function GeaWatchDirectorySwitch
   Push $0
   Push $1
   StrCpy $1 1
@@ -72,8 +73,9 @@
   ${EndIf}
   Pop $1
   Pop $0
-!macroend
+FunctionEnd
 
-!macro GEA_CLEAR_DIRECTORY_RECOVERY
+Function GeaClearDirectoryRecovery
   DeleteRegValue HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}"
+FunctionEnd
 !macroend
