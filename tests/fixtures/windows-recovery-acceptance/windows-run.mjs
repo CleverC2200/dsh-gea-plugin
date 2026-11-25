@@ -457,10 +457,18 @@ async function closeWorkspace(mainPort) {
         const path = process.getBuiltinModule("node:path");
         const load = process.getBuiltinModule("node:module").createRequire(
           path.join(process.resourcesPath, "app.asar", "package.json"));
-        const { app, BrowserWindow } = load("electron");
+        const { app, BrowserWindow, dialog } = load("electron");
         const workspace = BrowserWindow.getAllWindows().find((window) =>
           window.webContents.getURL().startsWith("dsh-app://app/"));
         if (!workspace) return false;
+        const show = dialog.showMessageBox;
+        dialog.showMessageBox = (...args) => {
+          const options = args.at(-1);
+          return options?.defaultId === 0 && options?.cancelId === 1 &&
+            /^(quit|退出|退出应用)$/i.test(options.buttons?.[0])
+            ? Promise.resolve({ response: 0, checkboxChecked: false })
+            : Reflect.apply(show, dialog, args);
+        };
         workspace.webContents.session.flushStorageData();
         setTimeout(() => app.quit(), 250);
         return true;
