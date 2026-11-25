@@ -10,6 +10,10 @@ export const companyWindowsCertificate = fileURLToPath(
 );
 export const companyWindowsUpdateUrl =
   "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/";
+export const certumWindowsUpdateUrl = new URL("../win-x64-certum/", companyWindowsUpdateUrl).href;
+export const certumWindowsCertificate = fileURLToPath(
+  new URL("../../desktop/build/codesign-certum.cer", import.meta.url),
+);
 
 export function resolveCompanyWindowsSigning(
   env = process.env,
@@ -128,8 +132,14 @@ export function createCompanyWindowsSigner(
   };
 }
 
-export function resolveCompanyWindowsUpdate() {
-  return { publicUrl: companyWindowsUpdateUrl };
+export function resolveCompanyWindowsUpdate(env) {
+  const bridge = env.GEA_WINDOWS_CERTUM_BRIDGE === "1";
+  if (bridge && env.GEA_WINDOWS_STORE_CER_FILE) throw Error("WINDOWS_BRIDGE_REQUIRES_LEGACY_SIGNER");
+  return {
+    publicUrl:
+      bridge || env.GEA_WINDOWS_STORE_CER_FILE ? certumWindowsUpdateUrl : companyWindowsUpdateUrl,
+    publisherCertificate: bridge ? certumWindowsCertificate : env.DSH_DESKTOP_WINDOWS_CER_FILE,
+  };
 }
 
 export function adaptSignedWindowsFactory(source, desktop) {
@@ -140,7 +150,11 @@ export function adaptSignedWindowsFactory(source, desktop) {
     ],
     [
       "resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",
-      "resolveCompanyWindowsUpdate()",
+      "resolveCompanyWindowsUpdate(env)",
+    ],
+    [
+      "resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE)",
+      "resolveWindowsUpdatePublisher(update.publisherCertificate)",
     ],
     [
       "{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }",

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import YAML from "yaml";
 import {
@@ -12,6 +12,12 @@ import {
   verifyDesktopUpdateRegression,
 } from "./desktop-release.mjs";
 import { compareDesktopUpdateData } from "./desktop-update-data.mjs";
+import {
+  certumWindowsCertificate,
+  certumWindowsUpdateUrl,
+  companyWindowsCertificate,
+  companyWindowsUpdateUrl,
+} from "./windows-complete-local/signing.mjs";
 
 const source = "1".repeat(40);
 const version = "0.2.0-rc.2.20261109.2";
@@ -92,6 +98,41 @@ test("a successful receipt must bind the expected installer name, size and diges
       await assert.rejects(f.plan(), /INSTALLER_IDENTITY_REQUIRED/);
     }
   }
+});
+
+test("Certum publishing preserves the old updater feed until the bridge can reach a newer build", async (t) => {
+  const f = await fixture(t, false);
+  const legacy = new X509Certificate(await readFile(companyWindowsCertificate));
+  const trusted = new X509Certificate(await readFile(certumWindowsCertificate));
+  const result = join(f.directory, "result.json");
+  const signing = {
+    provider: "windows-store",
+    publisher: trusted.subject,
+    fingerprint: trusted.fingerprint256,
+    updateUrl: companyWindowsUpdateUrl,
+  };
+  await writeFile(result, JSON.stringify({ ...f.receipt, windowsSigning: signing }));
+  await assert.rejects(f.plan(), /DESKTOP_RELEASE_WINDOWS_FEED_MISMATCH/);
+  signing.updateUrl = certumWindowsUpdateUrl;
+  await writeFile(result, JSON.stringify({ ...f.receipt, windowsSigning: signing }));
+  const next = await f.plan();
+  const certumFeed = "client-release/electron/win-x64-certum/nightly.yml";
+  const legacyFeed = "client-release/electron/win-x64/nightly.yml";
+  await publishDesktopRelease(next, f.store);
+  assert.ok(f.objects.has(certumFeed));
+  assert.ok(!f.objects.has(legacyFeed));
+  signing.provider = "company-pfx";
+  signing.publisher = legacy.subject;
+  signing.fingerprint = legacy.fingerprint256;
+  await writeFile(result, JSON.stringify({ ...f.receipt, windowsSigning: signing }));
+  const bridge = await f.plan();
+  assert.equal(bridge.prefix + bridge.feed, legacyFeed);
+  await assert.rejects(publishDesktopRelease(bridge, f.store), /DESKTOP_RELEASE_CERTUM_FEED_NOT_READY/);
+  assert.ok(!f.objects.has(legacyFeed));
+  const latest = YAML.parse(f.objects.get(certumFeed).toString());
+  f.objects.set(certumFeed, Buffer.from(YAML.stringify({ ...latest, version: "0.2.0-rc.2.20261125.1" })));
+  await publishDesktopRelease(bridge, f.store);
+  assert.equal(f.writes.at(-1), legacyFeed);
 });
 
 for (const mac of [true, false])

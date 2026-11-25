@@ -20,7 +20,7 @@ import {
   adaptSignedWindowsFactory,
   companyCertificateInstaller,
   resolveCompanyWindowsSigning,
-  companyWindowsUpdateUrl,
+  resolveCompanyWindowsUpdate,
 } from "./signing.mjs";
 
 const root = resolve(process.argv[2]);
@@ -31,6 +31,7 @@ const output = join(target, "gea-local");
 const signed = process.env.GEA_WINDOWS_SIGNED === "1";
 const signing = signed ? resolveCompanyWindowsSigning() : undefined;
 if (signing) process.env.DSH_DESKTOP_WINDOWS_CER_FILE = signing.certificateFile;
+const signedUpdate = signed ? resolveCompanyWindowsUpdate(process.env) : undefined;
 const artifactDirectory = join(target, signed ? "artifacts" : "unsigned-artifacts");
 const packagedDsh = signed ? join(target, "gea-signed-dsh") : join(target, "dsh");
 const coreSha = desktopCoreHead;
@@ -161,7 +162,7 @@ const config = `import { createElectronBuilderConfig } from './builder-factory.m
 import { officialGeaBranding } from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
 import { execFileSync } from 'node:child_process';
 const config = officialGeaBranding(createElectronBuilderConfig(process.env, undefined, undefined, ${JSON.stringify(packagedDsh)}), { companySeed: ${JSON.stringify(join(target, "company-seed"))}, brandedMain: ${JSON.stringify(join(output, "company-main/main.js"))} });
-if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || ${signed ? "config.publish?.[0]?.url !== " + JSON.stringify(companyWindowsUpdateUrl) : "config.publish !== null"}) throw Error('COMPANY_DESKTOP_ADAPTER_DRIFT');
+if (config.extraMetadata.dshMandatoryUpdatePolicy !== undefined || ${signedUpdate ? "config.publish?.[0]?.url !== " + JSON.stringify(signedUpdate.publicUrl) : "config.publish !== null"}) throw Error('COMPANY_DESKTOP_ADAPTER_DRIFT');
 config.artifactName = 'Synear-GEA-\${version}-win-\${arch}-${signed ? "signed" : "complete-local-unsigned"}.\${ext}';
 config.extraMetadata = { ...config.extraMetadata, dshLocalTestBuild: ${!signed}, geaBrandingCommit: process.env.GEA_COMPLETE_SOURCE_SHA, dshLocalPackaging: '${signed ? "official-layout-gea-windows-signed-no-publish" : "official-layout-gea-windows-unsigned-no-publish"}' };
 config.win = { ...config.win, icon: ${JSON.stringify(iconPath)}, target: [{ target: 'nsis', arch: ['x64'] }] };
@@ -364,10 +365,11 @@ if (signed) {
     : [update.publisherName];
   if (
     update.provider !== "generic" ||
-    update.url !== companyWindowsUpdateUrl ||
+    update.url !== signedUpdate.publicUrl ||
     update.channel !== "nightly" ||
     update.useMultipleRangeRequest !== false ||
-    !publishers.includes(resolveWindowsUpdatePublisher(signing.certificateFile))
+    publishers.length !== 1 ||
+    publishers[0] !== resolveWindowsUpdatePublisher(signedUpdate.publisherCertificate)
   )
     throw Error("DESKTOP_SIGNED_UPDATE_CONFIG_MISMATCH");
   const metadata = yaml.load(await readFile(join(artifactDirectory, "nightly.yml"), "utf8"));
@@ -462,7 +464,7 @@ await writeFile(
             provider: signing.provider,
             publisher: signing.publisher,
             fingerprint: signing.fingerprint,
-            updateUrl: companyWindowsUpdateUrl,
+            updateUrl: signedUpdate.publicUrl,
           }
         : null,
       publish: false,

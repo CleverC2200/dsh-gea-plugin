@@ -33,6 +33,11 @@ on:
         default: false
         required: false
         type: boolean
+      windows_certum_bridge:
+        description: "Use the old signer for a Windows installer that switches to the SimplySign update feed"
+        default: false
+        required: false
+        type: boolean
       windows_certificate_test:
         description: "Run native certificate import and timestamped signing fixtures without production keys"
         default: false
@@ -518,6 +523,7 @@ jobs:
       DSH_DESKTOP_UNSIGNED: "1"
       GEA_WINDOWS_SIGNED: ${{ inputs.windows_signed && !inputs.prepare_windows_cache && '1' || '0' }}
       GEA_WINDOWS_STORE_CERT_SHA1: ${{ vars.GEA_WINDOWS_STORE_CERT_SHA1 }}
+      GEA_WINDOWS_CERTUM_BRIDGE: ${{ inputs.windows_certum_bridge && '1' || '0' }}
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_7Z_FILTER: BCJ
