@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID, X509Certificate } from "node:crypto";
-import { createReadStream, createWriteStream, openSync, closeSync } from "node:fs";
+import { createReadStream, openSync, closeSync } from "node:fs";
 import { readFile, writeFile, mkdir, mkdtemp, stat, readdir } from "node:fs/promises";
 import { createServer } from "node:https";
 import { createServer as createSocket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -234,12 +233,28 @@ try {
     result.feedSha256 = plan.files.find((file) => file.name === "nightly-mac.yml").sha256;
   }
   const dmg = join(root, "old.dmg");
-  const baseline = await fetch(publishedOld, {
-    redirect: "error",
-    signal: AbortSignal.timeout(180000),
-  });
-  assert.equal(baseline.status, 200);
-  await pipeline(Readable.fromWeb(baseline.body), createWriteStream(dmg, { flags: "wx" }));
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      run("/usr/bin/curl", [
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "15",
+        "--max-time",
+        "75",
+        "--continue-at",
+        "-",
+        "--output",
+        dmg,
+        publishedOld,
+      ]);
+      break;
+    } catch (error) {
+      if ((await digest(dmg).catch(() => null)) === oldHash) break;
+      if (attempt === 4) throw error;
+    }
+  }
   assert.equal(await digest(dmg), oldHash);
   disk = join(root, "old-volume");
   await mkdir(disk);

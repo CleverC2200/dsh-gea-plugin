@@ -87,6 +87,27 @@ jobs:
           name: mac-native-upgrade
           path: ${{ runner.temp }}/mac-native-acceptance/mac-native-upgrade.json
           if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success() && inputs.verify_upgrade_run != 'baseline'
+        with:
+          name: mac-native-verified-dmg
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/verified-mac-build/*.dmg
+            ${{ runner.temp }}/verified-mac-build/result.json
+      - uses: actions/upload-artifact@v4
+        if: success() && inputs.verify_upgrade_run != 'baseline'
+        with:
+          name: mac-native-verified-updater
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/verified-mac-build/*.zip
+            ${{ runner.temp }}/verified-mac-build/*.blockmap
+            ${{ runner.temp }}/verified-mac-build/nightly-mac.yml
 
   mac-source-package:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.verify_upgrade_run == ''
