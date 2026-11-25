@@ -144,7 +144,7 @@ export function resolveCompanyWindowsUpdate(env) {
   };
 }
 
-export function adaptSignedWindowsFactory(source, desktop) {
+export function adaptSignedWindowsFactory(source, desktop, support) {
   const replacements = [
     [
       "createWindowsTokenSigner({",
@@ -157,6 +157,11 @@ export function adaptSignedWindowsFactory(source, desktop) {
     [
       "resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE)",
       "resolveWindowsUpdatePublisher(update.publisherCertificate)",
+    ],
+    [
+      "if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime",
+      "if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime\n  buildPaths.runtime = " +
+        JSON.stringify(support),
     ],
     [
       "{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }",

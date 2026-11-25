@@ -157,14 +157,15 @@ test("a mismatched public certificate and a failed timestamp stop signed packagi
 
 test("company signing keeps the official updater and company feed", () => {
   const original =
-    "const windowsSigner=createWindowsTokenSigner({certificateFile: env.DSH_DESKTOP_WINDOWS_CER_FILE});\nconst update=resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);\nconst publish=[{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }];\nconst publisher=resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE);";
-  const adapted = adaptSignedWindowsFactory(original, "C:/core/apps/desktop");
+    "const windowsSigner=createWindowsTokenSigner({certificateFile: env.DSH_DESKTOP_WINDOWS_CER_FILE});\nconst update=resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);\nif (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime\nconst publish=[{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }];\nconst publisher=resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE);";
+  const adapted = adaptSignedWindowsFactory(original, "C:/core/apps/desktop", "D:/signed runtime");
   assert.match(
     adapted,
     /createCompanyWindowsSigner\(\{ repairExecutable: repairDanglingAuthenticodeDirectory,/,
   );
   assert.match(adapted, /const update=resolveCompanyWindowsUpdate\(env\)/);
   assert.match(adapted, /const publisher=resolveWindowsUpdatePublisher\(update.publisherCertificate\)/);
+  assert.match(adapted, /buildPaths\.runtime = "D:\/signed runtime"/);
   assert.equal(
     new URL(companyWindowsUpdateUrl).origin,
     "https://synear-gea.oss-cn-hangzhou.aliyuncs.com",
@@ -201,14 +202,19 @@ test("the adopted company generic updater uses single ranges and retains other p
   );
   const original = `
 const env = {};
+const preparedRuntime = 'signed-dsh';
+const buildPaths = {};
 const update = resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);
+if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime
+export const paths = buildPaths;
 export const publish = [{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }, { provider: 'github', owner: 'example', repo: 'desktop' }];
 export const signer = () => createWindowsTokenSigner({});
 export const publisher = () => resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE);
 `;
   const output = join(directory, "builder-factory.mjs");
-  await writeFile(output, adaptSignedWindowsFactory(original, directory));
-  const { publish } = await import(pathToFileURL(output).href);
+  await writeFile(output, adaptSignedWindowsFactory(original, directory, "signed-support"));
+  const { paths, publish } = await import(pathToFileURL(output).href);
+  assert.deepEqual(paths, { dsh: "signed-dsh", runtime: "signed-support" });
   assert.deepEqual(publish, [
     {
       provider: "generic",

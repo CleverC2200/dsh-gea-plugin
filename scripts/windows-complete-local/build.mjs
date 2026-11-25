@@ -34,6 +34,7 @@ if (signing) process.env.DSH_DESKTOP_WINDOWS_CER_FILE = signing.certificateFile;
 const signedUpdate = signed ? resolveCompanyWindowsUpdate(process.env) : undefined;
 const artifactDirectory = join(target, signed ? "artifacts" : "unsigned-artifacts");
 const packagedDsh = signed ? join(target, "gea-signed-dsh") : join(target, "dsh");
+const packagedSupport = join(target, signed ? "gea-signed-runtime" : "runtime");
 const coreSha = desktopCoreHead;
 const geaSha = process.env.GITHUB_SHA;
 const input = await readDesktopInput(process.argv[4], geaSha);
@@ -98,7 +99,7 @@ let factory = relocate(await readFile(factoryPath, "utf8"), factoryPath);
 const policy = "const policy = resolveDesktopPolicyEnvironment(env)";
 if (factory.split(policy).length !== 2) throw Error("LOCAL_CONFIG_ADAPTER_DRIFT");
 factory = factory.replace(policy, "const policy = undefined");
-if (signed) factory = adaptSignedWindowsFactory(factory, desktop);
+if (signed) factory = adaptSignedWindowsFactory(factory, desktop, packagedSupport);
 await writeFile(join(output, "builder-factory.mjs"), factory);
 const iconPath = join(gea, "desktop/build/icon.png");
 const trayIconPath = join(output, "gea-tray.ico");
@@ -248,19 +249,27 @@ if (signed) {
     force: false,
     errorOnExist: true,
   });
+  await cp(join(target, "runtime"), packagedSupport, {
+    recursive: true,
+    force: false,
+    errorOnExist: true,
+  });
   const signingScript = join(output, "sign-company-runtime.mts");
   await writeFile(
     signingScript,
     `import {readFile} from 'node:fs/promises';
 import {createCompanyWindowsSigner} from ${JSON.stringify(new URL("./signing.mjs", import.meta.url).href)};
 import {repairDanglingAuthenticodeDirectory,scrubWindowsSigningEnvironment} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/windows-sign.mjs")).href)};
-import {signWindowsDesktopRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/sign-primary-runtime.ts")).href)};
+import {signWindowsDesktopRuntime,signWindowsPrimaryRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/sign-primary-runtime.ts")).href)};
+import {smokePrimaryRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/prepare-primary-runtime.ts")).href)};
 import {smokePreparedRuntime} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/smoke-prepared-runtime.ts")).href)};
 import {recordPackagingEvent} from ${JSON.stringify(pathToFileURL(join(desktop, "scripts/packaging-run.mjs")).href)};
 const root=${JSON.stringify(packagedDsh)};
 const sign=createCompanyWindowsSigner({certificateFile:process.env.DSH_DESKTOP_WINDOWS_CER_FILE,repairExecutable:repairDanglingAuthenticodeDirectory,signingEnvironment:scrubWindowsSigningEnvironment(process.env)});
+const options={sign,thumbprint:${JSON.stringify(signing.thumbprint ?? new X509Certificate(await readFile(signing.certificateFile)).fingerprint.replaceAll(":", ""))},record:event=>recordPackagingEvent(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR,event)};
+await signWindowsPrimaryRuntime(${JSON.stringify(join(packagedSupport, "primary-runtime"))},{...options,smoke:smokePrimaryRuntime});
 const {version}=JSON.parse(await readFile(${JSON.stringify(join(packagedDsh, "package.json"))},'utf8'));
-await signWindowsDesktopRuntime(root,version,{sign,thumbprint:${JSON.stringify(new X509Certificate(await readFile(signing.certificateFile)).fingerprint.replaceAll(":", ""))},record:event=>recordPackagingEvent(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR,event),smoke:descriptor=>smokePreparedRuntime(root,${JSON.stringify(join(target, "electron/electron.exe"))},${JSON.stringify(join(target, "runtime"))},descriptor)});
+await signWindowsDesktopRuntime(root,version,{...options,smoke:descriptor=>smokePreparedRuntime(root,${JSON.stringify(join(target, "electron/electron.exe"))},${JSON.stringify(packagedSupport)},descriptor)});
 `,
   );
   await run("sign-company-runtime", ["exec", "tsx", signingScript]);
@@ -275,7 +284,7 @@ execFileSync(
   [
     join(gea, "desktop/prepare-company-seed.mjs"),
     seedRoot,
-    join(target, "runtime"),
+    packagedSupport,
     join(target, "company-seed"),
     join(target, "seed-home"),
     join(output, "input-three.json"),
