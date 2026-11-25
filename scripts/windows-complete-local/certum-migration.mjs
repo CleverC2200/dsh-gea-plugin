@@ -201,11 +201,11 @@ async function freePort() {
   await new Promise((done) => socket.close(done));
   return port;
 }
-async function evaluate(page, expression) {
+async function evaluate(page, expression, timeout = 12000) {
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   try {
     return await new Promise((done, reject) => {
-      const timer = setTimeout(() => reject(Error("CERTUM_MIGRATION_CDP_TIMEOUT")), 12000);
+      const timer = setTimeout(() => reject(Error("CERTUM_MIGRATION_CDP_TIMEOUT")), timeout);
       ws.addEventListener(
         "open",
         () =>
@@ -488,6 +488,34 @@ async function readDraft(workspace, hop) {
   hop.composerDraftRetained = true;
 }
 
+async function companyPluginStatus(workspace) {
+  return evaluate(
+    workspace.page,
+    `(async () => {
+    const post = async (action, payload) => {
+      const response = await fetch('/api/gea/plugin-updates/' + action, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload), signal: AbortSignal.timeout(20000),
+      });
+      const json = await response.json();
+      return { http: response.status, code: json.error?.code, items: json.value?.items?.map(
+        ({packageName, installedVersion, runningHostVersion, runningClientVersion, candidateVersion, state, diagnostic}) =>
+          ({packageName, installedVersion, runningHostVersion, runningClientVersion, candidateVersion, state, diagnostic})
+      ) };
+    };
+    const payload = {pageIdentity: 'windows-native-status-probe'};
+    let before;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      before = await post('status', payload);
+      if (before.code !== 'UPDATE_HOST_STARTING') break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return { before, check: await post('check', {}), after: await post('status', payload) };
+  })()`,
+    45000,
+  );
+}
+
 try {
   await mkdir(home);
   const certInput = companyWindowsCertificate;
@@ -549,7 +577,9 @@ try {
     certum,
     (workspace) => readDraft(workspace, first),
   );
-  await readDraft(await openWorkspace(), second);
+  const workspace = await openWorkspace();
+  await readDraft(workspace, second);
+  result.companyPlugins = await companyPluginStatus(workspace);
   await endApplication();
   assert.equal(
     parse(await readFile(join(resources, "app-update.yml"), "utf8")).url,
