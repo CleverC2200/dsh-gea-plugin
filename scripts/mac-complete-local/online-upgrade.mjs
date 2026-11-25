@@ -10,6 +10,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { parseDocument } from "yaml";
 import { prepareDesktopRelease } from "../desktop-release.mjs";
 
 assert.equal(process.platform, "darwin");
@@ -232,6 +233,7 @@ try {
     result.to = plan.version;
     result.sourceSha = plan.sourceSha;
     result.installerSha256 = plan.files.find((file) => file.name.endsWith(".dmg")).sha256;
+    result.updaterArchiveSha256 = plan.files.find((file) => file.name.endsWith(".zip")).sha256;
     result.feedSha256 = plan.files.find((file) => file.name === "nightly-mac.yml").sha256;
   }
   const dmg = join(root, "old.dmg");
@@ -355,6 +357,13 @@ try {
   );
   stage("old workspace and Host ready");
   if (plan) {
+    const settingsPath = join(home, "profiles/desktop/cordis.patch.yml");
+    const settings = parseDocument(await readFile(settingsPath, "utf8"));
+    assert.equal(settings.errors.length, 0);
+    const gea = settings.toJS().findIndex((row) => row.id === "gea-proof");
+    assert.ok(gea >= 0);
+    settings.setIn([gea, "config", "pluginUpdates", "pollIntervalMs"], 4250);
+    await writeFile(settingsPath, settings.toString());
     bundled([
       join(project, "scripts/windows-complete-local/certum-migration.mjs"),
       "--seed-session",
@@ -427,6 +436,16 @@ try {
     const zipName = plan.files.find((file) => file.name.endsWith(".zip")).name;
     assert.ok(requests.includes(zipName));
     stage("official updater downloaded the exact release ZIP");
+    const oldPids = new Set(
+      processRows()
+        .filter(
+          (row) =>
+            row.pid === old.child.pid ||
+            row.parent === old.child.pid ||
+            row.command.startsWith(executable + " "),
+        )
+        .map((row) => row.pid),
+    );
     await evaluate(
       dialog,
       "setTimeout(()=>document.querySelector('#actions button').click(),300); true",
@@ -437,7 +456,10 @@ try {
         const rows = processRows();
         if (rows.some((row) => row.pid === old.child.pid)) return false;
         const next = rows.find(
-          (row) => row.command === executable || row.command.startsWith(executable + " "),
+          (row) =>
+            !oldPids.has(row.pid) &&
+            !row.command.includes(" --expose-internals ") &&
+            (row.command === executable || row.command.startsWith(executable + " ")),
         );
         return next && version() === plan.version ? next : false;
       },
@@ -495,6 +517,7 @@ print(windows.contains {
       () => run("/usr/bin/swift", [windowCheck, String(successor.pid)]) === "true",
     );
     verifyApp();
+    result.signatureVerified = true;
     assert.ok((await readFile(installedFeedPath, "utf8")).includes("url: " + origin + feedPath));
     assert.equal((await stat(home)).ino, profileIdentity.ino);
     const receipt = join(root, "updated-data.json");
