@@ -31,6 +31,10 @@ jobs:
           npm install --prefix .runtime/tools --ignore-scripts --no-package-lock --no-audit --no-fund esbuild@0.25.9 @electron/asar@3.4.1 semver@7.7.4 yaml@2.9.0 tar@7.5.22 @playwright/test@1.58.2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/tools/node_modules" | Out-Null
+          $tarDirectory = Join-Path $env:ProgramFiles 'Git\usr\bin'
+          if (!(Test-Path -LiteralPath (Join-Path $tarDirectory 'tar.exe'))) { throw 'DELIVERY_GNU_TAR_REQUIRED' }
+          $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
+          'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
       - name: Verify released Windows entry with interrupted candidate and boot rollback
         run: node scripts/check-windows-plugin-update.mjs --company-desktop
       - uses: actions/upload-artifact@v7
@@ -56,6 +60,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24.22.0"
+      - name: Prepare fixed startup test dependencies
+        run: |
+          npm install --prefix .runtime/tools --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4
+          node --input-type=module -e "import { symlinkSync } from 'node:fs'; import { resolve } from 'node:path'; symlinkSync(resolve('.runtime/tools/node_modules'), 'node_modules', 'junction')"
       - name: Verify coordinated startup and completion
         run: node --test desktop/company-update.test.mjs desktop/company-gea-refresh.test.mjs desktop/company-installation.test.mjs desktop/company-desktop.test.mjs
   legacy-client:

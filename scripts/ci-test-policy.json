@@ -651,7 +651,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^\\.github/workflows/delivery-fixtures\\.yml$",
+      "pattern": "^\\.github/(?:workflows/delivery-fixtures\\.yml|actions/windows-certum/action\\.yml)$",
       "tests": [
         "scripts/delivery-events.test.mjs",
         "scripts/mac-complete-local/signing.test.mjs",
@@ -719,7 +719,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|compile|prepare|shared-cache|cache-report|input|run-bundle|legacy-bootstrap|core-cache)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/(?:build|baseline|full-source|ad-hoc(?:\\.test)?)\\.mjs)$",
+      "pattern": "^scripts/(?:windows-complete-local/(?:(?:build|compile|prepare|shared-cache|cache-report|input|run-bundle|legacy-bootstrap|core-cache|installer-recovery)\\.mjs|(?:input|core-cache)\\.test\\.mjs|released-input\\.fixture\\.json)|mac-complete-local/(?:build|baseline|full-source|ad-hoc(?:\\.test)?)\\.mjs)$",
       "tests": [
         "scripts/windows-complete-local/core-cache.test.mjs",
         "scripts/windows-complete-local/input.test.mjs",
@@ -808,7 +808,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^tests/plugin-update-windows\\.native\\.mjs$",
+      "pattern": "^(?:tests/(?:company-update-windows|plugin-update-windows)\\.native\\.mjs|scripts/check-windows-plugin-update\\.mjs|\\.github/workflows/company-update\\.yml)$",
       "tests": ["scripts/ci-windows-update.test.mjs"]
     },
     {
@@ -819,7 +819,7 @@
     },
     {
       "repo": "dsh-gea-plugin",
-      "pattern": "^desktop/(?:build/(?:codesign\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|online-upgrade(?:-input(?:\\.test)?)?\\.mjs|prepare-signing\\.ps1)$",
+      "pattern": "^desktop/(?:build/(?:codesign(?:-certum)?\\.cer|install-certificate\\.ps1|installer-certificate\\.nsh|sign-windows\\.ps1)|windows-(?:certificate|signed-upgrade)\\.test\\.ps1)$|^scripts/windows-complete-local/(?:signing\\.(?:mjs|test\\.mjs)|signed-upgrade\\.mjs|online-upgrade(?:-input(?:\\.test)?)?\\.mjs|prepare-(?:store-)?signing\\.ps1)$",
       "tests": [
         "scripts/windows-complete-local/signing.test.mjs",
         "scripts/windows-complete-local/online-upgrade-input.test.mjs",
