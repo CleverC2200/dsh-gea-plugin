@@ -4,7 +4,8 @@
   Push $0
   Push $1
   ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
-  ${If} $0 == $INSTDIR
+  ${If} $0 != ""
+  ${AndIf} $0 == $INSTDIR
   ${AndIfNot} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
     InitPluginsDir
     File "/oname=$PLUGINSDIR\gea-installer-recovery.ps1" "${GEA_INSTALLER_RECOVERY_SCRIPT}"
@@ -25,6 +26,7 @@
     StrCpy $1 0
     File "/oname=$PLUGINSDIR\gea-installer-recovery.ps1" "${GEA_INSTALLER_RECOVERY_SCRIPT}"
     System::Call 'kernel32::GetCurrentProcessId() i.r0'
+    SetOutPath "$TEMP"
     ClearErrors
     Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\gea-installer-recovery.ps1" -Target "$dshFinalDirectory" -Executable "${APP_EXECUTABLE_FILENAME}" -Backup "$dshOldDirectory" -Owner $0 -Ready "$PLUGINSDIR\gea-directory-recovery-ready"'
     ${IfNot} ${Errors}
@@ -38,6 +40,7 @@
         IntOp $0 $0 - 1
       ${Loop}
     ${EndIf}
+    SetOutPath "$PLUGINSDIR"
   ${EndIf}
   ClearErrors
   ${If} $1 == 0
