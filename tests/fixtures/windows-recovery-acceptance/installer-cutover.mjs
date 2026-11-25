@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -42,7 +42,7 @@ const hooks = fileURLToPath(new URL("../../../desktop/build/installer-recovery.n
 const renameCheckpoint = '    StrCpy $dshOldMoved "1"';
 assert.equal(source.split(renameCheckpoint).length, 2);
 
-async function compile(installerPath, scriptSource) {
+async function compile(installerPath, scriptSource, restoreOnly = false) {
   const included = installerPath + ".nsh";
   await writeFile(included, scriptSource);
   const script = installerPath + ".nsi";
@@ -55,6 +55,7 @@ async function compile(installerPath, scriptSource) {
     'LoadLanguageFile "${NSISDIR}\\Contrib\\Language files\\English.nlf"',
     'LangString decompressionFailed ${LANG_ENGLISH} "Payload failed"',
     '!define APP_EXECUTABLE_FILENAME "GEA Desktop.exe"',
+    '!define INSTALL_REGISTRY_KEY "Software\\SynearGEA\\RecoveryFixture-' + process.pid + '"',
     '!include "' + hooks + '"',
     '!define DSH_SEVENZIP_PATH "' + sevenZip + '"',
     '!macro installApplicationFiles',
@@ -64,15 +65,21 @@ async function compile(installerPath, scriptSource) {
     'Section',
     '  InitPluginsDir',
     '  StrCpy $INSTDIR "' + target + '"',
-    '  !insertmacro dshStageApplication',
-    '  Call dshPromoteDirectories',
-    '  IfErrors failed',
-    '  !insertmacro dshFinishDirectories',
-    '  SetErrorLevel 0',
-    '  Quit',
-    '  failed:',
-    '  SetErrorLevel 2',
-    '  Quit',
+    ...(restoreOnly ? [
+      '  WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"',
+      '  !insertmacro GEA_RESTORE_REGISTERED_DIRECTORY',
+      '  DeleteRegKey HKCU "${INSTALL_REGISTRY_KEY}"',
+    ] : [
+      '  !insertmacro dshStageApplication',
+      '  Call dshPromoteDirectories',
+      '  IfErrors failed',
+      '  !insertmacro dshFinishDirectories',
+      '  SetErrorLevel 0',
+      '  Quit',
+      '  failed:',
+      '  SetErrorLevel 2',
+      '  Quit',
+    ]),
     'SectionEnd',
   ].join("\r\n"));
   run(nsis.path, ["/V2", script], { ...process.env, ...nsis.env });
@@ -111,6 +118,14 @@ const repair = join(work, "standard-overwrite.exe");
 await compile(repair, source);
 run(repair, ["/S"]);
 assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "new program");
+const registeredRecovery = join(work, "registered-recovery.exe");
+const backup = target + ".old-{E8029507-CF56-4BA3-B69A-C638E896F255}";
+await rename(target, backup);
+await compile(registeredRecovery, source, true);
+run(registeredRecovery, ["/S"]);
+assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "new program");
+await assert.rejects(readFile(join(backup, "GEA Desktop.exe")), { code: "ENOENT" });
+
 for (const [file, text] of Object.entries(sentinel)) assert.equal(await readFile(join(data, file), "utf8"), text);
 await writeFile(join(output, "official-cutover.json"), JSON.stringify({
   core,
@@ -118,5 +133,6 @@ await writeFile(join(output, "official-cutover.json"), JSON.stringify({
   originalShortcutTargetAvailableAfterKill: true,
   oldVersionRestoredWithoutInstallerRerun: true,
   standardInstallerOverwriteRestoredTarget: true,
+  coldRecoveryRestoredRegisteredTarget: true,
   dataFilesPreserved: true,
 }, null, 2));
