@@ -139,10 +139,9 @@ export async function inspectPluginArchive(
   const archive = readTar({
     strict: true,
     onReadEntry(entry) {
+      const rawPath = entry.header.path ?? "";
       const file =
-        entry.type === "Directory" && !entry.header.path.endsWith("/")
-          ? entry.header.path + "/"
-          : entry.header.path;
+        entry.type === "Directory" && !rawPath.endsWith("/") ? rawPath + "/" : rawPath;
       nameBytes += Buffer.byteLength(file) + 1;
       if (
         nameBytes > limit ||
