@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile, copyFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
@@ -12,7 +13,7 @@ const { installCompanyPackages, bootstrapCompanyProfile, readCompanySeed } = awa
 const { refreshBundledCompanySuite } = await import(
   pathToFileURL(join(root, "company-gea-refresh.mjs"))
 );
-const home = join(output, "home");
+const home = await mkdtemp(join(tmpdir(), "gea-legacy-"));
 const profile = join(home, "profiles/desktop");
 const old = join(output, "old-client/company-seed/archives");
 await mkdir(old, { recursive: true });
