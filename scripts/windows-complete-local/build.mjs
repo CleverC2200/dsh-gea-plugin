@@ -15,6 +15,7 @@ import { pathToFileURL } from "node:url";
 import { prepareDesktopRelease } from "../desktop-release.mjs";
 
 import { prepareWindows, stageRunner } from "./prepare.mjs";
+import { recoverableDirectoryInstaller, recoverableInstaller } from "./installer-recovery.mjs";
 import {
   adaptSignedWindowsFactory,
   companyCertificateInstaller,
@@ -129,17 +130,27 @@ const strings = (await readFile(join(desktop, "installer/strings.nsh"), "utf8"))
   "Synear GEA",
 );
 await writeFile(join(output, "gea-strings.nsh"), strings);
-if (signed)
-  await writeFile(
-    join(output, "gea-certificate-installer.nsh"),
-    companyCertificateInstaller(
-      await readFile(join(desktop, "scripts/installer.nsh"), "utf8"),
-      desktop,
-    ),
-  );
+const installerDirectories = join(output, "gea-installer-directories.nsh");
+await writeFile(
+  installerDirectories,
+  recoverableDirectoryInstaller(
+    await readFile(join(desktop, "scripts/installer-directories.nsh"), "utf8"),
+  ),
+);
+const installerPath = join(output, "gea-core-installer.nsh");
+const installer = recoverableInstaller(
+  await readFile(join(desktop, "scripts/installer.nsh"), "utf8"),
+  installerDirectories,
+);
+await writeFile(
+  installerPath,
+  signed
+    ? companyCertificateInstaller(installer, desktop)
+    : installer.replaceAll("${__FILEDIR__}", join(desktop, "scripts")),
+);
 await writeFile(
   join(output, "gea-installer.nsh"),
-  `!define INSTALLER_STRINGS_FILE "${join(output, "gea-strings.nsh")}"\n!include "${signed ? join(output, "gea-certificate-installer.nsh") : join(desktop, "scripts/installer.nsh")}"\n`,
+  `!define INSTALLER_STRINGS_FILE "${join(output, "gea-strings.nsh")}"\n!include "${installerPath}"\n`,
 );
 const config = `import { createElectronBuilderConfig } from './builder-factory.mjs';
 import { officialGeaBranding } from ${JSON.stringify(pathToFileURL(join(gea, "desktop/official-branding.mjs")).href)};
