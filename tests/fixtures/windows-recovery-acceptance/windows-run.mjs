@@ -851,6 +851,11 @@ try {
         }
         const failure = rows.find((row) => row.event === "state" && row.phase === "error");
         assert.equal(failure, undefined, "Real updater failed: " + JSON.stringify(failure));
+        if (
+          values["old-visible-entry"] &&
+          rows.some((row) => row.version === oldVersion && row.phase === "installing")
+        )
+          return false;
         const dialog = await target("dsh-app://shell/update-dialog.html");
         if (!dialog) return false;
         const client = await connection(dialog.webSocketDebuggerUrl);
