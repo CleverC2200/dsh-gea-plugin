@@ -70,6 +70,11 @@ const { prepareOfficialGeaMain, companyWindowsExecutableName } = await import(
 );
 await mkdir(output, { recursive: true });
 await writeFile(join(output, "fixed-input.json"), JSON.stringify(input, null, 2));
+if (signing)
+  await writeFile(
+    join(output, "codesign.cer"),
+    new X509Certificate(await readFile(signing.certificateFile)).raw,
+  );
 const require = createRequire(join(desktop, "package.json"));
 const sharp = require("sharp");
 const { packIco, TRAY_ICON_SIZES } = await import(
@@ -144,7 +149,7 @@ const installer = recoverableInstaller(
 );
 await writeFile(
   installerPath,
-  signed
+  signing?.provider === "company-pfx"
     ? companyCertificateInstaller(installer, desktop)
     : installer.replaceAll("${__FILEDIR__}", join(desktop, "scripts")),
 );
@@ -454,6 +459,7 @@ await writeFile(
       unsigned: !signed,
       windowsSigning: signing
         ? {
+            provider: signing.provider,
             publisher: signing.publisher,
             fingerprint: signing.fingerprint,
             updateUrl: companyWindowsUpdateUrl,

@@ -69,6 +69,49 @@ test("the PFX signer repairs then signs sequentially without passing password co
   assert.deepEqual(calls, ["repair:app.exe", "sign:app.exe", "repair:setup.exe", "sign:setup.exe"]);
 });
 
+test("the Windows store signer pins the leaf and verifies the SHA-256 timestamped signature", async (t) => {
+  const { directory, env } = await fixture(t);
+  const tool = join(directory, "signtool.exe");
+  await writeFile(tool, "");
+  const cert = new X509Certificate(await readFile(companyWindowsCertificate));
+  const thumbprint = cert.fingerprint.replaceAll(":", "");
+  const store = {
+    ...env,
+    GEA_WINDOWS_STORE_CER_FILE: companyWindowsCertificate,
+    GEA_WINDOWS_STORE_CERT_SHA1: thumbprint,
+    GEA_WINDOWS_SIGNTOOL: tool,
+  };
+  assert.equal(resolveCompanyWindowsSigning(store).provider, "windows-store");
+  assert.throws(
+    () =>
+      resolveCompanyWindowsSigning({ ...store, GEA_WINDOWS_STORE_CERT_SHA1: "0".repeat(40) }),
+    /WINDOWS_STORE_CERTIFICATE_MISMATCH/,
+  );
+  const calls = [];
+  const sign = createCompanyWindowsSigner(
+    {
+      certificateFile: companyWindowsCertificate,
+      repairExecutable: async () => calls.push(["repair"]),
+    },
+    {
+      env: store,
+      run: async (command, args) => {
+        assert.equal(command, tool);
+        calls.push(args);
+      },
+    },
+  );
+  await sign({ path: "setup.exe", hash: "sha256" });
+  assert.deepEqual(calls, [
+    ["repair"],
+    [
+      "sign", "/s", "My", "/sha1", thumbprint, "/fd", "SHA256", "/tr",
+      "http://time.certum.pl", "/td", "SHA256", "setup.exe",
+    ],
+    ["verify", "/pa", "/tw", "setup.exe"],
+  ]);
+});
+
 test("a mismatched public certificate and a failed timestamp stop signed packaging", async (t) => {
   const { directory, env } = await fixture(t);
   const other = join(directory, "other.cer");

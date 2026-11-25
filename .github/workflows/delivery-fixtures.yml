@@ -23,6 +23,11 @@ on:
         description: "Desktop version, required Core, merged GEA SHA, company suite and pinned personal memory as JSON"
         required: false
         type: string
+      windows_store_probe:
+        description: "Sign one isolated sample with the pinned SimplySign certificate"
+        default: false
+        required: false
+        type: boolean
       windows_certificate_test:
         description: "Run native certificate import and timestamped signing fixtures without production keys"
         default: false
@@ -201,6 +206,40 @@ jobs:
             ${{ runner.temp }}/signed-overwrite-result/journal/**
             ${{ runner.temp }}/native-artifact-recheck/*.json
             ${{ runner.temp }}/native-artifact-recheck/public/**
+  windows-store-signature-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_store_probe
+    runs-on: windows-2025
+    timeout-minutes: 10
+    environment: windows-certum
+    env:
+      GEA_WINDOWS_STORE_CERT_SHA1: ${{ vars.GEA_WINDOWS_STORE_CERT_SHA1 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - name: Install verified SimplySign Desktop
+        shell: pwsh
+        run: ./scripts/windows-complete-local/prepare-store-signing.ps1 -Install
+      - name: Sign in to SimplySign
+        shell: pwsh
+        env:
+          CERTUM_USERNAME: ${{ secrets.GEA_CERTUM_ACCOUNT }}
+          CERTUM_TOTP_SECRET: ${{ secrets.GEA_CERTUM_TOTP_SECRET }}
+        run: node "$env:GEA_CERTUM_AUTH_SCRIPT"
+      - name: Verify a sample signature and export its public certificate
+        shell: pwsh
+        run: ./scripts/windows-complete-local/prepare-store-signing.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-store-signature-proof
+          path: |
+            ${{ runner.temp }}/gea-certum/codesign.cer
+            ${{ runner.temp }}/gea-certum/certificate-proof.json
+          if-no-files-found: error
+
   windows-certificate-fixture:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_certificate_test
     runs-on: windows-2025
@@ -697,6 +736,7 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/artifacts/nightly.yml
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/codesign.cer
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/windows-signature-audit/*.jsonl
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/signed-upgrade/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/signed-upgrade/*.log
