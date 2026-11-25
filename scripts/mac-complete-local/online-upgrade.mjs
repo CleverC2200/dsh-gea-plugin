@@ -58,12 +58,14 @@ let server;
 let disk;
 const children = [];
 const run = (file, args, options = {}) =>
-  execFileSync(file, args, {
-    encoding: "utf8",
-    env: environment,
-    timeout: 90000,
-    ...options,
-  }).trim();
+  (
+    execFileSync(file, args, {
+      encoding: "utf8",
+      env: environment,
+      timeout: 90000,
+      ...options,
+    }) ?? ""
+  ).trim();
 
 function stage(value) {
   result.stages.push(value);
