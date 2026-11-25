@@ -131,7 +131,7 @@ export async function readPreparedWorkbench({ source, prepared, head, manage }) 
     }
     if (
       line.startsWith("?? ") &&
-      (/^lib\/business\/inventory-(?:aqkc|fc)\/insight-prompt\.md$/.test(file) ||
+      (/^lib\/business\/inventory-(?:aqkc|fc|apsplan)\/insight-prompt\.md$/.test(file) ||
         /^lib\/(?:business\/inventory-(?:aqkc|fc|qll|apsplan|dealer|orderfulfillment)|static\/mps)\/sql\.config\.json$/.test(
           file,
         ))

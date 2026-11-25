@@ -46,6 +46,10 @@ function preparedFixture(t, worktree = false, ignoredOutputs = []) {
     join(source, "business/inventory-apsplan/sql.config.json"),
     '{"agentId":"inventory-apsplan"}\n',
   );
+  writeFileSync(
+    join(source, "business/inventory-apsplan/insight-prompt.md"),
+    "Analyze only the displayed measures.\n",
+  );
   for (const id of ["category", "mps", "regional"]) {
     mkdirSync(join(source, "static", id), { recursive: true });
     writeFileSync(join(source, "static", id, "index.html"), "original HTML\n");
@@ -266,6 +270,16 @@ test("MPS named query copies require the frozen Workbench bytes", async (t) => {
   const record = await readPreparedWorkbench(fixture);
   assert.ok(record.files[fixture.output]);
   writeFileSync(join(fixture.prepared, fixture.output), '{"agentId":"forged"}\n');
+  await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
+});
+
+test("the APS insight prompt must match the frozen Workbench source", async (t) => {
+  const fixture = copiedSqlFixture(t, "business/inventory-apsplan/insight-prompt.md");
+  const record = await readPreparedWorkbench(fixture);
+  assert.match(record.files[fixture.output], /^[a-f0-9]{64}$/);
+  writeFileSync(fixture.receipt, JSON.stringify(record));
+  await verifyPreparedWorkbench(fixture);
+  writeFileSync(join(fixture.prepared, fixture.output), "changed prompt\n");
   await assert.rejects(readPreparedWorkbench(fixture), /QUALITY_WORKBENCH_PREPARED_SOURCE_CHANGED/);
 });
 
