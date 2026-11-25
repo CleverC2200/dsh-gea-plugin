@@ -105,6 +105,9 @@ const environment = Object.fromEntries(
   ),
 );
 environment.DSH_DESKTOP_UPDATE_JOURNAL_DIR = journal;
+const compatibleLegacyTar = process.env.GEA_LEGACY_COMPATIBLE_TAR === "true";
+if (compatibleLegacyTar) environment.TAR_OPTIONS = "--force-local --quoting-style=literal";
+
 const evidence = {
   status: "running",
   from: oldVersion,
@@ -844,9 +847,9 @@ try {
         const rows = await records();
         if (
           values["old-visible-entry"] &&
-          rows.some((row) => row.event === "workspace-ready" && row.version === newVersion)
+          rows.some((row) => row.event === "quit-requested" && row.version === oldVersion)
         ) {
-          evidence.firstHopConfirmedBySuccessor = true;
+          evidence.oldInstallHandoffConfirmed = true;
           return true;
         }
         const failure = rows.find((row) => row.event === "state" && row.phase === "error");
@@ -911,7 +914,7 @@ try {
     );
     const pending = join(process.env.LOCALAPPDATA, cacheName, "pending");
     const candidates = await readdir(pending).catch((error) => {
-      if (error.code === "ENOENT" && evidence.firstHopConfirmedBySuccessor) return [];
+      if (error.code === "ENOENT" && evidence.oldInstallHandoffConfirmed) return [];
       throw error;
     });
     for (const name of candidates.filter((name) => name.endsWith(".exe"))) {
@@ -1479,7 +1482,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     fromVersion: oldVersion,
     toVersion: newVersion,
     firstHop: evidence.firstHop,
-    firstHopConfirmedBySuccessor: evidence.firstHopConfirmedBySuccessor,
+    oldInstallHandoffConfirmed: evidence.oldInstallHandoffConfirmed,
     oldVisibleDialog: evidence.oldVisibleDialog,
     oldVisibleRetriedWithForceLocal: evidence.oldVisibleRetriedWithForceLocal,
     oldVisibleRetriedWithSystemTar: evidence.oldVisibleRetriedWithSystemTar,
@@ -1491,7 +1494,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
           .filter(Boolean)
           .map(JSON.parse)
       : undefined,
-    legacyNativeEvents: values["trace-legacy-host"] ? evidence.journal : undefined,
+    legacyNativeEvents: values["trace-legacy-host"] || compatibleLegacyTar ? evidence.journal : undefined,
     buildReceiptSha256: evidence.buildReceiptSha256,
     inputSha256: build.inputSha256,
     installerSha256: expectedNewSha,

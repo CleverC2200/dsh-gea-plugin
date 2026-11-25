@@ -53,6 +53,11 @@ on:
         default: false
         required: false
         type: boolean
+      windows_old_entry_compatible_tar:
+        description: "Run the legacy visible button with the existing Windows packaging tar settings"
+        default: false
+        required: false
+        type: boolean
       windows_seed_cache_recheck:
         description: "Test the exact signed package and its bundled pnpm against isolated dual-cache fixtures"
         default: false
@@ -87,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        entry: ${{ fromJSON(inputs.windows_seed_cache_recheck && '["cache-only"]' || inputs.windows_old_entry_trace && '["old-visible"]' || inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
+        entry: ${{ fromJSON(inputs.windows_seed_cache_recheck && '["cache-only"]' || (inputs.windows_old_entry_trace || inputs.windows_old_entry_compatible_tar) && '["old-visible"]' || inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
     permissions:
       contents: read
       actions: read
@@ -156,6 +161,7 @@ jobs:
           GEA_WINDOWS_ONLINE_UPDATE: ${{ inputs.windows_online_update }}
           GEA_WINDOWS_ENTRY: ${{ matrix.entry }}
           GEA_TRACE_OLD_ENTRY: ${{ inputs.windows_old_entry_trace }}
+          GEA_LEGACY_COMPATIBLE_TAR: ${{ inputs.windows_old_entry_compatible_tar }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
