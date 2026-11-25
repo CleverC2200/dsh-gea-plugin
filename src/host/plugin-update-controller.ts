@@ -316,6 +316,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     checking = 0,
     active: Promise<void> | null = null;
   let startup: RuntimePackageProof[] = [];
+  let candidateActivation: "pending" | "active" | "unavailable" = "unavailable";
   let plans = new Map<UpdatablePackageName, Plan>();
   let suiteReleases: PluginRelease[] = [];
   let currentMonitor: Pick<
@@ -323,7 +324,33 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     "capture" | "snapshot" | "waitForQuiescence" | "cancelObserved" | "close"
   > | null = null;
   function snapshot() {
-    return structuredClone(state);
+    return structuredClone({
+      ...state,
+      items: state.items.map((item) =>
+        item.state === "pending-restart" && candidateActivation === "active"
+          ? { ...item, state: "confirming" as const }
+          : item,
+      ),
+    });
+  }
+  function restartReady() {
+    return (
+      !active &&
+      !closed &&
+      !journalBroken &&
+      state.operation?.stage === "pending-restart" &&
+      candidateActivation === "pending"
+    );
+  }
+  async function readCandidateSelection(operation = state.operation) {
+    const installation = await openCompanyInstallation(options.profile.dir);
+    const activation =
+      installation && operation ? await installation.activationState(operation.id) : "unavailable";
+    if (candidateActivation !== activation) {
+      candidateActivation = activation;
+      publish();
+    }
+    return installation;
   }
   function publish() {
     state = { ...state, revision: state.revision + 1 };
@@ -406,6 +433,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       operation,
       options.fileCommit,
     );
+    if (operation.stage === "pending-restart") await readCandidateSelection(operation);
     state = { ...state, operation };
     for (const target of operationTargets(operation))
       row(target.packageName, {
@@ -430,7 +458,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     });
   }
   async function reconcileRuntime() {
-    const installation = await openCompanyInstallation(options.profile.dir);
+    const installation = await readCandidateSelection();
     if (
       installation &&
       (await installation.confirmRuntime(
@@ -1279,13 +1307,20 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
         return { operationId: id, state: "unknown" };
       if (active) return { operationId: id, state: "running" };
       if (!operation || operation.stage === "completed") return { operationId: id, state: "idle" };
-      if (operation.stage === "pending-restart") return { operationId: id, state: "ready" };
+      if (operation.stage === "pending-restart")
+        return {
+          operationId: id,
+          state: restartReady()
+            ? "ready"
+            : candidateActivation === "active"
+              ? "running"
+              : "unknown",
+        };
       if (operation.stage === "failed" || operation.stage === "restored")
         return { operationId: id, state: "failed" };
       return { operationId: id, state: "unknown" };
     },
-    restartReady: () =>
-      !active && !closed && !journalBroken && state.operation?.stage === "pending-restart",
+    restartReady,
     subscribe(listener: (snapshot: PluginUpdateSnapshot) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);

@@ -742,12 +742,13 @@ test("pending receipt survives recreation in the same Node process and needs a g
   await sameProcess.initialize();
   await sameProcess.reconcileRuntime();
   assert.equal(sameProcess.snapshot().operation.stage, "pending-restart");
+  assert.equal(sameProcess.restartReady(), true);
   await sameProcess.dispose();
   await f.installation.beginBoot();
   const script = join(f.root, "reconcile.mjs");
   await writeFile(
     script,
-    `import {createPluginUpdateController} from ${JSON.stringify(pathToFileURL(modulePath).href)};import{readFile}from'node:fs/promises';const options=JSON.parse(await readFile(process.argv[2],'utf8'));const proofs=options.proofs;delete options.proofs;options.source={check:async()=>[],download:async()=>{throw Error('unused');},assertCurrentRelease:()=>{}};options.readRuntimeProofs=async processIdentity=>proofs.map(proof=>({...proof,client:proof.client.kind==='observed'?{...proof.client,binding:{...proof.client.binding,hostProcessIdentity:processIdentity}}:proof.client}));const controller=createPluginUpdateController(options);await controller.initialize();console.log(JSON.stringify({...controller.snapshot(),actualProcessIdentity:process.pid+':'+performance.timeOrigin}));await controller.dispose();`,
+    `import {createPluginUpdateController} from ${JSON.stringify(pathToFileURL(modulePath).href)};import{readFile}from'node:fs/promises';const options=JSON.parse(await readFile(process.argv[2],'utf8'));const proofs=options.proofs;delete options.proofs;options.source={check:async()=>[],download:async()=>{throw Error('unused');},assertCurrentRelease:()=>{}};options.readRuntimeProofs=async processIdentity=>proofs.map(proof=>({...proof,client:proof.client.kind==='observed'?{...proof.client,binding:{...proof.client.binding,hostProcessIdentity:processIdentity}}:proof.client}));const controller=createPluginUpdateController(options);await controller.initialize();console.log(JSON.stringify({...controller.snapshot(),restartReady:controller.restartReady(),nativeStatus:controller.operationStatus(),actualProcessIdentity:process.pid+':'+performance.timeOrigin}));await controller.dispose();`,
   );
   const input = join(f.root, "restart-options.json");
   await writeFile(
@@ -778,6 +779,12 @@ test("pending receipt survives recreation in the same Node process and needs a g
     }),
   );
   assert.equal(oldBrowser.operation.stage, "pending-restart", JSON.stringify(oldBrowser));
+  assert.equal(oldBrowser.restartReady, false);
+  assert.equal(oldBrowser.nativeStatus.state, "running");
+  assert.equal(
+    oldBrowser.items.find((item) => item.packageName === row.packageName).state,
+    "confirming",
+  );
   const receiptFile = join(
     f.options.runtimeDirectory,
     "operations",

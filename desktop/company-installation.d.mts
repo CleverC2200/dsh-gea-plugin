@@ -18,6 +18,7 @@ export class CompanyInstallation {
     signal?: AbortSignal,
   ): Promise<unknown>;
   preparationIdle(): Promise<boolean>;
+  activationState(id: string): Promise<"pending" | "active" | "unavailable">;
   beginBoot(options?: { activatePending?: boolean }): Promise<{ id: string; path: string }>;
   restoreBaselineSelection(): Promise<{ id: string; path: string }>;
   verifiedMounted(): Promise<{ id: string; path: string } | null>;

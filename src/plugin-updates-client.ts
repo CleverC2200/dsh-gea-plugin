@@ -55,7 +55,14 @@ export type PluginDetailUpdateSnapshot = {
   restart: "idle" | "restarting" | "requested" | "failed" | "unsupported";
   restartReady?: boolean;
   notice: {
-    kind: "progress" | "pending-restart" | "completed" | "restored" | "failed" | "unconfirmed";
+    kind:
+      | "progress"
+      | "pending-restart"
+      | "confirming"
+      | "completed"
+      | "restored"
+      | "failed"
+      | "unconfirmed";
     sequence: number;
     packageName?: string;
   } | null;
@@ -70,6 +77,7 @@ const operationStages: PluginUpdateRow["state"][] = [
   "verifying",
   "restoring",
   "pending-restart",
+  "confirming",
 ];
 const activeStages: PluginUpdateRow["state"][] = [
   "checking",
@@ -81,6 +89,7 @@ const activeStages: PluginUpdateRow["state"][] = [
   "verifying",
   "restoring",
   "pending-restart",
+  "confirming",
   "unknown",
 ];
 export const pluginUpdateBusy = (items: PluginUpdateRow[]) =>
@@ -114,6 +123,7 @@ export function createPluginDetailUpdates(
     notice: null,
   };
   let status: UpdateClientStatus | undefined;
+  const previousHosts = new Set<string>();
   let page:
     | {
         lifetime: AbortController;
@@ -127,6 +137,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
+          expired?: boolean;
           accepted?: { operationId: string; hostProcessIdentity: string };
           timer: ReturnType<typeof setTimeout>;
         };
@@ -195,6 +206,7 @@ export function createPluginDetailUpdates(
     owner.observation = {
       names,
       timer: setTimeout(() => {
+        if (owner.observation) owner.observation.expired = true;
         notify(owner, "unconfirmed");
         if (!owner.observation?.accepted) endObservation(owner);
       }, pluginUpdateObservationMs),
@@ -258,17 +270,23 @@ export function createPluginDetailUpdates(
       notify(
         owner,
         rows.some((row) => row?.state === "unknown") ||
+          (owner.observation.expired && rows.some((row) => row?.state === "confirming")) ||
           !rows.some((row) => row && operationStages.includes(row.state))
           ? "unconfirmed"
-          : "progress",
+          : rows.some((row) => row?.state === "confirming")
+            ? "confirming"
+            : "progress",
       );
   };
   const publishStatus = (next: UpdateClientStatus) => {
+    if (previousHosts.has(next.hostProcessIdentity)) return false;
     if (
       !status ||
       status.hostProcessIdentity !== next.hostProcessIdentity ||
       next.revision >= status.revision
     ) {
+      if (status && status.hostProcessIdentity !== next.hostProcessIdentity)
+        previousHosts.add(status.hostProcessIdentity);
       status = next;
       publish({
         items: next.items,
@@ -289,7 +307,7 @@ export function createPluginDetailUpdates(
       await request("status", { pageIdentity: owner.identity }, signal),
     );
     if (page !== owner) return;
-    publishStatus(next);
+    if (!publishStatus(next)) return;
     if (recovering && owner.recovering) {
       owner.recovering = false;
       clearTimeout(owner.recoveryTimer);
@@ -300,7 +318,7 @@ export function createPluginDetailUpdates(
     }
     const confirming = snapshot.items.filter(
       (row) =>
-        row.state === "pending-restart" &&
+        row.state === "confirming" &&
         row.candidateVersion !== null &&
         row.runningHostVersion === row.candidateVersion,
     );
@@ -495,19 +513,19 @@ export function createPluginDetailUpdates(
     resume(): Promise<void> {
       if (resumed || disposed) return Promise.resolve();
       resumed = true;
-      if (page) return page.poll ?? Promise.resolve();
-      page = {
+      page ??= {
         lifetime: new AbortController(),
         identity: crypto.randomUUID(),
         refs: 0,
         recovering: true,
       };
       const owner = page;
+      owner.recovering = true;
       owner.recoveryTimer = setTimeout(() => {
         owner.recovering = false;
         if (!owner.refs && !owner.observation) close(owner);
       }, pluginUpdateObservationMs);
-      page.poll = tick(page);
+      page.poll ??= tick(page);
       return page.poll;
     },
     retain() {

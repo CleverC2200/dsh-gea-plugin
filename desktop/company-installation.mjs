@@ -132,6 +132,14 @@ export class CompanyInstallation {
   async preparationIdle() {
     return (await this.store.recoverPreparation()) !== "busy";
   }
+  async activationState(id) {
+    const selection = await this.store.status();
+    return selection.pending === id
+      ? "pending"
+      : selection.active === id
+        ? "active"
+        : "unavailable";
+  }
   async beginBoot({ activatePending = true } = {}) {
     await this.preparationIdle();
     const before = await this.store.status();

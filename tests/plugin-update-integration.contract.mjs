@@ -648,7 +648,7 @@ test("new Host recovery waits for client Loader proof and reads status after the
       ctx.provide("modules", modules);
       if (["active", "host-later"].includes(ready))
         await modules.entries.start(ctx.loader, modules.manifest);
-      let phase = "pending-restart",
+      let phase = "confirming",
         reads = 0,
         acknowledged = 0,
         pageIdentity;
@@ -711,7 +711,7 @@ test("new Host recovery waits for client Loader proof and reads status after the
         }
       }
       if (!["active", "host-later"].includes(ready)) {
-        assert.equal(owner.getSnapshot().notice.kind, "progress");
+        assert.equal(owner.getSnapshot().notice.kind, "confirming");
         assert.equal(acknowledged, 0);
         if (ready === "unavailable") {
           t.mock.timers.tick(120000);
@@ -719,7 +719,7 @@ test("new Host recovery waits for client Loader proof and reads status after the
           assert.equal(owner.getSnapshot().notice.kind, "unconfirmed");
           assert.equal(
             owner.getSnapshot().items.find((row) => row.packageName === name).state,
-            "pending-restart",
+            "confirming",
           );
           assert.equal(acknowledged, 0);
           const stoppedAt = reads;
