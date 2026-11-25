@@ -1,0 +1,24 @@
+name: Authenticate SimplySign for Windows signing
+description: Use the fixed cloud certificate for one GitHub Actions job.
+inputs:
+  account:
+    description: SimplySign account
+    required: true
+  seed:
+    description: SimplySign TOTP secret
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install verified SimplySign Desktop
+      shell: pwsh
+      run: '& "${{ github.action_path }}/../../../scripts/windows-complete-local/prepare-store-signing.ps1" -Install'
+    - name: Sign in to SimplySign
+      shell: pwsh
+      env:
+        CERTUM_USERNAME: ${{ inputs.account }}
+        CERTUM_TOTP_SECRET: ${{ inputs.seed }}
+      run: node "$env:GEA_CERTUM_AUTH_SCRIPT"
+    - name: Prove the selected signing certificate
+      shell: pwsh
+      run: '& "${{ github.action_path }}/../../../scripts/windows-complete-local/prepare-store-signing.ps1"'

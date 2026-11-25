@@ -6,7 +6,7 @@ Host 使用 [createPluginReleaseSource](../src/host/plugin-release-source.ts) �
 
 调用者提供 `resolveAuthentication(reference, url, signal)` 与绝对 `trustDirectory`。认证引用由 Host 按已批准读取凭据解析，返回本次请求 headers；业务 token 与 client 登录投影不参与。所有请求拒绝重定向。`check(signal)` 返回频道当前发布的已验证 PluginRelease，`download(release, absoluteCacheDirectory, signal)` 返回持久 tgz 路径。来源失败清除下载资格，原 inventory 由调用者保留。检查串行，迟到检查不能覆盖新检查；没有当前成功检查时不能下载。
 
-频道 envelope 为 `{payloadBase64}`，其中保存 JSON 清单的 Base64 字节。发布无需 keyId、公钥或签名私钥。新版 reader 忽略已有配置及 envelope 中多余的旧签名字段，可继续读取线上原频道；它不再验证这些字段。payload 使用 [PluginChannel](../src/shared/plugin-release.d.mts)，包含 schema 1、channel、正整数 revision、ISO issuedAt/expiresAt 和一至三个唯一公司包的 release 引用。未来时间容差五分钟，过期频道拒绝。release URL 的路径必须包含 release JSON 的 sha256 独立段，tgz URL 同样包含 tgz sha256。来源依次验证 HTTPS 来源、release hash、tgz size/hash、tar 路径及链接、最终 manifest 与 release 安装图。系统 tar 仅列表或读取 manifest，接受调用取消并对每次读取限时 30 秒，不解压归档到目录；归档不得含 node_modules、链接或越界路径。
+频道 envelope 为 `{payloadBase64}`，其中保存 JSON 清单的 Base64 字节。发布无需 keyId、公钥或签名私钥。新版 reader 忽略已有配置及 envelope 中多余的旧签名字段，可继续读取线上原频道；它不再验证这些字段。payload 使用 [PluginChannel](../src/shared/plugin-release.d.mts)，包含 schema 1、channel、正整数 revision、ISO issuedAt/expiresAt 和一至三个唯一公司包的 release 引用。未来时间容差五分钟，过期频道拒绝。release URL 的路径必须包含 release JSON 的 sha256 独立段，tgz URL 同样包含 tgz sha256。来源依次验证 HTTPS 来源、release hash、tgz size/hash、tar 路径及链接、最终 manifest 与 release 安装图。项目内的 `tar` 库流式遍历归档并读取 manifest。检查可取消，整次限时 30 秒。归档不得含 node_modules、链接或越界路径。
 
 schema 1 可附带 `companionReleases`，此时 `releases` 只包含 GEA，companions 包含 Workbench/Manage 引用，两数组合计仍不超过三个包且不得重复。旧 GEA 忽略此字段，仅获得可独立安装的 GEA 更新；支持此字段的 GEA 解析后合并检查同一 payload 的全部引用，保持完整图与各包的来源、摘要和版本高水位保护。频道无需临时切换或修改客户端 URL。原 GEA 引用和 companion 引用保留分区，不能把 companions 平铺回旧 reader 的 `releases`。
 

@@ -173,17 +173,26 @@ test("official plugin detail keeps diagnostics without a separate update window"
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.addInitScript(() => {
     window.nativeUpdateCalls = [];
+    window.nativeOpenCalls = [];
     window.dshDesktop = {
       protocolVersion: 1,
       appVersion: async () => "0.2.0-rc.2.20261104.1",
       updates: {
         status: async () =>
           location.search.includes("retry-install")
-            ? { phase: "error", failure: "install", version: "0.2.0-rc.2.20261105.1" }
-            : location.search.includes("old-client")
+            ? {
+                phase: "error",
+                failure: "install",
+                version: "0.2.0-rc.2.20261105.1",
+              }
+            : location.search.includes("old-client") ||
+                location.search.includes("desktop-available")
               ? { phase: "available", version: "0.2.0-rc.2.20261105.1" }
               : { phase: "idle" },
         subscribe: () => () => {},
+        open: async (version) => {
+          window.nativeOpenCalls.push(version);
+        },
         check: async () => {
           window.nativeUpdateCalls.push("check");
           if (location.search.includes("latest")) return { phase: "idle" };
@@ -213,6 +222,13 @@ test("official plugin detail keeps diagnostics without a separate update window"
   assert.equal(await page.getByRole("dialog").count(), 0);
   await page.evaluate(() => window.fixture.dispose());
   phase = "available";
+  await page.goto(base + "/?desktop-available");
+  await footer.getByRole("button", { name: "Restart and update", exact: true }).nth(1).waitFor();
+  assert.equal(
+    await footer.getByRole("button", { name: "Restart and update", exact: true }).count(),
+    2,
+  );
+  await page.evaluate(() => window.fixture.dispose());
   await page.goto(base + "/?narrow-entry");
   assert.equal(await footer.getByRole("button").count(), 0);
   await page.evaluate(() => window.fixture.dispose());
@@ -436,18 +452,31 @@ test("official plugin detail keeps diagnostics without a separate update window"
   phase = "available";
   await page.evaluate(() => window.fixture.dispose());
   await page.goto(base + "/?old-client");
-  const restart = footer.getByRole("button", { name: "Restart and update", exact: true });
+  const officialUpdate = page
+    .locator("[data-official-update]")
+    .getByRole("button", { name: "desktop.update.available", exact: true });
+  await officialUpdate.click();
+  assert.deepEqual(await page.evaluate(() => window.nativeOpenCalls), [undefined]);
+  await page.evaluate(() => {
+    window.nativeOpenCalls = [];
+  });
+  const restart = footer.getByLabel("Client", { exact: true }).getByRole("button", {
+    name: "Restart and update",
+    exact: true,
+  });
   await restart.waitFor();
-  assert.equal(await restart.isDisabled(), true);
+  assert.equal(await restart.isDisabled(), false);
+  await restart.click();
+  assert.deepEqual(await page.evaluate(() => window.nativeOpenCalls), ["0.2.0-rc.2.20261105.1"]);
   assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
   await page.evaluate(() => window.fixture.dispose());
 
-  phase = "current";
+  phase = "unknown";
+  sourceMissing = true;
   await page.goto(base + "/?retry-install");
   await restart.click();
-  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
-    { kind: "desktop", version: "0.2.0-rc.2.20261105.1" },
-  ]);
+  assert.deepEqual(await page.evaluate(() => window.nativeOpenCalls), ["0.2.0-rc.2.20261105.1"]);
+  assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
   assert.equal(prepared, 0);
   assert.equal(updates, 0);
   await page.evaluate(() => window.fixture.dispose());

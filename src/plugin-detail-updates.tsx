@@ -23,7 +23,11 @@ import css from "./plugin-detail-updates.css";
 
 declare module "@deepseek-ai/dsh-client-ui-slots" {
   interface SlotMap {
-    "gea.account.actions": { kind: "list"; scope: "root"; owner: { onSelect: () => void } };
+    "gea.account.actions": {
+      kind: "list";
+      scope: "root";
+      owner: { onSelect: () => void };
+    };
   }
 }
 
@@ -248,7 +252,9 @@ type DesktopOwner = ReturnType<typeof createDesktopUpdates>;
 type UpdateEntry = "closed" | "confirm" | "result";
 const createUpdateEntry = () => createSnapshotStore<UpdateEntry>("closed");
 const createDismissedUpdates = () =>
-  createSnapshotStore<string[]>([], { persist: { name: "gea.dismissed-update-reminders.v1" } });
+  createSnapshotStore<string[]>([], {
+    persist: { name: "gea.dismissed-update-reminders.v1" },
+  });
 type SharedProps = PropsLocale<typeof pluginUpdateLocale> & {
   updates: Owner;
   desktop: DesktopOwner;
@@ -280,13 +286,15 @@ function UpdateCard({
     pluginSuiteReady(plugins.items) &&
     plugins.items.some((row) => row.state === "available" && row.planId);
   const checking = checkingNow || plugins.checking || state?.phase === "checking";
-  const busy =
+  const desktopBusy =
     client.opening ||
+    Boolean(state && ["downloading", "verifying", "installing"].includes(state.phase));
+  const busy =
+    desktopBusy ||
     plugins.submitting !== null ||
     plugins.restart === "requested" ||
     plugins.restart === "restarting" ||
-    plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row])) ||
-    Boolean(state && ["downloading", "verifying", "installing"].includes(state.phase));
+    plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
   const versions = [
     ...(desktopTarget ? [`desktop:${desktopTarget}`] : []),
     ...plugins.items.flatMap((row) => {
@@ -393,7 +401,9 @@ function UpdateCard({
               <strong>{t("desktopTitle")}</strong>
               <span role="status">
                 {busy && state?.phase === "downloading" && state.percent !== undefined
-                  ? t("desktopProgress", { percent: String(Math.round(state.percent)) })
+                  ? t("desktopProgress", {
+                      percent: String(Math.round(state.percent)),
+                    })
                   : desktopStatus}
                 {client.current && state?.phase === "idle" ? ` · ${client.current}` : ""}
               </span>
@@ -401,12 +411,8 @@ function UpdateCard({
                 <Button
                   size="sm"
                   variant="primary"
-                  disabled={busy || checking || !client.canRestartUpdate}
-                  onClick={() =>
-                    void launch(() =>
-                      desktop.restartUpdate({ kind: "desktop", version: desktopTarget }),
-                    )
-                  }
+                  disabled={desktopBusy || state?.phase === "checking" || !client.canOpen}
+                  onClick={() => void launch(() => desktop.open(desktopTarget))}
                 >
                   {t("restartUpdate")}
                 </Button>
@@ -416,11 +422,13 @@ function UpdateCard({
           <section aria-label={t("pluginsTitle")}>
             <strong>{t("pluginsTitle")}</strong>
             <span role="status">{pluginStatus}</span>
-            {(pluginAvailable || pending) && !desktopTarget && (
+            {(pluginAvailable || pending) && (
               <Button
                 size="sm"
                 variant="primary"
-                disabled={busy || checking || !client.canRestartUpdate}
+                disabled={
+                  busy || checking || !client.canRestartUpdate || (pending && !plugins.restartReady)
+                }
                 onClick={() =>
                   void launch(() => (pending ? updates.restart() : updates.updateAll()))
                 }
@@ -431,7 +439,8 @@ function UpdateCard({
           </section>
         </div>
       )}
-      {!client.canRestartUpdate && (desktopTarget || pluginAvailable || pending) && (
+      {((desktopTarget && !client.canOpen) ||
+        ((pluginAvailable || pending) && !client.canRestartUpdate)) && (
         <span>{t("takeoverUnsupported")}</span>
       )}
       {(failed || plugins.restart === "failed") && <span role="alert">{t("restartError")}</span>}
@@ -463,12 +472,13 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
       };
     });
     scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
-    scope.slots.inject("settings.update", () =>
-      scope.slots.register({ name: "settings.update", priority: -10 }, () => null),
-    );
     scope.slots.inject("gea.account.actions", () =>
       scope.slots.register(
-        { name: "gea.account.actions", id: "gea.check-updates", locale: pluginUpdateLocale },
+        {
+          name: "gea.account.actions",
+          id: "gea.check-updates",
+          locale: pluginUpdateLocale,
+        },
         ({ onSelect, t }) => (
           <button
             type="button"

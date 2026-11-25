@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, X509Certificate } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import YAML from "yaml";
 import semver from "semver";
+import {
+  certumWindowsCertificate,
+  certumWindowsUpdateUrl,
+  companyWindowsCertificate,
+  companyWindowsUpdateUrl,
+} from "./windows-complete-local/signing.mjs";
 
 const origin = "https://synear-gea.oss-cn-hangzhou.aliyuncs.com";
+const certumPrefix = new URL(certumWindowsUpdateUrl).pathname.slice(1);
 const digest = (bytes, algorithm = "sha256", encoding = "hex") =>
   createHash(algorithm).update(bytes).digest(encoding);
 const equal = (a, b) => (a === null ? b === null : b !== null && a.equals(b));
@@ -47,6 +54,20 @@ export async function prepareDesktopRelease(directory, sourceSha, receiptPath) {
   const version = receipt.desktopVersion ?? receipt.packaged?.version;
   assert.ok(semver.valid(version), "DESKTOP_RELEASE_VERSION_INVALID");
   const platform = mac ? "mac-arm64" : "win-x64";
+  const { provider, fingerprint, updateUrl } = mac ? {} : receipt.windowsSigning;
+  const certum = provider === "windows-store";
+  const bridge = provider === "company-pfx" && updateUrl === certumWindowsUpdateUrl;
+  if (certum || bridge) {
+    assert.equal(updateUrl, certumWindowsUpdateUrl, "DESKTOP_RELEASE_WINDOWS_FEED_MISMATCH");
+    const certificate = certum ? certumWindowsCertificate : companyWindowsCertificate;
+    assert.equal(
+      fingerprint,
+      new X509Certificate(await readFile(certificate)).fingerprint256,
+      "DESKTOP_RELEASE_WINDOWS_CERTIFICATE_MISMATCH",
+    );
+  } else if (!mac && updateUrl !== undefined) {
+    assert.equal(updateUrl, companyWindowsUpdateUrl, "DESKTOP_RELEASE_WINDOWS_FEED_MISMATCH");
+  }
   const stem = `Synear-GEA-${version}-${platform}-signed`;
   const feed = mac ? "nightly-mac.yml" : "nightly.yml";
   const names = mac
@@ -112,13 +133,22 @@ export async function prepareDesktopRelease(directory, sourceSha, receiptPath) {
     platform,
     feed,
     localCandidate: receipt.localCandidate === true,
-    prefix: `client-release/electron/${platform}/`,
+    prefix: certum ? certumPrefix : `client-release/electron/${platform}/`,
+    ...(bridge ? { bridge } : {}),
     files,
   };
 }
 
 export async function publishDesktopRelease(plan, store) {
   assert.equal(plan.localCandidate, false, "DESKTOP_RELEASE_CANDIDATE_NOT_PUBLISHABLE");
+  if (plan.bridge) {
+    const next = await store.read(certumPrefix + plan.feed, false);
+    const version = next && YAML.parse(next.toString("utf8"))?.version;
+    assert.ok(
+      semver.valid(version) && semver.gt(version, plan.version),
+      "DESKTOP_RELEASE_CERTUM_FEED_NOT_READY",
+    );
+  }
   const feedKey = plan.prefix + plan.feed;
   const previous = await store.read(feedKey, true);
   const feedBytes = await readFile(plan.files.at(-1).path);
@@ -262,7 +292,7 @@ export function createDesktopOssStore(environment = process.env) {
   assert.ok(id && secret, "DESKTOP_RELEASE_OSS_CREDENTIALS_REQUIRED");
   async function request(method, key, bytes, immutable, authenticated) {
     assert.ok(
-      /^client-release\/(electron\/(mac-arm64|win-x64)\/|raw\/[a-f0-9]{40}\/desktop\/)[A-Za-z0-9._-]+$/.test(
+      /^client-release\/(electron\/(mac-arm64|win-x64|win-x64-certum)\/|raw\/[a-f0-9]{40}\/desktop\/)[A-Za-z0-9._-]+$/.test(
         key,
       ),
       "DESKTOP_RELEASE_KEY_INVALID",

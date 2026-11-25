@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile, lstat, realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, lstat, realpath, readdir } from "node:fs/promises";
 import { join, isAbsolute, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
@@ -114,10 +114,7 @@ async function stoppedUpdateProcesses(profile, receipt) {
   return processes.every((row) => [row.pid, -row.pid].every(processExited));
 }
 
-export async function readProfileUpdateState(
-  profile,
-  { allowExitedPackageRun = false, allowStoppedUpdate = false } = {},
-) {
+async function assertPackageRunStopped(profile, allowExitedPackageRun) {
   const recorded = await optional(join(profile, ".plugin-manager/run.json"));
   if (recorded) {
     if (!allowExitedPackageRun) throw Error("GEA_REFRESH_PROFILE_BUSY");
@@ -136,6 +133,62 @@ export async function readProfileUpdateState(
       }
     }
   }
+}
+
+export async function assertProfileWritersStopped(profile) {
+  await assertPackageRunStopped(profile, true);
+  let receipt;
+  try {
+    const pointer = JSON.parse(await optional(join(profile, "gea/plugin-updates/latest.json")));
+    if (pointer && typeof pointer.id === "string" && /^[a-f0-9-]{36}$/.test(pointer.id)) {
+      const current = JSON.parse(
+        await optional(join(profile, "gea/plugin-updates/operations", pointer.id, "receipt.json")),
+      );
+      if (
+        current?.id === pointer.id &&
+        typeof current.stage === "string" &&
+        Array.isArray(current.processes)
+      )
+        receipt = current;
+    }
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+  }
+  const receipts = receipt ? [receipt] : [];
+  if (!receipt) {
+    const operations = join(profile, "gea/plugin-updates/operations");
+    const entries = await readdir(operations, { withFileTypes: true }).catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    if (entries.length > 512) throw Error("GEA_REFRESH_PROFILE_BUSY");
+    for (const entry of entries) {
+      if (!/^[a-f0-9-]{36}$/.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink())
+        continue;
+      try {
+        const candidate = JSON.parse(await optional(join(operations, entry.name, "receipt.json")));
+        if (candidate?.id === entry.name) receipts.push(candidate);
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+      }
+    }
+  }
+  for (const current of receipts) {
+    if (
+      current.installationId ||
+      !current.processes?.length ||
+      ["completed", "restored", "failed"].includes(current.stage)
+    )
+      continue;
+    if (!(await stoppedUpdateProcesses(profile, current))) throw Error("GEA_REFRESH_PROFILE_BUSY");
+  }
+}
+
+export async function readProfileUpdateState(
+  profile,
+  { allowExitedPackageRun = false, allowStoppedUpdate = false } = {},
+) {
+  await assertPackageRunStopped(profile, allowExitedPackageRun);
   const latest = await optional(join(profile, "gea/plugin-updates/latest.json"));
   if (!latest) return;
   const pointer = JSON.parse(latest);

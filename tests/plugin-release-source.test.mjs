@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
-import { join, dirname, delimiter } from "node:path";
+import { join, dirname } from "node:path";
+import { c as packTar } from "tar";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -46,7 +47,7 @@ async function fixture(t) {
     await writeFile(join(packageRoot, "cordis.patch.yml"), "[]");
     await writeFile(join(packageRoot, "订单履约语义.md"), "订单履约");
     const archive = join(dir, `${releases.length}.tgz`);
-    execFileSync("tar", ["-czf", archive, "-C", join(packageRoot, ".."), "package"]);
+    await packTar({ gzip: true, file: archive, cwd: dirname(packageRoot) }, ["package"]);
     const archiveBytes = await readFile(archive),
       hash = digest(archiveBytes),
       url = `https://fixture.invalid/releases/${hash}/plugin.tgz`;
@@ -207,36 +208,40 @@ test(
       const file = join(root, "package", relative);
       await mkdir(dirname(file), { recursive: true });
       await writeFile(file, "invalid");
-      execFileSync("tar", ["-czf", archive, "-C", root, "package"]);
+      execFileSync("tar", ["-czf", archive, "-C", root, "package"], {
+        env: { ...process.env, COPYFILE_DISABLE: "1" },
+      });
       await assert.rejects(inspectPluginArchive(archive), /SOURCE_ARCHIVE_INVALID/);
       await rm(join(root, "package", relative.split("/")[0]), { recursive: true });
     }
-    execFileSync("tar", ["-czf", archive, "-C", root, "package", "package"]);
+    await packTar({ gzip: true, file: archive, cwd: root }, ["package", "package"]);
     await assert.rejects(inspectPluginArchive(archive), /SOURCE_ARCHIVE_INVALID/);
   },
 );
-test(
-  "archive listing accepts Windows CRLF while retaining archive inspection",
-  { skip: process.platform === "win32" },
-  async (t) => {
-    const f = await fixture(t),
-      bin = join(f.dir, "bin");
-    await mkdir(bin);
-    await writeFile(
-      join(bin, "tar"),
-      `#!/usr/bin/env node\nconst cp=require('node:child_process');const result=cp.spawnSync('/usr/bin/tar',process.argv.slice(2));process.stdout.write(process.argv[2].startsWith('-t')?result.stdout.toString().replaceAll('\\n','\\r\\n'):result.stdout);process.stderr.write(result.stderr);process.exitCode=result.status;\n`,
-      { mode: 0o700 },
-    );
-    const previous = process.env.PATH;
-    process.env.PATH = bin + delimiter + previous;
-    try {
-      const manifest = await inspectPluginArchive(join(f.dir, "0.tgz"));
-      assert.equal(manifest.name, companyPackageNames[0]);
-    } finally {
-      process.env.PATH = previous;
-    }
-  },
-);
+test("archive inspection succeeds with no system tar in PATH", async (t) => {
+  const f = await fixture(t);
+  const previous = process.env.PATH;
+  process.env.PATH = join(f.dir, "empty");
+  try {
+    assert.equal((await inspectPluginArchive(join(f.dir, "0.tgz"))).name, companyPackageNames[0]);
+  } finally {
+    if (previous === undefined) delete process.env.PATH;
+    else process.env.PATH = previous;
+  }
+});
+test("archive inspection uses the effective name of a long Unicode export", async (t) => {
+  const f = await fixture(t);
+  const root = join(f.dir, companyPackageNames[0].replaceAll("/", "-"));
+  const manifestPath = join(root, "package/package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const relative = "lib/" + "订单履约".repeat(18) + ".mjs";
+  manifest.exports["./client"] = "./" + relative;
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await writeFile(join(root, "package", relative), "export default {}");
+  const archive = join(f.dir, "long-name.tgz");
+  await packTar({ gzip: true, file: archive, cwd: root }, ["package"]);
+  assert.equal((await inspectPluginArchive(archive)).name, manifest.name);
+});
 test("source rejects malformed channel and clears previous execution authority while original inventory remains outside source", async (t) => {
   const f = await fixture(t),
     releases = await f.source.check();
@@ -337,7 +342,7 @@ test("archive inspection rejects symlinks and supports real production condition
   const { symlink } = await import("node:fs/promises");
   await symlink("/etc/passwd", join(linkRoot, "package.json"));
   const bad = join(f.dir, "symlink.tgz");
-  execFileSync("tar", ["-czf", bad, "-C", join(linkRoot, ".."), "package"]);
+  await packTar({ gzip: true, file: bad, cwd: dirname(linkRoot) }, ["package"]);
   await assert.rejects(inspectPluginArchive(bad), /SOURCE_ARCHIVE_LINK_FORBIDDEN/);
 });
 test("allowed-source policy rejects credential URLs and escapes before fetching", async (t) => {

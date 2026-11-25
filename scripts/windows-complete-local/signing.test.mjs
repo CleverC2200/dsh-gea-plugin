@@ -8,11 +8,14 @@ import { X509Certificate } from "node:crypto";
 import { rootCertificates } from "node:tls";
 import {
   adaptSignedWindowsFactory,
+  certumWindowsCertificate,
+  certumWindowsUpdateUrl,
   companyCertificateInstaller,
   companyWindowsCertificate,
   companyWindowsUpdateUrl,
   createCompanyWindowsSigner,
   resolveCompanyWindowsSigning,
+  resolveCompanyWindowsUpdate,
 } from "./signing.mjs";
 
 async function fixture(t) {
@@ -69,6 +72,65 @@ test("the PFX signer repairs then signs sequentially without passing password co
   assert.deepEqual(calls, ["repair:app.exe", "sign:app.exe", "repair:setup.exe", "sign:setup.exe"]);
 });
 
+test("the Windows store signer pins the leaf and verifies the SHA-256 timestamped signature", async (t) => {
+  const { directory, env } = await fixture(t);
+  const tool = join(directory, "signtool.exe");
+  await writeFile(tool, "");
+  const cert = new X509Certificate(await readFile(companyWindowsCertificate));
+  const thumbprint = cert.fingerprint.replaceAll(":", "");
+  const store = {
+    ...env,
+    GEA_WINDOWS_STORE_CER_FILE: companyWindowsCertificate,
+    GEA_WINDOWS_STORE_CERT_SHA1: thumbprint,
+    GEA_WINDOWS_SIGNTOOL: tool,
+  };
+  assert.equal(resolveCompanyWindowsSigning(store).provider, "windows-store");
+  assert.throws(
+    () => resolveCompanyWindowsSigning({ ...store, GEA_WINDOWS_STORE_CERT_SHA1: "0".repeat(40) }),
+    /WINDOWS_STORE_CERTIFICATE_MISMATCH/,
+  );
+  const calls = [];
+  const sign = createCompanyWindowsSigner(
+    {
+      certificateFile: companyWindowsCertificate,
+      repairExecutable: async () => calls.push(["repair"]),
+      preserveSignature: async (path) => path === "verified-runtime.exe",
+    },
+    {
+      env: store,
+      run: async (command, args) => {
+        assert.equal(command, tool);
+        calls.push(args);
+      },
+    },
+  );
+  await sign({ path: "verified-runtime.exe", hash: "sha256", isNest: false });
+  assert.deepEqual(calls, []);
+  await sign({ path: "setup.exe", hash: "sha256" });
+  assert.deepEqual(calls, [
+    ["repair"],
+    [
+      "sign",
+      "/s",
+      "My",
+      "/sha1",
+      thumbprint,
+      "/fd",
+      "SHA256",
+      "/tr",
+      "http://time.certum.pl",
+      "/td",
+      "SHA256",
+      "setup.exe",
+    ],
+    ["verify", "/pa", "/tw", "setup.exe"],
+  ]);
+  await assert.rejects(
+    sign({ path: "setup.exe", hash: "sha256", isNest: true }),
+    /WINDOWS_SIGNING_APPEND_UNSUPPORTED/,
+  );
+});
+
 test("a mismatched public certificate and a failed timestamp stop signed packaging", async (t) => {
   const { directory, env } = await fixture(t);
   const other = join(directory, "other.cer");
@@ -104,18 +166,46 @@ test("a mismatched public certificate and a failed timestamp stop signed packagi
 
 test("company signing keeps the official updater and company feed", () => {
   const original =
-    "const windowsSigner=createWindowsTokenSigner({certificateFile: env.DSH_DESKTOP_WINDOWS_CER_FILE});\nconst update=resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);\nconst publish=[{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }];";
-  const adapted = adaptSignedWindowsFactory(original, "C:/core/apps/desktop");
+    "const windowsSigner=createWindowsTokenSigner({certificateFile: env.DSH_DESKTOP_WINDOWS_CER_FILE});\nconst update=resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);\nif (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime\nconst publish=[{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }];\nconst publisher=resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE);";
+  const adapted = adaptSignedWindowsFactory(original, "C:/core/apps/desktop", "D:/signed runtime");
   assert.match(
     adapted,
     /createCompanyWindowsSigner\(\{ repairExecutable: repairDanglingAuthenticodeDirectory,/,
   );
-  assert.match(adapted, /const update=resolveCompanyWindowsUpdate\(\)/);
+  assert.match(adapted, /const update=resolveCompanyWindowsUpdate\(env\)/);
+  assert.match(
+    adapted,
+    /const publisher=resolveWindowsUpdatePublisher\(update.publisherCertificate\)/,
+  );
+  assert.match(adapted, /buildPaths\.runtime = "D:\/signed runtime"/);
   assert.equal(
     new URL(companyWindowsUpdateUrl).origin,
     "https://synear-gea.oss-cn-hangzhou.aliyuncs.com",
   );
   assert.throws(() => adaptSignedWindowsFactory("changed Core", "C:/core"), /ADAPTER_DRIFT/);
+});
+
+test("the old-signed bridge and new-signed build point to the same approved updater publisher", () => {
+  const legacy = { DSH_DESKTOP_WINDOWS_CER_FILE: companyWindowsCertificate };
+  assert.deepEqual(resolveCompanyWindowsUpdate(legacy), {
+    publicUrl: companyWindowsUpdateUrl,
+    publisherCertificate: companyWindowsCertificate,
+  });
+  const bridge = { ...legacy, GEA_WINDOWS_CERTUM_BRIDGE: "1" };
+  const store = {
+    DSH_DESKTOP_WINDOWS_CER_FILE: certumWindowsCertificate,
+    GEA_WINDOWS_STORE_CER_FILE: certumWindowsCertificate,
+  };
+  const next = {
+    publicUrl: certumWindowsUpdateUrl,
+    publisherCertificate: certumWindowsCertificate,
+  };
+  assert.deepEqual(resolveCompanyWindowsUpdate(bridge), next);
+  assert.deepEqual(resolveCompanyWindowsUpdate(store), next);
+  assert.throws(
+    () => resolveCompanyWindowsUpdate({ ...bridge, ...store }),
+    /WINDOWS_BRIDGE_REQUIRES_LEGACY_SIGNER/,
+  );
 });
 
 test("the adopted company generic updater uses single ranges and retains other providers", async (t) => {
@@ -126,13 +216,20 @@ test("the adopted company generic updater uses single ranges and retains other p
     "export function repairDanglingAuthenticodeDirectory() {}\n",
   );
   const original = `
+const env = {};
+const preparedRuntime = 'signed-dsh';
+const buildPaths = {};
 const update = resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch);
+if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime
+export const paths = buildPaths;
 export const publish = [{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }, { provider: 'github', owner: 'example', repo: 'desktop' }];
 export const signer = () => createWindowsTokenSigner({});
+export const publisher = () => resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE);
 `;
   const output = join(directory, "builder-factory.mjs");
-  await writeFile(output, adaptSignedWindowsFactory(original, directory));
-  const { publish } = await import(pathToFileURL(output).href);
+  await writeFile(output, adaptSignedWindowsFactory(original, directory, "signed-support"));
+  const { paths, publish } = await import(pathToFileURL(output).href);
+  assert.deepEqual(paths, { dsh: "signed-dsh", runtime: "signed-support" });
   assert.deepEqual(publish, [
     {
       provider: "generic",

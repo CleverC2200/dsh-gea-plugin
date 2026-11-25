@@ -258,6 +258,7 @@ export async function installedScenario(
     allUpdates = false,
     strictSuitePeers = false,
     startupRecovery = false,
+    corruptCompanyReceipt = false,
   } = {},
 ) {
   await mkdir(join(repository, ".runtime"), { recursive: true });
@@ -549,6 +550,30 @@ export async function installedScenario(
   let oldProcess, pending;
   try {
     await host.route("check", {});
+    if (corruptCompanyReceipt) {
+      const receipt = join(dir, "gea/plugin-updates/company-update.json");
+      const damaged = "{legacy-company-update-interrupted";
+      await mkdir(dirname(receipt), { recursive: true });
+      await writeFile(receipt, damaged);
+      const status = await host.route("status", { pageIdentity: "damaged-receipt-page" });
+      assert.equal(status.companyUpdate, null);
+      const observation = await clientObservations(input, host);
+      try {
+        await host.route("observed", {
+          hostProcessIdentity: status.hostProcessIdentity,
+          pageIdentity: "damaged-receipt-page",
+          nonce: status.challenge,
+          modules: observation.modules,
+        });
+        const observed = await host.route("status", { pageIdentity: "damaged-receipt-page" });
+        assert(observed.items.every((row) => row.runningClientVersion !== null));
+        await assert.rejects(host.route("company-cancel", {}));
+        assert.equal(await readFile(receipt, "utf8"), damaged);
+      } finally {
+        await observation.client.fiber.dispose();
+      }
+      await rm(receipt);
+    }
     const checked = await host.route("status", { pageIdentity: "old-page" }),
       row = checked.items.find(
         (item) => item.packageName === companyPackageNames[startupRecovery ? 0 : 2],

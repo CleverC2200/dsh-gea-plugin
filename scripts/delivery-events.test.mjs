@@ -144,10 +144,13 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
     "reuse_prepared_inputs",
     "source_types_input",
     "windows_certificate_test",
+    "windows_certum_bridge",
     "windows_complete_input",
     "windows_online_update",
     "windows_overwrite_artifact_run",
     "windows_signed",
+    "windows_store_probe",
+    "windows_store_signing",
     "windows_update_acceptance",
   ]);
   for (const [name, input] of Object.entries(inputs)) {
@@ -155,8 +158,11 @@ test("delivery retains PR and manual contexts without empty main push runs", () 
       [
         "windows_signed",
         "windows_certificate_test",
+        "windows_certum_bridge",
         "windows_update_acceptance",
         "windows_online_update",
+        "windows_store_probe",
+        "windows_store_signing",
       ].includes(name)
     ) {
       assert.equal(input.type, "boolean");
@@ -334,7 +340,7 @@ test("standalone delivery retains package Prompt and source checks while candida
       preparation < steps.findIndex((step) => step.run === "node --run test:release-source"),
   );
   const preparationArguments = steps[preparation].run.split(/\s+/);
-  for (const name of ["semver", "tar"])
+  for (const name of ["semver", "tar", "yaml"])
     assert.ok(
       preparationArguments.includes(`${name}@${manifest.dependencies[name]}`),
       `missing declared fixture dependency: ${name}`,

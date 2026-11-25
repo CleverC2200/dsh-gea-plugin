@@ -1,8 +1,8 @@
-import { mkdir, readFile, rename, rm, open, lstat } from "node:fs/promises";
+import { mkdir, readFile, rename, open, lstat, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { relocateVirtualStore } from "./copy-graph.mjs";
 import { randomUUID, createHash } from "node:crypto";
-import { withPluginStoreLock } from "./plugin-store-lock.mjs";
+import { recoverPluginStoreLock, withPluginStoreLock } from "./plugin-store-lock.mjs";
 import { collectPluginStorage, pruneUnreferencedArchives } from "./plugin-storage.mjs";
 import {
   readCoreLayout,
@@ -37,10 +37,12 @@ export async function writePluginStoreJson(path, value) {
   await rename(temporary, path);
 }
 export class PluginStore {
-  constructor({ data, baseline, dataSchema = 1 }) {
+  constructor({ data, baseline, dataSchema = 1, companyCoreHead, companyProfile }) {
     this.root = join(resolve(data), "plugins");
     this.baseline = resolve(baseline);
     this.dataSchema = dataSchema;
+    this.companyCoreHead = companyCoreHead;
+    this.companyProfile = companyProfile;
   }
   async withLock(action, options) {
     return withPluginStoreLock(this.root, action, options);
@@ -60,10 +62,32 @@ export class PluginStore {
   }
   async status() {
     try {
-      return await json(join(this.root, "selection.json"));
+      const state = await json(join(this.root, "selection.json"));
+      const valid = (id) => typeof id === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(id);
+      if (
+        !state ||
+        !valid(state.active) ||
+        ["previous", "verified", "pending", "booting"].some(
+          (key) => state[key] != null && !valid(state[key]),
+        )
+      )
+        throw Error("PLUGIN_SELECTION_INVALID");
+      return state;
     } catch (error) {
       if (error.code !== "ENOENT") throw Error("PLUGIN_SELECTION_INVALID");
-      return { active: "baseline", previous: null };
+      const versions = this.companyCoreHead
+        ? await readdir(join(this.root, "versions"), { withFileTypes: true }).catch((error) => {
+            if (error.code === "ENOENT") return [];
+            throw error;
+          })
+        : [];
+      return {
+        active: "baseline",
+        previous: null,
+        ...(versions.some((entry) => entry.isDirectory() || entry.isSymbolicLink())
+          ? { referencesUncertain: true }
+          : {}),
+      };
     }
   }
   async selected() {
@@ -95,12 +119,25 @@ export class PluginStore {
     }
     return { id: active, path, receipt };
   }
-  async prepare({ id, install, signal }) {
+  async prepare({ id, install, signal, queueActivation = false }) {
     versionId(id);
     await mkdir(join(this.root, "versions"), { recursive: true, mode: 0o700 });
     return this.withLock(async (owner, lockPath) => {
-      const stage = join(this.root, "staging-" + randomUUID());
+      const stageName = "staging-" + randomUUID();
+      const stage = join(this.root, stageName);
+      const preparation = { ...owner, stage: stageName };
       try {
+        await writePluginStoreJson(lockPath, preparation);
+        if (this.companyCoreHead)
+          await this.withSelectionLock(async () => {
+            const path = join(this.root, "selection.json");
+            try {
+              await lstat(path);
+            } catch (error) {
+              if (error.code !== "ENOENT") throw error;
+              await writePluginStoreJson(path, await this.status());
+            }
+          });
         const current = await this.selected();
         await mkdir(stage, { recursive: true, mode: 0o700 });
 
@@ -108,8 +145,10 @@ export class PluginStore {
         signal?.throwIfAborted();
         await relocateVirtualStore(stage, { sourceDirectory: current.path, storeRoot: this.root });
         await install(stage, {
-          registerProcess: async (workerPid) =>
-            writePluginStoreJson(lockPath, { ...owner, workerPid }),
+          registerProcess: async (workerPid) => {
+            preparation.workerPid = workerPid;
+            await writePluginStoreJson(lockPath, preparation);
+          },
         });
         await relocateVirtualStore(stage);
         await pruneUnreferencedArchives(stage);
@@ -153,6 +192,9 @@ export class PluginStore {
           versions,
           lockSha256: createHash("sha256").update(lockBytes).digest("hex"),
           ...layout,
+          ...(this.companyCoreHead
+            ? { ownership: { schema: 1, kind: "company-update", coreHead: this.companyCoreHead } }
+            : {}),
         };
         await writePluginStoreJson(join(stage, "version.json"), receipt);
 
@@ -164,6 +206,7 @@ export class PluginStore {
           if (error.code !== "ENOENT") throw error;
         }
         await rename(stage, destination);
+        if (queueActivation) await this.queueActivation(id);
         return receipt;
       } catch (error) {
         await writePluginStoreJson(join(stage, "preparation-failure.json"), {
@@ -172,42 +215,19 @@ export class PluginStore {
           code: /^[A-Z][A-Z0-9_]+$/.test(error.message)
             ? error.message
             : "PLUGIN_PREPARATION_FAILED",
+          ...(this.companyCoreHead
+            ? {
+                ownership: { schema: 1, kind: "company-update", coreHead: this.companyCoreHead },
+                writer: preparation,
+              }
+            : {}),
         }).catch(() => undefined);
         throw error;
       }
     });
   }
-  async recoverPreparation(directory = this.root) {
-    const path = join(directory, "prepare.lock");
-    let owner;
-    try {
-      owner = await json(path);
-    } catch (error) {
-      if (error.code === "ENOENT") return "idle";
-      throw Error("PLUGIN_PREPARATION_LOCK_INVALID");
-    }
-    const alive = (pid) => {
-      if (!Number.isSafeInteger(pid) || pid < 1) return false;
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch (error) {
-        return error.code !== "ESRCH";
-      }
-    };
-    let groupAlive = false;
-    if (process.platform !== "win32" && Number.isSafeInteger(owner.workerPid)) {
-      try {
-        process.kill(-owner.workerPid, 0);
-        groupAlive = true;
-      } catch (error) {
-        groupAlive = error.code !== "ESRCH";
-      }
-    }
-    if (alive(owner.pid) || alive(owner.workerPid) || groupAlive) return "busy";
-
-    await rm(path, { force: true });
-    return "recovered";
+  async recoverPreparation() {
+    return recoverPluginStoreLock(this.root);
   }
   async queueActivation(id) {
     versionId(id);

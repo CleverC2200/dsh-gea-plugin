@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { createReadStream } from "node:fs";
 import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { t as readTar } from "tar";
 import {
   updatablePackageNames,
   parsePluginRelease,
@@ -14,7 +15,6 @@ import {
 } from "../shared/plugin-release.mjs";
 
 import type { PluginUpdateFileCommit } from "./plugin-update-windows.ts";
-const run = promisify(execFile);
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const fail = (code: string): never => {
   throw Error(code);
@@ -132,34 +132,54 @@ export async function inspectPluginArchive(
   path: string,
   signal?: AbortSignal,
 ): Promise<PluginManifest> {
-  const options = {
-    maxBuffer: 16 * 1024 * 1024,
-    timeout: 30_000,
-    killSignal: "SIGKILL" as const,
-    encoding: "utf8" as const,
-    env: process.platform === "darwin" ? { ...process.env, LC_ALL: "en_US.UTF-8" } : process.env,
-    signal,
-  };
-  const entries = (await run("tar", ["-tzf", path], options)).stdout.trim().split(/\r?\n/);
-  if (
-    new Set(entries).size !== entries.length ||
-    entries.some(
-      (file) =>
+  const limit = 16 * 1024 * 1024;
+  const entries = new Set<string>();
+  const manifest: Buffer[] = [];
+  let nameBytes = 0;
+  let manifestBytes = 0;
+  const archive = readTar({
+    strict: true,
+    onReadEntry(entry) {
+      const rawPath = entry.header.path ?? "";
+      const file =
+        entry.type === "Directory" && !entry.path.endsWith("/") ? entry.path + "/" : entry.path;
+      nameBytes += Buffer.byteLength(file) + 1;
+      if (
+        nameBytes > limit ||
+        entries.has(file) ||
         !file.startsWith("package/") ||
-        /[\\\r\t]/.test(file) ||
+        /[\\\n\r\t]/.test(rawPath) ||
+        /[\\\n\r\t]/.test(file) ||
         file.split("/").some((part) => part === ".." || part === ".") ||
         file.includes("//") ||
-        file.includes("/node_modules/"),
-    )
-  )
-    return fail("SOURCE_ARCHIVE_INVALID");
-  const listing = (await run("tar", ["-tvzf", path], options)).stdout.trim().split(/\r?\n/);
-  if (listing.length !== entries.length || listing.some((line) => !["-", "d"].includes(line[0])))
-    return fail("SOURCE_ARCHIVE_LINK_FORBIDDEN");
-  if (!entries.includes("package/package.json")) return fail("SOURCE_ARCHIVE_MANIFEST_MISSING");
-  const value = object(
-    JSON.parse((await run("tar", ["-xOf", path, "package/package.json"], options)).stdout),
-  );
+        file.includes("/node_modules/")
+      ) {
+        archive.abort(Error("SOURCE_ARCHIVE_INVALID"));
+        return;
+      }
+      if (!["File", "OldFile", "Directory"].includes(entry.type)) {
+        archive.abort(Error("SOURCE_ARCHIVE_LINK_FORBIDDEN"));
+        return;
+      }
+      entries.add(file);
+      if (file === "package/package.json" && entry.type !== "Directory") {
+        if (entry.size > limit) archive.abort(Error("SOURCE_ARCHIVE_INVALID"));
+        else
+          entry.on("data", (chunk: Buffer) => {
+            manifestBytes += chunk.byteLength;
+            if (manifestBytes > limit) archive.abort(Error("SOURCE_ARCHIVE_INVALID"));
+            else manifest.push(chunk);
+          });
+      }
+    },
+  });
+  archive.on("ignoredEntry", () => archive.abort(Error("SOURCE_ARCHIVE_INVALID")));
+  const timeout = AbortSignal.timeout(30_000);
+  await pipeline(createReadStream(path), archive, {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (!entries.has("package/package.json")) return fail("SOURCE_ARCHIVE_MANIFEST_MISSING");
+  const value = object(json(Buffer.concat(manifest)));
   const name = text(value.name);
   if (!updatablePackageNames.some((company) => company === name))
     return fail("SOURCE_ARCHIVE_IDENTITY_INVALID");
@@ -183,7 +203,7 @@ export async function inspectPluginArchive(
       typeof target !== "string" ||
       !target.startsWith("./") ||
       target.split("/").includes("..") ||
-      !entries.includes("package/" + target.slice(2))
+      !entries.has("package/" + target.slice(2))
     )
       return fail("SOURCE_ARCHIVE_EXPORT_MISSING");
   }
@@ -191,7 +211,7 @@ export async function inspectPluginArchive(
   if (
     !patch.startsWith("./") ||
     patch.split("/").includes("..") ||
-    !entries.includes("package/" + patch.slice(2))
+    !entries.has("package/" + patch.slice(2))
   )
     return fail("SOURCE_ARCHIVE_BUNDLE_MISSING");
   const projection = parsePluginManifest(value);

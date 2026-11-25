@@ -76,6 +76,35 @@ const {
   retainsProfileUpdates,
 } = await import(pathToFileURL(modulePath));
 
+test("an already verified desktop runs maintenance when the actual client and Host stamps arrive", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const id = "00000000-0000-4000-8000-000000000041";
+  await f.installation.store.prepare({ id, install: async () => {} });
+  const version = join(f.installation.store.root, "versions", id, "version.json");
+  const proof = f.proofs[0];
+  const client = proof.client;
+  proof.client = { kind: "unverified", reason: "fixture-awaiting-client" };
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  assert.equal(JSON.parse(await readFile(version)).id, id);
+  proof.client = client;
+  await controller.reconcileRuntime();
+  await until(
+    () =>
+      readFile(version).then(
+        () => true,
+        (error) => {
+          if (error.code !== "ENOENT") throw error;
+          return false;
+        },
+      ),
+    (exists) => !exists,
+  );
+  assert.equal((await f.installation.store.status()).verified, "baseline");
+});
+
 test("legacy personal memory updates alone and requires a new stamped Host and client after restart", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
   const f = await controllerFixture(t, { memory: true });
@@ -1680,6 +1709,8 @@ test("combined updates cache the approved suite without installation, serialize 
   });
   t.after(() => controller.dispose());
   await controller.initialize();
+  await controller.cancelDesktop();
+  assert.equal(await controller.companyStatus(), null);
   await controller.prepareDesktop("0.2.0-rc.2.20261105.1");
   assert.deepEqual(await controller.companyStatus(), {
     phase: "prepared",
@@ -1688,7 +1719,41 @@ test("combined updates cache the approved suite without installation, serialize 
   assert.ok((await readFile(join(f.dir, "package.json"))).equals(before));
   await assert.rejects(controller.submitBatch([]), /UPDATE_OPERATION_BLOCKED/);
   await controller.cancelDesktop();
+  await controller.cancelDesktop();
   assert.equal((await controller.companyStatus()).phase, "cancelled");
+  const receiptPath = join(f.dir, "gea/plugin-updates/company-update.json");
+  const receipt = JSON.parse(await readFile(receiptPath));
+  const previous = JSON.stringify({ ...receipt, phase: "completed", expected: receipt.targets });
+  await writeFile(receiptPath, previous);
+  await controller.cancelDesktop();
+  assert.equal(await readFile(receiptPath, "utf8"), previous);
+});
+
+test("a corrupt isolated update journal allows desktop unlock without accepting another update", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const runtimeDirectory = join(f.dir, "gea/plugin-updates");
+  const journal = join(runtimeDirectory, "latest.json");
+  await mkdir(runtimeDirectory, { recursive: true });
+  await writeFile(journal, "{");
+  const controller = createPluginUpdateController({ ...f.options, runtimeDirectory });
+  t.after(() => controller.dispose());
+  await controller.initialize();
+  assert.equal(controller.operationStatus().state, "failed");
+  assert.equal(await controller.companyStatus(), null);
+  const run = join(f.dir, ".plugin-manager/run.json");
+  await mkdir(dirname(run), { recursive: true });
+  await writeFile(run, JSON.stringify({ pid: process.pid, grouped: false }));
+  await assert.rejects(controller.cancelDesktop(), /UPDATE_OPERATION_BLOCKED/);
+  await rm(run);
+  await controller.cancelDesktop();
+  await controller.cancelDesktop();
+  await assert.rejects(
+    controller.prepareDesktop("0.2.0-rc.2.20261124.1"),
+    /UPDATE_OPERATION_BLOCKED/,
+  );
+  assert.equal(await readFile(journal, "utf8"), "{");
+  assert.equal(await controller.companyStatus(), null);
 });
 
 test("a prepared desktop update wins the profile lock over a plugin install still downloading", async (t) => {

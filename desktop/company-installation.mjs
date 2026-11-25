@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile, rename, lstat, realpath, symlink, rm } from "node:fs/promises";
-import { join, relative, isAbsolute } from "node:path";
+import { join, relative, isAbsolute, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createRequire } from "node:module";
@@ -48,17 +48,37 @@ export class CompanyInstallation {
     this.store = new PluginStore({
       data: this.directory,
       baseline: join(this.directory, "baseline"),
+      companyCoreHead: coreHead,
+      companyProfile: profile,
     });
   }
-  async initialize(prepare) {
+  async initialize(prepare, { inherit = true } = {}) {
     if (await optional(join(this.directory, "baseline/baseline.json"))) return;
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    await this.store.withLock(async () => {
+    await this.store.withLock(async (owner, lockPath) => {
       if (await optional(join(this.directory, "baseline/baseline.json"))) return;
-      const stage = join(this.directory, "baseline-" + randomUUID());
+      const stageName = "baseline-" + randomUUID();
+      const stage = join(this.directory, stageName);
+      await writePluginStoreJson(lockPath, { ...owner, stage: stageName });
       await mkdir(stage, { mode: 0o700 });
-      await materializeGraph({ path: this.profile }, stage);
-      await relocateVirtualStore(stage, { sourceDirectory: this.profile });
+      if (inherit) {
+        await materializeGraph({ path: this.profile }, stage);
+        await relocateVirtualStore(stage, { sourceDirectory: this.profile });
+      } else {
+        const manifest = await json(join(this.profile, "package.json"));
+        for (const field of ["dependencies", "devDependencies", "optionalDependencies"])
+          for (const [name, spec] of Object.entries(manifest[field] ?? {})) {
+            if (companyPackageNames.includes(name)) delete manifest[field][name];
+            else if (typeof spec === "string" && /^(file|link):/.test(spec)) {
+              const separator = spec.indexOf(":") + 1;
+              manifest[field][name] =
+                spec.slice(0, separator) + resolve(this.profile, spec.slice(separator));
+            }
+          }
+        await writePluginStoreJson(join(stage, "package.json"), manifest);
+        const workspace = await optional(join(this.profile, "pnpm-workspace.yaml"));
+        if (workspace) await writeFile(join(stage, "pnpm-workspace.yaml"), workspace);
+      }
       await prepare?.(stage);
       await this.validate(stage);
       await writePluginStoreJson(join(stage, "baseline.json"), {
@@ -94,6 +114,7 @@ export class CompanyInstallation {
     const receipt = await this.store.prepare({
       id,
       signal,
+      queueActivation: true,
       install: async (stage, controls) => {
         const manifest = await json(join(this.profile, "package.json"));
         if (!isDeepStrictEqual(graphValues(manifest), source))
@@ -106,13 +127,13 @@ export class CompanyInstallation {
         await writePluginStoreJson(join(stage, "activation.json"), { schema: 1, source });
       },
     });
-    await this.store.queueActivation(id);
     return receipt;
   }
+  async preparationIdle() {
+    return (await this.store.recoverPreparation()) !== "busy";
+  }
   async beginBoot({ activatePending = true } = {}) {
-    if ((await this.store.recoverPreparation(join(this.store.root, "selection"))) === "busy")
-      throw Error("GEA_INSTALLATION_SELECTION_BUSY");
-    await this.store.recoverPreparation();
+    await this.preparationIdle();
     const before = await this.store.status();
     if (before.pending) {
       const activation = await json(
@@ -138,6 +159,67 @@ export class CompanyInstallation {
     await this.mount(selected);
     return selected;
   }
+  async restoreBaselineSelection() {
+    const baseline = await json(join(this.store.baseline, "baseline.json"));
+    if (baseline.schema !== 1 || baseline.coreHead !== this.coreHead)
+      throw Error("GEA_INSTALLATION_CORE_MISMATCH");
+    await this.validate(this.store.baseline);
+    await this.store.withSelectionLock(async () => {
+      try {
+        await this.store.status();
+        return;
+      } catch (error) {
+        if (error.message !== "PLUGIN_SELECTION_INVALID") throw error;
+      }
+      const path = join(this.store.root, "selection.json");
+      const original = await readFile(path);
+      await writeFile(path + ".before-recovery-" + randomUUID(), original, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await writePluginStoreJson(path, {
+        active: "baseline",
+        verified: "baseline",
+        previous: null,
+        booting: null,
+        pending: null,
+        dataSchema: this.store.dataSchema,
+        referencesUncertain: true,
+        error: "PLUGIN_SELECTION_INVALID",
+      });
+    });
+    return this.beginBoot({ activatePending: false });
+  }
+  async verifiedMounted() {
+    const state = await this.store.status();
+    if ((state.dataSchema ?? 1) !== this.store.dataSchema) throw Error("DATA_SCHEMA_INCOMPATIBLE");
+    if (!state.verified || state.active !== state.verified) return null;
+    const marker = await json(join(this.profile, "gea/installation.json"));
+    if (marker.schema !== 1 || marker.coreHead !== this.coreHead || marker.graphId !== state.active)
+      return null;
+    const selected = await this.store.selected();
+    const directory = await realpath(selected.path);
+    if (!inside(await realpath(this.directory), directory)) return null;
+    if (
+      selected.id === "baseline" &&
+      (await json(join(directory, "baseline.json"))).coreHead !== this.coreHead
+    )
+      return null;
+    if (
+      (await realpath(join(this.profile, "node_modules"))) !==
+      (await realpath(join(directory, "node_modules")))
+    )
+      return null;
+    if (
+      !isDeepStrictEqual(
+        graphValues(await json(join(this.profile, "package.json"))),
+        graphValues(await json(join(directory, "package.json"))),
+      )
+    )
+      return null;
+    await this.validate(directory);
+    return selected;
+  }
   async mount(selected) {
     const directory = await realpath(selected.path);
     if (!inside(await realpath(this.directory), directory))
@@ -151,10 +233,17 @@ export class CompanyInstallation {
     });
     const actual = entry ? await realpath(modules).catch(() => null) : null;
     const marker = await optional(join(this.profile, "gea/installation.json"));
+    let mounted;
+    try {
+      mounted = marker && JSON.parse(marker.toString("utf8"));
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
     if (
       actual === (await realpath(target)) &&
-      marker &&
-      JSON.parse(marker.toString("utf8")).graphId === selected.id
+      mounted?.schema === 1 &&
+      mounted.coreHead === this.coreHead &&
+      mounted.graphId === selected.id
     )
       return;
     const current = await optional(join(this.profile, "package.json"));
@@ -164,6 +253,7 @@ export class CompanyInstallation {
     for (const [name, bytes] of [
       ["package.json", current],
       ["pnpm-lock.yaml", previousLock],
+      ["installation.json", marker],
     ])
       if (bytes) await writeFile(join(recovery, name), bytes, { flag: "wx", mode: 0o600 });
     if (actual !== (await realpath(target))) {
@@ -226,7 +316,13 @@ export class CompanyInstallation {
       )
         return false;
     }
-    return this.store.confirmBoot(selected.id);
+    const state = await this.store.status();
+    if (state.active !== selected.id) return false;
+    if (state.booting === selected.id) return this.store.confirmBoot(selected.id);
+    return state.verified === selected.id && !state.booting;
+  }
+  collectGarbage() {
+    return this.store.collectGarbage();
   }
   async rollback(reason) {
     const previous = (await this.store.status()).active;

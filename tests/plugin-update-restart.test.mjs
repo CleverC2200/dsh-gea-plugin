@@ -4,6 +4,7 @@ import { build } from "esbuild";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { until } from "./profile.mjs";
 const names = [
   "@cleverc2200/dsh-agent-workbench",
   "dsh-agent-manage",
@@ -23,21 +24,39 @@ async function fixture(t, capable = true) {
     outfile: file,
   });
   const { createPluginDetailUpdates } = await import(pathToFileURL(file));
-  const state = { phase: "available", requests: [], writes: [], release: undefined };
+  const state = {
+    phase: "available",
+    requests: [],
+    writes: [],
+    release: undefined,
+    prepareError: undefined,
+    durable: false,
+    loseResponse: false,
+    operationId: "22222222-2222-4222-8222-222222222222",
+    hostProcessIdentity: "host",
+  };
   const original = globalThis.fetch;
   t.after(() => (globalThis.fetch = original));
-  globalThis.fetch = async (url) => {
-    if (!url.endsWith("/status")) state.writes.push(url);
+  globalThis.fetch = async (url, options) => {
+    if (!url.endsWith("/status")) state.writes.push({ url, payload: JSON.parse(options.body) });
+    if (url.endsWith("/update-all")) {
+      if (state.release) await state.release;
+      if (state.prepareError)
+        return Response.json({ ok: false, error: { code: state.prepareError } }, { status: 409 });
+      state.phase = "downloading";
+      if (state.loseResponse) throw Error("connection lost after acceptance");
+    }
     return Response.json({
       ok: true,
       value: url.endsWith("/status")
         ? {
             revision: 1,
-            hostProcessIdentity: "host",
+            hostProcessIdentity: state.hostProcessIdentity,
             challenge: "nonce",
             checkTimeoutMs: 1000,
             pollIntervalMs: 1000,
-            restartReady: true,
+            restartReady: state.durable && state.phase === "pending-restart",
+            operationId: state.operationId,
             items: names.map((packageName) => ({
               packageName,
               state: state.phase,
@@ -49,7 +68,7 @@ async function fixture(t, capable = true) {
               diagnostic: null,
             })),
           }
-        : null,
+        : { id: state.operationId, stage: state.phase },
     });
   };
   const owner = createPluginDetailUpdates(
@@ -68,21 +87,24 @@ async function fixture(t, capable = true) {
   await new Promise(setImmediate);
   return { owner, state, close };
 }
-test("suite click passes approved plans directly to native takeover without renderer writes", async (t) => {
+test("suite click prepares approved plans in the Host without native takeover", async (t) => {
   const { owner, state } = await fixture(t);
   await owner.updateAll();
-  assert.deepEqual(state.requests, [
+  assert.deepEqual(state.requests, []);
+  assert.deepEqual(state.writes, [
     {
-      kind: "plugins",
-      plans: names.map((packageName) => ({
-        packageName,
-        planId: "11111111-1111-4111-8111-111111111111",
-      })),
+      url: "/api/gea/plugin-updates/update-all",
+      payload: {
+        plans: names.map((packageName) => ({
+          packageName,
+          planId: "11111111-1111-4111-8111-111111111111",
+        })),
+      },
     },
   ]);
-  assert.deepEqual(state.writes, []);
+  assert.equal(owner.getSnapshot().restart, "idle");
 });
-test("duplicate clicks join native takeover and page closure does not cancel it", async (t) => {
+test("duplicate clicks join Host preparation and page closure does not cancel it", async (t) => {
   const { owner, state, close } = await fixture(t);
   let finish;
   state.release = new Promise((resolve) => (finish = resolve));
@@ -91,11 +113,13 @@ test("duplicate clicks join native takeover and page closure does not cancel it"
   close();
   finish();
   await Promise.all([first, second]);
-  assert.equal(state.requests.length, 1);
+  assert.equal(state.writes.length, 1);
+  assert.deepEqual(state.requests, []);
 });
 test("pending restart uses native takeover and never the normal restart bridge", async (t) => {
   const { owner, state } = await fixture(t);
   state.phase = "pending-restart";
+  state.durable = true;
   await owner.check();
   state.writes = [];
   await owner.restart();
@@ -107,4 +131,90 @@ test("unsupported clients require upgrade and cannot fall back to renderer insta
   await owner.updateAll();
   assert.equal(owner.getSnapshot().restart, "unsupported");
   assert.deepEqual(state.writes, []);
+});
+
+test("only a durable candidate hands off to native restart after background preparation", async (t) => {
+  const { owner, state } = await fixture(t);
+  await owner.updateAll();
+  state.phase = "pending-restart";
+  await until(
+    () => owner.getSnapshot(),
+    (snapshot) => snapshot.items.every((row) => row.state === "pending-restart"),
+  );
+  assert.deepEqual(state.requests, []);
+  state.durable = true;
+  await until(
+    () => state.requests.length,
+    (count) => count === 1,
+  );
+  assert.deepEqual(state.requests, [{ kind: "plugins-restart" }]);
+  assert.equal(owner.getSnapshot().restart, "requested");
+});
+
+test("a stale plan stays outside native takeover and can be checked again", async (t) => {
+  const { owner, state } = await fixture(t);
+  state.prepareError = "UPDATE_PLAN_EXPIRED";
+  await owner.updateAll();
+  assert.deepEqual(state.requests, []);
+  assert.equal(owner.getSnapshot().restart, "idle");
+  assert.equal(await owner.check(), true);
+  assert.equal(owner.getSnapshot().submitting, null);
+});
+
+for (const response of ["lost", "unidentified", "different-operation", "different-host"])
+  test(`an uncorrelated preparation requires explicit native restart (${response})`, async (t) => {
+    const { owner, state } = await fixture(t);
+    state.loseResponse = response === "lost";
+    if (response === "unidentified") state.operationId = undefined;
+    await owner.updateAll();
+    assert.deepEqual(state.requests, []);
+    assert.equal(owner.getSnapshot().restart, "idle");
+    if (response === "different-host") state.hostProcessIdentity = "other-host";
+    else if (response !== "lost") state.operationId = "33333333-3333-4333-8333-333333333333";
+    state.phase = "pending-restart";
+    state.durable = true;
+    await until(
+      () => owner.getSnapshot().notice?.kind,
+      (kind) => kind === "pending-restart",
+    );
+    assert.deepEqual(state.requests, []);
+    await owner.restart();
+    assert.deepEqual(state.requests, [{ kind: "plugins-restart" }]);
+  });
+
+test("closing the page after acceptance cannot restart another operation", async (t) => {
+  const { owner, state, close } = await fixture(t);
+  await owner.updateAll();
+  close();
+  state.operationId = "33333333-3333-4333-8333-333333333333";
+  state.phase = "pending-restart";
+  state.durable = true;
+  await until(
+    () => owner.getSnapshot().notice?.kind,
+    (kind) => kind === "pending-restart",
+  );
+  assert.deepEqual(state.requests, []);
+});
+
+test("manual restart also waits for the Host durable confirmation", async (t) => {
+  const { owner, state } = await fixture(t);
+  state.phase = "pending-restart";
+  await owner.check();
+  await owner.restart();
+  assert.deepEqual(state.requests, []);
+  assert.equal(owner.getSnapshot().restart, "idle");
+});
+
+test("slow accepted preparation still restarts when its candidate later becomes durable", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { owner, state } = await fixture(t);
+  await owner.updateAll();
+  t.mock.timers.tick(120_000);
+  await new Promise(setImmediate);
+  assert.deepEqual(state.requests, []);
+  state.phase = "pending-restart";
+  state.durable = true;
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.deepEqual(state.requests, [{ kind: "plugins-restart" }]);
 });

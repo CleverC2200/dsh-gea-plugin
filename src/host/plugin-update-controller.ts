@@ -308,6 +308,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   };
   const pendingChecks = new Set<Promise<PluginUpdateSnapshot>>();
   let initialization: Promise<PluginUpdateSnapshot> | null = null;
+  let storageMaintenance = false;
   let initialized = false,
     closed = false,
     journalBroken = false,
@@ -430,10 +431,26 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   }
   async function reconcileRuntime() {
     const installation = await openCompanyInstallation(options.profile.dir);
-    if (installation)
-      await installation.confirmRuntime(
+    if (
+      installation &&
+      (await installation.confirmRuntime(
         await options.readRuntimeProofs(pluginUpdateProcessIdentity),
+      )) &&
+      !closed &&
+      !active &&
+      !journalBroken &&
+      !blocking(state.operation) &&
+      !storageMaintenance
+    ) {
+      storageMaintenance = true;
+      void installation.collectGarbage().then(
+        (result) => {
+          if (result.skipped === "store-busy" || result.skipped === "update-in-progress")
+            storageMaintenance = false;
+        },
+        () => {},
       );
+    }
     if (!initialized || active || closed || journalBroken) return snapshot();
     const currentProofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
     captureStartup(currentProofs);
@@ -1166,8 +1183,19 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     await withFileLock(
       join(options.profile.dir, "package.json"),
       async () => {
+        if (active) fail("UPDATE_OPERATION_BLOCKED");
         const receipt = await readCompanyUpdate(options.profile.dir);
-        if (!receipt || !["prepared", "failed"].includes(receipt.phase))
+        if (!receipt || receipt.phase === "cancelled" || receipt.phase === "completed") {
+          if (!profilePackageRunStopped(options.profile.dir)) fail("UPDATE_OPERATION_BLOCKED");
+          const running = await readLatest().then(blocking, async (error: unknown) => {
+            if (!isolatedInstallation || blocking(state.operation)) throw error;
+            const installation = await openCompanyInstallation(options.profile.dir);
+            return !installation || !(await installation.preparationIdle());
+          });
+          if (running || active) fail("UPDATE_OPERATION_BLOCKED");
+          return;
+        }
+        if (receipt.phase !== "prepared" && receipt.phase !== "failed")
           fail("UPDATE_OPERATION_BLOCKED");
         await durableJson(
           companyUpdatePath(options.profile.dir),
@@ -1180,11 +1208,15 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     publish();
   }
   async function confirmDesktop() {
-    if (active || (await readCompanyUpdate(options.profile.dir))?.phase !== "verifying") return;
+    if (
+      active ||
+      (await readCompanyUpdate(options.profile.dir).catch(() => null))?.phase !== "verifying"
+    )
+      return;
     await withFileLock(
       join(options.profile.dir, "package.json"),
       async () => {
-        const receipt = await readCompanyUpdate(options.profile.dir);
+        const receipt = await readCompanyUpdate(options.profile.dir).catch(() => null);
         if (
           companyUpdateFinished(
             receipt,

@@ -127,6 +127,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
+          accepted?: { operationId: string; hostProcessIdentity: string };
           timer: ReturnType<typeof setTimeout>;
         };
       }
@@ -195,12 +196,18 @@ export function createPluginDetailUpdates(
       names,
       timer: setTimeout(() => {
         notify(owner, "unconfirmed");
-        endObservation(owner);
+        if (!owner.observation?.accepted) endObservation(owner);
       }, pluginUpdateObservationMs),
     };
   };
   const restart = async () => {
-    if (disposed || snapshot.restart === "restarting" || snapshot.restart === "requested") return;
+    if (
+      disposed ||
+      snapshot.restartReady !== true ||
+      snapshot.restart === "restarting" ||
+      snapshot.restart === "requested"
+    )
+      return;
     if (!desktop?.restartUpdate) {
       publish({ restart: "unsupported" });
       return;
@@ -234,6 +241,18 @@ export function createPluginDetailUpdates(
               ? "restored"
               : "completed",
       );
+      const pending = rows.some((row) => row?.state === "pending-restart");
+      const accepted = owner.observation.accepted;
+      if (
+        pending &&
+        accepted &&
+        status?.operationId === accepted.operationId &&
+        status.hostProcessIdentity === accepted.hostProcessIdentity
+      ) {
+        if (!snapshot.restartReady) return;
+        if (rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null))
+          void restart();
+      }
       endObservation(owner);
     } else
       notify(
@@ -372,30 +391,54 @@ export function createPluginDetailUpdates(
           Number(right.packageName === requestedName) - Number(left.packageName === requestedName),
       );
     const names = selected.map((row) => row.packageName);
-    const restartUpdate = desktop?.restartUpdate;
-    if (!restartUpdate) {
+    if (!desktop?.restartUpdate) {
       publish({ restart: "unsupported" });
       return Promise.resolve();
     }
-    publish({ submitting: names.join(","), transportError: null, restart: "idle" });
-    observe(page, names);
-    notify(page, "progress");
+    const owner = page;
+    publish({
+      submitting: names.join(","),
+      transportError: null,
+      restart: "idle",
+    });
+    observe(owner, names);
+    notify(owner, "progress");
+    const hostProcessIdentity = status?.hostProcessIdentity;
     const run = async () => {
       try {
-        await restartUpdate({
-          kind: "plugins",
-          plans: selected.map((row) => ({ packageName: row.packageName, planId: row.planId })),
-        });
-        publish({ restart: "requested" });
-      } catch {
-        publish({ restart: "failed" });
-        if (page?.observation) notify(page, "unconfirmed");
-        publish({
-          transportError: "unknown",
-          items: snapshot.items.map((item) =>
-            names.includes(item.packageName) ? { ...item, state: "unknown" } : item,
+        const accepted = updateObject(
+          await request(
+            "update-all",
+            {
+              plans: selected.map((row) => ({
+                packageName: row.packageName,
+                planId: row.planId,
+              })),
+            },
+            signalFor(owner),
           ),
-        });
+        );
+        if (
+          hostProcessIdentity &&
+          typeof accepted.id === "string" &&
+          /^[a-f0-9-]{36}$/.test(accepted.id) &&
+          owner.observation
+        )
+          owner.observation.accepted = { operationId: accepted.id, hostProcessIdentity };
+      } catch (error) {
+        if (error instanceof PluginUpdateRequestError) {
+          publish({ transportError: "check" });
+          notify(owner, "failed");
+          endObservation(owner);
+        } else {
+          notify(owner, "unconfirmed");
+          publish({
+            transportError: "unknown",
+            items: snapshot.items.map((item) =>
+              names.includes(item.packageName) ? { ...item, state: "unknown" } : item,
+            ),
+          });
+        }
       } finally {
         publish({ submitting: null });
       }

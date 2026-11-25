@@ -1,7 +1,22 @@
 import { applyCompanyUpdate } from "./company-update.mjs";
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, writeFile, lstat, rm, mkdtemp } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import {
+  cp,
+  mkdir,
+  readFile,
+  writeFile,
+  lstat,
+  rm,
+  mkdtemp,
+  readdir,
+  copyFile,
+  rename,
+  symlink,
+  realpath,
+  stat,
+  link,
+} from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, delimiter, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,7 +24,7 @@ import {
   refreshBundledCompanySuite,
   assertCompletedGeaRefresh,
   assertProfileIdle,
-  readProfileUpdateState,
+  assertProfileWritersStopped,
   planBundledCompanyRefresh,
 } from "./company-gea-refresh.mjs";
 import { CompanyInstallation } from "./company-installation.mjs";
@@ -23,6 +38,7 @@ import {
 } from "./company-archives.mjs";
 import { cleanupLegacyGea } from "./legacy-gea-cleanup.mjs";
 import { ciCores } from "../scripts/ci-core-policy.mjs";
+import { gte, valid } from "semver";
 
 const memory = "@cleverc2200/dsh-personal-memory";
 const names = [...companyPackageNames, "@changfenhuang/dsh-genui", memory];
@@ -333,6 +349,137 @@ export async function writeCompanySeedLock({ root, seed, profile }) {
   await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 }
 
+async function mergeCompanySeed(source, target, replace = false) {
+  await mkdir(target, { recursive: true, mode: 0o700 });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    const from = join(source, entry.name);
+    const to = join(target, entry.name);
+    if (entry.isDirectory()) await mergeCompanySeed(from, to, replace);
+    else if (entry.isFile()) {
+      if (replace) {
+        const temporary = to + "." + randomUUID() + ".tmp";
+        await copyFile(from, temporary, constants.COPYFILE_EXCL);
+        await rename(temporary, to);
+      } else
+        await copyFile(from, to, constants.COPYFILE_EXCL).catch((error) => {
+          if (error.code !== "EEXIST") throw error;
+        });
+    } else throw Error("GEA_SEED_ENTRY_INVALID");
+  }
+}
+
+async function prepareCompanySeedStore(seed, home, manifest) {
+  const cache = join(home, "desktop-company-cache");
+  const identity = digest(
+    Buffer.from(JSON.stringify([manifest.packages, manifest.dependencyLockSha256 ?? null])),
+  );
+  const store = join(cache, "seed-stores", identity);
+  const files = join(cache, "installation/content-files");
+  const source = join(seed, "store/v11/files");
+  if (existsSync(source)) await mergeCompanySeed(source, files);
+  else await mkdir(files, { recursive: true, mode: 0o700 });
+  await cp(join(seed, "store"), store, {
+    recursive: true,
+    force: false,
+    errorOnExist: false,
+    filter: (path) => path !== source,
+  });
+  await mkdir(join(store, "v11"), { recursive: true, mode: 0o700 });
+  const target = join(store, "v11/files");
+  try {
+    await symlink(files, target, process.platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    if (error.code !== "EEXIST" || (await realpath(target)) !== (await realpath(files)))
+      throw error;
+  }
+  await mergeCompanySeed(join(seed, "metadata"), join(cache, "metadata"), true);
+  return store;
+}
+
+async function recoverCompanySeedStore(store, previousStore, home) {
+  if (basename(previousStore) !== "v11") throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+  const priorIndex = join(previousStore, "index.db");
+  if (existsSync(priorIndex + "-wal")) throw Error("GEA_PREVIOUS_STORE_ACTIVE");
+  if (!existsSync(priorIndex) || !(await lstat(priorIndex)).isFile())
+    throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+  const source = await realpath(join(previousStore, "files"));
+  const files = await realpath(join(store, "v11/files"));
+  if ((await stat(source)).dev !== (await stat(files)).dev)
+    throw Error("GEA_PREVIOUS_STORE_CROSS_VOLUME");
+  const recovered = join(home, "desktop-company-cache/seed-recovery", basename(store));
+  const recoveredDirectory = await realpath(join(recovered, "v11")).catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if ((await realpath(previousStore)) === recoveredDirectory) return recovered;
+  const before = await stat(priorIndex);
+  const { DatabaseSync } = await import("node:sqlite");
+  const uri = pathToFileURL(priorIndex);
+  uri.searchParams.set("immutable", "1");
+  let prior, target;
+  try {
+    prior = new DatabaseSync(uri.href, { readOnly: true });
+    const columns = prior.prepare("PRAGMA table_info(package_index)").all();
+    if (
+      columns.length !== 2 ||
+      columns[0].name !== "key" ||
+      columns[0].type !== "TEXT" ||
+      columns[0].pk !== 1 ||
+      columns[1].name !== "data" ||
+      columns[1].type !== "BLOB" ||
+      columns[1].notnull !== 1
+    )
+      throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+    for (const prefix of await readdir(source, { withFileTypes: true })) {
+      if (!/^[a-f0-9]{2}$/.test(prefix.name) || !prefix.isDirectory())
+        throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+      const directory = join(files, prefix.name);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      for (const entry of await readdir(join(source, prefix.name), { withFileTypes: true })) {
+        if (!/^[a-f0-9]{126}(?:-exec)?$/.test(entry.name) || !entry.isFile())
+          throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED");
+        if (source !== files)
+          await link(join(source, prefix.name, entry.name), join(directory, entry.name)).catch(
+            (error) => {
+              if (error.code !== "EEXIST") throw error;
+            },
+          );
+      }
+    }
+    await mkdir(join(recovered, "v11"), { recursive: true, mode: 0o700 });
+    const index = join(recovered, "v11/index.db");
+    await copyFile(join(store, "v11/index.db"), index, constants.COPYFILE_EXCL).catch((error) => {
+      if (error.code !== "EEXIST") throw error;
+    });
+    const content = join(recovered, "v11/files");
+    try {
+      await symlink(files, content, process.platform === "win32" ? "junction" : "dir");
+    } catch (error) {
+      if (error.code !== "EEXIST" || (await realpath(content)) !== files) throw error;
+    }
+    target = new DatabaseSync(index);
+    target.exec("PRAGMA busy_timeout=5000; BEGIN IMMEDIATE");
+    const insert = target.prepare("INSERT OR IGNORE INTO package_index (key, data) VALUES (?, ?)");
+    for (const row of prior.prepare("SELECT key, data FROM package_index").iterate())
+      insert.run(row.key, row.data);
+    const after = await stat(priorIndex);
+    if (
+      existsSync(priorIndex + "-wal") ||
+      before.mtimeMs !== after.mtimeMs ||
+      before.size !== after.size
+    )
+      throw Error("GEA_PREVIOUS_STORE_ACTIVE");
+    target.exec("COMMIT");
+    return recovered;
+  } catch (error) {
+    if (error.message.startsWith("GEA_PREVIOUS_STORE_")) throw error;
+    throw Error("GEA_PREVIOUS_STORE_UNSUPPORTED", { cause: error });
+  } finally {
+    target?.close();
+    prior?.close();
+  }
+}
+
 export async function installCompanyPackages({
   root,
   support,
@@ -346,6 +493,7 @@ export async function installCompanyPackages({
   strictPeers = false,
   activateNewBundles = true,
   seed,
+  requireOffline = false,
 }) {
   const anchor = join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json");
   const require = createRequire(anchor);
@@ -369,7 +517,7 @@ export async function installCompanyPackages({
         if (typeof modules?.storeDir !== "string" || !isAbsolute(modules.storeDir))
           throw Error("GEA_COMPANY_STORE_INVALID");
         selectedStore = modules.storeDir;
-        if (offline && selectedStore !== join(store, "v11"))
+        if (offline && !requireOffline && selectedStore !== join(store, "v11"))
           offlineArguments = ["--prefer-offline"];
       }
       const archives = seed
@@ -383,34 +531,34 @@ export async function installCompanyPackages({
       });
       boot.initProfile(profile, boot.PROFILE_TEMPLATES.web.bundles);
       const current = await json(join(profile, "package.json"));
+      const manifest = offline && seed ? await readCompanySeed(seed) : undefined;
+      const fullSeed =
+        manifest?.packages.length === packages.length &&
+        manifest.packages.every((row, index) => basename(packages[index]) === row.file);
+      const bundledNames = fullSeed
+        ? manifest.packages.map((row) => row.name)
+        : companyPackageNames;
       const hasUserDependencies = ["dependencies", "devDependencies", "optionalDependencies"].some(
-        (field) =>
-          Object.keys(current[field] ?? {}).some((name) => !companyPackageNames.includes(name)),
+        (field) => Object.keys(current[field] ?? {}).some((name) => !bundledNames.includes(name)),
       );
-      if (offline && hasUserDependencies)
+      if (offline && hasUserDependencies && !requireOffline)
         offlineArguments = ["--prefer-offline", "--offline=false"];
       const lockPath = join(profile, "pnpm-lock.yaml");
       const previousLock = existsSync(lockPath) ? await readFile(lockPath) : undefined;
       let seededLock = false;
-      if (offline && seed && !hasUserDependencies) {
-        const manifest = await readCompanySeed(seed);
-        if (
-          manifest.dependencyLockSha256 &&
-          archives.packages.length === manifest.packages.length
-        ) {
-          const YAML = require("yaml");
-          const lock = YAML.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
-          const replacements = manifest.packages.map((row, index) => [
-            "file:company-seed/archives/" + row.file,
-            "file:" + relative(profile, archives.packages[index]).replaceAll("\\", "/"),
-          ]);
-          const relocated = relocateCompanyLock(lock, replacements);
-          for (const [index, row] of manifest.packages.entries())
-            relocated.importers["."].dependencies[row.name].specifier =
-              "file:" + archives.packages[index].replaceAll("\\", "/");
-          await writeFileAtomic(lockPath, YAML.stringify(relocated), { mode: 0o600 });
-          seededLock = true;
-        }
+      if (fullSeed && manifest.dependencyLockSha256 && !hasUserDependencies) {
+        const YAML = require("yaml");
+        const lock = YAML.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
+        const replacements = manifest.packages.map((row, index) => [
+          "file:company-seed/archives/" + row.file,
+          "file:" + relative(profile, archives.packages[index]).replaceAll("\\", "/"),
+        ]);
+        const relocated = relocateCompanyLock(lock, replacements);
+        for (const [index, row] of manifest.packages.entries())
+          relocated.importers["."].dependencies[row.name].specifier =
+            "file:" + archives.packages[index].replaceAll("\\", "/");
+        await writeFileAtomic(lockPath, YAML.stringify(relocated), { mode: 0o600 });
+        seededLock = true;
       }
       let result;
       try {
@@ -612,27 +760,7 @@ export async function bootstrapCompanyProfile({
             force: false,
           });
       }
-      const store = join(
-        home,
-        "desktop-company-cache",
-        digest(
-          Buffer.from(JSON.stringify([manifest.packages, manifest.dependencyLockSha256 ?? null])),
-        ),
-        "store",
-      );
-      if (!existsSync(store))
-        await cp(join(seed, "store"), store, {
-          recursive: true,
-          errorOnExist: true,
-          force: false,
-        });
-      const metadata = join(home, "desktop-company-cache/metadata");
-      if (!existsSync(metadata))
-        await cp(join(seed, "metadata"), metadata, {
-          recursive: true,
-          errorOnExist: true,
-          force: false,
-        });
+      const store = await prepareCompanySeedStore(seed, home, manifest);
       let operationStarted = false;
       let disabled = [];
       try {
@@ -830,7 +958,7 @@ export async function refreshCompanyStartup({ legacyData, ...options }) {
   return { refresh, cleanup };
 }
 
-export async function prepareCompanyBoot({
+async function prepareCompanyBootUpdate({
   root,
   support,
   seed,
@@ -838,17 +966,14 @@ export async function prepareCompanyBoot({
   manifest,
   install = installCompanyPackages,
   retry = false,
+  recover = false,
 }) {
   const profile = join(home, "profiles/desktop");
-  if (!existsSync(join(profile, "package.json")))
-    await bootstrapCompanyProfile({ root, support, seed, home, install });
+  const created = !existsSync(join(profile, "package.json"));
+  if (created) await bootstrapCompanyProfile({ root, support, seed, home, install });
   const installation = new CompanyInstallation(profile, manifest.core.head);
-  const baseline = join(installation.directory, "baseline/baseline.json");
-  if (!existsSync(baseline))
-    await readProfileUpdateState(profile, {
-      allowExitedPackageRun: true,
-      allowStoppedUpdate: true,
-    });
+  const marker = await json(join(profile, "gea/installation.json")).catch(() => null);
+  const inherit = created || marker?.coreHead === manifest.core.head;
   const bundled = manifest.packages.filter((row) => companyPackageNames.includes(row.name));
   const plan = async (directory) => {
     const current = JSON.parse(
@@ -879,57 +1004,75 @@ export async function prepareCompanyBoot({
       strictPeers: true,
       activateNewBundles: false,
     });
-  await installation.initialize(async (directory) => {
-    try {
-      await installation.validate(directory);
-    } catch (error) {
-      if (error.code !== "ENOENT" && error.message !== "GEA_INSTALLATION_INCOMPLETE") throw error;
-      await installBundled(directory);
-    }
-  });
+  await installation.initialize(
+    async (directory) => {
+      if (!inherit) {
+        const store = await prepareCompanySeedStore(seed, home, manifest);
+        const options = {
+          root,
+          support,
+          seed,
+          home,
+          profile: directory,
+          packages: manifest.packages.map((row) => join(seed, "archives", row.file)),
+          store,
+          offline: true,
+          requireOffline: true,
+          activateNewBundles: false,
+        };
+        try {
+          await install(options);
+        } catch (error) {
+          const prefix = "GEA_COMPANY_INSTALL_FAILED: ";
+          if (
+            !error.message.startsWith(prefix) ||
+            !/\bERR_PNPM_NO_OFFLINE_(?:TARBALL|META)\b/.test(
+              await readFile(error.message.slice(prefix.length), "utf8"),
+            )
+          )
+            throw error;
+          const require = createRequire(join(root, "dsh/package.json"));
+          const modules = require("yaml").parse(
+            await readFile(join(profile, "node_modules/.modules.yaml"), "utf8"),
+          );
+          if (typeof modules?.storeDir !== "string" || !isAbsolute(modules.storeDir)) throw error;
+          const recovered = await recoverCompanySeedStore(store, modules.storeDir, home);
+          await rm(join(directory, "node_modules"), { recursive: true, force: true });
+          await install({ ...options, store: recovered });
+        }
+        return;
+      }
+      try {
+        await installation.validate(directory);
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.message !== "GEA_INSTALLATION_INCOMPLETE") throw error;
+        await installBundled(directory);
+      }
+    },
+    { inherit },
+  );
+  if (recover) {
+    await installation.rollback("BOOTSTRAP_FAILED");
+    const selected = await installation.beginBoot({ activatePending: false });
+    return {
+      schema: 1,
+      profile,
+      coreHead: installation.coreHead,
+      graphId: selected.id,
+      trial: false,
+    };
+  }
   const previousBoot = await installation.store.status();
   if (previousBoot.booting && previousBoot.active !== previousBoot.verified)
     await installation.beginBoot({ activatePending: false });
-  const company = await readCompanyUpdate(profile);
+  const company = await readCompanyUpdate(profile).catch(() => null);
   const selection = await installation.store.status();
   if (
     company?.phase === "verifying" &&
     ![selection.active, selection.pending].includes("desktop-" + company.id)
   )
     await installation.failOperation("desktop-" + company.id, "PREVIOUS_PREPARATION_INTERRUPTED");
-  if (company?.phase === "prepared" && company.desktopVersion === process.env.GEA_DESKTOP_VERSION) {
-    try {
-      await installation.prepare("desktop-" + company.id, async (directory) => {
-        const runtime = join(directory, "gea/plugin-updates");
-        await mkdir(join(runtime, "cache"), { recursive: true, mode: 0o700 });
-        await writePluginStoreJson(companyUpdatePath(directory), company);
-        for (const target of company.targets) {
-          const file = target.sha256 + ".tgz";
-          const source = join(profile, "gea/plugin-updates/cache", file);
-          if (existsSync(source))
-            await cp(source, join(runtime, "cache", file), { errorOnExist: true, force: false });
-        }
-        await applyCompanyUpdate({
-          root,
-          support,
-          seed,
-          home,
-          profile: directory,
-          manifest,
-          install,
-        });
-        await writePluginStoreJson(companyUpdatePath(profile), await readCompanyUpdate(directory));
-      });
-    } catch (error) {
-      await writePluginStoreJson(companyUpdatePath(profile), {
-        ...company,
-        phase: "failed",
-        diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
-          ? error.message
-          : "GEA_COMPANY_PREPARATION_FAILED",
-      });
-    }
-  } else if (
+  if (
     !(await installation.store.status()).pending &&
     (await plan((await installation.store.selected()).path)).status === "ready"
   ) {
@@ -937,28 +1080,36 @@ export async function prepareCompanyBoot({
     const id = retry ? bundle + "-" + randomUUID() : bundle;
     const attempt = join(installation.directory, bundle + ".json");
     if (retry || !existsSync(attempt)) {
-      if (existsSync(attempt))
-        await cp(attempt, attempt + ".before-retry-" + randomUUID(), {
-          force: false,
-          errorOnExist: true,
-        });
-      await writePluginStoreJson(attempt, { id, stage: "preparing" });
       try {
-        await installation.prepare(id, installBundled);
+        await installation.prepare(id, async (directory) => {
+          if (existsSync(attempt))
+            await cp(attempt, attempt + ".before-retry-" + randomUUID(), {
+              force: false,
+              errorOnExist: true,
+            });
+          await writePluginStoreJson(attempt, { id, stage: "preparing" });
+          await installBundled(directory);
+        });
         await writePluginStoreJson(attempt, { id, stage: "prepared" });
       } catch (error) {
-        await writePluginStoreJson(attempt, {
-          id,
-          stage: "failed",
-          diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
-            ? error.message
-            : "GEA_BUNDLED_PREPARATION_FAILED",
-        });
+        if (error.message !== "PLUGIN_UPDATE_BUSY")
+          await writePluginStoreJson(attempt, {
+            id,
+            stage: "failed",
+            diagnostic: /^[A-Z][A-Z0-9_]+$/.test(error.message)
+              ? error.message
+              : "GEA_BUNDLED_PREPARATION_FAILED",
+          });
       }
     }
   }
-  const selected = await installation.beginBoot();
-  await refreshCompanyCore({ root, seed, home, installationProtocol: 1 });
+  await assertProfileWritersStopped(profile);
+  const mounted =
+    !(await installation.store.status()).pending && (await installation.verifiedMounted());
+  const selected = mounted || (await installation.beginBoot());
+  await refreshCompanyCore({ root, seed, home, installationProtocol: 1 }).catch((error) => {
+    console.error("GEA_BOOT_CORE_PROOF_DEFERRED", error.message);
+  });
   return {
     schema: 1,
     profile,
@@ -966,6 +1117,78 @@ export async function prepareCompanyBoot({
     graphId: selected.id,
     trial: selected.id !== ((await installation.store.status()).verified ?? "baseline"),
   };
+}
+
+export async function prepareCompanyBoot(options) {
+  const finish = async (result) => {
+    try {
+      const desktopVersion = options.desktopVersion ?? process.env.GEA_DESKTOP_VERSION;
+      const receipt = await readCompanyUpdate(result.profile);
+      if (
+        receipt?.phase === "prepared" &&
+        valid(desktopVersion) &&
+        gte(desktopVersion, receipt.desktopVersion)
+      ) {
+        const path = companyUpdatePath(result.profile);
+        const original = await readFile(path);
+        const archive = join(
+          result.profile,
+          "gea/plugin-updates",
+          "company-update-" + receipt.id + ".json",
+        );
+        if (existsSync(archive)) {
+          if (!(await readFile(archive)).equals(original))
+            throw Error("GEA_COMPANY_UPDATE_ARCHIVE_CHANGED");
+        } else await cp(path, archive, { errorOnExist: true, force: false });
+        await writePluginStoreJson(path, {
+          ...receipt,
+          phase: "cancelled",
+          diagnostic: "DESKTOP_SUCCESSOR_STARTED",
+        });
+      }
+    } catch (error) {
+      console.error("GEA_BOOT_COMPANY_UPDATE_DEFERRED", error.code ?? error.name);
+    }
+    return result;
+  };
+  await assertProfileWritersStopped(join(options.home, "profiles/desktop"));
+  if (options.recover) {
+    const installation = new CompanyInstallation(
+      join(options.home, "profiles/desktop"),
+      options.manifest.core.head,
+    );
+    const selected = await installation.verifiedMounted().catch((error) => {
+      if (error.message === "DATA_SCHEMA_INCOMPATIBLE") throw error;
+      return null;
+    });
+    if (selected)
+      return finish({
+        schema: 1,
+        profile: installation.profile,
+        coreHead: installation.coreHead,
+        graphId: selected.id,
+        trial: false,
+      });
+  }
+  try {
+    return await finish(await prepareCompanyBootUpdate(options));
+  } catch (error) {
+    await assertProfileWritersStopped(join(options.home, "profiles/desktop"));
+    const installation = new CompanyInstallation(
+      join(options.home, "profiles/desktop"),
+      options.manifest.core.head,
+    );
+    const selected = await installation.verifiedMounted().catch(() => null);
+    if (!selected && error.message !== "PLUGIN_SELECTION_INVALID") throw error;
+    const fallback = selected ?? (await installation.restoreBaselineSelection());
+    return finish({
+      schema: 1,
+      profile: installation.profile,
+      coreHead: installation.coreHead,
+      graphId: fallback.id,
+      trial: false,
+    });
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -976,30 +1199,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   );
   const home = resolveDshHome();
   const manifest = await readCompanySeed(seed);
-  let boot;
-  if (process.argv.includes("--recover-installation")) {
-    const installation = new CompanyInstallation(
-      join(home, "profiles/desktop"),
-      manifest.core.head,
-    );
-    await installation.rollback("BOOTSTRAP_FAILED");
-    const selected = await installation.beginBoot();
-    await refreshCompanyCore({ root, seed, home, installationProtocol: 1 });
-    boot = {
-      schema: 1,
-      profile: installation.profile,
-      coreHead: installation.coreHead,
-      graphId: selected.id,
-      trial: false,
-    };
-  } else
-    boot = await prepareCompanyBoot({
-      root,
-      support,
-      seed,
-      home,
-      manifest,
-      retry: process.argv.includes("--retry-installation"),
-    });
+  await verifyCompanyCore(root, manifest.core);
+  const boot = await prepareCompanyBoot({
+    root,
+    support,
+    seed,
+    home,
+    manifest,
+    recover: process.argv.includes("--recover-installation"),
+    retry: process.argv.includes("--retry-installation"),
+  });
   console.log("GEA_INSTALLATION_BOOT", JSON.stringify(boot));
 }

@@ -2,7 +2,7 @@ import { installPnpmConsumerLayout } from "./fixtures/plugin-updates/pnpm-profil
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, symlink, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,10 +16,95 @@ if (
   !process.env.GEA_WINDOWS_CONTROLLER
 )
   throw Error("WINDOWS_NATIVE_INPUTS_REQUIRED");
-const { createPluginUpdateController } = await import(
+const { createPluginUpdateController, mountDesktopUpdateOperations } = await import(
   pathToFileURL(process.env.GEA_WINDOWS_CONTROLLER)
 );
 const anchor = join(process.env.GEA_WINDOWS_RUNTIME, "dsh/package.json");
+
+if (process.env.GEA_WINDOWS_RESTART_UPDATE)
+  for (const journal of ["idle", "corrupt"]) {
+    test(`Windows restart coordinator unlocks through the Host route without a desktop receipt (${journal})`, async (t) => {
+      const { DesktopRestartUpdate } = await import(
+        pathToFileURL(process.env.GEA_WINDOWS_RESTART_UPDATE)
+      );
+      const f = await controllerFixture(t, { sourceFailure: "network" });
+      const runtimeDirectory = join(f.dir, "gea/plugin-updates");
+      if (journal === "corrupt") {
+        await mkdir(runtimeDirectory, { recursive: true });
+        await writeFile(join(runtimeDirectory, "latest.json"), "{");
+      }
+      const controller = createPluginUpdateController({ ...f.options, runtimeDirectory });
+      t.after(() => controller.dispose());
+      await controller.initialize();
+      let route;
+      const unmount = mountDesktopUpdateOperations(
+        {
+          on: () => () => {},
+          connection: {
+            fetch: {
+              register: (config) => {
+                route = config.fetch;
+                return () => {};
+              },
+            },
+          },
+        },
+        async () => controller,
+      );
+      t.after(unmount);
+      const desktopVersion = process.env.GEA_DESKTOP_VERSION;
+      process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261123.1";
+      t.after(() => {
+        if (desktopVersion === undefined) delete process.env.GEA_DESKTOP_VERSION;
+        else process.env.GEA_DESKTOP_VERSION = desktopVersion;
+      });
+      const target = "0.2.0-rc.2.20261124.1";
+      let lostStatus = true;
+      const tasks = [],
+        window = [];
+      const host = {
+        updateTasks: async (action) => {
+          tasks.push(action);
+          return false;
+        },
+        updateOperation: async (request) => {
+          if (lostStatus && request.action === "plugins-status") {
+            lostStatus = false;
+            return { ok: false, error: { code: "host-unavailable" } };
+          }
+          const response = await route(
+            new Request("http://localhost/api/desktop/update", {
+              method: "POST",
+              body: JSON.stringify(request),
+            }),
+          );
+          return response.json();
+        },
+      };
+      const coordinator = new DesktopRestartUpdate({
+        host: () => host,
+        recoverLockedHost: async () => host,
+        state: () => ({ phase: "available", version: target }),
+        block: (blocked) => window.push(blocked),
+        progress: () => {},
+        download: () => assert.fail("unexpected native download"),
+        install: () => assert.fail("unexpected native installation"),
+      });
+      await assert.rejects(
+        coordinator.start({ kind: "desktop", version: target }),
+        /preparation failed/,
+      );
+      assert.equal(controller.operationStatus().state, journal === "idle" ? "idle" : "failed");
+      assert.equal(await controller.companyStatus(), null);
+      assert.deepEqual(window, [true]);
+      await coordinator.recover();
+      assert.deepEqual(tasks, ["lock", "unlock"]);
+      assert.deepEqual(window, [true, false]);
+      assert.equal(coordinator.active, false);
+      if (journal === "corrupt")
+        assert.equal(await readFile(join(runtimeDirectory, "latest.json"), "utf8"), "{");
+    });
+  }
 for (const mode of [
   "success",
   "pnpm",

@@ -5,7 +5,10 @@ export class CompanyInstallation {
   readonly profile: string;
   readonly coreHead: string;
   readonly directory: string;
-  initialize(prepare?: (directory: string) => Promise<void>): Promise<void>;
+  initialize(
+    prepare?: (directory: string) => Promise<void>,
+    options?: { inherit?: boolean },
+  ): Promise<void>;
   prepare(
     id: string,
     install: (
@@ -14,8 +17,12 @@ export class CompanyInstallation {
     ) => Promise<void>,
     signal?: AbortSignal,
   ): Promise<unknown>;
+  preparationIdle(): Promise<boolean>;
   beginBoot(options?: { activatePending?: boolean }): Promise<{ id: string; path: string }>;
+  restoreBaselineSelection(): Promise<{ id: string; path: string }>;
+  verifiedMounted(): Promise<{ id: string; path: string } | null>;
   confirmRuntime(proofs: RuntimePackageProof[]): Promise<boolean>;
+  collectGarbage(): Promise<{ skipped?: string }>;
   failOperation(id: string, diagnostic: string): Promise<void>;
   ownsModules(path: string): Promise<boolean>;
   rollback(reason: string): Promise<{ changed: boolean; fallback: string }>;

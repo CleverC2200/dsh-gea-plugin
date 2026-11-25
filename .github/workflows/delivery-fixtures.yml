@@ -23,6 +23,21 @@ on:
         description: "Desktop version, required Core, merged GEA SHA, company suite and pinned personal memory as JSON"
         required: false
         type: string
+      windows_store_signing:
+        description: "Sign a complete Windows package with the approved SimplySign certificate"
+        default: false
+        required: false
+        type: boolean
+      windows_store_probe:
+        description: "Sign one isolated sample with the pinned SimplySign certificate"
+        default: false
+        required: false
+        type: boolean
+      windows_certum_bridge:
+        description: "Use the old signer for a Windows installer that switches to the SimplySign update feed"
+        default: false
+        required: false
+        type: boolean
       windows_certificate_test:
         description: "Run native certificate import and timestamped signing fixtures without production keys"
         default: false
@@ -201,6 +216,32 @@ jobs:
             ${{ runner.temp }}/signed-overwrite-result/journal/**
             ${{ runner.temp }}/native-artifact-recheck/*.json
             ${{ runner.temp }}/native-artifact-recheck/public/**
+  windows-store-signature-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_store_probe
+    runs-on: windows-2025
+    timeout-minutes: 10
+    environment: windows-certum
+    env:
+      GEA_WINDOWS_STORE_CERT_SHA1: ${{ vars.GEA_WINDOWS_STORE_CERT_SHA1 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - uses: ./.github/actions/windows-certum
+        with:
+          account: ${{ secrets.GEA_CERTUM_ACCOUNT }}
+          seed: ${{ secrets.GEA_CERTUM_TOTP_SECRET }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-store-signature-proof
+          path: |
+            ${{ runner.temp }}/gea-certum/codesign.cer
+            ${{ runner.temp }}/gea-certum/certificate-proof.json
+          if-no-files-found: error
+
   windows-certificate-fixture:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_certificate_test
     runs-on: windows-2025
@@ -256,7 +297,7 @@ jobs:
         with:
           node-version: "24"
       - run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 tar@7.5.22 yaml@2.9.0
           ln -s "$PWD/.runtime/fixture-dependencies/node_modules" node_modules
       - run: node --run test:release-source
       - run: npm run test:delivery:packages
@@ -473,6 +514,7 @@ jobs:
       contents: read
       actions: write
     runs-on: windows-2025
+    environment: ${{ inputs.windows_store_signing && 'windows-certum' || 'windows-legacy' }}
     timeout-minutes: 90
     env:
       DSH_DESKTOP_TARGET_PLATFORM: win32
@@ -480,6 +522,8 @@ jobs:
       DSH_DESKTOP_APP_ID: com.cleverc2200.gea.desktop
       DSH_DESKTOP_UNSIGNED: "1"
       GEA_WINDOWS_SIGNED: ${{ inputs.windows_signed && !inputs.prepare_windows_cache && '1' || '0' }}
+      GEA_WINDOWS_STORE_CERT_SHA1: ${{ vars.GEA_WINDOWS_STORE_CERT_SHA1 }}
+      GEA_WINDOWS_CERTUM_BRIDGE: ${{ inputs.windows_certum_bridge && '1' || '0' }}
       DSH_DESKTOP_BUILD_DIRTY: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_7Z_FILTER: BCJ
@@ -529,7 +573,7 @@ jobs:
           NATIVE_BUNDLE_URL: ${{ inputs.native_acceptance_bundle_url }}
           NATIVE_BUNDLE_SHA256: ${{ inputs.native_acceptance_bundle_sha256 }}
         run: |
-          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0
+          npm install --prefix .runtime/fixture-dependencies --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0 tar@7.5.22
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/fixture-dependencies/node_modules" | Out-Null
           $inputPath = Join-Path $env:RUNNER_TEMP 'gea-desktop-input.json'
@@ -543,8 +587,14 @@ jobs:
           $fixed = Get-Content -Raw $inputPath | ConvertFrom-Json
           "DSH_DESKTOP_BUILD_VERSION=$($fixed.desktopVersion)" | Out-File -Append -FilePath $env:GITHUB_ENV
           "GEA_DESKTOP_INPUT=$inputPath" | Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Open the approved SimplySign signing session
+        if: inputs.windows_signed && !inputs.prepare_windows_cache && inputs.windows_store_signing
+        uses: ./gea/.github/actions/windows-certum
+        with:
+          account: ${{ secrets.GEA_CERTUM_ACCOUNT }}
+          seed: ${{ secrets.GEA_CERTUM_TOTP_SECRET }}
       - name: Prepare isolated Windows signing credentials
-        if: inputs.windows_signed && !inputs.prepare_windows_cache
+        if: inputs.windows_signed && !inputs.prepare_windows_cache && !inputs.windows_store_signing
         env:
           GEA_SIGNING_PFX_BASE64: ${{ secrets.GEA_WINDOWS_SIGNING_PFX_BASE64 }}
           GEA_SIGNING_PASSWORD: ${{ secrets.GEA_WINDOWS_SIGNING_PASSWORD }}
@@ -697,6 +747,7 @@ jobs:
             core/apps/desktop/.desktop-build/targets/win-x64/artifacts/nightly.yml
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/*.log
+            core/apps/desktop/.desktop-build/targets/win-x64/gea-local/codesign.cer
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/windows-signature-audit/*.jsonl
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/signed-upgrade/*.json
             core/apps/desktop/.desktop-build/targets/win-x64/gea-local/signed-upgrade/*.log

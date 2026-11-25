@@ -3,24 +3,31 @@ import { promisify } from "node:util";
 import { X509Certificate } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 export const companyWindowsCertificate = fileURLToPath(
   new URL("../../desktop/build/codesign.cer", import.meta.url),
 );
 export const companyWindowsUpdateUrl =
   "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/";
+export const certumWindowsUpdateUrl = new URL("../win-x64-certum/", companyWindowsUpdateUrl).href;
+export const certumWindowsCertificate = fileURLToPath(
+  new URL("../../desktop/build/codesign-certum.cer", import.meta.url),
+);
 
 export function resolveCompanyWindowsSigning(
   env = process.env,
-  certificateFile = companyWindowsCertificate,
+  certificateFile = env.GEA_WINDOWS_STORE_CER_FILE ?? companyWindowsCertificate,
 ) {
+  const store = env.GEA_WINDOWS_STORE_CER_FILE !== undefined;
   const pfx = env.GEA_WINDOWS_PFX_FILE,
     passwordFile = env.GEA_WINDOWS_PFX_PASSWORD_FILE;
-  if (!pfx || !passwordFile)
-    throw Error("GEA_WINDOWS_PFX_FILE and GEA_WINDOWS_PFX_PASSWORD_FILE are required");
-  for (const file of [pfx, passwordFile])
-    if (!statSync(file).isFile()) throw Error("WINDOWS_SIGNING_FILE_INVALID");
+  if (!store) {
+    if (!pfx || !passwordFile)
+      throw Error("GEA_WINDOWS_PFX_FILE and GEA_WINDOWS_PFX_PASSWORD_FILE are required");
+    for (const file of [pfx, passwordFile])
+      if (!statSync(file).isFile()) throw Error("WINDOWS_SIGNING_FILE_INVALID");
+  }
   const cert = new X509Certificate(readFileSync(certificateFile));
   if (
     cert.ca ||
@@ -29,12 +36,33 @@ export function resolveCompanyWindowsSigning(
     Date.parse(cert.validFrom) > Date.now()
   )
     throw Error("WINDOWS_PUBLIC_CERTIFICATE_INVALID");
-  return {
-    pfx,
-    passwordFile,
+  const identity = {
     certificateFile,
     publisher: cert.subject,
     fingerprint: cert.fingerprint256,
+  };
+  if (store) {
+    const thumbprint = env.GEA_WINDOWS_STORE_CERT_SHA1?.toUpperCase();
+    const signTool = env.GEA_WINDOWS_SIGNTOOL;
+    if (
+      !/^[0-9A-F]{40}$/.test(thumbprint ?? "") ||
+      cert.fingerprint.replaceAll(":", "") !== thumbprint
+    )
+      throw Error("WINDOWS_STORE_CERTIFICATE_MISMATCH");
+    if (
+      !signTool ||
+      !isAbsolute(signTool) ||
+      !/\.exe$/i.test(signTool) ||
+      !statSync(signTool).isFile()
+    )
+      throw Error("WINDOWS_STORE_SIGNTOOL_REQUIRED");
+    return { ...identity, provider: "windows-store", thumbprint, signTool };
+  }
+  return {
+    ...identity,
+    provider: "company-pfx",
+    pfx,
+    passwordFile,
   };
 }
 
@@ -43,7 +71,7 @@ export function createCompanyWindowsSigner(
   {
     env = process.env,
     run = promisify(execFile),
-    certificateFile = companyWindowsCertificate,
+    certificateFile = env.GEA_WINDOWS_STORE_CER_FILE ?? companyWindowsCertificate,
   } = {},
 ) {
   const signing = resolveCompanyWindowsSigning(env, certificateFile);
@@ -56,8 +84,38 @@ export function createCompanyWindowsSigner(
   return (configuration) => {
     const operation = pending.then(async () => {
       if (configuration.hash !== "sha256") throw Error("WINDOWS_SIGNING_SHA256_REQUIRED");
+      if (configuration.isNest) throw Error("WINDOWS_SIGNING_APPEND_UNSUPPORTED");
+      if (await options.preserveSignature?.(configuration.path)) return;
       await options.repairExecutable(configuration.path);
+      const settings = {
+        windowsHide: true,
+        timeout: 120000,
+        maxBuffer: 65536,
+        env: { ...options.signingEnvironment, PSModulePath: "" },
+      };
       try {
+        if (signing.provider === "windows-store") {
+          await run(
+            signing.signTool,
+            [
+              "sign",
+              "/s",
+              "My",
+              "/sha1",
+              signing.thumbprint,
+              "/fd",
+              "SHA256",
+              "/tr",
+              "http://time.certum.pl",
+              "/td",
+              "SHA256",
+              configuration.path,
+            ],
+            settings,
+          );
+          await run(signing.signTool, ["verify", "/pa", "/tw", configuration.path], settings);
+          return;
+        }
         await run(
           "powershell.exe",
           [
@@ -76,15 +134,7 @@ export function createCompanyWindowsSigner(
             "-CertificatePath",
             signing.certificateFile,
           ],
-          {
-            windowsHide: true,
-            timeout: 120000,
-            maxBuffer: 65536,
-            env: {
-              ...options.signingEnvironment,
-              PSModulePath: "",
-            },
-          },
+          settings,
         );
       } catch (error) {
         const stage =
@@ -101,11 +151,18 @@ export function createCompanyWindowsSigner(
   };
 }
 
-export function resolveCompanyWindowsUpdate() {
-  return { publicUrl: companyWindowsUpdateUrl };
+export function resolveCompanyWindowsUpdate(env) {
+  const bridge = env.GEA_WINDOWS_CERTUM_BRIDGE === "1";
+  if (bridge && env.GEA_WINDOWS_STORE_CER_FILE)
+    throw Error("WINDOWS_BRIDGE_REQUIRES_LEGACY_SIGNER");
+  return {
+    publicUrl:
+      bridge || env.GEA_WINDOWS_STORE_CER_FILE ? certumWindowsUpdateUrl : companyWindowsUpdateUrl,
+    publisherCertificate: bridge ? certumWindowsCertificate : env.DSH_DESKTOP_WINDOWS_CER_FILE,
+  };
 }
 
-export function adaptSignedWindowsFactory(source, desktop) {
+export function adaptSignedWindowsFactory(source, desktop, support) {
   const replacements = [
     [
       "createWindowsTokenSigner({",
@@ -113,7 +170,16 @@ export function adaptSignedWindowsFactory(source, desktop) {
     ],
     [
       "resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)",
-      "resolveCompanyWindowsUpdate()",
+      "resolveCompanyWindowsUpdate(env)",
+    ],
+    [
+      "resolveWindowsUpdatePublisher(env.DSH_DESKTOP_WINDOWS_CER_FILE)",
+      "resolveWindowsUpdatePublisher(update.publisherCertificate)",
+    ],
+    [
+      "if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime",
+      "if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime\n  buildPaths.runtime = " +
+        JSON.stringify(support),
     ],
     [
       "{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }",

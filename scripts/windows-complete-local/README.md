@@ -46,11 +46,13 @@ Native 检查通过 Core 公开只读插件清单及两条业务路由取样，�
 
 签名构建要求构建机提供 `GEA_WINDOWS_PFX_FILE` 和 `GEA_WINDOWS_PFX_PASSWORD_FILE` 两个路径。PFX 必须与仓库内置的公钥完全一致。签名器在有管理员权限的构建机上将公钥导入 LocalMachine\Root，用于无人值守验签，并检查 Windows 验签状态、签名者和时间戳，失败即中止。私钥和密码不进入应用、更新清单或构建 artifact。`windows_signed=false` 只用于原未签名诊断构建，不启用在线更新。
 
+使用 SimplySign 时，签名机须先登录并在当前用户的 `My` 证书库中看到指定代码签名证书。`windows_store_signing=true` 使用受限 `windows-certum` 环境建立会话，通过 `GEA_WINDOWS_STORE_CER_FILE`、`GEA_WINDOWS_STORE_CERT_SHA1` 和 `GEA_WINDOWS_SIGNTOOL` 固定公开叶证书、指纹和 SignTool 路径。Windows 校验公共信任链，安装器省略旧公司证书的导入步骤。
+
 GitHub 构建从仓库 secrets `GEA_WINDOWS_SIGNING_PFX_BASE64`、`GEA_WINDOWS_SIGNING_PASSWORD` 读取私钥材料，写入 runner 临时目录，结束后删除。仓库不包含这些 secret；配置这些值和正式发布由发行负责人办理。手工 Windows 构建可直接设置本地路径，无需上传私钥。
 
-公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启，更新地址固定为 `https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/`。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`，签名构建另核完整交付 `release-plan.json`。正式分发必须使用[统一交付入口](../desktop-release.md)，同时发布安装包和更新文件，保留旧版本供差分下载。现有桌面 JSON 频道仍服务旧客户端，本次不改它。构建始终使用 `--publish never`。
+公司包装层复用 required Core 的官方更新入口、版本比较、下载、发布者校验、差分下载和安装重启。构建产物为签名 EXE、对应 `.blockmap` 和 `nightly.yml`，签名构建另核完整交付 `release-plan.json`。正式分发使用[统一交付入口](../desktop-release.md)，同时发布安装包和更新文件，保留旧版本供差分下载。构建始终使用 `--publish never`。
 
-已有客户端需要先安装一次包含新证书的引导版本，之后才能使用该证书验签更新。首次安装仍可能出现 Windows 安全提示。换证前必须提前部署新证书并核发布者兼容性，不能直接覆盖现有私钥。
+已安装版在 `win-x64/` 按旧发布者验签。换证时用 `windows_certum_bridge=true` 生成沿用旧签名的过渡安装包，安装后通过官方更新器从 `win-x64-certum/` 按 Certum 证书发布者校验后续版本。新证书安装包绑定新频道。过渡版发布前，使用实际已发布的旧版验证两次自动升级和数据保留，并先发布、读回版本号更高的新证书安装包。旧频道保留过渡版供延迟更新的客户端取得。
 
 `windows_certificate_test=true` 单独执行 Windows 机器证书库导入、重复导入、PFX 签名与时间戳夹具，使用临时测试证书，不使用正式私钥。它不构建完整桌面、不访问业务，也不证明真实旧版到新版升级。当前用户根证书导入可能出现 Windows 系统确认，保留给员工首次安装交互。完整 NSIS 安装、真实公司证书签包及真实客户端更新仍需各自验收。
 
