@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      verify_upgrade_run:
+        description: "Verify a successful main packaging run or the published baseline in an isolated Mac"
+        required: false
+        default: ""
+        type: string
   workflow_call:
     inputs:
       desktop_input:
@@ -27,8 +32,64 @@ permissions:
   contents: read
 
 jobs:
+  mac-native-upgrade:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_upgrade_run != ''
+    runs-on: macos-15
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+      - name: Prepare release verifier dependencies
+        run: |
+          npm install --prefix "$RUNNER_TEMP/mac-verify-tools" --ignore-scripts --no-package-lock --no-audit --no-fund semver@7.7.4 yaml@2.9.0
+          ln -s "$RUNNER_TEMP/mac-verify-tools/node_modules" node_modules
+      - name: Verify and download the exact successful main build
+        if: inputs.verify_upgrade_run != 'baseline'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAC_BUILD_RUN: ${{ inputs.verify_upgrade_run }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const id = process.env.MAC_BUILD_RUN;
+          const repo = process.env.GITHUB_REPOSITORY;
+          assert.match(id, /^[1-9][0-9]*$/);
+          const run = JSON.parse(execFileSync('gh', ['api', 'repos/' + repo + '/actions/runs/' + id]));
+          assert.equal(run.head_repository.full_name, repo);
+          assert.equal(run.head_branch, 'main');
+          assert.equal(run.event, 'workflow_dispatch');
+          assert.equal(run.path.split('@')[0], '.github/workflows/mac-source-package.yml');
+          assert.equal(run.conclusion, 'success');
+          execFileSync('git', ['merge-base', '--is-ancestor', run.head_sha, 'HEAD']);
+          execFileSync('gh', ['run', 'download', id, '-R', repo, '-n', 'Synear-GEA-mac-arm64-signed-' + id, '-D', process.env.RUNNER_TEMP + '/verified-mac-build'], { stdio: 'inherit' });
+          appendFileSync(process.env.GITHUB_ENV, 'VERIFIED_MAC_BUILD_SOURCE=' + run.head_sha + '\n');
+          NODE
+      - name: Exercise the official Mac updater and inspect the same profile
+        env:
+          MODE: ${{ inputs.verify_upgrade_run }}
+        run: |
+          target="$RUNNER_TEMP/verified-mac-build"
+          if [ "$MODE" = baseline ]; then target=baseline; fi
+          node scripts/mac-complete-local/online-upgrade.mjs "$target" "${VERIFIED_MAC_BUILD_SOURCE:-baseline}" "$RUNNER_TEMP/mac-native-acceptance"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-native-upgrade
+          path: ${{ runner.temp }}/mac-native-acceptance/mac-native-upgrade.json
+          if-no-files-found: warn
+
   mac-source-package:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.verify_upgrade_run == ''
     runs-on: macos-15
     environment: macos-release
     timeout-minutes: 120
