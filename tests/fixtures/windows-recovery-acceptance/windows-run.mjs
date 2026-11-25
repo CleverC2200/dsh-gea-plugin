@@ -237,6 +237,7 @@ async function traceLegacyStartup(port) {
     import { appendFileSync } from "node:fs";
     import { Session } from "node:inspector";
     import { syncBuiltinESMExports } from "node:module";
+    import { delimiter, join } from "node:path";
     const report = (value) => appendFileSync(${JSON.stringify(legacyTrace)}, JSON.stringify({ time: new Date().toISOString(), ...value }) + "\\n");
     report({ kind: "host-probe-loaded", hasDesktopVersion: Boolean(process.env.GEA_DESKTOP_VERSION) });
     const session = new Session();
@@ -268,6 +269,15 @@ async function traceLegacyStartup(port) {
     });
     const commands = process.getBuiltinModule("node:child_process");
     const exec = commands.execFileSync;
+    function tarVersion() {
+      try {
+        return String(exec("tar", ["--version"], { timeout: 5000, stdio: ["ignore", "pipe", "ignore"] })).split(String.fromCharCode(10))[0].trim();
+      } catch {
+        return "unavailable";
+      }
+    }
+    report({ kind: "tar-version", version: tarVersion() });
+    let usedSystemTar = false;
     commands.execFileSync = function(executable, args, options) {
       if (!Array.isArray(args) || !args.includes("--replace")) return Reflect.apply(exec, this, [executable, args, options]);
       try {
@@ -297,6 +307,12 @@ async function traceLegacyStartup(port) {
       if (options?.status === 409 && body?.ok === false && typeof code === "string" && /^[A-Z][A-Z0-9_]{0,79}$/.test(code)) {
         report({ kind: "host-route-rejected", code });
         if (code === "UPDATE_REQUEST_FAILED") debugger;
+        if (code === "SOURCE_ARCHIVE_INVALID" && process.env.TAR_OPTIONS?.includes("--force-local") && !usedSystemTar) {
+          delete process.env.TAR_OPTIONS;
+          process.env.PATH = [join(process.env.SystemRoot, "System32"), process.env.PATH].join(delimiter);
+          usedSystemTar = true;
+          report({ kind: "controlled-host-change", systemTar: true, version: tarVersion() });
+        }
       }
       return Reflect.apply(json, this, [body, options]);
     };
@@ -806,12 +822,17 @@ try {
             evidence.oldVisibleDialog = { message: view.message, buttons: view.buttons };
           if (values["trace-legacy-host"] && /did not complete|更新未完成/i.test(view.message)) {
             const trace = await readFile(legacyTrace, "utf8").catch(() => "");
-            if (evidence.oldVisibleRetriedWithForceLocal || !trace.includes('"tarForceLocal":true'))
+            if (!evidence.oldVisibleRetriedWithForceLocal && trace.includes('"tarForceLocal":true')) {
+              evidence.oldVisibleRetriedWithForceLocal = true;
+              milestone("old-visible-retry-with-only-tar-force-local");
+            } else if (!evidence.oldVisibleRetriedWithSystemTar && trace.includes('"systemTar":true')) {
+              evidence.oldVisibleRetriedWithSystemTar = true;
+              milestone("old-visible-retry-with-only-system-tar");
+            } else {
               throw Error("OLD_VISIBLE_UPDATE_FAILED");
+            }
             await evaluate(client, "document.querySelector('#actions button').click(); true");
-            evidence.oldVisibleRetriedWithForceLocal = true;
-            milestone("old-visible-retry-with-only-tar-force-local");
-            await openVisibleDesktopUpdate(cdp, newVersion, "03-old-visible-tar-local.png");
+            await openVisibleDesktopUpdate(cdp, newVersion, "03-old-visible-tar-retry.png");
             return false;
           }
           if (
@@ -830,6 +851,7 @@ try {
           }
           if (!rows.some((row) => row.phase === "ready" && row.targetVersion === newVersion))
             return false;
+          if (values["old-visible-entry"] && !view.buttons?.length) return false;
           assert.match(view.buttons[0], /restart|重启|重新启动/i);
           await screenshot(client, "03-install-and-restart.png");
           confirmation = dialog;
@@ -1413,6 +1435,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     firstHopConfirmedBySuccessor: evidence.firstHopConfirmedBySuccessor,
     oldVisibleDialog: evidence.oldVisibleDialog,
     oldVisibleRetriedWithForceLocal: evidence.oldVisibleRetriedWithForceLocal,
+    oldVisibleRetriedWithSystemTar: evidence.oldVisibleRetriedWithSystemTar,
     legacyHostTrace: values["trace-legacy-host"]
       ? (await readFile(legacyTrace, "utf8").catch(() => ""))
           .trim()
