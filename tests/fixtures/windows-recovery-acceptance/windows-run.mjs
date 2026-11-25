@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, X509Certificate } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createReadStream, openSync, closeSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { parseArgs } from "node:util";

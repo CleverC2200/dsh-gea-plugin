@@ -163,7 +163,7 @@ jobs:
           GEA_WINDOWS_ENTRY: ${{ matrix.entry }}
           GEA_TRACE_OLD_ENTRY: ${{ inputs.windows_old_entry_trace }}
           GEA_RECHECK_SUITE: ${{ matrix.entry == 'official' }}
-          GEA_LEGACY_COMPATIBLE_TAR: ${{ inputs.windows_old_entry_compatible_tar }}
+          GEA_LEGACY_COMPATIBLE_TAR: ${{ inputs.windows_old_entry_compatible_tar || matrix.entry == 'old-visible' && !inputs.windows_old_entry_trace }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
