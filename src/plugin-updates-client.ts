@@ -138,6 +138,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
+          openDesktop?: () => Promise<void>;
           expired?: boolean;
           accepted?: { operationId: string; hostProcessIdentity: string };
           timer: ReturnType<typeof setTimeout>;
@@ -201,11 +202,16 @@ export function createPluginDetailUpdates(
     owner.observation = undefined;
     if (!owner.refs && !owner.recovering) close(owner);
   };
-  const observe = (owner: NonNullable<typeof page>, names: readonly string[]) => {
+  const observe = (
+    owner: NonNullable<typeof page>,
+    names: readonly string[],
+    openDesktop?: () => Promise<void>,
+  ) => {
     if (owner.observation || disposed) return;
     notified = undefined;
     owner.observation = {
       names,
+      openDesktop,
       timer: setTimeout(() => {
         if (owner.observation) owner.observation.expired = true;
         notify(owner, "unconfirmed");
@@ -263,8 +269,13 @@ export function createPluginDetailUpdates(
         status.hostProcessIdentity === accepted.hostProcessIdentity
       ) {
         if (!snapshot.restartReady) return;
-        if (rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null))
-          void restart();
+        if (
+          rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null)
+        ) {
+          const openDesktop = owner.observation.openDesktop;
+          if (openDesktop) void openDesktop().catch(() => {});
+          else void restart();
+        }
       }
       endObservation(owner);
     } else
@@ -404,7 +415,7 @@ export function createPluginDetailUpdates(
     page = undefined;
     publish({ checking: false });
   };
-  const submitRows = (requestedName?: string): Promise<void> => {
+  const submitRows = (requestedName?: string, openDesktop?: () => Promise<void>): Promise<void> => {
     if (submitting) return submitting;
     if (!pluginSuiteReady(snapshot.items)) return Promise.resolve();
     const available = snapshot.items.filter((row) => row.state === "available");
@@ -437,7 +448,7 @@ export function createPluginDetailUpdates(
       transportError: null,
       restart: "idle",
     });
-    observe(owner, names);
+    observe(owner, names, openDesktop);
     notify(owner, "progress");
     const hostProcessIdentity = status?.hostProcessIdentity;
     const run = async () => {
@@ -569,7 +580,7 @@ export function createPluginDetailUpdates(
     check,
     restart,
     update: (name: string) => submitRows(name),
-    updateAll: () => submitRows(),
+    updateAll: (openDesktop?: () => Promise<void>) => submitRows(undefined, openDesktop),
     async dispose() {
       disposed = true;
       listeners.clear();

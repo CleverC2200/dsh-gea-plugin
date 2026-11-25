@@ -95,6 +95,17 @@
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }
-.gea-update-card-results > section > button {
-  min-inline-size: max-content;
+.gea-update-card-results > button {
+  justify-self: start;
+}
+.gea-update-start[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.gea-update-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
 }

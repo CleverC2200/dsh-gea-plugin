@@ -1,7 +1,6 @@
 export const en = {
   unifiedPolicy:
     "Restart and update will end running tasks. The application will take over installation and restart.",
-  restartUpdate: "Restart and update",
   takeoverStarting: "Starting",
   pluginsNewVersion: "Plugin updates",
   takeoverNotice: "Updating will end running tasks and restart the application.",
@@ -59,6 +58,7 @@ export const en = {
 
   newVersion: "New version {version}",
   updateAll: "Update all",
+  updatingAll: "Updating",
   restartNow: "Restart",
   restartError: "Could not restart. Try again.",
   pluginRestarting: "Plugin updates are installed. Restarting the application.",
@@ -138,7 +138,6 @@ export const en = {
 } as const;
 export const zh: Record<keyof typeof en, string> = {
   unifiedPolicy: "重启更新将结束正在运行的任务。应用将接管安装并自动重启。",
-  restartUpdate: "重启更新",
   takeoverStarting: "正在接管",
   pluginsNewVersion: "插件新版本",
   takeoverNotice: "更新将结束正在运行的任务，并重启应用。",
@@ -187,7 +186,8 @@ export const zh: Record<keyof typeof en, string> = {
   desktopFailureTasks: "运行中的任务已变化或无法核实，请检查任务后重试。",
 
   newVersion: "新版本 {version}",
-  updateAll: "全部更新",
+  updateAll: "更新全部",
+  updatingAll: "更新中",
   restartNow: "一键重启",
   restartError: "重启失败，请重试。",
   pluginRestarting: "插件更新已安装，正在重启应用。",
