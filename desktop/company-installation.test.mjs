@@ -906,3 +906,21 @@ test("an interrupted mount marker is preserved and completed on the next boot", 
   );
   await f.preserved();
 });
+
+test("company selection accepts legacy records and rejects malformed rollback provenance", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.installation.store.root, "selection.json");
+  const legacy = JSON.parse(await readFile(path, "utf8"));
+  delete legacy.rollback;
+  await writeFile(path, JSON.stringify(legacy));
+  assert.deepEqual(await f.installation.store.status(), legacy);
+  for (const rollback of [
+    { operationId: "../other", diagnostic: "FAILED" },
+    { operationId: "candidate", diagnostic: false },
+    { operationId: "candidate", diagnostic: "" },
+  ]) {
+    await writeFile(path, JSON.stringify({ ...legacy, rollback }));
+    await assert.rejects(f.installation.store.status(), /PLUGIN_SELECTION_INVALID/);
+  }
+  await writeFile(path, JSON.stringify(legacy));
+});

@@ -1898,8 +1898,13 @@ test("the known failed managed receipt keeps its history while repeated checks r
   await assert.rejects(readFile(join(f.evidence, "invocations.ndjson")), { code: "ENOENT" });
 });
 
-for (const shape of ["pending", "completed-single", "completed-multiple"])
-  test(`a ${shape} rollback selected before its receipt write resumes only after the old writer stops`, async (t) => {
+for (const [shape, rollback] of [
+  ["pending", "timeout"],
+  ["completed-single", "timeout"],
+  ["completed-multiple", "timeout"],
+  ["completed-multiple", "interrupted"],
+])
+  test(`a ${shape} ${rollback} rollback selected before its receipt write resumes only after the old writer stops`, async (t) => {
     const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
     const f = await controllerFixture(t);
     const saved = await historicalPluginReceipt(f, (receipt) => {
@@ -1915,8 +1920,16 @@ for (const shape of ["pending", "completed-single", "completed-multiple"])
     });
     await f.installation.prepare(saved.receipt.id, async () => {});
     await f.installation.beginBoot();
-    assert.equal(await f.installation.store.failBoot("GEA_TRIAL_STARTUP_TIMEOUT"), "baseline");
+    const diagnostic =
+      rollback === "interrupted" ? "PREVIOUS_BOOT_INTERRUPTED" : "GEA_TRIAL_STARTUP_TIMEOUT";
+    if (rollback === "interrupted")
+      assert.equal((await f.installation.store.beginBoot()).id, "baseline");
+    else assert.equal(await f.installation.store.failBoot(diagnostic), "baseline");
     await f.installation.beginBoot();
+    assert.deepEqual((await f.installation.store.status()).rollback, {
+      operationId: saved.receipt.id,
+      diagnostic,
+    });
     assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
     const run = join(f.dir, ".plugin-manager/run.json");
     await mkdir(dirname(run), { recursive: true });
@@ -1962,7 +1975,7 @@ for (const shape of ["pending", "completed-single", "completed-multiple"])
     await controller.reconcileRuntime();
     const restored = controller.snapshot();
     assert.equal(restored.operation.stage, "failed");
-    assert.equal(restored.operation.diagnostic, "GEA_TRIAL_STARTUP_TIMEOUT");
+    assert.equal(restored.operation.diagnostic, diagnostic);
     assert.equal(restored.operation.completionProof, null);
     assert.equal(restored.operation.completionProofs, undefined);
     const backup = (await readdir(receiptDirectory)).find((name) =>
@@ -1972,6 +1985,7 @@ for (const shape of ["pending", "completed-single", "completed-multiple"])
     assert.equal(await readFile(join(receiptDirectory, backup), "utf8"), saved.bytes);
     await controller.reconcileRuntime();
     assert.equal((await f.installation.store.status()).booting, null);
+    assert.equal((await f.installation.store.status()).rollback, null);
     await controller.check();
     assert.equal(sourceReads, 1);
     assert.deepEqual(
@@ -1998,6 +2012,39 @@ test("a successful verified graph switch preserves the previous completed receip
   t.after(() => controller.dispose());
   await controller.initialize();
   await controller.reconcileRuntime();
+  assert.equal(controller.snapshot().operation.stage, "completed");
+  assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
+  await controller.check();
+  assert.equal(controller.snapshot().operation.stage, "completed");
+});
+
+test("a different queued candidate's base drift cannot fail the previous completed operation", async (t) => {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const f = await controllerFixture(t);
+  const saved = await historicalPluginReceipt(f);
+  await f.installation.prepare(saved.receipt.id, async () => {});
+  await f.installation.beginBoot();
+  assert.equal(await f.installation.confirmRuntime(f.proofs), true);
+  await f.installation.prepare("verified-B", async () => {});
+  await f.installation.beginBoot();
+  assert.equal(await f.installation.confirmRuntime(f.proofs), true);
+  const pending = "bundled-" + "c".repeat(32);
+  await f.installation.prepare(pending, async () => {});
+  const profilePath = join(f.dir, "package.json");
+  const changed = JSON.parse(await readFile(profilePath, "utf8"));
+  changed.dependencies[f.proofs[0].name] = "9.9.9";
+  await writeFile(profilePath, JSON.stringify(changed));
+  assert.equal((await f.installation.beginBoot()).id, "verified-B");
+  const selection = await f.installation.store.status();
+  assert.equal(selection.previous, saved.receipt.id);
+  assert.equal(selection.active, "verified-B");
+  assert.equal(selection.verified, "verified-B");
+  assert.equal(selection.pending, null);
+  assert.equal(selection.error, "GEA_INSTALLATION_BASE_CHANGED");
+  assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
+  const controller = createPluginUpdateController(f.options);
+  t.after(() => controller.dispose());
+  await controller.initialize();
   assert.equal(controller.snapshot().operation.stage, "completed");
   assert.equal(await readFile(saved.path, "utf8"), saved.bytes);
   await controller.check();

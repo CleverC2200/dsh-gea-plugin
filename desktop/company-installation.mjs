@@ -25,9 +25,7 @@ const graphValues = (manifest) =>
     graphFields.filter((key) => Object.hasOwn(manifest, key)).map((key) => [key, manifest[key]]),
   );
 const rolledBackSelection = (selection, id) =>
-  typeof selection.error === "string" &&
-  selection.error.length > 0 &&
-  selection.previous === id &&
+  selection.rollback?.operationId === id &&
   selection.active !== id &&
   selection.active === selection.verified &&
   selection.pending === null &&
@@ -154,10 +152,7 @@ export class CompanyInstallation {
     return this.store.withSelectionLock(async () => {
       const selection = await this.store.status();
       if (!rolledBackSelection(selection, id)) return false;
-      await this.failOperation(
-        id,
-        typeof selection.error === "string" ? selection.error : "PREVIOUS_BOOT_INTERRUPTED",
-      );
+      await this.failOperation(id, selection.rollback.diagnostic);
       return true;
     });
   }
