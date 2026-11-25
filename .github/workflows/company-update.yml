@@ -36,7 +36,7 @@ jobs:
           "GEA_WINDOWS_PUBLISHED_TAR_DIR=$tarDirectory" | Out-File -Append -FilePath $env:GITHUB_ENV
       - name: Verify released Windows entry with interrupted candidate and boot rollback
         run: node scripts/check-windows-plugin-update.mjs --company-desktop
-      - name: Report isolated installer error codes
+      - name: Report isolated installer error codes and public tarball identities
         if: failure()
         shell: pwsh
         run: |
@@ -44,6 +44,9 @@ jobs:
             $codes = Select-String -LiteralPath $_.FullName -Pattern '\b(?:ERR_PNPM_[A-Z0-9_]+|ENOENT|ENAMETOOLONG|EPERM|EACCES|EBUSY|EEXIST|EINVAL|UNKNOWN)\b' -AllMatches |
               ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
             if ($codes) { Write-Output ($codes -join ', ') }
+            $tarballs = Select-String -LiteralPath $_.FullName -Pattern 'https://registry\.npmjs\.org/[a-zA-Z0-9@%/_.-]+\.tgz\b' -AllMatches |
+              ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
+            if ($tarballs) { Write-Output ($tarballs -join ', ') }
           }
       - uses: actions/upload-artifact@v7
         if: always()
