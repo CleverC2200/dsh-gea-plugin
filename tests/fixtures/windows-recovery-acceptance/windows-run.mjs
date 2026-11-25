@@ -251,10 +251,17 @@ async function traceLegacyStartup(port) {
         if (!binding || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(binding)) { session.post("Debugger.resume"); return; }
         session.post("Debugger.evaluateOnCallFrame", {
           callFrameId: frame.callFrameId,
-          expression: "((error) => ({name:error.name,code:error.code,status:error.status,signal:error.signal,syscall:error.syscall,timeout:/timed out|ETIMEDOUT/i.test(error.message),commandFailed:/^Command failed:/i.test(error.message),stack:String(error.stack).split(String.fromCharCode(10)).slice(1,8).map((line) => line.trim().split(' ').slice(0,2).join(' ')).filter((line) => /^at [A-Za-z0-9._<>]+$/.test(line))}))(" + binding + ")",
+          expression: "((error) => ({name:error.name,code:error.code,status:error.status,signal:error.signal,syscall:error.syscall,timeout:/timed out|ETIMEDOUT/i.test(error.message),commandFailed:/^Command failed:/i.test(error.message),tarFlags:/^tar(?:[.]exe)? +(-[A-Za-z]+) +/.exec(error.cmd ?? error.message.slice(16))?.[1],tarRemotePath:/cannot connect to|could not resolve hostname|rmt:/i.test(String(error.stderr ?? '')),stack:String(error.stack).split(String.fromCharCode(10)).slice(1,8).map((line) => line.trim().split(' ').slice(0,2).join(' ')).filter((line) => /^at [A-Za-z0-9._<>]+$/.test(line))}))(" + binding + ")",
           returnByValue: true,
         }, (_, reply) => {
-          if (reply?.result?.value) report({ kind: "caught-host-error", ...reply.result.value });
+          const detail = reply?.result?.value;
+          if (detail) {
+            report({ kind: "caught-host-error", ...detail });
+            if (detail.tarFlags && detail.tarRemotePath && !process.env.TAR_OPTIONS?.includes("--force-local")) {
+              process.env.TAR_OPTIONS = [process.env.TAR_OPTIONS, "--force-local"].filter(Boolean).join(" ");
+              report({ kind: "controlled-host-change", tarForceLocal: true });
+            }
+          }
           session.post("Debugger.resume");
         });
       });
@@ -797,8 +804,16 @@ try {
           if (!view) return false;
           if (values["old-visible-entry"])
             evidence.oldVisibleDialog = { message: view.message, buttons: view.buttons };
-          if (values["trace-legacy-host"] && /did not complete|更新未完成/i.test(view.message))
-            throw Error("OLD_VISIBLE_UPDATE_FAILED");
+          if (values["trace-legacy-host"] && /did not complete|更新未完成/i.test(view.message)) {
+            const trace = await readFile(legacyTrace, "utf8").catch(() => "");
+            if (evidence.oldVisibleRetriedWithForceLocal || !trace.includes('"tarForceLocal":true'))
+              throw Error("OLD_VISIBLE_UPDATE_FAILED");
+            await evaluate(client, "document.querySelector('#actions button').click(); true");
+            evidence.oldVisibleRetriedWithForceLocal = true;
+            milestone("old-visible-retry-with-only-tar-force-local");
+            await openVisibleDesktopUpdate(cdp, newVersion, "03-old-visible-tar-local.png");
+            return false;
+          }
           if (
             values["old-visible-entry"] &&
             view.buttons?.some((label) => /重新检查|check again/i.test(label))
@@ -1397,6 +1412,7 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     firstHop: evidence.firstHop,
     firstHopConfirmedBySuccessor: evidence.firstHopConfirmedBySuccessor,
     oldVisibleDialog: evidence.oldVisibleDialog,
+    oldVisibleRetriedWithForceLocal: evidence.oldVisibleRetriedWithForceLocal,
     legacyHostTrace: values["trace-legacy-host"]
       ? (await readFile(legacyTrace, "utf8").catch(() => ""))
           .trim()
