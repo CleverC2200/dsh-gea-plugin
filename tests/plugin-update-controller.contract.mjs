@@ -744,7 +744,6 @@ test("pending receipt survives recreation in the same Node process and needs a g
   assert.equal(sameProcess.snapshot().operation.stage, "pending-restart");
   assert.equal(sameProcess.restartReady(), true);
   await sameProcess.dispose();
-  await f.installation.beginBoot();
   const script = join(f.root, "reconcile.mjs");
   await writeFile(
     script,
@@ -760,7 +759,41 @@ test("pending receipt survives recreation in the same Node process and needs a g
       proofs: targetProofs,
     }),
   );
-  const { execFileSync } = await import("node:child_process");
+  const queuedInput = join(f.root, "queued-options.json");
+  await writeFile(
+    queuedInput,
+    JSON.stringify({
+      ...f.options,
+      source: undefined,
+      readRuntimeProofs: undefined,
+      proofs: f.proofs,
+    }),
+  );
+  const queued = JSON.parse(
+    execFileSync(process.execPath, [script, queuedInput], { encoding: "utf8" }),
+  );
+  assert.equal(queued.operation.stage, "pending-restart", JSON.stringify(queued));
+  assert.equal(queued.restartReady, true);
+  assert.equal(queued.nativeStatus.state, "ready");
+  assert.equal(
+    queued.items.find((item) => item.packageName === row.packageName).state,
+    "pending-restart",
+  );
+  const selectionFile = join(f.installation.store.root, "selection.json");
+  const selected = await readFile(selectionFile, "utf8");
+  await writeFile(selectionFile, JSON.stringify({ ...JSON.parse(selected), pending: null }));
+  const unavailable = JSON.parse(
+    execFileSync(process.execPath, [script, queuedInput], { encoding: "utf8" }),
+  );
+  assert.equal(unavailable.operation.stage, "pending-restart");
+  assert.equal(unavailable.restartReady, false);
+  assert.equal(unavailable.nativeStatus.state, "unknown");
+  assert.equal(
+    unavailable.items.find((item) => item.packageName === row.packageName).state,
+    "unknown",
+  );
+  await writeFile(selectionFile, selected);
+  await f.installation.beginBoot();
   const oldBrowserProofs = structuredClone(targetProofs);
   oldBrowserProofs.find((proof) => proof.name === row.packageName).client.stamp.version = "3.0.0";
   const oldBrowserInput = join(f.root, "old-browser-options.json");

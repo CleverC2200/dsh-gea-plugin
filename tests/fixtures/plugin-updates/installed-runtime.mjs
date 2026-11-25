@@ -205,7 +205,7 @@ async function observeFresh(input) {
     if (input.startupRecovery)
       assert.deepEqual(
         before.items.map((row) => row.state),
-        ["pending-restart", "pending-restart", "idle"],
+        ["confirming", "confirming", "idle"],
       );
     const observed = await clientObservations(input, host);
     client = observed.client;

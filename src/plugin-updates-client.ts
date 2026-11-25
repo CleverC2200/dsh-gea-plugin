@@ -123,6 +123,7 @@ export function createPluginDetailUpdates(
     notice: null,
   };
   let status: UpdateClientStatus | undefined;
+  let statusRequestGeneration = 0;
   const previousHosts = new Set<string>();
   let page:
     | {
@@ -303,10 +304,11 @@ export function createPluginDetailUpdates(
     signal = signalFor(owner),
     recovering = false,
   ) => {
+    let generation = ++statusRequestGeneration;
     const next = parseUpdateClientStatus(
       await request("status", { pageIdentity: owner.identity }, signal),
     );
-    if (page !== owner) return;
+    if (page !== owner || generation !== statusRequestGeneration) return;
     if (!publishStatus(next)) return;
     if (recovering && owner.recovering) {
       owner.recovering = false;
@@ -343,6 +345,7 @@ export function createPluginDetailUpdates(
           signal.throwIfAborted();
         });
     }
+    if (page !== owner || generation !== statusRequestGeneration) return;
     if (
       acknowledged &&
       confirming.length &&
@@ -353,10 +356,11 @@ export function createPluginDetailUpdates(
         ),
       )
     ) {
+      generation = ++statusRequestGeneration;
       const confirmed = parseUpdateClientStatus(
         await request("status", { pageIdentity: owner.identity }, signal),
       );
-      if (page !== owner) return;
+      if (page !== owner || generation !== statusRequestGeneration) return;
       if (publishStatus(confirmed)) owner.awaitingClient = false;
     }
     reflectObservation(owner);
@@ -366,7 +370,14 @@ export function createPluginDetailUpdates(
       await refresh(owner, signalFor(owner), true);
       if (page !== owner) return;
     } catch {
-      if (!owner.lifetime.signal.aborted) {
+      if (
+        !owner.lifetime.signal.aborted &&
+        !(
+          owner.observation &&
+          !owner.observation.expired &&
+          snapshot.items.some((row) => row.state === "confirming")
+        )
+      ) {
         publish({ transportError: "status" });
         if (owner.observation) notify(owner, "unconfirmed");
       }
@@ -383,6 +394,7 @@ export function createPluginDetailUpdates(
     clearTimeout(owner.recoveryTimer);
     clearTimeout(owner.observation?.timer);
     owner.lifetime.abort();
+    statusRequestGeneration++;
     page = undefined;
     publish({ checking: false });
   };

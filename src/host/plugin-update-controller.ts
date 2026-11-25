@@ -339,9 +339,12 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   function snapshot() {
     return structuredClone({
       ...state,
-      items: state.items.map((item) =>
-        item.state === "pending-restart" && candidateActivation === "active"
-          ? { ...item, state: "confirming" as const }
+      items: state.items.map((item): PluginUpdateRow =>
+        item.state === "pending-restart" && candidateActivation !== "pending"
+          ? {
+              ...item,
+              state: candidateActivation === "active" ? "confirming" : "unknown",
+            }
           : item,
       ),
     });
@@ -512,7 +515,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     if (
       !operation ||
       !["pending-restart", "unknown"].includes(operation.stage) ||
-      operation.processIdentity === pluginUpdateProcessIdentity
+      operation.processIdentity === pluginUpdateProcessIdentity ||
+      (operation.installationId && candidateActivation !== "active")
     )
       return snapshot();
     return withFileLock(
@@ -525,6 +529,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           !["pending-restart", "unknown"].includes(latestOperation.stage)
         )
           return snapshot();
+        await readCandidateSelection(latestOperation);
+        if (latestOperation.installationId && candidateActivation !== "active") return snapshot();
         state = { ...state, operation: latestOperation };
         const profile = await readPluginProfile(options.profile.dir),
           proofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);

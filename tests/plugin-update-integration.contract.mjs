@@ -407,10 +407,12 @@ test("successive pending notices keep their own operation target after status ch
 });
 
 test("closing a detail cancels its check while a mount recovery probe remains alive", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const { createPluginDetailUpdates } = await subject(t, "src/plugin-updates-client.ts");
   const original = globalThis.fetch;
   t.after(() => (globalThis.fetch = original));
   let statuses = 0,
+    phase = "available",
     checkSignal,
     releaseProbe;
   globalThis.fetch = async (url, options) => {
@@ -419,7 +421,7 @@ test("closing a detail cancels its check while a mount recovery probe remains al
         return new Promise((resolve) => {
           releaseProbe = resolve;
         });
-      return Response.json({ ok: true, value: status() });
+      return Response.json({ ok: true, value: status(rows(phase)) });
     }
     assert(url.endsWith("/check"));
     checkSignal = options.signal;
@@ -445,6 +447,10 @@ test("closing a detail cancels its check while a mount recovery probe remains al
   assert.equal(owner.getSnapshot().transportError, null);
   releaseProbe(Response.json({ ok: true, value: status(rows("installing")) }));
   await probing;
+  assert.equal(owner.getSnapshot().notice, null);
+  phase = "installing";
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
   assert.equal(owner.getSnapshot().notice.kind, "progress");
 });
 
