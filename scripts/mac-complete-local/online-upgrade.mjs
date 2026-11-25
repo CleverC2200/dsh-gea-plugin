@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID, X509Certificate } from "node:crypto";
 import { createReadStream, openSync, closeSync } from "node:fs";
-import { readFile, writeFile, mkdir, mkdtemp, stat, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, mkdtemp, realpath, stat, readdir } from "node:fs/promises";
 import { createServer } from "node:https";
 import { createServer as createSocket } from "node:net";
 import { homedir, tmpdir } from "node:os";
@@ -19,7 +19,7 @@ assert.equal(process.env.GITHUB_ACTIONS, "true");
 assert.equal(process.env.RUNNER_ENVIRONMENT, "github-hosted");
 const [artifactDirectory, expectedSource, outputDirectory] = process.argv.slice(2);
 const output = resolve(outputDirectory);
-const root = await mkdtemp(join(tmpdir(), "gea-mac-update-"));
+const root = await realpath(await mkdtemp(join(tmpdir(), "gea-mac-update-")));
 const home = join(homedir(), ".dsh");
 const userData = join(homedir(), "Library/Application Support/GEA Desktop");
 const app = join(root, "Synear GEA.app");
@@ -544,6 +544,35 @@ print(windows.contains {
   }
 } catch (error) {
   result.failure = error.message.split("\n")[0].replaceAll(root, "<TEST_ROOT>");
+  try {
+    result.installedVersionAtFailure = version();
+    result.appProcessesAtFailure = processRows()
+      .filter((row) => row.command.includes("/Synear GEA.app/Contents/MacOS/Synear GEA"))
+      .map(({ pid, parent, command }) => ({
+        pid,
+        parent,
+        host: command.includes("dsh-desktop-host/lib/index.js"),
+        executable:
+          command.split("/Contents/MacOS/Synear GEA")[0].replaceAll(root, "<TEST_ROOT>") +
+          "/Contents/MacOS/Synear GEA",
+      }));
+  } catch {}
+  const caches = join(homedir(), "Library/Caches");
+  const shipIt = (await readdir(caches).catch(() => [])).filter((name) =>
+    /gea.*shipit/i.test(name),
+  );
+  result.shipIt = {};
+  for (const name of shipIt) {
+    for (const log of ["ShipIt_stdout.log", "ShipIt_stderr.log"]) {
+      const text = await readFile(join(caches, name, log), "utf8").catch(() => "");
+      if (text)
+        result.shipIt[log] = text
+          .slice(-5000)
+          .replaceAll(root, "<TEST_ROOT>")
+          .replaceAll(homedir(), "<TEST_USER>")
+          .replace(/https?:\/\/[^\s]+/g, "<URL>");
+    }
+  }
   result.journal = (await records().catch(() => [])).map(
     ({ version, event, phase, targetVersion, failedOperation, errorCode }) => ({
       version,
