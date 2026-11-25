@@ -497,7 +497,7 @@ export async function installedScenario(
             ),
           };
           builder.onResolve({ filter: /^@deepseek-ai\// }, (args) =>
-            aliases[args.path] ? { path: aliases[args.path], external: true } : undefined,
+            aliases[args.path] ? { path: pathToFileURL(aliases[args.path]).href, external: true } : undefined,
           );
         },
       },

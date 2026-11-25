@@ -92,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        entry: ${{ fromJSON(inputs.windows_seed_cache_recheck && '["cache-only"]' || (inputs.windows_old_entry_trace || inputs.windows_old_entry_compatible_tar) && '["old-visible"]' || inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
+        entry: ${{ fromJSON(inputs.windows_seed_cache_recheck && '["cache-only"]' || (inputs.windows_old_entry_trace || inputs.windows_old_entry_compatible_tar) && '["old-visible"]' || inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite", "legacy-profile-overwrite"]' || '["default"]') }}
     permissions:
       contents: read
       actions: read
@@ -176,7 +176,7 @@ jobs:
           const output=join(process.env.RUNNER_TEMP,'signed-overwrite-result');
           if(process.env.GEA_WINDOWS_ONLINE_UPDATE==='true') {
             const input=join(dirname(files[0]),'fixed-input.json');
-            const argument={official:'--recheck-recovery-ui','old-visible':'--old-visible-entry','old-profile-overwrite':'--repair-affected-baseline'}[process.env.GEA_WINDOWS_ENTRY];
+            const argument={official:'--recheck-recovery-ui','old-visible':'--old-visible-entry','old-profile-overwrite':'--repair-affected-baseline','legacy-profile-overwrite':'--repair-legacy-visible'}[process.env.GEA_WINDOWS_ENTRY];
             assert.ok(argument);
             execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output,argument,...(process.env.GEA_TRACE_OLD_ENTRY==='true'?['--trace-legacy-host']:[])],{stdio:'inherit'});
           } else {

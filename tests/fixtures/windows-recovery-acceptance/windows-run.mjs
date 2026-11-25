@@ -24,6 +24,7 @@ const { values } = parseArgs({
     "old-visible-entry": { type: "boolean" },
     "trace-legacy-host": { type: "boolean" },
     "repair-affected-baseline": { type: "boolean" },
+    "repair-legacy-visible": { type: "boolean" },
   },
 });
 const buildReceipt = resolve(values["build-receipt"]);
@@ -41,13 +42,13 @@ const { readOnlineUpgradeTarget, verifyOnlineUpgradeFeed } = await import(
 const { companyWindowsCertificate } = await import(
   pathToFileURL(join(gea, "scripts/windows-complete-local/signing.mjs"))
 );
-const repairAffectedBaseline = values["repair-affected-baseline"];
+const repairAffectedBaseline = values["repair-affected-baseline"] || values["repair-legacy-visible"];
 const interruptPreparation = !repairAffectedBaseline && !values["old-visible-entry"];
 const {
   version: oldVersion,
   source: oldSource,
   sha256: baselineSha,
-} = repairAffectedBaseline
+} = values["repair-affected-baseline"]
   ? {
       version: "0.2.0-rc.2.20261118.1",
       source: "b2c1f5faf5198e9390491773c78be8dd8302e426",

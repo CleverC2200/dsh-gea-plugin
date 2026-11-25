@@ -38,6 +38,13 @@ const url = "https://raw.githubusercontent.com/CleverC2200/deepseek-harness/" + 
 const sourceResponse = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15000) });
 assert.equal(sourceResponse.status, 200);
 const source = recoverableDirectoryInstaller(await sourceResponse.text());
+const pathSource = await fetch(url.replace("scripts/installer-directories.nsh", "installer/path.nsh"), {
+  redirect: "error", signal: AbortSignal.timeout(15000),
+});
+assert.equal(pathSource.status, 200);
+const pathRules = join(work, "official-path.nsh");
+await writeFile(pathRules, await pathSource.text());
+const backup = target + ".old-{E8029507-CF56-4BA3-B69A-C638E896F255}";
 const hooks = fileURLToPath(new URL("../../../desktop/build/installer-recovery.nsh", import.meta.url));
 const renameCheckpoint = '    StrCpy $dshOldMoved "1"';
 assert.equal(source.split(renameCheckpoint).length, 2);
@@ -54,6 +61,12 @@ async function compile(installerPath, scriptSource, restoreOnly = false) {
     'OutFile "' + installerPath + '"',
     'LoadLanguageFile "${NSISDIR}\\Contrib\\Language files\\English.nlf"',
     'LangString decompressionFailed ${LANG_ENGLISH} "Payload failed"',
+    '!include "LogicLib.nsh"',
+    '!include "FileFunc.nsh"',
+    '!define APP_64_UNPACKED_SIZE 1',
+    ...["PATH_INVALID", "PATH_OWNERSHIP", "PATH_WRITABLE", "DISK_SPACE"].map((kind) =>
+      'LangString INSTALLER_' + kind + ' ${LANG_ENGLISH} "Fixture rejected path"'),
+    '!include "' + pathRules + '"',
     '!define APP_EXECUTABLE_FILENAME "GEA Desktop.exe"',
     '!define INSTALL_REGISTRY_KEY "Software\\SynearGEA\\RecoveryFixture-' + process.pid + '"',
     '!include "' + hooks + '"',
@@ -66,7 +79,10 @@ async function compile(installerPath, scriptSource, restoreOnly = false) {
     '  InitPluginsDir',
     '  StrCpy $INSTDIR "' + target + '"',
     ...(restoreOnly ? [
+      '  SetOutPath "$INSTDIR"',
+      '  StrCpy $InstallerPath $INSTDIR',
       '  WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$INSTDIR"',
+      '  WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}" "' + backup + '"',
       '  !insertmacro GEA_RESTORE_REGISTERED_DIRECTORY',
       '  DeleteRegKey HKCU "${INSTALL_REGISTRY_KEY}"',
     ] : [
@@ -113,13 +129,14 @@ for (;;) {
     await delay(50);
   }
 }
-assert.equal((await readdir(work)).some((name) => name.startsWith("Application.old-")), false);
+for (let retries = 0; retries < 80 && (await readdir(work)).some((name) => name.startsWith("Application.new-")); retries++)
+  await delay(50);
+assert.equal((await readdir(work)).some((name) => /^Application[.](old|new)-/.test(name)), false);
 const repair = join(work, "standard-overwrite.exe");
 await compile(repair, source);
 run(repair, ["/S"]);
 assert.equal(await readFile(join(target, "GEA Desktop.exe"), "utf8"), "new program");
 const registeredRecovery = join(work, "registered-recovery.exe");
-const backup = target + ".old-{E8029507-CF56-4BA3-B69A-C638E896F255}";
 await rename(target, backup);
 await compile(registeredRecovery, source, true);
 run(registeredRecovery, ["/S"]);
@@ -134,5 +151,6 @@ await writeFile(join(output, "official-cutover.json"), JSON.stringify({
   oldVersionRestoredWithoutInstallerRerun: true,
   standardInstallerOverwriteRestoredTarget: true,
   coldRecoveryRestoredRegisteredTarget: true,
+  abandonedStagingRemoved: true,
   dataFilesPreserved: true,
 }, null, 2));
