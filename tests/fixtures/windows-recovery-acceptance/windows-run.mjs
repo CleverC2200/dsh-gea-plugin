@@ -22,6 +22,7 @@ const { values } = parseArgs({
     output: { type: "string" },
     "recheck-recovery-ui": { type: "boolean" },
     "old-visible-entry": { type: "boolean" },
+    "trace-legacy-host": { type: "boolean" },
     "repair-affected-baseline": { type: "boolean" },
   },
 });
@@ -121,6 +122,7 @@ const evidence = {
 let cdp;
 let child;
 let offlineRule;
+const legacyTrace = join(privateOutput, "legacy-host-trace.jsonl");
 await mkdir(output, { recursive: true });
 function milestone(name, details = {}) {
   evidence.milestones.push({
@@ -185,8 +187,10 @@ async function connection(url) {
   });
   let serial = 0;
   const pending = new Map();
+  const notifications = new Map();
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(String(event.data));
+    if (message.method) notifications.get(message.method)?.(message.params);
     const item = pending.get(message.id);
     if (!item) return;
     pending.delete(message.id);
@@ -199,6 +203,14 @@ async function connection(url) {
   });
   return {
     close: () => socket.close(),
+    once(method) {
+      return new Promise((resolve) =>
+        notifications.set(method, (value) => {
+          notifications.delete(method);
+          resolve(value);
+        }),
+      );
+    },
     send(method, params = {}) {
       const id = ++serial;
       return new Promise((resolve, reject) => {
@@ -216,6 +228,68 @@ async function evaluate(client, expression) {
   });
   if (response.exceptionDetails) throw new Error(JSON.stringify(response.exceptionDetails));
   return response.result.value;
+}
+async function traceLegacyStartup(port) {
+  const recipe = join(privateOutput, "legacy-host-probe.mjs");
+  await writeFile(
+    recipe,
+    `
+    import { appendFileSync } from "node:fs";
+    const report = (value) => appendFileSync(${JSON.stringify(legacyTrace)}, JSON.stringify(value) + "\\n");
+    report({ kind: "host-probe-loaded", hasDesktopVersion: Boolean(process.env.GEA_DESKTOP_VERSION) });
+    const json = Response.json;
+    Response.json = function (body, options) {
+      const code = body?.error?.code;
+      if (options?.status === 409 && body?.ok === false && typeof code === "string" && /^[A-Z][A-Z0-9_]{0,79}$/.test(code))
+        report({ kind: "host-route-rejected", code });
+      return Reflect.apply(json, this, [body, options]);
+    };
+  `,
+  );
+  const inspector = await until(
+    "old main startup inspector",
+    async () => {
+      const list = await fetch(`http://127.0.0.1:${port}/json/list`, {
+        signal: AbortSignal.timeout(2000),
+      })
+        .then((response) => response.json())
+        .catch(() => []);
+      return list.find((target) => target.webSocketDebuggerUrl);
+    },
+    15000,
+  );
+  const main = await connection(inspector.webSocketDebuggerUrl);
+  try {
+    await main.send("Debugger.enable");
+    const paused = main.once("Debugger.paused");
+    await main.send("Runtime.runIfWaitingForDebugger");
+    const { callFrames } = await Promise.race([
+      paused,
+      delay(10000).then(() => {
+        throw Error("OLD_MAIN_STARTUP_PAUSE_MISSING");
+      }),
+    ]);
+    const result = await main.send("Debugger.evaluateOnCallFrame", {
+      callFrameId: callFrames[0].callFrameId,
+      expression: `(() => {
+        const child = process.getBuiltinModule("node:child_process");
+        const spawn = child.spawn;
+        child.spawn = function(executable, args, options) {
+          if (Array.isArray(args) && args.some((argument) => argument.includes("dsh-desktop-host"))) {
+            args = ["--import", ${JSON.stringify(pathToFileURL(recipe).href)}, ...args];
+          }
+          return Reflect.apply(spawn, this, [executable, args, options]);
+        };
+        process.getBuiltinModule("node:module").syncBuiltinESMExports();
+        return true;
+      })()`,
+      returnByValue: true,
+    });
+    assert.equal(result.result.value, true, JSON.stringify(result.exceptionDetails));
+    await main.send("Debugger.resume");
+  } finally {
+    main.close();
+  }
 }
 async function loopbackPort() {
   const socket = createServer();
@@ -408,18 +482,22 @@ try {
   await mkdir(dirname(marker), { recursive: true });
   await writeFile(marker, markerBytes);
   port = await loopbackPort();
-  const baselineMainPort = repairAffectedBaseline ? await loopbackPort() : undefined;
+  const baselineMainPort =
+    repairAffectedBaseline || values["trace-legacy-host"] ? await loopbackPort() : undefined;
   const descriptor = openSync(join(privateOutput, "client-raw.txt"), "a");
   child = spawn(
     executable,
     [
-      ...(baselineMainPort ? [`--inspect=127.0.0.1:${baselineMainPort}`] : []),
+      ...(baselineMainPort
+        ? [`--inspect${values["trace-legacy-host"] ? "-brk" : ""}=127.0.0.1:${baselineMainPort}`]
+        : []),
       `--remote-debugging-port=${port}`,
       "--remote-debugging-address=127.0.0.1",
     ],
     { env: environment, stdio: ["ignore", descriptor, descriptor] },
   );
   closeSync(descriptor);
+  if (values["trace-legacy-host"]) await traceLegacyStartup(baselineMainPort);
   const initial = await until(
     "old application window",
     async () => {
@@ -670,6 +748,8 @@ try {
           if (!view) return false;
           if (values["old-visible-entry"])
             evidence.oldVisibleDialog = { message: view.message, buttons: view.buttons };
+          if (values["trace-legacy-host"] && /did not complete|更新未完成/i.test(view.message))
+            throw Error("OLD_VISIBLE_UPDATE_FAILED");
           if (
             values["old-visible-entry"] &&
             view.buttons?.some((label) => /重新检查|check again/i.test(label))
@@ -1268,6 +1348,14 @@ if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne
     firstHop: evidence.firstHop,
     firstHopConfirmedBySuccessor: evidence.firstHopConfirmedBySuccessor,
     oldVisibleDialog: evidence.oldVisibleDialog,
+    legacyHostTrace: values["trace-legacy-host"]
+      ? (await readFile(legacyTrace, "utf8").catch(() => ""))
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map(JSON.parse)
+      : undefined,
+    legacyNativeEvents: values["trace-legacy-host"] ? evidence.journal : undefined,
     buildReceiptSha256: evidence.buildReceiptSha256,
     inputSha256: build.inputSha256,
     installerSha256: expectedNewSha,

@@ -48,6 +48,11 @@ on:
         default: false
         required: false
         type: boolean
+      windows_old_entry_trace:
+        description: "Trace only the original signed Windows desktop visible entry"
+        default: false
+        required: false
+        type: boolean
       windows_seed_cache_recheck:
         description: "Test the exact signed package and its bundled pnpm against isolated dual-cache fixtures"
         default: false
@@ -82,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        entry: ${{ fromJSON(inputs.windows_seed_cache_recheck && '["cache-only"]' || inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
+        entry: ${{ fromJSON(inputs.windows_seed_cache_recheck && '["cache-only"]' || inputs.windows_old_entry_trace && '["old-visible"]' || inputs.windows_online_update && '["official", "old-visible", "old-profile-overwrite"]' || '["default"]') }}
     permissions:
       contents: read
       actions: read
@@ -149,6 +154,7 @@ jobs:
           GEA_QUALIFICATION_SOURCE_SHA: ${{ steps.original.outputs.source }}
           GEA_WINDOWS_ONLINE_UPDATE: ${{ inputs.windows_online_update }}
           GEA_WINDOWS_ENTRY: ${{ matrix.entry }}
+          GEA_TRACE_OLD_ENTRY: ${{ inputs.windows_old_entry_trace }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -163,7 +169,7 @@ jobs:
             const input=join(dirname(files[0]),'fixed-input.json');
             const argument={official:'--recheck-recovery-ui','old-visible':'--old-visible-entry','old-profile-overwrite':'--repair-affected-baseline'}[process.env.GEA_WINDOWS_ENTRY];
             assert.ok(argument);
-            execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output,argument],{stdio:'inherit'});
+            execFileSync(process.execPath,['gea/tests/fixtures/windows-recovery-acceptance/windows-run.mjs','--build-receipt',files[0],'--input',input,'--output',output,argument,...(process.env.GEA_TRACE_OLD_ENTRY==='true'?['--trace-legacy-host']:[])],{stdio:'inherit'});
           } else {
             execFileSync(process.execPath,['gea/scripts/windows-complete-local/signed-upgrade.mjs',process.cwd(),'gea',dirname(dirname(files[0])),output,'overwrite-only'],{stdio:'inherit'});
           }
