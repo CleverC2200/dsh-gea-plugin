@@ -25,6 +25,8 @@ const graphValues = (manifest) =>
     graphFields.filter((key) => Object.hasOwn(manifest, key)).map((key) => [key, manifest[key]]),
   );
 const rolledBackSelection = (selection, id) =>
+  typeof selection.error === "string" &&
+  selection.error.length > 0 &&
   selection.previous === id &&
   selection.active !== id &&
   selection.active === selection.verified &&

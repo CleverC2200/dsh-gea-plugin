@@ -86,8 +86,6 @@ const stageNames: PluginUpdateStage[] = [
   "failed",
   "unknown",
 ];
-const blocking = (operation: PluginUpdateOperation | null) =>
-  operation !== null && !["completed", "restored", "failed"].includes(operation.stage);
 function fail(code: string): never {
   throw Error(code);
 }
@@ -334,6 +332,12 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   let startup: RuntimePackageProof[] = [];
   let candidateActivation: Awaited<ReturnType<CompanyInstallation["activationState"]>> =
     "unavailable";
+  const blocking = (operation: PluginUpdateOperation | null) =>
+    operation !== null &&
+    (!["completed", "restored", "failed"].includes(operation.stage) ||
+      (operation.stage === "completed" &&
+        operation.id === state.operation?.id &&
+        candidateActivation === "rolled-back"));
   let plans = new Map<UpdatablePackageName, Plan>();
   let suiteReleases: PluginRelease[] = [];
   let currentMonitor: Pick<
@@ -344,7 +348,8 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     return structuredClone({
       ...state,
       items: state.items.map((item): PluginUpdateRow =>
-        item.state === "pending-restart" && candidateActivation !== "pending"
+        (item.state === "pending-restart" && candidateActivation !== "pending") ||
+        (item.state === "completed" && candidateActivation === "rolled-back")
           ? {
               ...item,
               state: candidateActivation === "active" ? "confirming" : "unknown",
@@ -522,28 +527,31 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     const operation = state.operation;
     if (
       !operation ||
-      !["pending-restart", "unknown"].includes(operation.stage) ||
-      operation.processIdentity === pluginUpdateProcessIdentity ||
-      (operation.installationId &&
-        candidateActivation !== "active" &&
-        candidateActivation !== "rolled-back")
+      (!["pending-restart", "unknown"].includes(operation.stage) &&
+        !(operation.stage === "completed" && candidateActivation === "rolled-back"))
     )
       return snapshot();
     return withFileLock(
       join(options.profile.dir, "package.json"),
       async () => {
         const latestOperation = await readLatest();
-        if (
-          !latestOperation ||
-          latestOperation.id !== operation.id ||
-          !["pending-restart", "unknown"].includes(latestOperation.stage)
-        )
-          return snapshot();
+        if (!latestOperation || latestOperation.id !== operation.id) return snapshot();
         const selectedInstallation = await readCandidateSelection(latestOperation);
+        if (
+          ["failed", "restored"].includes(latestOperation.stage) ||
+          (latestOperation.stage === "completed" && candidateActivation !== "rolled-back")
+        ) {
+          reflectOperation(latestOperation);
+          return snapshot();
+        }
+        if (!["pending-restart", "unknown", "completed"].includes(latestOperation.stage))
+          return snapshot();
         if (latestOperation.installationId && candidateActivation === "rolled-back") {
           if (
             !selectedInstallation ||
-            !previousPackageProcessesStopped(options.profile.dir, latestOperation) ||
+            !(latestOperation.stage === "completed"
+              ? profilePackageRunStopped(options.profile.dir)
+              : previousPackageProcessesStopped(options.profile.dir, latestOperation)) ||
             !(await selectedInstallation.recoverRollback(latestOperation.id))
           )
             return snapshot();
@@ -552,7 +560,11 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             reflectOperation(recovered);
           return snapshot();
         }
-        if (latestOperation.installationId && candidateActivation !== "active") return snapshot();
+        if (
+          latestOperation.processIdentity === pluginUpdateProcessIdentity ||
+          (latestOperation.installationId && candidateActivation !== "active")
+        )
+          return snapshot();
         state = { ...state, operation: latestOperation };
         const profile = await readPluginProfile(options.profile.dir),
           proofs = await options.readRuntimeProofs(pluginUpdateProcessIdentity);
@@ -1344,7 +1356,12 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
       if (operationId && operation?.id !== operationId) return { operationId, state: "unknown" };
       const id = operation?.id ?? null;
       if (journalBroken && isolatedInstallation) return { operationId: id, state: "failed" };
-      if (closed || journalBroken || operation?.stage === "unknown")
+      if (
+        closed ||
+        journalBroken ||
+        operation?.stage === "unknown" ||
+        (operation?.stage === "completed" && blocking(operation))
+      )
         return { operationId: id, state: "unknown" };
       if (active) return { operationId: id, state: "running" };
       if (!operation || operation.stage === "completed") return { operationId: id, state: "idle" };
