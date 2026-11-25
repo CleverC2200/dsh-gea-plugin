@@ -4,7 +4,7 @@ import { readFile, mkdir, readdir, writeFile, cp, rename } from "node:fs/promise
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { execFileSync } from "node:child_process";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
@@ -162,6 +162,7 @@ try {
     },
   );
   if (companyDesktop) {
+    const publishedTar = process.env.GEA_WINDOWS_PUBLISHED_TAR_DIR;
     execFileSync(
       process.execPath,
       ["--test", "--test-concurrency=1", "tests/company-update-windows.native.mjs"],
@@ -170,6 +171,12 @@ try {
         timeout: 360000,
         env: {
           ...process.env,
+          ...(publishedTar
+            ? {
+                PATH: publishedTar + delimiter + process.env.PATH,
+                TAR_OPTIONS: "--force-local --quoting-style=literal",
+              }
+            : {}),
           GEA_WINDOWS_APP: app,
           GEA_WINDOWS_RUNTIME: runtime,
           GEA_WINDOWS_EVIDENCE: root,

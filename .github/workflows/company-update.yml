@@ -33,8 +33,7 @@ jobs:
           New-Item -ItemType Junction -Path node_modules -Target "$PWD/.runtime/tools/node_modules" | Out-Null
           $tarDirectory = Join-Path $env:ProgramFiles 'Git\usr\bin'
           if (!(Test-Path -LiteralPath (Join-Path $tarDirectory 'tar.exe'))) { throw 'DELIVERY_GNU_TAR_REQUIRED' }
-          $tarDirectory | Out-File -Append -FilePath $env:GITHUB_PATH
-          'TAR_OPTIONS=--force-local --quoting-style=literal' | Out-File -Append -FilePath $env:GITHUB_ENV
+          "GEA_WINDOWS_PUBLISHED_TAR_DIR=$tarDirectory" | Out-File -Append -FilePath $env:GITHUB_ENV
       - name: Verify released Windows entry with interrupted candidate and boot rollback
         run: node scripts/check-windows-plugin-update.mjs --company-desktop
       - uses: actions/upload-artifact@v7
