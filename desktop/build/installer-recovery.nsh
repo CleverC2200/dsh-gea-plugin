@@ -21,6 +21,9 @@
         Pop $1
         ${If} $0 != 0
           DetailPrint "恢复上次安装目录失败（$0），备份目录已保留。"
+          MessageBox MB_OK|MB_ICONEXCLAMATION "无法恢复上次安装目录。请解除目录占用后重新运行此安装程序。原数据和备份目录已保留。" /SD IDOK
+          SetErrorLevel 2
+          Quit
         ${ElseIf} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
           DeleteRegValue HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}"
         ${EndIf}
@@ -32,7 +35,8 @@
   ClearErrors
 !macroend
 
-!macro GEA_WATCH_DIRECTORY_SWITCH
+!macro GEA_INSTALLER_RECOVERY_FUNCTIONS
+Function GeaWatchDirectorySwitch
   Push $0
   Push $1
   StrCpy $1 1
@@ -69,8 +73,9 @@
   ${EndIf}
   Pop $1
   Pop $0
-!macroend
+FunctionEnd
 
-!macro GEA_CLEAR_DIRECTORY_RECOVERY
+Function GeaClearDirectoryRecovery
   DeleteRegValue HKCU "${INSTALL_REGISTRY_KEY}" "${GEA_DIRECTORY_ROLLBACK_VALUE}"
+FunctionEnd
 !macroend
