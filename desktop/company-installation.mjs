@@ -360,6 +360,7 @@ export class CompanyInstallation {
         stage: "failed",
         diagnostic,
         completionProof: null,
+        completionProofs: undefined,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {

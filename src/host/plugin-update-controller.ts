@@ -218,6 +218,7 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
     )
       fail("UPDATE_JOURNAL_INVALID");
   }
+  let legacyFailedCompletionProofs = false;
   if (value.targets !== undefined) {
     if (
       !Array.isArray(value.targets) ||
@@ -262,7 +263,18 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
           completionProofs: undefined,
           completionProof: value.completionProofs[index],
         });
-    } else if (value.completionProofs !== undefined) fail("UPDATE_JOURNAL_INVALID");
+    } else if (value.completionProofs !== undefined) {
+      if (
+        value.schema !== 2 ||
+        value.installationId !== value.id ||
+        value.stage !== "failed" ||
+        value.completionProof !== null ||
+        !Array.isArray(value.completionProofs) ||
+        value.completionProofs.length !== value.targets.length
+      )
+        fail("UPDATE_JOURNAL_INVALID");
+      legacyFailedCompletionProofs = true;
+    }
   } else if (value.completionProofs !== undefined) fail("UPDATE_JOURNAL_INVALID");
   if (value.stage === "completed" && value.completionProof === null) fail("UPDATE_JOURNAL_INVALID");
   if (!(value.diagnostic === null || typeof value.diagnostic === "string"))
@@ -273,6 +285,7 @@ function parseOperation(raw: unknown): PluginUpdateOperation {
     value.schema === 1 ? join(String(value.recoveryDirectory), "..") : value.directory;
   if (typeof directory !== "string" || !isAbsolute(directory)) fail("UPDATE_JOURNAL_INVALID");
   const operation = { ...value };
+  if (legacyFailedCompletionProofs) delete operation.completionProofs;
   for (const key of [
     "baselineSha256",
     "recoveryDirectory",
