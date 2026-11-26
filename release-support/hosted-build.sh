@@ -22,6 +22,14 @@ jq -n --arg root "$candidate" --arg core "$core_head" --arg workbench "$(git -C 
   {repo:"dsh-gea-plugin",path:($root+"/dsh-gea-plugin"),head:$gea}
  ]}' > "$out/source.json"
 
+node --input-type=module <<'NODE' 2>&1 | tee "$out/prepare-dsh-gea-plugin-upstreams.log"
+import {prepareQualityUpstreams,bindQualityUpstreamInputs} from './scripts/quality-upstreams.mjs';
+const upstream=process.env.GITHUB_WORKSPACE+'/quality-upstreams';
+const inputs=process.env.GITHUB_WORKSPACE+'/upstream-inputs';
+await prepareQualityUpstreams(upstream);
+await bindQualityUpstreamInputs(upstream,inputs,{prepare:true});
+NODE
+
 for repo in dsh-agent-manage dsh-agent-workbench dsh-gea-plugin; do
   printf "Preparing %s\n" "$repo"
   node scripts/plugin-split-development.mjs prepare --input "$out/source.json" --repo "$repo" 2>&1 | tee "$out/prepare-$repo.log"
