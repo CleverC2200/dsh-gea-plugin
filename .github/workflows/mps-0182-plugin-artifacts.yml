@@ -1,0 +1,122 @@
+name: MPS 0.1.182 plugin packages
+on:
+  push:
+    branches: [codex/mps-0182-release-artifacts]
+permissions:
+  contents: read
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: build-task
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-gea-plugin
+          ref: '0a38fc4270c9755d046f189bf2f921c8cdc96664'
+          path: candidate/dsh-gea-plugin
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: '8ad7b495306be46aa6fb5bbd0271b647e6f93a57'
+          path: candidate/dsh-agent-workbench
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-manage
+          ref: 'c64b992603a5ea95d499c0d3894da534db6806cc'
+          path: candidate/dsh-agent-manage
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/deepseek-harness
+          ref: '17746ac35c8fa08e2da98f2127b05f421132cb16'
+          path: source/official-core
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.22.0
+      - name: Prepare the fixed Core source for SDK cache restoration
+        working-directory: candidate/dsh-gea-plugin
+        run: |
+          corepack enable
+          node scripts/hosted-sdk-capacity.mjs --output "$GITHUB_WORKSPACE/official-latest-standard" --report "$RUNNER_TEMP/hosted-sdk-capacity.json"
+          node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare-source --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head 17746ac35c8fa08e2da98f2127b05f421132cb16 --source "$GITHUB_WORKSPACE/source/official-core"
+      - name: Locate exact SDK cache paths
+        id: sdk-paths
+        run: node candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
+      - uses: actions/cache/restore@v4
+        id: core-cache
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-24.22.0-17746ac35c8fa08e2da98f2127b05f421132cb16-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - name: Prepare and verify the registered SDK
+        working-directory: candidate/dsh-gea-plugin
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/outputs"
+          cp "$RUNNER_TEMP/hosted-sdk-capacity.json" "$GITHUB_WORKSPACE/outputs/"
+          if ! node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head 17746ac35c8fa08e2da98f2127b05f421132cb16 --source "$GITHUB_WORKSPACE/source/official-core" > "$GITHUB_WORKSPACE/outputs/sdk-prepare.log" 2>&1; then
+            tail -60 "$GITHUB_WORKSPACE/outputs/sdk-prepare.log"
+            exit 1
+          fi
+      - uses: actions/cache/save@v4
+        if: steps.core-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: ${{ steps.core-cache.outputs.cache-primary-key }}
+      - name: Select the repository npm version
+        run: npm install --global npm@11.11.0
+      - name: Bind the successful Workbench merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MPS_CANDIDATE_HEAD: '8ad7b495306be46aa6fb5bbd0271b647e6f93a57'
+        run: bash build-task/release-support/await-merged-workbench.sh
+      - name: Build and verify the merged plugin suite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash build-task/release-support/hosted-build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mps-0182-verified-suite
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            outputs/source.json
+            outputs/release-main-heads.json
+            outputs/observed-main-heads.json
+            outputs/release-suite
+            outputs/official-release
+            outputs/channels-ready
+            outputs/deployed-baseline
+            outputs/release-proof
+            outputs/reception/result.json
+            outputs/reception/ACCEPTANCE.json
+            outputs/reception.log
+            outputs/*-dsh-*.log
+            outputs/hosted-sdk-capacity.json
+            outputs/sdk-prepare.log
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: mps-0182-build-diagnostics
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            outputs/source.json
+            outputs/hosted-sdk-capacity.json
+            outputs/sdk-prepare.log
+            outputs/official-delivery
+            outputs/reception/result.json
+            outputs/reception.log
+            outputs/official-release
+            outputs/deployed-baseline
+            outputs/*-dsh-*.log
