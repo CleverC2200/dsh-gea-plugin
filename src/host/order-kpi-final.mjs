@@ -40,6 +40,8 @@ export async function readCubeFinalMetric(
   if (candidates.length !== 1) throw Error("GEA_CUBE_FINAL_METRIC_NOT_PUBLISHED");
   const model = candidates[0];
   const businessView = model.type === "view";
+  const measureNames = new Set((model.measures ?? []).map((m) => m.name.split(".").at(-1)));
+  const dimensionNames = new Set((model.dimensions ?? []).map((m) => m.name.split(".").at(-1)));
   const published = new Map(
     [...(model.measures ?? []), ...(model.dimensions ?? [])].map((m) => [
       m.name.split(".").at(-1),
@@ -103,11 +105,19 @@ export async function readCubeFinalMetric(
     rule = grouped ? contracts.groups : contracts.summary,
   ) => {
     const selected = grouped ? dimensions : [];
+    const components = [
+      "numerator_final",
+      "denominator_final",
+      "pending_final",
+      "value_final",
+    ].filter((name) => !businessView || published.has(name));
     const query = {
-      measures: ["numerator_final", "denominator_final", "pending_final", "value_final"]
-        .filter((name) => !businessView || published.has(name))
-        .map(queryMember),
-      dimensions: [queryMember("metric_result"), ...selected.map((k) => queryMember(fields[k]))],
+      measures: components.filter((name) => measureNames.has(name)).map(queryMember),
+      dimensions: [
+        queryMember("metric_result"),
+        ...components.filter((name) => dimensionNames.has(name)).map(queryMember),
+        ...selected.map((k) => queryMember(fields[k])),
+      ],
       filters:
         businessView && !queryBase
           ? []
