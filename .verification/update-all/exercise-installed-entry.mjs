@@ -21,7 +21,7 @@ await page.getByRole('menuitem',{name:'检查更新',exact:true}).click();
 const card=page.getByRole('article',{name:'版本更新',exact:true});
 await card.getByRole('button',{name:'是',exact:true}).click();
 const buttonName={name:'更新全部',exact:true};
-await card.getByRole('button',buttonName).waitFor({timeout:85000});
+await card.getByRole('button',buttonName).click({trial:true,timeout:85000});
 assert.equal(await card.getByRole('button',buttonName).count(),1);
 const initial=await page.evaluate(async()=>{
   const [desktop,status]=await Promise.all([window.dshDesktop.updates.status(),fetch('/api/gea/plugin-updates/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageIdentity:crypto.randomUUID()})}).then(response=>response.json())]);
