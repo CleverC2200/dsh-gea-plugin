@@ -545,6 +545,27 @@ for (const failure of [
     });
   });
 
+test("a fresh Core baseline retains the user dependency lock before offline preparation", async (t) => {
+  const f = await fixture(t);
+  const lock = await readFile(join(f.profile, "pnpm-lock.yaml"));
+  const manifest = await readFile(join(f.profile, "package.json"));
+  const next = new CompanyInstallation(f.profile, "b".repeat(40));
+  await next.initialize(
+    async (stage) => {
+      assert.deepEqual(await readFile(join(stage, "pnpm-lock.yaml")), lock);
+      await fs.cp(join(f.profile, "node_modules"), join(stage, "node_modules"), {
+        recursive: true,
+        dereference: true,
+      });
+      await writeFile(join(stage, "package.json"), manifest);
+    },
+    { inherit: false },
+  );
+  assert.deepEqual(await readFile(join(next.store.baseline, "pnpm-lock.yaml")), lock);
+  assert.deepEqual(await readFile(join(f.profile, "pnpm-lock.yaml")), lock);
+  await f.preserved();
+});
+
 test("a baseline mounted across Core upgrades completes the new Core marker", async (t) => {
   const f = await fixture(t);
   const next = new CompanyInstallation(f.profile, "b".repeat(40));

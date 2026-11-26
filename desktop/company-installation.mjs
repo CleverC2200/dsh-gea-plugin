@@ -84,6 +84,8 @@ export class CompanyInstallation {
         await writePluginStoreJson(join(stage, "package.json"), manifest);
         const workspace = await optional(join(this.profile, "pnpm-workspace.yaml"));
         if (workspace) await writeFile(join(stage, "pnpm-workspace.yaml"), workspace);
+        const lock = await optional(join(this.profile, "pnpm-lock.yaml"));
+        if (lock) await writeFile(join(stage, "pnpm-lock.yaml"), lock);
       }
       await prepare?.(stage);
       await this.validate(stage);

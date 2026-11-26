@@ -130,7 +130,9 @@ function fixture(
             stock_turnover: "周转天数",
           };
           const dims = q.dimensions
-            .filter((k) => !k.endsWith(".metric_result"))
+            .filter((k) =>
+              ["Final.base_name", "Final.item_name", "Final.customer_code"].includes(k),
+            )
             .map(
               (k) =>
                 ({
