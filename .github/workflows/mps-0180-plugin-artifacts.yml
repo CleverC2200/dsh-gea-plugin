@@ -106,4 +106,7 @@ jobs:
             outputs/source.json
             outputs/hosted-sdk-capacity.json
             outputs/sdk-prepare.log
+            outputs/official-delivery
+            outputs/official-release
+            outputs/deployed-baseline
             outputs/*-dsh-*.log

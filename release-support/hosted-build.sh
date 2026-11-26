@@ -74,7 +74,7 @@ node scripts/plugin-split-development.mjs deliver --input "$out/official-request
 support="$GITHUB_WORKSPACE/build-task/release-support"
 cp "$support"/{baseline.py,prepare-official.mjs,prepare-channels.mjs,desktop-core-environment.json,desktop-2026*.json} "$out/"
 python3 "$out/baseline.py" "$out/deployed-baseline"
-jq -e --slurpfile sources "$out/source.json" '[.sources[]|. as $main | $sources[0].repositories[]|select(.repo==$main.repo)|.head==$main.head] | length==3 and all(.[])' "$out/deployed-baseline/baseline.json" >/dev/null
+jq -e --slurpfile sources "$out/source.json" '[.sources[]|. as $main | $sources[0].repositories[]|select(.repo==$main.repo)|.head==$main.head] | length==3 and all(.[]; . == true)' "$out/deployed-baseline/baseline.json" >/dev/null
 jq '[.repositories[]|{key:.repo,value:.head}]|from_entries' "$out/source.json" >"$out/release-main-heads.json"
 cp "$out/release-main-heads.json" "$out/observed-main-heads.json"
 node "$out/prepare-official.mjs"
