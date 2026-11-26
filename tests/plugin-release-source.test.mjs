@@ -152,7 +152,10 @@ test("existing company update profiles select the managed source for each login 
   const production = { ...stableSource, channelUrl: companyChannels + "plugin-detail-stable.json" };
   const testing = { ...testSource, channelUrl: companyChannels + "plugin-detail-test.json" };
   for (const source of [production, testing])
-    assert.deepEqual(managedPluginReleaseSources(undefined, { source }), { production, test: testing });
+    assert.deepEqual(managedPluginReleaseSources(undefined, { source }), {
+      production,
+      test: testing,
+    });
   assert.deepEqual(managedPluginReleaseSources(undefined, undefined), {});
   assert.deepEqual(managedPluginReleaseSources(testSource, { source: production }), {
     production,
@@ -207,11 +210,12 @@ async function checkManagedPluginSource(t, channel) {
     fetch: async (url) =>
       new Response(f.objects.get(url), { status: f.objects.has(url) ? 200 : 404 }),
   };
-  assert.throws(() =>
-    createManagedPluginReleaseSource(
-      { ...f.config, channel: "nightly" },
-      { ...deps, trustDirectory: join(f.dir, "nightly") },
-    ),
+  assert.throws(
+    () =>
+      createManagedPluginReleaseSource(
+        { ...f.config, channel: "nightly" },
+        { ...deps, trustDirectory: join(f.dir, "nightly") },
+      ),
     /SOURCE_CHANNEL_INVALID/,
   );
   const managed = createManagedPluginReleaseSource(config, {
@@ -256,8 +260,7 @@ async function checkManagedPluginSource(t, channel) {
 
 for (const channel of ["stable", "plugin-detail-test"])
   test(`${channel} distributes multiple managed bundles independently of the core suite`, (t) =>
-    checkManagedPluginSource(t, channel),
-  );
+    checkManagedPluginSource(t, channel));
 
 test("a channel suite capability must match the actual updater archive", async (t) => {
   const f = await fixture(t);

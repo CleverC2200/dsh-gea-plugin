@@ -81,7 +81,8 @@ export function mountManagedPluginDistribution(
   let mountedIdentity: AbortSignal | undefined;
   const eligibleEnvironment = () => {
     const status = business.status();
-    if (status.authenticated && sources[status.environment] !== undefined) return status.environment;
+    if (status.authenticated && sources[status.environment] !== undefined)
+      return status.environment;
   };
   const report = (error: unknown) => {
     if (lifetime.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
@@ -106,7 +107,10 @@ export function mountManagedPluginDistribution(
       throw Error("UPDATE_SOURCE_AUTHENTICATION_UNSUPPORTED");
     const core = await readPluginUpdateCore(ctx, object(pluginUpdates).core);
     const source = createManagedPluginReleaseSource(sourceConfig, {
-      trustDirectory: join(directory, environment === "test" ? "source-trust" : "stable-source-trust"),
+      trustDirectory: join(
+        directory,
+        environment === "test" ? "source-trust" : "stable-source-trust",
+      ),
       resolveAuthentication: async () => ({}),
       fileCommit:
         process.platform === "win32"
@@ -119,7 +123,8 @@ export function mountManagedPluginDistribution(
     });
     return { core, source };
   };
-  const sourceLoading: Partial<Record<ManagedPluginEnvironment, ReturnType<typeof loadSource>>> = {};
+  const sourceLoading: Partial<Record<ManagedPluginEnvironment, ReturnType<typeof loadSource>>> =
+    {};
   let restartCheck: ReturnType<typeof setTimeout> | undefined;
   async function reconcile() {
     lifetime.signal.throwIfAborted();
