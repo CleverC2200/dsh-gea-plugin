@@ -22,17 +22,26 @@ const profile = join(home, "profiles/desktop");
 const old = join(scratch, "old-client/company-seed/archives");
 const store = join(scratch, "store");
 const manifest = await readCompanySeed(seed);
-const fixtureYaml = createRequire(join(root, "dsh/package.json"))("yaml");
+const fixtureRequire = createRequire(join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json"));
+const fixtureYaml = fixtureRequire("yaml");
+const fixtureBoot = await import(
+  pathToFileURL(fixtureRequire.resolve("@deepseek-ai/dsh-app-boot"))
+);
 const frozenLock = fixtureYaml.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
 const honoVersions = Object.keys(frozenLock.packages ?? {})
   .filter((key) => /^hono@\d+\.\d+\.\d+$/.test(key))
   .map((key) => key.slice("hono@".length));
 assert.equal(honoVersions.length, 1, "Legacy fixture requires the published Hono lock identity");
-await mkdir(profile, { recursive: true });
+fixtureBoot.initProfile(profile, fixtureBoot.PROFILE_TEMPLATES.web.bundles);
+const fixtureWorkspace = fixtureYaml.parse(
+  await readFile(join(profile, "pnpm-workspace.yaml"), "utf8"),
+);
 await writeFile(
   join(profile, "pnpm-workspace.yaml"),
-  fixtureYaml.stringify({ overrides: { hono: honoVersions[0] } }),
-  { flag: "wx" },
+  fixtureYaml.stringify({
+    ...fixtureWorkspace,
+    overrides: { ...fixtureWorkspace.overrides, hono: honoVersions[0] },
+  }),
 );
 console.log("LEGACY_FIXTURE_FIXED_HONO_VERSION", honoVersions[0]);
 await mkdir(output, { recursive: true });
