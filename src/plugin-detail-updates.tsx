@@ -486,7 +486,7 @@ function UpdateCard({
       >
         <span aria-hidden="true">×</span>
       </button>
-      {manual === "confirm" ? (
+      {manual === "confirm" && (
         <>
           <span>{t("confirmCheck")}</span>
           <div className="gea-plugin-update-actions">
@@ -498,15 +498,6 @@ function UpdateCard({
             </Button>
           </div>
         </>
-      ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy || checking}
-          onClick={() => entry.set("confirm")}
-        >
-          {t(manual !== "closed" && checking ? "checking" : "check")}
-        </Button>
       )}
       {(manual === "result" || newVersion || busy) && (
         <div className="gea-update-card-results">
