@@ -213,7 +213,7 @@ for (let attempt = 1; attempt <= 3; attempt++) {
     const logs = new Set(
       [
         ...(restarted.stdout + restarted.stderr).matchAll(
-          /GEA_COMPANY_INSTALL_FAILED: ([^\r\n]+\.log)/g,
+          /GEA_COMPANY_INSTALL_FAILED: ([A-Za-z]:[\\/][^"\r\n]+\.log)/g,
         ),
       ].map((match) => match[1]),
     );
