@@ -50,9 +50,9 @@ if(!isReady(initial)){
   }
   if(!isReady(initial)){
     const check=card.getByRole('button',{name:'检查更新',exact:true});
-    if(await check.isVisible()&&await check.isEnabled())await check.click({timeout:6000});
+    await check.click({timeout:48000});
     const confirm=card.getByRole('button',{name:'是',exact:true});
-    if(await confirm.isVisible())await confirm.click({timeout:6000});
+    await confirm.click({timeout:7000});
     const recheckUntil=Date.now()+45000;
     while(!isReady(initial)&&Date.now()<recheckUntil){
       await new Promise(done=>setTimeout(done,900));
