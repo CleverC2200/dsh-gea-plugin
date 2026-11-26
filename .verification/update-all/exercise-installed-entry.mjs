@@ -28,16 +28,23 @@ async function chooseAccountAction(name){
     catch(error){if(attempt===2||error.name!=='TimeoutError')throw error;}
   }
 }
+const proofPage=await page.evaluate(()=>crypto.randomUUID());
+await page.bringToFront();
+await page.waitForFunction(async identity=>{
+  const response=await fetch('/api/gea/plugin-updates/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageIdentity:identity})});
+  const rows=(await response.json()).value?.items;
+  return rows?.length>=3&&rows.slice(0,3).every(row=>row.installedVersion&&row.runningClientVersion===row.installedVersion&&row.runningHostVersion===row.installedVersion);
+},proofPage,{timeout:65000,polling:1000});
 await chooseAccountAction('检查更新');
 const card=page.getByRole('article',{name:'版本更新',exact:true});
 await card.getByRole('button',{name:'是',exact:true}).click();
 const buttonName={name:'更新全部',exact:true};
 await card.getByRole('button',buttonName).waitFor({timeout:20000});
 assert.equal(await card.getByRole('button',buttonName).count(),1);
-const readCandidates=()=>page.evaluate(async()=>{
-  const [desktop,status]=await Promise.all([window.dshDesktop.updates.status(),fetch('/api/gea/plugin-updates/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageIdentity:crypto.randomUUID()})}).then(response=>response.json())]);
+const readCandidates=()=>page.evaluate(async proofPage=>{
+  const [desktop,status]=await Promise.all([window.dshDesktop.updates.status(),fetch('/api/gea/plugin-updates/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageIdentity:proofPage})}).then(response=>response.json())]);
   return {desktop,items:status.value?.items?.map(({packageName,state,installedVersion,runningHostVersion,runningClientVersion,candidateVersion,diagnostic})=>({packageName,state,installedVersion,runningHostVersion,runningClientVersion,candidateVersion,diagnostic}))};
-});
+},proofPage);
 const isReady=state=>state.desktop.version===expectedVersion&&['available','ready'].includes(state.desktop.phase)&&state.items?.filter(row=>row.state==='available').length>=2&&state.items.every(row=>['available','current'].includes(row.state));
 let initial=await readCandidates();
 if(!isReady(initial)){
@@ -49,10 +56,8 @@ if(!isReady(initial)){
     initial=await readCandidates();
   }
   if(!isReady(initial)){
-    const check=card.getByRole('button',{name:'检查更新',exact:true});
-    await check.click({timeout:48000});
-    const confirm=card.getByRole('button',{name:'是',exact:true});
-    await confirm.click({timeout:7000});
+    await chooseAccountAction('检查更新');
+    await card.getByRole('button',{name:'是',exact:true}).click({timeout:7000});
     const recheckUntil=Date.now()+45000;
     while(!isReady(initial)&&Date.now()<recheckUntil){
       await new Promise(done=>setTimeout(done,900));
