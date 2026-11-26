@@ -209,6 +209,19 @@ for (let attempt = 1; attempt <= 3; attempt++) {
     },
   );
   await writeFile(join(output, `restart-${attempt}.log`), restarted.stdout + restarted.stderr);
+  if (restarted.status !== 0) {
+    const diagnostic = restarted.stderr.match(/GEA_COMPANY_INSTALL_FAILED: ([^\r\n]+)/)?.[1];
+    if (diagnostic) {
+      const log = await readFile(diagnostic, "utf8");
+      await writeFile(join(output, `restart-${attempt}-pnpm.log`), log);
+      console.error(
+        log
+          .split(/\r?\n/)
+          .filter((line) => /ERR_PNPM_|ENOENT|EPERM|EACCES|EBUSY/.test(line))
+          .join("\n"),
+      );
+    }
+  }
   assert.equal(restarted.status, 0, restarted.stdout + restarted.stderr);
   assert.deepEqual(await readFile(journal), completedReceipt);
   assert.deepEqual(await readFile(join(profile, "cordis.patch.yml")), restoredPatch);
