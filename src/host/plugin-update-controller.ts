@@ -1170,10 +1170,23 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
   }
   async function prepareDesktop(desktopVersion: string) {
     if (!initialized) await initialize();
-    if (closed || active || journalBroken || blocking(state.operation))
+    const pending = restartReady();
+    if (closed || active || journalBroken || (blocking(state.operation) && !pending))
       fail("UPDATE_OPERATION_BLOCKED");
     if (!process.env.GEA_DESKTOP_VERSION || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(desktopVersion))
       fail("UPDATE_DESKTOP_UNAVAILABLE");
+    if (pending) {
+      const operation = await readLatest();
+      if (
+        operation?.stage !== "pending-restart" ||
+        state.operation?.id !== operation.id ||
+        !(await readCandidateSelection(operation)) ||
+        !restartReady() ||
+        state.operation?.id !== operation.id
+      )
+        fail("UPDATE_OPERATION_BLOCKED");
+      return;
+    }
     const run = async () => {
       const previous = await readCompanyUpdate(options.profile.dir);
       if (companyUpdateActive(previous)) {

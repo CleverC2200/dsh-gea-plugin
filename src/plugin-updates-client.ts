@@ -138,6 +138,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
+          restartRequest?: RestartUpdateRequest;
           expired?: boolean;
           accepted?: { operationId: string; hostProcessIdentity: string };
           timer: ReturnType<typeof setTimeout>;
@@ -201,11 +202,16 @@ export function createPluginDetailUpdates(
     owner.observation = undefined;
     if (!owner.refs && !owner.recovering) close(owner);
   };
-  const observe = (owner: NonNullable<typeof page>, names: readonly string[]) => {
+  const observe = (
+    owner: NonNullable<typeof page>,
+    names: readonly string[],
+    restartRequest?: RestartUpdateRequest,
+  ) => {
     if (owner.observation || disposed) return;
     notified = undefined;
     owner.observation = {
       names,
+      restartRequest,
       timer: setTimeout(() => {
         if (owner.observation) owner.observation.expired = true;
         notify(owner, "unconfirmed");
@@ -213,7 +219,7 @@ export function createPluginDetailUpdates(
       }, pluginUpdateObservationMs),
     };
   };
-  const restart = async () => {
+  const restart = async (request: RestartUpdateRequest = { kind: "plugins-restart" }) => {
     if (
       disposed ||
       snapshot.restartReady !== true ||
@@ -227,7 +233,7 @@ export function createPluginDetailUpdates(
     }
     publish({ restart: "restarting" });
     try {
-      await desktop.restartUpdate({ kind: "plugins-restart" });
+      await desktop.restartUpdate(request);
       publish({ restart: "requested" });
     } catch {
       publish({ restart: "failed" });
@@ -264,7 +270,7 @@ export function createPluginDetailUpdates(
       ) {
         if (!snapshot.restartReady) return;
         if (rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null))
-          void restart();
+          void restart(owner.observation.restartRequest);
       }
       endObservation(owner);
     } else
@@ -404,7 +410,10 @@ export function createPluginDetailUpdates(
     page = undefined;
     publish({ checking: false });
   };
-  const submitRows = (requestedName?: string): Promise<void> => {
+  const submitRows = (
+    requestedName?: string,
+    restartRequest?: RestartUpdateRequest,
+  ): Promise<void> => {
     if (submitting) return submitting;
     if (!pluginSuiteReady(snapshot.items)) return Promise.resolve();
     const available = snapshot.items.filter((row) => row.state === "available");
@@ -437,7 +446,7 @@ export function createPluginDetailUpdates(
       transportError: null,
       restart: "idle",
     });
-    observe(owner, names);
+    observe(owner, names, restartRequest);
     notify(owner, "progress");
     const hostProcessIdentity = status?.hostProcessIdentity;
     const run = async () => {
@@ -569,7 +578,7 @@ export function createPluginDetailUpdates(
     check,
     restart,
     update: (name: string) => submitRows(name),
-    updateAll: () => submitRows(),
+    updateAll: (restartRequest?: RestartUpdateRequest) => submitRows(undefined, restartRequest),
     async dispose() {
       disposed = true;
       listeners.clear();

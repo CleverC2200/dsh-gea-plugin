@@ -1,6 +1,7 @@
 import React, { useSyncExternalStore } from "react";
 import { DesktopUpdateIndicator } from "@deepseek-ai/dsh-client-ui-settings-general/src/client/DesktopUpdateIndicator.tsx";
 import { DesktopUpdateSource } from "@deepseek-ai/dsh-client-ui-settings-general/src/client/desktop-update-source.ts";
+import { GeneralSection } from "@deepseek-ai/dsh-client-ui-settings-general/src/client/GeneralSection.tsx";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/base.css";
 import "@deepseek-ai/dsh-client-ui-theme/src/styles/design-platform.css";
 import { Context } from "@deepseek-ai/cordis";
@@ -36,6 +37,7 @@ ctx.slots.register(
     name: "root",
     children: {
       "settings.update": { kind: "single", scope: "root" },
+      "settings.section": { kind: "list", scope: "root" },
       "sidebar.footer.action": { kind: "list", scope: "root" },
       "gea.account.actions": { kind: "list", scope: "root" },
       "plugins.detail.badge": { kind: "list", scope: "root" },
@@ -66,6 +68,9 @@ ctx.slots.register(
             },
           )}
         </div>
+        <div data-general-settings>
+          {renderSlot("settings.section", { close() {} }, { only: "general" })}
+        </div>
         <div data-account-actions>{renderSlot("gea.account.actions", { onSelect() {} })}</div>
         <aside data-update-entry>
           {renderSlot("sidebar.footer.action", {
@@ -79,6 +84,14 @@ ctx.slots.register(
       </>
     );
   },
+);
+ctx.slots.register(
+  {
+    name: "settings.section",
+    id: "general",
+    children: { "settings.general.item": { kind: "list", scope: "root" } },
+  },
+  GeneralSection,
 );
 ctx.provide("modules", {
   entries: { state: { getSnapshot: () => ({ syncing: true, failures: [] }) } },
@@ -130,6 +143,7 @@ Object.assign(window, {
       value: built.pluginPackageVersion,
       frozen: Object.isFrozen(built.pluginPackageVersion),
     },
+    unmountPlugin: release,
     async dispose() {
       releaseOfficialUpdates();
       officialUpdates.dispose();

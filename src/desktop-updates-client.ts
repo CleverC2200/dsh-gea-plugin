@@ -3,7 +3,9 @@ import type {
   DesktopUpdatePresentation,
 } from "@deepseek-ai/dsh-client-ui-settings-general/types";
 
-export type RestartUpdateRequest = { kind: "plugins-restart" };
+export type RestartUpdateRequest =
+  | { kind: "desktop"; version: string }
+  | { kind: "plugins-restart" };
 
 export function desktopRestartTarget(presentation?: DesktopUpdatePresentation): string | undefined {
   if (!presentation?.version) return;
@@ -52,6 +54,7 @@ export function createDesktopUpdates() {
     checked: false,
   };
   const listeners = new Set<() => void>();
+  let opening: Promise<void> | undefined;
   let live = true,
     received = false;
   const publish = (patch: Partial<typeof snapshot>) => {
@@ -104,21 +107,25 @@ export function createDesktopUpdates() {
         throw error;
       }
     },
-    open: async (version: string) => {
-      if (!bridge?.open) throw Error("UPDATE_OPEN_UNAVAILABLE");
-      publish({ opening: true });
-      try {
-        await bridge.open(version);
-      } catch (error) {
-        publish({ failed: true });
-        throw error;
-      } finally {
-        publish({ opening: false });
-      }
+    open: (version?: string) => {
+      if (opening) return opening;
+      if (!bridge?.open) return Promise.reject(Error("UPDATE_OPEN_UNAVAILABLE"));
+      opening = Promise.resolve()
+        .then(() => bridge.open(version))
+        .catch((error) => {
+          publish({ failed: true });
+          throw error;
+        })
+        .finally(() => {
+          opening = undefined;
+          publish({ opening: false });
+        });
+      publish({ opening: true, failed: false });
+      return opening;
     },
     restartUpdate: async (request: RestartUpdateRequest) => {
       if (!bridge?.restartUpdate) throw Error("UPDATE_TAKEOVER_UNSUPPORTED");
-      publish({ opening: true });
+      publish({ opening: true, failed: false });
       try {
         await bridge.restartUpdate(request);
       } catch (error) {

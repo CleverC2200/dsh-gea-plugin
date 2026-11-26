@@ -1619,6 +1619,22 @@ for (const mode of ["success", "fail-after-first", "wrong-installed-version"]) {
     if (mode === "success") {
       assert.ok(pendingDuringWrite.includes(false));
       assert.equal(pendingDuringWrite.at(-1), true);
+      const desktopVersion = process.env.GEA_DESKTOP_VERSION;
+      process.env.GEA_DESKTOP_VERSION = "0.2.0-rc.2.20261125.3";
+      try {
+        assert.deepEqual(
+          await invoke({ action: "desktop-prepare", desktopVersion: "0.2.0-rc.2.20261126.1" }),
+          { ok: true, value: {} },
+        );
+        assert.equal(await controller.companyStatus(), null);
+        assert.deepEqual(controller.operationStatus(accepted.id), {
+          operationId: accepted.id,
+          state: "ready",
+        });
+      } finally {
+        if (desktopVersion === undefined) delete process.env.GEA_DESKTOP_VERSION;
+        else process.env.GEA_DESKTOP_VERSION = desktopVersion;
+      }
     }
     const calls = (await readFile(join(f.evidence, "invocations.ndjson"), "utf8"))
       .trim()
