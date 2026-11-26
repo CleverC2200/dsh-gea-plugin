@@ -132,6 +132,8 @@ try{
   const selected=JSON.parse(await readFile(join(out,'before-'+entry+'.json')));
   assert.ok(selected.expectedPlugins.length>=2);
   assert.equal(JSON.parse(await readFile(join(out,'clicked-'+entry+'.json'))).clicks,1);
+  const windowObserver=join(root,'visible-window');
+  op('swiftc',[join(import.meta.dirname,'visible-window.swift'),'-o',windowObserver]);
   phase='native successor';
   let successorPid;
   await until('new native GUI process',async()=>{
@@ -141,7 +143,7 @@ try{
     for(const line of lines){
       const pid=Number(line.split(' ')[0]);
       if(pid===initial.pid)continue;
-      const windows=op('osascript',['-l','JavaScript','-e',`ObjC.import('CoreGraphics'); const windows=ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(17,0)); windows.filter(window=>window.kCGWindowOwnerPID===${pid}&&window.kCGWindowLayer===0).length`],{timeout:10000}).trim();
+      const windows=op(windowObserver,[String(pid)],{timeout:5000}).trim();
       if(Number(windows)>0){successorPid=pid;return true;}
     }
     return false;
