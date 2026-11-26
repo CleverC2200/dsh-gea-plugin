@@ -266,12 +266,128 @@ const createDismissedUpdates = () =>
   createSnapshotStore<string[]>([], {
     persist: { name: "gea.dismissed-update-reminders.v1" },
   });
-type SharedProps = PropsLocale<typeof pluginUpdateLocale> & {
+type UpdateProps = PropsLocale<typeof pluginUpdateLocale> & {
   updates: Owner;
   desktop: DesktopOwner;
+};
+type SharedProps = UpdateProps & {
   entry: ReturnType<typeof createUpdateEntry>;
   dismissed: ReturnType<typeof createDismissedUpdates>;
 };
+function updateView(
+  plugins: ReturnType<Owner["getSnapshot"]>,
+  client: ReturnType<DesktopOwner["getSnapshot"]>,
+) {
+  const state = client.presentation;
+  const desktopTarget = desktopRestartTarget(state);
+  const pending = plugins.items.some((row) => row.state === "pending-restart");
+  const available = plugins.items.filter((row) => row.state === "available");
+  const pluginAvailable =
+    !plugins.transportError &&
+    pluginSuiteReady(plugins.items) &&
+    available.length > 0 &&
+    available.every((row) => row.planId);
+  const checking = plugins.checking || state?.phase === "checking";
+  const busy =
+    client.opening ||
+    Boolean(state && ["downloading", "verifying", "installing"].includes(state.phase)) ||
+    plugins.submitting !== null ||
+    plugins.restart === "requested" ||
+    plugins.restart === "restarting" ||
+    plugins.items.some(
+      (row) =>
+        !["pending-restart", "unknown", "checking"].includes(row.state) && pluginUpdateBusy([row]),
+    );
+  const hasUpdate = Boolean(desktopTarget || pending || pluginAvailable);
+  const canUpdate =
+    !busy &&
+    !checking &&
+    (client.canRestartUpdate && pending
+      ? plugins.restartReady === true
+      : Boolean((desktopTarget && client.canOpen) || (pluginAvailable && client.canRestartUpdate)));
+  return { desktopTarget, pending, pluginAvailable, checking, busy, hasUpdate, canUpdate };
+}
+function startAvailableUpdates(updates: Owner, desktop: DesktopOwner) {
+  const client = desktop.getSnapshot();
+  const { canUpdate, desktopTarget, pending, pluginAvailable } = updateView(
+    updates.getSnapshot(),
+    client,
+  );
+  if (!canUpdate) return;
+  const openDesktop =
+    desktopTarget && client.canOpen ? () => desktop.open(desktopTarget) : undefined;
+  if (client.canRestartUpdate && pluginAvailable && !pending) {
+    void updates.updateAll(openDesktop);
+  } else if (openDesktop) {
+    void openDesktop().catch(() => {});
+  } else if (pending) {
+    void updates.restart();
+  }
+}
+function UpdateButton({
+  view,
+  checking = false,
+  onClick,
+  t,
+}: PropsLocale<typeof pluginUpdateLocale> & {
+  view: ReturnType<typeof updateView>;
+  checking?: boolean;
+  onClick: () => void;
+}): ReactNode {
+  if (!view.hasUpdate && !view.busy) return null;
+  const disabled = checking || !view.canUpdate;
+  return (
+    <Button
+      size="sm"
+      variant="primary"
+      className="gea-update-start"
+      aria-disabled={disabled}
+      onClick={() => {
+        if (!disabled) onClick();
+      }}
+    >
+      {t(view.busy ? "updatingAll" : "updateAll")}
+    </Button>
+  );
+}
+function SettingsUpdate({
+  wide = true,
+  hidden = false,
+  updates,
+  desktop,
+  t,
+}: UpdateProps & Partial<PropsRuntime<"settings.update">>): ReactNode {
+  const plugins = useDetail(updates);
+  const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
+  if (!wide || (hidden && client.presentation?.phase !== "installing")) return null;
+  const view = updateView(plugins, client);
+  const failed = plugins.restart === "failed" || (client.failed && view.desktopTarget);
+  const retry =
+    client.canOpen &&
+    !view.hasUpdate &&
+    !view.busy &&
+    (client.failed || client.presentation?.phase === "error");
+  if (!view.hasUpdate && !view.busy && !retry && !failed) return null;
+  return (
+    <div className="gea-plugin-update-actions">
+      <UpdateButton view={view} t={t} onClick={() => startAvailableUpdates(updates, desktop)} />
+      {retry && (
+        <Button size="sm" variant="outline" onClick={() => void desktop.open().catch(() => {})}>
+          {t("desktopRetry")}
+        </Button>
+      )}
+      {failed && <span role="alert">{t("restartError")}</span>}
+    </div>
+  );
+}
+function UpdateToggleBadge({ updates, desktop, t }: UpdateProps): ReactNode {
+  const plugins = useDetail(updates);
+  const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
+  const view = updateView(plugins, client);
+  return view.hasUpdate || view.busy || client.failed || client.presentation?.phase === "error" ? (
+    <span className="gea-update-dot" role="img" aria-label={t("updateReminder")} />
+  ) : null;
+}
 function UpdateCard({
   wide,
   updates,
@@ -284,28 +400,15 @@ function UpdateCard({
   const client = useSyncExternalStore(desktop.subscribe, desktop.getSnapshot);
   const manual = useSyncExternalStore(entry.subscribe, entry.getSnapshot);
   const dismissedVersions = useSyncExternalStore(dismissed.subscribe, dismissed.getSnapshot);
-  const [failed, setFailed] = useState(false);
   const [checkingNow, setCheckingNow] = useState(false);
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
     if (manual === "confirm") card.current?.focus();
   }, [manual]);
   const state = client.presentation;
-  const desktopTarget = desktopRestartTarget(state);
-  const pending = plugins.items.some((row) => row.state === "pending-restart");
-  const pluginAvailable =
-    pluginSuiteReady(plugins.items) &&
-    plugins.items.some((row) => row.state === "available" && row.planId);
-  const checking = checkingNow || plugins.checking || state?.phase === "checking";
-  const desktopBusy =
-    client.opening ||
-    Boolean(state && ["downloading", "verifying", "installing"].includes(state.phase));
-  const busy =
-    desktopBusy ||
-    plugins.submitting !== null ||
-    plugins.restart === "requested" ||
-    plugins.restart === "restarting" ||
-    plugins.items.some((row) => row.state !== "pending-restart" && pluginUpdateBusy([row]));
+  const view = updateView(plugins, client);
+  const { desktopTarget, pending, pluginAvailable, busy } = view;
+  const checking = checkingNow || view.checking;
   const versions = [
     ...(desktopTarget ? [`desktop:${desktopTarget}`] : []),
     ...plugins.items.flatMap((row) => {
@@ -324,19 +427,9 @@ function UpdateCard({
     dismissed.set([...new Set([...dismissedVersions, ...versions])].slice(-100));
     entry.set("closed");
   };
-  const launch = async (update: () => Promise<unknown>) => {
-    entry.set("result");
-    setFailed(false);
-    try {
-      await update();
-    } catch {
-      setFailed(true);
-    }
-  };
   const check = () => {
     entry.set("result");
     setCheckingNow(true);
-    setFailed(false);
     void Promise.allSettled([
       updates.check(),
       ...(client.canCheck ? [desktop.check()] : []),
@@ -423,43 +516,30 @@ function UpdateCard({
                   : desktopStatus}
                 {client.current && state?.phase === "idle" ? ` · ${client.current}` : ""}
               </span>
-              {desktopTarget && (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  disabled={desktopBusy || state?.phase === "checking" || !client.canOpen}
-                  onClick={() => void launch(() => desktop.open(desktopTarget))}
-                >
-                  {t("restartUpdate")}
-                </Button>
-              )}
             </section>
           )}
           <section aria-label={t("pluginsTitle")}>
             <strong>{t("pluginsTitle")}</strong>
             <span role="status">{pluginStatus}</span>
-            {(pluginAvailable || pending) && (
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={
-                  busy || checking || !client.canRestartUpdate || (pending && !plugins.restartReady)
-                }
-                onClick={() =>
-                  void launch(() => (pending ? updates.restart() : updates.updateAll()))
-                }
-              >
-                {t("restartUpdate")}
-              </Button>
-            )}
           </section>
+          <UpdateButton
+            view={view}
+            checking={checking}
+            t={t}
+            onClick={() => {
+              entry.set("result");
+              startAvailableUpdates(updates, desktop);
+            }}
+          />
         </div>
       )}
       {((desktopTarget && !client.canOpen) ||
         ((pluginAvailable || pending) && !client.canRestartUpdate)) && (
         <span>{t("takeoverUnsupported")}</span>
       )}
-      {(failed || plugins.restart === "failed") && <span role="alert">{t("restartError")}</span>}
+      {(plugins.restart === "failed" || (client.failed && desktopTarget)) && (
+        <span role="alert">{t("restartError")}</span>
+      )}
     </article>
   );
 }
@@ -488,6 +568,41 @@ export function mountPluginUpdatesClient(ctx: Context): () => Promise<void> {
       };
     });
     scope.effect(() => scope.locale.register(pluginUpdateLocale, { en, zh }));
+    const updateProps = () => ({ updates, desktop });
+    scope.slots.inject("settings.update", () =>
+      scope.slots.register(
+        {
+          name: "settings.update",
+          priority: -10,
+          locale: pluginUpdateLocale,
+          inject: updateProps,
+        },
+        SettingsUpdate,
+      ),
+    );
+    scope.slots.inject("settings.general.item", () =>
+      scope.slots.register(
+        {
+          name: "settings.general.item",
+          id: "gea.update-action",
+          order: 101,
+          locale: pluginUpdateLocale,
+          inject: updateProps,
+        },
+        SettingsUpdate,
+      ),
+    );
+    scope.slots.inject("sidebar.toggle.badge", () =>
+      scope.slots.register(
+        {
+          name: "sidebar.toggle.badge",
+          priority: -10,
+          locale: pluginUpdateLocale,
+          inject: updateProps,
+        },
+        UpdateToggleBadge,
+      ),
+    );
     scope.slots.inject("gea.account.actions", () =>
       scope.slots.register(
         {
