@@ -105,6 +105,8 @@ test("published members, inclusive Cube dates, exact zero and null", async () =>
   ]);
   assert.equal(result.current.numerator, 0);
   assert.equal(result.current.pending, null);
+  assert.deepEqual(calls[1].args.queries[0].query.measures, []);
+  assert.ok(calls[1].args.queries[0].query.dimensions.includes("K.numerator_final"));
 });
 test("published business View reads aliased final envelope without inventing measures", async () => {
   const call = async (name, args) => {
@@ -124,7 +126,11 @@ test("published business View reads aliased final envelope without inventing mea
         ],
       });
     }
-    assert.deepEqual(args.queries[0].query.measures, ["workbench_cancellation_qa.value_final"]);
+    assert.deepEqual(args.queries[0].query.measures, []);
+    assert.deepEqual(args.queries[0].query.dimensions, [
+      "workbench_cancellation_qa.metric_result",
+      "workbench_cancellation_qa.value_final",
+    ]);
     return JSON.stringify({
       datasets: [
         {
@@ -155,6 +161,38 @@ test("published business View reads aliased final envelope without inventing mea
   assert.equal(result.current.pending, null);
   assert.equal(result.datasetGeneration, "batch");
 });
+test("declared measures stay measures while numeric dimensions remain dimensions", async () => {
+  const { call: original } = setup();
+  let query;
+  const call = async (name, args) => {
+    if (name === "inspect_cube_model")
+      return JSON.stringify({
+        semanticModel: [
+          {
+            ...model.semanticModel[0],
+            measures: [{ name: "K.numerator_final", type: "number" }],
+            dimensions: model.semanticModel[0].dimensions
+              .filter((m) => m.name !== "K.numerator_final")
+              .map((m) => ({ ...m, type: m.name === "K.metric_result" ? "string" : "number" })),
+          },
+        ],
+      });
+    query = args.queries[0].query;
+    return original(name, args);
+  };
+  const result = await readCubeFinalMetric(
+    config,
+    input,
+    call,
+    new AbortController().signal,
+    envelope,
+  );
+  assert.deepEqual(query.measures, ["K.numerator_final"]);
+  assert.ok(query.dimensions.includes("K.denominator_final"));
+  assert.ok(!query.dimensions.includes("K.numerator_final"));
+  assert.equal(result.current.denominator, 100);
+});
+
 test("wrong semantics, base, period and missing generation rejected", async () => {
   for (const value of [
     { ...snapshot, formula: "different formula" },
