@@ -13,7 +13,6 @@ mkdir -p "$out"
 cd "$gea"
 corepack enable
 cp "$RUNNER_TEMP/hosted-sdk-capacity.json" "$out/hosted-sdk-capacity.json"
-node "$manage/scripts/prepare-official-sdk.mjs" --prepare --reuse-prepared --with-flock --core "$core" --core-head "$core_head" --source "$source"
 test "$(git -C "$core" rev-parse HEAD)" = "$core_head"
 
 jq -n --arg root "$candidate" --arg core "$core_head" --arg workbench "$(git -C "$workbench" rev-parse HEAD)" --arg manage "$(git -C "$manage" rev-parse HEAD)" --arg gea "$(git -C "$gea" rev-parse HEAD)" '
@@ -24,12 +23,13 @@ jq -n --arg root "$candidate" --arg core "$core_head" --arg workbench "$(git -C 
  ]}' > "$out/source.json"
 
 for repo in dsh-agent-manage dsh-agent-workbench dsh-gea-plugin; do
-  node scripts/plugin-split-development.mjs prepare --input "$out/source.json" --repo "$repo" | tee "$out/prepare-$repo.log"
+  printf "Preparing %s\n" "$repo"
+  node scripts/plugin-split-development.mjs prepare --input "$out/source.json" --repo "$repo" 2>&1 | tee "$out/prepare-$repo.log"
 done
 for repo in dsh-agent-manage dsh-agent-workbench dsh-gea-plugin; do
   target=plugin
   if [[ "$repo" == dsh-agent-workbench ]]; then target=all; fi
-  node scripts/plugin-split-development.mjs build --input "$out/source.json" --repo "$repo" --target "$target" | tee "$out/build-$repo.log"
+  node scripts/plugin-split-development.mjs build --input "$out/source.json" --repo "$repo" --target "$target" 2>&1 | tee "$out/build-$repo.log"
 done
 
 npm install --prefix "$RUNNER_TEMP/packing-pnpm" --ignore-scripts --no-package-lock --no-audit --no-fund pnpm@11.7.0

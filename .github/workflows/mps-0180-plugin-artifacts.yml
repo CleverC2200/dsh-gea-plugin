@@ -54,9 +54,27 @@ jobs:
         id: sdk-paths
         run: node candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs --github-paths "$GITHUB_WORKSPACE/official-latest-standard"
       - uses: actions/cache/restore@v4
+        id: core-cache
         with:
           path: ${{ steps.sdk-paths.outputs.paths }}
           key: sdk-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-24.22.0-17746ac35c8fa08e2da98f2127b05f421132cb16-${{ hashFiles('candidate/dsh-agent-manage/scripts/prepare-official-sdk.mjs', 'candidate/dsh-agent-manage/scripts/sdk-artifact-cache.mjs', 'candidate/dsh-gea-plugin/scripts/supported-cores.json', 'source/official-core/pnpm-lock.yaml') }}
+      - name: Prepare and verify the registered SDK
+        working-directory: candidate/dsh-gea-plugin
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/outputs"
+          cp "$RUNNER_TEMP/hosted-sdk-capacity.json" "$GITHUB_WORKSPACE/outputs/"
+          if ! node ../dsh-agent-manage/scripts/prepare-official-sdk.mjs --prepare --reuse-prepared --with-flock --core "$GITHUB_WORKSPACE/official-latest-standard" --core-head 17746ac35c8fa08e2da98f2127b05f421132cb16 --source "$GITHUB_WORKSPACE/source/official-core" > "$GITHUB_WORKSPACE/outputs/sdk-prepare.log" 2>&1; then
+            tail -60 "$GITHUB_WORKSPACE/outputs/sdk-prepare.log"
+            exit 1
+          fi
+      - uses: actions/cache/save@v4
+        if: steps.core-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        with:
+          path: ${{ steps.sdk-paths.outputs.paths }}
+          key: ${{ steps.core-cache.outputs.cache-primary-key }}
+      - name: Select the repository npm version
+        run: npm install --global npm@11.11.0
       - name: Build and verify the merged plugin suite
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,6 +95,7 @@ jobs:
             outputs/release-proof
             outputs/*-dsh-*.log
             outputs/hosted-sdk-capacity.json
+            outputs/sdk-prepare.log
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -86,4 +105,5 @@ jobs:
           path: |
             outputs/source.json
             outputs/hosted-sdk-capacity.json
+            outputs/sdk-prepare.log
             outputs/*-dsh-*.log
