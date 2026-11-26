@@ -793,8 +793,11 @@ export class Business {
     return this.epoch.signal;
   }
 
-  async assertTestPluginIdentity(signal: AbortSignal): Promise<void> {
-    if (this.environment !== "test") throw Error("TEST_PLUGIN_LOGIN_REQUIRED");
+  async assertManagedPluginIdentity(
+    environment: "production" | "test",
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (this.environment !== environment) throw Error("MANAGED_PLUGIN_LOGIN_REQUIRED");
     const auth = this.authenticated();
     const identity = object(
       await this.gatewayRequests.read(
@@ -811,10 +814,11 @@ export class Business {
     signal.throwIfAborted();
     if (
       this.auth !== auth ||
+      this.environment !== environment ||
       String(user.id) !== auth.id ||
       String(user.loginTenantId ?? user.tenantId ?? "") !== auth.tenantId
     )
-      throw Error("TEST_PLUGIN_IDENTITY_UNCONFIRMED");
+      throw Error("MANAGED_PLUGIN_IDENTITY_UNCONFIRMED");
   }
 
   pageSessionScope(): string | undefined {

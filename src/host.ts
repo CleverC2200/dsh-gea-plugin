@@ -15,8 +15,8 @@ import {
   initializeGeaDefaultModel,
 } from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
-import { testPluginReleaseSourceConfig } from "./host/plugin-release-source.ts";
-import { mountTestPluginDistribution } from "./host/test-plugin-distribution.ts";
+import { managedPluginReleaseSources } from "./host/plugin-release-source.ts";
+import { mountManagedPluginDistribution } from "./host/test-plugin-distribution.ts";
 import { pendingTestPluginRestart } from "./host/test-plugin-installation.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
@@ -257,25 +257,25 @@ export async function apply(
   };
   validateServiceAccounts(config.serviceAccounts);
   const business = new Business(config);
-  const testSource = testPluginReleaseSourceConfig(
+  const managedSources = managedPluginReleaseSources(
     input.testPluginDistribution,
     input.pluginUpdates,
   );
-  const testDirectory = resolve(runtimeDir, "test-plugin-distribution");
-  const testRestart =
-    testSource === undefined
-      ? undefined
-      : () => pendingTestPluginRestart(ctx.profileContext.dir, testDirectory);
-  ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config, testRestart));
-  if (testSource !== undefined) {
+  const managedDirectory = resolve(runtimeDir, "test-plugin-distribution");
+  const hasManagedSources = Object.keys(managedSources).length > 0;
+  const managedRestart = hasManagedSources
+    ? () => pendingTestPluginRestart(ctx.profileContext.dir, managedDirectory)
+    : undefined;
+  ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config, managedRestart));
+  if (hasManagedSources) {
     ctx.inject(["pluginManager"], (scope) => {
       scope.effect(() =>
-        mountTestPluginDistribution(
+        mountManagedPluginDistribution(
           scope,
           business,
-          testSource,
+          managedSources,
           input.pluginUpdates,
-          testDirectory,
+          managedDirectory,
         ),
       );
     });

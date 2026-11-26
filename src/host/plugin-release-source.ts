@@ -6,6 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { t as readTar } from "tar";
 import {
   updatablePackageNames,
+  isManagedPluginChannel,
   isManagedPluginName,
   parseManagedPluginRelease,
   parsePluginRelease,
@@ -57,25 +58,37 @@ export type PluginReleaseSourceDependencies = {
   now?: () => number;
 };
 
-export function testPluginReleaseSourceConfig(override: unknown, updates: unknown): unknown {
-  if (override !== undefined) return override;
-  if (updates === null || typeof updates !== "object" || !("source" in updates)) return;
+export const managedPluginChannels = { production: "stable", test: testPluginChannel } as const;
+export type ManagedPluginEnvironment = keyof typeof managedPluginChannels;
+export type ManagedPluginSources = Partial<Record<ManagedPluginEnvironment, unknown>>;
+
+export function managedPluginReleaseSources(
+  testOverride: unknown,
+  updates: unknown,
+): ManagedPluginSources {
+  const sources: ManagedPluginSources = testOverride === undefined ? {} : { test: testOverride };
+  if (updates === null || typeof updates !== "object" || !("source" in updates)) return sources;
   const source = updates.source;
-  if (source !== null && typeof source === "object" && "channel" in source) {
-    if (source.channel === testPluginChannel) return source;
-    const companyChannels =
-      "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/";
-    if (
-      source.channel === "stable" &&
-      "channelUrl" in source &&
-      source.channelUrl === companyChannels + "plugin-detail-stable.json"
-    )
-      return {
-        ...source,
-        channel: testPluginChannel,
-        channelUrl: companyChannels + testPluginChannel + ".json",
-      };
+  if (
+    source === null ||
+    typeof source !== "object" ||
+    !("channel" in source) ||
+    !isManagedPluginChannel(source.channel)
+  )
+    return sources;
+  const environment = source.channel === "stable" ? "production" : "test";
+  if (sources[environment] === undefined) sources[environment] = source;
+  const companyChannels =
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/";
+  const channelUrl = (channel: "stable" | typeof testPluginChannel) =>
+    companyChannels + (channel === "stable" ? "plugin-detail-stable.json" : channel + ".json");
+  if ("channelUrl" in source && source.channelUrl === channelUrl(source.channel)) {
+    const counterpart = environment === "test" ? "production" : "test";
+    const channel = managedPluginChannels[counterpart];
+    if (sources[counterpart] === undefined)
+      sources[counterpart] = { ...source, channel, channelUrl: channelUrl(channel) };
   }
+  return sources;
 }
 
 export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
@@ -305,7 +318,7 @@ function releaseSource<Name extends string>(
   managed = false,
 ) {
   const config = parsePluginReleaseSourceConfig(rawConfig);
-  if (managed && config.channel !== testPluginChannel) return fail("SOURCE_CHANNEL_INVALID");
+  if (managed && !isManagedPluginChannel(config.channel)) return fail("SOURCE_CHANNEL_INVALID");
   if (!isAbsolute(dependencies.trustDirectory)) return fail("SOURCE_TRUST_ABSOLUTE_REQUIRED");
   let verified = new Map<string, string>(),
     generation = 0,

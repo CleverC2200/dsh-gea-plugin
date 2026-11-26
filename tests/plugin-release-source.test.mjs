@@ -11,7 +11,7 @@ import {
   createManagedPluginReleaseSource,
   createPluginReleaseSource,
   inspectPluginArchive,
-  testPluginReleaseSourceConfig,
+  managedPluginReleaseSources,
 } from "../src/host/plugin-release-source.ts";
 import { companyPackageNames, projectPluginRelease } from "../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
@@ -137,31 +137,38 @@ test("channel verifies release bytes, release hashes and durable tgz manifest be
   );
 });
 
-test("existing test update profiles supply the managed source without a patch migration", async (t) => {
+test("existing company update profiles select the managed source for each login environment", async (t) => {
   const { config } = await fixture(t);
   const testSource = { ...config, channel: "plugin-detail-test" };
   const stableSource = { ...config, channel: "stable" };
-  assert.equal(testPluginReleaseSourceConfig(undefined, { source: testSource }), testSource);
-  assert.equal(testPluginReleaseSourceConfig(undefined, { source: stableSource }), undefined);
+  assert.deepEqual(managedPluginReleaseSources(undefined, { source: testSource }), {
+    test: testSource,
+  });
+  assert.deepEqual(managedPluginReleaseSources(undefined, { source: stableSource }), {
+    production: stableSource,
+  });
   const companyChannels =
     "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/";
-  const official = { ...stableSource, channelUrl: companyChannels + "plugin-detail-stable.json" };
-  assert.deepEqual(testPluginReleaseSourceConfig(undefined, { source: official }), {
-    ...official,
-    channel: "plugin-detail-test",
-    channelUrl: companyChannels + "plugin-detail-test.json",
+  const production = { ...stableSource, channelUrl: companyChannels + "plugin-detail-stable.json" };
+  const testing = { ...testSource, channelUrl: companyChannels + "plugin-detail-test.json" };
+  for (const source of [production, testing])
+    assert.deepEqual(managedPluginReleaseSources(undefined, { source }), {
+      production,
+      test: testing,
+    });
+  assert.deepEqual(managedPluginReleaseSources(undefined, undefined), {});
+  assert.deepEqual(managedPluginReleaseSources(testSource, { source: production }), {
+    production,
+    test: testSource,
   });
-  assert.equal(official.channel, "stable");
-  assert.equal(testPluginReleaseSourceConfig(undefined, undefined), undefined);
-  assert.equal(testPluginReleaseSourceConfig(testSource, { source: stableSource }), testSource);
 });
 
-test("test distribution accepts multiple new bundles without changing the core suite", async (t) => {
+async function checkManagedPluginSource(t, channel) {
   const f = await fixture(t);
   const payload = JSON.parse(
     Buffer.from(JSON.parse(f.objects.get(f.channelUrl)).payloadBase64, "base64"),
   );
-  payload.channel = "plugin-detail-test";
+  payload.channel = channel;
   payload.managedReleases = [];
   for (const [index, name] of ["@example/first-bundle", "@example/second-bundle"].entries()) {
     const release = JSON.parse(f.objects.get(f.releases[index].url));
@@ -203,8 +210,13 @@ test("test distribution accepts multiple new bundles without changing the core s
     fetch: async (url) =>
       new Response(f.objects.get(url), { status: f.objects.has(url) ? 200 : 404 }),
   };
-  assert.throws(() =>
-    createManagedPluginReleaseSource(f.config, { ...deps, trustDirectory: join(f.dir, "old") }),
+  assert.throws(
+    () =>
+      createManagedPluginReleaseSource(
+        { ...f.config, channel: "nightly" },
+        { ...deps, trustDirectory: join(f.dir, "nightly") },
+      ),
+    /SOURCE_CHANNEL_INVALID/,
   );
   const managed = createManagedPluginReleaseSource(config, {
     ...deps,
@@ -244,7 +256,11 @@ test("test distribution accepts multiple new bundles without changing the core s
     (await existing.check()).map(({ name }) => name),
     companyPackageNames,
   );
-});
+}
+
+for (const channel of ["stable", "plugin-detail-test"])
+  test(`${channel} distributes multiple managed bundles independently of the core suite`, (t) =>
+    checkManagedPluginSource(t, channel));
 
 test("a channel suite capability must match the actual updater archive", async (t) => {
   const f = await fixture(t);

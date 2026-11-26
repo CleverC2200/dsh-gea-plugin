@@ -5,14 +5,16 @@ import { mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 import {
   companyPackageNames,
-  comparePluginVersions,
   isManagedPluginName,
   validatePluginCombination,
 } from "../shared/plugin-release.mjs";
 import type { Business } from "./business.ts";
 import {
   createManagedPluginReleaseSource,
+  managedPluginChannels,
   parsePluginReleaseSourceConfig,
+  type ManagedPluginEnvironment,
+  type ManagedPluginSources,
 } from "./plugin-release-source.ts";
 import { readPluginUpdateCore } from "./plugin-update-core.ts";
 import { object, optionalFile } from "./plugin-update-profile.ts";
@@ -23,13 +25,13 @@ import { createTestPluginRuntime } from "./test-plugin-runtime.ts";
 const refreshIntervalMs = 120_000;
 type Identity = Pick<
   Business,
-  "status" | "watchIdentity" | "identitySignal" | "assertTestPluginIdentity"
+  "status" | "watchIdentity" | "identitySignal" | "assertManagedPluginIdentity"
 >;
 
-export function mountTestPluginDistribution(
+export function mountManagedPluginDistribution(
   ctx: Context,
   business: Identity,
-  rawSource: unknown,
+  sources: ManagedPluginSources,
   pluginUpdates: unknown,
   directory: string,
 ): () => void {
@@ -77,17 +79,18 @@ export function mountTestPluginDistribution(
     migrated = true;
   };
   let mountedIdentity: AbortSignal | undefined;
-  const eligible = () => {
+  const eligibleEnvironment = () => {
     const status = business.status();
-    return status.environment === "test" && status.authenticated;
+    if (status.authenticated && sources[status.environment] !== undefined)
+      return status.environment;
   };
   const report = (error: unknown) => {
     if (lifetime.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
-    ctx.logger.warn("Test plugin distribution failed", error);
+    ctx.logger.warn("Managed plugin distribution failed", error);
     const diagnostic =
       error instanceof Error && /^[A-Z][A-Z_0-9]{0,100}$/.test(error.message)
         ? error.message
-        : "TEST_PLUGIN_DISTRIBUTION_FAILED";
+        : "MANAGED_PLUGIN_DISTRIBUTION_FAILED";
     void mkdir(directory, { recursive: true, mode: 0o700 })
       .then(() =>
         writeFileAtomic(join(directory, "last-failure.json"), JSON.stringify({ diagnostic }), {
@@ -96,13 +99,18 @@ export function mountTestPluginDistribution(
       )
       .catch(() => {});
   };
-  const loadSource = async () => {
-    const sourceConfig = parsePluginReleaseSourceConfig(rawSource);
+  const loadSource = async (environment: ManagedPluginEnvironment) => {
+    const sourceConfig = parsePluginReleaseSourceConfig(sources[environment]);
+    if (sourceConfig.channel !== managedPluginChannels[environment])
+      throw Error("SOURCE_CHANNEL_INVALID");
     if (sourceConfig.authenticationRef !== "anonymous")
       throw Error("UPDATE_SOURCE_AUTHENTICATION_UNSUPPORTED");
     const core = await readPluginUpdateCore(ctx, object(pluginUpdates).core);
     const source = createManagedPluginReleaseSource(sourceConfig, {
-      trustDirectory: join(directory, "source-trust"),
+      trustDirectory: join(
+        directory,
+        environment === "test" ? "source-trust" : "stable-source-trust",
+      ),
       resolveAuthentication: async () => ({}),
       fileCommit:
         process.platform === "win32"
@@ -115,21 +123,25 @@ export function mountTestPluginDistribution(
     });
     return { core, source };
   };
-  let sourceLoading: ReturnType<typeof loadSource> | undefined;
+  const sourceLoading: Partial<Record<ManagedPluginEnvironment, ReturnType<typeof loadSource>>> =
+    {};
   let restartCheck: ReturnType<typeof setTimeout> | undefined;
   async function reconcile() {
     lifetime.signal.throwIfAborted();
     await migrateLegacySelection();
-    if (!eligible()) return;
+    const environment = eligibleEnvironment();
+    if (environment === undefined) return;
     mountedIdentity = business.identitySignal();
     const signal = AbortSignal.any([lifetime.signal, mountedIdentity]);
-    const { core, source } = await (sourceLoading ??= loadSource().catch((error) => {
-      sourceLoading = undefined;
-      throw error;
-    }));
+    const { core, source } = await (sourceLoading[environment] ??= loadSource(environment).catch(
+      (error) => {
+        delete sourceLoading[environment];
+        throw error;
+      },
+    ));
     let releases: Awaited<ReturnType<typeof source.check>>;
     try {
-      await business.assertTestPluginIdentity(signal);
+      await business.assertManagedPluginIdentity(environment, signal);
       releases = await source.check(AbortSignal.any([signal, AbortSignal.timeout(60_000)]));
     } catch (error) {
       runtime.retain(noBundles);
@@ -173,12 +185,10 @@ export function mountTestPluginDistribution(
         ],
       });
       if (compatibility.length) {
-        ctx.logger.warn("Test plugin requires a compatible Core", release.name);
+        ctx.logger.warn("Managed plugin requires a compatible Core", release.name);
         continue;
       }
       try {
-        if (current?.version && comparePluginVersions(current.version, release.version) > 0)
-          continue;
         if (path && current?.version && runtime.has(release.name)) authorized.add(release.name);
         const archive = await source.download(
           release,
@@ -215,7 +225,7 @@ export function mountTestPluginDistribution(
     if (staging === "waiting" && !restartCheck && !signal.aborted) {
       restartCheck = setTimeout(() => {
         restartCheck = undefined;
-        if (eligible()) schedule();
+        if (eligibleEnvironment() !== undefined) schedule();
       }, 2_000);
       restartCheck.unref();
     }
@@ -237,7 +247,8 @@ export function mountTestPluginDistribution(
       });
   };
   const unwatch = business.watchIdentity(() => {
-    if (mountedIdentity !== business.identitySignal() || !eligible()) runtime.retain(noBundles);
+    if (mountedIdentity !== business.identitySignal() || eligibleEnvironment() === undefined)
+      runtime.retain(noBundles);
     schedule();
   });
   const timer = setInterval(schedule, refreshIntervalMs);
