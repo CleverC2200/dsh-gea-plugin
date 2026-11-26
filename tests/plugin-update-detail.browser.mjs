@@ -224,10 +224,13 @@ test("official plugin detail keeps diagnostics without a separate update window"
   phase = "current";
   await page.goto(base + "/?latest");
   const footer = page.locator("[data-update-entry]");
+  const checkLabel = { name: "Check for updates", exact: true };
   assert.equal(await footer.locator(".gea-update-card").count(), 0);
-  await page.getByRole("menuitem", { name: "Check for updates", exact: true }).click();
+  await page.getByRole("menuitem", checkLabel).click();
   await footer.getByRole("button", { name: "Yes", exact: true }).click();
   await footer.getByText(/Client is up to date/).waitFor();
+  assert.equal(await footer.getByRole("button").count(), 1);
+  assert.equal(await page.getByRole("menuitem", checkLabel).count(), 1);
   await page.evaluate(() => window.fixture.locale("zh"));
   await footer.getByText(/^已是最新版 · /).waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
@@ -243,6 +246,7 @@ test("official plugin detail keeps diagnostics without a separate update window"
     await footer.getByText("Update available", { exact: true }).waitFor();
     await settings.getByRole("button", updateLabel).waitFor();
     assert.equal(await footer.getByRole("button", updateLabel).count(), 1);
+    assert.equal(await footer.getByRole("button", checkLabel).count(), 0);
     assert.equal(await settings.getByRole("button", updateLabel).count(), 1);
     assert.equal(await page.locator("[data-official-update] button").count(), 1);
     await entry.getByRole("button", updateLabel).click();
