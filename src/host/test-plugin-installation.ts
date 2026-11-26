@@ -17,6 +17,7 @@ import {
 import {
   pluginProfileStoreDirectory,
   optionalFile,
+  object,
   readPluginProfile,
   retainsProfileUpdates,
 } from "./plugin-update-profile.ts";
@@ -26,7 +27,24 @@ import {
 } from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun } from "./plugin-update-windows.ts";
 
-type TestBundleArchive = { release: PluginRelease<string>; archivePath: string };
+export type TestBundleArchive = {
+  release: PluginRelease<string>;
+  archivePath: string;
+  previousSpec: unknown;
+};
+
+export async function pendingTestPluginRestart(
+  profile: string,
+  directory: string,
+): Promise<string | null> {
+  const receipt = await optionalFile(join(directory, "pending-restart.json"));
+  if (!receipt) return null;
+  const { id } = object(JSON.parse(receipt.toString("utf8")));
+  if (typeof id !== "string" || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id))
+    return null;
+  const installation = await openCompanyInstallation(profile);
+  return (await installation?.activationState(id)) === "pending" ? id : null;
+}
 
 export async function stageTestBundles(
   ctx: Context,
@@ -35,26 +53,21 @@ export async function stageTestBundles(
   archives: readonly TestBundleArchive[],
   assertCurrent: () => void,
   signal: AbortSignal,
-): Promise<"direct" | "staged" | "waiting"> {
+): Promise<"staged" | "waiting"> {
   const profile = ctx.profileContext;
   return withFileLock(
     join(profile.dir, "package.json"),
     async () => {
       assertCurrent();
       const installation = await openCompanyInstallation(profile.dir);
-      if (!installation) return "direct";
-      if (await installation.hasPendingActivation()) {
-        const receipt = await optionalFile(join(directory, "pending-restart.json"));
-        const id: unknown = receipt && JSON.parse(receipt.toString("utf8")).id;
-        return typeof id === "string" && (await installation.activationState(id)) === "pending"
-          ? "staged"
-          : "waiting";
-      }
+      if (!installation) throw Error("TEST_PLUGIN_MANAGED_DESKTOP_REQUIRED");
+      if (await installation.hasPendingActivation())
+        return (await pendingTestPluginRestart(profile.dir, directory)) ? "staged" : "waiting";
       if (companyUpdateActive(await readCompanyUpdate(profile.dir))) return "waiting";
       await assertProfileIdle(profile.dir, {});
       if (!profilePackageRunStopped(profile.dir)) throw Error("PROFILE_WRITER_UNCONFIRMED");
       const store = await pluginProfileStoreDirectory(profile.dir);
-      const id = "test-" + randomUUID();
+      const id = randomUUID();
       const operation = join(directory, id);
       await mkdir(operation, { mode: 0o700 });
       await writeFileAtomic(
@@ -77,6 +90,13 @@ export async function stageTestBundles(
           },
         ) => {
           const before = await readPluginProfile(stage);
+          const dependencies = object(before.manifest.dependencies ?? {});
+          if (
+            archives.some(
+              ({ release, previousSpec }) => dependencies[release.name] !== previousSpec,
+            )
+          )
+            throw Error("TEST_PLUGIN_INSTALLATION_CHANGED");
           const releases = archives.map(({ release }) => release);
           const targets = new Set(releases.map(({ name }) => name));
           const combination = validatePluginCombination({

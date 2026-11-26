@@ -1363,6 +1363,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
     submitBatch,
     reconcileRuntime,
     snapshot,
+    canRestartTestPlugins: () => !closed && !journalBroken && !active && !blocking(state.operation),
     operationStatus(operationId?: string): {
       operationId: string | null;
       state: "idle" | "running" | "ready" | "failed" | "unknown";

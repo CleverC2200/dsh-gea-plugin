@@ -54,6 +54,7 @@ export type PluginDetailUpdateSnapshot = {
   transportError: "check" | "status" | "unknown" | null;
   restart: "idle" | "restarting" | "requested" | "failed" | "unsupported";
   restartReady?: boolean;
+  testPluginRestart?: boolean;
   notice: {
     kind:
       | "progress"
@@ -299,6 +300,7 @@ export function createPluginDetailUpdates(
         items: next.items,
         companyUpdate: next.companyUpdate,
         restartReady: next.restartReady,
+        testPluginRestart: next.testPluginRestart,
         transportError: null,
       });
       return true;

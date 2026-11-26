@@ -1,14 +1,13 @@
 import { writeFileAtomic } from "@deepseek-ai/dsh-atomic-write";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-plugin-manager";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 import {
   companyPackageNames,
   comparePluginVersions,
   isManagedPluginName,
   validatePluginCombination,
-  type PluginRelease,
 } from "../shared/plugin-release.mjs";
 import type { Business } from "./business.ts";
 import {
@@ -18,10 +17,14 @@ import {
 import { readPluginUpdateCore } from "./plugin-update-core.ts";
 import { object, optionalFile } from "./plugin-update-profile.ts";
 import { prepareWindowsFileCommit } from "./plugin-update-windows.ts";
-import { stageTestBundles } from "./test-plugin-installation.ts";
+import { stageTestBundles, type TestBundleArchive } from "./test-plugin-installation.ts";
+import { createTestPluginRuntime } from "./test-plugin-runtime.ts";
 
 const refreshIntervalMs = 120_000;
-type Identity = Pick<Business, "status" | "watchIdentity" | "identitySignal">;
+type Identity = Pick<
+  Business,
+  "status" | "watchIdentity" | "identitySignal" | "assertTestPluginIdentity"
+>;
 
 export function mountTestPluginDistribution(
   ctx: Context,
@@ -32,12 +35,51 @@ export function mountTestPluginDistribution(
 ): () => void {
   const lifetime = new AbortController();
   const manager = ctx.pluginManager;
-  const ownedPath = join(directory, "managed-bundles.json");
+  const runtime = createTestPluginRuntime(ctx);
+  const archiveDirectory = join(directory, "archives");
+  const noBundles = new Set<string>();
+  const profileDependencies = async () =>
+    object(
+      object(JSON.parse(await readFile(join(ctx.profileContext.dir, "package.json"), "utf8")))
+        .dependencies ?? {},
+    );
+  const managedArchive = (spec: unknown) => {
+    if (typeof spec !== "string" || !spec.startsWith("file:")) return;
+    const path = normalize(spec.slice(5));
+    if (
+      isAbsolute(path) &&
+      dirname(path) === archiveDirectory &&
+      /^[a-f0-9]{64}\.tgz$/.test(basename(path))
+    )
+      return path;
+  };
+  let migrated = false;
+  const migrateLegacySelection = async () => {
+    if (migrated) return;
+    const bytes = await optionalFile(join(directory, "managed-bundles.json"));
+    if (bytes) {
+      const names: unknown = JSON.parse(bytes.toString("utf8"));
+      if (!Array.isArray(names) || !names.every(isManagedPluginName))
+        throw Error("TEST_PLUGIN_OWNERSHIP_INVALID");
+      const dependencies = await profileDependencies();
+      for (const bundle of await manager.listBundles()) {
+        if (
+          !bundle.enabled ||
+          !names.includes(bundle.name) ||
+          !managedArchive(dependencies[bundle.name])
+        )
+          continue;
+        lifetime.signal.throwIfAborted();
+        const outcome = await manager.setBundleEnabled(bundle.name, false);
+        if (outcome.application !== "applied") throw Error("TEST_PLUGIN_LEGACY_DISABLE_FAILED");
+      }
+    }
+    migrated = true;
+  };
+  let mountedIdentity: AbortSignal | undefined;
   const eligible = () => {
     const status = business.status();
-    return (
-      status.environments.length === 1 && status.environment === "test" && status.authenticated
-    );
+    return status.environment === "test" && status.authenticated;
   };
   const report = (error: unknown) => {
     if (lifetime.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
@@ -77,44 +119,36 @@ export function mountTestPluginDistribution(
   let restartCheck: ReturnType<typeof setTimeout> | undefined;
   async function reconcile() {
     lifetime.signal.throwIfAborted();
-    const bytes = await optionalFile(ownedPath);
-    const names: unknown = bytes ? JSON.parse(bytes.toString("utf8")) : [];
-    if (!Array.isArray(names) || !names.every(isManagedPluginName))
-      throw Error("TEST_PLUGIN_OWNERSHIP_INVALID");
-    const owned = new Set<string>(names);
-    if (!owned.size && !eligible()) return;
-    const installed = await manager.listBundles();
-    const setEnabled = async (name: string, enabled: boolean) => {
-      const outcome = await manager.setBundleEnabled(name, enabled);
-      if (outcome.application !== "applied")
-        throw Error("TEST_PLUGIN_ENABLEMENT_" + outcome.application);
-    };
-    const deactivate = async (keep: ReadonlySet<string>) => {
-      for (const bundle of installed)
-        if (bundle.enabled && owned.has(bundle.name) && !keep.has(bundle.name))
-          await setEnabled(bundle.name, false);
-    };
-    if (!eligible()) {
-      await deactivate(new Set());
-      return;
-    }
-    if (ctx.get("hmr") === undefined) throw Error("TEST_PLUGIN_HOT_RELOAD_UNAVAILABLE");
-    const signal = AbortSignal.any([lifetime.signal, business.identitySignal()]);
+    await migrateLegacySelection();
+    if (!eligible()) return;
+    mountedIdentity = business.identitySignal();
+    const signal = AbortSignal.any([lifetime.signal, mountedIdentity]);
     const { core, source } = await (sourceLoading ??= loadSource().catch((error) => {
       sourceLoading = undefined;
       throw error;
     }));
-    const releases = await source.check(AbortSignal.any([signal, AbortSignal.timeout(60_000)]));
+    let releases: Awaited<ReturnType<typeof source.check>>;
+    try {
+      await business.assertTestPluginIdentity(signal);
+      releases = await source.check(AbortSignal.any([signal, AbortSignal.timeout(60_000)]));
+    } catch (error) {
+      runtime.retain(noBundles);
+      throw error;
+    }
     signal.throwIfAborted();
+    const installed = await manager.listBundles();
+    const dependencies = await profileDependencies();
+    const authorized = new Set<string>();
     const companyManifests = installed.flatMap(({ name, version }) =>
       version && companyPackageNames.some((company) => company === name) ? [{ name, version }] : [],
     );
-    await deactivate(new Set(releases.map(({ name }) => name)));
-    const archives: { release: PluginRelease<string>; archivePath: string }[] = [];
+    const archives: TestBundleArchive[] = [];
     for (const release of releases) {
       signal.throwIfAborted();
       const current = installed.find(({ name }) => name === release.name);
-      if (current && !owned.has(release.name)) continue;
+      const spec = dependencies[release.name];
+      const path = managedArchive(spec);
+      if ((current || spec !== undefined) && !path) continue;
       if (
         release.dataCompatibility.kind !== "preserve" ||
         !release.supportedCores.some(
@@ -145,30 +179,27 @@ export function mountTestPluginDistribution(
       try {
         if (current?.version && comparePluginVersions(current.version, release.version) > 0)
           continue;
-        if (current?.version !== release.version) {
-          const archive = await source.download(
-            release,
-            join(directory, "archives"),
-            AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
-          );
-          signal.throwIfAborted();
-          source.assertCurrentRelease(release);
-          if (!owned.has(release.name)) {
-            owned.add(release.name);
-            await mkdir(directory, { recursive: true, mode: 0o700 });
-            await writeFileAtomic(ownedPath, JSON.stringify([...owned]), { mode: 0o600 });
-          }
-          signal.throwIfAborted();
-          archives.push({ release, archivePath: archive });
+        if (path && current?.version && runtime.has(release.name)) authorized.add(release.name);
+        const archive = await source.download(
+          release,
+          archiveDirectory,
+          AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
+        );
+        signal.throwIfAborted();
+        source.assertCurrentRelease(release);
+        if (current?.version !== release.version || path !== archive) {
+          archives.push({ release, archivePath: archive, previousSpec: spec });
           continue;
         }
-        signal.throwIfAborted();
-        if (!current?.enabled) await setEnabled(release.name, true);
+        if (current.enabled) throw Error("TEST_PLUGIN_PERSISTENT_SELECTION");
+        await runtime.activate(release.name, signal);
+        authorized.add(release.name);
       } catch (error) {
         signal.throwIfAborted();
         report(error);
       }
     }
+    runtime.retain(authorized);
     if (!archives.length) return;
     const staging = await stageTestBundles(
       ctx,
@@ -188,19 +219,6 @@ export function mountTestPluginDistribution(
       }, 2_000);
       restartCheck.unref();
     }
-    if (staging !== "direct") return;
-    for (const { release, archivePath } of archives) {
-      signal.throwIfAborted();
-      const outcome = await manager.installBundle(archivePath, { enabled: false });
-      if (outcome.application === "restart-required" && outcome.target === release.name) {
-        ctx.logger.info("Restart required to apply the test plugin update", release.name);
-        continue;
-      }
-      if (outcome.application !== "applied" || outcome.target !== release.name)
-        throw Error("TEST_PLUGIN_INSTALL_" + outcome.application);
-      signal.throwIfAborted();
-      await setEnabled(release.name, true);
-    }
   }
   let running: Promise<void> | undefined;
   let requested = false;
@@ -218,7 +236,10 @@ export function mountTestPluginDistribution(
         if (requested && !lifetime.signal.aborted) schedule();
       });
   };
-  const unwatch = business.watchIdentity(schedule);
+  const unwatch = business.watchIdentity(() => {
+    if (mountedIdentity !== business.identitySignal() || !eligible()) runtime.retain(noBundles);
+    schedule();
+  });
   const timer = setInterval(schedule, refreshIntervalMs);
   timer.unref();
   schedule();
@@ -227,5 +248,6 @@ export function mountTestPluginDistribution(
     clearInterval(timer);
     clearTimeout(restartCheck);
     lifetime.abort();
+    runtime.retain(noBundles);
   };
 }

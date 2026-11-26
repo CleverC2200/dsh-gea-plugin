@@ -143,6 +143,15 @@ test("existing test update profiles supply the managed source without a patch mi
   const stableSource = { ...config, channel: "stable" };
   assert.equal(testPluginReleaseSourceConfig(undefined, { source: testSource }), testSource);
   assert.equal(testPluginReleaseSourceConfig(undefined, { source: stableSource }), undefined);
+  const companyChannels =
+    "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/";
+  const official = { ...stableSource, channelUrl: companyChannels + "plugin-detail-stable.json" };
+  assert.deepEqual(testPluginReleaseSourceConfig(undefined, { source: official }), {
+    ...official,
+    channel: "plugin-detail-test",
+    channelUrl: companyChannels + "plugin-detail-test.json",
+  });
+  assert.equal(official.channel, "stable");
   assert.equal(testPluginReleaseSourceConfig(undefined, undefined), undefined);
   assert.equal(testPluginReleaseSourceConfig(testSource, { source: stableSource }), testSource);
 });

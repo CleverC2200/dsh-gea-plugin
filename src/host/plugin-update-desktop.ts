@@ -7,6 +7,7 @@ import { updatablePackageNames } from "../shared/plugin-release.mjs";
 export function mountDesktopUpdateOperations(
   ctx: Context,
   ready: () => Promise<ReturnType<typeof createPluginUpdateController>>,
+  testRestart?: () => Promise<string | null>,
 ): () => void {
   const releaseAdmission = ctx.on("connection/request", async (request, response, next) => {
     if (new URL(request.url ?? "/", "http://localhost").pathname === "/api/desktop/update") {
@@ -35,6 +36,15 @@ export function mountDesktopUpdateOperations(
             )
               throw Error("UPDATE_REQUEST_INVALID");
             value = controller.operationStatus(payload.operationId);
+            if (testRestart && controller.canRestartTestPlugins()) {
+              const id = await testRestart().catch(() => null);
+              if (
+                id &&
+                (payload.operationId === undefined || payload.operationId === id) &&
+                controller.canRestartTestPlugins()
+              )
+                value = { operationId: id, state: "ready" };
+            }
             break;
           case "plugins-install": {
             if (

@@ -61,13 +61,21 @@ export function testPluginReleaseSourceConfig(override: unknown, updates: unknow
   if (override !== undefined) return override;
   if (updates === null || typeof updates !== "object" || !("source" in updates)) return;
   const source = updates.source;
-  if (
-    source !== null &&
-    typeof source === "object" &&
-    "channel" in source &&
-    source.channel === testPluginChannel
-  )
-    return source;
+  if (source !== null && typeof source === "object" && "channel" in source) {
+    if (source.channel === testPluginChannel) return source;
+    const companyChannels =
+      "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/";
+    if (
+      source.channel === "stable" &&
+      "channelUrl" in source &&
+      source.channelUrl === companyChannels + "plugin-detail-stable.json"
+    )
+      return {
+        ...source,
+        channel: testPluginChannel,
+        channelUrl: companyChannels + testPluginChannel + ".json",
+      };
+  }
 }
 
 export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
