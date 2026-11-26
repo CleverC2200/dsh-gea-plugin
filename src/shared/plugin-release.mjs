@@ -12,6 +12,10 @@ export const updatablePackageNames = Object.freeze([
 ]);
 export const testPluginChannel = "plugin-detail-test";
 
+export function isManagedPluginChannel(channel) {
+  return channel === "stable" || channel === testPluginChannel;
+}
+
 export function isManagedPluginName(name) {
   return (
     typeof name === "string" &&
@@ -438,7 +442,7 @@ export function parsePluginChannel(value, { readManagedReleases = true } = {}) {
   if (
     readManagedReleases &&
     value.managedReleases !== undefined &&
-    value.channel === testPluginChannel
+    isManagedPluginChannel(value.channel)
   ) {
     if (!Array.isArray(value.managedReleases)) throw Error("SOURCE_CHANNEL_INVALID");
     managedReleases = value.managedReleases.map((reference) =>

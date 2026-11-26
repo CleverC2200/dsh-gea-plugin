@@ -6,6 +6,9 @@ export type UpdatablePackageName = CompanyPackageName | "@cleverc2200/dsh-person
 export const personalMemoryPackageName: "@cleverc2200/dsh-personal-memory";
 export const updatablePackageNames: readonly UpdatablePackageName[];
 export const testPluginChannel: "plugin-detail-test";
+export function isManagedPluginChannel(
+  channel: unknown,
+): channel is "stable" | typeof testPluginChannel;
 export function isManagedPluginName(name: unknown): name is string;
 export type CoreIdentity = { head: string; version: string };
 export type FixedCore = CoreIdentity & { sdk: Record<string, string> };
