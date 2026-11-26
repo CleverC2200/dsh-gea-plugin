@@ -44,6 +44,7 @@ export async function createPluginSuiteChannel({
     releases: references.filter((row) => row.name === "@cleverc2200/gea-dsh-prototype"),
     companionReleases: references.filter((row) => row.name !== "@cleverc2200/gea-dsh-prototype"),
     ...(channel.optionalReleases ? { optionalReleases: channel.optionalReleases } : {}),
+    ...(channel.managedReleases ? { managedReleases: channel.managedReleases } : {}),
   });
 }
 export function encodePluginChannel({ payload }) {

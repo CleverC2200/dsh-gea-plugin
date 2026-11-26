@@ -15,6 +15,7 @@ import {
   initializeGeaDefaultModel,
 } from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
+import { mountTestPluginDistribution } from "./host/test-plugin-distribution.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from "./host/desktop-navigation.ts";
@@ -148,6 +149,7 @@ export const Config = z.object({
   runtimeDir: z.string(),
 
   pluginUpdates: z.any<unknown>(),
+  testPluginDistribution: z.any<unknown>(),
   analysisMode: z.union(["receipt", "model"]).default("model"),
   analysisModel: z.string().default(companyDefaults.analysis.model),
   analysisSource: z.union(["gea", "direct", "receipt"]).default("gea"),
@@ -234,6 +236,7 @@ export async function apply(
   input: Omit<Deployment, "runtimeDir"> & {
     runtimeDir?: string;
     pluginUpdates?: unknown;
+    testPluginDistribution?: unknown;
     feedbackUploadTimeoutMs?: number;
     feedbackMaxZipBytes?: number;
   },
@@ -253,6 +256,19 @@ export async function apply(
   validateServiceAccounts(config.serviceAccounts);
   ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config));
   const business = new Business(config);
+  if (input.testPluginDistribution !== undefined) {
+    ctx.inject(["pluginManager"], (scope) => {
+      scope.effect(() =>
+        mountTestPluginDistribution(
+          scope,
+          business,
+          input.testPluginDistribution,
+          input.pluginUpdates,
+          resolve(runtimeDir, "test-plugin-distribution"),
+        ),
+      );
+    });
+  }
   business.capture.session = (id) => {
     const agent = id ? ctx.agents.get(brandString<SessionId>(id)) : ctx.agents.currentInitiator();
     const session =

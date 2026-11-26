@@ -155,7 +155,7 @@ export async function readPluginProfile(profileDirectory: string): Promise<Profi
 export function retainsProfileUpdates(
   before: ProfileSnapshot,
   after: ProfileSnapshot,
-  updates: readonly { release: PluginRelease; archivePath: string }[],
+  updates: readonly { release: Pick<PluginRelease<string>, "name">; archivePath: string }[],
 ): boolean {
   const expected = structuredClone(before.manifest);
   const current = structuredClone(after.manifest);

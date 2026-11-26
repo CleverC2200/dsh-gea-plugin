@@ -20,6 +20,12 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 不兼容诊断保留实际 semver 范围、当前依赖和整组候选依赖版本。旧诊断的 nextStep 仍能读取，新版统一操作不要求用户挑选更新顺序。
 
+## 测试客户端的可选插件
+
+测试客户端可为独立档案配置 `testPluginDistribution`，来源配置与 `pluginUpdates.source` 同形，频道名为 `plugin-detail-test`，Core 证明复用 `pluginUpdates.core`。档案只登记测试登录环境。内部测试发布在测试清单的 `managedReleases` 中登记受信插件的包名、固定 release JSON 地址和摘要。三包更新只消费原字段。
+
+测试账号登录成功后，Host 读取清单并校验兼容性和固定归档。受管桌面在原安装图外暂存安装结果，重启选中候选安装图。Host 在确认测试身份后启用已装插件，退出登录或从测试清单撤下时停用已由此路径管理的插件。暂存回执位于档案的 `gea/test-plugin-distribution/pending-restart.json`。
+
 ## 列表与批量更新
 
 公司 Core 保留官方插件页及顺序，只扩展已安装卡片。顶部刷新通过 `plugins.list.tools` 提供的 `registerRefresh` 同时检查公司插件。列表与详情共用同一个更新客户端和 Host 状态；关闭页面取消页面检查，已经受理的安装仍由 Host 持有。中文说明与无个人账号前缀的展示名使用官方 `locale/*.json` 元信息协议，安装标识保持原值。

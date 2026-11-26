@@ -10,6 +10,16 @@ export const updatablePackageNames = Object.freeze([
   ...companyPackageNames,
   personalMemoryPackageName,
 ]);
+export const testPluginChannel = "plugin-detail-test";
+
+export function isManagedPluginName(name) {
+  return (
+    typeof name === "string" &&
+    /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(name) &&
+    !name.startsWith("@deepseek-ai/") &&
+    !updatablePackageNames.includes(name)
+  );
+}
 
 export function validatePluginCombination({ core, manifests }) {
   const failures = [];
@@ -189,11 +199,19 @@ function ranges(value) {
     if (!name || typeof range !== "string" || !semver.validRange(range)) fail();
   return structuredClone(value);
 }
+export function parseManagedPluginRelease(value) {
+  return parseRelease(value, true);
+}
+
 export function parsePluginRelease(value) {
+  return parseRelease(value, false);
+}
+
+function parseRelease(value, managed) {
   if (
     !record(value) ||
     value.schema !== 1 ||
-    !updatablePackageNames.includes(value.name) ||
+    !(managed ? isManagedPluginName(value.name) : updatablePackageNames.includes(value.name)) ||
     !semver.valid(value.version)
   )
     fail();
@@ -228,7 +246,11 @@ export function parsePluginRelease(value) {
     return { head: core.head, version: core.version };
   });
   if (new Set(supportedCores.map((core) => core.head)).size !== supportedCores.length) fail();
-  const { peerDependencies, dependencies, peerDependenciesMeta } = parsePluginManifest(value);
+  const { peerDependencies, dependencies, peerDependenciesMeta } = parseManifest(
+    value,
+    true,
+    managed,
+  );
   const requires = ranges(value.requires);
   const projected = Object.fromEntries(
     Object.entries(peerDependencies).filter(([name]) => companyPackageNames.includes(name)),
@@ -269,18 +291,19 @@ export function parsePluginRelease(value) {
   };
 }
 
-export function parsePluginManifest(value) {
-  return parseManifest(value, true);
+export function parsePluginManifest(value, managed = false) {
+  return parseManifest(value, true, managed);
 }
 export function parseInstalledPluginManifest(value) {
   return parseManifest(value, false);
 }
-function parseManifest(value, publication) {
+function parseManifest(value, publication, managed = false) {
   if (
     !record(value) ||
     typeof value.name !== "string" ||
     !value.name ||
-    (publication && !updatablePackageNames.includes(value.name)) ||
+    (publication &&
+      !(managed ? isManagedPluginName(value.name) : updatablePackageNames.includes(value.name))) ||
     !semver.valid(value.version)
   )
     fail();
@@ -351,10 +374,10 @@ export function parsePluginChannel(value) {
   }
   if (Date.parse(value.expiresAt) <= Date.parse(value.issuedAt))
     throw Error("SOURCE_CHANNEL_TIME_INVALID");
-  const parseReference = (reference, names) => {
+  const parseReference = (reference, acceptsName) => {
     if (
       !record(reference) ||
-      !names.includes(reference.name) ||
+      !acceptsName(reference.name) ||
       typeof reference.url !== "string" ||
       !/^[a-f0-9]{64}$/.test(reference.sha256)
     )
@@ -377,7 +400,7 @@ export function parsePluginChannel(value) {
     };
   };
   const releases = value.releases.map((reference) =>
-    parseReference(reference, companyPackageNames),
+    parseReference(reference, (name) => companyPackageNames.includes(name)),
   );
   let companionReleases;
   if (value.companionReleases !== undefined) {
@@ -389,7 +412,7 @@ export function parsePluginChannel(value) {
     )
       throw Error("SOURCE_CHANNEL_INVALID");
     companionReleases = value.companionReleases.map((reference) =>
-      parseReference(reference, companyPackageNames),
+      parseReference(reference, (name) => companyPackageNames.includes(name)),
     );
   }
   const combined = [...releases, ...(companionReleases ?? [])];
@@ -408,8 +431,17 @@ export function parsePluginChannel(value) {
     if (!Array.isArray(value.optionalReleases) || value.optionalReleases.length !== 1)
       throw Error("SOURCE_CHANNEL_INVALID");
     optionalReleases = value.optionalReleases.map((reference) =>
-      parseReference(reference, [personalMemoryPackageName]),
+      parseReference(reference, (name) => name === personalMemoryPackageName),
     );
+  }
+  let managedReleases;
+  if (value.managedReleases !== undefined && value.channel === testPluginChannel) {
+    if (!Array.isArray(value.managedReleases)) throw Error("SOURCE_CHANNEL_INVALID");
+    managedReleases = value.managedReleases.map((reference) =>
+      parseReference(reference, isManagedPluginName),
+    );
+    if (new Set(managedReleases.map(({ name }) => name)).size !== managedReleases.length)
+      throw Error("SOURCE_CHANNEL_INVALID");
   }
   return {
     schema: 1,
@@ -421,6 +453,7 @@ export function parsePluginChannel(value) {
     releases,
     ...(companionReleases ? { companionReleases } : {}),
     ...(optionalReleases ? { optionalReleases } : {}),
+    ...(managedReleases ? { managedReleases } : {}),
   };
 }
 

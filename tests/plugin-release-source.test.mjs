@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import {
+  createManagedPluginReleaseSource,
   createPluginReleaseSource,
   inspectPluginArchive,
 } from "../src/host/plugin-release-source.ts";
@@ -132,6 +133,88 @@ test("channel verifies release bytes, release hashes and durable tgz manifest be
         new Headers(c.init.headers).get("X-Fixture-Read") === "local-test",
     ),
     true,
+  );
+});
+
+test("test distribution accepts multiple new bundles without changing the core suite", async (t) => {
+  const f = await fixture(t);
+  const payload = JSON.parse(
+    Buffer.from(JSON.parse(f.objects.get(f.channelUrl)).payloadBase64, "base64"),
+  );
+  payload.channel = "plugin-detail-test";
+  payload.managedReleases = [];
+  for (const [index, name] of ["@example/first-bundle", "@example/second-bundle"].entries()) {
+    const release = JSON.parse(f.objects.get(f.releases[index].url));
+    const cwd = join(f.dir, companyPackageNames[index].replaceAll("/", "-"));
+    const manifestPath = join(cwd, "package/package.json");
+    const manifest = {
+      ...JSON.parse(await readFile(manifestPath)),
+      name,
+      scripts: { prepack: "build" },
+    };
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    const archive = join(f.dir, `managed-${index}.tgz`);
+    await packTar({ gzip: true, file: archive, cwd }, ["package"]);
+    const bytes = await readFile(archive);
+    const sha256 = digest(bytes);
+    const url = `https://fixture.invalid/releases/${sha256}/plugin.tgz`;
+    f.objects.set(url, bytes);
+    const releaseBytes = Buffer.from(
+      JSON.stringify({ ...release, name, artifact: { url, size: bytes.length, sha256 } }),
+    );
+    const releaseSha = digest(releaseBytes);
+    const releaseUrl = `https://fixture.invalid/releases/${releaseSha}/release.json`;
+    f.objects.set(releaseUrl, releaseBytes);
+    payload.managedReleases.push({ name, url: releaseUrl, sha256: releaseSha });
+  }
+  const publish = () =>
+    f.objects.set(
+      f.channelUrl,
+      Buffer.from(
+        JSON.stringify({
+          payloadBase64: Buffer.from(JSON.stringify(payload)).toString("base64"),
+        }),
+      ),
+    );
+  publish();
+  const config = { ...f.config, channel: payload.channel };
+  const deps = {
+    resolveAuthentication: async () => ({}),
+    fetch: async (url) =>
+      new Response(f.objects.get(url), { status: f.objects.has(url) ? 200 : 404 }),
+  };
+  assert.throws(() =>
+    createManagedPluginReleaseSource(f.config, { ...deps, trustDirectory: join(f.dir, "old") }),
+  );
+  const managed = createManagedPluginReleaseSource(config, {
+    ...deps,
+    trustDirectory: join(f.dir, "managed"),
+  });
+  const existing = createPluginReleaseSource(config, {
+    ...deps,
+    trustDirectory: join(f.dir, "suite"),
+  });
+  assert.deepEqual(
+    (await existing.check()).map(({ name }) => name),
+    companyPackageNames,
+  );
+  const releases = await managed.check();
+  assert.deepEqual(
+    releases.map(({ name }) => name),
+    payload.managedReleases.map(({ name }) => name),
+  );
+  for (const release of releases)
+    assert.equal(
+      digest(await readFile(await managed.download(release, join(f.dir, "managed-cache")))),
+      release.artifact.sha256,
+    );
+  payload.revision++;
+  payload.managedReleases = [];
+  publish();
+  assert.deepEqual(await managed.check(), []);
+  await assert.rejects(
+    managed.download(releases[0], join(f.dir, "managed-cache")),
+    /SOURCE_RELEASE_NOT_VERIFIED/,
   );
 });
 
