@@ -127,8 +127,8 @@ try{
   await page.waitForFunction(()=>window.dshDesktop?.updates?.status,undefined,{timeout:25000});
   await writeFile(join(out,'process.json'),JSON.stringify({cdp}));
   phase='read candidates and click';
-  const result=op(process.execPath,[join(import.meta.dirname,'exercise-installed-entry.mjs'),out,entry,caseData.version],{env:{...env},timeout:150000});
-  assert.equal(result.trim(),'');
+  const result=op(process.execPath,[join(import.meta.dirname,'exercise-installed-entry.mjs'),out,entry,caseData.version],{env:{...env},timeout:205000});
+  if(result.trim())console.log(result.trim());
   const selected=JSON.parse(await readFile(join(out,'before-'+entry+'.json')));
   assert.ok(selected.expectedPlugins.length>=2);
   assert.equal(JSON.parse(await readFile(join(out,'clicked-'+entry+'.json'))).clicks,1);

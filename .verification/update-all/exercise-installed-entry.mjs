@@ -32,16 +32,36 @@ await chooseAccountAction('检查更新');
 const card=page.getByRole('article',{name:'版本更新',exact:true});
 await card.getByRole('button',{name:'是',exact:true}).click();
 const buttonName={name:'更新全部',exact:true};
-await card.getByRole('button',buttonName).click({trial:true,timeout:85000});
+await card.getByRole('button',buttonName).waitFor({timeout:20000});
 assert.equal(await card.getByRole('button',buttonName).count(),1);
-const initial=await page.evaluate(async()=>{
+const readCandidates=()=>page.evaluate(async()=>{
   const [desktop,status]=await Promise.all([window.dshDesktop.updates.status(),fetch('/api/gea/plugin-updates/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageIdentity:crypto.randomUUID()})}).then(response=>response.json())]);
   return {desktop,items:status.value?.items?.map(({packageName,state,installedVersion,runningHostVersion,runningClientVersion,candidateVersion,diagnostic})=>({packageName,state,installedVersion,runningHostVersion,runningClientVersion,candidateVersion,diagnostic}))};
 });
-assert.equal(initial.desktop.version,expectedVersion);
-assert.ok(['available','ready'].includes(initial.desktop.phase));
-assert.ok(initial.items?.some(row=>row.state==='available'),'A real plugin plan must be available');
-assert.ok(initial.items.every(row=>['available','current'].includes(row.state)));
+const isReady=state=>state.desktop.version===expectedVersion&&['available','ready'].includes(state.desktop.phase)&&state.items?.filter(row=>row.state==='available').length>=2&&state.items.every(row=>['available','current'].includes(row.state));
+let initial=await readCandidates();
+if(!isReady(initial)){
+  await writeFile(join(root,`first-observation-${entry}.json`),JSON.stringify(initial,null,2),{flag:'wx',mode:0o600});
+  console.log(JSON.stringify({entry,firstObservation:initial,card:await card.innerText()}));
+  const waitUntil=Date.now()+15000;
+  while(!isReady(initial)&&Date.now()<waitUntil){
+    await new Promise(done=>setTimeout(done,900));
+    initial=await readCandidates();
+  }
+  if(!isReady(initial)){
+    const check=card.getByRole('button',{name:'检查更新',exact:true});
+    if(await check.isVisible()&&await check.isEnabled())await check.click({timeout:6000});
+    const confirm=card.getByRole('button',{name:'是',exact:true});
+    if(await confirm.isVisible())await confirm.click({timeout:6000});
+    const recheckUntil=Date.now()+45000;
+    while(!isReady(initial)&&Date.now()<recheckUntil){
+      await new Promise(done=>setTimeout(done,900));
+      initial=await readCandidates();
+    }
+  }
+}
+await writeFile(join(root,`final-observation-${entry}.json`),JSON.stringify(initial,null,2),{flag:'wx',mode:0o600});
+assert.ok(isReady(initial),'Expected signed desktop and 2 plugin candidates: '+JSON.stringify(initial));
 const expectedPlugins=initial.items.filter(row=>row.state==='available').map(({packageName,installedVersion,candidateVersion})=>({packageName,installedVersion,candidateVersion}));
 let target=card;
 if(entry==='settings'){

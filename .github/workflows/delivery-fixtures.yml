@@ -43,6 +43,7 @@ jobs:
           if-no-files-found: warn
           path: |
             ${{ runner.temp }}/gea-native-evidence/receipt.json
+            ${{ runner.temp }}/gea-native-evidence/*-observation-*.json
             ${{ runner.temp }}/gea-native-evidence/before-*.json
             ${{ runner.temp }}/gea-native-evidence/clicked-*.json
             ${{ runner.temp }}/gea-native-evidence/before-*.png
