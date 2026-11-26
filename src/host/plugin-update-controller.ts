@@ -964,7 +964,7 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
             await mkdir(operationDirectory, { mode: 0o700 });
             const installation = await openCompanyInstallation(options.profile.dir);
             if (!installation) fail("UPDATE_DESKTOP_INSTALLATION_REQUIRED");
-            if (await installation.hasPendingActivation()) fail("UPDATE_OPERATION_BLOCKED");
+            if (await installation.pendingTestPluginActivation()) fail("UPDATE_OPERATION_BLOCKED");
             lifetime.signal.throwIfAborted();
             for (const release of selectedSuite) options.source.assertCurrentRelease(release);
             const operation: PluginUpdateOperation = {
@@ -1215,7 +1215,9 @@ export function createPluginUpdateController(options: PluginUpdateControllerOpti
           if (
             blocking(await readLatest()) ||
             companyUpdateActive(await readCompanyUpdate(options.profile.dir)) ||
-            (await (await openCompanyInstallation(options.profile.dir))?.hasPendingActivation()) ||
+            (await (
+              await openCompanyInstallation(options.profile.dir)
+            )?.pendingTestPluginActivation()) ||
             !profilePackageRunStopped(options.profile.dir)
           )
             fail("UPDATE_OPERATION_BLOCKED");

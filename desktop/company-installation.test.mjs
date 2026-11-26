@@ -145,12 +145,16 @@ test("failed installation and an interrupted trial both retain a complete usable
 
 test("managed and company preparation cannot replace each other's pending activation", async (t) => {
   const f = await fixture(t);
-  for (const [first, second] of [
-    ["test-fixture", "company-fixture"],
-    ["company-next", "test-next"],
+  for (const [first, second, testFirst] of [
+    ["test-fixture", "company-fixture", true],
+    ["company-next", "test-next", false],
   ]) {
-    await f.installation.prepare(first, f.update);
-    await assert.rejects(f.installation.prepare(second, f.update), /UPDATE_OPERATION_BLOCKED/);
+    await f.installation.prepare(first, f.update, undefined, { testPlugin: testFirst });
+    assert.equal(await f.installation.pendingTestPluginActivation(), testFirst ? first : null);
+    await assert.rejects(
+      f.installation.prepare(second, f.update, undefined, { testPlugin: !testFirst }),
+      /UPDATE_OPERATION_BLOCKED/,
+    );
     assert.equal(await f.installation.activationState(first), "pending");
     assert.equal(await f.installation.activationState(second), "unavailable");
     assert.equal((await f.installation.beginBoot()).id, first);

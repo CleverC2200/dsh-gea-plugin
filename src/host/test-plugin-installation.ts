@@ -43,7 +43,7 @@ export async function pendingTestPluginRestart(
   if (typeof id !== "string" || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id))
     return null;
   const installation = await openCompanyInstallation(profile);
-  return (await installation?.activationState(id)) === "pending" ? id : null;
+  return (await installation?.pendingTestPluginActivation()) === id ? id : null;
 }
 
 export async function stageTestBundles(
@@ -179,6 +179,7 @@ export async function stageTestBundles(
           }
         },
         signal,
+        { testPlugin: true },
       );
       ctx.logger.info("Restart required to finish installing test plugins");
       return "staged";

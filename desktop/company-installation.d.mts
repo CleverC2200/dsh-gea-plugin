@@ -16,9 +16,11 @@ export class CompanyInstallation {
       controls: { registerProcess(pid: number): Promise<void> },
     ) => Promise<void>,
     signal?: AbortSignal,
+    options?: { testPlugin?: boolean },
   ): Promise<unknown>;
   preparationIdle(): Promise<boolean>;
   hasPendingActivation(): Promise<boolean>;
+  pendingTestPluginActivation(): Promise<string | null>;
   activationState(id: string): Promise<"pending" | "active" | "rolled-back" | "unavailable">;
   recoverRollback(id: string): Promise<boolean>;
   beginBoot(options?: { activatePending?: boolean }): Promise<{ id: string; path: string }>;

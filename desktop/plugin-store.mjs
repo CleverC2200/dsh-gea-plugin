@@ -125,7 +125,7 @@ export class PluginStore {
     }
     return { id: active, path, receipt };
   }
-  async prepare({ id, install, signal, queueActivation = false }) {
+  async prepare({ id, install, signal, queueActivation = false, testPlugin = false }) {
     versionId(id);
     await mkdir(join(this.root, "versions"), { recursive: true, mode: 0o700 });
     return this.withLock(async (owner, lockPath) => {
@@ -192,6 +192,7 @@ export class PluginStore {
         const receipt = {
           id,
           state: "prepared",
+          ...(testPlugin ? { testPlugin: true } : {}),
           ...schema,
           createdAt: new Date().toISOString(),
           dependencies: manifest.dependencies ?? {},
@@ -235,6 +236,12 @@ export class PluginStore {
   async recoverPreparation() {
     return recoverPluginStoreLock(this.root);
   }
+  async isTestPluginVersion(id) {
+    versionId(id);
+    const receipt = await json(join(this.root, "versions", id, "version.json"));
+    if (receipt.id !== id) throw Error("PLUGIN_VERSION_NOT_PREPARED");
+    return receipt.testPlugin === true;
+  }
   async queueActivation(id, signal) {
     versionId(id);
     const receipt = await json(join(this.root, "versions", id, "version.json"));
@@ -246,9 +253,14 @@ export class PluginStore {
       throw Error("PLUGIN_VERSION_NOT_PREPARED");
     return this.withSelectionLock(async () => {
       const state = await this.status();
-      signal?.throwIfAborted();
-      if (this.companyCoreHead && state.pending && state.pending !== id)
+      if (
+        this.companyCoreHead &&
+        state.pending &&
+        state.pending !== id &&
+        (receipt.testPlugin === true || (await this.isTestPluginVersion(state.pending)))
+      )
         throw Error("UPDATE_OPERATION_BLOCKED");
+      signal?.throwIfAborted();
       await writePluginStoreJson(join(this.root, "selection.json"), { ...state, pending: id });
     });
   }
