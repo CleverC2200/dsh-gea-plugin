@@ -34,6 +34,17 @@ for repo in dsh-agent-manage dsh-agent-workbench dsh-gea-plugin; do
   printf "Preparing %s\n" "$repo"
   node scripts/plugin-split-development.mjs prepare --input "$out/source.json" --repo "$repo" 2>&1 | tee "$out/prepare-$repo.log"
 done
+node --input-type=module <<'NODE' 2>&1 | tee "$out/prepare-dsh-agent-workbench-aps.log"
+import {execFileSync} from 'node:child_process';
+import {acquireBuild} from './scripts/build-admission.mjs';
+const cwd=process.env.GITHUB_WORKSPACE+'/candidate/dsh-agent-workbench/business/inventory-apsplan/source';
+const release=acquireBuild({operation:'prepare',cwd});
+try {
+  execFileSync('npm',['ci','--ignore-scripts','--prefer-offline','--no-audit','--no-fund'],{cwd,stdio:'inherit'});
+} finally {
+  release();
+}
+NODE
 for repo in dsh-agent-manage dsh-agent-workbench dsh-gea-plugin; do
   target=plugin
   if [[ "$repo" == dsh-agent-workbench ]]; then target=all; fi
