@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, copyFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 
@@ -21,6 +21,29 @@ const home = join(scratch, "home");
 const profile = join(home, "profiles/desktop");
 const old = join(scratch, "old-client/company-seed/archives");
 const store = join(scratch, "store");
+const manifest = await readCompanySeed(seed);
+const fixtureRequire = createRequire(join(root, "dsh/node_modules/@deepseek-ai/dsh/package.json"));
+const fixtureYaml = fixtureRequire("yaml");
+const fixtureBoot = await import(
+  pathToFileURL(fixtureRequire.resolve("@deepseek-ai/dsh-app-boot"))
+);
+const frozenLock = fixtureYaml.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
+const honoVersions = Object.keys(frozenLock.packages ?? {})
+  .filter((key) => /^hono@\d+\.\d+\.\d+$/.test(key))
+  .map((key) => key.slice("hono@".length));
+assert.equal(honoVersions.length, 1, "Legacy fixture requires the published Hono lock identity");
+fixtureBoot.initProfile(profile, fixtureBoot.PROFILE_TEMPLATES.web.bundles);
+const fixtureWorkspace = fixtureYaml.parse(
+  await readFile(join(profile, "pnpm-workspace.yaml"), "utf8"),
+);
+await writeFile(
+  join(profile, "pnpm-workspace.yaml"),
+  fixtureYaml.stringify({
+    ...fixtureWorkspace,
+    overrides: { ...fixtureWorkspace.overrides, hono: honoVersions[0] },
+  }),
+);
+console.log("LEGACY_FIXTURE_FIXED_HONO_VERSION", honoVersions[0]);
 await mkdir(output, { recursive: true });
 await mkdir(old, { recursive: true });
 const identities = [
@@ -54,15 +77,29 @@ for (const [file, sha256] of identities) {
   await writeFile(path, bytes);
   packages.push(path);
 }
-await installCompanyPackages({
-  root,
-  support,
-  home,
-  profile,
-  packages,
-  store,
-  offline: false,
-});
+try {
+  await installCompanyPackages({
+    root,
+    support,
+    home,
+    profile,
+    packages,
+    store,
+    offline: false,
+  });
+} catch (error) {
+  const logPath = String(error).match(
+    /GEA_COMPANY_INSTALL_FAILED: ([A-Za-z]:[\\/][^"\r\n]+\.log)/,
+  )?.[1];
+  if (logPath) {
+    const local = relative(scratch, logPath);
+    assert.ok(local && !isAbsolute(local) && !local.startsWith(".."));
+    const diagnostic = await readFile(logPath, "utf8");
+    await writeFile(join(output, "initial-pnpm.log"), diagnostic);
+    console.error(diagnostic.slice(-12000));
+  }
+  throw error;
+}
 const before = JSON.parse(await readFile(join(profile, "package.json"), "utf8"));
 const restorePackages = [];
 const restoreArchives = join(scratch, "restore-archives");
@@ -77,7 +114,6 @@ const patch = await readFile(join(profile, "cordis.patch.yml"));
 await mkdir(join(profile, "sessions"), { recursive: true });
 await writeFile(join(profile, "sessions/user-data.json"), '{"keep":"user draft"}');
 await rm(join(scratch, "old-client"), { recursive: true });
-const manifest = await readCompanySeed(seed);
 const options = { root, support, seed, home, manifest, install: installCompanyPackages };
 await assert.rejects(
   refreshBundledCompanySuite({
@@ -209,6 +245,22 @@ for (let attempt = 1; attempt <= 3; attempt++) {
     },
   );
   await writeFile(join(output, `restart-${attempt}.log`), restarted.stdout + restarted.stderr);
+  if (restarted.status !== 0) {
+    const logs = new Set(
+      [
+        ...(restarted.stdout + restarted.stderr).matchAll(
+          /GEA_COMPANY_INSTALL_FAILED: ([A-Za-z]:[\\/][^"\r\n]+\.log)/g,
+        ),
+      ].map((match) => match[1]),
+    );
+    for (const logPath of logs) {
+      const local = relative(scratch, logPath);
+      assert.ok(local && !isAbsolute(local) && !local.startsWith(".."));
+      const diagnostic = await readFile(logPath, "utf8");
+      await writeFile(join(output, `restart-${attempt}-pnpm.log`), diagnostic);
+      console.error(diagnostic.slice(-12000));
+    }
+  }
   assert.equal(restarted.status, 0, restarted.stdout + restarted.stderr);
   assert.deepEqual(await readFile(journal), completedReceipt);
   assert.deepEqual(await readFile(join(profile, "cordis.patch.yml")), restoredPatch);
