@@ -131,7 +131,9 @@ function fixture(
             stock_turnover: "周转天数",
           };
           const dims = q.dimensions
-            .filter((k) => !k.endsWith(".metric_result"))
+            .filter((k) =>
+              ["Final.base_name", "Final.item_name", "Final.customer_code"].includes(k),
+            )
             .map(
               (k) =>
                 ({
@@ -411,7 +413,7 @@ test("KPI queries stop at the shared call deadline without an external timeout w
   });
   const pending = f.call({ ...period, metric: "改单率" });
   const rejected = assert.rejects(pending, /GEA_ORDER_KPI_TIMEOUT/);
-  await started;
+  await Promise.race([started, pending]);
   t.mock.timers.tick(180000);
   await rejected;
   assert.equal(stopped, true);
@@ -444,7 +446,7 @@ for (const reason of ["caller", "identity", "resource"]) {
       { agent: { id: "test-order" }, signal: caller.signal },
     );
     const rejected = assert.rejects(pending);
-    await started;
+    await Promise.race([started, pending]);
     if (reason === "caller") caller.abort();
     else if (reason === "identity") f.identity.abort();
     else f.disable();
