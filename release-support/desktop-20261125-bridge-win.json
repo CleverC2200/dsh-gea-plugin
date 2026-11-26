@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "version": "0.2.0-rc.2.20261125.1",
+  "sourceSha": "65aac0dd1aa62b5e1ceb737a9d94a9525bad012b",
+  "core": {
+    "head": "17746ac35c8fa08e2da98f2127b05f421132cb16",
+    "version": "0.2.0-rc.2"
+  },
+  "channels": {
+    "stableRevision": 174,
+    "testRevision": 177
+  },
+  "packages": [
+    {
+      "name": "@cleverc2200/dsh-agent-workbench",
+      "version": "0.1.169",
+      "sha256": "936cbab1b4ead08bdb06b87fd8872176178e75cc39d5eae7bdbba0b0ebdab9e6"
+    },
+    {
+      "name": "dsh-agent-manage",
+      "version": "0.6.3-company.91",
+      "sha256": "ef2e4fba1bcb4ca56445f11d2e318b98d00d2f8670f2e0536eec0f2c38c4ea50"
+    },
+    {
+      "name": "@cleverc2200/gea-dsh-prototype",
+      "version": "0.0.354",
+      "sha256": "bfda460438291b73d3ac886308c7696201d7d4a05357add5944f16b4b374b867"
+    },
+    {
+      "name": "@cleverc2200/dsh-personal-memory",
+      "version": "0.1.3",
+      "sha256": "059325a6e40e0388ddf20579bf79cce699078311cb9f3c61e8e1b25b7290af86"
+    }
+  ],
+  "platforms": [
+    {
+      "status": "published-and-anonymously-verified",
+      "version": "0.2.0-rc.2.20261125.1",
+      "platform": "win-x64",
+      "sourceSha": "65aac0dd1aa62b5e1ceb737a9d94a9525bad012b",
+      "updateAcceptance": "pending-full-ui-regression",
+      "feed": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/nightly.yml",
+      "files": [
+        {
+          "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/raw/65aac0dd1aa62b5e1ceb737a9d94a9525bad012b/desktop/Synear-GEA-0.2.0-rc.2.20261125.1-win-x64-signed.exe",
+          "sha256": "93b9ef17ed5f393a99d03ce828139160847fd8851964ed51d133e90e9c19a73e",
+          "size": 322677256
+        },
+        {
+          "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/Synear-GEA-0.2.0-rc.2.20261125.1-win-x64-signed.exe",
+          "sha256": "93b9ef17ed5f393a99d03ce828139160847fd8851964ed51d133e90e9c19a73e",
+          "size": 322677256
+        },
+        {
+          "url": "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/client-release/electron/win-x64/Synear-GEA-0.2.0-rc.2.20261125.1-win-x64-signed.exe.blockmap",
+          "sha256": "4f7bb05e38f7219a0152a43e99eadd403ed0e0084099ac2b2d49a4d6e379ec65",
+          "size": 335584
+        }
+      ],
+      "feedSha256": "4159cd196e0809998558325785e9a094ddd18b22ac3a94433009ad86ed5116ad",
+      "signing": "Authenticode signed with the incumbent certificate",
+      "build": "https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/45543465785/job/138967327091",
+      "runtimeSmoke": "passed",
+      "firstInstall": "passed",
+      "windowsCertificateMigration": {
+        "status": "passed",
+        "environment": "windows-2025",
+        "testFeed": "loopback with identical release payloads",
+        "receipt": "https://github.com/CleverC2200/dsh-gea-plugin/actions/runs/45545986269",
+        "from": "0.2.0-rc.2.20261123.1",
+        "to": "0.2.0-rc.2.20261125.1",
+        "installerSha256": "93b9ef17ed5f393a99d03ce828139160847fd8851964ed51d133e90e9c19a73e",
+        "signature": "CF9D9B12FE43DA6DF5411A00AAE2C0DD0ED280E2",
+        "nativeRelaunch": true,
+        "workspaceReady": true,
+        "data": {
+          "status": "passed",
+          "fromVersion": "0.2.0-rc.2.20261123.1",
+          "toVersion": "0.2.0-rc.2.20261125.1",
+          "configuration": {
+            "status": "passed",
+            "allUserPatchValuesPreserved": true,
+            "onlyExpectedCoreProofRefreshed": true,
+            "coreProofMatchesVerifiedInstalledSeed": true
+          },
+          "history": {
+            "status": "passed",
+            "historicalSessions": 1,
+            "historicalEvents": 3,
+            "allOriginalHeadersAndEventsPreserved": true,
+            "readWithNewBundledCore": true
+          }
+        },
+        "composerDraftRetained": true
+      }
+    }
+  ]
+}
