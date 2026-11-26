@@ -539,6 +539,7 @@ test("a fresh Core baseline retains the user dependency lock before offline prep
       assert.deepEqual(await readFile(join(stage, "pnpm-lock.yaml")), lock);
       await fs.cp(join(f.profile, "node_modules"), join(stage, "node_modules"), {
         recursive: true,
+        dereference: true,
       });
       await writeFile(join(stage, "package.json"), manifest);
     },
