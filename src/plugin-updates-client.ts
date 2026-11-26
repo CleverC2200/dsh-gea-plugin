@@ -138,7 +138,7 @@ export function createPluginDetailUpdates(
         awaitingClient?: boolean;
         observation?: {
           names: readonly string[];
-          openDesktop?: () => Promise<void>;
+          restartRequest?: RestartUpdateRequest;
           expired?: boolean;
           accepted?: { operationId: string; hostProcessIdentity: string };
           timer: ReturnType<typeof setTimeout>;
@@ -205,13 +205,13 @@ export function createPluginDetailUpdates(
   const observe = (
     owner: NonNullable<typeof page>,
     names: readonly string[],
-    openDesktop?: () => Promise<void>,
+    restartRequest?: RestartUpdateRequest,
   ) => {
     if (owner.observation || disposed) return;
     notified = undefined;
     owner.observation = {
       names,
-      openDesktop,
+      restartRequest,
       timer: setTimeout(() => {
         if (owner.observation) owner.observation.expired = true;
         notify(owner, "unconfirmed");
@@ -219,7 +219,7 @@ export function createPluginDetailUpdates(
       }, pluginUpdateObservationMs),
     };
   };
-  const restart = async () => {
+  const restart = async (request: RestartUpdateRequest = { kind: "plugins-restart" }) => {
     if (
       disposed ||
       snapshot.restartReady !== true ||
@@ -233,7 +233,7 @@ export function createPluginDetailUpdates(
     }
     publish({ restart: "restarting" });
     try {
-      await desktop.restartUpdate({ kind: "plugins-restart" });
+      await desktop.restartUpdate(request);
       publish({ restart: "requested" });
     } catch {
       publish({ restart: "failed" });
@@ -269,13 +269,8 @@ export function createPluginDetailUpdates(
         status.hostProcessIdentity === accepted.hostProcessIdentity
       ) {
         if (!snapshot.restartReady) return;
-        if (
-          rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null)
-        ) {
-          const openDesktop = owner.observation.openDesktop;
-          if (openDesktop) void openDesktop().catch(() => {});
-          else void restart();
-        }
+        if (rows.every((row) => row?.state === "pending-restart" && row.candidateVersion !== null))
+          void restart(owner.observation.restartRequest);
       }
       endObservation(owner);
     } else
@@ -415,7 +410,10 @@ export function createPluginDetailUpdates(
     page = undefined;
     publish({ checking: false });
   };
-  const submitRows = (requestedName?: string, openDesktop?: () => Promise<void>): Promise<void> => {
+  const submitRows = (
+    requestedName?: string,
+    restartRequest?: RestartUpdateRequest,
+  ): Promise<void> => {
     if (submitting) return submitting;
     if (!pluginSuiteReady(snapshot.items)) return Promise.resolve();
     const available = snapshot.items.filter((row) => row.state === "available");
@@ -448,7 +446,7 @@ export function createPluginDetailUpdates(
       transportError: null,
       restart: "idle",
     });
-    observe(owner, names, openDesktop);
+    observe(owner, names, restartRequest);
     notify(owner, "progress");
     const hostProcessIdentity = status?.hostProcessIdentity;
     const run = async () => {
@@ -580,7 +578,7 @@ export function createPluginDetailUpdates(
     check,
     restart,
     update: (name: string) => submitRows(name),
-    updateAll: (openDesktop?: () => Promise<void>) => submitRows(undefined, openDesktop),
+    updateAll: (restartRequest?: RestartUpdateRequest) => submitRows(undefined, restartRequest),
     async dispose() {
       disposed = true;
       listeners.clear();

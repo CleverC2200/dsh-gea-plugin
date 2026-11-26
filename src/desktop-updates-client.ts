@@ -3,7 +3,9 @@ import type {
   DesktopUpdatePresentation,
 } from "@deepseek-ai/dsh-client-ui-settings-general/types";
 
-export type RestartUpdateRequest = { kind: "plugins-restart" };
+export type RestartUpdateRequest =
+  | { kind: "desktop"; version: string }
+  | { kind: "plugins-restart" };
 
 export function desktopRestartTarget(presentation?: DesktopUpdatePresentation): string | undefined {
   if (!presentation?.version) return;
@@ -123,7 +125,7 @@ export function createDesktopUpdates() {
     },
     restartUpdate: async (request: RestartUpdateRequest) => {
       if (!bridge?.restartUpdate) throw Error("UPDATE_TAKEOVER_UNSUPPORTED");
-      publish({ opening: true });
+      publish({ opening: true, failed: false });
       try {
         await bridge.restartUpdate(request);
       } catch (error) {

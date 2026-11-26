@@ -258,9 +258,11 @@ test("official plugin detail keeps diagnostics without a separate update window"
     assert.equal(await settings.getByRole("button", updateLabel).isDisabled(), true);
     assert.deepEqual(await page.evaluate(() => window.nativeOpenCalls), []);
     restartReady = true;
-    await page.waitForFunction(() => window.nativeOpenCalls.length === 1);
-    assert.deepEqual(await page.evaluate(() => window.nativeOpenCalls), [desktopVersion]);
-    assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), []);
+    await page.waitForFunction(() => window.nativeUpdateCalls.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.nativeOpenCalls), []);
+    assert.deepEqual(await page.evaluate(() => window.nativeUpdateCalls), [
+      { kind: "desktop", version: desktopVersion },
+    ]);
     assert.equal(updates, before + 1);
     await page.evaluate(() => window.fixture.dispose());
   }
