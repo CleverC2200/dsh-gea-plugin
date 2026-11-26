@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, copyFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 
@@ -209,6 +209,22 @@ for (let attempt = 1; attempt <= 3; attempt++) {
     },
   );
   await writeFile(join(output, `restart-${attempt}.log`), restarted.stdout + restarted.stderr);
+  if (restarted.status !== 0) {
+    const logs = new Set(
+      [
+        ...(restarted.stdout + restarted.stderr).matchAll(
+          /GEA_COMPANY_INSTALL_FAILED: ([^\r\n]+\.log)/g,
+        ),
+      ].map((match) => match[1]),
+    );
+    for (const logPath of logs) {
+      const local = relative(scratch, logPath);
+      assert.ok(local && !isAbsolute(local) && !local.startsWith(".."));
+      const diagnostic = await readFile(logPath, "utf8");
+      await writeFile(join(output, `restart-${attempt}-pnpm.log`), diagnostic);
+      console.error(diagnostic.slice(-12000));
+    }
+  }
   assert.equal(restarted.status, 0, restarted.stdout + restarted.stderr);
   assert.deepEqual(await readFile(journal), completedReceipt);
   assert.deepEqual(await readFile(join(profile, "cordis.patch.yml")), restoredPatch);
