@@ -237,6 +237,7 @@ export class PluginStore {
     return recoverPluginStoreLock(this.root);
   }
   async isTestPluginVersion(id) {
+    if (!id || id === "baseline") return false;
     versionId(id);
     const receipt = await json(join(this.root, "versions", id, "version.json"));
     if (receipt.id !== id) throw Error("PLUGIN_VERSION_NOT_PREPARED");
@@ -253,13 +254,16 @@ export class PluginStore {
       throw Error("PLUGIN_VERSION_NOT_PREPARED");
     return this.withSelectionLock(async () => {
       const state = await this.status();
-      if (
-        this.companyCoreHead &&
-        state.pending &&
-        state.pending !== id &&
-        (receipt.testPlugin === true || (await this.isTestPluginVersion(state.pending)))
-      )
-        throw Error("UPDATE_OPERATION_BLOCKED");
+      if (this.companyCoreHead) {
+        const trial = state.booting !== state.verified ? state.booting : null;
+        for (const candidate of [state.pending, trial])
+          if (
+            candidate &&
+            candidate !== id &&
+            (receipt.testPlugin === true || (await this.isTestPluginVersion(candidate)))
+          )
+            throw Error("UPDATE_OPERATION_BLOCKED");
+      }
       signal?.throwIfAborted();
       await writePluginStoreJson(join(this.root, "selection.json"), { ...state, pending: id });
     });

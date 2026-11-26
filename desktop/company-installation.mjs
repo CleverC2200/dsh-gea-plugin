@@ -147,7 +147,14 @@ export class CompanyInstallation {
   }
   async pendingTestPluginActivation() {
     const { pending } = await this.store.status();
-    return pending && (await this.store.isTestPluginVersion(pending)) ? pending : null;
+    return (await this.store.isTestPluginVersion(pending)) ? pending : null;
+  }
+  async hasTestPluginActivation() {
+    const { pending, booting, verified } = await this.store.status();
+    return (
+      (await this.store.isTestPluginVersion(pending)) ||
+      (booting !== verified && (await this.store.isTestPluginVersion(booting)))
+    );
   }
   async activationState(id) {
     const selection = await this.store.status();

@@ -143,7 +143,7 @@ test("failed installation and an interrupted trial both retain a complete usable
   await f.preserved();
 });
 
-test("managed and company preparation cannot replace each other's pending activation", async (t) => {
+test("managed and company preparation do not overlap before activation is verified", async (t) => {
   const f = await fixture(t);
   for (const [first, second, testFirst] of [
     ["test-fixture", "company-fixture", true],
@@ -158,7 +158,14 @@ test("managed and company preparation cannot replace each other's pending activa
     assert.equal(await f.installation.activationState(first), "pending");
     assert.equal(await f.installation.activationState(second), "unavailable");
     assert.equal((await f.installation.beginBoot()).id, first);
+    assert.equal(await f.installation.pendingTestPluginActivation(), null);
+    assert.equal(await f.installation.hasTestPluginActivation(), testFirst);
+    await assert.rejects(
+      f.installation.prepare(second + "-trial", f.update, undefined, { testPlugin: !testFirst }),
+      /UPDATE_OPERATION_BLOCKED/,
+    );
     assert.equal(await f.installation.confirmRuntime(await f.proofs()), true);
+    assert.equal(await f.installation.hasTestPluginActivation(), false);
   }
   await f.preserved();
 });

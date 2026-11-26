@@ -21,6 +21,7 @@ export class CompanyInstallation {
   preparationIdle(): Promise<boolean>;
   hasPendingActivation(): Promise<boolean>;
   pendingTestPluginActivation(): Promise<string | null>;
+  hasTestPluginActivation(): Promise<boolean>;
   activationState(id: string): Promise<"pending" | "active" | "rolled-back" | "unavailable">;
   recoverRollback(id: string): Promise<boolean>;
   beginBoot(options?: { activatePending?: boolean }): Promise<{ id: string; path: string }>;
