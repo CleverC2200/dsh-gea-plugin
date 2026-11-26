@@ -10,8 +10,11 @@ const page=browser.contexts()[0].pages().find(p=>p.url().startsWith('dsh-app://a
 assert.ok(page,'Opened packaged desktop renderer required');
 const oldVersion=await page.evaluate(()=>window.dshDesktop?.appVersion());
 assert.ok(oldVersion && oldVersion!==expectedVersion);
-const login=page.locator('.gea-account-login-backdrop').getByRole('button',{name:'关闭',exact:true});
-if(await login.isVisible()) await login.click();
+const login=page.locator('.gea-account-login-backdrop');
+const closeLogin=login.getByRole('button',{name:'关闭',exact:true});
+await page.addLocatorHandler(login.filter({has:page.getByRole('button',{name:'关闭',exact:true})}),async()=>{
+  await closeLogin.click({timeout:5000});
+});
 const settings=page.getByRole('dialog').filter({hasText:'通用设置'});
 if(await settings.isVisible()) await settings.getByRole('button',{name:'关闭',exact:true}).click();
 const account=page.getByRole('button',{name:'账户菜单',exact:true});
