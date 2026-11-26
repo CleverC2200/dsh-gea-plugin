@@ -1,6 +1,159 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { orderSalesConfirmation } from "../src/host/order-sales-confirmation.ts";
+import {
+  orderSalesConfirmation,
+  orderSalesConfirmationEnabled,
+} from "../src/host/order-sales-confirmation.ts";
+
+test("registered entries default on only for their matching production and test targets", () => {
+  const base = "https://gea.synear.cn:4443/gea-boot";
+  assert.equal(orderSalesConfirmationEnabled(undefined, "test", base), true);
+  assert.equal(orderSalesConfirmationEnabled({}, "test", base + "/"), true);
+  assert.equal(
+    orderSalesConfirmationEnabled(undefined, "production", "https://gea.synear.cn/gea-boot"),
+    true,
+  );
+  assert.equal(
+    orderSalesConfirmationEnabled({}, "production", "https://gea.synear.cn/gea-boot/"),
+    true,
+  );
+  assert.equal(
+    orderSalesConfirmationEnabled(
+      { production: false },
+      "production",
+      "https://gea.synear.cn/gea-boot",
+    ),
+    false,
+  );
+  for (const [environment, url] of [
+    ["production", base],
+    ["production", "https://other.example/gea-boot"],
+    ["production", "https://gea.synear.cn/gea-boot/other"],
+    ["production", "http://gea.synear.cn/gea-boot"],
+    ["test", "https://gea.synear.cn/gea-boot"],
+    ["test", "https://other.example/gea-boot"],
+    ["test", base + "/other"],
+    ["test", base + "?test=true"],
+    ["test", "http://gea.synear.cn:4443/gea-boot"],
+    ["test", "not-a-url"],
+    ["unknown", base],
+  ])
+    assert.equal(orderSalesConfirmationEnabled(undefined, environment, url), false);
+  assert.equal(orderSalesConfirmationEnabled({ test: false }, "test", base), false);
+  assert.equal(orderSalesConfirmationEnabled({ production: true }, "production", base), true);
+  assert.equal(orderSalesConfirmationEnabled({ production: false }, "production", base), false);
+  assert.equal(orderSalesConfirmationEnabled({ test: "true" }, "test", base), false);
+  assert.equal(orderSalesConfirmationEnabled(null, "test", base), false);
+});
+
+for (const [environment, base] of [
+  ["test", "https://gea.synear.cn:4443/gea-boot"],
+  ["production", "https://gea.synear.cn/gea-boot"],
+])
+  test(`default ${environment} entry reads saves and reads back settings through the existing delegated identity`, async () => {
+    const owner = {
+      ...scope(),
+      base,
+      enabled: orderSalesConfirmationEnabled(undefined, environment, base),
+    };
+    let saved = {
+      thresholdEnabled: false,
+      thresholdPercent: 90,
+      reminderEnabled: false,
+      reminderHours: 3,
+    };
+    let version = "0";
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push(url);
+      const headers = new Headers(init.headers);
+      if (url === base + "/ai/gateway/session") {
+        assert.equal(headers.get("X-Access-Token"), "login-token");
+        assert.equal(headers.get("X-Tenant-Id"), "0");
+        assert.equal(JSON.parse(init.body).consumerCode, "order01");
+        return grant();
+      }
+      assert.equal(headers.get("X-Delegation-Token"), "delegated-token");
+      assert.equal(headers.has("X-Access-Token"), false);
+      if (url.endsWith("/settings/save")) {
+        const input = JSON.parse(init.body);
+        assert.equal(input.expectedVersion, version);
+        saved = input.settings;
+        version = "12345678-1234-1234-1234-123456789abc";
+      } else assert.equal(url, base + "/ai/order-fulfillment/confirmation/settings/get");
+      return Response.json({
+        success: true,
+        result: { settings: saved, version, workerRunning: true },
+      });
+    };
+    assert.equal(
+      (await orderSalesConfirmation({ operation: "settings_get" }, owner, fetchImpl)).settings
+        .thresholdEnabled,
+      false,
+    );
+    const settings = {
+      thresholdEnabled: true,
+      thresholdPercent: 95.5,
+      reminderEnabled: true,
+      reminderHours: 4,
+    };
+    const written = await orderSalesConfirmation(
+      { operation: "settings_save", settings, expectedVersion: "0" },
+      owner,
+      fetchImpl,
+    );
+    const read = await orderSalesConfirmation({ operation: "settings_get" }, owner, fetchImpl);
+    assert.deepEqual(read.settings, settings);
+    assert.equal(read.version, written.version);
+    assert.equal(calls.filter((url) => url.endsWith("/session")).length, 3);
+    assert.equal(calls.filter((url) => url.endsWith("/settings/save")).length, 1);
+  });
+
+test("test entry still rejects denied identities and never repeats a rejected save", async () => {
+  const base = "https://gea.synear.cn:4443/gea-boot";
+  let requests = 0;
+  const makeOwner = () => ({
+    ...scope(),
+    base,
+    enabled: orderSalesConfirmationEnabled(undefined, "test", base),
+  });
+  await assert.rejects(
+    orderSalesConfirmation({ operation: "settings_get" }, makeOwner(), async () => {
+      requests++;
+      return Response.json({
+        success: true,
+        result: { accessDecision: { allowed: false, message: "denied" } },
+      });
+    }),
+    /AGENT_ACCESS_DENIED/,
+  );
+  assert.equal(requests, 1);
+  const settings = {
+    thresholdEnabled: false,
+    thresholdPercent: 90,
+    reminderEnabled: false,
+    reminderHours: 3,
+  };
+  for (const status of [401, 403, 409]) {
+    let saves = 0;
+    await assert.rejects(
+      orderSalesConfirmation(
+        { operation: "settings_save", settings, expectedVersion: "0" },
+        makeOwner(),
+        async (url) => {
+          if (url.endsWith("/session")) return grant();
+          saves++;
+          return Response.json(
+            { success: false, code: status, message: "save denied" },
+            { status },
+          );
+        },
+      ),
+      /save denied/,
+    );
+    assert.equal(saves, 1);
+  }
+});
 
 test("push settings use fixed routes, current identity and a frozen rule snapshot", async () => {
   let release;
