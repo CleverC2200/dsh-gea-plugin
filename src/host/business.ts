@@ -3,7 +3,10 @@ import { searchPeople } from "./people-search.ts";
 import { readAnnouncements } from "./announcements.ts";
 import { retryingFetch } from "./http-attempt.ts";
 import { GeaRequestCapture, type CaptureConfig } from "./request-capture.ts";
-import { orderSalesConfirmation } from "./order-sales-confirmation.ts";
+import {
+  orderSalesConfirmation,
+  orderSalesConfirmationEnabled,
+} from "./order-sales-confirmation.ts";
 import { orderReportWithEdits } from "./order-report-edits.ts";
 import type { MemoryScope } from "../shared/memory-contract.ts";
 import { PersonalMemoryGateway } from "./memory-service.ts";
@@ -3007,9 +3010,11 @@ export class Business {
     return orderSalesConfirmation(
       payload,
       {
-        enabled:
-          this.config.orderFulfillmentConfirmation?.[this.environment as "production" | "test"] ===
-          true,
+        enabled: orderSalesConfirmationEnabled(
+          this.config.orderFulfillmentConfirmation,
+          this.environment,
+          this.base,
+        ),
         base: this.base,
         auth,
         identity: this.epoch.signal,

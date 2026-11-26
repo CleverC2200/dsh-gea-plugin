@@ -1,7 +1,31 @@
 import { prepareGatewaySession } from "./gateway-session.ts";
+import companyDefaults from "../../desktop/company.config.json" with { type: "json" };
 
 type Identity = { token: string; tenantId: string };
 type Grant = Awaited<ReturnType<typeof prepareGatewaySession>>;
+export function orderSalesConfirmationEnabled(
+  configured: { production?: boolean; test?: boolean } | undefined,
+  environment: string,
+  base: string,
+) {
+  if (environment !== "production" && environment !== "test") return false;
+  if (
+    configured !== undefined &&
+    (!configured || typeof configured !== "object" || Array.isArray(configured))
+  )
+    return false;
+  const explicit = configured?.[environment];
+  if (explicit !== undefined) return explicit === true;
+  try {
+    return (
+      new URL(base).href.replace(/\/$/, "") ===
+      new URL(companyDefaults.geaEnvironments[environment]).href.replace(/\/$/, "")
+    );
+  } catch {
+    return false;
+  }
+}
+
 const grants = new WeakMap<AbortSignal, { key: string; value: Promise<Grant> }>();
 const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value))
