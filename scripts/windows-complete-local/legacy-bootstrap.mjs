@@ -21,6 +21,20 @@ const home = join(scratch, "home");
 const profile = join(home, "profiles/desktop");
 const old = join(scratch, "old-client/company-seed/archives");
 const store = join(scratch, "store");
+const manifest = await readCompanySeed(seed);
+const fixtureYaml = createRequire(join(root, "dsh/package.json"))("yaml");
+const frozenLock = fixtureYaml.parse(await readFile(join(seed, "dependency-lock.yaml"), "utf8"));
+const honoVersions = Object.keys(frozenLock.packages ?? {})
+  .filter((key) => /^hono@\d+\.\d+\.\d+$/.test(key))
+  .map((key) => key.slice("hono@".length));
+assert.equal(honoVersions.length, 1, "Legacy fixture requires the published Hono lock identity");
+await mkdir(profile, { recursive: true });
+await writeFile(
+  join(profile, "pnpm-workspace.yaml"),
+  fixtureYaml.stringify({ overrides: { hono: honoVersions[0] } }),
+  { flag: "wx" },
+);
+console.log("LEGACY_FIXTURE_FIXED_HONO_VERSION", honoVersions[0]);
 await mkdir(output, { recursive: true });
 await mkdir(old, { recursive: true });
 const identities = [
@@ -77,7 +91,6 @@ const patch = await readFile(join(profile, "cordis.patch.yml"));
 await mkdir(join(profile, "sessions"), { recursive: true });
 await writeFile(join(profile, "sessions/user-data.json"), '{"keep":"user draft"}');
 await rm(join(scratch, "old-client"), { recursive: true });
-const manifest = await readCompanySeed(seed);
 const options = { root, support, seed, home, manifest, install: installCompanyPackages };
 await assert.rejects(
   refreshBundledCompanySuite({
