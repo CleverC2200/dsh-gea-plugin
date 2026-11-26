@@ -12,15 +12,23 @@ const oldVersion=await page.evaluate(()=>window.dshDesktop?.appVersion());
 assert.ok(oldVersion && oldVersion!==expectedVersion);
 const login=page.locator('.gea-account-login-backdrop');
 const closeLogin=login.getByRole('button',{name:'关闭',exact:true});
+await closeLogin.waitFor({timeout:25000}).catch(()=>{});
+if(await closeLogin.isVisible())await closeLogin.click({timeout:5000});
 await page.addLocatorHandler(login.filter({has:page.getByRole('button',{name:'关闭',exact:true})}),async()=>{
   await closeLogin.click({timeout:5000});
 });
 const settings=page.getByRole('dialog').filter({hasText:'通用设置'});
 if(await settings.isVisible()) await settings.getByRole('button',{name:'关闭',exact:true}).click();
 const account=page.getByRole('button',{name:'账户菜单',exact:true});
-async function openAccount(){if(await account.getAttribute('aria-expanded')!=='true')await account.click();}
-await openAccount();
-await page.getByRole('menuitem',{name:'检查更新',exact:true}).click();
+async function chooseAccountAction(name){
+  const menuitem=page.getByRole('menuitem',{name,exact:true});
+  for(let attempt=0;attempt<3;attempt++){
+    if(await account.getAttribute('aria-expanded')!=='true')await account.click({timeout:6000});
+    try{await menuitem.click({timeout:6000});return;}
+    catch(error){if(attempt===2||error.name!=='TimeoutError')throw error;}
+  }
+}
+await chooseAccountAction('检查更新');
 const card=page.getByRole('article',{name:'版本更新',exact:true});
 await card.getByRole('button',{name:'是',exact:true}).click();
 const buttonName={name:'更新全部',exact:true};
@@ -37,8 +45,7 @@ assert.ok(initial.items.every(row=>['available','current'].includes(row.state)))
 const expectedPlugins=initial.items.filter(row=>row.state==='available').map(({packageName,installedVersion,candidateVersion})=>({packageName,installedVersion,candidateVersion}));
 let target=card;
 if(entry==='settings'){
-  await openAccount();
-  await page.getByRole('menuitem',{name:'设置',exact:true}).click();
+  await chooseAccountAction('设置');
   await settings.waitFor({timeout:10000});
   await settings.getByRole('button',{name:'通用设置',exact:true}).click();
   target=settings.locator('[data-slot="settings.general.item"]');
