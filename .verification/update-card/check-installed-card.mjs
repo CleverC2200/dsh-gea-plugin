@@ -4,7 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream,createWriteStream,openSync,closeSync} from 'node:fs';
 import {mkdir,readFile,stat,writeFile} from 'node:fs/promises';
 import {createServer} from 'node:net';
-import {basename,dirname,join,resolve} from 'node:path';
+import {delimiter,join,resolve} from 'node:path';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -28,6 +28,11 @@ const resources=mac?join(app,'Contents/Resources'):join(install,'resources');
 const asar=join(resources,'app.asar');
 const processEnvironment=Object.fromEntries(Object.entries(process.env).filter(([key])=>!/TOKEN|SECRET|PASSWORD|ACCESS_KEY|NODE_OPTIONS|ELECTRON_RUN_AS_NODE|^DSH_HOME$/i.test(key)));
 processEnvironment.DSH_TELEMETRY_DISABLED='1';
+if(!mac){
+ const key=Object.keys(processEnvironment).find(name=>name.toLowerCase()==='path');
+ processEnvironment[key]=join(process.env.ProgramFiles,'Git/usr/bin')+delimiter+processEnvironment[key];
+ processEnvironment.TAR_OPTIONS='--force-local --quoting-style=literal';
+}
 const read=async path=>JSON.parse(await readFile(path,'utf8'));
 const write=(file,value)=>writeFile(file,JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
 const command=(file,args,env=processEnvironment)=>execFileSync(file,args,{encoding:'utf8',timeout:180000,windowsHide:true,env});
@@ -158,7 +163,7 @@ try{
  }else{
   const installer=await download(data.windows,join(root,'signed.exe'));
   const signature=join(root,'signature.ps1');
-  await writeFile(signature,'param([string]$exe)\n$s=Get-AuthenticodeSignature -LiteralPath $exe\nif($s.Status -ne "Valid" -or !$s.TimeStamperCertificate){throw "INSTALLER_SIGNATURE_INVALID"}\n');
+  await writeFile(signature,'param([string]$exe)\n$ErrorActionPreference=\'Stop\'\n$env:PSModulePath=Join-Path $PSHOME \'Modules\'\n$s=Get-AuthenticodeSignature -LiteralPath $exe\nif($s.Status -ne "Valid" -or !$s.TimeStamperCertificate){throw "INSTALLER_SIGNATURE_INVALID"}\n');
   command('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',signature,installer]);
   command(installer,['/S','/D='+install]);
   command('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',signature,exe]);
