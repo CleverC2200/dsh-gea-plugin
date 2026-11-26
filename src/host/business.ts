@@ -793,6 +793,30 @@ export class Business {
     return this.epoch.signal;
   }
 
+  async assertTestPluginIdentity(signal: AbortSignal): Promise<void> {
+    if (this.environment !== "test") throw Error("TEST_PLUGIN_LOGIN_REQUIRED");
+    const auth = this.authenticated();
+    const identity = object(
+      await this.gatewayRequests.read(
+        "/sys/user/getUserInfo",
+        auth,
+        AbortSignal.any([
+          signal,
+          this.epoch.signal,
+          AbortSignal.timeout(this.config.requestTimeoutMs),
+        ]),
+      ),
+    );
+    const user = object(identity.userInfo);
+    signal.throwIfAborted();
+    if (
+      this.auth !== auth ||
+      String(user.id) !== auth.id ||
+      String(user.loginTenantId ?? user.tenantId ?? "") !== auth.tenantId
+    )
+      throw Error("TEST_PLUGIN_IDENTITY_UNCONFIRMED");
+  }
+
   pageSessionScope(): string | undefined {
     return this.auth ? `${this.runId}:${this.pageIdentityGeneration}` : undefined;
   }

@@ -5,6 +5,8 @@ export type CompanyPackageName =
 export type UpdatablePackageName = CompanyPackageName | "@cleverc2200/dsh-personal-memory";
 export const personalMemoryPackageName: "@cleverc2200/dsh-personal-memory";
 export const updatablePackageNames: readonly UpdatablePackageName[];
+export const testPluginChannel: "plugin-detail-test";
+export function isManagedPluginName(name: unknown): name is string;
 export type CoreIdentity = { head: string; version: string };
 export type FixedCore = CoreIdentity & { sdk: Record<string, string> };
 export type PluginManifest = {
@@ -16,10 +18,10 @@ export type PluginManifest = {
   dependencies?: Record<string, string>;
   artifactSha256?: string;
 };
-export type PluginRelease = {
+export type PluginRelease<Name extends string = UpdatablePackageName> = {
   schema: 1;
   updateStrategy?: "suite" | "managed-suite";
-  name: UpdatablePackageName;
+  name: Name;
   version: string;
   artifact: { url: string; size: number; sha256: string };
   supportedCores: CoreIdentity[];
@@ -43,6 +45,7 @@ export type PluginUpdatePlan =
   | { kind: "blocked"; code: string; failures?: CombinationFailure[] };
 export const companyPackageNames: readonly CompanyPackageName[];
 export function parsePluginRelease(value: unknown): PluginRelease;
+export function parseManagedPluginRelease(value: unknown): PluginRelease<string>;
 export function validatePluginCombination(input: {
   core: FixedCore;
   manifests: PluginManifest[];
@@ -82,6 +85,7 @@ export function projectPluginRelease(input: {
 }): PluginRelease;
 export function parsePluginManifest(
   value: unknown,
+  managed?: boolean,
 ): Required<
   Pick<
     PluginManifest,
@@ -93,8 +97,8 @@ export function parseInstalledPluginManifest(
   value: unknown,
 ): ReturnType<typeof parsePluginManifest>;
 export function comparePluginVersions(left: string, right: string): number;
-export type PluginReleaseReference = {
-  name: UpdatablePackageName;
+export type PluginReleaseReference<Name extends string = UpdatablePackageName> = {
+  name: Name;
   url: string;
   sha256: string;
 };
@@ -108,8 +112,12 @@ export type PluginChannel = {
   releases: PluginReleaseReference[];
   companionReleases?: PluginReleaseReference[];
   optionalReleases?: PluginReleaseReference[];
+  managedReleases?: PluginReleaseReference<string>[];
 };
-export function parsePluginChannel(value: unknown): PluginChannel;
+export function parsePluginChannel(
+  value: unknown,
+  options?: { readManagedReleases?: boolean },
+): PluginChannel;
 export function mergePluginChannelRelease(input: {
   previous: PluginChannel;
   release: PluginReleaseReference;

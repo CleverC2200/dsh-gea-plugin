@@ -47,6 +47,7 @@ export type CompanyUpdateStatus = {
 };
 export type UpdateClientStatus = {
   restartReady?: boolean;
+  testPluginRestart?: boolean;
   operationId?: string | null;
   companyUpdate?: CompanyUpdateStatus | null;
   revision: number;
@@ -134,6 +135,7 @@ export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
   const value = updateObject(raw);
   if (
     (value.restartReady !== undefined && typeof value.restartReady !== "boolean") ||
+    (value.testPluginRestart !== undefined && typeof value.testPluginRestart !== "boolean") ||
     (value.operationId !== undefined &&
       value.operationId !== null &&
       (typeof value.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(value.operationId))) ||
@@ -194,6 +196,7 @@ export function parseUpdateClientStatus(raw: unknown): UpdateClientStatus {
     companyUpdate,
     ...(value.operationId === undefined ? {} : { operationId: nullableText(value.operationId) }),
     restartReady: value.restartReady === undefined ? undefined : value.restartReady === true,
+    ...(value.testPluginRestart === true ? { testPluginRestart: true } : {}),
     revision: Number(value.revision),
     items,
     hostProcessIdentity: value.hostProcessIdentity,

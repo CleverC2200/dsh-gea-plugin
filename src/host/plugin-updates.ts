@@ -58,6 +58,7 @@ export function mountPluginUpdates(
   ctx: Context,
   raw: unknown,
   deployment: { requestTimeoutMs: number; runtimeDir: string },
+  testRestart?: () => Promise<string | null>,
 ): () => Promise<void> {
   const lifetime = new AbortController(),
     routes: (() => void)[] = [];
@@ -170,13 +171,17 @@ export function mountPluginUpdates(
       }
     })());
   routes.push(
-    mountDesktopUpdateOperations(ctx, async () => {
-      if (!bootReady) throw Error("UPDATE_HOST_STARTING");
-      await ready();
-      if (stopped) throw Error("UPDATE_HOST_CLOSED");
-      if (!controller || !controllerReady) throw Error(diagnostic);
-      return controller;
-    }),
+    mountDesktopUpdateOperations(
+      ctx,
+      async () => {
+        if (!bootReady) throw Error("UPDATE_HOST_STARTING");
+        await ready();
+        if (stopped) throw Error("UPDATE_HOST_CLOSED");
+        if (!controller || !controllerReady) throw Error(diagnostic);
+        return controller;
+      },
+      testRestart,
+    ),
   );
   for (const action of [
     "status",
@@ -226,8 +231,17 @@ export function mountPluginUpdates(
                         : null,
                   };
                 }) ?? blocked();
+              const pendingTestRestart =
+                controllerReady && controller?.canRestartTestPlugins()
+                  ? await testRestart?.().catch(() => null)
+                  : null;
+              const testPluginRestart = Boolean(
+                pendingTestRestart && controller?.canRestartTestPlugins(),
+              );
               const value: UpdateClientStatus = {
-                restartReady: controllerReady && controller?.restartReady() === true,
+                restartReady:
+                  testPluginRestart || (controllerReady && controller?.restartReady() === true),
+                ...(testPluginRestart ? { testPluginRestart } : {}),
                 operationId: state?.operation?.id ?? null,
                 revision: Math.max(state?.revision ?? 0, revision),
                 companyUpdate: controllerReady

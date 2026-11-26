@@ -12,7 +12,6 @@ import {
   rm,
   symlink,
   readdir,
-  cp,
   lstat,
   readlink,
   realpath,
@@ -137,27 +136,41 @@ for (const userCache of [false, true, "active-wal"])
       );
       const oldMetadata = join(home, "desktop-company-cache/metadata");
       let origin;
+      const tarballPath = ({ name, version }) => `/${name}/-/${name}-${version}.tgz`;
+      const registryMetadata = (pkg, registry) => {
+        const { name, version } = pkg.manifest;
+        return {
+          name,
+          "dist-tags": { latest: version },
+          time: { [version]: "2020-01-01T00:00:00.000Z" },
+          versions: {
+            [version]: {
+              ...pkg.manifest,
+              dist: {
+                tarball: registry + tarballPath(pkg.manifest),
+                integrity: "sha512-" + createHash("sha512").update(pkg.bytes).digest("base64"),
+              },
+            },
+          },
+        };
+      };
+      const cachePublicMetadata = async (cache, pkg) => {
+        const metadata = registryMetadata(pkg, "https://registry.npmjs.org");
+        for (const format of ["metadata", "metadata-full"]) {
+          const directory = join(cache, "v11", format, "registry.npmjs.org");
+          await mkdir(directory, { recursive: true });
+          await writeFile(
+            join(directory, metadata.name + ".jsonl"),
+            "{}\n" + JSON.stringify(metadata),
+          );
+        }
+      };
       const server = createServer((request, response) => {
         const pkg = request.url.includes("employee") ? employee : dependency;
-        const tarball = pkg === employee ? "/employee.tgz" : "/dependency.tgz";
-        if (request.url === tarball) response.end(pkg.bytes);
+        if (request.url === tarballPath(pkg.manifest)) response.end(pkg.bytes);
         else {
           response.setHeader("Content-Type", "application/json");
-          response.end(
-            JSON.stringify({
-              name: pkg.manifest.name,
-              "dist-tags": { latest: "1.0.0" },
-              versions: {
-                "1.0.0": {
-                  ...pkg.manifest,
-                  dist: {
-                    tarball: origin + tarball,
-                    integrity: "sha512-" + createHash("sha512").update(pkg.bytes).digest("base64"),
-                  },
-                },
-              },
-            }),
-          );
+          response.end(JSON.stringify(registryMetadata(pkg, origin)));
         }
       });
       await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -172,11 +185,7 @@ for (const userCache of [false, true, "active-wal"])
           "--store-dir=" + store,
           "--cache-dir=" + oldMetadata,
         ]);
-        const namespaces = join(oldMetadata, "v11/metadata");
-        for (const entry of await readdir(namespaces))
-          await cp(join(namespaces, entry), join(namespaces, "registry.npmjs.org"), {
-            recursive: true,
-          });
+        await cachePublicMetadata(oldMetadata, employee);
       }
       const previous = new CompanyInstallation(profile, "a".repeat(40));
       await previous.initialize();
@@ -216,9 +225,7 @@ for (const userCache of [false, true, "active-wal"])
         "--store-dir=" + join(seed, "store"),
         "--cache-dir=" + join(seed, "metadata"),
       ]);
-      const metadata = join(seed, "metadata/v11/metadata");
-      for (const entry of await readdir(metadata))
-        await cp(join(metadata, entry), join(metadata, "registry.npmjs.org"), { recursive: true });
+      await cachePublicMetadata(join(seed, "metadata"), dependency);
       const manifest = { schema: 1, core: { head: "b".repeat(40) }, packages };
       await writeFile(join(seed, "manifest.json"), JSON.stringify(manifest));
       await writeCompanySeedLock({ root, seed, profile: seedProfile }).catch(async (error) => {

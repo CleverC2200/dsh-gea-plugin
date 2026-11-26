@@ -125,7 +125,7 @@ export class PluginStore {
     }
     return { id: active, path, receipt };
   }
-  async prepare({ id, install, signal, queueActivation = false }) {
+  async prepare({ id, install, signal, queueActivation = false, testPlugin = false }) {
     versionId(id);
     await mkdir(join(this.root, "versions"), { recursive: true, mode: 0o700 });
     return this.withLock(async (owner, lockPath) => {
@@ -192,6 +192,7 @@ export class PluginStore {
         const receipt = {
           id,
           state: "prepared",
+          ...(testPlugin ? { testPlugin: true } : {}),
           ...schema,
           createdAt: new Date().toISOString(),
           dependencies: manifest.dependencies ?? {},
@@ -212,7 +213,7 @@ export class PluginStore {
           if (error.code !== "ENOENT") throw error;
         }
         await rename(stage, destination);
-        if (queueActivation) await this.queueActivation(id);
+        if (queueActivation) await this.queueActivation(id, signal);
         return receipt;
       } catch (error) {
         await writePluginStoreJson(join(stage, "preparation-failure.json"), {
@@ -235,7 +236,14 @@ export class PluginStore {
   async recoverPreparation() {
     return recoverPluginStoreLock(this.root);
   }
-  async queueActivation(id) {
+  async isTestPluginVersion(id) {
+    if (!id || id === "baseline") return false;
+    versionId(id);
+    const receipt = await json(join(this.root, "versions", id, "version.json"));
+    if (receipt.id !== id) throw Error("PLUGIN_VERSION_NOT_PREPARED");
+    return receipt.testPlugin === true;
+  }
+  async queueActivation(id, signal) {
     versionId(id);
     const receipt = await json(join(this.root, "versions", id, "version.json"));
     if (
@@ -246,6 +254,17 @@ export class PluginStore {
       throw Error("PLUGIN_VERSION_NOT_PREPARED");
     return this.withSelectionLock(async () => {
       const state = await this.status();
+      if (this.companyCoreHead) {
+        const trial = state.booting !== state.verified ? state.booting : null;
+        for (const candidate of [state.pending, trial])
+          if (
+            candidate &&
+            candidate !== id &&
+            (receipt.testPlugin === true || (await this.isTestPluginVersion(candidate)))
+          )
+            throw Error("UPDATE_OPERATION_BLOCKED");
+      }
+      signal?.throwIfAborted();
       await writePluginStoreJson(join(this.root, "selection.json"), { ...state, pending: id });
     });
   }

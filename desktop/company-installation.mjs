@@ -117,12 +117,13 @@ export class CompanyInstallation {
       }
     }
   }
-  async prepare(id, install, signal) {
+  async prepare(id, install, signal, { testPlugin = false } = {}) {
     const source = graphValues(await json(join(this.profile, "package.json")));
     const receipt = await this.store.prepare({
       id,
       signal,
       queueActivation: true,
+      testPlugin,
       install: async (stage, controls) => {
         const manifest = await json(join(this.profile, "package.json"));
         if (!isDeepStrictEqual(graphValues(manifest), source))
@@ -139,6 +140,21 @@ export class CompanyInstallation {
   }
   async preparationIdle() {
     return (await this.store.recoverPreparation()) !== "busy";
+  }
+  async hasPendingActivation() {
+    const state = await this.store.status();
+    return state.pending != null || (state.booting != null && state.booting !== state.verified);
+  }
+  async pendingTestPluginActivation() {
+    const { pending } = await this.store.status();
+    return (await this.store.isTestPluginVersion(pending)) ? pending : null;
+  }
+  async hasTestPluginActivation() {
+    const { pending, booting, verified } = await this.store.status();
+    return (
+      (await this.store.isTestPluginVersion(pending)) ||
+      (booting !== verified && (await this.store.isTestPluginVersion(booting)))
+    );
   }
   async activationState(id) {
     const selection = await this.store.status();

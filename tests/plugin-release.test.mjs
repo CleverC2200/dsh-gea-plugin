@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import semver from "semver";
 import { readFile } from "node:fs/promises";
 import { productionManifest } from "../scripts/production-manifest.mjs";
+import { companyReleaseIndex } from "../desktop/company-archives.mjs";
 import {
   validatePluginCombination,
   planPluginUpdate,
@@ -28,6 +29,39 @@ const graph = [
     peerDependencies: { [W]: "1.0.0", [M]: "2.0.0" },
   },
 ];
+test("the candidate upgrades the published GEA and is accepted by the desktop version reader", async () => {
+  const { version } = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const online = [
+    { name: W, version: "0.1.178" },
+    { name: M, version: "0.6.3-company.92" },
+    { name: G, version: "0.0.365" },
+  ];
+  const bundled = [
+    { name: W, version: "0.1.177" },
+    { name: M, version: "0.6.3-company.91" },
+    { name: G, version: "0.0.365" },
+  ];
+  const releases = online.map((manifest) => ({
+    ...manifest,
+    version: manifest.name === G ? version : manifest.version,
+    supportedCores: [core],
+    dataCompatibility: { kind: "preserve" },
+  }));
+  for (const [installed, expected] of [
+    [bundled, [W, M, G]],
+    [online, [G]],
+  ]) {
+    const plan = planPluginSuiteVersions({ releases, core, installed });
+    assert.equal(plan.kind, "ready");
+    assert.deepEqual(
+      plan.releases.map(({ name }) => name),
+      expected,
+    );
+  }
+  assert.ok(companyReleaseIndex(G, version) > companyReleaseIndex(G, "0.0.365"));
+});
 test("managed installation strategy survives signed release projection", () => {
   const release = projectPluginRelease({
     manifest: { name: G, version: "0.0.307", geaPluginUpdateStrategy: "managed-suite" },

@@ -15,6 +15,9 @@ import {
   initializeGeaDefaultModel,
 } from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
+import { testPluginReleaseSourceConfig } from "./host/plugin-release-source.ts";
+import { mountTestPluginDistribution } from "./host/test-plugin-distribution.ts";
+import { pendingTestPluginRestart } from "./host/test-plugin-installation.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
 import { createDesktopNavigation } from "./host/desktop-navigation.ts";
@@ -148,6 +151,7 @@ export const Config = z.object({
   runtimeDir: z.string(),
 
   pluginUpdates: z.any<unknown>(),
+  testPluginDistribution: z.any<unknown>(),
   analysisMode: z.union(["receipt", "model"]).default("model"),
   analysisModel: z.string().default(companyDefaults.analysis.model),
   analysisSource: z.union(["gea", "direct", "receipt"]).default("gea"),
@@ -234,6 +238,7 @@ export async function apply(
   input: Omit<Deployment, "runtimeDir"> & {
     runtimeDir?: string;
     pluginUpdates?: unknown;
+    testPluginDistribution?: unknown;
     feedbackUploadTimeoutMs?: number;
     feedbackMaxZipBytes?: number;
   },
@@ -251,8 +256,30 @@ export async function apply(
         : undefined),
   };
   validateServiceAccounts(config.serviceAccounts);
-  ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config));
   const business = new Business(config);
+  const testSource = testPluginReleaseSourceConfig(
+    input.testPluginDistribution,
+    input.pluginUpdates,
+  );
+  const testDirectory = resolve(runtimeDir, "test-plugin-distribution");
+  const testRestart =
+    testSource === undefined
+      ? undefined
+      : () => pendingTestPluginRestart(ctx.profileContext.dir, testDirectory);
+  ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config, testRestart));
+  if (testSource !== undefined) {
+    ctx.inject(["pluginManager"], (scope) => {
+      scope.effect(() =>
+        mountTestPluginDistribution(
+          scope,
+          business,
+          testSource,
+          input.pluginUpdates,
+          testDirectory,
+        ),
+      );
+    });
+  }
   business.capture.session = (id) => {
     const agent = id ? ctx.agents.get(brandString<SessionId>(id)) : ctx.agents.currentInitiator();
     const session =

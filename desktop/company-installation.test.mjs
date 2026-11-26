@@ -143,6 +143,33 @@ test("failed installation and an interrupted trial both retain a complete usable
   await f.preserved();
 });
 
+test("managed and company preparation do not overlap before activation is verified", async (t) => {
+  const f = await fixture(t);
+  for (const [first, second, testFirst] of [
+    ["test-fixture", "company-fixture", true],
+    ["company-next", "test-next", false],
+  ]) {
+    await f.installation.prepare(first, f.update, undefined, { testPlugin: testFirst });
+    assert.equal(await f.installation.pendingTestPluginActivation(), testFirst ? first : null);
+    await assert.rejects(
+      f.installation.prepare(second, f.update, undefined, { testPlugin: !testFirst }),
+      /UPDATE_OPERATION_BLOCKED/,
+    );
+    assert.equal(await f.installation.activationState(first), "pending");
+    assert.equal(await f.installation.activationState(second), "unavailable");
+    assert.equal((await f.installation.beginBoot()).id, first);
+    assert.equal(await f.installation.pendingTestPluginActivation(), null);
+    assert.equal(await f.installation.hasTestPluginActivation(), testFirst);
+    await assert.rejects(
+      f.installation.prepare(second + "-trial", f.update, undefined, { testPlugin: !testFirst }),
+      /UPDATE_OPERATION_BLOCKED/,
+    );
+    assert.equal(await f.installation.confirmRuntime(await f.proofs()), true);
+    assert.equal(await f.installation.hasTestPluginActivation(), false);
+  }
+  await f.preserved();
+});
+
 test("a candidate writer cannot prevent startup of the separate verified graph", async (t) => {
   const f = await fixture(t);
   let release;

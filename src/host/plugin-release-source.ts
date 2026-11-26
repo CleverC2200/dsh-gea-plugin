@@ -6,10 +6,13 @@ import { pipeline } from "node:stream/promises";
 import { t as readTar } from "tar";
 import {
   updatablePackageNames,
+  isManagedPluginName,
+  parseManagedPluginRelease,
   parsePluginRelease,
   parsePluginManifest,
   comparePluginVersions,
   parsePluginChannel,
+  testPluginChannel,
   type PluginRelease,
   type PluginManifest,
 } from "../shared/plugin-release.mjs";
@@ -53,6 +56,27 @@ export type PluginReleaseSourceDependencies = {
   fileCommit?: PluginUpdateFileCommit;
   now?: () => number;
 };
+
+export function testPluginReleaseSourceConfig(override: unknown, updates: unknown): unknown {
+  if (override !== undefined) return override;
+  if (updates === null || typeof updates !== "object" || !("source" in updates)) return;
+  const source = updates.source;
+  if (source !== null && typeof source === "object" && "channel" in source) {
+    if (source.channel === testPluginChannel) return source;
+    const companyChannels =
+      "https://synear-gea.oss-cn-hangzhou.aliyuncs.com/plugin-release/channels/";
+    if (
+      source.channel === "stable" &&
+      "channelUrl" in source &&
+      source.channelUrl === companyChannels + "plugin-detail-stable.json"
+    )
+      return {
+        ...source,
+        channel: testPluginChannel,
+        channelUrl: companyChannels + testPluginChannel + ".json",
+      };
+  }
+}
 
 export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
   const value = object(raw);
@@ -131,6 +155,7 @@ async function boundedBytes(
 export async function inspectPluginArchive(
   path: string,
   signal?: AbortSignal,
+  managed = false,
 ): Promise<PluginManifest> {
   const limit = 16 * 1024 * 1024;
   const entries = new Set<string>();
@@ -181,7 +206,11 @@ export async function inspectPluginArchive(
   if (!entries.has("package/package.json")) return fail("SOURCE_ARCHIVE_MANIFEST_MISSING");
   const value = object(json(Buffer.concat(manifest)));
   const name = text(value.name);
-  if (!updatablePackageNames.some((company) => company === name))
+  if (
+    !(managed
+      ? isManagedPluginName(name)
+      : updatablePackageNames.some((company) => company === name))
+  )
     return fail("SOURCE_ARCHIVE_IDENTITY_INVALID");
   const exports = object(value.exports),
     dsh = object(value.dsh),
@@ -214,10 +243,16 @@ export async function inspectPluginArchive(
     !entries.has("package/" + patch.slice(2))
   )
     return fail("SOURCE_ARCHIVE_BUNDLE_MISSING");
-  const projection = parsePluginManifest(value);
+  const projection = parsePluginManifest(value, managed);
+  const hasInstallScripts =
+    value.scripts !== undefined &&
+    Object.keys(object(value.scripts)).some((name) =>
+      ["preinstall", "install", "postinstall", "prepare", "prepublish"].includes(name),
+    );
   if (
-    value.scripts ||
-    value.devDependencies ||
+    (managed
+      ? hasInstallScripts || entries.has("package/binding.gyp")
+      : value.scripts || value.devDependencies) ||
     value.workspaces ||
     value.pnpm ||
     value.overrides ||
@@ -236,7 +271,7 @@ export async function inspectPluginArchive(
     dependencies: projection.dependencies,
   };
 }
-function sameGraph(manifest: PluginManifest, release: PluginRelease): boolean {
+function sameGraph(manifest: PluginManifest, release: PluginRelease<string>): boolean {
   const sorted = (value: unknown) =>
     JSON.stringify(Object.entries(object(value ?? {})).sort(([a], [b]) => a.localeCompare(b)));
   return (
@@ -253,7 +288,24 @@ export function createPluginReleaseSource(
   rawConfig: unknown,
   dependencies: PluginReleaseSourceDependencies,
 ) {
+  return releaseSource(rawConfig, dependencies, parsePluginRelease);
+}
+
+export function createManagedPluginReleaseSource(
+  rawConfig: unknown,
+  dependencies: PluginReleaseSourceDependencies,
+) {
+  return releaseSource(rawConfig, dependencies, parseManagedPluginRelease, true);
+}
+
+function releaseSource<Name extends string>(
+  rawConfig: unknown,
+  dependencies: PluginReleaseSourceDependencies,
+  parseRelease: (value: unknown) => PluginRelease<Name>,
+  managed = false,
+) {
   const config = parsePluginReleaseSourceConfig(rawConfig);
+  if (managed && config.channel !== testPluginChannel) return fail("SOURCE_CHANNEL_INVALID");
   if (!isAbsolute(dependencies.trustDirectory)) return fail("SOURCE_TRUST_ABSOLUTE_REQUIRED");
   let verified = new Map<string, string>(),
     generation = 0,
@@ -274,18 +326,21 @@ export function createPluginReleaseSource(
         Number(receipt.revision) < 1 ||
         receipt.channel !== config.channel ||
         !Array.isArray(receipt.releases) ||
-        receipt.releases.length === 0 ||
-        receipt.releases.length > updatablePackageNames.length
+        (!managed &&
+          (receipt.releases.length === 0 || receipt.releases.length > updatablePackageNames.length))
       )
         return fail("SOURCE_TRUST_INVALID");
       sha(receipt.payloadSha256);
       const names = new Set<string>();
       for (const row of receipt.releases) {
         const release = object(row),
-          manifest = parsePluginManifest({
-            name: release.name,
-            version: release.version,
-          });
+          manifest = parsePluginManifest(
+            {
+              name: release.name,
+              version: release.version,
+            },
+            managed,
+          );
         if (names.has(manifest.name)) return fail("SOURCE_TRUST_INVALID");
         names.add(manifest.name);
         sha(release.sha256);
@@ -344,13 +399,16 @@ export function createPluginReleaseSource(
       return fail("SOURCE_HTTP_FAILED");
     return response;
   }
-  async function performCheck(current: number, signal?: AbortSignal): Promise<PluginRelease[]> {
+  async function performCheck(
+    current: number,
+    signal?: AbortSignal,
+  ): Promise<PluginRelease<Name>[]> {
     try {
       const envelope = object(
         json(await boundedBytes(await request(config.channelUrl, signal), 1024 * 1024, signal)),
       );
       const payload = base64(envelope.payloadBase64);
-      const channel = parsePluginChannel(json(payload));
+      const channel = parsePluginChannel(json(payload), { readManagedReleases: managed });
       if (channel.channel !== config.channel) return fail("SOURCE_CHANNEL_INVALID");
       const now = (dependencies.now ?? Date.now)();
       const issuedAt = typeof channel.issuedAt === "string" ? Date.parse(channel.issuedAt) : NaN;
@@ -373,24 +431,29 @@ export function createPluginReleaseSource(
           (channel.revision === previous.revision && payloadSha256 !== previous.payloadSha256))
       )
         return fail("SOURCE_CHANNEL_REPLAY");
-      const releases: PluginRelease[] = [];
-      for (const row of [
-        ...channel.releases,
-        ...(channel.companionReleases ?? []),
-        ...(channel.optionalReleases ?? []),
-      ]) {
+      const releases: PluginRelease<Name>[] = [];
+      const references = managed
+        ? (channel.managedReleases ?? [])
+        : [
+            ...channel.releases,
+            ...(channel.companionReleases ?? []),
+            ...(channel.optionalReleases ?? []),
+          ];
+      for (const row of references) {
         const reference = object(row),
           name = text(reference.name),
           releaseHash = sha(reference.sha256);
         if (
-          !updatablePackageNames.some((company) => company === name) ||
+          !(managed
+            ? isManagedPluginName(name)
+            : updatablePackageNames.some((company) => company === name)) ||
           releases.some((release) => release.name === name)
         )
           return fail("SOURCE_CHANNEL_INVALID");
         const url = allowedUrl(text(reference.url), config, releaseHash);
         const bytes = await boundedBytes(await request(url, signal), 1024 * 1024, signal);
         if (hash(bytes) !== releaseHash) return fail("SOURCE_RELEASE_HASH_MISMATCH");
-        const release = parsePluginRelease(json(bytes));
+        const release = parseRelease(json(bytes));
         if (release.name !== name) return fail("SOURCE_RELEASE_IDENTITY_MISMATCH");
         allowedUrl(release.artifact.url, config, release.artifact.sha256);
         if (previous) {
@@ -443,14 +506,14 @@ export function createPluginReleaseSource(
       throw error;
     }
   }
-  function check(signal?: AbortSignal): Promise<PluginRelease[]> {
+  function check(signal?: AbortSignal): Promise<PluginRelease<Name>[]> {
     const current = ++generation;
     verified.clear();
     const result = checks.then(() => performCheck(current, signal));
     checks = result.catch(() => undefined);
     return result;
   }
-  function assertCurrentRelease(release: PluginRelease): void {
+  function assertCurrentRelease(release: PluginRelease<Name>): void {
     if ((dependencies.now ?? Date.now)() >= verifiedUntil) {
       verified.clear();
       return fail("SOURCE_APPROVAL_EXPIRED");
@@ -459,7 +522,7 @@ export function createPluginReleaseSource(
       return fail("SOURCE_RELEASE_NOT_VERIFIED");
   }
   async function download(
-    release: PluginRelease,
+    release: PluginRelease<Name>,
     cacheDirectory: string,
     signal?: AbortSignal,
   ): Promise<string> {
@@ -482,7 +545,7 @@ export function createPluginReleaseSource(
         hash(await readFile(path)) !== release.artifact.sha256
       )
         return fail("SOURCE_ARTIFACT_HASH_MISMATCH");
-      if (!sameGraph(await inspectPluginArchive(path, signal), release))
+      if (!sameGraph(await inspectPluginArchive(path, signal, managed), release))
         return fail("SOURCE_ARCHIVE_RELEASE_MISMATCH");
     }
     try {

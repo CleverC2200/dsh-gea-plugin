@@ -280,7 +280,9 @@ function updateView(
 ) {
   const state = client.presentation;
   const desktopTarget = desktopRestartTarget(state);
-  const pending = plugins.items.some((row) => row.state === "pending-restart");
+  const pending =
+    plugins.testPluginRestart === true ||
+    plugins.items.some((row) => row.state === "pending-restart");
   const available = plugins.items.filter((row) => row.state === "available");
   const pluginAvailable =
     !plugins.transportError &&
@@ -314,9 +316,10 @@ function startAvailableUpdates(updates: Owner, desktop: DesktopOwner) {
     client,
   );
   if (!canUpdate) return;
-  const restartRequest = desktopTarget
-    ? { kind: "desktop" as const, version: desktopTarget }
-    : undefined;
+  const restartRequest =
+    desktopTarget && updates.getSnapshot().testPluginRestart !== true
+      ? { kind: "desktop" as const, version: desktopTarget }
+      : undefined;
   if (client.canRestartUpdate && pluginAvailable && !pending) {
     void updates.updateAll(restartRequest);
   } else if (client.canRestartUpdate && pending) {
