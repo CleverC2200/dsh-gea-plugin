@@ -68,15 +68,29 @@ for (const [file, sha256] of identities) {
   await writeFile(path, bytes);
   packages.push(path);
 }
-await installCompanyPackages({
-  root,
-  support,
-  home,
-  profile,
-  packages,
-  store,
-  offline: false,
-});
+try {
+  await installCompanyPackages({
+    root,
+    support,
+    home,
+    profile,
+    packages,
+    store,
+    offline: false,
+  });
+} catch (error) {
+  const logPath = String(error).match(
+    /GEA_COMPANY_INSTALL_FAILED: ([A-Za-z]:[\\/][^"\r\n]+\.log)/,
+  )?.[1];
+  if (logPath) {
+    const local = relative(scratch, logPath);
+    assert.ok(local && !isAbsolute(local) && !local.startsWith(".."));
+    const diagnostic = await readFile(logPath, "utf8");
+    await writeFile(join(output, "initial-pnpm.log"), diagnostic);
+    console.error(diagnostic.slice(-12000));
+  }
+  throw error;
+}
 const before = JSON.parse(await readFile(join(profile, "package.json"), "utf8"));
 const restorePackages = [];
 const restoreArchives = join(scratch, "restore-archives");
