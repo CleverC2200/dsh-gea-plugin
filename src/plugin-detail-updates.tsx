@@ -314,14 +314,15 @@ function startAvailableUpdates(updates: Owner, desktop: DesktopOwner) {
     client,
   );
   if (!canUpdate) return;
-  const openDesktop =
-    desktopTarget && client.canOpen ? () => desktop.open(desktopTarget) : undefined;
+  const restartRequest = desktopTarget
+    ? { kind: "desktop" as const, version: desktopTarget }
+    : undefined;
   if (client.canRestartUpdate && pluginAvailable && !pending) {
-    void updates.updateAll(openDesktop);
-  } else if (openDesktop) {
-    void openDesktop().catch(() => {});
-  } else if (pending) {
-    void updates.restart();
+    void updates.updateAll(restartRequest);
+  } else if (client.canRestartUpdate && pending) {
+    void updates.restart(restartRequest);
+  } else if (desktopTarget && client.canOpen) {
+    void desktop.open(desktopTarget).catch(() => {});
   }
 }
 function UpdateButton({
@@ -341,6 +342,7 @@ function UpdateButton({
       size="sm"
       variant="primary"
       className="gea-update-start"
+      title={t("takeoverNotice")}
       aria-disabled={disabled}
       onClick={() => {
         if (!disabled) onClick();
