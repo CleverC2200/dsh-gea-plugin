@@ -140,7 +140,7 @@ export class CompanyInstallation {
   }
   async hasPendingActivation() {
     const state = await this.store.status();
-    return state.pending != null || state.booting != null;
+    return state.pending != null || (state.booting != null && state.booting !== state.verified);
   }
   async activationState(id) {
     const selection = await this.store.status();

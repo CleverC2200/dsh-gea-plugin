@@ -4,6 +4,7 @@ import type {} from "@deepseek-ai/dsh-plugin-manager";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  companyPackageNames,
   comparePluginVersions,
   isManagedPluginName,
   validatePluginCombination,
@@ -81,6 +82,7 @@ export function mountTestPluginDistribution(
     if (!Array.isArray(names) || !names.every(isManagedPluginName))
       throw Error("TEST_PLUGIN_OWNERSHIP_INVALID");
     const owned = new Set<string>(names);
+    if (!owned.size && !eligible()) return;
     const installed = await manager.listBundles();
     const setEnabled = async (name: string, enabled: boolean) => {
       const outcome = await manager.setBundleEnabled(name, enabled);
@@ -102,7 +104,11 @@ export function mountTestPluginDistribution(
       sourceLoading = undefined;
       throw error;
     }));
-    const releases = await source.check(signal);
+    const releases = await source.check(AbortSignal.any([signal, AbortSignal.timeout(60_000)]));
+    signal.throwIfAborted();
+    const companyManifests = installed.flatMap(({ name, version }) =>
+      version && companyPackageNames.some((company) => company === name) ? [{ name, version }] : [],
+    );
     await deactivate(new Set(releases.map(({ name }) => name)));
     const archives: { release: PluginRelease<string>; archivePath: string }[] = [];
     for (const release of releases) {
@@ -119,14 +125,16 @@ export function mountTestPluginDistribution(
       const compatibility = validatePluginCombination({
         core,
         manifests: [
+          ...companyManifests,
           {
             ...release,
             peerDependencies: Object.fromEntries(
-              Object.entries(release.peerDependencies).filter(([name]) =>
-                name.startsWith("@deepseek-ai/"),
+              Object.entries(release.peerDependencies).filter(
+                ([name]) =>
+                  name.startsWith("@deepseek-ai/") ||
+                  companyPackageNames.some((company) => company === name),
               ),
             ),
-            dependencies: {},
           },
         ],
       });
@@ -138,7 +146,11 @@ export function mountTestPluginDistribution(
         if (current?.version && comparePluginVersions(current.version, release.version) > 0)
           continue;
         if (current?.version !== release.version) {
-          const archive = await source.download(release, join(directory, "archives"), signal);
+          const archive = await source.download(
+            release,
+            join(directory, "archives"),
+            AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
+          );
           signal.throwIfAborted();
           source.assertCurrentRelease(release);
           if (!owned.has(release.name)) {
@@ -158,7 +170,17 @@ export function mountTestPluginDistribution(
       }
     }
     if (!archives.length) return;
-    const staging = await stageTestBundles(ctx, directory, core.version, archives, signal);
+    const staging = await stageTestBundles(
+      ctx,
+      directory,
+      core,
+      archives,
+      () => {
+        signal.throwIfAborted();
+        for (const { release } of archives) source.assertCurrentRelease(release);
+      },
+      signal,
+    );
     if (staging === "waiting" && !restartCheck && !signal.aborted) {
       restartCheck = setTimeout(() => {
         restartCheck = undefined;
@@ -197,9 +219,7 @@ export function mountTestPluginDistribution(
       });
   };
   const unwatch = business.watchIdentity(schedule);
-  const timer = setInterval(() => {
-    if (eligible()) schedule();
-  }, refreshIntervalMs);
+  const timer = setInterval(schedule, refreshIntervalMs);
   timer.unref();
   schedule();
   return () => {

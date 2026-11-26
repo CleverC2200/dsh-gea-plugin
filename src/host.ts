@@ -15,6 +15,7 @@ import {
   initializeGeaDefaultModel,
 } from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
+import { testPluginReleaseSourceConfig } from "./host/plugin-release-source.ts";
 import { mountTestPluginDistribution } from "./host/test-plugin-distribution.ts";
 import type {} from "./shared/message-source.ts";
 import { attachDesktopLogin } from "./host/desktop-login.ts";
@@ -256,13 +257,17 @@ export async function apply(
   validateServiceAccounts(config.serviceAccounts);
   ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config));
   const business = new Business(config);
-  if (input.testPluginDistribution !== undefined) {
+  const testSource = testPluginReleaseSourceConfig(
+    input.testPluginDistribution,
+    input.pluginUpdates,
+  );
+  if (testSource !== undefined) {
     ctx.inject(["pluginManager"], (scope) => {
       scope.effect(() =>
         mountTestPluginDistribution(
           scope,
           business,
-          input.testPluginDistribution,
+          testSource,
           input.pluginUpdates,
           resolve(runtimeDir, "test-plugin-distribution"),
         ),

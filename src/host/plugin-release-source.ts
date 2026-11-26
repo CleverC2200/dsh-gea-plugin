@@ -57,6 +57,19 @@ export type PluginReleaseSourceDependencies = {
   now?: () => number;
 };
 
+export function testPluginReleaseSourceConfig(override: unknown, updates: unknown): unknown {
+  if (override !== undefined) return override;
+  if (updates === null || typeof updates !== "object" || !("source" in updates)) return;
+  const source = updates.source;
+  if (
+    source !== null &&
+    typeof source === "object" &&
+    "channel" in source &&
+    source.channel === testPluginChannel
+  )
+    return source;
+}
+
 export function parsePluginReleaseSourceConfig(raw: unknown): PluginReleaseSourceConfig {
   const value = object(raw);
   if (!Array.isArray(value.allowed) || !value.allowed.length) return fail("SOURCE_CONFIG_INVALID");
@@ -387,7 +400,7 @@ function releaseSource<Name extends string>(
         json(await boundedBytes(await request(config.channelUrl, signal), 1024 * 1024, signal)),
       );
       const payload = base64(envelope.payloadBase64);
-      const channel = parsePluginChannel(json(payload));
+      const channel = parsePluginChannel(json(payload), { readManagedReleases: managed });
       if (channel.channel !== config.channel) return fail("SOURCE_CHANNEL_INVALID");
       const now = (dependencies.now ?? Date.now)();
       const issuedAt = typeof channel.issuedAt === "string" ? Date.parse(channel.issuedAt) : NaN;

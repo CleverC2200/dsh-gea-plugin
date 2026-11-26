@@ -11,6 +11,7 @@ import {
   createManagedPluginReleaseSource,
   createPluginReleaseSource,
   inspectPluginArchive,
+  testPluginReleaseSourceConfig,
 } from "../src/host/plugin-release-source.ts";
 import { companyPackageNames, projectPluginRelease } from "../src/shared/plugin-release.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
@@ -136,6 +137,16 @@ test("channel verifies release bytes, release hashes and durable tgz manifest be
   );
 });
 
+test("existing test update profiles supply the managed source without a patch migration", async (t) => {
+  const { config } = await fixture(t);
+  const testSource = { ...config, channel: "plugin-detail-test" };
+  const stableSource = { ...config, channel: "stable" };
+  assert.equal(testPluginReleaseSourceConfig(undefined, { source: testSource }), testSource);
+  assert.equal(testPluginReleaseSourceConfig(undefined, { source: stableSource }), undefined);
+  assert.equal(testPluginReleaseSourceConfig(undefined, undefined), undefined);
+  assert.equal(testPluginReleaseSourceConfig(testSource, { source: stableSource }), testSource);
+});
+
 test("test distribution accepts multiple new bundles without changing the core suite", async (t) => {
   const f = await fixture(t);
   const payload = JSON.parse(
@@ -215,6 +226,14 @@ test("test distribution accepts multiple new bundles without changing the core s
   await assert.rejects(
     managed.download(releases[0], join(f.dir, "managed-cache")),
     /SOURCE_RELEASE_NOT_VERIFIED/,
+  );
+  payload.revision++;
+  payload.managedReleases = [{ name: companyPackageNames[0] }];
+  publish();
+  await assert.rejects(managed.check(), /SOURCE_CHANNEL_INVALID/);
+  assert.deepEqual(
+    (await existing.check()).map(({ name }) => name),
+    companyPackageNames,
   );
 });
 

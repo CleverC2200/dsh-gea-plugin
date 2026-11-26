@@ -143,6 +143,22 @@ test("failed installation and an interrupted trial both retain a complete usable
   await f.preserved();
 });
 
+test("managed and company preparation cannot replace each other's pending activation", async (t) => {
+  const f = await fixture(t);
+  for (const [first, second] of [
+    ["test-fixture", "company-fixture"],
+    ["company-next", "test-next"],
+  ]) {
+    await f.installation.prepare(first, f.update);
+    await assert.rejects(f.installation.prepare(second, f.update), /UPDATE_OPERATION_BLOCKED/);
+    assert.equal(await f.installation.activationState(first), "pending");
+    assert.equal(await f.installation.activationState(second), "unavailable");
+    assert.equal((await f.installation.beginBoot()).id, first);
+    assert.equal(await f.installation.confirmRuntime(await f.proofs()), true);
+  }
+  await f.preserved();
+});
+
 test("a candidate writer cannot prevent startup of the separate verified graph", async (t) => {
   const f = await fixture(t);
   let release;

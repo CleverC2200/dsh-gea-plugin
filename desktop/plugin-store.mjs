@@ -212,7 +212,7 @@ export class PluginStore {
           if (error.code !== "ENOENT") throw error;
         }
         await rename(stage, destination);
-        if (queueActivation) await this.queueActivation(id);
+        if (queueActivation) await this.queueActivation(id, signal);
         return receipt;
       } catch (error) {
         await writePluginStoreJson(join(stage, "preparation-failure.json"), {
@@ -235,7 +235,7 @@ export class PluginStore {
   async recoverPreparation() {
     return recoverPluginStoreLock(this.root);
   }
-  async queueActivation(id) {
+  async queueActivation(id, signal) {
     versionId(id);
     const receipt = await json(join(this.root, "versions", id, "version.json"));
     if (
@@ -246,6 +246,9 @@ export class PluginStore {
       throw Error("PLUGIN_VERSION_NOT_PREPARED");
     return this.withSelectionLock(async () => {
       const state = await this.status();
+      signal?.throwIfAborted();
+      if (this.companyCoreHead && state.pending && state.pending !== id)
+        throw Error("UPDATE_OPERATION_BLOCKED");
       await writePluginStoreJson(join(this.root, "selection.json"), { ...state, pending: id });
     });
   }

@@ -114,7 +114,10 @@ export type PluginChannel = {
   optionalReleases?: PluginReleaseReference[];
   managedReleases?: PluginReleaseReference<string>[];
 };
-export function parsePluginChannel(value: unknown): PluginChannel;
+export function parsePluginChannel(
+  value: unknown,
+  options?: { readManagedReleases?: boolean },
+): PluginChannel;
 export function mergePluginChannelRelease(input: {
   previous: PluginChannel;
   release: PluginReleaseReference;

@@ -351,7 +351,7 @@ function parseManifest(value, publication, managed = false) {
 export function comparePluginVersions(left, right) {
   return semver.compare(left, right);
 }
-export function parsePluginChannel(value) {
+export function parsePluginChannel(value, { readManagedReleases = true } = {}) {
   if (
     !record(value) ||
     value.schema !== 1 ||
@@ -435,7 +435,11 @@ export function parsePluginChannel(value) {
     );
   }
   let managedReleases;
-  if (value.managedReleases !== undefined && value.channel === testPluginChannel) {
+  if (
+    readManagedReleases &&
+    value.managedReleases !== undefined &&
+    value.channel === testPluginChannel
+  ) {
     if (!Array.isArray(value.managedReleases)) throw Error("SOURCE_CHANNEL_INVALID");
     managedReleases = value.managedReleases.map((reference) =>
       parseReference(reference, isManagedPluginName),

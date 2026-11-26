@@ -22,9 +22,9 @@ trustDirectory 内 approved-channel.json 以 0600 写入并 fsync 后原子替�
 
 ## 测试客户端的可选插件
 
-测试客户端可为独立档案配置 `testPluginDistribution`，来源配置与 `pluginUpdates.source` 同形，频道名为 `plugin-detail-test`，Core 证明复用 `pluginUpdates.core`。档案只登记测试登录环境。内部测试发布在测试清单的 `managedReleases` 中登记受信插件的包名、固定 release JSON 地址和摘要。三包更新只消费原字段。
+测试客户端复用已有的 `pluginUpdates.source`，频道名须为 `plugin-detail-test`。独立验收档案也可通过同形的 `testPluginDistribution` 指定隔离来源。Core 证明复用 `pluginUpdates.core`。档案只登记测试登录环境。测试清单在 `managedReleases` 中登记插件包名、固定 release JSON 地址和摘要。三包更新跳过该字段，测试可选插件清单的格式问题不阻塞三包更新。
 
-测试账号登录成功后，Host 读取清单并校验兼容性和固定归档。受管桌面在原安装图外暂存安装结果，重启选中候选安装图。Host 在确认测试身份后启用已装插件，退出登录或从测试清单撤下时停用已由此路径管理的插件。暂存回执位于档案的 `gea/test-plugin-distribution/pending-restart.json`。
+测试账号登录成功后，Host 校验测试清单和归档。受管桌面在独立目录暂存安装结果，重启选中候选安装图。测试安装和常规更新共用同一个待重启名额。测试操作回执位于档案的 `gea/test-plugin-distribution/pending-restart.json`，以安装图实际选择的候选 ID 判断是否待重启。当前试点通过 Core 档案启用已装插件，登出后停用并在失败时重试。扩大试点前需验证冷启动的身份隔离、插件装载失败的恢复和已发布客户端的更新入口。
 
 ## 列表与批量更新
 
