@@ -17,6 +17,7 @@ import {
   type ManagedPluginSources,
 } from "./plugin-release-source.ts";
 import { readPluginUpdateCore } from "./plugin-update-core.ts";
+import type { PluginUpdatePriority } from "./plugin-update-priority.ts";
 import { object, optionalFile } from "./plugin-update-profile.ts";
 import { prepareWindowsFileCommit } from "./plugin-update-windows.ts";
 import { stageTestBundles, type TestBundleArchive } from "./test-plugin-installation.ts";
@@ -34,6 +35,7 @@ export function mountManagedPluginDistribution(
   sources: ManagedPluginSources,
   pluginUpdates: unknown,
   directory: string,
+  priority: PluginUpdatePriority,
 ): () => void {
   const lifetime = new AbortController();
   const manager = ctx.pluginManager;
@@ -211,16 +213,17 @@ export function mountManagedPluginDistribution(
     }
     runtime.retain(authorized);
     if (!archives.length) return;
-    const staging = await stageTestBundles(
-      ctx,
-      directory,
-      core,
-      archives,
-      () => {
-        signal.throwIfAborted();
-        for (const { release } of archives) source.assertCurrentRelease(release);
-      },
-      signal,
+    const staging = await priority.managed(signal, (preparation) =>
+      stageTestBundles(
+        ctx,
+        directory,
+        core,
+        archives,
+        () => {
+          for (const { release } of archives) source.assertCurrentRelease(release);
+        },
+        preparation,
+      ),
     );
     if (staging === "waiting" && !restartCheck && !signal.aborted) {
       restartCheck = setTimeout(() => {

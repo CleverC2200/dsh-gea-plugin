@@ -3,6 +3,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withFileLock, writeFileAtomic } from "@deepseek-ai/dsh-atomic-write";
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-plugin-manager";
 import { runProfilePnpm } from "@deepseek-ai/dsh-plugin-manager/operations";
 import { assertProfileIdle } from "../../desktop/company-gea-refresh.mjs";
 import { openCompanyInstallation } from "../../desktop/company-installation.mjs";
@@ -26,6 +27,10 @@ import {
   profilePackageRunStopped,
 } from "./plugin-update-processes.ts";
 import { prepareWindowsPackageRun } from "./plugin-update-windows.ts";
+import {
+  planPluginInstallRegistries,
+  retryPluginInstallFromRegistry,
+} from "./plugin-install-registry.ts";
 
 export type TestBundleArchive = {
   release: PluginRelease<string>;
@@ -54,33 +59,41 @@ export async function stageTestBundles(
   assertCurrent: () => void,
   signal: AbortSignal,
 ): Promise<"staged" | "waiting"> {
+  signal.throwIfAborted();
   const profile = ctx.profileContext;
-  return withFileLock(
-    join(profile.dir, "package.json"),
-    async () => {
-      assertCurrent();
-      const installation = await openCompanyInstallation(profile.dir);
-      if (!installation) throw Error("TEST_PLUGIN_MANAGED_DESKTOP_REQUIRED");
-      if (await installation.hasPendingActivation())
-        return (await pendingTestPluginRestart(profile.dir, directory)) ? "staged" : "waiting";
-      if (companyUpdateActive(await readCompanyUpdate(profile.dir))) return "waiting";
-      await assertProfileIdle(profile.dir, {});
-      if (!profilePackageRunStopped(profile.dir)) throw Error("PROFILE_WRITER_UNCONFIRMED");
-      const store = await pluginProfileStoreDirectory(profile.dir);
-      const id = randomUUID();
-      const operation = join(directory, id);
-      await mkdir(operation, { mode: 0o700 });
-      await writeFileAtomic(
-        join(directory, "pending-restart.json"),
-        JSON.stringify({
-          id,
-          bundles: archives.map(({ release }) => ({
-            name: release.name,
-            version: release.version,
-          })),
-        }),
-        { mode: 0o600 },
-      );
+  if (await pendingTestPluginRestart(profile.dir, directory)) return "staged";
+  const registryAttempts = await planPluginInstallRegistries(
+    profile,
+    await ctx.pluginManager.registries(),
+    join(directory, "registry-cache"),
+    signal,
+  );
+  const lockProfile = <T>(run: () => Promise<T>) =>
+    withFileLock(join(profile.dir, "package.json"), run, { waitMs: 30_000 });
+  const installation = await openCompanyInstallation(profile.dir);
+  if (!installation) throw Error("TEST_PLUGIN_MANAGED_DESKTOP_REQUIRED");
+  const baseline = await lockProfile(async () => {
+    signal.throwIfAborted();
+    assertCurrent();
+    if (await installation.hasPendingActivation())
+      return (await pendingTestPluginRestart(profile.dir, directory)) ? "staged" : "waiting";
+    if (companyUpdateActive(await readCompanyUpdate(profile.dir))) return "waiting";
+    await assertProfileIdle(profile.dir, {});
+    if (!profilePackageRunStopped(profile.dir)) throw Error("PROFILE_WRITER_UNCONFIRMED");
+    return {
+      profile: await readPluginProfile(profile.dir),
+      store: await pluginProfileStoreDirectory(profile.dir),
+    };
+  });
+  if (typeof baseline === "string") return baseline;
+
+  for (const [index, registryArgs] of registryAttempts.entries()) {
+    signal.throwIfAborted();
+    const id = randomUUID();
+    const operation = join(directory, id);
+    await mkdir(operation, { mode: 0o700 });
+    let retryRegistry = false;
+    try {
       await installation.prepare(
         id,
         async (
@@ -126,7 +139,20 @@ export async function stageTestBundles(
                 )
               : null;
           const monitor = windowsRun ?? (await observeProfilePackageProcesses(stage));
+          const stopLauncher = windowsRun ? new AbortController() : null;
+          let stopTimer: ReturnType<typeof setTimeout> | undefined;
+          const cancelJob = () => {
+            stopTimer = setTimeout(() => stopLauncher?.abort(), 5_000);
+            stopTimer.unref();
+            try {
+              windowsRun?.cancelObserved();
+            } catch {
+              stopLauncher?.abort();
+            }
+          };
           try {
+            signal.throwIfAborted();
+            if (windowsRun) signal.addEventListener("abort", cancelJob, { once: true });
             const result = await runProfilePnpm(
               {
                 profile: profile.name,
@@ -138,31 +164,37 @@ export async function stageTestBundles(
               [
                 "add",
                 ...archives.map(({ archivePath }) => "file:" + archivePath),
-                "--store-dir=" + store,
+                "--store-dir=" + baseline.store,
                 "--save-exact",
                 "--ignore-scripts",
                 "--ignore-pnpmfile",
                 "--config.auto-install-peers=false",
                 "--config.update-notifier=false",
                 ...companyPnpmNetworkArguments,
+                ...registryArgs,
               ],
               {
                 ...(windowsRun?.packageManager ?? profile.packageManager),
                 execution: "service",
-                signal,
+                signal: stopLauncher?.signal ?? signal,
                 outputBytes: 16_000,
                 activateNewBundles: false,
                 idleTimeoutMs: 90_000,
                 lookupTimeoutMs: 20_000,
                 onOutput: () => monitor.capture(),
               },
-            );
-            await monitor.capture();
-            if (!(await monitor.waitForQuiescence(2_000))) {
-              monitor.cancelObserved();
-              throw Error("TEST_PLUGIN_PACKAGE_WRITERS_UNCONFIRMED");
+            ).finally(async () => {
+              if (await monitor.waitForQuiescence(2_000)) return;
+              if (stopTimer === undefined) monitor.cancelObserved();
+              if (!(await monitor.waitForQuiescence(2_000)))
+                throw Error("TEST_PLUGIN_PACKAGE_WRITERS_UNCONFIRMED");
+              if (!signal.aborted) throw Error("TEST_PLUGIN_PACKAGE_WRITERS_INTERRUPTED");
+            });
+            signal.throwIfAborted();
+            if (result.exitCode !== 0 || result.timedOut) {
+              retryRegistry = retryPluginInstallFromRegistry(result.output, result.timedOut);
+              throw Error("TEST_PLUGIN_STAGE_FAILED");
             }
-            if (result.exitCode !== 0 || result.timedOut) throw Error("TEST_PLUGIN_STAGE_FAILED");
             assertCurrent();
             const after = await readPluginProfile(stage);
             if (!retainsProfileUpdates(before, after, archives))
@@ -175,15 +207,46 @@ export async function stageTestBundles(
                 throw Error("TEST_PLUGIN_GRAPH_CHANGED");
             }
           } finally {
+            signal.removeEventListener("abort", cancelJob);
+            clearTimeout(stopTimer);
             monitor.close();
           }
         },
         signal,
-        { testPlugin: true },
+        {
+          testPlugin: true,
+          commitActivation: (activate: () => Promise<void>) =>
+            lockProfile(async () => {
+              signal.throwIfAborted();
+              assertCurrent();
+              await assertProfileIdle(profile.dir, {});
+              if (!profilePackageRunStopped(profile.dir)) throw Error("PROFILE_WRITER_UNCONFIRMED");
+              if (
+                companyUpdateActive(await readCompanyUpdate(profile.dir)) ||
+                (await installation.hasPendingActivation()) ||
+                (await readPluginProfile(profile.dir)).sha256 !== baseline.profile.sha256
+              )
+                throw Error("TEST_PLUGIN_INSTALLATION_CHANGED");
+              await writeFileAtomic(
+                join(directory, "pending-restart.json"),
+                JSON.stringify({
+                  id,
+                  bundles: archives.map(({ release }) => ({
+                    name: release.name,
+                    version: release.version,
+                  })),
+                }),
+                { mode: 0o600 },
+              );
+              await activate();
+            }),
+        },
       );
       ctx.logger.info("Restart required to finish installing test plugins");
       return "staged";
-    },
-    { waitMs: 30_000 },
-  );
+    } catch (error) {
+      if (!retryRegistry || index + 1 === registryAttempts.length) throw error;
+    }
+  }
+  return "waiting";
 }

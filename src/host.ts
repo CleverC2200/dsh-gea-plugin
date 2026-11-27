@@ -15,6 +15,11 @@ import {
   initializeGeaDefaultModel,
 } from "./host/gea-model.ts";
 import { mountPluginUpdates } from "./host/plugin-updates.ts";
+import { createPluginUpdatePriority } from "./host/plugin-update-priority.ts";
+import {
+  planPluginInstallRegistries,
+  retryPluginInstallFromRegistry,
+} from "./host/plugin-install-registry.ts";
 import { managedPluginReleaseSources } from "./host/plugin-release-source.ts";
 import { mountManagedPluginDistribution } from "./host/test-plugin-distribution.ts";
 import { pendingTestPluginRestart } from "./host/test-plugin-installation.ts";
@@ -266,7 +271,26 @@ export async function apply(
   const managedRestart = hasManagedSources
     ? () => pendingTestPluginRestart(ctx.profileContext.dir, managedDirectory)
     : undefined;
-  ctx.effect(() => mountPluginUpdates(ctx, input.pluginUpdates, config, managedRestart));
+  const updatePriority = createPluginUpdatePriority();
+  ctx.effect(() =>
+    mountPluginUpdates(ctx, input.pluginUpdates, config, {
+      testRestart: managedRestart,
+      priority: updatePriority,
+      installRegistries: {
+        canRetry: retryPluginInstallFromRegistry,
+        async plan(signal) {
+          const manager = ctx.get("pluginManager");
+          if (!manager) return [[]];
+          return planPluginInstallRegistries(
+            ctx.profileContext,
+            await manager.registries(),
+            resolve(runtimeDir, "plugin-updates/registry-cache"),
+            signal,
+          );
+        },
+      },
+    }),
+  );
   if (hasManagedSources) {
     ctx.inject(["pluginManager"], (scope) => {
       scope.effect(() =>
@@ -276,6 +300,7 @@ export async function apply(
           managedSources,
           input.pluginUpdates,
           managedDirectory,
+          updatePriority,
         ),
       );
     });

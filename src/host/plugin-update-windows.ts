@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { join, isAbsolute } from "node:path";
+import { basename, join, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { windowsJobStopped } from "../../desktop/windows-job.mjs";
 import type { PluginUpdateOperation } from "../shared/plugin-update-state.ts";
@@ -94,6 +94,8 @@ export async function prepareWindowsPackageRun(
   const runner = join(directory, "windows-package-runner.cjs"),
     requestPath = join(directory, "windows-package-request.json"),
     proofPath = join(directory, "windows-job.json"),
+    acknowledgement = join(directory, "windows-job-ack.json"),
+    cancellation = join(directory, "windows-job-cancel.json"),
     nonce = randomUUID();
   await writeFile(runner, windowsPackageRunner, { flag: "wx", mode: 0o600 });
   try {
@@ -168,7 +170,6 @@ export async function prepareWindowsPackageRun(
           return;
         }
         observed = observation;
-        const acknowledgement = join(directory, "windows-job-ack.json");
         writeFileSync(acknowledgement + ".tmp", JSON.stringify({ nonce }), {
           flag: "wx",
           mode: 0o600,
@@ -205,10 +206,15 @@ export async function prepareWindowsPackageRun(
       return false;
     },
     cancelObserved() {
-      const path = join(directory, "windows-job-cancel.json"),
-        temporary = path + ".tmp";
+      const temporary = cancellation + ".tmp";
       writeFileSync(temporary, JSON.stringify({ nonce }), { mode: 0o600 });
-      renameSync(temporary, path);
+      renameSync(temporary, cancellation);
+    },
+    async archive(archiveDirectory: string) {
+      for (const path of [runner, requestPath, proofPath, acknowledgement, cancellation])
+        await rename(path, join(archiveDirectory, basename(path))).catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
     },
     close() {
       clearInterval(timer);

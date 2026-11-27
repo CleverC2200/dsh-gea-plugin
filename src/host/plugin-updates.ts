@@ -14,6 +14,7 @@ import {
 import {
   createPluginUpdateController,
   pluginUpdateProcessIdentity,
+  type PluginUpdateControllerOptions,
 } from "./plugin-update-controller.ts";
 import { readHostPluginModules } from "./plugin-update-runtime.ts";
 import { readPluginUpdateCore } from "./plugin-update-core.ts";
@@ -58,7 +59,9 @@ export function mountPluginUpdates(
   ctx: Context,
   raw: unknown,
   deployment: { requestTimeoutMs: number; runtimeDir: string },
-  testRestart?: () => Promise<string | null>,
+  options: Pick<PluginUpdateControllerOptions, "priority" | "installRegistries"> & {
+    testRestart?: () => Promise<string | null>;
+  } = {},
 ): () => Promise<void> {
   const lifetime = new AbortController(),
     routes: (() => void)[] = [];
@@ -143,6 +146,8 @@ export function mountPluginUpdates(
           source,
           runtimeDirectory: join(deployment.runtimeDir, "plugin-updates"),
           fileCommit,
+          priority: options.priority,
+          installRegistries: options.installRegistries,
           readRuntimeProofs: async () => {
             const proofs = await readHostPluginModules(ctx);
             return proofs.map((proof) => {
@@ -180,7 +185,7 @@ export function mountPluginUpdates(
         if (!controller || !controllerReady) throw Error(diagnostic);
         return controller;
       },
-      testRestart,
+      options.testRestart,
     ),
   );
   for (const action of [
@@ -233,7 +238,7 @@ export function mountPluginUpdates(
                 }) ?? blocked();
               const pendingTestRestart =
                 controllerReady && controller?.canRestartTestPlugins()
-                  ? await testRestart?.().catch(() => null)
+                  ? await options.testRestart?.().catch(() => null)
                   : null;
               const testPluginRestart = Boolean(
                 pendingTestRestart && controller?.canRestartTestPlugins(),
