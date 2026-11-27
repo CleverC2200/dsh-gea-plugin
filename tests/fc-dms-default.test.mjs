@@ -31,6 +31,8 @@ new Function("require", "module", "exports", built.outputFiles[0].text)(
   module.exports,
 );
 const { Business, createCapabilityRegistry } = module.exports;
+const previousProductionGateway = "http://100.100.6.46:38000/synear/dms";
+const publicProductionGateway = "https://gea.synear.cn/ipaas/synear/dms";
 function fixture(t, dms) {
   const business = new Business({
     runtimeDir: tmpdir(),
@@ -115,7 +117,7 @@ test("production uses the current verified GEA employee for every login", async 
   );
   assert.ok(
     requests.every(
-      (r) => r.url === FC_DMS_PRODUCTION_GATEWAY + "/auth/oauthout/ssoLogin" && !r.body.username,
+      (r) => r.url === publicProductionGateway + "/auth/oauthout/ssoLogin" && !r.body.username,
     ),
   );
 });
@@ -191,6 +193,15 @@ test("bundled production credential cannot reach another gateway or the test env
     () => resolveFcDmsDeployment({ test: config }, "test", identity),
     /DMS_ENVIRONMENT_TARGET_MISMATCH/,
   );
+  assert.throws(
+    () =>
+      resolveFcDmsDeployment(
+        { test: { ...config, gatewayUrl: previousProductionGateway } },
+        "test",
+        identity,
+      ),
+    /DMS_ENVIRONMENT_TARGET_MISMATCH/,
+  );
   const custom = resolveFcDmsDeployment(
     {
       production: {
@@ -252,16 +263,26 @@ test("explicit test environment retains test-only credential boundary", async ()
   await assert.rejects(client.login(new AbortController().signal), /固定测试网关/);
 });
 
-test("production submission preserves the current form and uses current user; identical retry does not resend", async (t) => {
+test("production HTTPS preserves previous receipts and unresolved orders across the address change", async (t) => {
   secret(t);
   const business = fixture(t);
+  const previousBusiness = fixture(t, {
+    production: {
+      gatewayUrl: previousProductionGateway,
+      secretEnv: "GEA_DMS_PRODUCTION_SECRET",
+      users: [],
+    },
+  });
   const directory = await mkdtemp(join(tmpdir(), "dms-production-fixture-"));
   business.config.runtimeDir = directory;
+  previousBusiness.config.runtimeDir = directory;
   t.after(() => rm(directory, { recursive: true, force: true }));
   const orders = [];
+  const loginUrls = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
     if (String(url).endsWith("/sys/user/getUserInfo")) return profile("user-a");
     if (String(url).endsWith("/ssoLogin")) {
+      loginUrls.push(String(url));
       const body = JSON.parse(new URLSearchParams(init.body).get("ssoToken"));
       assert.equal(body.workcode, "user-a-work");
       return Response.json({
@@ -275,7 +296,8 @@ test("production submission preserves the current form and uses current user; id
     }
     assert.equal(
       String(url),
-      FC_DMS_PRODUCTION_GATEWAY + "/dms/order/dmsOrderHead/submitZcOrderDirect",
+      (orders.length === 1 ? publicProductionGateway : previousProductionGateway) +
+        "/dms/order/dmsOrderHead/submitZcOrderDirect",
     );
     assert.equal(init.headers.Authorization, "Bearer fixture-access");
     const order = JSON.parse(init.body);
@@ -284,13 +306,17 @@ test("production submission preserves the current form and uses current user; id
     assert.equal(order.addressCode, "entered-address");
     assert.equal(order.pupCode, "07");
     assert.deepEqual(order.itemList, [{ productCode: "selected-sku", quantity: 17 }]);
+    if (orders.length === 3) throw Error("fixture transport lost the response");
     return Response.json({
       success: true,
       code: 200,
-      result: { aiPreOrderCode: order.aiPreOrderCode, orderCode: "fixture-order" },
+      result: {
+        aiPreOrderCode: order.aiPreOrderCode,
+        orderCode: "fixture-order",
+      },
     });
   });
-  t.mock.method(business, "pluginSql", async ({ parameters }) => {
+  const lookupDmsTarget = async ({ parameters }) => {
     assert.equal(parameters.gea_p1, "selected-warehouse");
     return {
       rows: [
@@ -313,7 +339,9 @@ test("production submission preserves the current form and uses current user; id
       ],
       rejectedColumns: [],
     };
-  });
+  };
+  t.mock.method(business, "pluginSql", lookupDmsTarget);
+  t.mock.method(previousBusiness, "pluginSql", lookupDmsTarget);
   const payload = {
     operation: "submit",
     warehouseCode: "selected-warehouse",
@@ -336,18 +364,36 @@ test("production submission preserves the current form and uses current user; id
     /收货信息/,
   );
   assert.equal(orders.length, 0);
-  const first = await business.branchDms(payload, new AbortController().signal);
-  const again = await business.branchDms(payload, new AbortController().signal);
+  const first = await previousBusiness.branchDms(payload, signal);
+  const again = await business.branchDms(payload, signal);
   assert.equal(first.orderCode, "fixture-order");
-  assert.equal(again.orderCode, first.orderCode);
+  assert.deepEqual(again, first);
   assert.equal(orders.length, 1);
+  const next = await business.branchDms(
+    { ...payload, order: { ...payload.order, aiPreOrderCode: "next-form" } },
+    signal,
+  );
+  assert.notEqual(next.aiPreOrderCode, first.aiPreOrderCode);
+  assert.equal(orders.length, 2);
+  assert.deepEqual(loginUrls, [
+    previousProductionGateway + "/auth/oauthout/ssoLogin",
+    publicProductionGateway + "/auth/oauthout/ssoLogin",
+  ]);
+  const unresolved = { ...payload, order: { ...payload.order, aiPreOrderCode: "unresolved-form" } };
+  await assert.rejects(previousBusiness.branchDms(unresolved, signal), /禁止重复提交/);
+  await assert.rejects(business.branchDms(unresolved, signal), /结果未知.*禁止重复提交/);
+  assert.equal(orders.length, 3);
+  assert.equal(loginUrls.length, 3);
 });
 
 test("direct DMS submission cannot send an order outside governed warehouse routing", async (t) => {
   secret(t);
   const business = fixture(t);
   let dmsRequests = 0;
-  t.mock.method(business, "pluginSql", async () => ({ rows: [], rejectedColumns: [] }));
+  t.mock.method(business, "pluginSql", async () => ({
+    rows: [],
+    rejectedColumns: [],
+  }));
   t.mock.method(globalThis, "fetch", async (url) => {
     if (String(url).endsWith("/sys/user/getUserInfo")) return profile("user-a");
     dmsRequests++;
