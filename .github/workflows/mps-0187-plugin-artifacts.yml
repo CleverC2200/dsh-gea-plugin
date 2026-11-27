@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: CleverC2200/dsh-agent-workbench
-          ref: '06a3f021ee6a04e1e65483a063c15f565a0c69de'
+          ref: 'f5150c6c1f63a0efef9e593601037c5ceaeacc48'
           path: candidate/dsh-agent-workbench
           fetch-depth: 0
           persist-credentials: false
@@ -78,7 +78,7 @@ jobs:
       - name: Bind the tagged, merged Workbench source
         env:
           GH_TOKEN: ${{ github.token }}
-          MPS_CANDIDATE_HEAD: '06a3f021ee6a04e1e65483a063c15f565a0c69de'
+          MPS_CANDIDATE_HEAD: 'f5150c6c1f63a0efef9e593601037c5ceaeacc48'
           MPS_WORKBENCH_PR: '458'
         run: bash build-task/release-support/await-merged-workbench.sh
       - name: Build and verify the merged plugin suite
