@@ -11,7 +11,7 @@ import { orderReportWithEdits } from "./order-report-edits.ts";
 import type { MemoryScope } from "../shared/memory-contract.ts";
 import { PersonalMemoryGateway } from "./memory-service.ts";
 import { resolveFcDmsTarget } from "./fc-dms-target.ts";
-import { resolveFcDmsDeployment, dmsTargetNotice } from "./fc-dms-default.ts";
+import { resolveFcDmsDeployment, dmsTargetNotice, fcDmsOrderGatewayKey } from "./fc-dms-default.ts";
 import {
   decodeSalesPlanResult,
   salesPlanCustomer,
@@ -725,7 +725,11 @@ export class Business {
     roles?: SalesPlanApprovalRole[];
   };
   private qr?: { id: string; loginId: string; createdAt: number };
-  private passwordChallenge?: { id: string; createdAt: number; submitting: boolean };
+  private passwordChallenge?: {
+    id: string;
+    createdAt: number;
+    submitting: boolean;
+  };
   private epoch = new AbortController();
   private pageIdentityGeneration = randomUUID();
   private salesPlanPeriodRead = 0;
@@ -770,7 +774,10 @@ export class Business {
     { authToken: string; delegationToken: string }
   >();
 
-  private customerInventoryAccess?: { authToken: string; profile: InventoryRoleProfile };
+  private customerInventoryAccess?: {
+    authToken: string;
+    profile: InventoryRoleProfile;
+  };
 
   private readonly pluginSchemaCache = new Map<string, { at: number; columns: string[] }>();
   private capabilities: CapabilityRegistry;
@@ -881,7 +888,11 @@ export class Business {
   memoryScope(): MemoryScope {
     const auth = this.authenticated();
     if (!auth.id || !/^\d+$/.test(auth.tenantId)) throw Error("GEA_IDENTITY_INCOMPLETE");
-    return { environment: this.environment, tenantId: auth.tenantId, userId: auth.id };
+    return {
+      environment: this.environment,
+      tenantId: auth.tenantId,
+      userId: auth.id,
+    };
   }
 
   readonly memory: PersonalMemoryGateway;
@@ -1039,7 +1050,9 @@ export class Business {
       scope: (effect) => {
         this.assertExecutionAllowed(this.config.analysisAgentCode, effect);
         if (effect === "submit" && !this.auth) {
-          const error = new GeaResponseError(401, { message: "请先登录后再修改重提销售计划" });
+          const error = new GeaResponseError(401, {
+            message: "请先登录后再修改重提销售计划",
+          });
           error.details.resubmitUnavailableReason = "signed-out";
           throw error;
         }
@@ -1662,14 +1675,21 @@ export class Business {
           !text(session.delegationToken)
         )
           throw Error("GEA_PLUGIN_SESSION_REJECTED");
-        return { authToken: auth.token, delegationToken: text(session.delegationToken) };
+        return {
+          authToken: auth.token,
+          delegationToken: text(session.delegationToken),
+        };
       });
       this.pluginDelegations.set("branch-inventory", delegation);
     }
     const token = this.capture.reuse(delegation!).delegationToken;
     const result = await fcStorage(
       config,
-      { tenantId: auth.tenantId, userId: auth.id, warehouses: matches[0].warehouses },
+      {
+        tenantId: auth.tenantId,
+        userId: auth.id,
+        warehouses: matches[0].warehouses,
+      },
       payload,
       async (request) => {
         signal.throwIfAborted();
@@ -1766,7 +1786,12 @@ export class Business {
           "X-Delegation-Token": text(session.delegationToken),
           "X-Request-Id": idempotencyKey,
         },
-        body: JSON.stringify({ dataSourceCode: "PG-Warning", sql, parameters, idempotencyKey }),
+        body: JSON.stringify({
+          dataSourceCode: "PG-Warning",
+          sql,
+          parameters,
+          idempotencyKey,
+        }),
       });
       const body = object(await response.json());
       signal.throwIfAborted();
@@ -1845,7 +1870,11 @@ export class Business {
         String(user.loginTenantId ?? user.tenantId ?? "") !== auth.tenantId
       )
         throw Error("DMS 当前用户身份核验失败，请重新登录");
-      dmsIdentity = { ...auth, username: text(user.username), workNo: text(user.workNo) };
+      dmsIdentity = {
+        ...auth,
+        username: text(user.username),
+        workNo: text(user.workNo),
+      };
       this.assertExecutionAllowed("branch-inventory");
     }
     const config = resolveFcDmsDeployment(this.config.dms, this.environment, dmsIdentity);
@@ -1919,7 +1948,12 @@ export class Business {
       if (readiness) {
         result = readiness;
       } else {
-        const owner = JSON.stringify([this.environment, config.gatewayUrl, auth.tenantId, auth.id]);
+        const owner = JSON.stringify([
+          this.environment,
+          fcDmsOrderGatewayKey(config.gatewayUrl),
+          auth.tenantId,
+          auth.id,
+        ]);
         result = await submitOwnedDmsOrder(
           resolve(this.config.runtimeDir, "dms-orders"),
           owner,
@@ -2640,7 +2674,10 @@ export class Business {
       );
       identity.throwIfAborted();
       if (agentCode === "customer_inventory" && this.auth === auth) {
-        this.customerInventoryAccess = { authToken: auth.token, profile: roleProfile };
+        this.customerInventoryAccess = {
+          authToken: auth.token,
+          profile: roleProfile,
+        };
         this.notifyIdentity();
       }
       return { ...credentials, roleProfile };
@@ -2660,7 +2697,10 @@ export class Business {
         },
       };
       if (agentCode === "customer_inventory" && this.auth === auth) {
-        this.customerInventoryAccess = { authToken: auth.token, profile: roleProfile };
+        this.customerInventoryAccess = {
+          authToken: auth.token,
+          profile: roleProfile,
+        };
         this.notifyIdentity();
       }
       return {
@@ -3240,7 +3280,10 @@ export class Business {
               requestSignal.throwIfAborted();
               if (response.status === 401 && this.auth?.token === auth.token) {
                 this.clearLogin(true);
-                this.rejectedSqlLogins.set(identity, { error, epoch: this.epoch });
+                this.rejectedSqlLogins.set(identity, {
+                  error,
+                  epoch: this.epoch,
+                });
               }
               throw error;
             }
@@ -3322,8 +3365,12 @@ export class Business {
                   String(body.errorCode),
                 )
               )
-                throw Object.assign(failure, { code: "GEA_GATEWAY_SESSION_REJECTED" });
-              throw Object.assign(failure, { code: body.errorCode || "ORDER_REPORT_WRITE_FAILED" });
+                throw Object.assign(failure, {
+                  code: "GEA_GATEWAY_SESSION_REJECTED",
+                });
+              throw Object.assign(failure, {
+                code: body.errorCode || "ORDER_REPORT_WRITE_FAILED",
+              });
             }
             return body.result;
           }
@@ -3337,7 +3384,10 @@ export class Business {
                   parameters: query.parameters,
                   includeTotal: false,
                 } as ConfiguredSqlRequest)
-              : await readHtmlQuery(pagedQuery, { ...transport, signal: readSignal });
+              : await readHtmlQuery(pagedQuery, {
+                  ...transport,
+                  signal: readSignal,
+                });
           const perform = (readSignal: AbortSignal) =>
             this.capture.prepare(() => {
               this.capture.reuse(delegation);
@@ -4105,14 +4155,21 @@ export class Business {
             field: "ship_qty",
             values: quantities,
             sql: `SELECT cust_code, CAST(SUM(qtyshipped) AS TEXT) AS ship_qty FROM agents_order_execute_isontime_mi WHERE fromorderno_month >= :start AND fromorderno_month < :end AND cust_code IN (${placeholders.join(", ")}) GROUP BY cust_code ORDER BY cust_code`,
-            parameters: { start: `${month}-01`, end: `${nextMonth}-01`, ...customerParameters },
+            parameters: {
+              start: `${month}-01`,
+              end: `${nextMonth}-01`,
+              ...customerParameters,
+            },
           },
           {
             label: "发货金额",
             field: "ship_amount",
             values: amounts,
             sql: `SELECT cust_code, CAST(SUM(income_excl_tax_local) AS TEXT) AS ship_amount FROM agents_scm_cust_deliv_daily_di WHERE ship_month = :month AND cust_code IN (${placeholders.join(", ")}) GROUP BY cust_code ORDER BY cust_code`,
-            parameters: { month: month.replace("-", ""), ...customerParameters },
+            parameters: {
+              month: month.replace("-", ""),
+              ...customerParameters,
+            },
           },
         ];
         await Promise.all(
@@ -4400,7 +4457,9 @@ export class Business {
       if (options.forModel || !Array.isArray(query.skuCodes)) throw new Error("INVALID_QUERY");
       const codes = [...new Set(query.skuCodes.map(text))];
       if (typeof salesPlan.isSalesPlanSkuCode !== "function")
-        throw new GeaResponseError(409, { message: "请更新销售计划工作台后再添加 SKU" });
+        throw new GeaResponseError(409, {
+          message: "请更新销售计划工作台后再添加 SKU",
+        });
       if (!codes.length || codes.length > 5000 || !codes.every(salesPlan.isSalesPlanSkuCode))
         throw new Error("INVALID_QUERY");
       const active = AbortSignal.any([signal, this.epoch.signal]);
@@ -4632,7 +4691,10 @@ export class Business {
         if (records.some((row) => row.shipmentPending))
           options.onPlanPage({ ...planPage, records });
       }
-      return { ...planPage, records: await this.salesPlanShipments(planRows, active, orderType) };
+      return {
+        ...planPage,
+        records: await this.salesPlanShipments(planRows, active, orderType),
+      };
     }
     if (kind === "detail") {
       const detail = object(result);

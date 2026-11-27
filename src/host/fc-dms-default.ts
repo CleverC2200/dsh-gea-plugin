@@ -2,9 +2,20 @@ import type { DmsConfig, DmsEnvironments } from "./dms-orders.ts";
 import { FC_DMS_PRODUCTION_SIGNING_SECRET } from "./fc-dms-production-credential.ts";
 import { FC_DMS_TEST_SIGNING_SECRET } from "./fc-dms-test-credential.ts";
 
-export const FC_DMS_PRODUCTION_GATEWAY = "http://100.100.6.46:38000/synear/dms";
+export const FC_DMS_PRODUCTION_GATEWAY = "https://gea.synear.cn/ipaas/synear/dms";
+const LEGACY_FC_DMS_PRODUCTION_GATEWAY = "http://100.100.6.46:38000/synear/dms";
 
 export const FC_DMS_TEST_GATEWAY = "http://100.100.1.147:8000/synear_test/DMS";
+
+function isFcDmsProductionGateway(gatewayUrl: string) {
+  return (
+    gatewayUrl === FC_DMS_PRODUCTION_GATEWAY || gatewayUrl === LEGACY_FC_DMS_PRODUCTION_GATEWAY
+  );
+}
+
+export function fcDmsOrderGatewayKey(gatewayUrl: string): string {
+  return isFcDmsProductionGateway(gatewayUrl) ? LEGACY_FC_DMS_PRODUCTION_GATEWAY : gatewayUrl;
+}
 
 export function resolveFcDmsDeployment(
   deployments: DmsEnvironments | undefined,
@@ -26,7 +37,7 @@ export function resolveFcDmsDeployment(
   const configured = input ? { ...input, gatewayUrl: targets[environment] } : undefined;
   if (
     (environment === "production" && configured?.gatewayUrl === FC_DMS_TEST_GATEWAY) ||
-    (environment === "test" && configured?.gatewayUrl === FC_DMS_PRODUCTION_GATEWAY)
+    (environment === "test" && configured && isFcDmsProductionGateway(configured.gatewayUrl))
   )
     throw Error("DMS_ENVIRONMENT_TARGET_MISMATCH");
   if (
@@ -77,7 +88,7 @@ export function resolveFcDmsDeployment(
 
 export function dmsSigningSecret(config: DmsConfig): string {
   if (config.credentialSource === "fc-bundled-dms-production") {
-    if (config.gatewayUrl !== FC_DMS_PRODUCTION_GATEWAY)
+    if (!isFcDmsProductionGateway(config.gatewayUrl))
       throw Error("内置DMS正式凭据仅限固定正式网关");
     return process.env[config.secretEnv] || FC_DMS_PRODUCTION_SIGNING_SECRET;
   }
