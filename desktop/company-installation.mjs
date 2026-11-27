@@ -117,13 +117,14 @@ export class CompanyInstallation {
       }
     }
   }
-  async prepare(id, install, signal, { testPlugin = false } = {}) {
+  async prepare(id, install, signal, { testPlugin = false, commitActivation } = {}) {
     const source = graphValues(await json(join(this.profile, "package.json")));
     const receipt = await this.store.prepare({
       id,
       signal,
       queueActivation: true,
       testPlugin,
+      commitActivation,
       install: async (stage, controls) => {
         const manifest = await json(join(this.profile, "package.json"));
         if (!isDeepStrictEqual(graphValues(manifest), source))

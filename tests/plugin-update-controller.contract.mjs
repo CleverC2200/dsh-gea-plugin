@@ -17,6 +17,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
+import { createPluginUpdatePriority } from "../src/host/plugin-update-priority.ts";
 import { until } from "./profile.mjs";
 const sdk = process.env.GEA_PLUGIN_UPDATE_SDK;
 if (!sdk) throw Error("GEA_PLUGIN_UPDATE_SDK must explicitly name unchanged fixed SDK");
@@ -48,7 +49,7 @@ const modulePath = join(work, "controller.mjs");
 const subjectPath = join(work, "subjects.ts");
 await writeFile(
   subjectPath,
-  `export {mountDesktopUpdateOperations} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-desktop.ts", import.meta.url)))};export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileUpdates, readPluginProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
+  `export {planPluginInstallRegistries,retryPluginInstallFromRegistry} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-install-registry.ts", import.meta.url)))};export {stageTestBundles} from ${JSON.stringify(fileURLToPath(new URL("../src/host/test-plugin-installation.ts", import.meta.url)))};export {mountDesktopUpdateOperations} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-desktop.ts", import.meta.url)))};export * from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-controller.ts", import.meta.url)))};export {parseUpdateClientStatus} from ${JSON.stringify(fileURLToPath(new URL("../src/shared/plugin-update-wire.ts", import.meta.url)))};export {retainsProfileUpdates, readPluginProfile, pluginProfileStoreDirectory} from ${JSON.stringify(fileURLToPath(new URL("../src/host/plugin-update-profile.ts", import.meta.url)))};`,
 );
 
 await build({
@@ -64,6 +65,9 @@ await build({
       name: "explicit-fixed-sdk",
       setup(b) {
         const aliases = {
+          "@deepseek-ai/dsh-plugin-manager": "packages/boot/plugin-manager/lib/index.js",
+          "@deepseek-ai/dsh-plugin-manager/registry":
+            "packages/boot/plugin-manager/lib/types/registry.js",
           "@deepseek-ai/dsh-plugin-manager/operations":
             "packages/boot/plugin-manager/lib/types/operations.js",
           "@deepseek-ai/dsh-atomic-write": "packages/util/atomic-write/lib/index.js",
@@ -78,12 +82,189 @@ await build({
 });
 const {
   createPluginUpdateController,
+  stageTestBundles,
+  planPluginInstallRegistries,
+  retryPluginInstallFromRegistry,
   mountDesktopUpdateOperations,
   readPluginProfile,
   parseUpdateClientStatus,
   pluginProfileStoreDirectory,
   retainsProfileUpdates,
 } = await import(pathToFileURL(modulePath));
+
+async function managedInstallFixture(t, mode) {
+  const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
+  const { makeArchive } = await import("./fixtures/plugin-updates/installed-runtime.mjs");
+  const fixture = await controllerFixture(t);
+  const directory = join(fixture.dir, "gea/test-plugin-distribution");
+  const launcher = join(fixture.root, "managed-pnpm.cjs");
+  const log = join(fixture.root, "managed-pnpm.ndjson");
+  const ready = join(fixture.root, "resume-install");
+  const add = fileURLToPath(
+    new URL("./fixtures/plugin-updates/package-manager.cjs", import.meta.url),
+  );
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    launcher,
+    `
+    const args = process.argv.slice(2);
+    require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify({args, cwd: process.cwd()}) + "\\n");
+    const mode = ${JSON.stringify(mode)};
+    const fallback = args.some(arg => arg.startsWith("--registry="));
+    if (args[0] === "view") {
+      if (mode === "cached") { console.error("FETCH_ERROR"); process.exit(1); }
+      console.log("{}");
+    } else if (mode === "stalled") {
+      setInterval(() => {}, 1000);
+    } else if (mode === "wait-for-profile-change") {
+      const timer = setInterval(() => {
+        if (!require("node:fs").existsSync(${JSON.stringify(ready)})) return;
+        clearInterval(timer);
+        require(${JSON.stringify(add)});
+      }, 20);
+    } else if (mode === "fallback" && !fallback) {
+      console.error("FETCH_ERROR reading a required dependency");
+      process.exit(1);
+    } else {
+      require(${JSON.stringify(add)});
+    }
+  `,
+  );
+  const archive = await makeArchive(fixture.root, "@fixture/managed", "1.0.0");
+  const ctx = {
+    profileContext: {
+      ...fixture.profile,
+      packageManager: { ...fixture.profile.packageManager, args: [launcher] },
+    },
+    pluginManager: {
+      registries: async () => ({
+        registry: null,
+        resolved: "https://registry.npmjs.org/",
+        fallbackRegistries: ["https://registry.npmmirror.com/"],
+      }),
+    },
+    logger: { info() {} },
+  };
+  return {
+    ...fixture,
+    resume: () => writeFile(ready, ""),
+    async calls() {
+      return (await readFile(log, "utf8").catch(() => ""))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map(JSON.parse);
+    },
+    stage: (signal) =>
+      stageTestBundles(
+        ctx,
+        directory,
+        fixture.options.core,
+        [{ release: archive.manifest, archivePath: archive.path }],
+        () => {},
+        signal,
+      ),
+  };
+}
+
+test(
+  "ordinary checks and installs can proceed while optional pnpm staging is stalled",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const { waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");
+    const { withFileLock } = await import(
+      pathToFileURL(join(sdk, "packages/util/atomic-write/lib/index.js"))
+    );
+    const f = await managedInstallFixture(t, "stalled");
+    const priority = createPluginUpdatePriority();
+    const controller = createPluginUpdateController({ ...f.options, priority, lockWaitMs: 3000 });
+    const lifetime = new AbortController();
+    t.after(async () => {
+      lifetime.abort();
+      await controller.dispose();
+    });
+    await controller.initialize();
+    const before = await readFile(join(f.dir, "package.json"), "utf8");
+    const managed = priority.managed(lifetime.signal, f.stage);
+    const stopped = assert.rejects(managed, { name: "AbortError" });
+    await until(f.calls, (calls) => calls.some(({ args }) => args[0] === "add"));
+    await withFileLock(
+      join(f.dir, "package.json"),
+      async () => {
+        assert.equal(await readFile(join(f.dir, "package.json"), "utf8"), before);
+      },
+      { waitMs: 3000 },
+    );
+
+    const snapshot = await controller.check();
+    const row = snapshot.items.find((item) => item.state === "available");
+    assert.ok(row?.planId);
+    assert.equal(await f.installation.preparationIdle(), false);
+    await controller.submit({ packageName: row.packageName, planId: row.planId });
+    await stopped;
+    await waitForStage(controller, ["pending-restart"]);
+    assert.equal(await f.installation.pendingTestPluginActivation(), null);
+    assert.equal(await readFile(join(f.dir, "package.json"), "utf8"), before);
+  },
+);
+
+test(
+  "managed install retries a failed registry in fresh staging and keeps the native cached path",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    for (const mode of ["fallback", "cached"])
+      await t.test(mode, async (t) => {
+        const f = await managedInstallFixture(t, mode);
+        const before = await readFile(join(f.dir, "package.json"), "utf8");
+        assert.equal(await f.stage(AbortSignal.timeout(10000)), "staged");
+        assert.ok(await f.installation.pendingTestPluginActivation());
+        const adds = (await f.calls()).filter(({ args }) => args[0] === "add");
+        assert.equal(
+          adds[0].args.some((arg) => arg.startsWith("--registry=")),
+          false,
+        );
+        if (mode === "fallback") {
+          assert.equal(adds.length, 2);
+          assert.notEqual(adds[0].cwd, adds[1].cwd);
+          assert.ok(adds[1].args.includes("--registry=https://registry.npmmirror.com/"));
+        } else {
+          assert.equal(adds.length, 1);
+        }
+        assert.equal(await readFile(join(f.dir, "package.json"), "utf8"), before);
+      });
+  },
+);
+
+test(
+  "a live profile change prevents publishing the staged managed install",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const { withFileLock } = await import(
+      pathToFileURL(join(sdk, "packages/util/atomic-write/lib/index.js"))
+    );
+    const f = await managedInstallFixture(t, "wait-for-profile-change");
+    const preparation = assert.rejects(
+      f.stage(AbortSignal.timeout(10_000)),
+      /TEST_PLUGIN_INSTALLATION_CHANGED/,
+    );
+    await until(f.calls, (calls) => calls.some(({ args }) => args[0] === "add"));
+    const manifestPath = join(f.dir, "package.json");
+    await withFileLock(manifestPath, async () => {
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, userChange: true }));
+    });
+    await f.resume();
+    await preparation;
+    assert.equal(await f.installation.pendingTestPluginActivation(), null);
+    const { root } = f.installation.store;
+    assert.deepEqual(await readdir(join(root, "versions")), []);
+    const stage = (await readdir(root)).find((name) => name.startsWith("staging-"));
+    const receipt = JSON.parse(
+      await readFile(join(root, stage, "preparation-failure.json"), "utf8"),
+    );
+    assert.equal(receipt.code, "TEST_PLUGIN_INSTALLATION_CHANGED");
+  },
+);
 
 test("an already verified desktop runs maintenance when the actual client and Host stamps arrive", async (t) => {
   const { controllerFixture } = await import("./fixtures/plugin-updates/profile.mjs");
@@ -1221,6 +1402,66 @@ test("older channel keeps its candidate and reports a downgrade without acceptin
   );
   assert.equal(controller.snapshot().operation, null);
 });
+
+test(
+  "real company pnpm retries a partial registry outage and boots the new candidate",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const { controllerFixture, waitForStage } =
+      await import("./fixtures/plugin-updates/profile.mjs");
+    const { installPnpmConsumerLayout } =
+      await import("./fixtures/plugin-updates/pnpm-profile.mjs");
+    const { downloadRegistry } = await import("./fixtures/plugin-updates/download-registry.mjs");
+    const name = "@cleverc2200/gea-dsh-prototype";
+    const f = await controllerFixture(t, {
+      managed: false,
+      releaseDependencies: { [name]: { "fixture-network-dependency": "1.0.0" } },
+    });
+    const primary = await downloadRegistry(t, join(f.root, "primary"), "unavailable");
+    const backup = await downloadRegistry(t, join(f.root, "backup"), "healthy");
+    const { manager } = await installPnpmConsumerLayout(f, "^3.0.0");
+    f.profile.packageManager.args = [manager];
+    const registryConfig = {
+      registry: primary.origin + "/",
+      resolved: "https://registry.npmjs.org/",
+      fallbackRegistries: [backup.origin + "/"],
+    };
+    const controller = createPluginUpdateController({
+      ...f.options,
+      idleTimeoutMs: 8000,
+      installRegistries: {
+        plan: (signal) =>
+          planPluginInstallRegistries(
+            f.profile,
+            registryConfig,
+            join(f.root, "registry-cache"),
+            signal,
+          ),
+        canRetry: retryPluginInstallFromRegistry,
+      },
+    });
+    t.after(() => controller.dispose());
+    await controller.initialize();
+    const snapshot = await controller.check();
+    const item = snapshot.items.find((item) => item.packageName === name);
+    assert.ok(item?.planId);
+    const accepted = await controller.submit({ packageName: name, planId: item.planId });
+    const operation = await waitForStage(controller, ["pending-restart", "failed"], 25000);
+    assert.equal(operation.id, accepted.id);
+    assert.equal(operation.stage, "pending-restart", JSON.stringify(operation));
+    assert.ok(primary.requests.includes("/zod") && primary.requests.includes("/" + primary.name));
+    assert.ok(
+      backup.requests.includes("/" + backup.name) && backup.requests.includes("/dependency.tgz"),
+    );
+    assert.equal(operation.logs.length, 2);
+    assert.match(await readFile(operation.logs[0], "utf8"), /FETCH_503|503 Service Unavailable/);
+    await f.installation.beginBoot();
+    assert.equal(
+      (await readPluginProfile(f.dir)).packages.find((pkg) => pkg.name === name).version,
+      "3.1.0",
+    );
+  },
+);
 
 test("a transient dependency registry outage retries before the installer silence limit", async (t) => {
   const { controllerFixture, waitForStage } = await import("./fixtures/plugin-updates/profile.mjs");

@@ -125,7 +125,14 @@ export class PluginStore {
     }
     return { id: active, path, receipt };
   }
-  async prepare({ id, install, signal, queueActivation = false, testPlugin = false }) {
+  async prepare({
+    id,
+    install,
+    signal,
+    queueActivation = false,
+    testPlugin = false,
+    commitActivation,
+  }) {
     versionId(id);
     await mkdir(join(this.root, "versions"), { recursive: true, mode: 0o700 });
     return this.withLock(async (owner, lockPath) => {
@@ -212,8 +219,13 @@ export class PluginStore {
         } catch (error) {
           if (error.code !== "ENOENT") throw error;
         }
-        await rename(stage, destination);
-        if (queueActivation) await this.queueActivation(id, signal);
+        const commit = async () => {
+          signal?.throwIfAborted();
+          await rename(stage, destination);
+          if (queueActivation) await this.queueActivation(id, signal);
+        };
+        if (commitActivation) await commitActivation(commit);
+        else await commit();
         return receipt;
       } catch (error) {
         await writePluginStoreJson(join(stage, "preparation-failure.json"), {

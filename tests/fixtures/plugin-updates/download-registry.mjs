@@ -22,7 +22,16 @@ export async function downloadRegistry(t, root, initialMode) {
   let origin;
   const server = createServer((request, response) => {
     requests.push(request.url);
-    if (request.url === "/" + name) {
+    if (request.url === "/zod") {
+      response.setHeader("Content-Type", "application/json");
+      response.end(
+        JSON.stringify({
+          name: "zod",
+          "dist-tags": { latest: "1.0.0" },
+          versions: { "1.0.0": { name: "zod", version: "1.0.0" } },
+        }),
+      );
+    } else if (request.url === "/" + name) {
       if (mode === "unavailable" || (mode === "transient" && failures-- > 0)) {
         response.writeHead(503).end("temporary outage");
         return;

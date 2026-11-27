@@ -16,7 +16,10 @@ export class CompanyInstallation {
       controls: { registerProcess(pid: number): Promise<void> },
     ) => Promise<void>,
     signal?: AbortSignal,
-    options?: { testPlugin?: boolean },
+    options?: {
+      testPlugin?: boolean;
+      commitActivation?: (commit: () => Promise<void>) => Promise<void>;
+    },
   ): Promise<unknown>;
   preparationIdle(): Promise<boolean>;
   hasPendingActivation(): Promise<boolean>;
